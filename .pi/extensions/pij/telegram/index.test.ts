@@ -30,6 +30,7 @@ vi.setConfig({ testTimeout: 60_000 });
 import { FsChannel } from "../adapters/channel.js";
 import { FsRegistry } from "../adapters/fs-registry.js";
 import { SqliteQueue } from "../adapters/sqlite-queue.js";
+import { FsWatchdogStore } from "../adapters/watchdog-store.js";
 import type { PijEvent, SessionId } from "../core/types.js";
 import { TELEGRAM_PEER_ID } from "./bridge.js";
 import type { TelegramConfig } from "./config.js";
@@ -126,15 +127,6 @@ async function waitFor(pred: () => boolean, timeoutMs = 2000): Promise<void> {
 		if (Date.now() - start > timeoutMs) throw new Error("waitFor: condition never held");
 		await new Promise((resolve) => setTimeout(resolve, 10));
 	}
-}
-
-async function settleWhile(pred: () => boolean, timeoutMs = 200): Promise<void> {
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
-		expect(pred()).toBe(true);
-		await new Promise((resolve) => setTimeout(resolve, 10));
-	}
-	expect(pred()).toBe(true);
 }
 
 describe("buildTelegramDescriptor (T001 / AC-08)", () => {
@@ -378,12 +370,15 @@ describe("startBridge forwarder wiring (AC-05 end-to-end)", () => {
 		expect(git).toHaveBeenCalledTimes(1);
 	});
 
-	it("shares successful outbound speech with numeric inbound chat ids and isolates other chats", async () => {
+	it("routes bare inbound to the watching prime, not the last speaker", async () => {
 		const withChat: TelegramConfig = { ...config, chatId: "555000" };
 		const channel = new FsChannel(home, { pollMs: 25 });
 		const rt = runtime({ channel, isAlive: () => true });
 		rt.registry.write(session("pij-agent-a"));
-		rt.registry.write(session("pij-agent-b"));
+		rt.registry.write({ ...session("pij-agent-b"), prime: true });
+		new FsWatchdogStore(home).write(TELEGRAM_PEER_ID, {
+			watchers: [{ watcherId: "pij-agent-b", addedAt: "2026-08-28T00:00:00.000Z" }],
+		});
 		const res = startBridge(withChat, rt);
 		expect(res.kind).toBe("started");
 		if (res.kind !== "started") return;
@@ -412,29 +407,10 @@ describe("startBridge forwarder wiring (AC-05 end-to-end)", () => {
 		});
 		await waitFor(() => sentTexts.some((text) => text.includes("[pij-agent-a]")));
 
-		await res.bot.handleUpdate(textUpdate(555000, "bare follows A"));
-		await waitFor(() => receivedA.length === 1);
-		expect(receivedA[0]).toContain("bare follows A");
-		expect(receivedB).toEqual([]);
-
-		channel.deliver({
-			from: "pij-agent-b",
-			to: TELEGRAM_PEER_ID,
-			body: "B spoke successfully",
-		});
-		await waitFor(() => sentTexts.some((text) => text.includes("[pij-agent-b]")));
-
-		await res.bot.handleUpdate(textUpdate(555000, "bare follows B"));
+		await res.bot.handleUpdate(textUpdate(555000, "bare follows the watching prime"));
 		await waitFor(() => receivedB.length === 1);
-		expect(receivedB[0]).toContain("bare follows B");
-		expect(receivedA).toHaveLength(1);
-		await settleWhile(() => receivedA.length === 1 && receivedB.length === 1);
-		expect(receivedA).toHaveLength(1);
-		expect(receivedB).toHaveLength(1);
-
-		await res.bot.handleUpdate(textUpdate(555001, "other chat has no speaker"));
-		await waitFor(() => sentTexts.some((text) => text.includes("/list")));
-		expect(receivedA).toHaveLength(1);
+		expect(receivedB[0]).toContain("bare follows the watching prime");
+		expect(receivedA).toEqual([]);
 		expect(receivedB).toHaveLength(1);
 
 		disposeA();
@@ -442,7 +418,7 @@ describe("startBridge forwarder wiring (AC-05 end-to-end)", () => {
 		res.stop();
 	});
 
-	it("forgets last-speaker state across a bridge restart", async () => {
+	it("guides after a bridge restart when no prime watches the bridge", async () => {
 		const withChat: TelegramConfig = { ...config, chatId: "555000" };
 		const channel = new FsChannel(home, { pollMs: 25 });
 		const firstRuntime = runtime({ channel, isAlive: () => true });
@@ -450,13 +426,6 @@ describe("startBridge forwarder wiring (AC-05 end-to-end)", () => {
 		const first = startBridge(withChat, firstRuntime);
 		expect(first.kind).toBe("started");
 		if (first.kind !== "started") return;
-		const firstCalls: string[] = [];
-		first.bot.api.config.use((_prev, method) => {
-			firstCalls.push(method);
-			return Promise.resolve({ ok: true, result: { message_id: 1 } } as never);
-		});
-		channel.deliver({ from: "pij-agent-a", to: TELEGRAM_PEER_ID, body: "before restart" });
-		await waitFor(() => firstCalls.includes("sendMessage"));
 		first.stop();
 
 		const second = startBridge(
@@ -474,6 +443,7 @@ describe("startBridge forwarder wiring (AC-05 end-to-end)", () => {
 
 		await second.bot.handleUpdate(textUpdate(555000, "bare after restart"));
 		expect(replies.at(-1)).toMatch(/\/list/);
+		expect(replies.at(-1)).toContain("pij watchdog watch pij-telegram");
 		second.stop();
 	});
 });

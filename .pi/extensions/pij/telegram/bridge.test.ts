@@ -6,7 +6,7 @@
 //     transformer capturing outbound replies (no network), and a spy delivery (no
 //     disk). This is where allowlist-FIRST ordering (AC-07) is actually exercised.
 
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -20,7 +20,7 @@ vi.setConfig({ testTimeout: 60_000 });
 
 import { FsChannel } from "../adapters/channel.js";
 import { SqliteQueue } from "../adapters/sqlite-queue.js";
-import type { PijEvent, SessionDescriptor, SessionId } from "../core/types.js";
+import type { PijEvent, SessionDescriptor, SessionId, WatchdogWatcher } from "../core/types.js";
 import {
 	createBot,
 	firstContactNote,
@@ -71,6 +71,10 @@ function desc(over: Partial<SessionDescriptor> & { id: string }): SessionDescrip
 	};
 }
 
+function watcher(watcherId: string, addedAt = "2026-08-28T00:00:00.000Z"): WatchdogWatcher {
+	return { watcherId: watcherId as SessionId, addedAt };
+}
+
 const ALLOWED = 777;
 const TELEGRAM_TEXT_LIMIT = 4096;
 const TELEGRAM_CAPTION_LIMIT = 1024;
@@ -86,7 +90,7 @@ describe("routeMessage", () => {
 	const sessions = [desc({ id: "pij-osn81b" }), desc({ id: "pij-abc123" })];
 
 	it("addresses a matched session and delivers the remainder", () => {
-		expect(routeMessage("osn fix the test", undefined, sessions)).toEqual({
+		expect(routeMessage("osn fix the test", sessions)).toEqual({
 			kind: "deliver",
 			to: "pij-osn81b",
 			body: "fix the test",
@@ -94,47 +98,110 @@ describe("routeMessage", () => {
 	});
 
 	it("preserves the remainder's internal formatting", () => {
-		expect(routeMessage("osn  line one\nline two", undefined, sessions)).toEqual({
+		expect(routeMessage("osn  line one\nline two", sessions)).toEqual({
 			kind: "deliver",
 			to: "pij-osn81b",
 			body: "line one\nline two",
 		});
 	});
 
+	it("accepts a leading @ on an explicit session id", () => {
+		expect(routeMessage("@pij-abc123 ship it", sessions)).toEqual({
+			kind: "deliver",
+			to: "pij-abc123",
+			body: "ship it",
+		});
+	});
+
 	it("selects a matched target (no delivery) when an address carries no text", () => {
-		expect(routeMessage("osn", undefined, sessions)).toEqual({
+		expect(routeMessage("osn", sessions)).toEqual({
 			kind: "address",
 			to: "pij-osn81b",
 		});
 	});
 
-	it("falls back to the last speaker with the WHOLE text when unaddressed", () => {
-		// "more" matches no session → the leading word is part of the message.
-		expect(routeMessage("more context here", "pij-abc123", sessions)).toEqual({
-			kind: "last-speaker",
-			to: "pij-abc123",
+	it("routes bare text to the live prime watching the bridge, not the last speaker", () => {
+		const prime = desc({ id: "pij-prime", prime: true });
+		expect(
+			routeMessage(
+				"more context here",
+				[...sessions, prime],
+				undefined,
+				[watcher(prime.id)],
+				() => true,
+			),
+		).toEqual({
+			kind: "prime",
+			to: "pij-prime",
 			body: "more context here",
 		});
 	});
 
-	it("returns gone when the recorded last speaker is absent from the registry snapshot", () => {
-		expect(routeMessage("hello?", "pij-missing", sessions)).toEqual({
+	it("returns gone when an explicit target is registered but dead", () => {
+		expect(routeMessage("abc hello?", sessions, undefined, [], () => false)).toEqual({
 			kind: "gone",
-			id: "pij-missing",
+			id: "pij-abc123",
 		});
 	});
 
-	it("replies guidance when there is no address and no last speaker", () => {
-		expect(routeMessage("hello nobody", undefined, sessions)).toEqual({ kind: "guidance" });
+	it("replies guidance when there is no address and no watching prime", () => {
+		expect(routeMessage("hello nobody", sessions)).toEqual({ kind: "guidance" });
 	});
 
-	it("an explicit memorable partial name beats the last speaker", () => {
-		const memorable = [desc({ id: "pij-rigid-minnow" }), desc({ id: "pij-planned-tiglon" })];
-		expect(routeMessage("planned ship it", "pij-rigid-minnow", memorable)).toEqual({
-			kind: "deliver",
-			to: "pij-planned-tiglon",
-			body: "ship it",
-		});
+	it("an explicit memorable partial name beats the watching prime", () => {
+		const memorable = [
+			desc({ id: "pij-rigid-minnow", prime: true }),
+			desc({ id: "pij-planned-tiglon" }),
+		];
+		expect(
+			routeMessage(
+				"planned ship it",
+				memorable,
+				undefined,
+				[watcher("pij-rigid-minnow")],
+				() => true,
+			),
+		).toEqual({ kind: "deliver", to: "pij-planned-tiglon", body: "ship it" });
+	});
+
+	it("breaks multiple watching-prime ties by newest bridge registration", () => {
+		const primes = [
+			desc({ id: "pij-prime-old", prime: true, lastEventAt: "2026-08-28T12:00:00.000Z" }),
+			desc({ id: "pij-prime-new", prime: true, lastEventAt: "2026-08-28T10:00:00.000Z" }),
+		];
+		expect(
+			routeMessage(
+				"status please",
+				primes,
+				undefined,
+				[
+					watcher("pij-prime-old", "2026-08-28T09:00:00.000Z"),
+					watcher("pij-prime-new", "2026-08-28T11:00:00.000Z"),
+				],
+				() => true,
+			),
+		).toEqual({ kind: "prime", to: "pij-prime-new", body: "status please" });
+	});
+
+	it("ignores dead primes and live non-primes in the watcher roster", () => {
+		const sessions = [
+			desc({ id: "pij-live-prime", prime: true, pid: 1111 }),
+			desc({ id: "pij-dead-prime", prime: true, pid: 2222 }),
+			desc({ id: "pij-live-worker", pid: 3333 }),
+		];
+		expect(
+			routeMessage(
+				"status please",
+				sessions,
+				undefined,
+				[
+					watcher("pij-live-prime", "2026-08-28T09:00:00.000Z"),
+					watcher("pij-dead-prime", "2026-08-28T11:00:00.000Z"),
+					watcher("pij-live-worker", "2026-08-28T12:00:00.000Z"),
+				],
+				(pid) => pid !== 2222,
+			),
+		).toEqual({ kind: "prime", to: "pij-live-prime", body: "status please" });
 	});
 
 	it("resolves a multi-match deterministically (newest activity wins)", () => {
@@ -143,7 +210,7 @@ describe("routeMessage", () => {
 			desc({ id: "pij-worker-new", lastEventAt: "2026-06-29T12:00:00.000Z" }),
 			desc({ id: "pij-worker-mid", lastEventAt: "2026-06-29T11:00:00.000Z" }),
 		];
-		expect(routeMessage("worker go", undefined, workers)).toEqual({
+		expect(routeMessage("worker go", workers)).toEqual({
 			kind: "deliver",
 			to: "pij-worker-new",
 			body: "go",
@@ -175,43 +242,53 @@ describe("routeMessage (swipe-reply)", () => {
 	const sessions = [desc({ id: "pij-osn81b" }), desc({ id: "pij-abc123" })];
 
 	it("routes the WHOLE text to the quoted bubble's tagged sender", () => {
-		expect(
-			routeMessage("yes go ahead", undefined, sessions, "[pij-abc123] shall I merge?"),
-		).toEqual({ kind: "deliver", to: "pij-abc123", body: "yes go ahead" });
+		expect(routeMessage("yes go ahead", sessions, "[pij-abc123] shall I merge?")).toEqual({
+			kind: "deliver",
+			to: "pij-abc123",
+			body: "yes go ahead",
+		});
 	});
 
 	it("reply tag beats an address-token-looking leading word", () => {
 		// "osn" would resolve to pij-osn81b as a token — but in a reply it is prose.
-		expect(
-			routeMessage("osn is the one to keep", undefined, sessions, "[pij-abc123] which session?"),
-		).toEqual({ kind: "deliver", to: "pij-abc123", body: "osn is the one to keep" });
+		expect(routeMessage("osn is the one to keep", sessions, "[pij-abc123] which session?")).toEqual(
+			{ kind: "deliver", to: "pij-abc123", body: "osn is the one to keep" },
+		);
 	});
 
-	it("reply tag beats the last speaker", () => {
-		expect(routeMessage("do it", "pij-osn81b", sessions, "[pij-abc123] ready?")).toEqual({
-			kind: "deliver",
-			to: "pij-abc123",
-			body: "do it",
-		});
+	it("reply tag beats the watching prime", () => {
+		expect(
+			routeMessage(
+				"do it",
+				[desc({ id: "pij-osn81b", prime: true }), desc({ id: "pij-abc123" })],
+				"[pij-abc123] ready?",
+				[watcher("pij-osn81b")],
+				() => true,
+			),
+		).toEqual({ kind: "deliver", to: "pij-abc123", body: "do it" });
 	});
 
 	it("falls through to normal routing when the quoted text carries no tag", () => {
-		expect(routeMessage("more context", "pij-abc123", sessions, "my own earlier msg")).toEqual({
-			kind: "last-speaker",
-			to: "pij-abc123",
-			body: "more context",
-		});
+		const prime = desc({ id: "pij-prime", prime: true });
+		expect(
+			routeMessage(
+				"more context",
+				[...sessions, prime],
+				"my own earlier msg",
+				[watcher(prime.id)],
+				() => true,
+			),
+		).toEqual({ kind: "prime", to: "pij-prime", body: "more context" });
 	});
 
-	it("is honest (never misroutes) when the tagged session is gone", () => {
-		expect(routeMessage("hello?", "pij-osn81b", sessions, "[pij-dead99] bye")).toEqual({
-			kind: "gone",
-			id: "pij-dead99",
-		});
+	it("is honest when the tagged session is registered but dead", () => {
+		expect(
+			routeMessage("hello?", sessions, "[pij-abc123] bye", [], (pid) => pid !== sessions[1]?.pid),
+		).toEqual({ kind: "gone", id: "pij-abc123" });
 	});
 
 	it("an empty reply body just retargets (media-with-no-caption case)", () => {
-		expect(routeMessage("", undefined, sessions, "[pij-osn81b] look at this")).toEqual({
+		expect(routeMessage("", sessions, "[pij-osn81b] look at this")).toEqual({
 			kind: "address",
 			to: "pij-osn81b",
 		});
@@ -268,6 +345,7 @@ function makeBridge(
 	now?: () => number,
 	onDelivered?: (to: SessionId, telegramMessageId: number) => void,
 	getLastSpeaker?: (chatId: string) => SessionId | undefined,
+	listBridgeWatchers?: () => readonly WatchdogWatcher[],
 ) {
 	const deliver = vi.fn();
 	const log = vi.fn();
@@ -279,6 +357,7 @@ function makeBridge(
 		deliver,
 		onDelivered,
 		getLastSpeaker,
+		listBridgeWatchers,
 		readEvents,
 		downloadMedia: downloadMedia as ((ctx: never, dest: string) => Promise<void>) | undefined,
 		log,
@@ -395,26 +474,55 @@ describe("createBot (inbound bridge)", () => {
 		expect(replies()).toEqual([]);
 	});
 
-	it("relays bare text to the injected per-chat last speaker (AC-03)", async () => {
-		const { bot, deliver } = makeBridge(
-			[desc({ id: "pij-osn81b" })],
-			[ALLOWED],
-			undefined,
-			undefined,
-			undefined,
-			undefined,
-			undefined,
-			(chatId) => (chatId === "1000" ? ("pij-osn81b" as SessionId) : undefined),
-		);
-		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "and one more thing" }));
-		expect(deliver).toHaveBeenCalledWith({
-			from: "pij-telegram",
-			to: "pij-osn81b",
-			body: framedBody("and one more thing", true),
-		});
+	it("routes bare text to the persisted watching prime, not the retired last speaker", async () => {
+		const home = tmpHome();
+		try {
+			const prime = desc({
+				id: "pij-prime",
+				prime: true,
+				pid: 1111,
+				dataDir: join(home, "pij-prime"),
+			});
+			const lastSpeaker = desc({
+				id: "pij-former-speaker",
+				prime: true,
+				pid: 2222,
+				dataDir: join(home, "pij-former-speaker"),
+			});
+			const bridge = desc({
+				id: TELEGRAM_PEER_ID,
+				pid: 3333,
+				dataDir: join(home, TELEGRAM_PEER_ID),
+			});
+			mkdirSync(bridge.dataDir, { recursive: true });
+			writeFileSync(
+				join(bridge.dataDir, "watchdog.json"),
+				JSON.stringify({ watchers: [watcher(prime.id)] }),
+			);
+			const { bot, deliver } = makeBridge(
+				[prime, lastSpeaker, bridge],
+				[ALLOWED],
+				undefined,
+				undefined,
+				() => true,
+				undefined,
+				undefined,
+				() => lastSpeaker.id,
+			);
+
+			await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "and one more thing" }));
+
+			expect(deliver).toHaveBeenCalledWith({
+				from: TELEGRAM_PEER_ID,
+				to: prime.id,
+				body: framedBody("and one more thing", true),
+			});
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
 	});
 
-	it("addressing with no text selects the /tail target but does not create a speaker", async () => {
+	it("addressing with no text selects the /tail target but not a bare-message target", async () => {
 		const { bot, deliver, replies } = makeBridge([desc({ id: "pij-osn81b" })]);
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "osn" }));
 		expect(deliver).not.toHaveBeenCalled();
@@ -424,8 +532,8 @@ describe("createBot (inbound bridge)", () => {
 		expect(replies().at(-1)).toMatch(/\/list/);
 	});
 
-	it("keeps silent explicit target B separate from last speaker A (AC-06)", async () => {
-		const sessions = [desc({ id: "pij-agent-a" }), desc({ id: "pij-agent-b" })];
+	it("keeps silent explicit target B separate from watching prime A", async () => {
+		const sessions = [desc({ id: "pij-agent-a", prime: true }), desc({ id: "pij-agent-b" })];
 		const { bot, deliver } = makeBridge(
 			sessions,
 			[ALLOWED],
@@ -434,7 +542,8 @@ describe("createBot (inbound bridge)", () => {
 			undefined,
 			undefined,
 			undefined,
-			() => "pij-agent-a" as SessionId,
+			undefined,
+			() => [watcher("pij-agent-a")],
 		);
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "agent-b work on this" }));
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "what is the status?" }));
@@ -459,12 +568,66 @@ describe("createBot (inbound bridge)", () => {
 		});
 	});
 
-	it("replies guidance when unaddressed with no last speaker", async () => {
-		const { bot, deliver, replies } = makeBridge([desc({ id: "pij-osn81b" })]);
+	it("replies guidance when unaddressed with no watching prime", async () => {
+		const { bot, deliver, replies } = makeBridge([desc({ id: "pij-osn81b", prime: true })]);
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "hello there" }));
 		expect(deliver).not.toHaveBeenCalled();
 		expect(replies()).toHaveLength(1);
 		expect(replies()[0]).toMatch(/\/list/);
+		expect(replies()[0]).toContain("pij watchdog watch pij-telegram");
+	});
+
+	it("replies gone and never queues an explicitly addressed dead seat", async () => {
+		const target = desc({ id: "pij-dead", pid: 2222 });
+		const { bot, deliver, replies } = makeBridge(
+			[target],
+			[ALLOWED],
+			undefined,
+			undefined,
+			(pid) => pid !== target.pid,
+		);
+
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "dead do this" }));
+
+		expect(deliver).not.toHaveBeenCalled();
+		expect(replies()).toEqual([expect.stringContaining("pij-dead")]);
+	});
+
+	it("rechecks liveness before delivery so a newly dead seat is never queued", async () => {
+		const target = desc({ id: "pij-target", pid: 2222 });
+		const isAlive = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+		const { bot, deliver, replies } = makeBridge(
+			[target],
+			[ALLOWED],
+			undefined,
+			undefined,
+			isAlive,
+		);
+
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "target do this" }));
+
+		expect(isAlive).toHaveBeenCalledTimes(2);
+		expect(deliver).not.toHaveBeenCalled();
+		expect(replies()).toEqual([expect.stringContaining("pij-target")]);
+	});
+
+	it("does not acknowledge an address when the target dies before selection", async () => {
+		const target = desc({ id: "pij-target", pid: 2222 });
+		const isAlive = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+		const { bot, deliver, replies } = makeBridge(
+			[target],
+			[ALLOWED],
+			undefined,
+			undefined,
+			isAlive,
+		);
+
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "target" }));
+
+		expect(isAlive).toHaveBeenCalledTimes(2);
+		expect(deliver).not.toHaveBeenCalled();
+		expect(replies()).toEqual([expect.stringContaining("pij-target")]);
+		expect(replies()[0]).not.toContain("Now addressing");
 	});
 
 	it("answers /list with the live sessions and never relays it", async () => {
@@ -507,16 +670,18 @@ describe("createBot (inbound bridge)", () => {
 describe("createBot swipe-reply routing", () => {
 	const sessions = [desc({ id: "pij-osn81b" }), desc({ id: "pij-abc123" })];
 
-	it("delivers a swipe-reply to the quoted sender without replacing last-speaker fallback", async () => {
+	it("delivers a swipe-reply to the quoted sender without replacing the watching prime", async () => {
+		const routedSessions = [desc({ id: "pij-osn81b", prime: true }), desc({ id: "pij-abc123" })];
 		const { bot, deliver } = makeBridge(
-			[...sessions],
+			routedSessions,
 			[ALLOWED],
 			undefined,
 			undefined,
 			undefined,
 			undefined,
 			undefined,
-			() => "pij-osn81b" as SessionId,
+			() => "pij-abc123" as SessionId,
+			() => [watcher("pij-osn81b")],
 		);
 		await bot.handleUpdate(
 			textUpdate({
@@ -528,7 +693,7 @@ describe("createBot swipe-reply routing", () => {
 		expect(deliver).toHaveBeenCalledTimes(1);
 		expect(deliver.mock.calls[0]?.[0]).toMatchObject({ to: "pij-abc123" });
 		expect(deliver.mock.calls[0]?.[0].body).toContain("yes merge it");
-		// B was selected but has not spoken; the strict fallback remains A.
+		// The explicit reply does not replace the bridge's watching-prime fallback.
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "and push please" }));
 		expect(deliver).toHaveBeenCalledTimes(2);
 		expect(deliver.mock.calls[1]?.[0]).toMatchObject({
@@ -550,30 +715,39 @@ describe("createBot swipe-reply routing", () => {
 		expect(deliver.mock.calls[0]?.[0]).toMatchObject({ to: "pij-osn81b" });
 	});
 
-	it("replies the gone notice (and delivers nothing) when the tagged session vanished", async () => {
-		const { bot, deliver, replies } = makeBridge([...sessions]);
+	it("replies gone and never queues when the tagged session is registered but dead", async () => {
+		const dead = desc({ id: "pij-abc123", pid: 2222 });
+		const { bot, deliver, replies } = makeBridge(
+			[desc({ id: "pij-osn81b", pid: 1111 }), dead],
+			[ALLOWED],
+			undefined,
+			undefined,
+			(pid) => pid !== dead.pid,
+		);
 		await bot.handleUpdate(
 			textUpdate({
 				fromId: ALLOWED,
 				text: "hello?",
-				replyTo: { text: "[pij-dead99] last words" },
+				replyTo: { text: `[${dead.id}] last words` },
 			}),
 		);
 		expect(deliver).not.toHaveBeenCalled();
-		expect(replies()[0]).toContain("pij-dead99");
+		expect(replies()[0]).toContain(dead.id);
 		expect(replies()[0]).toContain("isn't live");
 	});
 
 	it("a reply to an untagged bot message falls through to normal routing", async () => {
+		const prime = desc({ id: "pij-osn81b", prime: true });
 		const { bot, deliver } = makeBridge(
-			[...sessions],
+			[prime, desc({ id: "pij-abc123" })],
 			[ALLOWED],
 			undefined,
 			undefined,
 			undefined,
 			undefined,
 			undefined,
-			() => "pij-osn81b" as SessionId,
+			undefined,
+			() => [watcher(prime.id)],
 		);
 		await bot.handleUpdate(
 			textUpdate({
@@ -610,25 +784,25 @@ describe("createBot swipe-reply routing", () => {
 
 // ─── reply threading (operator msg id → quoted outbound bubble) ──────────────────
 describe("reply threading", () => {
-	const sessions = [desc({ id: "pij-osn81b" }), desc({ id: "pij-abc123" })];
-
-	it("onDelivered reports the operator message id for addressed AND last-speaker deliveries", async () => {
+	it("onDelivered reports the operator message id for addressed AND prime deliveries", async () => {
 		const delivered: Array<[SessionId, number]> = [];
+		const prime = desc({ id: "pij-osn81b", prime: true });
 		const { bot } = makeBridge(
-			[...sessions],
+			[prime, desc({ id: "pij-abc123" })],
 			[ALLOWED],
 			undefined,
 			undefined,
 			undefined,
 			undefined,
 			(to, mid) => delivered.push([to, mid]),
-			() => "pij-osn81b" as SessionId,
+			undefined,
+			() => [watcher(prime.id)],
 		);
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "osn hello" }));
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "and another thing" }));
 		expect(delivered).toHaveLength(2);
 		expect(delivered[0]?.[0]).toBe("pij-osn81b");
-		expect(delivered[1]?.[0]).toBe("pij-osn81b"); // fallback delivery reports too
+		expect(delivered[1]?.[0]).toBe("pij-osn81b"); // watching-prime delivery reports too
 		expect(delivered[0]?.[1]).not.toBe(delivered[1]?.[1]); // distinct telegram message ids
 	});
 
@@ -755,17 +929,19 @@ describe("createBot /tail", () => {
 		expect(readEvents).toHaveBeenCalledWith("pij-osn81b", 20);
 	});
 
-	it("a bare fallback selects its actual recipient for /tail", async () => {
+	it("a bare prime route selects its actual recipient for /tail", async () => {
 		const readEvents = vi.fn((_id: SessionId, _n: number) => [] as PijEvent[]);
+		const prime = desc({ id: "pij-agent-a", prime: true });
 		const { bot } = makeBridge(
-			[desc({ id: "pij-agent-a" }), desc({ id: "pij-agent-b" })],
+			[prime, desc({ id: "pij-agent-b" })],
 			[ALLOWED],
 			readEvents,
 			undefined,
 			undefined,
 			undefined,
 			undefined,
-			() => "pij-agent-a" as SessionId,
+			undefined,
+			() => [watcher(prime.id)],
 		);
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "agent-b" }));
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "/tail", command: true }));
@@ -1926,17 +2102,19 @@ describe("createBot inbound media", () => {
 		expect(log).toHaveBeenCalledWith(expect.stringContaining("media → pij-osn81b"));
 	});
 
-	it("routes captionless media to the last speaker, not the selected silent target", async () => {
+	it("routes captionless media to the watching prime, not the selected silent target", async () => {
 		const download = vi.fn(async (_ctx: unknown, _dest: string) => {});
+		const prime = desc({ id: "pij-agent-a", prime: true });
 		const { bot, deliver } = makeBridge(
-			[desc({ id: "pij-agent-a" }), desc({ id: "pij-agent-b" })],
+			[prime, desc({ id: "pij-agent-b" })],
 			[ALLOWED],
 			undefined,
 			download,
 			undefined,
 			undefined,
 			undefined,
-			() => "pij-agent-a" as SessionId,
+			undefined,
+			() => [watcher(prime.id)],
 		);
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "agent-b" }));
 		await bot.handleUpdate(mediaUpdate({ kind: "photo", fromId: ALLOWED }));
@@ -1945,7 +2123,7 @@ describe("createBot inbound media", () => {
 		expect((deliver.mock.calls[0]?.[0] as { to: string }).to).toBe("pij-agent-a");
 	});
 
-	it("with no target (no caption, no last speaker) replies guidance and downloads NOTHING", async () => {
+	it("with no target (no caption, no watching prime) replies guidance and downloads NOTHING", async () => {
 		const download = vi.fn(async (_ctx: unknown, _dest: string) => {});
 		const { bot, deliver, replies } = makeBridge(
 			[desc({ id: "pij-osn81b" })],
@@ -1961,23 +2139,40 @@ describe("createBot inbound media", () => {
 		expect(replies()[0]).toMatch(/\/list/);
 	});
 
-	it("a missing recorded speaker replies honestly and downloads NOTHING", async () => {
+	it("an explicitly addressed dead media target replies gone and downloads NOTHING", async () => {
 		const download = vi.fn(async (_ctx: unknown, _dest: string) => {});
+		const dead = desc({ id: "pij-agent-b", pid: 2222 });
 		const { bot, deliver, replies } = makeBridge(
-			[desc({ id: "pij-agent-b" })],
+			[dead],
 			[ALLOWED],
 			undefined,
 			download,
-			undefined,
-			undefined,
-			undefined,
-			() => "pij-agent-a" as SessionId,
+			(pid) => pid !== dead.pid,
 		);
-		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "agent-b" }));
-		await bot.handleUpdate(mediaUpdate({ kind: "photo", fromId: ALLOWED }));
+		await bot.handleUpdate(
+			mediaUpdate({ kind: "photo", fromId: ALLOWED, caption: "agent-b inspect this" }),
+		);
 		expect(download).not.toHaveBeenCalled();
 		expect(deliver).not.toHaveBeenCalled();
-		expect(replies().at(-1)).toMatch(/pij-agent-a|live/i);
+		expect(replies().at(-1)).toContain(dead.id);
+		expect(replies().at(-1)).toContain("isn't live");
+	});
+
+	it("rechecks liveness before media download so a newly dead seat is never queued", async () => {
+		const download = vi.fn(async (_ctx: unknown, _dest: string) => {});
+		const target = desc({ id: "pij-target", pid: 2222 });
+		const isAlive = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+		const { bot, deliver, replies } = makeBridge([target], [ALLOWED], undefined, download, isAlive);
+
+		await bot.handleUpdate(
+			mediaUpdate({ kind: "photo", fromId: ALLOWED, caption: "target inspect this" }),
+		);
+
+		expect(isAlive).toHaveBeenCalledTimes(2);
+		expect(download).not.toHaveBeenCalled();
+		expect(deliver).not.toHaveBeenCalled();
+		expect(replies()).toEqual([expect.stringContaining("pij-target")]);
+		expect(replies()[0]).toContain("isn't live");
 	});
 
 	it("refuses an over-cap file: a 'too big' reply and NO download (AC-12 pre-check)", async () => {
