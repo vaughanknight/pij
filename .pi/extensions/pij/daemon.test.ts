@@ -2839,7 +2839,7 @@ describe("daemon signal shutdown", () => {
 	});
 
 	it("the real daemon SIGTERM path releases write.lock and events.lock in a temp home", {
-		timeout: 10_000,
+		timeout: 30_000,
 	}, async () => {
 		const childHome = mkdtempSync(join(tmpdir(), "pij-daemon-signal-"));
 		const launch = daemonLaunchArgv(DAEMON_BIN);
@@ -2855,7 +2855,7 @@ describe("daemon signal shutdown", () => {
 		});
 		try {
 			await new Promise<void>((resolve, reject) => {
-				const timer = setTimeout(() => reject(new Error("daemon lock marker timed out")), 5_000);
+				const timer = setTimeout(() => reject(new Error("daemon lock marker timed out")), 15_000);
 				child.stdout.setEncoding("utf8");
 				child.stdout.on("data", (chunk: string) => {
 					if (!chunk.includes("PIJ_TEST_LOCKS_HELD")) return;

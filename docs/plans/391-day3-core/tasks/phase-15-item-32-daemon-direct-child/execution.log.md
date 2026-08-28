@@ -101,3 +101,12 @@
 - Detached job output: `/Users/vaughanknight/.pij/pij-jolly-moose/bg-mtcdye0y-xg9t7u.log`.
 - `harness checks --quick` again passed local paths, typecheck, package audit, and snapshots, with the same three unchanged baseline failures: existing `osc-7337-producer.ts` Biome findings, unavailable local `pwsh` in `release-age-policy.test.ts`, and the Windows check repeating the producer lint.
 - Harness output: `.harness/temp/s391/harness-checks-phase15-fx01.log`.
+
+## FX-02 — merge-check red under full-suite load (o-prime), fixed at af84d06; W-1/W-2 applied by the orchestrator at ship
+
+- Red: the relay CONTROL test spawned bare `npx tsx` (cold npm lookup, 5 s marker budget) and, under vitest parallelism, timed out itself and starved two main-owned subprocess tests (`cli.inbox.integration` "appendOnce hard-link race", `cli.integration` "'invalid Codex UUID'…"). Isolation green.
+- Fix: the control launches the same relay binary through `createRequire(import.meta.url).resolve("tsx/cli")` with `process.execPath` (no npx), and the marker wait is a 15 s COLD-START CEILING (measured 557–761 ms; the ceiling bounds only the failure case). No serialisation, no vitest config change.
+- Reviewer's out-of-vitest measurement (review-01.md § Re-review FX-02): production 581 ms / relay control 557 ms / historical `npx tsx` 3183 ms — npx cost 5.7× and left 1.57× headroom against 5 s on an idle box; the o-prime observed 16–20× stretch under load.
+- Evidence (gitignored, kept): `.harness/temp/s391/item32-fx02-full-1.log`, `item32-fx02-full-2.log` (fresh-worktree full runs, 4153/0 each, both main-owned tests named green), `item32-fx02-relay-target.log`.
+- W-2 (orchestrator, at ship): the neighbouring 15-FX real-daemon test used the same construct with a 5 s marker / 10 s test timeout — under the observed stretch it would be the next casualty; raised to the same 15 s ceiling (and 30 s test timeout). Rationale recorded here so the constants survive with a reason.
+- Pre-existing, not folded: `pij-skill-check` is a load-sensitive slow file (62 s under a full 236-file run vs 40 s), green in isolation at both SHAs.
