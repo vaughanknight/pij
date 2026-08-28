@@ -54,8 +54,22 @@ fn the_corpus_includes_deliberately_broken_cases() {
 
     // The two that decide real behaviour later, named explicitly so a rename
     // cannot quietly drop them.
-    assert!(malformed.contains(&"malformed/unknown-event-kind.ndjson".to_string()));
-    assert!(malformed.contains(&"malformed/future-envelope.json".to_string()));
+    assert!(malformed.contains(&"malformed/rs/unknown-event-kind.ndjson".to_string()));
+    assert!(malformed.contains(&"malformed/rs/future-envelope.json".to_string()));
+
+    // Both families must exist: the v1 decoder is judged against rs/, and the
+    // wave-3 migration reader against captured ts/ bytes. Collapsing them would
+    // hide that the two schemas genuinely differ.
+    assert!(
+        malformed
+            .iter()
+            .any(|path| path.starts_with("malformed/rs/"))
+    );
+    assert!(
+        malformed
+            .iter()
+            .any(|path| path.starts_with("malformed/ts/"))
+    );
 }
 
 #[test]

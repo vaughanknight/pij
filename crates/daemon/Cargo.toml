@@ -6,3 +6,22 @@ license.workspace = true
 
 [lints]
 workspace = true
+
+# Composition root: it is the crate allowed to know about every adapter, which is
+# why the allow-list gives it the widest internal row in the workspace.
+# `pij-testkit` is NOT dev-only here — the fakes are the DEFAULT wiring, so the
+# shipped binary must contain them (offline-first, workshop 001 R2).
+[dependencies]
+axum = { workspace = true }
+getrandom = { workspace = true }
+pij-core = { workspace = true }
+pij-store = { workspace = true }
+pij-testkit = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+
+# The end-to-end tests speak HTTP to the daemon over loopback, and use FreshStore
+# when they make the store real.
+[dev-dependencies]
+reqwest = { workspace = true }

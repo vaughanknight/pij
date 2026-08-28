@@ -63,7 +63,7 @@ internal = ["pij-testkit@dev"]
 # would force `block_on` inside the store adapter and deadlock on a tokio worker.
 # `serde` is the wire shape of the domain and `thiserror` types the taxonomy;
 # both are codecs, and neither is permission for core to perform IO.
-external = ["async-trait", "serde", "thiserror", "serde_json@dev"]
+external = ["async-trait", "serde", "serde_json", "thiserror"]
 why = "Pure domain: types, config, errors, the seven frozen ports, and the logic over them. No IO, no tokio, no SQL, no HTTP — enforced here rather than asserted in a doc comment."
 
 [crates.pij-store]
@@ -92,13 +92,22 @@ external = []
 why = "Message transports (UDS today, named pipes later) behind the Transport port. Wire quirks here; routing policy stays in core."
 
 [crates.pij-daemon]
-internal = []
-external = []
+# The widest row in the workspace, and deliberately so: a composition root is the
+# ONE place allowed to know every adapter. `pij-testkit` is a SHIPPED edge here,
+# not `@dev`, because the fakes are the default wiring — offline-first means the
+# binary must contain them.
+internal = ["pij-core", "pij-store", "pij-testkit"]
+# `axum` is the server; `getrandom` is the per-boot bearer key (OS entropy, no
+# PRNG state to seed or leak); `tokio` is the reactor.
+external = ["axum", "getrandom", "reqwest@dev", "serde", "serde_json", "tokio"]
 why = "Composition root #1: wires Arc<dyn Port> from config, serves HTTP, runs the tick loop and job workers. Wiring, never business logic."
 
 [crates.pij-cli]
-internal = []
-external = []
+# The second composition root. It depends on the daemon because it SHIPS the
+# daemon: one artifact, so a stale CLI can never meet a newer daemon on one
+# machine.
+internal = ["pij-core", "pij-daemon"]
+external = ["clap", "reqwest", "serde", "serde_json", "tokio"]
 why = "Composition root #2 and the workspace's only binary (pij-rs). Ships the daemon in the same artifact, so CLI and daemon versions cannot skew."
 
 # testkit depends on core and store so its fakes implement the real ports and

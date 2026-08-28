@@ -15,3 +15,4 @@ pub mod error;
 pub mod liveness;
 pub mod model;
 pub mod ports;
+pub mod wire;

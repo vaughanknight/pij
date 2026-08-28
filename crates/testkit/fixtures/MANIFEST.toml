@@ -2,94 +2,140 @@
 #
 # Real captured pij traffic, malformed cases INCLUDED, with a known answer for
 # each — so a packet can cite a fixture by path and a reviewer can check the
-# claim without re-capturing anything. Captured 2026-08-28 from the live TS pij
-# on this machine (pij --version at capture time is recorded in the plan's
-# reports/, not here, so this file stays a pure index).
+# claim without re-capturing anything.
 #
-# Rule: a fixture is only useful with its EXPECTATION. `answer` is what a
-# correct implementation must do with the bytes — not a description of them.
+# Rule: a fixture is only useful with its EXPECTATION. `answer` is what a correct
+# implementation must DO with the bytes — not a description of them.
+#
+# TWO FAMILIES, and the split is load-bearing:
+#
+#   malformed/rs/  the Rust v1 wire shape {v, at, kind, seat, payload}. The
+#                  decoder in pij-core/src/wire.rs is judged against these.
+#   malformed/ts/  the LIVE TypeScript daemon's shape {seq, timestamp, type,
+#                  data}. Captured, not invented — and NOT what v1 speaks. These
+#                  belong to the migration/parity reader of wave 3+.
+#
+# The split exists because the first draft of the wire tests read TS captures
+# with the v1 decoder and failed: the two schemas genuinely differ, and pretending
+# otherwise would have meant bending one of them to hide it.
 
 version = 1
+
 
 [[fixture]]
 path = "cli/models.json"
 sha256 = "a01aa1cec6a96cd4d3553ab0ca6624ea319925f4d65ff95a31ce72859cd3e468"
 bytes = 3182
 note = "pij models --json, 2026-08-28, one row per provider plus rows covering every observed `levels` encoding. The live catalog is TIME-VARYING (599 rows at 05:05, 125 at 05:15 as the openrouter list shrank 479->5), so a byte-golden against the live binary would flap; the golden runs against these committed bytes."
-answer = "10 rows, 8 providers. TWO encodings of 'no thinking levels' appear in real output — `\"levels\": []` and the key ABSENT (claude rows) — and NEITHER is the `null` that services.dd.json assumes. u-models must map both to the same fact and must not invent a third."
+answer = "10 rows, 8 providers. TWO encodings of 'no thinking levels' appear in real output \u2014 \"levels\": [] and the key ABSENT (claude rows) \u2014 and NEITHER is the null services.dd.json assumed. u-models must fold both to one fact and must not invent a third."
 
 [[fixture]]
 path = "cli/list.json"
 sha256 = "18ec5f2ad30583e4be37c2e28ceda0499e7a2fc3baca3d29ba878120da886242"
 bytes = 7261
 note = "pij list --json, 2026-08-28, one seat per liveness class (active, stale, dead) plus a seat carrying a terminal record."
-answer = "liveness is active|stale|dead; `terminal.disposition` reads `unrequested-by-pij`, which is an OBSERVATION, not a cause."
+answer = "liveness is active|stale|dead; terminal.disposition reads 'unrequested-by-pij', which is an OBSERVATION of absence, never a cause of death."
 
 [[fixture]]
 path = "cli/whoami.json"
 sha256 = "1aebf71f48dcffa1fbd8b8d94720554d5e3b7768d9f44bb9954e7566ddd21eca"
 bytes = 1475
 note = "pij whoami --json from the PM seat, 2026-08-28."
-answer = "carries the capability schema and the per-verb allow map."
+answer = "carries folder, dataDir, and the per-verb capability map; a reader must not assume folder == cwd."
 
 [[fixture]]
 path = "wire/events.ndjson"
 sha256 = "4b4ced47a3ddf26f22e0bfbc51c742e5afa841825562b6341195567051562fed"
 bytes = 1766
-note = "8 real spine events from ~/.pij/pij-revolutionary-lungfish/events.ndjson, one per (type, data.type) pair."
-answer = "seq is monotonic; every line is one complete JSON object."
+note = "8 real spine events from ~/.pij/pij-revolutionary-lungfish/events.ndjson, one per (type, data.type) pair. TS SHAPE: {seq,timestamp,type,data}."
+answer = "seq is monotonic and every line is one complete JSON object \u2014 but the field names are the TS daemon's, NOT the Rust v1 event shape. A reader of this file is a MIGRATION reader (wave 3+), never the v1 decoder."
 
 [[fixture]]
-path = "malformed/truncated-event.ndjson"
-sha256 = "8775b9c173f5d83662d687a8f9d128d46503d7bc8a5feacbc8b5648fd5eea9ae"
-bytes = 87
-note = "A line cut mid-object \u2014 the shape a crashed writer leaves."
-answer = "MUST fail to parse, and the failure must name the line."
+path = "malformed/rs/truncated-event.ndjson"
+sha256 = "82fcf0f44de70d0f4f65c594e4f63f30d1db3e9a726ec4d3845680f60bba80ea"
+bytes = 39
+note = "A Rust-v1 event line cut mid-object \u2014 the shape a crashed writer leaves."
+answer = "MUST fail to parse as NotJson, and the failure MUST name the line number."
 
 [[fixture]]
-path = "malformed/unknown-event-kind.ndjson"
-sha256 = "f061b0f8e9456879e162b863ff2589a193641b6abedb154b3cc557b43149ae70"
-bytes = 198
-note = "An event kind this build has never heard of, followed by a known one."
-answer = "MUST NOT abort the stream: the unknown line is forwarded as Unknown and the known line still arrives (tk-d162)."
+path = "malformed/rs/unknown-event-kind.ndjson"
+sha256 = "f21b9158ac9d8a85ca58f5923ac2d3b13d03d716e9b07e0cca58a338f1d79b2a"
+bytes = 183
+note = "A Rust-v1 event whose kind this build has never heard of, followed by a known one."
+answer = "MUST decode as WireEvent::Unknown keeping the raw bytes, and MUST NOT abort the stream: the known line still arrives. An event is a fact that happened whether or not this build knows the word for it."
 
 [[fixture]]
-path = "malformed/not-json.ndjson"
-sha256 = "3895474b6d1080352db59f11be39ddb080389238c95489e80a1d894b98d10ee4"
-bytes = 124
-note = "A stray human-readable warning printed into a machine stream \u2014 this exact class bricked a pi boot."
-answer = "MUST be reported as a bad line, never silently skipped and never fatal."
+path = "malformed/rs/not-json.ndjson"
+sha256 = "b66cdc925e6c68310c5215bbc6041956c742a017958daaca651db75d968a7fac"
+bytes = 104
+note = "A stray human-readable warning printed into a machine stream \u2014 the class that bricked a pi boot ('Warning: Set a purpose first.')."
+answer = "The bad line is reported with its number; every other line still decodes. One bad line must never cost the reader the rest of the stream."
 
 [[fixture]]
-path = "malformed/empty.ndjson"
+path = "malformed/rs/no-kind.ndjson"
+sha256 = "e342a0f160bdb4f1b67b3464b86a22add41bfd1b5b178e93dd6ed8837056b972"
+bytes = 54
+note = "A Rust-v1 event object with no `kind` field."
+answer = "MUST be WrongShape, NOT Unknown: 'I do not recognise this kind' and 'this is not an event' are different facts with different recoveries."
+
+[[fixture]]
+path = "malformed/rs/empty.ndjson"
 sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 bytes = 0
 note = "Zero bytes."
 answer = "An empty stream is EMPTY, not an error."
 
 [[fixture]]
-path = "malformed/future-envelope.json"
+path = "malformed/rs/future-envelope.json"
 sha256 = "ef29c521ed87b10adf2e40a1dd33872e4fb9086fdf00913c5ec2399bf50c9b14"
 bytes = 113
 note = "An envelope with v=99."
-answer = "MUST refuse rather than half-read: `v` exists so a reader can decline a payload from a future it does not understand."
+answer = "MUST be refused whole, before the payload is typed. Note the deliberate ASYMMETRY with unknown events: an envelope is a contract this build must satisfy, so a future one is refused; an event is a fact, so a future one is kept."
 
 [[fixture]]
-path = "malformed/models-missing-request-id.json"
+path = "malformed/ts/truncated-event.ndjson"
+sha256 = "8775b9c173f5d83662d687a8f9d128d46503d7bc8a5feacbc8b5648fd5eea9ae"
+bytes = 87
+note = "TS-shaped event line cut mid-object."
+answer = "For the wave-3+ migration reader only. Same rule as its rs/ sibling: fail, naming the line."
+
+[[fixture]]
+path = "malformed/ts/unknown-event-kind.ndjson"
+sha256 = "f061b0f8e9456879e162b863ff2589a193641b6abedb154b3cc557b43149ae70"
+bytes = 198
+note = "TS-shaped stream carrying an unknown `type`, followed by a known one."
+answer = "For the migration reader: forward the unknown, keep reading. The v1 decoder is NOT expected to read TS field names."
+
+[[fixture]]
+path = "malformed/ts/not-json.ndjson"
+sha256 = "3895474b6d1080352db59f11be39ddb080389238c95489e80a1d894b98d10ee4"
+bytes = 124
+note = "TS-shaped stream with a stray human line first."
+answer = "For the migration reader: report line 1, still deliver line 2."
+
+[[fixture]]
+path = "malformed/ts/empty.ndjson"
+sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+bytes = 0
+note = "Zero bytes."
+answer = "An empty stream is EMPTY, not an error \u2014 true for both readers."
+
+[[fixture]]
+path = "malformed/ts/models-missing-request-id.json"
 sha256 = "b67fd5207e73fbd14d44f41a586c8dc826fdd74c39a5f3c48a1872f45d5a1167"
 bytes = 184
 note = "A model row with no requestModelId."
-answer = "Whole-inventory failure: one malformed row invalidates the catalog, per s106 semantics."
+answer = "Whole-inventory failure: one malformed row invalidates the catalog rather than silently yielding a model nobody can request (s106 semantics)."
 
 [[fixture]]
-path = "malformed/models-levels-empty-list.json"
+path = "malformed/ts/models-levels-empty-list.json"
 sha256 = "93aa2a309613c16472451c7057589f2d93fbccb3201f5e96cb993ea8b11d4f29"
 bytes = 212
-note = "A model row with `levels: []` where null was meant."
-answer = "MUST be distinguishable from null: [] claims levels exist and none work."
+note = "A model row with `levels: []`."
+answer = "MUST fold to the same 'no levels' fact as an absent key \u2014 see cli/models.json; it must NOT be read as 'levels exist and none work'."
 
 [[fixture]]
-path = "malformed/whoami-missing-folder.json"
+path = "malformed/ts/whoami-missing-folder.json"
 sha256 = "d7bc0e9e82aa647fa9127439d1aab8e627ba112cda73b6dcf38f88c7a471b47a"
 bytes = 105
 note = "A whoami envelope with no folder."

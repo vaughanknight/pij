@@ -25,4 +25,4 @@ pub mod fixtures;
 pub mod fresh_store;
 
 pub use exec::block_on;
-pub use fresh_store::FreshStore;
+pub use fresh_store::{FreshStore, fresh_dir};

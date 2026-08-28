@@ -14,12 +14,13 @@ workspace = true
 [dependencies]
 async-trait = { workspace = true }
 serde = { workspace = true }
+# A pure value codec, not IO: the envelope's `data` is open by contract, so the
+# wire module needs a JSON value type. This is not permission for core to speak
+# HTTP — the arch gate still refuses every client and server crate here.
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 # Test substrate only: the shared fakes and the hand-rolled executor. `@dev` is
 # what keeps it out of the shipped crate, and the arch gate enforces the suffix.
 [dev-dependencies]
 pij-testkit = { workspace = true }
-# Tests assert the WIRE shape (absent `data` omitted, not nulled), which needs a
-# JSON codec. Dev-only: core itself never serialises anything to a wire.
-serde_json = { workspace = true }
