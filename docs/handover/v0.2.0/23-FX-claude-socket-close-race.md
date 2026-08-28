@@ -16,7 +16,7 @@ Make the FAKE deterministic on two fronts:
 Branch `s392/item12-fx-falcon`, commit `7540a9c`, file `.pi/extensions/pij/adapters/claude-socket.test.ts` (+22/-8): the `close` mode's `c.write("\n", () => c.end())`; `server.listen(sock, () => fs.writeFileSync(ready, …))` + the client-side readiness wait; a per-mode `ackWaitMs` (2 s for `close`).
 
 ## 4. Acceptance (mechanical) — implementation MET, exact-repro PARTIAL
-Flake fix, no mutant; gate = determinism over N runs, logs kept (E22). On branch `7540a9c`: targeted tests green; THREE consecutive post-fix parallel full-suite runs green; a pre-fix run captured the RELATED fake-listener ECONNREFUSED-before-accept race (`docs/plans/392-day3-codex-doctrine/tasks/item-23-FX/pre-fix-full-suite-run-4.log`).
+Flake fix, no mutant; gate = determinism over N runs, logs kept (E22). On branch `7540a9c`: targeted tests green; THREE consecutive post-fix parallel full-suite runs green; a pre-fix run captured the RELATED fake-listener ECONNREFUSED-before-accept race — on branch `7540a9c` at `tasks/item-23-FX/pre-fix-full-suite-run-4.log` (a `*.log`, gitignored, NOT on main; quoted inline per E48/E49): `FAIL claude-socket.test.ts > sendClaudeFrame > reports failed when the receiver reports our msg_id dropped` / `AssertionError: expected 'ECONNREFUSED' to contain 'rate_limited'` / `Tests 4 failed | 4772 passed | 19 skipped`.
 **HONEST CAVEAT:** the EXACT historical zero-line close symptom did NOT reproduce locally in 100 targeted stress attempts — so the fix is proven to CLOSE THE MECHANISM (close-ordering + accept-readiness) and to fix the related race that did reproduce, but the original exact symptom was not reproduced-then-fixed under observation.
 
 ## 5. Live verification
