@@ -49,10 +49,17 @@ import { planOnceClose } from "./core/agent-peer.js";
 import { sweepStaleTmp } from "./core/agents/inline.js";
 import { resolvePijHome } from "./core/agents/paths.js";
 import { ARCHIVE_PRUNE_AFTER_MS } from "./core/archive.js";
-import { buildDeadNotice, buildStalledNotice } from "./core/binding.js";
+import {
+	buildDeadNotice,
+	buildStalledNotice,
+	noLiveNoticeRecipientLine,
+	noticeRecipient,
+	noticeRegistryView,
+	resolveNoticeRecipient,
+} from "./core/binding.js";
 import { AnomalySweep } from "./core/daemon/anomaly-sweep.js";
 import { BatonSweep } from "./core/daemon/baton-sweep.js";
-import { reconcileDeaths } from "./core/daemon/death-reconciler.js";
+import { reconcileDeaths, resolveDeathNotices } from "./core/daemon/death-reconciler.js";
 import { IndexState } from "./core/daemon/index-state.js";
 import { evaluateLock, parseLockFile, serializeLockFile } from "./core/daemon/lock.js";
 import {
@@ -575,6 +582,7 @@ export class Daemon {
 					this.registry,
 					this.channel,
 					undefined, // self-injection is marked by the port wrapper, post-send
+					this.log,
 				);
 				if (out.kind === "held-by-pane-input") {
 					// Never silent: say it once when it starts, and the eventual
@@ -791,7 +799,8 @@ export class Daemon {
 				// all (no lifecycle/sendkeys). `capture-pane` is read-only, so pi keeps
 				// owning its inbox, delivery, and self-written state — we only peek.
 				const providerView = current.state === "working" ? current : d;
-				if (providerView.paneId && providerView.spawnedBy) this.pushProviderFailure(providerView);
+				if (providerView.paneId && noticeRecipient(providerView))
+					this.pushProviderFailure(providerView);
 				// Compact hold (DL-004): while the pane is compacting, do NOT drain —
 				// messages stay durable-unread in the inbox (the queue), nothing is
 				// marked read, and the sender's receipt stays `queued` until the
@@ -823,16 +832,27 @@ export class Daemon {
 		// IS terminal truth, the same authority `pij close` exercises.
 		for (const update of deathSweep.descriptorUpdates) this.registry.write(update, "close");
 		for (const update of deathSweep.expectationUpdates) this.expectations.write(update);
-		for (const notice of deathSweep.notices) {
+		const deathDelivery = resolveDeathNotices(
+			deathSweep.noticeCandidates,
+			noticeRegistryView(this.registry),
+			deathSweep.deadIds,
+		);
+		for (const notice of deathDelivery.notices) {
 			this.channel.deliver({ from: notice.from, to: notice.to, body: notice.text });
 		}
 		// One line instead of N undeliverable pushes. A host reboot kills every seat
-		// in the same event, so the obituaries are all addressed to seats that died
-		// alongside their subject — the operator wants the COUNT, not 200 messages
-		// nobody can read (task #34).
-		if (deathSweep.noticesSuppressed > 0) {
+		// in the same event, so the operator wants the COUNT and only a bounded sample
+		// of subjects, not one line per corpse (task #34).
+		if (deathDelivery.noticesSuppressed > 0) {
+			const subjects = deathDelivery.withheldNoticeSubjects.join(", ");
+			const remainder =
+				deathDelivery.noticesSuppressed - deathDelivery.withheldNoticeSubjects.length;
+			const subjectSummary =
+				subjects.length === 0
+					? ""
+					: `; subjects: ${subjects}${remainder > 0 ? ` (+${remainder} more)` : ""}`;
 			this.log(
-				`death sweep: ${deathSweep.noticesSuppressed} notice(s) withheld — recipient is dead too (terminal truth still recorded on each descriptor)`,
+				`death sweep: ${deathDelivery.noticesSuppressed} notice(s) withheld: no live recipient${subjectSummary}; terminal truth still recorded on each descriptor`,
 			);
 		}
 		this.watchdogManager.reconcile(this.registry.list());
@@ -1029,7 +1049,7 @@ export class Daemon {
 	 *  (pure, returns null for non-busy/ready, has no delivery port). One push per
 	 *  transition, latched by `this.pushed`. */
 	private pushWholeLifeTransition(d: SessionDescriptor): void {
-		if (!d.spawnedBy) return; // no creator to notify
+		if (!noticeRecipient(d)) return; // no current or historical creator to notify
 		// A safety-exempted peer is intentionally idle on standby, so its silence is
 		// expected and must generate NO watchdog traffic in either direction. The
 		// watchdog's own path honours that via `isFireDue`; this detector derives
@@ -1056,7 +1076,8 @@ export class Daemon {
 			// Persist failureReason so pij state/list --json surface the machine-stable reason (FIX-4).
 			const persisted = persistDaemonWrite(this.registry, { ...d, failureReason: "stalled" });
 			if (persisted.lifecycle === "dissolved") return;
-			const note = buildStalledNotice(persisted);
+			const recipient = this.lifecycleNoticeRecipient("stalled", persisted);
+			const note = buildStalledNotice(persisted, recipient);
 			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 			this.log(`push ${d.id}: stalled`);
 		} else if (
@@ -1089,10 +1110,9 @@ export class Daemon {
 		latch.add("stalled");
 		const persisted = persistDaemonWrite(this.registry, { ...d, failureReason: "stalled" });
 		if (persisted.lifecycle === "dissolved") return;
-		if (persisted.spawnedBy) {
-			const note = buildStalledNotice(persisted);
-			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
-		}
+		const recipient = this.lifecycleNoticeRecipient("stalled", persisted);
+		const note = buildStalledNotice(persisted, recipient);
+		if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 		this.log(`push ${d.id}: watchdog stalled`);
 	}
 
@@ -1117,7 +1137,7 @@ export class Daemon {
 		// s070 set out to fix. `staleAge` is only the trigger for LOOKING; the notice
 		// fires on positively-identified provider-error evidence in the pane, never on
 		// silence alone. A test pins this so it cannot be "fixed" by accident.
-		if (!d.spawnedBy || !d.paneId) return; // no creator / no pane to peek
+		if (!noticeRecipient(d) || !d.paneId) return; // no recipient / no pane to peek
 		if (d.lifecycle === "pending") return; // mid-bind → driveSession owns it (its bad-model detect fails it)
 		if (!this.ports.isAlive(d.pid)) return; // dead → handled by the dead branch
 		const latch = this.pushed.get(d.id) ?? new Set<PushedTransition>();
@@ -1146,9 +1166,20 @@ export class Daemon {
 		latch.add("provider-failure");
 		const persisted = persistDaemonWrite(this.registry, { ...d, failureReason: reason });
 		if (persisted.lifecycle === "dissolved") return;
-		const note = buildDeadNotice(persisted, reason, { authoritativeDeath: false });
+		const recipient = this.lifecycleNoticeRecipient("dead", persisted);
+		const note = buildDeadNotice(persisted, reason, { authoritativeDeath: false }, recipient);
 		if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 		this.log(`push ${d.id}: provider-failure (${reason})`);
+	}
+
+	private lifecycleNoticeRecipient(
+		kind: "stalled" | "dead",
+		descriptor: SessionDescriptor,
+	): SessionId | null {
+		const resolution = resolveNoticeRecipient(descriptor, noticeRegistryView(this.registry));
+		const line = noLiveNoticeRecipientLine(kind, descriptor, resolution);
+		if (line) this.log(line);
+		return resolution.recipient;
 	}
 
 	/** Read a bound tmux session's durable unread inbox, inject each user message,

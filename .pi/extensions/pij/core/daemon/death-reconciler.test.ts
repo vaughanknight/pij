@@ -8,7 +8,7 @@ import { detectAnomalies } from "../anomalies.js";
 import { planRevive } from "../revive.js";
 import { createSpawnExpectation } from "../spawn-expectation.js";
 import type { SessionDescriptor } from "../types.js";
-import { reconcileDeaths } from "./death-reconciler.js";
+import { reconcileDeaths, resolveDeathNotices } from "./death-reconciler.js";
 
 const descriptor = (over: Partial<SessionDescriptor> = {}): SessionDescriptor => ({
 	id: "pij-child",
@@ -44,6 +44,7 @@ describe("death reconciler", () => {
 			const result = reboot();
 			expect(result.notices).toEqual([]);
 			expect(result.noticesSuppressed).toBe(1);
+			expect(result.withheldNoticeSubjects).toEqual(["pij-child"]);
 		});
 
 		it("still records terminal truth on every descriptor it withheld a notice for", () => {
@@ -93,10 +94,10 @@ describe("death reconciler", () => {
 
 	it("classifies a missing registered process as unrequested-by-pij and emits one live notice", () => {
 		const result = reconcileDeaths({
-			descriptors: [descriptor()],
+			descriptors: [descriptor(), descriptor({ id: "pij-parent", pid: 45, spawnedBy: undefined })],
 			expectations: [],
 			nowIso: "2026-07-20T00:00:02.000Z",
-			isAlive: () => false,
+			isAlive: (pid) => pid === 45,
 		});
 		expect(result.descriptorUpdates[0]?.terminal).toMatchObject({
 			disposition: "unrequested-by-pij",
@@ -105,6 +106,158 @@ describe("death reconciler", () => {
 		expect(result.notices).toEqual([
 			expect.objectContaining({ to: "pij-parent", historical: false }),
 		]);
+	});
+
+	it.each([
+		["adopted", "pij-original-spawner"],
+		["parent-only", undefined],
+	] as const)("routes the %s seat's terminal death notice to the current parent only", (_case, spawnedBy) => {
+		const result = reconcileDeaths({
+			descriptors: [
+				descriptor({
+					parentId: "pij-current-parent",
+					spawnedBy,
+				}),
+				descriptor({
+					id: "pij-current-parent",
+					parentId: undefined,
+					pid: 99,
+					spawnedBy: undefined,
+				}),
+			],
+			expectations: [],
+			nowIso: "2026-07-20T00:00:02.000Z",
+			isAlive: (pid) => pid === 99,
+		});
+
+		expect(result.notices.map(({ from, to }) => ({ from, to }))).toEqual([
+			{ from: "pij-child", to: "pij-current-parent" },
+		]);
+	});
+
+	it("withholds once and explains both dead candidates", () => {
+		const terminal = {
+			disposition: "unrequested-by-pij" as const,
+			evidence: "pid-missing" as const,
+			observedAt: "2026-07-20T00:00:01.000Z",
+		};
+		const result = reconcileDeaths({
+			descriptors: [
+				descriptor({
+					parentId: "pij-current-parent",
+					spawnedBy: "pij-original-spawner",
+				}),
+				descriptor({
+					id: "pij-current-parent",
+					pid: 98,
+					spawnedBy: undefined,
+					terminal,
+				}),
+				descriptor({
+					id: "pij-original-spawner",
+					pid: 99,
+					spawnedBy: undefined,
+					terminal,
+				}),
+			],
+			expectations: [],
+			nowIso: "2026-07-20T00:00:02.000Z",
+			isAlive: () => false,
+		});
+
+		expect(result.notices).toEqual([]);
+		expect(result.noticesSuppressed).toBe(1);
+		expect(result.withheldNoticeSubjects).toEqual(["pij-child"]);
+	});
+
+	it.each([
+		"dead",
+		"dissolved",
+	] as const)("falls back to the live spawner when the current parent is %s", (parentState) => {
+		const parent = descriptor({
+			id: "pij-current-parent",
+			pid: 98,
+			spawnedBy: undefined,
+			...(parentState === "dissolved"
+				? { lifecycle: "dissolved" as const }
+				: {
+						terminal: {
+							disposition: "unrequested-by-pij" as const,
+							evidence: "pid-missing" as const,
+							observedAt: "2026-07-20T00:00:01.000Z",
+						},
+					}),
+		});
+		const spawner = descriptor({
+			id: "pij-original-spawner",
+			pid: 99,
+			spawnedBy: undefined,
+		});
+		const result = reconcileDeaths({
+			descriptors: [
+				descriptor({
+					parentId: parent.id,
+					spawnedBy: spawner.id,
+				}),
+				parent,
+				spawner,
+			],
+			expectations: [],
+			nowIso: "2026-07-20T00:00:02.000Z",
+			isAlive: (pid) => pid === spawner.pid,
+		});
+
+		expect(result.notices.map(({ from, to }) => ({ from, to }))).toEqual([
+			{ from: "pij-child", to: "pij-original-spawner" },
+		]);
+		expect(result.noticesSuppressed).toBe(0);
+	});
+
+	it("resolves recipient and dead-parent suppression from post-write descriptor truth", () => {
+		const sweep = reconcileDeaths({
+			descriptors: [
+				descriptor({
+					parentId: "pij-old-parent",
+					spawnedBy: "pij-original-spawner",
+				}),
+			],
+			expectations: [],
+			nowIso: "2026-07-20T00:00:02.000Z",
+			isAlive: () => false,
+		});
+		const writtenChild = sweep.descriptorUpdates[0];
+		if (!writtenChild) throw new Error("missing terminal descriptor update");
+		const newParent = descriptor({
+			id: "pij-new-parent",
+			parentId: undefined,
+			pid: 99,
+			spawnedBy: undefined,
+		});
+
+		expect(
+			resolveDeathNotices(
+				sweep.noticeCandidates,
+				[{ ...writtenChild, parentId: newParent.id }, newParent],
+				sweep.deadIds,
+			).notices.map(({ to }) => to),
+		).toEqual(["pij-new-parent"]);
+		expect(
+			resolveDeathNotices(
+				sweep.noticeCandidates,
+				[
+					{ ...writtenChild, parentId: newParent.id },
+					{
+						...newParent,
+						terminal: {
+							disposition: "unrequested-by-pij",
+							evidence: "pid-missing",
+							observedAt: "2026-07-20T00:00:02.000Z",
+						},
+					},
+				],
+				sweep.deadIds,
+			),
+		).toMatchObject({ notices: [], noticesSuppressed: 1 });
 	});
 
 	it("does not treat a live provider-stuck PID as terminal", () => {
@@ -155,10 +308,11 @@ describe("death reconciler", () => {
 						requestedAt: "2026-07-20T00:00:01.000Z",
 					},
 				}),
+				descriptor({ id: "pij-parent", pid: 45, spawnedBy: undefined }),
 			],
 			expectations: [],
 			nowIso: "2026-07-20T00:00:02.000Z",
-			isAlive: () => false,
+			isAlive: (pid) => pid === 45,
 			historical: true,
 		});
 		expect(result.descriptorUpdates[0]?.terminal?.disposition).toBe("requested");

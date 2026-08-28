@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
+import { FakeDelivery, FakeRegistry } from "./adapters/fakes.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { SqliteQueue } from "./adapters/sqlite-queue.js";
 import { FsWatchdogStore } from "./adapters/watchdog-store.js";
@@ -103,6 +104,28 @@ function desc(over: Partial<SessionDescriptor> & { id: string }): SessionDescrip
 		pid: 100,
 		startedAt: "2026-06-27T00:00:00.000Z",
 		...over,
+	};
+}
+
+type RecipientState = "live" | "dead" | "dissolved";
+
+function recipientDescriptor(id: string, state: RecipientState, pid: number): SessionDescriptor {
+	const base = desc({
+		id,
+		harness: "pi",
+		lifecycle: state === "dissolved" ? "dissolved" : "bound",
+		pid,
+		parentId: undefined,
+		spawnedBy: undefined,
+	});
+	if (state !== "dead") return base;
+	return {
+		...base,
+		terminal: {
+			disposition: "unrequested-by-pij",
+			evidence: "pid-missing",
+			observedAt: "2026-06-27T23:59:59.000Z",
+		},
 	};
 }
 
@@ -1581,6 +1604,48 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 });
 
 describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
+	it("adds no archive scan for lifecycle notice routing on the 600ms tick", async () => {
+		let terminalReads = 0;
+		const registry = new (class extends FsRegistry {
+			override listTerminal(): SessionDescriptor[] {
+				terminalReads += 1;
+				return super.listTerminal();
+			}
+		})(home);
+
+		await new Daemon(home, fakePorts(), registry, new FsChannel(home)).tick();
+
+		// One pre-existing read remains for closed-recipient retirement. Notice
+		// routing must reuse the hot list instead of adding another archive walk.
+		expect(terminalReads).toBe(1);
+	});
+
+	it("summarizes 1000 withheld death notices in one line with only three subject ids", async () => {
+		const descriptors = Array.from({ length: 1000 }, (_, index) =>
+			desc({
+				id: `pij-dead-${String(index).padStart(4, "0")}`,
+				harness: "pi",
+				lifecycle: "bound",
+				pid: 1000 + index,
+				spawnedBy: "pij-missing-parent",
+			}),
+		);
+		const logs: string[] = [];
+
+		await new Daemon(
+			home,
+			fakePorts({ alive: false, nowMs: NOW_MS }),
+			new FakeRegistry(descriptors),
+			new FakeDelivery(),
+			(line) => logs.push(line),
+		).tick();
+
+		expect(logs.filter((line) => line.startsWith("death sweep:"))).toEqual([
+			"death sweep: 1000 notice(s) withheld: no live recipient; subjects: pij-dead-0000, pij-dead-0001, pij-dead-0002 (+997 more); terminal truth still recorded on each descriptor",
+		]);
+		expect(logs.filter((line) => line.startsWith("notice dead for"))).toEqual([]);
+	});
+
 	it("labels the first durable death sweep historical, persists it, and restart does not duplicate", async () => {
 		const registry = new FsRegistry(home);
 		registry.write(desc({ id: "pij-parent", pid: 101 }));
@@ -1641,6 +1706,77 @@ describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
 		]);
 	});
 
+	it("routes terminal death to a parent re-linked during the close write", async () => {
+		const registry = new (class extends FsRegistry {
+			private relinked = false;
+
+			override write(
+				descriptor: SessionDescriptor,
+				writer?: Parameters<FsRegistry["write"]>[1],
+			): void {
+				if (!this.relinked && writer === "close") {
+					this.relinked = true;
+					const latest = this.read(descriptor.id);
+					if (!latest) throw new Error("missing descriptor during re-link interleave");
+					super.write({ ...latest, parentId: "pij-new-parent" }, "cli");
+				}
+				super.write(descriptor, writer);
+			}
+		})(home);
+		registry.write(recipientDescriptor("pij-old-parent", "live", 101));
+		registry.write(recipientDescriptor("pij-new-parent", "live", 102));
+		registry.write(recipientDescriptor("pij-spawner", "live", 103));
+		registry.write(
+			desc({
+				id: "pij-relinked-death",
+				harness: "pi",
+				lifecycle: "bound",
+				parentId: "pij-old-parent",
+				spawnedBy: "pij-spawner",
+			}),
+		);
+
+		await new Daemon(
+			home,
+			fakePorts({ isAlive: (pid) => pid !== 100, nowMs: NOW_MS }),
+			registry,
+			new FsChannel(home),
+		).tick();
+
+		expect(registry.read("pij-relinked-death")?.parentId).toBe("pij-new-parent");
+		expect(messageBodies("pij-new-parent").join("\n")).toContain("has exited");
+		expect(messageBodies("pij-old-parent")).toEqual([]);
+		expect(messageBodies("pij-spawner")).toEqual([]);
+	});
+
+	it.each([
+		"dead",
+		"dissolved",
+	] as const)("routes terminal death to the live spawner when the current parent is %s", async (parentState) => {
+		const registry = new FsRegistry(home);
+		registry.write(recipientDescriptor("pij-current-parent", parentState, 101));
+		registry.write(recipientDescriptor("pij-spawner", "live", 102));
+		registry.write(
+			desc({
+				id: "pij-dead-child",
+				harness: "pi",
+				lifecycle: "bound",
+				parentId: "pij-current-parent",
+				spawnedBy: "pij-spawner",
+			}),
+		);
+
+		await new Daemon(
+			home,
+			fakePorts({ isAlive: (pid) => pid === 102, nowMs: NOW_MS }),
+			registry,
+			new FsChannel(home),
+		).tick();
+
+		expect(messageBodies("pij-spawner").join("\n")).toContain("has exited");
+		expect(messageBodies("pij-current-parent")).toEqual([]);
+	});
+
 	// REVERSED BY s095 (AC-6), deliberately — the daemon-level twin of the unit
 	// reversal in `core/daemon/death-reconciler.test.ts`.
 	//
@@ -1678,6 +1814,231 @@ describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
 });
 
 describe("Daemon.tick provider-failure peek", () => {
+	it.each([
+		["adopted", "pij-spawner"],
+		["parent-only", undefined],
+	] as const)("routes a stalled %s seat to its current parent only", async (_case, spawnedBy) => {
+		const registry = new FsRegistry(home);
+		registry.write(recipientDescriptor("pij-parent", "live", 101));
+		if (spawnedBy) registry.write(recipientDescriptor(spawnedBy, "live", 102));
+		registry.write(
+			desc({
+				id: "pij-routed-stall",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess-stall",
+				parentId: "pij-parent",
+				spawnedBy,
+				state: "working",
+				lastEventAt: STALE_AT,
+			}),
+		);
+
+		await new Daemon(
+			home,
+			fakePorts({
+				nowMs: NOW_MS,
+				isAlive: () => true,
+				paneText: "still producing output without a footer",
+			}),
+			registry,
+			new FsChannel(home),
+		).tick();
+
+		expect(messageBodies("pij-parent").join("\n")).toMatch(/stall|quiet/i);
+		expect(messageBodies("pij-spawner")).toEqual([]);
+	});
+
+	it.each([
+		["dead", "live", "pij-spawner"],
+		["dissolved", "live", "pij-spawner"],
+		["dead", "dead", null],
+	] as const)("routes a stalled seat through a %s parent and %s spawner", async (parentState, spawnerState, expectedRecipient) => {
+		const registry = new FsRegistry(home);
+		registry.write(recipientDescriptor("pij-parent", parentState, 101));
+		registry.write(recipientDescriptor("pij-spawner", spawnerState, 102));
+		registry.write(
+			desc({
+				id: "pij-fallback-stall",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess-stall",
+				parentId: "pij-parent",
+				spawnedBy: "pij-spawner",
+				state: "working",
+				lastEventAt: STALE_AT,
+			}),
+		);
+		const logs: string[] = [];
+
+		await new Daemon(
+			home,
+			fakePorts({
+				nowMs: NOW_MS,
+				isAlive: () => true,
+				paneText: "still producing output without a footer",
+			}),
+			registry,
+			new FsChannel(home),
+			(line) => logs.push(line),
+		).tick();
+
+		const spawnerMessages = messageBodies("pij-spawner").join("\n");
+		if (expectedRecipient === null) expect(spawnerMessages).toBe("");
+		else expect(spawnerMessages).toMatch(/stall|quiet/i);
+		expect(messageBodies("pij-parent")).toEqual([]);
+		expect(logs.filter((line) => line.startsWith("notice stalled for"))).toEqual(
+			expectedRecipient === null
+				? [
+						"notice stalled for pij-fallback-stall: no live recipient (parent pij-parent dead, spawner pij-spawner dead)",
+					]
+				: [],
+		);
+	});
+
+	it.each([
+		["live", "unset", undefined, "pij-parent"],
+		["dead", "live", "pij-spawner", "pij-spawner"],
+		["dead", "dead", "pij-spawner", null],
+	] as const)("routes a watchdog-derived stalled seat through a %s parent and %s spawner", async (parentState, _spawnerState, spawnedBy, expectedRecipient) => {
+		let nowMs = NOW_MS;
+		const registry = new FsRegistry(home);
+		registry.write(recipientDescriptor("pij-parent", parentState, 101));
+		if (spawnedBy) {
+			registry.write(
+				recipientDescriptor(spawnedBy, expectedRecipient === null ? "dead" : "live", 102),
+			);
+		}
+		registry.write(
+			desc({
+				id: "pij-watchdog-parent-only",
+				harness: "pi",
+				lifecycle: "bound",
+				parentId: "pij-parent",
+				spawnedBy,
+				state: "idle",
+				orchestrationRole: "pm",
+			}),
+		);
+		new FsWatchdogStore(home).write("pij-watchdog-parent-only", { intervalMs: 1 });
+		const delivery = new FakeDelivery();
+		const logs: string[] = [];
+		const daemon = new Daemon(
+			home,
+			fakePorts({
+				now: () => nowMs,
+				paneText: "",
+				isAlive: (pid) =>
+					pid === 100 ||
+					(parentState === "live" && pid === 101) ||
+					(expectedRecipient === "pij-spawner" && pid === 102),
+			}),
+			registry,
+			delivery,
+			(line) => logs.push(line),
+		);
+
+		for (nowMs of [NOW_MS, NOW_MS + 2, NOW_MS + 4]) await daemon.tick();
+
+		const delivered = delivery.outbox
+			.filter(({ message }) => message.body.match(/stall|quiet/i))
+			.map(({ message }) => message.to);
+		expect(delivered).toEqual(expectedRecipient === null ? [] : [expectedRecipient]);
+		expect(logs.filter((line) => line.startsWith("notice stalled for"))).toEqual(
+			expectedRecipient === null
+				? [
+						"notice stalled for pij-watchdog-parent-only: no live recipient (parent pij-parent dead, spawner pij-spawner dead)",
+					]
+				: [],
+		);
+	});
+
+	it.each([
+		["adopted", "pij-spawner"],
+		["parent-only", undefined],
+	] as const)("routes a provider-failure %s seat to its current parent only", async (_case, spawnedBy) => {
+		const registry = new FsRegistry(home);
+		registry.write(recipientDescriptor("pij-parent", "live", 101));
+		if (spawnedBy) registry.write(recipientDescriptor(spawnedBy, "live", 102));
+		registry.write(
+			desc({
+				id: "pij-routed-provider-failure",
+				harness: "pi",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess-provider",
+				parentId: "pij-parent",
+				spawnedBy,
+				state: "idle",
+				lastEventAt: STALE_AT,
+			}),
+		);
+
+		await new Daemon(
+			home,
+			fakePorts({
+				nowMs: NOW_MS,
+				isAlive: () => true,
+				paneText: "billing is disabled; insufficient credit",
+			}),
+			registry,
+			new FsChannel(home),
+		).tick();
+
+		expect(messageBodies("pij-parent").join("\n")).toContain("quota");
+		expect(messageBodies("pij-spawner")).toEqual([]);
+	});
+
+	it.each([
+		["dead", "live", "pij-spawner"],
+		["dissolved", "live", "pij-spawner"],
+		["dead", "dead", null],
+	] as const)("routes a provider-failure seat through a %s parent and %s spawner", async (parentState, spawnerState, expectedRecipient) => {
+		const registry = new FsRegistry(home);
+		registry.write(recipientDescriptor("pij-parent", parentState, 101));
+		registry.write(recipientDescriptor("pij-spawner", spawnerState, 102));
+		registry.write(
+			desc({
+				id: "pij-fallback-provider-failure",
+				harness: "pi",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess-provider",
+				parentId: "pij-parent",
+				spawnedBy: "pij-spawner",
+				state: "idle",
+				lastEventAt: STALE_AT,
+			}),
+		);
+		const logs: string[] = [];
+
+		await new Daemon(
+			home,
+			fakePorts({
+				nowMs: NOW_MS,
+				isAlive: () => true,
+				paneText: "billing is disabled; insufficient credit",
+			}),
+			registry,
+			new FsChannel(home),
+			(line) => logs.push(line),
+		).tick();
+
+		const spawnerMessages = messageBodies("pij-spawner").join("\n");
+		if (expectedRecipient === null) expect(spawnerMessages).toBe("");
+		else expect(spawnerMessages).toContain("quota");
+		expect(messageBodies("pij-parent")).toEqual([]);
+		expect(logs.filter((line) => line.startsWith("notice dead for"))).toEqual(
+			expectedRecipient === null
+				? [
+						"notice dead for pij-fallback-provider-failure: no live recipient (parent pij-parent dead, spawner pij-spawner dead)",
+					]
+				: [],
+		);
+	});
+
 	it("does not push a provider failure while the session is working with fresh activity", async () => {
 		const registry = new FsRegistry(home);
 		registry.write(
@@ -1730,6 +2091,7 @@ describe("Daemon.tick provider-failure peek", () => {
 
 	it("pushes Case-3 terminal provider failures only when not working and stale", async () => {
 		const registry = new FsRegistry(home);
+		registry.write(recipientDescriptor("pij-boss", "live", 101));
 		registry.write(
 			desc({
 				id: "pij-coder",
@@ -1755,6 +2117,7 @@ describe("Daemon.tick provider-failure peek", () => {
 
 	it("clears stale failureReason and provider-failure latch when the session recovers", async () => {
 		const registry = new FsRegistry(home);
+		registry.write(recipientDescriptor("pij-boss", "live", 101));
 		const channel = new FsChannel(home);
 		const daemon = new Daemon(
 			home,

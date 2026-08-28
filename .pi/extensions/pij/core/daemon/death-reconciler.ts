@@ -1,6 +1,7 @@
 // Pure cross-harness terminal-absence reconciliation. It does not infer cause:
 // `unrequested-by-pij` means only that an observed absence lacked close intent.
 
+import { resolveNoticeRecipient } from "../binding.js";
 import type { AgentLivenessProbe, ProcessSnapshot } from "../platform/types.js";
 import {
 	applyTerminalObservation,
@@ -16,6 +17,29 @@ export interface DeathNotice {
 	readonly text: string;
 	/** False for this tick's live observation; historical evidence is never relabelled. */
 	readonly historical: boolean;
+}
+
+export type DeathNoticeCandidate =
+	| {
+			readonly kind: "descriptor";
+			readonly descriptorId: string;
+			readonly from: string;
+			readonly text: string;
+			readonly historical: boolean;
+	  }
+	| {
+			readonly kind: "fixed";
+			readonly to: string;
+			readonly from: string;
+			readonly text: string;
+			readonly historical: boolean;
+	  };
+
+export interface DeathNoticeResolution {
+	readonly notices: readonly DeathNotice[];
+	readonly noticesSuppressed: number;
+	/** At most three subject ids for the daemon's one aggregate summary line. */
+	readonly withheldNoticeSubjects: readonly string[];
 }
 
 export interface DeathReconcileInput {
@@ -48,11 +72,65 @@ export interface DeathReconcileInput {
 export interface DeathReconcileResult {
 	readonly descriptorUpdates: readonly SessionDescriptor[];
 	readonly expectationUpdates: readonly SpawnExpectation[];
+	readonly noticeCandidates: readonly DeathNoticeCandidate[];
+	readonly deadIds: readonly string[];
 	readonly notices: readonly DeathNotice[];
 	/** Notices withheld because the RECIPIENT is dead too. Counted, never silent:
 	 *  a host reboot kills every seat in one event, so each corpse would otherwise
 	 *  address an obituary to another corpse. The caller logs one summary line. */
 	readonly noticesSuppressed: number;
+	/** At most three subject ids for that aggregate summary. */
+	readonly withheldNoticeSubjects: readonly string[];
+}
+
+export function resolveDeathNotices(
+	candidates: readonly DeathNoticeCandidate[],
+	descriptors: readonly SessionDescriptor[],
+	deadIds: Iterable<string> = [],
+): DeathNoticeResolution {
+	const descriptorById = new Map(descriptors.map((descriptor) => [descriptor.id, descriptor]));
+	const dead = new Set(deadIds);
+	for (const descriptor of descriptors) {
+		if (descriptor.lifecycle === "dissolved" || descriptor.terminal !== undefined) {
+			dead.add(descriptor.id);
+		}
+	}
+	const notices: DeathNotice[] = [];
+	const withheldNoticeSubjects: string[] = [];
+	let noticesSuppressed = 0;
+	const withhold = (subjectId: string, count = 1): void => {
+		noticesSuppressed += count;
+		if (count > 0 && withheldNoticeSubjects.length < 3) {
+			withheldNoticeSubjects.push(subjectId);
+		}
+	};
+	for (const candidate of candidates) {
+		let recipient: string | null;
+		if (candidate.kind === "fixed") {
+			recipient = candidate.to;
+		} else {
+			const descriptor = descriptorById.get(candidate.descriptorId);
+			if (!descriptor) continue;
+			const resolution = resolveNoticeRecipient(descriptor, descriptors, dead);
+			recipient = resolution.recipient;
+			if (!recipient) {
+				withhold(candidate.descriptorId, resolution.withheld);
+				continue;
+			}
+		}
+		if (!recipient) continue;
+		if (dead.has(recipient)) {
+			withhold(candidate.from);
+			continue;
+		}
+		notices.push({
+			to: recipient,
+			from: candidate.from,
+			text: candidate.text,
+			historical: candidate.historical,
+		});
+	}
+	return { notices, noticesSuppressed, withheldNoticeSubjects };
 }
 
 function noticeText(
@@ -133,7 +211,7 @@ function expectationExpiry(expectation: SpawnExpectation, nowIso: string): Expir
 export function reconcileDeaths(input: DeathReconcileInput): DeathReconcileResult {
 	const descriptorUpdates: SessionDescriptor[] = [];
 	const expectationUpdates: SpawnExpectation[] = [];
-	const notices: DeathNotice[] = [];
+	const noticeCandidates: DeathNoticeCandidate[] = [];
 	const descriptorBySpawnId = new Set(
 		input.descriptors.flatMap((descriptor) =>
 			descriptor.spawnId === undefined ? [] : [descriptor.spawnId],
@@ -237,9 +315,10 @@ export function reconcileDeaths(input: DeathReconcileInput): DeathReconcileResul
 			deathNoticeLatchedAt: latched.deathNoticeLatchedAt,
 		});
 		dead.add(descriptor.id);
-		if (descriptor.spawnedBy && latched.terminal) {
-			notices.push({
-				to: descriptor.spawnedBy,
+		if (latched.terminal) {
+			noticeCandidates.push({
+				kind: "descriptor",
+				descriptorId: descriptor.id,
 				from: descriptor.id,
 				text: noticeText(
 					descriptor.id,
@@ -296,7 +375,8 @@ export function reconcileDeaths(input: DeathReconcileInput): DeathReconcileResul
 		expectationUpdates.push(next);
 		if (next.sessionId !== undefined) dead.add(next.sessionId);
 		if (next.creatorId && next.terminal) {
-			notices.push({
+			noticeCandidates.push({
+				kind: "fixed",
 				to: next.creatorId,
 				from: next.sessionId ?? next.spawnId,
 				text: noticeText(
@@ -311,17 +391,16 @@ export function reconcileDeaths(input: DeathReconcileInput): DeathReconcileResul
 		}
 	}
 
-	// Deliverable only. A recipient this same sweep just buried cannot read
-	// anything, and the message does not simply sit harmlessly in its mailbox: the
-	// daemon keeps pushing it at that seat's recorded pane, which after a reboot
-	// belongs to a tmux server that no longer exists. Terminal truth is already
-	// recorded on every descriptor above — suppressing the notice drops the
-	// ANNOUNCEMENT, never the observation.
-	const deliverable = notices.filter((notice) => !dead.has(notice.to));
+	const descriptorAfter = new Map(
+		input.descriptors.map((descriptor) => [descriptor.id, descriptor]),
+	);
+	for (const update of descriptorUpdates) descriptorAfter.set(update.id, update);
+	const resolved = resolveDeathNotices(noticeCandidates, [...descriptorAfter.values()], dead);
 	return {
 		descriptorUpdates,
 		expectationUpdates,
-		notices: deliverable,
-		noticesSuppressed: notices.length - deliverable.length,
+		noticeCandidates,
+		deadIds: [...dead],
+		...resolved,
 	};
 }

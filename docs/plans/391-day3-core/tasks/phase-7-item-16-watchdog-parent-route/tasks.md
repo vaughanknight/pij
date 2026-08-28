@@ -1,0 +1,45 @@
+# Phase 7: Item 16 — watchdog/lifecycle notices route to the current parent — tasks dossier
+
+**Plan**: § Phase 7, AC-21 · **Branch/PR**: `s391/item16-watchdog-parent-route` off `main` · **Domain**: pij-control-plane · **CS**: 1
+**Evidence** (o-prime 19:00Z, spine 25711): toucan, adopted under the o-prime via `pij link`, had its stall notice delivered to pij-vocal-kingfisher (its original spawner).
+
+### Executive Briefing
+- **Purpose**: every creator notice (bound / failed / stalled / dead) is built by `core/binding.ts` (`buildBoundNotice :281`, `buildFailedNotice :290`, `buildStalledNotice :308`, `buildDeadNotice :319`) as `CreatorNotice { to, text }` with `to = descriptor.spawnedBy`, and `daemon.ts pushWholeLifeTransition` (`:995-1060`) gates the whole path on `if (!d.spawnedBy) return; // no creator to notify`. An adopted seat's governing parent (`parentId`, a `cli`-owned contested field set by spawn or `pij link`) is never consulted.
+- **Fix**: one pure `noticeRecipient(d) = d.parentId ?? d.spawnedBy` preserves candidate order; registry-aware resolution chooses the first live registered candidate, so dead/dissolved/failed/absent parents fall back to a live `spawnedBy`.
+- **Goals**: ✅ AC-21 adopted seat (live parent ≠ spawnedBy) → notice to parent ONLY; unavailable parent → live spawner; neither live → no delivery plus one single-seat diagnostic or one bounded death-sweep summary
+- **Non-Goals**: ❌ watcher-list semantics in `watchdog-manager.ts notifyWatchers` (explicit `pij watchdog watch` watchers are a separate mechanism and already correct) · ❌ notice wording
+
+### Pre-Implementation Check
+| File | Exists? | Notes |
+|---|---|---|
+| `/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/.pi/extensions/pij/core/binding.ts` | yes | four `build*Notice` builders `:281-330` returning `CreatorNotice`; `to` derived from `spawnedBy` |
+| `/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/.pi/extensions/pij/core/binding.test.ts` | yes | builder tests |
+| `/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/.pi/extensions/pij/daemon.ts` | yes | `pushWholeLifeTransition` `:995-1060`: `if (!d.spawnedBy) return;` `:996`; stalled notice `:1023-1024` and `:1056-1058` (`if (persisted.spawnedBy)`); provider-failure push at `:1004` also gated on `spawnedBy` |
+| `/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/.pi/extensions/pij/daemon.test.ts` | yes | lifecycle notice tests |
+| `/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/.pi/extensions/pij/core/daemon/loop.ts` | yes | planned-id bind, discovered bind, and terminal bind-failure notice gates also checked `spawnedBy` directly |
+| `/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/.pi/extensions/pij/core/daemon/death-reconciler.ts` | yes | actual terminal-death notice is constructed here, before the daemon delivery pass |
+| `/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/.pi/extensions/pij/core/types.ts` | yes | `parentId` on `SessionDescriptor` (cli-owned contested field, `core/registry-write.ts:83`) — READ ONLY, no schema change |
+| `docs/how/pij-watchdog.md`, `docs/how/pij.md` | yes | notice routing docs |
+
+### Tasks
+| Status | ID | Task | Domain | Path(s) | Done When | Notes |
+|--------|-----|------|--------|---------|-----------|-------|
+| [x] | T001 | TEST (RED) `core/binding.test.ts`: for each of the four builders — descriptor with `parentId:"pij-parent"` and `spawnedBy:"pij-spawner"` → `to === "pij-parent"`; `spawnedBy` only → `to === "pij-spawner"`; neither → `null` | pij-control-plane | `/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/.pi/extensions/pij/core/binding.test.ts` | RED (adopted case) | AC-21 |
+| [x] | T002 | TEST (RED): stalled/provider-failure transitions, both bind-success gates, bind failure, and the terminal death reconciler route adopted and parent-only seats to the current parent; the original spawner receives nothing | pij-control-plane | `daemon.test.ts`, `core/daemon/loop.test.ts`, `core/daemon/death-reconciler.test.ts` | RED on the pre-fix implementation | AC-21; extra files explicitly approved by the orchestrator |
+| [x] | T003 | IMPL `core/binding.ts`: export one `noticeRecipient(d): SessionId | null`; all four builders and every approved lifecycle-notice gate use it | pij-control-plane | `core/binding.ts`, `daemon.ts`, `core/daemon/loop.ts`, `core/daemon/death-reconciler.ts` | T001/T002 GREEN | no schema or watcher-list change |
+| [x] | T004 | DOCS (`docs/how/pij-watchdog.md` routing sentence; `docs/how/pij.md` link/adopt) + GATE + PR handoff | — | git root | targeted tests green; full gates recorded in execution log | AC-10 |
+| [x] | T005 | FX-02 TEST (RED): prove lifecycle notice routing adds no archive-tier read to the tick or bind loop, and 1,000 withheld death notices produce one summary with at most three subject ids | pij-control-plane | `core/daemon/loop.test.ts`, `daemon.test.ts` | Both regressions RED on `4a70a26`, GREEN after fix | G-1, G-2 |
+| [x] | T006 | FX-02 IMPL: centralize the hot-only notice registry view, aggregate death-sweep withholding, and correct stale comments | pij-control-plane | `core/binding.ts`, `core/daemon/loop.ts`, `core/daemon/death-reconciler.ts`, `core/daemon/watchdog-manager.ts`, `daemon.ts` | Focused tests, full suite, typecheck, and scoped Biome green | G-1–G-4 |
+
+### Discoveries & Learnings
+| Date | Task | Type | Discovery | Resolution | References |
+|------|------|------|-----------|------------|------------|
+| 2026-08-27 | T002/T003 | Scope | The two bind-success gates and the bind-failure gate in `core/daemon/loop.ts` independently suppressed parent-only notices before the shared builders ran. | Orchestrator widened the fence; all three gates now call `noticeRecipient`, with parent-only RED cases for each. | `core/daemon/loop.ts`, `core/daemon/loop.test.ts` |
+| 2026-08-27 | T002/T003 | Scope | The authoritative terminal-death notice is constructed in `core/daemon/death-reconciler.ts`, so changing only `daemon.ts` cannot route a parent-only death. | Orchestrator widened the fence; the reconciler now uses the same helper and has a parent-only terminal-death test. | `core/daemon/death-reconciler.ts`, `core/daemon/death-reconciler.test.ts` |
+| 2026-08-27 | T003 | Boundary | Needs-human, init-injection context, planned-bind-refusal diagnostics, and explicit watcher subscriptions are different message/ownership classes. | Left unchanged; only bound/failed/stalled/dead lifecycle notices use current-parent routing. | `core/daemon/loop.ts`, `docs/how/pij-watchdog.md` |
+| 2026-08-28 | T002/T003 | Validation | A concurrent `pij link` can update CLI-owned `parentId` while a daemon lifecycle transition is being persisted; using the tick snapshot routes the one-shot notice to stale governance truth. | Loop notices now use the descriptor returned by `persistDaemonWrite`; terminal notice candidates are finalized after close writes against current registry truth. | `core/daemon/loop.ts`, `core/daemon/death-reconciler.ts`, `daemon.ts` |
+| 2026-08-28 | T002/T003 | Regression | Pure parent-first selection dropped notices when the current parent was dead, failed, dissolved, or absent even though the original spawner was live. | Added shared registry-aware resolution at every lifecycle gate; both unavailable candidates withhold exactly once and emit one operator diagnostic. | `core/binding.ts`, `core/daemon/loop.ts`, `core/daemon/death-reconciler.ts`, `daemon.ts` |
+| 2026-08-28 | T002 | Sensor | Reverting only the watchdog-derived stalled gate to `persisted.spawnedBy` survived the prior full suite. | Added a real multi-tick daemon test for a parent-only watchdog `stalled` verdict; the named revert now fails. | `daemon.test.ts` |
+| 2026-08-28 | T002 | Fixture fence | The first FX-01 full suite exposed eight positive `daemon-push.test.ts` cases whose asserted `pij-boss` recipient was not registered, making them invalid under the explicit live-recipient contract. | Orchestrator approved fixture-only fence expansion. Shared setup now registers candidate descriptors; existing assertions are unchanged, and a new inverse test proves unregistered recipients are withheld and logged once. | `daemon-push.test.ts` |
+| 2026-08-28 | T005/T006 | Performance | The FX-01 registry view scanned `listTerminal()` from both daemon and bind-loop notice paths even though terminal and archived seats can never receive notices. | Exported one hot-only `noticeRegistryView` from `core/binding.ts`; both consumers now use `RegistryPort.list()` only. | `core/binding.ts`, `core/daemon/loop.ts`, `daemon.ts` |
+| 2026-08-28 | T005/T006 | Operator UX | Detailed death-sweep withholding restored one log line per corpse, reversing task #34 during fleet-wide failures. | Death reconciliation now returns a bounded three-subject sample and the daemon emits one count summary per sweep; single-seat paths retain detailed diagnostics. | `core/daemon/death-reconciler.ts`, `daemon.ts`, `daemon.test.ts` |

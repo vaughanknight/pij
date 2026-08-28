@@ -15,6 +15,7 @@ const HOME = "/home/jo";
 const T0 = 1_000_000;
 const FRESH_EVENT_AT = new Date(T0 - 5000).toISOString();
 const STALE_EVENT_AT = new Date(T0 - STALE_AFTER_MS - 5000).toISOString();
+const LIVE_RECIPIENT_PID_BASE = 10_000;
 
 function bound(over: Partial<SessionDescriptor> = {}): SessionDescriptor {
 	return {
@@ -49,15 +50,44 @@ function makePorts(opts: {
 		listTranscripts: () => [],
 		home: () => HOME,
 		now: () => opts.nowMs ?? T0,
-		isAlive: () => opts.pidAlive ?? true,
+		isAlive: (pid) => pid >= LIVE_RECIPIENT_PID_BASE || (opts.pidAlive ?? true),
 	};
+}
+
+function withLiveNoticeCandidates(descs: readonly SessionDescriptor[]): SessionDescriptor[] {
+	// Positive legacy fixtures named creators without registering them; materialize
+	// those candidates so text metadata is never mistaken for registry liveness.
+	const existingIds = new Set(descs.map(({ id }) => id));
+	const candidateIds = [
+		...new Set(
+			descs.flatMap(({ parentId, spawnedBy }) =>
+				[parentId, spawnedBy].filter((id): id is string => id !== undefined && id !== null),
+			),
+		),
+	].filter((id) => !existingIds.has(id));
+	return [
+		...descs,
+		...candidateIds.map(
+			(id, index): SessionDescriptor => ({
+				id,
+				folder: "/repo",
+				dataDir: `${HOME}/.pij/${id}`,
+				eventsPath: `${HOME}/.pij/${id}/events.ndjson`,
+				pid: LIVE_RECIPIENT_PID_BASE + index,
+				startedAt: "2026-06-28T00:00:00.000Z",
+				harness: "pi",
+				lifecycle: "bound",
+				state: "idle",
+			}),
+		),
+	];
 }
 
 function daemon(
 	descs: SessionDescriptor[],
 	ports: DaemonPorts,
 ): { delivery: FakeDelivery; daemon: Daemon } {
-	const registry = new FakeRegistry(descs);
+	const registry = new FakeRegistry(withLiveNoticeCandidates(descs));
 	const delivery = new FakeDelivery();
 	// Daemon constructor needs: pijHome, ports, registry, channel, log
 	const d = new Daemon(`${HOME}/.pij`, ports, registry, delivery, () => {});
@@ -75,6 +105,22 @@ describe("daemon tick: stalled-session push (T011/T012)", () => {
 		await d.tick();
 		const toCreator = delivery.outbox.filter((e) => e.message.to === "pij-boss");
 		expect(toCreator.some((e) => e.message.body.match(/stall|stalled|quiet/i))).toBe(true);
+	});
+
+	it("withholds one stalled notice and logs once when the recipient is unregistered", async () => {
+		const desc = bound();
+		const ports = makePorts({ pane: "▝▜█████▛▘ Loading…" });
+		const registry = new FakeRegistry([desc]);
+		const delivery = new FakeDelivery();
+		const logs: string[] = [];
+		const d = new Daemon(`${HOME}/.pij`, ports, registry, delivery, (line) => logs.push(line));
+
+		await d.tick();
+
+		expect(delivery.outbox).toEqual([]);
+		expect(logs.filter((line) => line.startsWith("notice stalled for"))).toEqual([
+			"notice stalled for pij-worker: no live recipient (parent <unset> unset, spawner pij-boss absent)",
+		]);
 	});
 
 	// FLAKY (quarantined 2026-07-21, Jordan ruling): passes in isolation, fails under full-suite parallel-load contention. Re-enable when the suite is de-contended.
@@ -192,7 +238,7 @@ describe("failureReason persisted on whole-life push (FIX-4)", () => {
 		// empty pane → classifyDeathReason → "unknown" (no pattern matches)
 		const ports = makePorts({ pidAlive: false, pane: "" });
 		const { registry, daemon: d } = (() => {
-			const r = new FakeRegistry([desc]);
+			const r = new FakeRegistry(withLiveNoticeCandidates([desc]));
 			const del = new FakeDelivery();
 			const dm = new Daemon(`${HOME}/.pij`, ports, r, del, () => {});
 			return { registry: r, daemon: dm };
@@ -207,7 +253,7 @@ describe("failureReason persisted on whole-life push (FIX-4)", () => {
 		// booting pane → observeActivity no-op, session stays working+stale
 		const ports = makePorts({ pane: "▝▜█████▛▘ Loading…" });
 		const { registry, daemon: d } = (() => {
-			const r = new FakeRegistry([desc]);
+			const r = new FakeRegistry(withLiveNoticeCandidates([desc]));
 			const del = new FakeDelivery();
 			const dm = new Daemon(`${HOME}/.pij`, ports, r, del, () => {});
 			return { registry: r, daemon: dm };
@@ -256,7 +302,7 @@ describe("bad-model smoke (T014 — mocked pane, no live harness)", () => {
 			now: () => T0,
 			isAlive: () => true,
 		};
-		const registry = new FakeRegistry([pendingCopilot()]);
+		const registry = new FakeRegistry(withLiveNoticeCandidates([pendingCopilot()]));
 		const delivery = new FakeDelivery();
 		const d = new Daemon(`${HOME}/.pij`, ports, registry, delivery, () => {});
 		await d.tick();
@@ -312,7 +358,7 @@ describe("daemon tick: provider-failure on idle bound session (FIX-A / DL-003)",
 		const desc = bound({ state: "idle", lastEventAt: STALE_EVENT_AT });
 		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
 		const { registry, daemon: d } = (() => {
-			const r = new FakeRegistry([desc]);
+			const r = new FakeRegistry(withLiveNoticeCandidates([desc]));
 			const del = new FakeDelivery();
 			const dm = new Daemon(`${HOME}/.pij`, ports, r, del, () => {});
 			return { registry: r, daemon: dm };
@@ -370,7 +416,7 @@ describe("daemon tick: provider-failure peek covers a pi worker (DL-005)", () =>
 
 	it("persists failureReason='quota' on the pi worker descriptor", async () => {
 		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
-		const registry = new FakeRegistry([piWorker()]);
+		const registry = new FakeRegistry(withLiveNoticeCandidates([piWorker()]));
 		const del = new FakeDelivery();
 		const d = new Daemon(`${HOME}/.pij`, ports, registry, del, () => {});
 		await d.tick();
@@ -403,7 +449,7 @@ describe("daemon dead branch: billing prose never reports quota (#5, task 1.2)",
 	it("a dead session whose pane shows only billing-domain prose → failureReason unknown", async () => {
 		const desc = bound({ state: "idle" });
 		const ports = makePorts({ pidAlive: false, pane: PROSE_PANE });
-		const registry = new FakeRegistry([desc]);
+		const registry = new FakeRegistry(withLiveNoticeCandidates([desc]));
 		const d = new Daemon(`${HOME}/.pij`, ports, registry, new FakeDelivery(), () => {});
 		await d.tick();
 		expect(registry.read("pij-worker")?.failureReason).toBe("unknown");
@@ -414,7 +460,7 @@ describe("daemon peek branch: billing prose never reports quota (#5, task 1.2b)"
 	it("a stale-idle pid-alive session with only billing prose → no provider-failure push", async () => {
 		const desc = bound({ state: "idle", lastEventAt: STALE_EVENT_AT });
 		const ports = makePorts({ pidAlive: true, pane: PROSE_PANE });
-		const registry = new FakeRegistry([desc]);
+		const registry = new FakeRegistry(withLiveNoticeCandidates([desc]));
 		const delivery = new FakeDelivery();
 		const d = new Daemon(`${HOME}/.pij`, ports, registry, delivery, () => {});
 		await d.tick();

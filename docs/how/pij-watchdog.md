@@ -10,6 +10,18 @@ activity appears again.
 This whole-life supervision watchdog is distinct from the short spawn
 phone-home watchdog used while a control-plane peer binds.
 
+Lifecycle notices for `bound`, `failed`, `stalled`, and `dead` seats go to the
+first live candidate in `parentId`, then the original `spawnedBy` owner. A
+candidate is live only while it remains registered and is not failed,
+dissolved, or terminal. A `pij link` therefore changes where future lifecycle
+notices go without changing close authorization, while a dead or closed parent
+falls back to the live spawner. If neither candidate is live, the notice is
+withheld. Single-seat notice paths log that seat's candidate states; a terminal
+death sweep emits one count summary with at most three subject ids, even after a
+fleet-wide reboot. Notice routing reads only the hot registry because archived
+seats cannot be live recipients. Explicit `pij watchdog watch` subscriptions
+remain a separate fan-out mechanism.
+
 ## Intent — never watch a peer whose silence is deliberate
 
 The watchdog exists to catch a peer that *should* be making progress but has gone
