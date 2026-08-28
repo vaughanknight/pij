@@ -22,3 +22,7 @@ Rules 1/2 resolve a seat then verify it is alive (registry + liveness) before de
 swipe-reply→sender(alive); explicit→named(alive); bare→watching-prime; tie→most-recent; none→guidance; dead(any rule)→"gone", never queued; last-speaker path removed (no test still asserts it).
 Gates: tsc 0, biome clean on changed files, telegram fence GREEN, E40 ledger. Report candidate sha + all mutant results.
 Deferred/forbidden: the-flow state files; git add -A / commit -am.
+
+## Scope clarification (orchestrator ruling 2026-08-28)
+`telegram/index.test.ts:416` asserts the retired last-speaker behaviour (bare text → last speaker A, then B). Updating it to watching-prime semantics is REQUIRED (the acceptance already demands "no test still asserts last-speaker" + fence GREEN) and is NOT scope creep. Implementation stays bridge.ts-only; this is a test-only edit in index.test.ts.
+Constraint: construct the rewritten case so the last speaker ≠ the watching prime, so MUT-PRIME-RESOLUTION-LASTSPEAKER (last-speaker fallback) REDs the new "bare → watching prime" assertion. That makes the retirement provable, not just green.
