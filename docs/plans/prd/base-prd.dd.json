@@ -1,0 +1,148 @@
+{
+  "dd": {
+    "schema": "prd/requirements"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "pij Rust port \u2014 base PRD (requirements register)",
+        "status": "LIVING \u2014 iterating with Jordan",
+        "updated": "2026-08-28",
+        "source": "Started 2026-08-28 per Jordan ('start a PRD spine, much like flowspace3'); fs3 docs/plans/prd/base-prd.dd.json is the pattern; CI rows pinched from fs3 workflows per Jordan (native agents, no Intel Mac)."
+      }
+    },
+    {
+      "name": "requirements",
+      "value": [
+        {
+          "id": "req-0001",
+          "num": 1,
+          "title": "Rust implementation",
+          "requirement": "pij ships as a single Rust binary (pij-rs during coexistence): CLI and daemon are two composition roots in one executable; Command::Daemon short-circuits into the daemon so CLI and daemon version together.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "plan 108 in flight (workshop 001 R2)"
+        },
+        {
+          "id": "req-0002",
+          "num": 2,
+          "title": "Full verb parity with the TS CLI",
+          "requirement": "Every production pij verb reaches parity, proven by byte-goldens for computed payloads against the TS binary on the same store \u2014 not by eyeball.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "golden mechanism lands in plan 108 (Q4 ruling); verb surface = wave 3"
+        },
+        {
+          "id": "req-0003",
+          "num": 3,
+          "title": "SQLite store with self-migration",
+          "requirement": "All state in SQLite via sqlx: embedded checksummed migrations, daemon self-migrates at boot, stale-schema refused loudly both skew directions (newer binary migrates forward; older binary refuses).",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "workshop 001 R1"
+        },
+        {
+          "id": "req-0004",
+          "num": 4,
+          "title": "Queue-first daemon",
+          "requirement": "Handlers do one cheap DB statement; all real work is enqueued with dedupe (partial-unique over live jobs) and per-entity serial claims.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "workshop 001 R4"
+        },
+        {
+          "id": "req-0005",
+          "num": 5,
+          "title": "Ports + shipped fakes, offline-first",
+          "requirement": "Seven frozen port traits (Registry, Spine, Queue, Transport, TmuxPort, HarnessPort, LivenessPort) with deterministic fakes in testkit; the whole system runs offline end-to-end with fakes as default config.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "R3 as amended"
+        },
+        {
+          "id": "req-0006",
+          "num": 6,
+          "title": "Mechanical architecture drift gate",
+          "requirement": "Crate-dependency allowlist with per-row rationale, enforced by a test, negative-proven; every new edge is a reviewed one-row diff.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "plan 108 tk-3a93"
+        },
+        {
+          "id": "req-0007",
+          "num": 7,
+          "title": "CLI-daemon over local-only HTTP",
+          "requirement": "Envelope {ok,command,v,data,meta}, per-boot 0600 bearer key written before bind, NDJSON event stream with Hello line and Unknown variant \u2014 portable across macOS/Linux/Windows with no socket platform splits.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "fs3 req-0017 pattern"
+        },
+        {
+          "id": "req-0008",
+          "num": 8,
+          "title": "Honest delivery receipts",
+          "requirement": "send/inbox with queued|delivered|held receipts that mean what they say; pre-bind messages queue instead of vanishing; every route logs message id + outcome.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "R5 items 1,8; TS defect ledger"
+        },
+        {
+          "id": "req-0009",
+          "num": 9,
+          "title": "Liveness by (pid, proc_start)",
+          "requirement": "No liveness verdict from a bare pid; recycled pids detected structurally; revive distinguishes registry-missing from native-artifact-missing and resolves artifacts at the correct per-harness path.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "R5 items 5,6 + wrong-path reframe (lynx 2026-08-28)"
+        },
+        {
+          "id": "req-0010",
+          "num": 10,
+          "title": "Supervision that consults declared state",
+          "requirement": "Watchdog eligibility respects semanticState (waiting/hold/blocked/question are not stalls); thresholds configurable; every computed signal has a consumer.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "R5 item 9"
+        },
+        {
+          "id": "req-0011",
+          "num": 11,
+          "title": "Cross-platform CI on native runners",
+          "requirement": "CI and release build on native agents: ubuntu-latest (x86_64), ubuntu-24.04-arm (aarch64), macos-14 (aarch64-apple-darwin), windows-latest (x86_64-pc-windows-msvc). NO Intel Mac (x86_64-apple-darwin excluded, Jordan 2026-08-28, matching fs3's 2026-08-26 ruling). Pinched from fs3 release.yml: pinned toolchain, --locked builds, per-target smoke-run of the built binary, fast test tier on each target.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "Jordan 2026-08-28; fs3 .github/workflows/{ci,release,release-please}.yml are the template"
+        },
+        {
+          "id": "req-0012",
+          "num": 12,
+          "title": "Attribution hooks the write sink",
+          "requirement": "Agent attribution is recorded where bytes land, not at the tool surface \u2014 EVAL-batch writes and any future modality leave a trace.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "lynx finding: turtle's ~60 EVAL-written files invisible to git-ai"
+        },
+        {
+          "id": "req-0013",
+          "num": 13,
+          "title": "Daemon lifecycle better than fs3's",
+          "requirement": "Single-instance guard day 1; a real supervise/restart/upgrade story is designed (not a tmux pane + memory file); C6 restart affordances built in.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "fs3's own admitted weak spot"
+        },
+        {
+          "id": "req-0014",
+          "num": 14,
+          "title": "Coexistence and cutover behind parity",
+          "requirement": "TS and Rust run side-by-side against the same store during migration; the TS CLI retires only after a soak behind the parity harness; cutover is its own plan.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "plan 108 non-goal; later plan"
+        }
+      ]
+    }
+  ],
+  "references": []
+}
