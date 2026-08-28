@@ -31,3 +31,6 @@ Dispatch sequencing for this stream:
 - **PR #34 (item 30) MERGED → main 3411794** (o-prime verified at merge product: 4155/0, tsc 0, skill-check 0, +26 tests). Item 30 DONE.
 - **Restart #6 ASKED at 3411794** (carries 24 + 30 + 15/15-FX/16/29b/31).
 - **My order**: 12-FX (now) → HOLD 24b for post-restart measurement (chore 6, ≥1 h) → then 22 (unpark), E22, 23b, 21b, 29b-rest.
+
+## 2026-08-28 — 23-FX added to tail (mine, low, after 12-FX)
+`adapters/claude-socket.test.ts` "sendClaudeFrame > reports sent after bytes flush but 'the socket closes'" (:113, expects 1 received line, got 0): a fake-socket CLOSE-RACE timing flake. Red ONCE in a full run at main 5ef1220 (o-prime log <scratchpad>/suite-5ef1220.txt); green at 3e10a7d (20 min earlier) and every prior run. Fix: deterministic close ordering in the FAKE socket. E22: name it, keep the failing log, fix the race — never retry into green. No mutant gate (flake fix).
