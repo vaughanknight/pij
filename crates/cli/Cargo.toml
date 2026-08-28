@@ -1,0 +1,15 @@
+[package]
+name = "pij-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+# The workspace's ONLY binary. `daemon` and `cli` are two composition roots inside
+# it (plan 108 R2): one artifact ships both, so a stale CLI can never meet a newer
+# daemon on the same machine.
+[[bin]]
+name = "pij-rs"
+path = "src/main.rs"

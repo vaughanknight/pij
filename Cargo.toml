@@ -3,21 +3,43 @@
 # The TS pij CLI/daemon continues to live at its own paths in this repo; the two
 # coexist. Everything Rust hangs off this manifest.
 #
-# Crate membership is added by tk-5f1d (the 8 ratified crates of workshop 001 R2);
-# this first commit carries only the toolchain pin, this manifest and .gitignore.
+# The 8 ratified crates of workshop 001 R2. Direction between them is enforced
+# mechanically by the arch allowlist (tk-3a93), not by this list — membership only
+# says "build me", never "you may depend on me".
 #
 # `exclude = ["pocs"]` keeps the spike lane (R6c) out of the workspace on purpose:
 # a POC has its own bare `[workspace]`, is not built by `cargo build --workspace`,
 # and sits outside the gate — its evidence is captured output, never a green gate.
 [workspace]
 resolver = "3"
-members = []
+members = [
+  "crates/core",
+  "crates/store",
+  "crates/tmux",
+  "crates/harnesses",
+  "crates/transport",
+  "crates/daemon",
+  "crates/cli",
+  "crates/testkit",
+]
 exclude = ["pocs"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+
+# Internal path table: a crate depends on a sibling as `pij-core.workspace = true`,
+# so the graph is declared in ONE place and the allowlist has one file to read.
+[workspace.dependencies]
+pij-core = { path = "crates/core" }
+pij-store = { path = "crates/store" }
+pij-tmux = { path = "crates/tmux" }
+pij-harnesses = { path = "crates/harnesses" }
+pij-transport = { path = "crates/transport" }
+pij-daemon = { path = "crates/daemon" }
+pij-cli = { path = "crates/cli" }
+pij-testkit = { path = "crates/testkit" }
 
 # Warnings are errors in the gate (`clippy -D warnings`); this keeps a plain
 # `cargo build` honest about the same lints rather than deferring them to CI.
