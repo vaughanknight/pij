@@ -171,3 +171,13 @@ prime rulings recorded in this file.
   world-readable. Ruled shape: stage key -> BIND -> atomic rename (ordering property
   survives; bind only opens the socket). NOTE: fs3's auth.rs publishes before bind and
   likely carries the same second-daemon clobber — relayed upstream to lynx.
+- WAVE 1-4 BANKED LESSON (review rounds 1-2, 2026-08-28): "every finding was a promise that
+  held for the cases I checked" — the recurring gap is coverage-shaped, so structural
+  closures beat local fixes: (a) regression suites ENUMERATE the surface they guard (every
+  public db op) so additions are covered-or-red; (b) THE GATE MUST NOT MUTATE THE TREE IT
+  JUDGES — cargo silently updating a stale Cargo.lock made every local build green on a
+  tree nobody else could compile; gate gained a --locked metadata stage; (c) receipts over
+  documented steps (ac-0001 = clean archive + --locked build/test + worktree-clean-after);
+  (d) resolve judged paths at RUNTIME (env!(CARGO_MANIFEST_DIR) is compile-time — a gate
+  binary judged a deleted temp tree from anywhere; silent form = green for a checkout
+  nobody is looking at).
