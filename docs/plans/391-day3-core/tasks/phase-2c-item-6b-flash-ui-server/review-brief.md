@@ -1,0 +1,11 @@
+# Cold review brief — Phase 2c (item 6b, Flash interactive 400 isolation) — dlg-0012
+**Reviewer**: cold cross-model (claude-opus-5 via copilot) · **Repo**: `/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core` (READ-ONLY except the verdict file) · **Target**: branch `s391/item6b-flash-ui-server` @ `8dd8f1eb8e25ec2c30c033d9cee9bfd92bb788d7`; base = `git merge-base origin/main HEAD`; freeze and name the SHA.
+**Rubric**: `skills/flow-pair/references/review-rubrics.md`; Dim-0 mandatory. **Ruling (12:05Z)**: isolate OUTSIDE tmux; fix if ours, else honest catalog mark; never a pane-less pij seat.
+
+## Aim
+1. **Isolation record** (`tasks/phase-2c-item-6b-flash-ui-server/isolation.md`): every matrix cell filled or marked NOT-PROBEABLE with why; copilot version recorded; verbatim error lines; the verdict ("ours: <variable>" or "upstream") follows from the matrix, not from prose. Confirm no tmux pane and no pij seat was used (the log/`pij list` shows none).
+2. **If fix**: the isolated variable is gated per model in the pure builder with a tri-state default (unknown ⇒ today's behaviour), mirroring item 6; `spawn.test.ts` pins positive/negative/absent.
+3. **If mark** (the isolation verdict IS upstream — 8/8 rows 400 incl. the `-p` baseline on copilot CLI 1.0.81-14): the curated catalog field is named for the MEASURED fact and must NOT claim interactive-only (no `interactive:false`); `buildSpawnWarning` emits a warn-don't-block line stating BOTH observations per the o-prime's final ruling (08:20Z): 400 on every path (`-p` and interactive) observed ~16:0xZ AND a `-p` one-shot that succeeded ~07:33Z on the same CLI 1.0.81-14 → upstream instability, "treat as unavailable until a fresh probe passes", terra/sol as the alternative — it must NOT offer `-p` as a remedy; spawn still proceeds; `docs/how/pij-models-discovery.md` carries the same measured sentence; the execution log records the ruling deviation.
+4. **Scope**: diff ⊆ packet allowed paths; no `skills/**`, no daemon.
+## Dim-0: (fix) drop the gate → RED; (mark) remove the curated entry → warning test RED; restore byte-identical. ## Gates: full vitest via `pij bg`; tsc; biome.
+## Verdict → `docs/plans/391-day3-core/tasks/phase-2c-item-6b-flash-ui-server/review-01.md`; report `{"verdict","reviewId":"review-01","path","findings","highest"}` via `--body-file`; line 1 = verdict + SHA (C10).

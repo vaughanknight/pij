@@ -40,7 +40,7 @@
 | Scoped Biome check on the eight touched TypeScript files | Passed. |
 | `just lint` | Repository baseline remains red on unrelated pre-existing files; all touched files are clean. |
 | `harness boot` | Typecheck passed; broad test stopped on missing `pwsh` in `harness/scripts/release-age-policy.test.ts`. |
-| `npx vitest run .pi/extensions/pij/` | Passed: 170 files passed, 2 skipped; 3,918 tests passed, 15 skipped. Log: `.harness/temp/s391/vitest-phase1.log`. |
+| `npx vitest run .pi/extensions/pij/` | Passed: 170 files passed, 2 skipped; 3,918 tests passed, 15 skipped. Log: `docs/plans/391-day3-core/logs/vitest-phase1.log`. |
 | `harness checks --quick` | Local paths, typecheck, package audit, and snapshots passed. Lint/windows-compat remain red on pre-existing `osc-7337-producer` diagnostics; the broad test remains red because `pwsh` is unavailable. |
 
 ## Decisions

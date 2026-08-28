@@ -1,0 +1,6 @@
+# Review brief — Phase 15 / item 32 (daemon direct-child launch)
+**Reviewer**: cold cross-model (claude-opus-5 via copilot) · **Repo**: `/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core` (READ-ONLY; restore every mutation byte-identical; NEVER signal the live daemon) · **Frozen SHA**: `61d68f1b0352aa4a2c7801e62fb6c08c51e69b08`.
+**Plan**: § Phase 15 (AC-32) · **Dossier**: `tasks.md` · **Coder log**: `execution.log.md` · your own 15-FX verdict is the evidence base.
+**Verdict law**: any open major/high → FIX_REQUIRED. Write `review-01.md` here; reply verdict + pointer only (C10).
+**Dim-0 required**: (1) restore `npx tsx` argv → T001 RED and the real-launch SIGTERM/SIGHUP cases RED; (2) drop SIGHUP from the handlers → SIGHUP case RED; (3) make the loader path cwd-relative → the "exists on disk" assertion RED when run from a cwd without node_modules (prove cwd independence); (4) pid identity: the spawned pid equals the `daemon.lock` pid in the temp home.
+**Look hard at**: the builder is the ONLY source of the launch argv (no second copy); `pij daemon stop/status` unchanged; item 15's SIGTERM test still green; no `harness/scripts/cli-invocation.ts` derivation broken (windows-compat check); docs; fence.

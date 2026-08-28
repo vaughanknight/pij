@@ -42,7 +42,7 @@
 - Full extension suite `bg-mtc2gxz7-o0vhc9`: 4,058 passed, 15 skipped, 0
   failed. Because the terminal-death matrix was strengthened while that run was
   active, an exact-final-tree rerun was required; log
-  `.harness/temp/s391/vitest-phase7-final.log`.
+  `docs/plans/391-day3-core/logs/vitest-phase7-final.log`.
 - Exact-final-tree full extension suite `bg-mtc2l9ju-iuyrcs`: 4,059 passed,
   15 skipped, 0 failed.
 - `harness checks --quick`: `local-paths`, `typecheck`, `pkg-audit`, and
@@ -95,7 +95,7 @@ Mutation evidence:
   it and increments the suppression count.
 
 Full FX extension suite `bg-mtc3e9sh-00crfg`: 4,064 passed, 15 skipped, 0
-failed; log `.harness/temp/s391/vitest-phase7-fx.log`.
+failed; log `docs/plans/391-day3-core/logs/vitest-phase7-fx.log`.
 
 Final `harness checks --quick` reproduced the same out-of-fence baselines:
 `local-paths`, `typecheck`, `pkg-audit`, and `snapshots` passed; lint and
@@ -182,7 +182,7 @@ Fixture-only full-suite correction:
 - Focused fixture suite: 20 passed, 2 skipped.
 - Exact-final full extension suite `bg-mtc5vjlo-oyc8rc`: 171 files passed, 2
   skipped; 4,093 tests passed, 15 skipped, zero failed. Log:
-  `.harness/temp/s391/vitest-phase7-fx01.log`.
+  `docs/plans/391-day3-core/logs/vitest-phase7-fx01.log`.
 
 Final gates:
 
@@ -244,6 +244,6 @@ Final gates:
 
 - Exact-final full extension suite `bg-mtc7d2cs-3toa01`: 171 files passed, 2
   skipped; 4,096 tests passed, 15 skipped, zero failed. Log:
-  `.harness/temp/s391/vitest-phase7-fx02.log`.
+  `docs/plans/391-day3-core/logs/vitest-phase7-fx02.log`.
 - `npx tsc --noEmit -p .`: passed.
 - Scoped Biome over all nine changed TypeScript files: passed.

@@ -1,0 +1,7 @@
+# Ship report — Phase 2b / item 1b — PR #14
+- **PR**: https://github.com/vaughanknight/pij/pull/14 · head `s391/item1b-dispatch-retire` @ `cf2a950` (stack 42fceda→1fca60e→cf2a950 rebased onto `origin/main@42b7268f`; reviewed ad265b1 → FX-01 43de01d → FX-02 2c1e5dd) · base `main`
+- **Gates**: vitest full on cf2a950 → 171 files / 3987 tests, 0 fail (coder `docs/plans/391-day3-core/logs/vitest-phase2b-rebased.log`; reviewer `~/.pij/pij-mobile-reptile/bg-mtbmlg67-78viml.log`); tsc 0; biome clean.
+- **Review**: review-01 APPROVE-with-2-MAJORS → treated as FIX_REQUIRED → FX-01 (shared `isOpenDispatch`, lazy dispatch-store scan, guard tests, F-6 counts, docs) → re-review APPROVE (14/12 RED; reviewer self-corrected F-4 unreachable) → FX-02 revert of FX-01.4 (no cold review — stated in PR, R-1) → rebase review APPROVE (interdiff exact; MR1/MR2 RED).
+- **Deferred & Noteworthy** (→ item 13 phase): G-2 dispatch-store prune + guard efficacy on busy homes; G-3 cross-field check coverage (moot after FX-02); G-4/F-5 pi/omp revive branches untested; G-5 `FsRegistry` layout hard-coded in the sweep (→ `listTerminal()` port); R-3 comment at daemon.ts sweep clause (dissolved vs failed); first-pass F-7/F-8/F-9.
+- **Live acceptance** (o-prime, after batched ff + restart): the five board rows disappear after a retire.
+- **Merge**: o-prime's (batched with s392 10a/10b ff + one daemon restart).

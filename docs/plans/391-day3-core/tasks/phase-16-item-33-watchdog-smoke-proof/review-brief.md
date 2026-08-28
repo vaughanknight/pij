@@ -1,0 +1,6 @@
+# Review brief — Phase 16 / item 33 (plan-055 watchdog smoke proof resurrected)
+**Reviewer**: cold cross-model (claude-opus-5 via copilot) · **Repo**: `/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core` (READ-ONLY; restore mutations byte-identical; never touch the live daemon) · **Frozen SHA**: `785550b2d44e222ed0ec332253dd496c026cda51` (base bf1827c).
+**Plan**: § Phase 16 (AC-33) · **Dossier**: `tasks.md` · **Coder log**: `execution.log.md` + `logs/`.
+**Verdict law**: any open major/high → FIX_REQUIRED. Write `review-01.md` here; reply verdict + pointer only (C10).
+**Dim-0 required**: (1) break the watchdog fire path (`isFireDue` → false) → smoke RED; (2) drop the pointer line from the tmux adapter's socketless delivery → smoke RED (proves the pointer assertion is real); (3) point the proof's channel back at `FsChannel` → RED (proves the backend assertion); (4) diff every assertion against base: none deleted, each rewritten one has a stated intent in execution.log.md.
+**Look hard at**: the proof is not a tautology (it reads what the daemon delivered, not what the proof wrote); the smoke output separates baseline reds from the verdict; no `.pi/extensions/**` change; every red on the way has a kept log; `harness/scripts/smoke.ts` touched only if the packet records the ask.

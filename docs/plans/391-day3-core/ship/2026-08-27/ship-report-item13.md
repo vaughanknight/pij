@@ -1,0 +1,6 @@
+# Ship report — Phase 5 / item 13 — PR #24
+- **PR**: https://github.com/vaughanknight/pij/pull/24 · head `s391/item13-status-lost-update` @ `194ee7c` (1e79a14 + 194ee7c rebased onto `origin/main@3adf051`; reviewed 553b575 + FX-01 8d67b7a on 35272ae; hunks byte-identical) · base `main`
+- **Gates**: vitest full post-rebase 171 files / 4034 tests, 0 fail (`~/.pij/pij-associated-louse/bg-mtbww5t8-2e96o6.log`); targeted 555/555 (+1 skip); reviewer: tsc 0, biome clean.
+- **Review chain**: review-01 APPROVE-WITH-FINDINGS (7 mutations; T001 reproduces both directions; medium F-1 exact-write race narrowed not closed) → FIX_REQUIRED (o-prime confirmed) → FX-01 (writeExact baseline; fake mirrors; injectable lock budget + exhaustion/contention; remedy text; docs) → re-review APPROVE-WITH-FINDINGS (low; F-1 closed non-vacuously on real + fake).
+- **Deferred & Noteworthy** (→ Phase 6 tasks T004b/T004c): FX-1 blind contention sensor (one-line reorder); FX-2 two revive sites baseline-less. PID-reuse wedge on the descriptor lock (bounded throw + manual remedy) → item 15's pid+start-time shared helper (named case). Pre-existing: revive/archive/unarchive write unlocked (documented).
+- **Merge**: o-prime's; daemon-side half rides restart #4.
