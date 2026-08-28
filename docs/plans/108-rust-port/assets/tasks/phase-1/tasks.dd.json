@@ -50,7 +50,7 @@
         {
           "id": "tk-d4c3",
           "title": "Store skeleton: SQLite via sqlx, migration 0001 (WAL+user_version), boot self-migration, stale-schema refusal (skew rule both directions), FreshStore-per-test primitive; store integration exemplar.",
-          "state": "unchecked",
+          "state": "checked",
           "note": "R1 / ac-0004-analog,ac-0006",
           "done": "#done_when/tk-d4c3"
         },
@@ -130,7 +130,7 @@
           {
             "id": "dw-feee",
             "assertion": "boot self-migration proven; stale-schema refusal proven BOTH skew directions; FreshStore-per-test primitive used by the store exemplar",
-            "state": "unchecked",
+            "state": "checked",
             "pressure": "not-applicable"
           }
         ],
