@@ -10,14 +10,14 @@
 - Evidence: `docs/plans/392-day3-codex-doctrine/day3-codex-doctrine-plan.md:21,37`; validator (cold validate-v2) findings in `docs/plans/392-day3-codex-doctrine/deferred-codex-phase.md`.
 
 ## 2. What is ruled — the 3 validator findings to resolve BEFORE resuming (`docs/plans/392-day3-codex-doctrine/deferred-codex-phase.md`)
-1. **Production route gate:** the sole `sendSocket` call is gated to claude / copilot-with-`rpcPort` (the socket-first routing in `core/daemon/loop.ts`, the Phase-4 routing invariant ~`:612-628`; verify at `d120c53`). A codex capability branch + a RED production-routing test are required there, and `core/daemon/loop.ts` must join the test manifest.
-2. **Topology vs spawn contract:** `SpawnCommand` is ONE `{cmd,args,env}` process (`core/spawn.ts:144-148`), appended by `TmuxAdapter` with no shell interpretation (`adapters/tmux.ts:52-81`). "One pane command starts app-server + `codex --remote`" CANNOT be expressed. Needs a pij-owned supervisor/sidecar contract (allocation, pending-descriptor stamping, revive, teardown, orphan reap), or a Codex daemon surface without shell composition.
+1. **Production route gate:** the sole `sendSocket` call is `core/daemon/loop.ts:741`, gated at `:736-741` to claude / copilot-with-`rpcPort` (`:612-628` is the body of `fail()`, unrelated). A codex capability branch + a RED production-routing test are required there, and `core/daemon/loop.ts` must join the test manifest.
+2. **Topology vs spawn contract:** `SpawnCommand` is ONE `{cmd,args,env}` process (`core/spawn.ts:145-149`), appended by `TmuxAdapter` (class `adapters/tmux.ts:55`, argv push `:82`) with no shell interpretation. "One pane command starts app-server + `codex --remote`" CANNOT be expressed. Needs a pij-owned supervisor/sidecar contract (allocation, pending-descriptor stamping, revive, teardown, orphan reap), or a Codex daemon surface without shell composition.
 3. **Protocol lifecycle (codex-cli 0.148.0):** `initialize` is required; `threadId` is required for read/start/steer; `expectedTurnId` is MANDATORY on every `turn/steer` — but `buildCodexDelivery` currently makes it OPTIONAL (`codex-rpc.ts:48` and `:60`). The lifecycle `initialize → thread/list → thread/resume` must precede delivery. Decide whether `SessionDescriptor.harnessSessionId` IS the thread id or add a field.
 
 ## 3. Where the code is (at tag `d120c53`)
 - `.pi/extensions/pij/adapters/codex-rpc.ts:42` `buildCodexDelivery`, `:48/:60` the optional `expectedTurnId`, `:77` `encodeCodexRequest`.
-- `.pi/extensions/pij/core/spawn.ts:144-148` `SpawnCommand`; `.pi/extensions/pij/adapters/tmux.ts:52-81` (no shell interpretation).
-- `.pi/extensions/pij/core/daemon/loop.ts` — the `sendSocket` gate (add a codex branch).
+- `.pi/extensions/pij/core/spawn.ts:145-149` `SpawnCommand`; `.pi/extensions/pij/adapters/tmux.ts:55` (`TmuxAdapter`), argv push `:82` (no shell interpretation).
+- `.pi/extensions/pij/core/daemon/loop.ts:736-741` — the `sendSocket` gate (sole call `:741`); add a codex branch.
 - `.pi/extensions/pij/core/types.ts` — additive `codexRemoteSock?: string` (legacy descriptors must load).
 - Full task breakdown (fake-app-server proof first, then live): `docs/plans/392-day3-codex-doctrine/deferred-codex-phase.md` §3.1-3.7.
 

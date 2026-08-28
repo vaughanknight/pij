@@ -19,8 +19,8 @@ Under full-suite / concurrent-fleet load, real-subprocess tests time out:
 ## 3. Where the code is (at tag `d120c53`)
 - `.pi/extensions/pij/cli.integration.test.ts` — the subprocess-heavy suite (spawns the real CLI); the `it`s that shell out are the flake surface.
 - `.pi/extensions/pij/acceptance-sweep.test.ts` — secondary.
-- vitest config (repo root `vitest.config.*` / `package.json` test script) — where per-file parallelism / pool / timeout is set.
-- 12-FX's investigation (`docs/plans/392-day3-codex-doctrine/tasks/item-12-FX-DRAFT-HOLD.md`, on main) is the pattern; its isolation FIX — `harness/scripts/pij-skill-check.sh` honoring `PIJ_REPO_ROOT` + a per-file repo snapshot in the test — lands via the 12-FX handover section's PR (not yet on main at v0.2.0). Mirror that isolation where the contention is a shared resource, or bound the timeout where it is pure subprocess latency.
+- `vitest.config.ts` (repo root) — where per-file parallelism / pool / timeout is set.
+- 12-FX is the pattern: the investigation is `docs/plans/392-day3-codex-doctrine/tasks/item-12-FX-DRAFT-HOLD.md` and the shipped task record `docs/plans/392-day3-codex-doctrine/tasks/item-12-skillcheck-hardening/tasks.md` (both on main); the isolation FIX (`harness/scripts/pij-skill-check.sh` honoring `PIJ_REPO_ROOT` + a per-file repo snapshot) and its proof logs are committed on branch `s392/item12-fx-falcon` (`3f0849e`) and written up in the 12-FX handover section. Mirror that isolation where the contention is a shared resource; bound the timeout where it is pure subprocess latency.
 
 ## 4. Acceptance (behavioural, mechanical)
 - Reproduce first and KEEP the full failing log in the plan folder, in a new item-E22 directory you create (nameable test, not truncated). Then prove deterministic: several consecutive full-suite runs green, logs kept (E22/E35). No mutant (flake fix); the gate is determinism under load + a nameable-on-failure log.

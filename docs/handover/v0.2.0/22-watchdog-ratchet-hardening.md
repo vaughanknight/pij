@@ -7,8 +7,8 @@
 ## 1. Why this exists (the observed failure, with evidence)
 The pij-watchdog ratchet test is an E6 shape: a green gate certifying wrong text.
 - **ADV-1:** the ratchet asserts the routing text is present SOMEWHERE in `docs/how/pij-watchdog.md`, NOT that the example block is correct — the item-18 reviewer PROVED a garbage watchdog-turn example stays green. Anchor: `.pi/extensions/pij/cli.integration.test.ts:406` reads `docs/how/pij-watchdog.md`; `:418` calls `buildWatchdogTurn`.
-- **ADV-2:** INFO-7's `core/state.ts:142` citation is itself a NEW UNPINNED code cite — its only repo occurrence is the doc line, so a line inserted above it silently mis-cites with no red (the E6 class one indirection down).
-- **INFO-7 precision:** the doc's "blocked/waiting per `state.ts:142`" over-claims by half — at `d120c53`, `state.ts:137` is `"blocked"` (cannot proceed) and `:142` is `"waiting"` (dependent on something external), both in the `BADGE_SEVERITY` array (`:133`).
+- **ADV-2 / INFO-7:** the `core/state.ts:142` citation lives in `skills/pij/references/00-routing.md:181` (NOT `pij-watchdog.md`, which has ZERO `state.ts` refs). A NEW UNPINNED code cite — its only repo occurrence is that one doc line, so a line inserted above `state.ts:142` silently mis-cites with no red (the E6 class, one indirection down).
+- **INFO-7 precision:** `00-routing.md:181`'s "blocked/waiting per `state.ts:142`" (each token backtick-wrapped in the real text) over-claims by half — at `d120c53`, `state.ts:137` is `"blocked"` (cannot proceed) and `:142` is `"waiting"` (dependent on something external), both in the `BADGE_SEVERITY` array (`:133`).
 - Prior-art + table: `docs/plans/392-day3-codex-doctrine/tasks/item-22-ratchet-hardening/tasks.md`; rulings `docs/plans/392-day3-codex-doctrine/rulings.md:166-167`.
 
 ## 2. What is ruled (design / spec)
@@ -18,13 +18,13 @@ The pij-watchdog ratchet test is an E6 shape: a green gate certifying wrong text
 
 ## 3. Where the code is (at tag `d120c53`)
 - `.pi/extensions/pij/core/state.ts:133` `BADGE_SEVERITY`; `:137` `"blocked"`; `:142` `"waiting"`.
-- `.pi/extensions/pij/core/watchdog.ts` — `buildWatchdogTurn` (the `ready` case ~`:351`; `ready`/`done` never mute).
-- `.pi/extensions/pij/cli.integration.test.ts:406-418` — the ratchet: reads the doc, builds the turn, compares. Scope the comparison to the fenced block.
-- `docs/how/pij-watchdog.md` — the doc whose example + the "per state.ts:142" line get fixed.
+- `.pi/extensions/pij/core/watchdog.ts:378` — `buildWatchdogTurn` (`ready`/`done` never mute; `:343` is `mutesWatchdogNudge`, not this function).
+- `.pi/extensions/pij/cli.integration.test.ts` — BOTH halves of item 22 touch this ONE test (live skill text): ADV-1's example ratchet reads `pij-watchdog.md` at `:406` and compares at `:425-426`; ADV-2's citation ratchet reads `00-routing.md` at `:328` and `:404`.
+- `docs/how/pij-watchdog.md` — the EXAMPLE block (ADV-1). `skills/pij/references/00-routing.md:181` — the "per state.ts:142" citation (ADV-2/INFO-7). TWO different files.
 
 ## 4. Acceptance (behavioural, mechanical)
 - Test: a deliberately garbage watchdog-turn example in `pij-watchdog.md` → the ratchet REDs (today it stays green — that IS the bug); a correct example → green. A line inserted above `state.ts:142` that shifts `"waiting"` → the citation-pin test REDs.
-- Mutant `MUT-RATCHET-SCOPE`: revert the assertion to "text present anywhere" → the garbage-example test REDs. Name the covering test (E40).
+- Mutant `MUT-RATCHET-SCOPE`: revert the assertion to "text present anywhere" → the garbage-example test REDs. Covering test: `cli.integration.test.ts:402` ("skill guidance routes first-person reports and retires completion self-pause") (E40).
 - Gates: `just pij-skill-check` (skill/doc-text gate), the vitest files that pin skill strings (`cli.integration.test.ts`, `acceptance-sweep.test.ts`), full suite at merge product, two green runs, logs kept.
 
 ## 5. Live verification
