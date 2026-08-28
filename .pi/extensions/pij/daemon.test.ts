@@ -8,7 +8,6 @@ import {
 	statSync,
 	writeFileSync,
 } from "node:fs";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -43,8 +42,6 @@ import {
 	touchDaemonHeartbeat,
 } from "./daemon.js";
 
-const nodeRequire = createRequire(import.meta.url);
-const TSX_CLI = nodeRequire.resolve("tsx/cli");
 const DAEMON_BIN = fileURLToPath(new URL("./daemon.ts", import.meta.url));
 
 const READY = "⏵⏵ auto mode on (shift+tab to cycle)";
@@ -2479,7 +2476,7 @@ describe("daemon signal shutdown", () => {
 		timeout: 10_000,
 	}, async () => {
 		const childHome = mkdtempSync(join(tmpdir(), "pij-daemon-signal-"));
-		const child = spawn(process.execPath, [TSX_CLI, DAEMON_BIN], {
+		const child = spawn(process.execPath, ["--import", "tsx", DAEMON_BIN], {
 			env: {
 				...process.env,
 				PIJ_HOME: childHome,
