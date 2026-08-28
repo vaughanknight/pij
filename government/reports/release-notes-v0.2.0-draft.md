@@ -1,4 +1,4 @@
-# pij v0.2.0 — release notes (DRAFT; Vaughan ruled 02:2xZ Aug 28: item 30 is pre-tag; §7 decisions 2–6 open; not tagged)
+# pij v0.2.0 — release notes (TAGGED 2026-08-28 05:2xZ at `d120c53` on Vaughan's ruling "merge it all, make it 0.2.0"; outstanding items handed over in docs/handover/v0.2.0/)
 Source sha: **3411794** (main; live on the daemon since restart #6, 2026-08-28 04:11Z, checkout 916e915 = 3411794 + government). Tag pending Vaughan's decisions 2–6 and the 1-h bridge measurement. Gates on that sha: full vitest, `just typecheck`, `just pij-skill-check`, cold review per PR, live proofs per harness kind + Telegram. **GitHub Actions has never run in this repo; these gates are local.**
 
 ## Headline

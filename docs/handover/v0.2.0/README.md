@@ -20,5 +20,8 @@
 - `pij send`: quoted heredoc → `--body-file`, always (backticks in double quotes execute). `pij spine append` takes its body on stdin. `pij report now` rejects a 'did' over 280 chars.
 - Receipts: on the Claude-socket path a durable `acked (reader=X)` row is written by the daemon at injection — injected, not read (item 23b below).
 
+**Owner's status report (narrative input):** perimenocause `government/reports/pij-status-2026-08-28-release.html`, rendered at https://peri-dev.ngrok.app/reports/pij-status-2026-08-28-release/ .
+
 ## Index of outstanding items
 _(filled as sections land; one line per file: number · title · stream · status)_
+- 00 · The live system at v0.2.0 — o-prime · written

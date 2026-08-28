@@ -115,3 +115,6 @@ PR #33 item 32 (direct-child daemon launch; SIGHUP handled; locks released on ev
 
 ## Amendment 04:5xZ — item 24 live evidence
 Interim reading since restart #6 (04:11–04:52Z): 0 of 6 real bridge sends needed a second attempt (pre-fix baseline 9 of 24). The restored bridge log recorded one in-lease retry after `Network request for 'sendMessage' failed!` that succeeded — the transient-network cause of the pre-fix attempt-2 rows is now evidenced on the live bridge. Final 24b decision at 05:15Z.
+
+## Amendment 05:3xZ — TAGGED
+Vaughan (verbatim): "Merge it all make it 0.2.0 and ensure Jordan's agent has all the outstanding items. Plenty of deep detail on each piece so it can rebuild it commit and push as it can look at our repo for the code also as the spec". v0.2.0 tagged at d120c53 (main head; the sha restart #7 runs; item 32 live). Handover: docs/handover/v0.2.0/ (README, TEMPLATE, 00-live-system; per-item sections from the streams), then posted on #311. §7 A–E superseded.
