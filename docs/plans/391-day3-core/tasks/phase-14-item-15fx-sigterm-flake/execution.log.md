@@ -30,3 +30,18 @@ The `--import tsx <script>` form keeps `process.argv[1]` equal to the executed s
 - Proof command: 20 fail-fast runs of `npx vitest run .pi/extensions/pij/daemon.test.ts -t "releases write.lock and events.lock"`.
 - Result: **20/20 passed**.
 - Per-run output is preserved under `.harness/temp/s391/sigterm-direct-proof/run-001.log` through `run-020.log`; `.harness/temp/s391/sigterm-direct-proof/summary.txt` records `failed_run=0`.
+
+## Post-rebase proof
+
+- Fetched `origin/main` and rebased after Item 16 merged.
+- Rebased implementation commit: `52454fe`.
+- Repeated the fail-fast 20-run direct-child proof after the rebase.
+- Result: **20/20 passed**.
+- Per-run output is preserved under `.harness/temp/s391/sigterm-direct-proof-rebased/run-001.log` through `run-020.log`; `.harness/temp/s391/sigterm-direct-proof-rebased/summary.txt` records `failed_run=0`.
+
+## T003 — final gates
+
+- Full extension suite via `pij bg`: **172 files passed, 2 skipped; 4,115 tests passed, 15 skipped**.
+- Full-suite output: `.harness/temp/s391/vitest-phase14.log`.
+- Root TypeScript check: `npx tsc --noEmit -p .` passed.
+- Scoped Biome: `npx biome check .pi/extensions/pij/daemon.test.ts` passed.
