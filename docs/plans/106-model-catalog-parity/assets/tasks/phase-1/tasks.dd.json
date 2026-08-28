@@ -88,6 +88,25 @@
             "../../../plan.dd.json#acceptance_criteria/ac-0609"
           ],
           "receipt": "harness checks: 8/8 sensors pass; live Copilot and OMP projections pass"
+        },
+        {
+          "id": "tk-1065",
+          "title": "Resolve independent model-catalog review findings",
+          "domain": "pij-control-plane",
+          "phase": "ph-1061",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1065",
+          "success": "OMP efforts parse live arrays, probes are bounded, catalogs fail honestly, provider filters remain compatible, malformed inventories fail whole, domain contracts are current, and all gates pass.",
+          "notes": "Review re-entry for FIX_REQUIRED findings F001-F006.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0603",
+            "../../../plan.dd.json#acceptance_criteria/ac-0604",
+            "../../../plan.dd.json#acceptance_criteria/ac-0605",
+            "../../../plan.dd.json#acceptance_criteria/ac-0606",
+            "../../../plan.dd.json#acceptance_criteria/ac-0607",
+            "../../../plan.dd.json#acceptance_criteria/ac-0609"
+          ],
+          "receipt": "83 pure assertions and 49 filtered integration assertions pass; Dim-0 RED/GREEN; typecheck, lint, and harness checks 8/8 pass"
         }
       ]
     },
@@ -122,6 +141,14 @@
           {
             "id": "as-1064",
             "assertion": "Static, targeted, full, and live gates pass and branch is pushed.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1065": [
+          {
+            "id": "as-1065",
+            "assertion": "All six independent-review findings are fixed with focused, mutation, static, full-harness, and updated domain-contract proof.",
             "state": "checked",
             "pressure": "not-applicable"
           }

@@ -117,7 +117,7 @@
             "Targeted and full proof"
           ],
           "key_risks": "OMP command output can be unavailable or locally overridden; fail loudly and parse structurally without refreshing.",
-          "receipt": "Phase complete: targeted 82 assertions; integration 2/2; harness checks 8/8"
+          "receipt": "Review re-entry complete: F001-F006 fixed; focused, mutation, domain, and harness checks proof pass"
         }
       ]
     }

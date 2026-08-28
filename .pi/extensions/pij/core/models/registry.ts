@@ -75,6 +75,22 @@ function levelsFromThinkingMap(map: unknown): string[] {
 		.map(([k]) => k);
 }
 
+function nonEmptyString(value: unknown): value is string {
+	return typeof value === "string" && value.trim().length > 0;
+}
+
+/** OMP reports canonical effort names as an array, unlike Pi's canonical→native map. */
+function levelsFromOmpThinking(thinking: unknown): string[] | undefined {
+	if (thinking === undefined) return [];
+	if (
+		!Array.isArray(thinking) ||
+		!thinking.every((level) => nonEmptyString(level) && level.trim() === level)
+	) {
+		return undefined;
+	}
+	return [...thinking];
+}
+
 const COPILOT_GPT56_LEVELS = ["none", "low", "medium", "high", "xhigh", "max"];
 const COPILOT_GPT56_IDS = new Set([
 	"gpt-5.6-sol",
@@ -305,42 +321,50 @@ interface OmpModelsJson {
 	readonly models?: ReadonlyArray<OmpModel>;
 }
 
+function isValidOmpModel(model: unknown): model is OmpModel & {
+	readonly id: string;
+	readonly provider: string;
+	readonly selector: string;
+} {
+	if (!isObj(model)) return false;
+	if (!nonEmptyString(model.id) || !nonEmptyString(model.provider)) return false;
+	if (!nonEmptyString(model.selector)) return false;
+	if (model.name !== undefined && typeof model.name !== "string") return false;
+	if (model.contextWindow !== undefined && usableContextWindow(model.contextWindow) === undefined) {
+		return false;
+	}
+	if (model.reasoning !== undefined && typeof model.reasoning !== "boolean") return false;
+	return levelsFromOmpThinking(model.thinking) !== undefined;
+}
+
 /** Parse the supported `omp models --json --no-extensions` inventory shape. */
 export function parseOmpModelsJson(raw: unknown): ModelEntry[] {
 	if (!isObj(raw)) return [];
 	const json = raw as OmpModelsJson;
-	if (!Array.isArray(json.models)) return [];
-	const entries: ModelEntry[] = [];
-	for (const model of json.models) {
-		if (!isObj(model) || typeof model.id !== "string" || typeof model.provider !== "string") {
-			continue;
-		}
-		const id = model.id;
-		const provider = model.provider;
-		const selector =
-			typeof model.selector === "string" && model.selector !== ""
-				? model.selector
-				: `${provider}/${id}`;
+	if (!Array.isArray(json.models) || json.models.length === 0) return [];
+	if (!json.models.every(isValidOmpModel)) return [];
+	return json.models.map((model) => {
+		const { id, provider, selector } = model;
 		const requestModelId = provider === "github-copilot" ? id.replace(/-1m$/, "") : id;
+		const sourceLevels = levelsFromOmpThinking(model.thinking) ?? [];
 		const levels =
 			provider === "github-copilot" && isCopilotGpt56(requestModelId)
 				? [...COPILOT_GPT56_LEVELS]
-				: levelsFromThinkingMap(model.thinking);
+				: sourceLevels;
 		const window = ompContextWindow(provider, id, model.contextWindow);
-		entries.push({
+		return {
 			id,
 			name: typeof model.name === "string" ? model.name : id,
 			provider,
-			runtime: "omp",
+			runtime: "omp" as const,
 			selector,
 			requestModelId,
 			verified: true,
 			reasoning: levels.length > 0 || model.reasoning === true,
 			levels,
 			...(window === undefined ? {} : { contextWindow: window }),
-		});
-	}
-	return entries;
+		};
+	});
 }
 
 export interface OmpCommandResult {
@@ -349,14 +373,32 @@ export interface OmpCommandResult {
 	readonly stderr: string;
 }
 
-export type OmpCommandRunner = (command: string, args: readonly string[]) => OmpCommandResult;
+export interface OmpCommandOptions {
+	readonly timeout: number;
+}
+
+export type OmpCommandRunner = (
+	command: string,
+	args: readonly string[],
+	options: OmpCommandOptions,
+) => OmpCommandResult;
+
+export const OMP_MODELS_TIMEOUT_MS = 5_000;
 
 export type OmpModelsResult =
 	| { readonly ok: true; readonly models: readonly ModelEntry[] }
 	| { readonly ok: false; readonly error: string };
 
-function runOmpCommand(command: string, args: readonly string[]): OmpCommandResult {
-	const result = spawnSync(command, [...args], { encoding: "utf8", stdio: "pipe" });
+function runOmpCommand(
+	command: string,
+	args: readonly string[],
+	options: OmpCommandOptions,
+): OmpCommandResult {
+	const result = spawnSync(command, [...args], {
+		encoding: "utf8",
+		stdio: "pipe",
+		timeout: options.timeout,
+	});
 	return {
 		status: result.status,
 		stdout: result.stdout ?? "",
@@ -366,7 +408,9 @@ function runOmpCommand(command: string, args: readonly string[]): OmpCommandResu
 
 /** Load OMP's effective local inventory without refreshing or reading its cache internals. */
 export function loadOmpModels(run: OmpCommandRunner = runOmpCommand): OmpModelsResult {
-	const result = run("omp", ["models", "--json", "--no-extensions"]);
+	const result = run("omp", ["models", "--json", "--no-extensions"], {
+		timeout: OMP_MODELS_TIMEOUT_MS,
+	});
 	if (result.status !== 0) {
 		return {
 			ok: false,
@@ -387,10 +431,17 @@ export function loadOmpModels(run: OmpCommandRunner = runOmpCommand): OmpModelsR
 	return { ok: true, models };
 }
 
-function legacyRuntime(entry: ModelEntry): ModelRuntime | undefined {
-	if (entry.provider === "copilot" || entry.provider === "github-copilot") return "copilot";
-	if (entry.provider === "claude" || entry.provider === "codex") return entry.provider;
-	return undefined;
+function modelMatchesRuntime(entry: ModelEntry, runtime: ModelRuntime): boolean {
+	if (entry.runtime !== undefined) return entry.runtime === runtime;
+	if (runtime === "pi") {
+		return (
+			entry.provider !== "copilot" && entry.provider !== "claude" && entry.provider !== "codex"
+		);
+	}
+	if (runtime === "copilot") {
+		return entry.provider === "copilot" || entry.provider === "github-copilot";
+	}
+	return entry.provider === runtime;
 }
 
 /** Select rows for the target runtime, falling back only for legacy injected fixtures. */
@@ -398,7 +449,17 @@ export function modelsForRuntime(
 	models: readonly ModelEntry[],
 	runtime: ModelRuntime,
 ): ModelEntry[] {
-	return models.filter((entry) => (entry.runtime ?? legacyRuntime(entry)) === runtime);
+	return models.filter((entry) => modelMatchesRuntime(entry, runtime));
+}
+
+const MODEL_RUNTIME_FILTERS = new Set<ModelRuntime>(["pi", "omp", "copilot", "claude", "codex"]);
+
+/** A known runtime filter selects runtime rows; every other value is an upstream provider. */
+export function modelsForFilter(models: readonly ModelEntry[], filter: string): ModelEntry[] {
+	if (MODEL_RUNTIME_FILTERS.has(filter as ModelRuntime)) {
+		return modelsForRuntime(models, filter as ModelRuntime);
+	}
+	return models.filter((entry) => entry.provider === filter);
 }
 
 export interface LoadedModelCatalog {

@@ -4,8 +4,8 @@
 // model but does NOT block spawn (the id is still returned immediately).
 
 import { describe, expect, it } from "vitest";
-import { buildSpawnWarning } from "../../core/spawn.js";
-import { type ModelEntry, modelsForRuntime } from "./registry.js";
+import { buildEffortWarning, buildSpawnWarning } from "../../core/spawn.js";
+import { type ModelEntry, modelsForRuntime, parseOmpModelsJson } from "./registry.js";
 
 const KNOWN: ModelEntry[] = [
 	{ id: "fugu-ultra", name: "Sakana Fugu Ultra", provider: "sakana", verified: true },
@@ -129,5 +129,20 @@ describe("runtime-specific spawn validation (#306)", () => {
 		expect(
 			buildSpawnWarning("github-copilot/gpt-5.6-sol-fast-1m", modelsForRuntime(catalogs, "omp")),
 		).toBeNull();
+	});
+
+	it("accepts a live-shape OMP effort without a false unsupported warning", () => {
+		const omp = parseOmpModelsJson({
+			models: [
+				{
+					provider: "openrouter",
+					id: "reasoner",
+					selector: "openrouter/reasoner",
+					name: "Reasoner",
+					thinking: ["off", "low", "medium", "high"],
+				},
+			],
+		});
+		expect(buildEffortWarning("high", "openrouter/reasoner", omp)).toBeNull();
 	});
 });

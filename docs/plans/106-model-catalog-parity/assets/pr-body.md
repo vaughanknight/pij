@@ -8,8 +8,9 @@ fix(models): separate Copilot IDs from OMP selectors
 
 - Model catalog JSON now separates the target `runtime` from the upstream `provider`, retains the exact runtime `selector`, and exposes the upstream `requestModelId` behind OMP aliases.
 - Copilot CLI inventory includes the actual `gpt-5.6-sol-fast` ID at 1,050,000 tokens with `none`, `low`, `medium`, `high`, `xhigh`, and `max`; it never advertises OMP-only `-1m` aliases as Copilot IDs.
-- OMP inventory comes from the supported, no-refresh `omp models --json --no-extensions` surface. Base and `-1m` Luna, Sol, Sol Fast, and Terra selectors remain distinct, including their 328k/400k versus 1.05M contexts.
-- Spawn and effort validation select the actual target catalog: Copilot for `--harness copilot`, OMP for `--harness pi --bin omp`, and Pi for ordinary Pi. Validation remains warn-don't-block.
+- OMP inventory comes from the supported, no-refresh `omp models --json --no-extensions` surface under a five-second process bound. The whole inventory must be valid, including exact selectors and live `thinking: string[]` effort values; failures make the inventory explicitly unavailable.
+- Bare catalog discovery fails rather than returning a partial catalog when OMP is unavailable. Runtime filters and provider filters use one centralized selector, preserving `openrouter`, `sakana`, and `github-copilot` compatibility.
+- Spawn and effort validation select the actual target catalog: Copilot for `--harness copilot`, OMP for `--harness pi --bin omp`, and Pi for ordinary Pi. Unavailable OMP validation warns and continues; model and effort validation remains warn-don't-block.
 - Removed only the committed GPT-5.6 Luna/Sol/Terra OMP overrides that collapsed base rows onto 1.05M. The canonical checkout's unrelated local OMP provider is not included.
 
 Closes #306.
@@ -19,6 +20,9 @@ Closes #306.
 - RED: 17 focused failures before implementation.
 - GREEN: 82 assertions across registry parsing, CLI filtering/JSON, runtime-specific spawn validation, and portable model sync.
 - OMP subprocess spawn integration: 2/2 targeted cases passed.
+- Review-fix pure suites: 83/83 passed; filtered registry/CLI/spawn/integration proof: 49 passed, 132 unrelated cases skipped.
+- Dim-0 mutation (`every` → `some` on the whole-inventory guard) made the mixed-valid/invalid fixture fail; exact restoration passed.
+- Live-shape OMP effort, bounded runner timeout, bare-unavailable, mixed-malformed, and provider-filter regressions passed.
 - `just typecheck` passed.
 - `just lint` passed with nine pre-existing warnings.
 - `git diff --check` passed.

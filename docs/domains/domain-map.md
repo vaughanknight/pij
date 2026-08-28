@@ -14,11 +14,12 @@ flowchart LR
     FWN[file-watch-notify\ncontracts: Config/parseConfig, reconcile/WatchReconciler, WatchDeps, InjectPort/deliverNotices, file_watch_notify tool]
     FP[flow-pair\ncontracts: packet/report schema, run/delegation/review/learning records, prompt-cluster taxonomy, review rubric, flow-pair CLI]
     TF[the-flow\nexternal: SDD route authority, flow-state files]
-    PCP[pij-control-plane\ncontracts: tmux-keys, binding record, daemon switchboard, whole-life WatchdogManager/store/captures, portable chore roster/probe/delta, Git common-dir adapter, tree/link/adopt-parent wiring, push ownership]
+    PCP[pij-control-plane\ncontracts: tmux-keys, binding record, daemon switchboard, runtime/provider/selector/requestModelId catalog, whole-life WatchdogManager/store/captures, portable chore roster/probe/delta, Git common-dir adapter, tree/link/adopt-parent wiring, push ownership]
     AR[agent-runtime\ncontracts: DiscoveredAgent, agentsDir/tmpDir, IAgentAdapter claude/codex/copilot, runAgent wrapper, inline engine + sweepStaleTmp]
     MINIH[minih\nexternal library: runAgent, IAgentAdapter, FakeAgentAdapter, validators, SdkCopilotAdapter, pack format + run ledger]
     PS[pij-skill\ncontracts: /pij routes, tree/link/adopt-parent guidance, watchdog CLI discoverability, current-only prime triage, shared conventions C1-C10, pij-skill-check gate]
     PO[pij-orchestration\ncontracts: PrimeService set/retire/unset, BatonDefinition/Request/Lease, BatonStorePort, BatonNoticeSink, blocked-time]
+    OMP[OMP CLI\nexternal: bounded cached model inventory]
 
     ATI -->|uses current-session store + todo contracts| SWS
     ATI -->|registers tool/command/lifecycle handlers| PI
@@ -50,6 +51,7 @@ flowchart LR
     PCP -->|extends SessionDescriptor/tree/link/repository ports; thin receiver keeps pi.sendUserMessage| PIJ
     PCP -->|re-exports shared tmux-keys; validated by tests/smoke/self-check| H
     PCP -->|spawn/daemon/adopt/chore CLI surfaces presented through| ATI
+    PCP -->|bounded omp models --json --no-extensions; whole-inventory contract| OMP
     AR -->|embeds runAgent + IAgentAdapter + validators + FakeAgentAdapter; never forks pack format/ledger| MINIH
     AR -->|validated by contract test/live tests/self-check; *.live.test.ts pattern| H
     PCP -->|Phase 2: agent verb family consumes DiscoveredAgent + runner + inline; daemon calls sweepStaleTmp| AR
@@ -98,6 +100,7 @@ flowchart LR
 | `pij-control-plane` → `pij-messaging` | extends (Plans 019/041/046/055) | Reuses `SessionDescriptor` (+delivery, parent, repository, prime history, watchdog fire stamp), watchdog sidecar/pure decisions, domain ports including `RepositoryIdentityPort`/`InboxPort`, tree/link contracts, immutable inbox markers, and `FsChannel`; daemon writes keep mutable graph/prime fields latest-disk-authoritative and descriptor activity remains watchdog axis truth. |
 | `pij-control-plane` → `extension-authoring-harness` | healthy | The shared `tmux-keys` lib (argv-only, injectable `TmuxRunner`) is re-exported by `harness/driver/tmux.ts` for parity; vitest + Biome + Driver smoke validate, including the disposable-home watchdog scenario. |
 | `pij-control-plane` → `agent-tooling-interface` | healthy | Control-plane CLI surfaces include spawn/daemon/adopt plus `pij chore` help, exact reports, JSON, checkout-portable repo path rules, and operator documentation. |
+| `pij-control-plane` → OMP CLI (external) | bounded consume | OMP's supported no-refresh JSON command supplies exact runtime selectors and effort arrays. Five-second timeout, command failure, empty output, or any malformed row marks the inventory unavailable; bare discovery fails honestly and spawn validation warns without blocking. |
 | `agent-runtime` → `minih` (external) | embeds-only | Imports minih's `runAgent`, `IAgentAdapter`, `FakeAgentAdapter`, validators, and `SdkCopilotAdapter` as a library at exact tag `minih-v0.2.4`. The pack format, validators, and `runs/<ts>/` ledger are minih's — **never forked, never extended**; a pack that runs under pij runs under stock minih unchanged. AC-12 contract test guards the API against tag drift. |
 | `agent-runtime` → `extension-authoring-harness` | healthy | Rides the `*.live.test.ts` + `describe.skipIf` live-gate pattern, the vitest globs (contract + boundary tests auto-included), and `just self-check` / `harness checks`. |
 | `pij-control-plane` → `agent-runtime` | planned (Phase 2) | The `pij agent` verb family will consume `DiscoveredAgent`, the runner, and the inline engine; the daemon consumes only the `sweepStaleTmp()` crash-sweep hook (added Phase 1). Dependency direction is `cli → core/agents → minih`, never the reverse. |
@@ -140,3 +143,4 @@ flowchart LR
 | 2026-07-17 | Plan 055 — extended PIJ/PCP/PS with whole-life watchdog sidecars and pure decisions, daemon manager/store/capture ownership, CLI discoverability, and a deterministic disposable-home smoke; no new domain node. |
 | 2026-08-02 | Plan 076 — extended PCP with union chore rosters, per-seat fingerprint/pending state, bounded probes, ack-only baselines, and a healthy CLI/documentation relationship to ATI; no new domain node. |
 | 2026-08-02 | Plan 077 PR A — extended the existing PCP/ATI chore contract with an unknown-refusing allow-list command grammar, exact source-reviewed runner flags, repo-root execution, worktree-relative stored paths, resolved worktree containment, and lint-safe committed roster JSON; no new domain node. |
+| 2026-08-28 | Plan 106 — extended the existing `pij-control-plane` node with runtime/provider/selector/requestModelId catalog contracts and a labeled bounded dependency on the external OMP CLI inventory; no new domain. |

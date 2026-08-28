@@ -125,6 +125,35 @@ describe("dispatch models", () => {
 		expect(r.stdout).not.toContain("fugu");
 	});
 
+	it.each([
+		"openrouter",
+		"sakana",
+		"github-copilot",
+	])("--harness %s remains a provider filter", (provider) => {
+		const providerModels: ModelEntry[] = [
+			{
+				id: `${provider}-pi`,
+				name: `${provider} Pi row`,
+				provider,
+				runtime: "pi",
+				verified: true,
+			},
+			{
+				id: "other",
+				name: "Other",
+				provider: "other",
+				runtime: "pi",
+				verified: true,
+			},
+		];
+		const r = dispatch(
+			{ verb: "models", json: true, harnessFilter: provider } as Parameters<typeof dispatch>[0],
+			deps(providerModels),
+		);
+		expect(r.exitCode).toBe(0);
+		expect(JSON.parse(r.stdout)).toEqual([providerModels[0]]);
+	});
+
 	it("labels unverified models", () => {
 		const r = dispatch({ verb: "models", json: false }, deps(MODELS));
 		expect(r.stdout).toMatch(/unverified|best.effort|\*/i);
@@ -229,6 +258,13 @@ describe("dispatch models", () => {
 		);
 		expect(r.exitCode).not.toBe(0);
 		expect(JSON.parse(r.stderr)).toMatchObject({ error: "E-NOREG" });
+	});
+
+	it("bare models fails rather than returning a partial catalog", () => {
+		const r = dispatch({ verb: "models", json: true }, deps(MODELS, ["omp"]));
+		expect(r.exitCode).not.toBe(0);
+		expect(JSON.parse(r.stderr)).toMatchObject({ error: "E-NOREG" });
+		expect(r.stderr).toContain("omp");
 	});
 });
 

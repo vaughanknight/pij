@@ -39,6 +39,7 @@ Add failing coverage for runtime-specific model catalogs, implement OMP effectiv
 | tk-1062 | Implement runtime-aware catalog model | pij models | ph-1061 | [x] checked | — | registry/CLI tests 82 passed; live OMP eight-variant projection observed | [tk-1062](tasks.dd.md#done-when) | Model entries carry runtime, upstream provider, and exact selector; Copilot and OMP inventories are distinct. | Use omp models --json --no-extensions; never refresh or read SQLite. | [ac-0601](../../../plan.dd.md#acceptance-criteria), [ac-0602](../../../plan.dd.md#acceptance-criteria), [ac-0603](../../../plan.dd.md#acceptance-criteria), [ac-0604](../../../plan.dd.md#acceptance-criteria), [ac-0605](../../../plan.dd.md#acceptance-criteria) |
 | tk-1063 | Wire runtime-specific CLI and spawn validation | pij CLI | ph-1061 | [x] checked | — | runtime validation tests 13 passed; OMP spawn integration 2 passed | [tk-1063](tasks.dd.md#done-when) | models filtering and spawn/effort warnings select Copilot, OMP, or Pi catalog by target runtime while Claude/Codex remain unchanged. | — | [ac-0602](../../../plan.dd.md#acceptance-criteria), [ac-0606](../../../plan.dd.md#acceptance-criteria), [ac-0607](../../../plan.dd.md#acceptance-criteria) |
 | tk-1064 | Remove context-collapsing OMP overrides and verify | repository harness | ph-1061 | [x] checked | — | harness checks: 8/8 sensors pass; live Copilot and OMP projections pass | [tk-1064](tasks.dd.md#done-when) | Only committed GPT-5.6 Luna/Sol/Terra overrides are removed or narrowed; targeted tests, typecheck, lint, checks, and live selector probes pass. | Do not import the canonical checkout's uncommitted local provider. | [ac-0608](../../../plan.dd.md#acceptance-criteria), [ac-0609](../../../plan.dd.md#acceptance-criteria) |
+| tk-1065 | Resolve independent model-catalog review findings | pij-control-plane | ph-1061 | [x] checked | — | 83 pure assertions and 49 filtered integration assertions pass; Dim-0 RED/GREEN; typecheck, lint, and harness checks 8/8 pass | [tk-1065](tasks.dd.md#done-when) | OMP efforts parse live arrays, probes are bounded, catalogs fail honestly, provider filters remain compatible, malformed inventories fail whole, domain contracts are current, and all gates pass. | Review re-entry for FIX_REQUIRED findings F001-F006. | [ac-0603](../../../plan.dd.md#acceptance-criteria), [ac-0604](../../../plan.dd.md#acceptance-criteria), [ac-0605](../../../plan.dd.md#acceptance-criteria), [ac-0606](../../../plan.dd.md#acceptance-criteria), [ac-0607](../../../plan.dd.md#acceptance-criteria), [ac-0609](../../../plan.dd.md#acceptance-criteria) |
 
 <a id="done-when"></a>
 
@@ -67,3 +68,9 @@ Add failing coverage for runtime-specific model catalogs, implement OMP effectiv
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
 | as-1064 | Static, targeted, full, and live gates pass and branch is pushed. | [x] checked | not-applicable |
+
+### tk-1065
+
+| id | assertion | state | pressure |
+| --- | --- | --- | --- |
+| as-1065 | All six independent-review findings are fixed with focused, mutation, static, full-harness, and updated domain-contract proof. | [x] checked | not-applicable |

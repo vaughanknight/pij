@@ -50,7 +50,7 @@ import { filterByFolder, filterPrime, resolveSelf, selectByRepository } from "./
 import type { PersistReceiptEnvelopeAction } from "./inbox.js";
 import { type BriefAckReceipt, briefAckBody } from "./message.js";
 import { closestModel } from "./models/match.js";
-import type { ModelEntry } from "./models/registry.js";
+import { type ModelEntry, modelsForFilter } from "./models/registry.js";
 import {
 	PA_VERB_CLASSIFICATION,
 	type PaCapability,
@@ -2126,17 +2126,6 @@ export const PROVIDER_HARNESS_MAP: Record<string, string> = {
 	pi: "pi",
 };
 
-function modelMatchesRuntime(entry: ModelEntry, runtime: string): boolean {
-	if (entry.runtime !== undefined) return entry.runtime === runtime;
-	if (runtime === "pi") {
-		return (
-			entry.provider !== "copilot" && entry.provider !== "claude" && entry.provider !== "codex"
-		);
-	}
-	const mapped = PROVIDER_HARNESS_MAP[entry.provider];
-	return mapped === runtime || entry.provider === runtime;
-}
-
 type SendLiveness = "active" | "stale" | "dead" | "dissolved";
 
 interface PreflightTarget {
@@ -2665,7 +2654,15 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 		}
 		case "models": {
 			const harnessFilter = cmd.harnessFilter;
-			if (harnessFilter && deps.unavailableModelRuntimes?.includes(harnessFilter)) {
+			const unavailable = deps.unavailableModelRuntimes ?? [];
+			if (harnessFilter === undefined && unavailable.length > 0) {
+				return fail(
+					"E-NOREG",
+					`model catalog is incomplete; inventory unavailable for runtime(s): ${unavailable.join(", ")}`,
+					cmd.json,
+				);
+			}
+			if (harnessFilter !== undefined && unavailable.includes(harnessFilter)) {
 				return fail(
 					"E-NOREG",
 					`model inventory for runtime '${harnessFilter}' is unavailable`,
@@ -2673,9 +2670,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				);
 			}
 			let entries = deps.models ?? [];
-			if (harnessFilter) {
-				entries = entries.filter((entry) => modelMatchesRuntime(entry, harnessFilter));
-			}
+			if (harnessFilter) entries = modelsForFilter(entries, harnessFilter);
 			if (cmd.filter) {
 				const q = cmd.filter.toLowerCase();
 				const filtered = entries.filter(

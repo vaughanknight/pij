@@ -21,6 +21,16 @@
 - Copilot projection returned `gpt-5.6-sol-fast`, selector `gpt-5.6-sol-fast`, upstream provider `github-copilot`, runtime `copilot`, context 1,050,000, and all six effort levels; no `-1m` selector appeared.
 - OMP projection returned eight Luna/Sol/Sol Fast/Terra base and `-1m` rows. Base contexts: Luna 328,000; the other three 400,000. Every `-1m` row: 1,050,000. Each row retained its provider-qualified selector and base upstream request id.
 
+### Independent review re-entry
+
+- OMP effort metadata now validates and retains live `thinking: string[]` values; Pi map-key parsing remains isolated to `thinkingLevelMap`.
+- The OMP inventory subprocess has a five-second bound. Timeout, command failure, invalid JSON, empty data, and any malformed row all use the unavailable-inventory path.
+- Bare `pij models` fails with `E-NOREG` when OMP is unavailable instead of presenting a partial catalog. Known runtime filters and exact provider filters now share one selector.
+- Focused pure suites passed 83 assertions. The filtered four-suite proof passed 49 assertions with 132 unrelated integration cases skipped, including live-shape effort, bare-unavailable, mixed-malformed, provider-filter, and OMP spawn cases.
+- Dim-0: changing the whole-inventory guard from `every` to `some` made the mixed-valid/invalid fixture fail; restoring `every` returned it green.
+- `just typecheck` passed; `just lint` passed with nine pre-existing warnings; final `harness checks` passed local paths, typecheck, lint, tests, Windows compatibility, smoke, package audit, and snapshots.
+- Updated the existing `pij-control-plane` domain contract and map with runtime/provider/selector/request-model semantics and the bounded external OMP CLI dependency; no new domain.
+
 ### Harness observations
 
 - The allocated worktree lacked `node_modules`; targeted tests initially could not start. Reused the canonical checkout's existing dependency tree through the ignored worktree symlink.

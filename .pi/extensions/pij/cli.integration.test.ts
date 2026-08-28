@@ -200,7 +200,11 @@ if [ "$1" = "models" ]; then
 		echo 'OMP inventory unavailable' >&2
 		exit 1
 	fi
-	printf '%s\n' '{"models":[{"provider":"github-copilot","id":"gpt-5.6-sol","selector":"github-copilot/gpt-5.6-sol","name":"GPT-5.6 Sol","contextWindow":400000},{"provider":"openrouter","id":"shared-model","selector":"openrouter/shared-model","name":"Shared","contextWindow":128000},{"provider":"sakana","id":"shared-model","selector":"sakana/shared-model","name":"Shared","contextWindow":128000}]}'
+	if [ "\${FAKE_OMP_MALFORMED:-0}" = "1" ]; then
+		printf '%s\n' '{"models":[{"provider":"openrouter","id":"valid","selector":"openrouter/valid","name":"Valid"},{"provider":"openrouter","id":"missing-selector","name":"Malformed"}]}'
+		exit 0
+	fi
+	printf '%s\n' '{"models":[{"provider":"github-copilot","id":"gpt-5.6-sol","selector":"github-copilot/gpt-5.6-sol","name":"GPT-5.6 Sol","contextWindow":400000},{"provider":"openrouter","id":"shared-model","selector":"openrouter/shared-model","name":"Shared","contextWindow":128000,"thinking":["low","medium","high"]},{"provider":"sakana","id":"shared-model","selector":"sakana/shared-model","name":"Shared","contextWindow":128000,"thinking":["low","medium","high"]}]}'
 	exit 0
 fi
 exit 0
@@ -886,6 +890,58 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(result.out).toContain("sakana/shared-model");
 		expect(readFileSync(TMUX_LOG, "utf8")).toBe("");
 		expect(new FsSpawnExpectationStore(HOME).list()).toEqual([]);
+	});
+
+	it("projects live-shape OMP thinking arrays through the real models command", () => {
+		const result = pij(["models", "--harness", "omp", "--json"], { HOME });
+		expect(result.code, result.out).toBe(0);
+		const models = JSON.parse(result.out) as Array<{
+			selector: string;
+			levels: string[];
+		}>;
+		expect(models.find((model) => model.selector === "openrouter/shared-model")?.levels).toEqual([
+			"low",
+			"medium",
+			"high",
+		]);
+	});
+
+	it("fails bare and filtered discovery when requested OMP inventory is unavailable or malformed", () => {
+		const unavailable = pij(["models", "--json"], { HOME, FAKE_OMP_FAIL: "1" });
+		expect(unavailable.code).not.toBe(0);
+		expect(unavailable.out).toContain("E-NOREG");
+		expect(unavailable.out).toContain("omp");
+
+		const malformed = pij(["models", "--harness", "omp", "--json"], {
+			HOME,
+			FAKE_OMP_MALFORMED: "1",
+		});
+		expect(malformed.code).not.toBe(0);
+		expect(malformed.out).toContain("E-NOREG");
+	});
+
+	it.each([
+		"openrouter",
+		"sakana",
+		"github-copilot",
+	])("keeps --harness %s as an upstream-provider filter through the real bin", (provider) => {
+		const modelsPath = join(HOME, ".pi", "agent", "models.json");
+		mkdirSync(dirname(modelsPath), { recursive: true });
+		writeFileSync(
+			modelsPath,
+			JSON.stringify({
+				providers: {
+					"github-copilot": { models: [{ id: "copilot-provider-row" }] },
+					openrouter: { models: [{ id: "openrouter-provider-row" }] },
+					sakana: { models: [{ id: "sakana-provider-row" }] },
+				},
+			}),
+		);
+		const result = pij(["models", "--harness", provider, "--json"], { HOME });
+		expect(result.code, result.out).toBe(0);
+		const models = JSON.parse(result.out) as Array<{ provider: string }>;
+		expect(models.length).toBeGreaterThan(0);
+		expect(models.every((model) => model.provider === provider)).toBe(true);
 	});
 
 	it("control-plane spawn correlates one prelaunch expectation with descriptor and pane", () => {

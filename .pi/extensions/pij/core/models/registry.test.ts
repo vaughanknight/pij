@@ -3,8 +3,8 @@
 // Pi-first: parseModelsJson covers the live ~/.pi/agent/models.json shape.
 // Copilot seeded from pi's github-copilot provider section.
 // Claude alias list + codex snapshot are honest best-effort/unverified.
-
 import { describe, expect, it } from "vitest";
+
 import {
 	claudeAliases,
 	codexConfigModels,
@@ -12,6 +12,7 @@ import {
 	copilotSeedFromPi,
 	copilotSnapshot,
 	loadOmpModels,
+	modelsForFilter,
 	modelsForRuntime,
 	parseModelsJson,
 	parseOmpModelsJson,
@@ -326,6 +327,23 @@ describe("parseOmpModelsJson", () => {
 		}
 	});
 
+	it("reads effort names from OMP's live thinking array shape", () => {
+		const entries = parseOmpModelsJson({
+			models: [
+				{
+					provider: "openrouter",
+					id: "reasoning-model",
+					selector: "openrouter/reasoning-model",
+					name: "Reasoning Model",
+					thinking: ["off", "low", "medium", "high", "xhigh"],
+				},
+			],
+		});
+		expect(entries).toHaveLength(1);
+		expect(entries[0]?.levels).toEqual(["off", "low", "medium", "high", "xhigh"]);
+		expect(entries[0]?.reasoning).toBe(true);
+	});
+
 	it("does not let stale overrides collapse base rows onto their -1m contexts", () => {
 		const collapsed = {
 			models: OMP_GPT56_JSON.models.map((model) => ({ ...model, contextWindow: 1_050_000 })),
@@ -345,16 +363,42 @@ describe("parseOmpModelsJson", () => {
 		expect(parseOmpModelsJson({ models: [] })).toEqual([]);
 		expect(parseOmpModelsJson({ models: "not-an-array" })).toEqual([]);
 	});
+
+	it("rejects the whole inventory when any row is malformed", () => {
+		expect(
+			parseOmpModelsJson({
+				models: [
+					OMP_GPT56_JSON.models[0],
+					{
+						provider: "openrouter",
+						id: "missing-exact-selector",
+						name: "Malformed",
+					},
+				],
+			}),
+		).toEqual([]);
+	});
 });
 
 describe("loadOmpModels", () => {
-	it("uses the supported no-refresh command and returns parsed entries", () => {
-		const calls: Array<{ command: string; args: readonly string[] }> = [];
-		const result = loadOmpModels((command, args) => {
-			calls.push({ command, args });
+	it("uses the supported bounded no-refresh command and returns parsed entries", () => {
+		const calls: Array<{
+			command: string;
+			args: readonly string[];
+			options: { readonly timeout: number };
+		}> = [];
+		const result = loadOmpModels((command, args, options) => {
+			calls.push({ command, args, options });
 			return { status: 0, stdout: JSON.stringify(OMP_GPT56_JSON), stderr: "" };
 		});
-		expect(calls).toEqual([{ command: "omp", args: ["models", "--json", "--no-extensions"] }]);
+		expect(calls).toEqual([
+			{
+				command: "omp",
+				args: ["models", "--json", "--no-extensions"],
+				options: { timeout: expect.any(Number) },
+			},
+		]);
+		expect(calls[0]?.options.timeout).toBeGreaterThan(0);
 		expect(result).toMatchObject({ ok: true, models: expect.any(Array) });
 	});
 
@@ -367,6 +411,19 @@ describe("loadOmpModels", () => {
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.error).toMatch(/OMP model inventory/i);
 	});
+
+	it("reports a bounded runner timeout through unavailable inventory", () => {
+		let timeout = 0;
+		const result = loadOmpModels((_command, _args, options) => {
+			timeout = options.timeout;
+			return { status: null, stdout: "", stderr: "spawnSync omp ETIMEDOUT" };
+		});
+		expect(timeout).toBeGreaterThan(0);
+		expect(result).toEqual({
+			ok: false,
+			error: "OMP model inventory unavailable (spawnSync omp ETIMEDOUT)",
+		});
+	});
 });
 
 describe("modelsForRuntime", () => {
@@ -376,6 +433,20 @@ describe("modelsForRuntime", () => {
 			true,
 		);
 		expect(modelsForRuntime(all, "omp").every((entry) => entry.runtime === "omp")).toBe(true);
+	});
+
+	it("uses runtime semantics only for known runtimes and provider equality otherwise", () => {
+		const all = [
+			...parseModelsJson(PI_JSON),
+			...copilotSeedFromPi(PI_JSON),
+			...parseOmpModelsJson(OMP_GPT56_JSON),
+		];
+		expect(modelsForFilter(all, "openrouter")).toHaveLength(1);
+		expect(modelsForFilter(all, "sakana")).toHaveLength(2);
+		const githubCopilot = modelsForFilter(all, "github-copilot");
+		expect(githubCopilot.length).toBeGreaterThan(0);
+		expect(githubCopilot.every((entry) => entry.provider === "github-copilot")).toBe(true);
+		expect(modelsForFilter(all, "copilot")).toHaveLength(copilotSeedFromPi(PI_JSON).length);
 	});
 });
 
