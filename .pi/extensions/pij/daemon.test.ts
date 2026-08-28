@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import {
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
@@ -36,10 +37,13 @@ import type { DescriptorWriter } from "./core/registry-write.js";
 import { STALE_AFTER_MS } from "./core/state.js";
 import type { SessionDescriptor } from "./core/types.js";
 import {
+	bridgeNotifierDepsForDaemon,
 	createDaemonRegistry,
 	Daemon,
 	installDaemonShutdownHandlers,
+	notifyBridgeRestartWatchers,
 	touchDaemonHeartbeat,
+	wireBridgeRestartNotifier,
 } from "./daemon.js";
 
 const DAEMON_BIN = fileURLToPath(new URL("./daemon.ts", import.meta.url));
@@ -228,6 +232,137 @@ function markerPath(to: string, messageId: string): string {
 }
 
 describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
+	it("notifies every pij-telegram watcher instead of inferring one prime owner", () => {
+		const registry = new FsRegistry(home);
+		for (const id of ["prime-a", "prime-b", "prime-c"]) {
+			registry.write(desc({ id, prime: true, lifecycle: "bound" }));
+		}
+		registry.write(desc({ id: "watcher", lifecycle: "bound" }));
+		const store = new FsWatchdogStore(home);
+		store.write("pij-telegram", {
+			watchers: [{ watcherId: "watcher", addedAt: "2026-08-28T00:00:00.000Z" }],
+		});
+		writeFileSync(join(home, "telegram-bridge.log"), "bridge tail");
+		const channel = new FsChannel(home);
+		const logs: string[] = [];
+
+		const notifyOwner = wireBridgeRestartNotifier({
+			pijHome: home,
+			registry,
+			store,
+			channel,
+			now: () => 123,
+			log: (message) => logs.push(message),
+		});
+		expect(notifyOwner("telegram bridge restarted")).toBe(1);
+		expect(messageBodies("watcher")).toHaveLength(1);
+		expect(messageBodies("watcher")[0]).toContain("telegram bridge restarted");
+		for (const id of ["prime-a", "prime-b", "prime-c"]) expect(messageBodies(id)).toEqual([]);
+		expect(logs).toEqual([]);
+	});
+
+	it("logs an honest skip when pij-telegram has no watchers", () => {
+		const store = new FsWatchdogStore(home);
+		const logs: string[] = [];
+		expect(
+			notifyBridgeRestartWatchers("telegram bridge restarted", {
+				store,
+				channel: new FsChannel(home),
+				nowMs: 123,
+				captureText: "restart evidence",
+				log: (message) => logs.push(message),
+			}),
+		).toBe(0);
+		expect(logs.join("\n")).toContain("no watchers");
+		expect(logs.join("\n")).toContain(store.pathFor("pij-telegram"));
+
+		logs.length = 0;
+		store.write("pij-telegram", { watchers: [] });
+		expect(
+			notifyBridgeRestartWatchers("telegram bridge restarted", {
+				store,
+				channel: new FsChannel(home),
+				nowMs: 123,
+				captureText: "restart evidence",
+				log: (message) => logs.push(message),
+			}),
+		).toBe(0);
+		expect(logs.join("\n")).toContain("no watchers");
+		expect(logs.join("\n")).toContain(store.pathFor("pij-telegram"));
+	});
+
+	it("reports a malformed watchers file instead of claiming there are no watchers", () => {
+		const store = new FsWatchdogStore(home);
+		const path = store.pathFor("pij-telegram");
+		mkdirSync(dirname(path), { recursive: true });
+		writeFileSync(
+			path,
+			JSON.stringify({
+				watchers: [
+					{ watcherId: "watcher", addedAt: "2026-08-28T00:00:00.000Z" },
+					{ watcherId: 42, addedAt: "invalid" },
+				],
+			}),
+		);
+		expect(store.read("pij-telegram")).toBeUndefined();
+		const logs: string[] = [];
+
+		expect(
+			notifyBridgeRestartWatchers("telegram bridge restarted", {
+				store,
+				channel: new FsChannel(home),
+				nowMs: 123,
+				captureText: "restart evidence",
+				log: (message) => logs.push(message),
+			}),
+		).toBe(0);
+		expect(logs.join("\n")).toContain("watchers file unreadable/malformed at");
+		expect(logs.join("\n")).toContain("(2 dropped, 1 malformed)");
+		expect(logs.join("\n")).toContain(path);
+		expect(logs.join("\n")).not.toContain("has no watchers");
+	});
+
+	it("reports unparseable watcher JSON without inventing a rejected-entry count", () => {
+		const store = new FsWatchdogStore(home);
+		const path = store.pathFor("pij-telegram");
+		mkdirSync(dirname(path), { recursive: true });
+		writeFileSync(path, "{");
+		const logs: string[] = [];
+
+		expect(
+			notifyBridgeRestartWatchers("telegram bridge restarted", {
+				store,
+				channel: new FsChannel(home),
+				nowMs: 123,
+				captureText: "restart evidence",
+				log: (message) => logs.push(message),
+			}),
+		).toBe(0);
+		expect(logs).toEqual([
+			`telegram: restart owner notice skipped — watchers file unreadable/malformed at ${path}`,
+		]);
+	});
+
+	it("constructs bridge notifier storage under the daemon pijHome", () => {
+		const deps = bridgeNotifierDepsForDaemon(
+			home,
+			new FsRegistry(home),
+			new FsChannel(home),
+			() => {},
+		);
+
+		expect(deps.store.pathFor("pij-telegram")).toBe(join(home, "pij-telegram", "watchdog.json"));
+	});
+
+	it("wires production restart notices through watchers, never single-prime inference", () => {
+		const source = readFileSync(join(import.meta.dirname, "daemon.ts"), "utf8");
+		// Call-site pin: the daemon must delegate deps construction to the factory. The pathFor
+		// test above senses args inside the factory only; this pins the binding it cannot see.
+		expect(source).toContain("notifyOwner: wireBridgeRestartNotifier(");
+		expect(source).toContain("bridgeNotifierDepsForDaemon(pijHome, registry, channel, log)");
+		expect(source).not.toContain("expected one live prime");
+	});
+
 	it("invokes bridge supervision once per tick and disposes it with the daemon", async () => {
 		let ticks = 0;
 		let disposed = 0;

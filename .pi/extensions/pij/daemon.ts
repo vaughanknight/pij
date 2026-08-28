@@ -44,7 +44,7 @@ import { FsSpineLog } from "./adapters/spine-store.js";
 import { SqliteQueue } from "./adapters/sqlite-queue.js";
 
 import { FsWatchStore } from "./adapters/watch-store.js";
-import { FsWatchdogGlobalStore, FsWatchdogStore } from "./adapters/watchdog-store.js";
+import { FsWatchdogGlobalStore, FsWatchdogStore, isWatcher } from "./adapters/watchdog-store.js";
 import { planOnceClose } from "./core/agent-peer.js";
 import { sweepStaleTmp } from "./core/agents/inline.js";
 import { resolvePijHome } from "./core/agents/paths.js";
@@ -139,6 +139,138 @@ const ARCHIVE_PRUNE_INTERVAL_MS = 60 * 60_000;
  *  path that pij#181 and pij#229 just finished clearing. */
 const TAP_SWEEP_INTERVAL_MS = 5 * 60_000;
 type PushedTransition = "stalled" | "dead" | "provider-failure";
+
+export interface BridgeRestartWatcherNoticeDeps {
+	readonly store: Pick<FsWatchdogStore, "pathFor" | "read" | "writeCapture">;
+	readonly channel: DeliveryPort;
+	readonly nowMs: number;
+	readonly captureText: string;
+	readonly log: (message: string) => void;
+}
+
+/** Notify every explicit watcher of the Telegram bridge restart.
+ *
+ * Watchers are the supervision authority; machine-wide primes are unrelated and
+ * may legitimately be plural. Direct delivery deliberately bypasses the bridge's
+ * relay/watchdog exemption. */
+export function notifyBridgeRestartWatchers(
+	message: string,
+	deps: BridgeRestartWatcherNoticeDeps,
+): number {
+	const sidecarPath = deps.store.pathFor(TELEGRAM_PEER_ID);
+	const sidecar = deps.store.read(TELEGRAM_PEER_ID);
+	if (sidecar === undefined) {
+		try {
+			const raw = JSON.parse(readFileSync(sidecarPath, "utf8")) as {
+				watchers?: unknown;
+			};
+			const entries = Array.isArray(raw.watchers) ? raw.watchers : [];
+			const malformed = entries.filter((entry) => !isWatcher(entry)).length;
+			deps.log(
+				`telegram: restart owner notice skipped — watchers file unreadable/malformed at ${sidecarPath} (${entries.length} dropped, ${malformed} malformed)`,
+			);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+				deps.log(
+					`telegram: restart owner notice skipped — ${TELEGRAM_PEER_ID} has no watchers at ${sidecarPath}`,
+				);
+			} else {
+				deps.log(
+					`telegram: restart owner notice skipped — watchers file unreadable/malformed at ${sidecarPath}`,
+				);
+			}
+		}
+		return 0;
+	}
+	const watcherIds = [...new Set((sidecar.watchers ?? []).map((watcher) => watcher.watcherId))];
+	if (watcherIds.length === 0) {
+		deps.log(
+			`telegram: restart owner notice skipped — ${TELEGRAM_PEER_ID} has no watchers at ${sidecarPath}`,
+		);
+		return 0;
+	}
+	let notified = 0;
+	for (const watcherId of watcherIds) {
+		try {
+			const capture = deps.store.writeCapture(
+				watcherId,
+				TELEGRAM_PEER_ID,
+				deps.nowMs,
+				deps.captureText,
+			);
+			const delivered = deps.channel.deliver({
+				from: TELEGRAM_PEER_ID,
+				to: watcherId,
+				body: `⚠️ ${message}. Capture: ${capture}`,
+			});
+			if (!delivered.ok) {
+				deps.log(`telegram: restart watcher notice failed for ${watcherId} — ${delivered.message}`);
+				continue;
+			}
+			notified += 1;
+		} catch (error) {
+			deps.log(
+				`telegram: restart watcher capture failed for ${watcherId} — ${(error as Error).message}`,
+			);
+		}
+	}
+	return notified;
+}
+
+export interface BridgeRestartNotifierDeps {
+	readonly pijHome: string;
+	/** Supplied by the real closure so tests can prove plural primes are ignored. */
+	readonly registry: Pick<RegistryPort, "list">;
+	readonly store: Pick<FsWatchdogStore, "pathFor" | "read" | "writeCapture">;
+	readonly channel: DeliveryPort;
+	readonly now: () => number;
+	readonly log: (message: string) => void;
+}
+
+export function bridgeNotifierDepsForDaemon(
+	pijHome: string,
+	registry: Pick<RegistryPort, "list">,
+	channel: DeliveryPort,
+	log: (message: string) => void,
+): BridgeRestartNotifierDeps {
+	return {
+		pijHome,
+		registry,
+		store: new FsWatchdogStore(pijHome),
+		channel,
+		now: () => Date.now(),
+		log,
+	};
+}
+
+/** Build the exact `notifyOwner` closure passed to bridge supervision. */
+export function wireBridgeRestartNotifier(
+	deps: BridgeRestartNotifierDeps,
+): (message: string) => number {
+	return (message) => {
+		const primeCount = deps.registry
+			.list()
+			.filter(
+				(descriptor) =>
+					descriptor.prime === true &&
+					descriptor.lifecycle !== "dissolved" &&
+					descriptor.lifecycle !== "failed",
+			).length;
+		let captureText = `${message}\n\nregistered primes at restart: ${primeCount}`;
+		try {
+			captureText += `\n\n${readFileSync(join(deps.pijHome, "telegram-bridge.log"), "utf8").slice(-4096)}`;
+		} catch (error) {
+			deps.log(`telegram: restart capture has no bridge log tail — ${(error as Error).message}`);
+		}
+		return notifyBridgeRestartWatchers(message, {
+			store: deps.store,
+			channel: deps.channel,
+			nowMs: deps.now(),
+			captureText,
+			log: deps.log,
+		});
+	};
+}
 
 class DaemonBatonNoticeSink implements BatonNoticeSink {
 	constructor(private readonly channel: DeliveryPort) {}
@@ -1707,7 +1839,6 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 		log("queue backend: fs (per-message JSON inbox files)");
 	}
 	const bridgeSpine = new FsSpineLog(pijHome);
-	const bridgeCaptures = new FsWatchdogStore(pijHome);
 	const bridgeSupervisor = bridgeSupervisorForDaemon(pijHome, {
 		now: () => Date.now(),
 		log,
@@ -1727,48 +1858,9 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 			const appended = bridgeSpine.append(built.value);
 			if (!appended.ok) log(`telegram: restart spine note failed — ${appended.message}`);
 		},
-		notifyOwner: (message) => {
-			const owners = registry
-				.list()
-				.filter(
-					(descriptor) =>
-						descriptor.prime === true &&
-						descriptor.lifecycle !== "dissolved" &&
-						descriptor.lifecycle !== "failed",
-				);
-			if (owners.length !== 1) {
-				log(
-					`telegram: restart owner notice skipped — expected one live prime, found ${owners.length}`,
-				);
-				return;
-			}
-			const owner = owners[0];
-			if (!owner) return;
-			let captureText = message;
-			try {
-				captureText += `\n\n${readFileSync(join(pijHome, "telegram-bridge.log"), "utf8").slice(-4096)}`;
-			} catch (error) {
-				log(`telegram: restart capture has no bridge log tail — ${(error as Error).message}`);
-			}
-			try {
-				const capture = bridgeCaptures.writeCapture(
-					owner.id,
-					TELEGRAM_PEER_ID,
-					Date.now(),
-					captureText,
-				);
-				// Direct delivery is intentional: the bridge is relay/exempt, but an
-				// infrastructure restart must still reach its owner.
-				const delivered = channel.deliver({
-					from: TELEGRAM_PEER_ID,
-					to: owner.id,
-					body: `⚠️ ${message}. Capture: ${capture}`,
-				});
-				if (!delivered.ok) log(`telegram: restart owner notice failed — ${delivered.message}`);
-			} catch (error) {
-				log(`telegram: restart owner capture failed — ${(error as Error).message}`);
-			}
-		},
+		notifyOwner: wireBridgeRestartNotifier(
+			bridgeNotifierDepsForDaemon(pijHome, registry, channel, log),
+		),
 	});
 	const daemon = new Daemon(
 		pijHome,

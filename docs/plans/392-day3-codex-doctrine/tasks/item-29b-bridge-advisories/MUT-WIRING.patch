@@ -1,0 +1,61 @@
+diff --git a/.pi/extensions/pij/daemon.ts b/.pi/extensions/pij/daemon.ts
+--- a/.pi/extensions/pij/daemon.ts
++++ b/.pi/extensions/pij/daemon.ts
+@@ -215,27 +215,32 @@
+ export function wireBridgeRestartNotifier(
+-	deps: BridgeRestartNotifierDeps,
+-): (message: string) => number {
+-	return (message) => {
+-		const primeCount = deps.registry
+-			.list()
+-			.filter(
+-				(descriptor) =>
+-					descriptor.prime === true &&
+-					descriptor.lifecycle !== "dissolved" &&
+-					descriptor.lifecycle !== "failed",
+-			).length;
+-		let captureText = `${message}\n\nregistered primes at restart: ${primeCount}`;
+-		try {
+-			captureText += `\n\n${readFileSync(join(deps.pijHome, "telegram-bridge.log"), "utf8").slice(-4096)}`;
+-		} catch (error) {
+-			deps.log(`telegram: restart capture has no bridge log tail — ${(error as Error).message}`);
+-		}
+-		return notifyBridgeRestartWatchers(message, {
+-			store: deps.store,
+-			channel: deps.channel,
+-			nowMs: deps.now(),
+-			captureText,
+-			log: deps.log,
+-		});
+-	};
++	deps: BridgeRestartNotifierDeps,
++): (message: string) => number {
++	return (message) => {
++		if (
++			deps.registry.list().filter((descriptor) => descriptor.prime === true).length !== 1
++		) {
++			return 0;
++		}
++		const primeCount = deps.registry
++			.list()
++			.filter(
++				(descriptor) =>
++					descriptor.prime === true &&
++					descriptor.lifecycle !== "dissolved" &&
++					descriptor.lifecycle !== "failed",
++			).length;
++		let captureText = `${message}\n\nregistered primes at restart: ${primeCount}`;
++		try {
++			captureText += `\n\n${readFileSync(join(deps.pijHome, "telegram-bridge.log"), "utf8").slice(-4096)}`;
++		} catch (error) {
++			deps.log(`telegram: restart capture has no bridge log tail — ${(error as Error).message}`);
++		}
++		return notifyBridgeRestartWatchers(message, {
++			store: deps.store,
++			channel: deps.channel,
++			nowMs: deps.now(),
++			captureText,
++			log: deps.log,
++		});
++	};
+ }
