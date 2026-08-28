@@ -76,3 +76,6 @@ Author: pij-relative-panther (pij o-prime). Facts verified at 23:4xZ from `gh pr
 
 ## Amendment 23:5xZ — §6 ETA
 Item 24's set-review found the dedup invariant itself wrong (count-based identity aliases same-total bubble distributions → an oversize-failure notice silently suppressed; media bubbles never marked → a file delivered twice). Ruled a final pass (spine 29925): identity = sha256 of the ordered planned bubble set; every bubble, media included, indexed and marked on positive ack. Adds ~1–2 h: item-24 PR ≈ 3–4 h from 23:50Z; stable candidate ≈ 2026-08-28 06:00–09:00Z (16:00–19:00 AEST); RC after restart #6 ≈ 5 h. Sent to kingfisher 23:5xZ.
+
+## Amendment 00:3xZ — §3/§6: bridge log sink
+The in-process Telegram bridge (item 29, live since restart #5 at 20:53Z) writes no persistent log; `~/.pij/telegram-bridge.log` is the retired standalone bridge's file and ends at 20:53Z. The transient-network cause given for the three late rows (4951/5014/5087) is therefore a hypothesis; proven: single-bubble bodies, attempt 1 failed, attempt 2 delivered ~65 s later, phone shows once. Pre-tag requirement added: the sink is restored (item 24 or 29b-rest) and restart #6's live proof checks the file's mtime advances.
