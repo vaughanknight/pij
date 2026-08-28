@@ -106,3 +106,6 @@ PR #34 item 30 (Telegram routing per Vaughan's ruling) merged → main 3411794 i
 
 ## Amendment 04:1xZ — §1 LIVE
 Restart #6 done 04:10:36–04:11:06Z (30 s) in kingfisher's lane: daemon pid 63524 on 916e915 (source 3411794). Live now: PRs #1–#34 — items 15, 15-FX, 16, 29b-T001, 31, 24, 30 added. All proofs passed (locks absent after stop; bridge-restart notice reached the watcher; 385-char Telegram body attempt 1 in 3 s with the bridge log advancing; watchdog next-due live). Not live: item 32 (PR #33, 32-FX) → restart #7. Tag v0.2.0 waits on §7 decisions 2–6 and the 1-h chore-6 measurement (24b trigger).
+
+## Amendment 04:2xZ — item 31 boundary proof
+The 04:25:54Z PA sweep arrived without the "watchdog unknown — not a health claim" / "gone quiet (stalled)" pair for the first time since 21:25Z — item 31 proven live at a real boundary. Post-restart bridge reading 1/4: attempt>1 = 0.
