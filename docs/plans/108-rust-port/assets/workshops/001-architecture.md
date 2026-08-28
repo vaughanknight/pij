@@ -137,3 +137,11 @@ prime rulings recorded in this file.
   carries the resolved cwd; canary asserts it); (c) doctrine already held: absolute paths
   in every packet. Instrument note: capture the actual spawn-invocation cwd before calling
   a misroute a spawn defect — pij spawn inherits process cwd BY DESIGN today.
+- R5 item 3 SHARPENED (ermine, verified recurrence 2026-08-28 06:22Z): #19 alias minting is
+  MID-SESSION (~21 min after canonical: yielding-sparrow 06:01 -> alias coloured-xoxarle
+  06:22; same pid/pane/spawnId/cwd/parent, DISTINCT native session ids, and the window
+  field DIVERGED @251 vs @258 with live pane at @258). Two port consequences: (1) a canary
+  proof EXPIRES over the seat lifetime — containment must be continuous, so pij-rs
+  registration dedup runs on every registration event, never only at spawn; (2) descriptor
+  equivalence-merge keys on (pid, proc_start, spawnId) but must tolerate divergent
+  secondary fields (window) — the freshest live-verified value wins, the rest is history.
