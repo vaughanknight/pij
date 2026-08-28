@@ -30,6 +30,16 @@ const PIJ_ROOT = resolve(import.meta.dirname, "..", "..");
 const RUNNING_NPM_MAJOR = npmMajor(
 	spawnSync("npm", ["--version"], { encoding: "utf8" }).stdout ?? "",
 );
+function isPowerShellUnavailable(error: Error | undefined): boolean {
+	return (error as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
+}
+
+const POWERSHELL_LOOKUP = spawnSync(
+	"pwsh",
+	["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "exit 0"],
+	{ stdio: "ignore" },
+);
+const POWERSHELL_UNAVAILABLE = isPowerShellUnavailable(POWERSHELL_LOOKUP.error);
 // 60s. The pwsh spawn is heavyweight and this file runs in parallel with the whole
 // suite: ~4.5s isolated (s055's measurement), ~10s isolated on a loaded machine
 // (s054's), and past 15s under full-suite contention (vitest workers + pkg audit) —
@@ -226,6 +236,16 @@ afterEach(() => {
 });
 
 describe("npm resolution policy", () => {
+	it("classifies only a missing pwsh executable as unavailable", () => {
+		expect(isPowerShellUnavailable(Object.assign(new Error("missing"), { code: "ENOENT" }))).toBe(
+			true,
+		);
+		expect(isPowerShellUnavailable(Object.assign(new Error("denied"), { code: "EACCES" }))).toBe(
+			false,
+		);
+		expect(isPowerShellUnavailable(undefined)).toBe(false);
+	});
+
 	it("freezes proxy authority, lock-host replacement, online revalidation, age, and audit", () => {
 		expect(NPM_REGISTRY_URL).toBe("https://packagefeedproxy.microsoft.io/npm/");
 		// npmjs-scoped host replacement (PR#25 adopt, dove ruling s052-npm-hardening-pr25).
@@ -564,33 +584,41 @@ describe("npm resolution policy", () => {
 		expect(invalid.stdout).toContain("run npm link from the local main checkout");
 	});
 
-	it(
-		"restores the Windows caller environment even when a governed command fails",
-		() => {
-			const evidence = probePowerShellEnvironmentRestoration(
-				resolve(PIJ_ROOT, "install-windows.ps1"),
-			);
+	const powerShellEnvironmentRestorationTest = (): void => {
+		const evidence = probePowerShellEnvironmentRestoration(
+			resolve(PIJ_ROOT, "install-windows.ps1"),
+		);
 
-			expect(evidence).toEqual({
-				insideRegistry: NPM_REGISTRY_URL,
-				insideReplaceRegistryHost: NPM_REPLACE_REGISTRY_HOST,
-				insidePreferOnline: "true",
-				insideMinReleaseAge: "7",
-				insideBeforeCleared: true,
-				restoredRegistry: "https://caller.invalid/",
-				restoredReplaceRegistryHost: "never",
-				restoredPreferOnline: "false",
-				restoredMinReleaseAge: "2",
-				restoredBefore: "2000-01-01T00:00:00.000Z",
-				rootInsideRegistry: NPM_REGISTRY_URL,
-				rootInsideReplaceRegistryHost: NPM_REPLACE_REGISTRY_HOST,
-				rootInsidePreferOnline: "true",
-				rootInsideMinReleaseAgeCleared: true,
-				rootInsideBeforeCleared: true,
-				rootRestoredAll: true,
-				errorPropagated: true,
-			});
-		},
-		POWERSHELL_TEST_TIMEOUT_MS,
-	);
+		expect(evidence).toEqual({
+			insideRegistry: NPM_REGISTRY_URL,
+			insideReplaceRegistryHost: NPM_REPLACE_REGISTRY_HOST,
+			insidePreferOnline: "true",
+			insideMinReleaseAge: "7",
+			insideBeforeCleared: true,
+			restoredRegistry: "https://caller.invalid/",
+			restoredReplaceRegistryHost: "never",
+			restoredPreferOnline: "false",
+			restoredMinReleaseAge: "2",
+			restoredBefore: "2000-01-01T00:00:00.000Z",
+			rootInsideRegistry: NPM_REGISTRY_URL,
+			rootInsideReplaceRegistryHost: NPM_REPLACE_REGISTRY_HOST,
+			rootInsidePreferOnline: "true",
+			rootInsideMinReleaseAgeCleared: true,
+			rootInsideBeforeCleared: true,
+			rootRestoredAll: true,
+			errorPropagated: true,
+		});
+	};
+	if (POWERSHELL_UNAVAILABLE) {
+		it.skip(
+			"restores the Windows caller environment even when a governed command fails (skipped: pwsh unavailable on PATH)",
+			powerShellEnvironmentRestorationTest,
+		);
+	} else {
+		it(
+			"restores the Windows caller environment even when a governed command fails",
+			powerShellEnvironmentRestorationTest,
+			POWERSHELL_TEST_TIMEOUT_MS,
+		);
+	}
 });
