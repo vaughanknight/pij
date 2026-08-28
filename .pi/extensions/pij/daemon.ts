@@ -148,29 +148,36 @@ export function notifyBridgeRestartWatchers(
 	message: string,
 	deps: BridgeRestartWatcherNoticeDeps,
 ): number {
+	const sidecarPath = deps.store.pathFor(TELEGRAM_PEER_ID);
 	const sidecar = deps.store.read(TELEGRAM_PEER_ID);
 	if (sidecar === undefined) {
 		try {
-			const raw = JSON.parse(readFileSync(deps.store.pathFor(TELEGRAM_PEER_ID), "utf8")) as {
+			const raw = JSON.parse(readFileSync(sidecarPath, "utf8")) as {
 				watchers?: unknown;
 			};
 			const entries = Array.isArray(raw.watchers) ? raw.watchers : [];
 			const malformed = entries.filter((entry) => !isWatcher(entry)).length;
 			deps.log(
-				`telegram: restart owner notice skipped — watchers file unreadable/malformed (${entries.length} dropped, ${malformed} malformed)`,
+				`telegram: restart owner notice skipped — watchers file unreadable/malformed at ${sidecarPath} (${entries.length} dropped, ${malformed} malformed)`,
 			);
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-				deps.log(`telegram: restart owner notice skipped — ${TELEGRAM_PEER_ID} has no watchers`);
+				deps.log(
+					`telegram: restart owner notice skipped — ${TELEGRAM_PEER_ID} has no watchers at ${sidecarPath}`,
+				);
 			} else {
-				deps.log("telegram: restart owner notice skipped — watchers file unreadable/malformed");
+				deps.log(
+					`telegram: restart owner notice skipped — watchers file unreadable/malformed at ${sidecarPath}`,
+				);
 			}
 		}
 		return 0;
 	}
 	const watcherIds = [...new Set((sidecar.watchers ?? []).map((watcher) => watcher.watcherId))];
 	if (watcherIds.length === 0) {
-		deps.log(`telegram: restart owner notice skipped — ${TELEGRAM_PEER_ID} has no watchers`);
+		deps.log(
+			`telegram: restart owner notice skipped — ${TELEGRAM_PEER_ID} has no watchers at ${sidecarPath}`,
+		);
 		return 0;
 	}
 	let notified = 0;
@@ -209,6 +216,22 @@ export interface BridgeRestartNotifierDeps {
 	readonly channel: DeliveryPort;
 	readonly now: () => number;
 	readonly log: (message: string) => void;
+}
+
+export function bridgeNotifierDepsForDaemon(
+	pijHome: string,
+	registry: Pick<RegistryPort, "list">,
+	channel: DeliveryPort,
+	log: (message: string) => void,
+): BridgeRestartNotifierDeps {
+	return {
+		pijHome,
+		registry,
+		store: new FsWatchdogStore(pijHome),
+		channel,
+		now: () => Date.now(),
+		log,
+	};
 }
 
 /** Build the exact `notifyOwner` closure passed to bridge supervision. */
@@ -1750,7 +1773,6 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 	}
 	const registry = new FsRegistry(pijHome);
 	const bridgeSpine = new FsSpineLog(pijHome);
-	const bridgeCaptures = new FsWatchdogStore(pijHome);
 	const bridgeSupervisor = bridgeSupervisorForDaemon(pijHome, {
 		now: () => Date.now(),
 		log,
@@ -1770,14 +1792,9 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 			const appended = bridgeSpine.append(built.value);
 			if (!appended.ok) log(`telegram: restart spine note failed — ${appended.message}`);
 		},
-		notifyOwner: wireBridgeRestartNotifier({
-			pijHome,
-			registry,
-			store: bridgeCaptures,
-			channel,
-			now: () => Date.now(),
-			log,
-		}),
+		notifyOwner: wireBridgeRestartNotifier(
+			bridgeNotifierDepsForDaemon(pijHome, registry, channel, log),
+		),
 	});
 	const daemon = new Daemon(
 		pijHome,
