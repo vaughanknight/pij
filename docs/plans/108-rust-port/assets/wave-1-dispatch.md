@@ -10,13 +10,11 @@ files, and the corpus by address.
 | u-queue (finish) + u-events | queue hardening + the event bus on the spine | 400K | single-seam pair behind frozen traits; corpus-backed |
 | u-tmux | TmuxPort real adapter (list/send/capture/kill/new-window/typing-gate) | 400K | single service; fixtures already captured |
 | u-liveness | (pid, proc_start) verdicts + recycled detection + LivenessPort adapter | 400K | smallest unit; decision-table shaped |
-## Reviewer: ONE cross-model reviewer after composition (PM composes).
-OPEN CALL FOR JORDAN: gpt-5.6-sol high (lynx's ruled default; wasp went 11-for-11 findings
-across two rounds on wave 0) vs cross-provider kimi-k3 (ermine's convergence caution).
-Wave-0 evidence favors sol: findings were real, none refuted, no convergence observed —
-but wave 0's coder was opus (cross-family by construction); wave 1's coders are sol-fast,
-so the same-family risk APPLIES for the first time. Recommendation: kimi-k3 via openrouter
-for wave 1, measure noise; fall back to sol if kimi under-performs.
+## Reviewer: RULED by Jordan 2026-08-29 — z-ai/glm-5.3-flash via openrouter.
+Cross-provider from the sol-fast coders (wave 1's first same-family-risk wave); spawn
+form: `pij spawn --harness pi --bin omp --model openrouter/z-ai/glm-5.3-flash --effort high`
+(confirm exact selector against live `pij models --harness omp --json` before dispatch —
+openrouter ids sometimes carry a date/version suffix). One reviewer, after composition.
 ## Spawn form (Jordan 2026-08-28, correcting an observed copilot-CLI reviewer spawn)
 Every coder/reviewer seat: OMP harness — `pij spawn --harness pi --bin omp --model github-copilot/gpt-5.6-sol-fast-1m --effort high` (400K units use selector `github-copilot/gpt-5.6-sol-fast`). NEVER the copilot CLI harness. Packets carry this line verbatim.
 
