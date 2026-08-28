@@ -3,6 +3,8 @@
 import type { SemanticState, WatchdogPauseTier, WatchdogSidecar } from "./types.js";
 
 // ─── watchdog configuration ─────────────────────────────────────────────────
+export const SENSOR_DAEMON = "pij-daemon";
+export const SENSOR_WATCHDOG = "pij-watchdog";
 export const DEFAULT_WATCHDOG_INTERVAL_MS = 20 * 60 * 1_000;
 /** A safety exemption is deliberately temporary: a daemon restart must never
  * turn one incident response into permanent watchdog blindness. */
@@ -155,18 +157,28 @@ export function watchdogScheduleAnchorMs(source: WatchdogScheduleSource): number
  * floor, deliberately removing ordinary activity re-anchoring: a PM that works
  * without reporting is still nudged. Delivered fires retain the freeze cadence.
  */
+export function nextFireDueAtMs(
+	cfg: EffectiveWatchdogConfig,
+	lastFireAt: number | null,
+	scheduleAnchorAt: number | null,
+): number | null {
+	if (!cfg.enabled || cfg.pausedBy !== undefined) return null;
+	const anchors = [lastFireAt, scheduleAnchorAt].filter(
+		(value): value is number => value !== null && Number.isFinite(value),
+	);
+	if (anchors.length === 0) return null;
+	const dueAt = Math.max(...anchors) + cfg.intervalMs;
+	return Number.isFinite(dueAt) ? dueAt : null;
+}
+
 export function isFireDue(
 	cfg: EffectiveWatchdogConfig,
 	lastFireAt: number | null,
 	scheduleAnchorAt: number | null,
 	nowMs: number,
 ): boolean {
-	if (!cfg.enabled || cfg.pausedBy !== undefined) return false;
-	const anchors = [lastFireAt, scheduleAnchorAt].filter(
-		(value): value is number => value !== null && Number.isFinite(value),
-	);
-	if (anchors.length === 0) return false;
-	return nowMs - Math.max(...anchors) >= cfg.intervalMs;
+	const dueAt = nextFireDueAtMs(cfg, lastFireAt, scheduleAnchorAt);
+	return dueAt !== null && nowMs >= dueAt;
 }
 
 // ─── response derivation ────────────────────────────────────────────────────
@@ -276,16 +288,15 @@ export function isAnomalyVerdict(response: WatchdogResponse): boolean {
 	}
 }
 
-/** Render a verdict as the head of a watcher notice.
+/** Render a verdict as notice text.
  *
- * `unknown` carries a second line saying WHY there is no grade, so a watcher can
- * never read it as a quiet pass. Suppressing the notice entirely was the other
- * option in pij#161 and was rejected: silence would then mean *nothing happened*
- * OR *something happened I could not grade*, which is the same
- * absence-renders-as-something defect one level up, and harder to notice because
- * there is nothing to look at.
- *
- * Exhaustive by compiler for the same reason as `isAnomalyVerdict`. */
+ * pij#161 originally chose to deliver `unknown` so a missing grade could not be
+ * mistaken for a quiet pass. Item 31 / AC-28 deliberately reverses that delivery
+ * policy: recurring no-evidence notices imposed attention cost without a health
+ * claim. WatchdogManager now logs one bounded line as the compensating record and
+ * publishes only measured verdicts. The `unknown` arm remains exhaustive for
+ * diagnostic callers.
+ */
 export function verdictNoticeLines(response: WatchdogResponse, id: string): string[] {
 	switch (response) {
 		case "responsive":

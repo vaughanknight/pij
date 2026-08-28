@@ -22,6 +22,12 @@ fleet-wide reboot. Notice routing reads only the hot registry because archived
 seats cannot be live recipients. Explicit `pij watchdog watch` subscriptions
 remain a separate fan-out mechanism.
 
+Sensor notices are signed by the sensor, never by the observed seat:
+watchdog-derived notices use `pij-watchdog`; bind, legacy-stall,
+provider-failure, and death notices use `pij-daemon`. The observed seat remains
+named in the body. Because sensor ids are not registered sessions, a delivery
+receipt addressed back to one is dropped without error.
+
 ## Intent — never watch a peer whose silence is deliberate
 
 The watchdog exists to catch a peer that *should* be making progress but has gone
@@ -156,6 +162,11 @@ pij watchdog interval pij-example 45m
 un-paused, and **un-exempt**) immediately. `resume` never downgrades a live
 exemption; reset is the explicit early re-arm path.
 
+The scheduler's `next due` projection is the live fire clock:
+`max(last delivered fire, schedule anchor) + interval`. It advances after each
+delivered fire and re-anchors when `statusAt` moves, so `pij watchdog status`
+shows the same deadline the manager will actually use.
+
 `watch` subscribes the calling peer, resolved from `PIJ_SESSION_ID` or its
 adopted pane. `unwatch` removes that caller's subscription. Status/state/list
 JSON exposes:
@@ -252,10 +263,21 @@ persist `failureReason:"stalled"`. No output means:
 - no real pre-injection pane change; and
 - no real descriptor `lastEventAt` advance.
 
+A due fire with no response outstanding has an `unknown` verdict: no evidence
+was examined. The daemon logs `watchdog unknown: <id> (not delivered)`, still
+sends the new watchdog turn to the seat, and creates no watcher notice or
+capture. Only measured `responsive`, `suspect`, and `stalled` verdicts reach
+watchers.
+
 Owner and anomaly-watcher stalled notices share one episode latch: each gets at
 most one stalled notice during uninterrupted silence. Real typed recovery
 clears both the reason and latch. Blind scheduling continues during the frozen
 episode; the next turn is simply processed if the peer thaws.
+
+The legacy descriptor-based `gone quiet (stalled)` detector also respects a
+configured seat cadence. Its threshold is `max(60 seconds, intervalMs)`; a seat
+with no watchdog sidecar keeps the historical 60-second threshold, and a live
+exemption still suppresses the detector.
 
 The descriptor is the activity-axis truth. Watchdog decisions do **not** read
 `events.ndjson`.

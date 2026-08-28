@@ -223,6 +223,12 @@ function unreadBodies(to: string): string[] {
 	return unread.value.map((message) => message.body);
 }
 
+function unreadMessages(to: string) {
+	const unread = new FsChannel(home).listUnread(to);
+	if (!unread.ok) throw new Error(unread.message);
+	return unread.value;
+}
+
 function messagePath(to: string, messageId: string): string {
 	return join(home, to, "inbox", `msg-${messageId}.json`);
 }
@@ -1946,6 +1952,100 @@ describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
 });
 
 describe("Daemon.tick provider-failure peek", () => {
+	describe("legacy stall threshold follows the effective watchdog interval", () => {
+		const EVENT_AT_MS = NOW_MS - 5 * 60_000;
+
+		function workingSeat(lastEventAtMs = EVENT_AT_MS): SessionDescriptor {
+			return desc({
+				id: "pij-interval-seat",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess-stall",
+				spawnedBy: "pij-boss",
+				state: "working",
+				startedAt: new Date(lastEventAtMs).toISOString(),
+				statusAt: new Date(lastEventAtMs).toISOString(),
+				lastEventAt: new Date(lastEventAtMs).toISOString(),
+			});
+		}
+
+		it("waits for a 20-minute seat interval before reporting legacy stalled", async () => {
+			let nowMs = NOW_MS;
+			const registry = new FsRegistry(home);
+			registry.write(recipientDescriptor("pij-boss", "live", 101));
+			registry.write(workingSeat());
+			new FsWatchdogStore(home).write("pij-interval-seat", { intervalMs: 20 * 60_000 });
+			const daemon = new Daemon(
+				home,
+				fakePorts({
+					now: () => nowMs,
+					isAlive: () => true,
+					paneText: "still producing output without a footer",
+				}),
+				registry,
+				new FsChannel(home),
+			);
+
+			await daemon.tick();
+			expect(messageBodies("pij-boss")).toEqual([]);
+			expect(registry.read("pij-interval-seat")?.failureReason).toBeUndefined();
+
+			nowMs = EVENT_AT_MS + 21 * 60_000;
+			await daemon.tick();
+			expect(messageBodies("pij-boss")).toHaveLength(1);
+			expect(unreadMessages("pij-boss")[0]?.from).toBe("pij-daemon");
+			expect(registry.read("pij-interval-seat")?.failureReason).toBe("stalled");
+		});
+
+		it("keeps the 60-second threshold for a seat with no sidecar", async () => {
+			const eventAtMs = NOW_MS - STALE_AFTER_MS - 1;
+			const registry = new FsRegistry(home);
+			registry.write(recipientDescriptor("pij-boss", "live", 101));
+			registry.write(workingSeat(eventAtMs));
+
+			await new Daemon(
+				home,
+				fakePorts({
+					nowMs: NOW_MS,
+					isAlive: () => true,
+					paneText: "still producing output without a footer",
+				}),
+				registry,
+				new FsChannel(home),
+			).tick();
+
+			expect(messageBodies("pij-boss")).toHaveLength(1);
+			expect(registry.read("pij-interval-seat")?.failureReason).toBe("stalled");
+		});
+
+		it("still suppresses legacy stall detection for an exempt seat", async () => {
+			const registry = new FsRegistry(home);
+			registry.write(recipientDescriptor("pij-boss", "live", 101));
+			registry.write(workingSeat(NOW_MS - 21 * 60_000));
+			new FsWatchdogStore(home).write("pij-interval-seat", {
+				intervalMs: 20 * 60_000,
+				pausedBy: "exempt",
+				pausedAtMs: NOW_MS - 1_000,
+				exemptUntilMs: NOW_MS + 60_000,
+			});
+
+			await new Daemon(
+				home,
+				fakePorts({
+					nowMs: NOW_MS,
+					isAlive: () => true,
+					paneText: "still producing output without a footer",
+				}),
+				registry,
+				new FsChannel(home),
+			).tick();
+
+			expect(messageBodies("pij-boss")).toEqual([]);
+			expect(registry.read("pij-interval-seat")?.failureReason).toBeUndefined();
+		});
+	});
+
 	it.each([
 		["adopted", "pij-spawner"],
 		["parent-only", undefined],
@@ -2074,10 +2174,15 @@ describe("Daemon.tick provider-failure peek", () => {
 
 		for (nowMs of [NOW_MS, NOW_MS + 2, NOW_MS + 4]) await daemon.tick();
 
-		const delivered = delivery.outbox
-			.filter(({ message }) => message.body.match(/stall|quiet/i))
-			.map(({ message }) => message.to);
-		expect(delivered).toEqual(expectedRecipient === null ? [] : [expectedRecipient]);
+		const stalledNotices = delivery.outbox.filter(({ message }) =>
+			message.body.match(/stall|quiet/i),
+		);
+		expect(stalledNotices.map(({ message }) => message.to)).toEqual(
+			expectedRecipient === null ? [] : [expectedRecipient],
+		);
+		expect(stalledNotices.map(({ message }) => message.from)).toEqual(
+			expectedRecipient === null ? [] : ["pij-watchdog"],
+		);
 		expect(logs.filter((line) => line.startsWith("notice stalled for"))).toEqual(
 			expectedRecipient === null
 				? [
@@ -2120,6 +2225,7 @@ describe("Daemon.tick provider-failure peek", () => {
 		).tick();
 
 		expect(messageBodies("pij-parent").join("\n")).toContain("quota");
+		expect(unreadMessages("pij-parent")[0]?.from).toBe("pij-daemon");
 		expect(messageBodies("pij-spawner")).toEqual([]);
 	});
 
@@ -2495,6 +2601,27 @@ describe("Daemon.tick — compact-window queue-not-drop (DL-004)", () => {
 		expect(messageBodies("pij-boss")).toContain(
 			receiptBody(delivered.value.messageId, "delivered"),
 		);
+	});
+
+	it("drops a delivery receipt addressed back to an unregistered sensor id", async () => {
+		const registry = new FsRegistry(home);
+		registry.write(boundClaude());
+		const channel = new FsChannel(home);
+		const delivered = channel.deliver({
+			from: "pij-daemon",
+			to: "pij-c",
+			body: "sensor notice",
+		});
+		if (!delivered.ok) throw new Error(delivered.message);
+		const ports = fakePorts({ nowMs: NOW_MS });
+
+		await new Daemon(home, ports, registry, channel).tick();
+
+		expect(ports.sent).toContainEqual({
+			pane: "%4",
+			text: "[pij from pij-daemon] sensor notice",
+		});
+		expect(messageBodies("pij-daemon")).toEqual([]);
 	});
 
 	it("a mark stale past COMPACT_MAX_MS clears even on a busy pane — drain resumes (no wedged queue)", async () => {

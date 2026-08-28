@@ -104,7 +104,7 @@ describe("death reconciler", () => {
 			evidence: "pid-missing",
 		});
 		expect(result.notices).toEqual([
-			expect.objectContaining({ to: "pij-parent", historical: false }),
+			expect.objectContaining({ from: "pij-daemon", to: "pij-parent", historical: false }),
 		]);
 	});
 
@@ -131,7 +131,7 @@ describe("death reconciler", () => {
 		});
 
 		expect(result.notices.map(({ from, to }) => ({ from, to }))).toEqual([
-			{ from: "pij-child", to: "pij-current-parent" },
+			{ from: "pij-daemon", to: "pij-current-parent" },
 		]);
 	});
 
@@ -168,6 +168,39 @@ describe("death reconciler", () => {
 		expect(result.notices).toEqual([]);
 		expect(result.noticesSuppressed).toBe(1);
 		expect(result.withheldNoticeSubjects).toEqual(["pij-child"]);
+	});
+
+	it("keeps fixed-notice subject ids distinct from the daemon sensor sender", () => {
+		const terminal = {
+			disposition: "unrequested-by-pij" as const,
+			evidence: "pid-missing" as const,
+			observedAt: "2026-07-20T00:00:01.000Z",
+		};
+		const expectations = Array.from({ length: 4 }, (_, index) =>
+			createSpawnExpectation({
+				spawnId: `s-dead-${index}`,
+				creatorId: "pij-dead-owner",
+				requestedHarness: "pi",
+				requestedAt: "2026-07-19T00:00:00.000Z",
+			}),
+		);
+
+		const result = reconcileDeaths({
+			descriptors: [
+				descriptor({
+					id: "pij-dead-owner",
+					spawnedBy: undefined,
+					terminal,
+				}),
+			],
+			expectations,
+			nowIso: "2026-07-20T00:00:02.000Z",
+			isAlive: () => false,
+		});
+
+		expect(result.notices).toEqual([]);
+		expect(result.noticesSuppressed).toBe(4);
+		expect(result.withheldNoticeSubjects).toEqual(["s-dead-0", "s-dead-1", "s-dead-2"]);
 	});
 
 	it.each([
@@ -208,7 +241,7 @@ describe("death reconciler", () => {
 		});
 
 		expect(result.notices.map(({ from, to }) => ({ from, to }))).toEqual([
-			{ from: "pij-child", to: "pij-original-spawner" },
+			{ from: "pij-daemon", to: "pij-original-spawner" },
 		]);
 		expect(result.noticesSuppressed).toBe(0);
 	});
@@ -287,7 +320,7 @@ describe("death reconciler", () => {
 			paneExists: () => false,
 		});
 		expect(first.expectationUpdates[0]?.terminal?.disposition).toBe("unrequested-by-pij");
-		expect(first.notices[0]).toMatchObject({ historical: false });
+		expect(first.notices[0]).toMatchObject({ from: "pij-daemon", historical: false });
 		const restarted = reconcileDeaths({
 			descriptors: [],
 			expectations: first.expectationUpdates,

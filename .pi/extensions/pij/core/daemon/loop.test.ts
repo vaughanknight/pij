@@ -377,6 +377,9 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(
 			del.outbox.some((e) => e.message.to === "pij-boss" && e.message.body.includes("ready")),
 		).toBe(true);
+		expect(del.outbox.find((e) => e.message.body.includes("ready"))?.message.from).toBe(
+			"pij-daemon",
+		);
 	});
 
 	it("discovery bind notifies a parent-only descriptor", () => {
@@ -626,7 +629,7 @@ This session was last active just now and appears to be in use by another CLI or
 		// planned id like copilot — even with NO new transcript (empty discovery set).
 		// Binding is gated on firstInferenceSeen (FIX-1) — one tick after the busy turn.
 		const w = world({ pane: READY, transcripts: [] });
-		const reg = new FakeRegistry();
+		const reg = new FakeRegistry([recipientDescriptor("pij-boss", "live")]);
 		const del = new FakeDelivery();
 		const drive: DriveState = { readyAtMs: 1000, firstInferenceSeen: true };
 		w.ports.processSnapshot = () => processSnapshot("claude", "fork-uuid");
@@ -645,6 +648,9 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(out).toEqual({ kind: "bound", harnessSessionId: "fork-uuid" });
 		expect(reg.read("pij-w")?.harnessSessionId).toBe("fork-uuid");
 		expect(reg.read("pij-w")?.lifecycle).toBe("bound");
+		expect(del.outbox.find((event) => event.message.body.includes("ready"))?.message.from).toBe(
+			"pij-daemon",
+		);
 	});
 
 	it("planned binding refuses a pane whose harness process names another session", () => {
@@ -671,6 +677,7 @@ This session was last active just now and appears to be in use by another CLI or
 		);
 		expect(refusals).toHaveLength(1);
 		expect(refusals[0]?.message.to).toBe("pij-boss");
+		expect(refusals[0]?.message.from).toBe("pij-daemon");
 	});
 
 	it.each([
@@ -936,6 +943,9 @@ This session was last active just now and appears to be in use by another CLI or
 				(e) => e.message.to === "pij-boss" && e.message.body.includes("failed to bind"),
 			),
 		).toBe(true);
+		expect(del.outbox.find((e) => e.message.body.includes("failed to bind"))?.message.from).toBe(
+			"pij-daemon",
+		);
 	});
 
 	it("watchdog failure notifies a parent-only descriptor", () => {
