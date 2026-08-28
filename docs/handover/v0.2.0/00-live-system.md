@@ -31,4 +31,4 @@ Reference scripts from the o-prime's session (not in the repo): the sequence abo
 - Test suite at the tag: 172 files / 4160 tests / 0 failed (`npx vitest run .pi/extensions/pij/`, ~3.5 min); two known load-sensitive tests: `pij-skill-check.test.ts` (12-FX) and `adapters/claude-socket.test.ts` close-race (23-FX).
 
 ## Status report the owner reads
-perimenocause repo `government/reports/pij-status-2026-08-28-release.html` (rendered at https://peri-dev.ngrok.app/reports/pij-status-2026-08-28-release/) — narrative built from the o-prime's packet `government/reports/status-packet-2026-08-27T2345Z.md` (this repo) and its amendments.
+https://peri-dev.ngrok.app/reports/pij-status-2026-08-28-release/ (source: the separate `perimenocause` repository, path `perimenocause:government/reports/pij-status-2026-08-28-release.html` — NOT in this repo) — narrative built from the o-prime's packet `government/reports/status-packet-2026-08-27T2345Z.md` (this repo) and its amendments.
