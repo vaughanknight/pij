@@ -170,6 +170,39 @@ describe("death reconciler", () => {
 		expect(result.withheldNoticeSubjects).toEqual(["pij-child"]);
 	});
 
+	it("keeps fixed-notice subject ids distinct from the daemon sensor sender", () => {
+		const terminal = {
+			disposition: "unrequested-by-pij" as const,
+			evidence: "pid-missing" as const,
+			observedAt: "2026-07-20T00:00:01.000Z",
+		};
+		const expectations = Array.from({ length: 4 }, (_, index) =>
+			createSpawnExpectation({
+				spawnId: `s-dead-${index}`,
+				creatorId: "pij-dead-owner",
+				requestedHarness: "pi",
+				requestedAt: "2026-07-19T00:00:00.000Z",
+			}),
+		);
+
+		const result = reconcileDeaths({
+			descriptors: [
+				descriptor({
+					id: "pij-dead-owner",
+					spawnedBy: undefined,
+					terminal,
+				}),
+			],
+			expectations,
+			nowIso: "2026-07-20T00:00:02.000Z",
+			isAlive: () => false,
+		});
+
+		expect(result.notices).toEqual([]);
+		expect(result.noticesSuppressed).toBe(4);
+		expect(result.withheldNoticeSubjects).toEqual(["s-dead-0", "s-dead-1", "s-dead-2"]);
+	});
+
 	it.each([
 		"dead",
 		"dissolved",

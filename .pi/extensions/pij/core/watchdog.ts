@@ -290,9 +290,12 @@ export function isAnomalyVerdict(response: WatchdogResponse): boolean {
 
 /** Render a verdict as notice text.
  *
- * WatchdogManager publishes only measured verdicts. The `unknown` arm remains
- * exhaustive for diagnostic callers, while the live fire path logs that verdict
- * locally and deliberately does not deliver it to watchers.
+ * pij#161 originally chose to deliver `unknown` so a missing grade could not be
+ * mistaken for a quiet pass. Item 31 / AC-28 deliberately reverses that delivery
+ * policy: recurring no-evidence notices imposed attention cost without a health
+ * claim. WatchdogManager now logs one bounded line as the compensating record and
+ * publishes only measured verdicts. The `unknown` arm remains exhaustive for
+ * diagnostic callers.
  */
 export function verdictNoticeLines(response: WatchdogResponse, id: string): string[] {
 	switch (response) {

@@ -655,11 +655,12 @@ export class WatchdogManager {
 		if (state.awaitingResponse) return;
 		const anchorMs = state.activityAnchorAtMs;
 		if (anchorMs === null || !Number.isFinite(anchorMs)) return;
-		// Freshness must satisfy BOTH detectors' notion of "not stale", so the
-		// window is the tighter of the watchdog cadence and the descriptor-level
-		// threshold. A configured sidecar raises the latter to its interval; a seat
-		// without one retains the legacy 60-second floor.
-		const livenessWindowMs = Math.min(cfg.intervalMs, this.staleAfterMsFor(session.id));
+		// Freshness must satisfy BOTH detectors' notion of "not stale", so the window
+		// is the tighter of the two. STALE_AFTER_MS is what the descriptor-based
+		// detector calls stalled; the watchdog interval (20 min by default) is far
+		// looser, and using it alone would declare a peer alive that the other
+		// detector had just correctly flagged 65s into its silence.
+		const livenessWindowMs = Math.min(cfg.intervalMs, STALE_AFTER_MS);
 		if (nowMs - anchorMs >= livenessWindowMs) return;
 		if (state.livenessReportedForAnchorMs === anchorMs) return;
 		state.livenessReportedForAnchorMs = anchorMs;

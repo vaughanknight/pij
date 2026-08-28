@@ -141,3 +141,56 @@ The packet-required gates remain green: full `.pi/extensions/pij/` Vitest,
 root typecheck, and scoped Biome. Harness log:
 `.harness/temp/s391/harness-checks-phase13.log`; wrapper log:
 `/Users/vaughanknight/.pij/pij-jolly-moose/bg-mtca6dps-qio58o.log`.
+
+## FX-02 — sustained-liveness near-miss and review guards
+
+Cold review found that T006 had accidentally widened the independent
+`reportSustainedLiveness` clear window from the original 60-second ceiling to
+the seat's configured stall threshold. That was outside AC-29, undisclosed, and
+unsensored.
+
+RED:
+
+```text
+does not clear stalled from a five-minute-old event on a 20-minute interval
+Expected: stalled
+Received: undefined
+```
+
+The production line was restored byte-for-byte to
+`Math.min(cfg.intervalMs, STALE_AFTER_MS)`. The new test uses a 20-minute
+interval and an event five minutes old, proving sustained liveness does not
+clear the pinned stall. Mutating the window back to `staleAfterMsFor` reproduces
+the RED above. Evidence: `.harness/temp/s391/fx02-m1-red.log`.
+
+The death reconciler now has an explicit fixed-candidate guard proving bounded
+withheld summaries retain observed `subjectId` values (`s-dead-0..2`) rather
+than the `pij-daemon` sender. The watcher tests also restore the s097
+assertion-discipline rationale and a positive always-watcher delivery anchor
+for a measured verdict. The watchdog docblock records that item 31 / AC-28
+reversed pij#161's unknown-delivery choice because of attention cost, with the
+bounded log line as compensating evidence.
+
+F-2 mutation: changing the fixed death candidate's `subjectId` to
+`pij-daemon` made the guard RED with three received `pij-daemon` subjects
+instead of `s-dead-0`, `s-dead-1`, and `s-dead-2`. Evidence:
+`.harness/temp/s391/fx02-subject-id-red.log`.
+
+The restored production line was compared directly with the merge-base copy
+and is byte-identical:
+
+```ts
+const livenessWindowMs = Math.min(cfg.intervalMs, STALE_AFTER_MS);
+```
+
+FX-02 gates:
+
+```text
+Test Files  172 passed | 2 skipped (174)
+Tests       4123 passed | 15 skipped (4138)
+Duration    186.45s
+```
+
+Full-suite log: `.harness/temp/s391/vitest-phase13-fx02.log`.
+Root TypeScript typecheck passed. Scoped Biome passed on all changed
+TypeScript files.

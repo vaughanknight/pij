@@ -649,6 +649,7 @@ describe("WatchdogManager — watcher captures", () => {
 		const h = managerHarness();
 		const alwaysWatcher: WatchdogWatcher = {
 			...watcher,
+			watcherId: "always-watcher",
 			capture: { mode: "always", maxLines: 2, maxBytes: 64 },
 		};
 		h.store.sidecars.set("peer", intervalSidecar(100, [alwaysWatcher]));
@@ -661,9 +662,15 @@ describe("WatchdogManager — watcher captures", () => {
 		h.manager.reconcile([desc({ id: "peer", lastWatchdogFireAt: new Date(100).toISOString() })]);
 
 		expect(h.store.captures).toEqual([
-			expect.objectContaining({ watcherId: "owner", targetId: "peer", content: "healthy\nidle" }),
+			expect.objectContaining({
+				watcherId: "always-watcher",
+				targetId: "peer",
+				content: "healthy\nidle",
+			}),
 		]);
-		const notices = h.delivery.outbox.filter((item) => item.message.to === "owner");
+		const notices = h.delivery.outbox.filter((item) => item.message.to === "always-watcher");
+		// The paired positive: a measured verdict still reaches an always watcher,
+		// so the unknown-case silence above cannot pass because delivery is broken.
 		expect(notices).toHaveLength(1);
 		expect(notices[0]?.message.body).toContain("watchdog suspect: peer");
 	});
@@ -1524,6 +1531,47 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 		expect(registry.read("root")?.failureReason).toBe("stalled");
 	});
 
+	it("does not clear stalled from a five-minute-old event on a 20-minute interval", async () => {
+		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-liveness-window-"));
+		TEMP_DIRS.push(home);
+		const nowMs = 20 * 60_000;
+		const registry = new FakeRegistry([
+			desc({
+				id: "root",
+				harness: "pi",
+				lifecycle: undefined,
+				paneId: undefined,
+				spawnedBy: undefined,
+				state: "idle",
+				lastEventAt: new Date(nowMs - 5 * 60_000).toISOString(),
+				failureReason: "stalled",
+			}),
+		]);
+		new FsWatchdogStore(home).write("root", { intervalMs: 20 * 60_000 });
+		const daemon = tracked(
+			new Daemon(
+				home,
+				{
+					capturePane: () => "",
+					isPaneDead: () => false,
+					sendText: () => "confirmed",
+					sendKey: () => {},
+					killPane: () => {},
+					listTranscripts: () => [],
+					home: () => home,
+					now: () => nowMs,
+					isAlive: () => true,
+				},
+				registry,
+				new FakeDelivery(),
+			),
+		);
+
+		await daemon.tick();
+
+		expect(registry.read("root")?.failureReason).toBe("stalled");
+	});
+
 	it("does not call a peer alive on the DEFAULT interval when it is stale by the stall threshold", async () => {
 		// Regression, caught by daemon-push.test.ts: the liveness window was first
 		// written as the watchdog interval, which defaults to 20 MINUTES. A peer
@@ -1840,6 +1888,17 @@ describe("a watched PA is nudged without being told to write a card", () => {
 });
 
 // ─── s096 / pij#161 + pij#148 — the verdict has three values and four meanings ──
+//
+// PRE-FIX GATE. Every test in this block is a BEHAVIOURAL criterion and every one
+// of them must FAIL against unmodified source. They are written before the fix and
+// their failure output is recorded in the plan's execution log as evidence.
+//
+// Assertion discipline (fleet relay, s097): adding a member to an existing enum
+// makes SET-LEVEL assertions uninformative by construction. So no test here
+// asserts merely "a notice was emitted", and none rests on a bare negative — a
+// bare negative is satisfied by ABSENCE (no notice at all, a delivery failure, an
+// unrelated early return) and would pass for reasons unrelated to the fix. Each
+// case positively identifies the verdict AND separately asserts delivery happened.
 //
 // These cases preserve the distinctions introduced by pij#161 while item 31
 // changes the delivery policy: unknown is still an explicit internal verdict,
