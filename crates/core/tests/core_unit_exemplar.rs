@@ -142,6 +142,14 @@ fn the_default_config_is_offline() {
         config.watchdog_interval_secs > 0,
         "the threshold is configured, never a hardcoded constant"
     );
+    assert!(
+        config.claim_lease_secs > 0,
+        "claim expiry is configured, never embedded in queue logic"
+    );
+    assert!(
+        config.event_buffer_capacity > 0,
+        "the live stream is bounded but not disabled"
+    );
 
     let mut real_store = config.clone();
     real_store.adapters.registry = AdapterChoice::Real;

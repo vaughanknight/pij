@@ -64,6 +64,13 @@ pub struct Config {
     /// healthy long tool calls to be stalls, and "a default is a number nobody
     /// chose" is exactly how that shipped.
     pub watchdog_interval_secs: u64,
+    /// Maximum age of a running queue claim before the queue terminally fails it.
+    ///
+    /// This is policy, not a safety brake: age changes the outcome to failed.
+    /// Expired jobs never return to pending; retrying creates a new attempt.
+    pub claim_lease_secs: u64,
+    /// Maximum live events buffered per subscriber before drops are counted.
+    pub event_buffer_capacity: usize,
 }
 
 impl Default for Config {
@@ -73,6 +80,8 @@ impl Default for Config {
             bind_addr: "127.0.0.1:0".to_string(),
             store_path: String::new(),
             watchdog_interval_secs: 20 * 60,
+            claim_lease_secs: 5 * 60,
+            event_buffer_capacity: 1_024,
         }
     }
 }

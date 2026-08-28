@@ -13,6 +13,7 @@
 pub mod admission;
 pub mod config;
 pub mod error;
+pub mod events;
 pub mod liveness;
 pub mod model;
 pub mod ports;

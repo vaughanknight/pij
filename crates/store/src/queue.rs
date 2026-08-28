@@ -4,15 +4,14 @@
 //! everything else becomes a job. So this is the primitive delivery, sidecars,
 //! watchdog fan-out and chores all ride on, and it is built before any of them.
 //!
-//! Two semantics, both enforced in SQL rather than in this file's control flow —
-//! a rule a process enforces stops being true the moment a second process exists:
+//! Three semantics, enforced in SQL rather than process-local state:
 //!
 //! * **Dedupe** — a partial unique index over LIVE rows. N rapid submits collapse
-//!   to one row, and the id every caller gets back is that row's, so nobody waits
-//!   on a job that was never created.
-//! * **Serialization** — at most one RUNNING job per `serial_key`. Two workers
-//!   never act on one entity at once, which is what SQLite's single-writer plus a
-//!   claim transaction buys us in place of PostgreSQL advisory locks.
+//!   to one row, and the id every caller gets back is that row's.
+//! * **Serialization** — at most one RUNNING job per `serial_key`.
+//! * **Terminal claim expiry** — age is policy, not a brake: a claim older than
+//!   the configured lease becomes FAILED on the next claim transaction. It is
+//!   never returned to pending, so a stale worker cannot race a second execution.
 
 use async_trait::async_trait;
 use sqlx::{Pool, Row, Sqlite};
@@ -26,12 +25,27 @@ use crate::migrate::require_current_schema;
 /// A [`Queue`] backed by the SQLite store.
 pub struct SqliteQueue {
     pool: Pool<Sqlite>,
+    claim_lease_secs: i64,
 }
 
 impl SqliteQueue {
-    /// Wrap an open pool.
-    pub fn new(pool: Pool<Sqlite>) -> Self {
-        SqliteQueue { pool }
+    /// Wrap an open pool with the configured maximum running-claim age.
+    ///
+    /// # Errors
+    /// [`PijError::Adapter`] when `claim_lease_secs` is zero or exceeds SQLite's
+    /// signed integer range.
+    pub fn new(pool: Pool<Sqlite>, claim_lease_secs: u64) -> Result<Self> {
+        let claim_lease_secs = i64::try_from(claim_lease_secs)
+            .ok()
+            .filter(|seconds| *seconds > 0)
+            .ok_or_else(|| PijError::Adapter {
+                adapter: "store/queue".to_string(),
+                message: "claim_lease_secs must be between 1 and i64::MAX".to_string(),
+            })?;
+        Ok(SqliteQueue {
+            pool,
+            claim_lease_secs,
+        })
     }
 
     /// Begin a transaction that intends to WRITE (delegates to the shared rule).
@@ -90,8 +104,8 @@ impl Queue for SqliteQueue {
         let mut tx = self.begin_write().await?;
 
         sqlx::query(
-            "INSERT INTO jobs (kind, serial_key, payload, dedupe_key) VALUES (?1, ?2, ?3, ?4) \
-             ON CONFLICT DO NOTHING",
+            "INSERT INTO jobs (kind, serial_key, payload, dedupe_key, enqueued_at) \
+             VALUES (?1, ?2, ?3, ?4, unixepoch()) ON CONFLICT DO NOTHING",
         )
         .bind(&job.kind)
         .bind(&job.serial_key)
@@ -127,6 +141,23 @@ impl Queue for SqliteQueue {
         })?;
 
         let mut tx = self.begin_write().await?;
+        // Claim age is POLICY: removing this statement changes expired work from
+        // terminally failed to indefinitely running. Never put the same id back
+        // in pending; that would let the old worker and a new worker both act.
+        sqlx::query(
+            "UPDATE jobs \
+             SET state = 'failed', \
+                 outcome = printf('claim lease expired after %d seconds for worker %s', \
+                                  ?1, COALESCE(worker, '<unknown>')), \
+                 acked_at = unixepoch() \
+             WHERE state = 'running' \
+               AND claimed_at IS NOT NULL \
+               AND claimed_at <= unixepoch() - ?1",
+        )
+        .bind(self.claim_lease_secs)
+        .execute(&mut *tx)
+        .await
+        .map_err(adapter_error)?;
 
         let row = sqlx::query(
             "SELECT id, kind, serial_key, payload, dedupe_key FROM jobs \
@@ -157,7 +188,9 @@ impl Queue for SqliteQueue {
         // same row produce one winner and one `None` — never two workers holding
         // the same job.
         let claimed = sqlx::query(
-            "UPDATE jobs SET state = 'running', worker = ?2 WHERE id = ?1 AND state = 'pending'",
+            "UPDATE jobs \
+             SET state = 'running', worker = ?2, claimed_at = unixepoch() \
+             WHERE id = ?1 AND state = 'pending'",
         )
         .bind(id)
         .bind(worker)
@@ -181,17 +214,21 @@ impl Queue for SqliteQueue {
             Outcome::Failed { reason } => ("failed", Some(reason.clone())),
         };
 
+        let mut tx = self.begin_write().await?;
         let affected = sqlx::query(
-            "UPDATE jobs SET state = ?2, outcome = ?3 WHERE id = ?1 AND state = 'running'",
+            "UPDATE jobs \
+             SET state = ?2, outcome = ?3, acked_at = unixepoch() \
+             WHERE id = ?1 AND state = 'running'",
         )
         .bind(job.0 as i64)
         .bind(state)
         .bind(detail)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(adapter_error)?
         .rows_affected();
 
+        tx.commit().await.map_err(adapter_error)?;
         if affected == 0 {
             // Acking a job nobody claimed is a fact worth reporting: it means a
             // worker believes it holds work the queue does not think is running,

@@ -9,6 +9,7 @@
 
 pub mod admission;
 pub mod auth;
+pub mod events;
 pub mod http;
 
 use std::net::SocketAddr;
@@ -103,9 +104,10 @@ pub async fn build_services(config: &Config) -> Result<Services> {
     };
     let queue: Arc<dyn Queue> = match config.adapters.queue {
         AdapterChoice::Fake => Arc::new(FakeQueue::new()),
-        AdapterChoice::Real => {
-            Arc::new(SqliteQueue::new(pij_store::open(&config.store_path).await?))
-        }
+        AdapterChoice::Real => Arc::new(SqliteQueue::new(
+            pij_store::open(&config.store_path).await?,
+            config.claim_lease_secs,
+        )?),
     };
 
     // The four seams whose real adapters land in waves 1-3. They wire to fakes
