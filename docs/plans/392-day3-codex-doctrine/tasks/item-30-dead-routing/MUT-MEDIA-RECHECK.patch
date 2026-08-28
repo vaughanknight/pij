@@ -1,0 +1,12 @@
+diff --git a/.pi/extensions/pij/telegram/bridge.ts b/.pi/extensions/pij/telegram/bridge.ts
+--- a/.pi/extensions/pij/telegram/bridge.ts
++++ b/.pi/extensions/pij/telegram/bridge.ts
+@@ -468,7 +468,7 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
+ 			await ctx.reply("That file is too big to download (limit 20 MB) — nothing was fetched.");
+ 			return;
+ 		}
+-		const descriptor = liveSessionById(target.to, deps.listSessions(), isAlive);
++		const descriptor = sessionById(target.to, deps.listSessions());
+ 		if (descriptor === undefined) {
+ 			log(`media: target ${target.to} vanished before download`);
+ 			await ctx.reply(goneNotice(target.to));

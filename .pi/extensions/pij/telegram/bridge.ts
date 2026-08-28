@@ -61,7 +61,7 @@ export const TELEGRAM_PEER_ID: SessionId = "pij-telegram";
 
 /** Reply shown when text arrives with no address and no live watching prime. */
 const GUIDANCE =
-	"Address a live session, e.g. `osn hello`, or have the prime run `pij watch pij-telegram`; /list shows who's around.";
+	"Address a live session, e.g. `osn hello`, or have the prime run `pij watchdog watch pij-telegram`; /list shows who's around.";
 const TELEGRAM_TEXT_LIMIT = 4096;
 const TELEGRAM_CAPTION_LIMIT = 1024;
 

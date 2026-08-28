@@ -1,0 +1,15 @@
+diff --git a/.pi/extensions/pij/telegram/bridge.ts b/.pi/extensions/pij/telegram/bridge.ts
+--- a/.pi/extensions/pij/telegram/bridge.ts
++++ b/.pi/extensions/pij/telegram/bridge.ts
+@@ -409,11 +409,6 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
+ 				return;
+ 			}
+ 			case "address":
+-				if (liveSessionById(decision.to, deps.listSessions(), isAlive) === undefined) {
+-					log(`target ${decision.to} gone before selection`);
+-					await ctx.reply(goneNotice(decision.to));
+-					return;
+-				}
+ 				selectedTarget.set(chatId, decision.to);
+ 				log(`address ${decision.to}`);
+ 				await ctx.reply(`Now addressing ${decision.to}. Send a message and I'll relay it.`);
