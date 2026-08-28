@@ -150,6 +150,15 @@
           "state": "unchecked",
           "completed_evidence": "",
           "note": "Jordan 2026-08-28: 'reusable eventing, not just message routing \u2014 file watches, backgrounds, etc.'"
+        },
+        {
+          "id": "req-0016",
+          "num": 16,
+          "title": "pi and OMP extension updated and proven in both hosts",
+          "requirement": "The in-process pij extension speaks the pij-rs wire (envelope v + Hello detection, one build spans the cutover window) and is PROVEN live in both hosts: the same extension build boots in plain pi AND in OMP, registers with bind evidence, receives a pushed turn, and replies \u2014 one committed transcript per host.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "Jordan 2026-08-28. Owning unit u-extension (wave 3); cutover-design phase 5 consumes it."
         }
       ]
     }

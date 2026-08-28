@@ -223,6 +223,17 @@
           "depends_on": "u-delivery",
           "wave": 4,
           "note": ""
+        },
+        {
+          "id": "u-extension",
+          "name": "pi/OMP extension update",
+          "paths": ".pi/extensions/pij/** (TS \u2014 stays TypeScript; runs inside the pi/omp host)",
+          "responsibility": "Update the in-process extension to speak pij-rs: new envelope {ok,command,v,data,meta} over localhost HTTP + bearer key, Hello/v version detection at connect (old daemon -> old wire, new daemon -> new wire, so ONE extension version spans the cutover window), self-registration through the new registration contract (bind evidence, subagent-scoped per R5 item 3).",
+          "interface": "Extension detects daemon generation from the Hello line/envelope v; refuses silently-degraded operation (no daemon = loud, wrong-generation = named error with fix). Registration carries (pid, proc_start, spawnId) so descriptor reconciliation is structural.",
+          "test_strategy": "Contract tests against RECORDED pij-rs daemon fixtures (corpus wire/ dir) + a live matrix proof: the SAME extension build boots in BOTH hosts \u2014 plain pi AND omp \u2014 registers, receives one pushed turn, replies via pij send; transcript per host committed as the receipt. The #19 scan (same-PID alias sweep) runs as part of the proof.",
+          "depends_on": "u-daemon-http",
+          "wave": 3,
+          "note": "Jordan 2026-08-28: 'make sure OMP and pi both are updated, i.e. the extension works'. Cutover phase 5 consumes this unit; the compat shim covers seats running the OLD extension, this unit delivers the NEW one. Both-hosts proof is the done bar \u2014 pi and omp load the same extension dir but are different runtimes (omp bundles its own pi build)."
         }
       ]
     },
