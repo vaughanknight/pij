@@ -29,7 +29,7 @@
 - `docs/plans/392-day3-codex-doctrine/` — s392's plans, tasks, reviews, reports, rulings, kept evidence incl. reviewer verdicts and coder report JSONs (PR #37).
 
 ## Index of outstanding items
-_(filled as sections land; one line per file: number · title · stream · status)_
+_(complete 2026-08-28 — 22 item files + 00/01; one line per file: number · title · stream · status)_
 - 00 · The live system at v0.2.0 — o-prime · written
 - 01 · What is already shipped (item → PR → sha) — o-prime · generated
 - 23b · Honest transport receipt: record marker origin (injected vs reader-read) — s392 · designed, not started
@@ -47,3 +47,10 @@ _(filled as sections land; one line per file: number · title · stream · statu
 - 99 · Carried lows (15 G-3/AC-20, 16 H-1/H-3/H-6, 32 lows) — s391 · list with pointers
 - 12-FX · `pij-skill-check.test.ts` flaky under full-suite parallelism — s392 · implemented on branch `s392/item12-fx-falcon` (3 green runs), not merged
 - 23-FX · `adapters/claude-socket.test.ts` close-race flake — s392 · implemented on the same branch; exact symptom did not recur in 100 attempts (partial repro stated), related ECONNREFUSED race fixed; not merged
+- 34 · Queue hygiene: receipts to pseudo-seats never queued; sweep covers dissolved seats; terminal watcher entries dropped; `pij queue` stale line — s391 · designed, not started
+- 31b · Subtree-aware stall detection (a working PM with an active child is not stalled) — s391 · designed, not started
+- 19 · Pointer rows park after bounded re-announcements — s391 · designed, not started
+- 25 · Busy-but-wedged stall detection (a Copilot seat stuck on one turn with inputs queued reads `stalled`) — s391 · designed, not started
+- 26 · Death reconciler: a pane move is not a death — s391 · designed, not started
+- 27 · `pij tail --type <unknown>` is silently "(no events)" — make it an `E-ARG` naming the kinds (rescoped: the filter itself already works at the tag) — s391 · designed, not started
+- 28 · `pij send` to a dead relay seat (pij-telegram) queues with a note instead of refusing `E-DEAD` — s391 · designed, not started
