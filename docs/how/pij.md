@@ -60,7 +60,9 @@ pij list --here               # bare `pij` on PATH from any cwd
   notices use the first live registered candidate in `parentId`, then
   `spawnedBy`. A failed, dissolved, terminal, or absent parent therefore falls
   back to the live spawner; if neither candidate is live, the daemon withholds
-  the notice and logs both candidate states.
+  the notice — single-seat paths (stalled, provider-failure, bind/fail) log one
+  line naming both candidate states, while the death sweep folds withheld
+  notices into its one bounded per-sweep summary (first three subjects + count).
 
 ### Push and pull delivery
 
