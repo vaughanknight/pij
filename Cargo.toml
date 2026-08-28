@@ -44,6 +44,8 @@ pij-testkit = { path = "crates/testkit" }
 # External versions are pinned in ONE place so two crates can never resolve
 # different majors of the same dependency. Membership here is not permission:
 # the arch allow-list decides which crate may use which.
+# `async-trait`: object-safe async port traits (workshop 001 R3-AMEND-2).
+async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

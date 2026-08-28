@@ -52,9 +52,19 @@ banned_everywhere = [
 # review question for each is "is this a codec, or is this IO wearing a codec's
 # clothes?".
 [crates.pij-core]
-internal = []
-external = []
-why = "Pure domain: types, config, errors, ports, and the logic over them. No IO, no tokio, no SQL, no HTTP — enforced here rather than asserted in a doc comment."
+# `pij-testkit@dev`: core's own tests run the shared fakes and the hand-rolled
+# executor, and the `@dev` suffix is what keeps that substrate out of the shipped
+# crate. Cargo permits the dev-only cycle core -> testkit -> core; a shipped one
+# would not build, which is a second, mechanical guarantee.
+internal = ["pij-testkit@dev"]
+# `async-trait` is a proc macro that desugars `async fn` in traits — it pulls in
+# NO runtime, so "core has no tokio" survives it. It is here by ruling
+# (workshop 001 R3-AMEND-2): sqlx has no synchronous API, so a sync `Registry`
+# would force `block_on` inside the store adapter and deadlock on a tokio worker.
+# `serde` is the wire shape of the domain and `thiserror` types the taxonomy;
+# both are codecs, and neither is permission for core to perform IO.
+external = ["async-trait", "serde", "thiserror", "serde_json@dev"]
+why = "Pure domain: types, config, errors, the seven frozen ports, and the logic over them. No IO, no tokio, no SQL, no HTTP — enforced here rather than asserted in a doc comment."
 
 [crates.pij-store]
 internal = []
@@ -91,6 +101,6 @@ why = "Composition root #2 and the workspace's only binary (pij-rs). Ships the d
 # used — a fake that ships inside a production crate is how doubles leak into a
 # release, and the `@dev` suffix on the consuming side is what stops it.
 [crates.pij-testkit]
-internal = []
-external = ["serde", "serde_json", "thiserror", "toml"]
+internal = ["pij-core"]
+external = ["async-trait", "serde", "serde_json", "thiserror", "toml"]
 why = "Test substrate shipped as a crate, not copied per unit: fakes for every port, the addressable fixture corpus, FreshStore, and the gate binaries. serde/serde_json read `cargo metadata`; toml reads this file; thiserror types the check's own failure modes."

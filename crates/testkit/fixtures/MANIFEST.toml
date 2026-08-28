@@ -1,0 +1,96 @@
+# The addressable fixture corpus (workshop 001 R6b).
+#
+# Real captured pij traffic, malformed cases INCLUDED, with a known answer for
+# each — so a packet can cite a fixture by path and a reviewer can check the
+# claim without re-capturing anything. Captured 2026-08-28 from the live TS pij
+# on this machine (pij --version at capture time is recorded in the plan's
+# reports/, not here, so this file stays a pure index).
+#
+# Rule: a fixture is only useful with its EXPECTATION. `answer` is what a
+# correct implementation must do with the bytes — not a description of them.
+
+version = 1
+
+[[fixture]]
+path = "cli/models.json"
+sha256 = "a01aa1cec6a96cd4d3553ab0ca6624ea319925f4d65ff95a31ce72859cd3e468"
+bytes = 3182
+note = "pij models --json, 2026-08-28, one row per provider plus rows covering every observed `levels` encoding. The live catalog is TIME-VARYING (599 rows at 05:05, 125 at 05:15 as the openrouter list shrank 479->5), so a byte-golden against the live binary would flap; the golden runs against these committed bytes."
+answer = "10 rows, 8 providers. TWO encodings of 'no thinking levels' appear in real output — `\"levels\": []` and the key ABSENT (claude rows) — and NEITHER is the `null` that services.dd.json assumes. u-models must map both to the same fact and must not invent a third."
+
+[[fixture]]
+path = "cli/list.json"
+sha256 = "18ec5f2ad30583e4be37c2e28ceda0499e7a2fc3baca3d29ba878120da886242"
+bytes = 7261
+note = "pij list --json, 2026-08-28, one seat per liveness class (active, stale, dead) plus a seat carrying a terminal record."
+answer = "liveness is active|stale|dead; `terminal.disposition` reads `unrequested-by-pij`, which is an OBSERVATION, not a cause."
+
+[[fixture]]
+path = "cli/whoami.json"
+sha256 = "1aebf71f48dcffa1fbd8b8d94720554d5e3b7768d9f44bb9954e7566ddd21eca"
+bytes = 1475
+note = "pij whoami --json from the PM seat, 2026-08-28."
+answer = "carries the capability schema and the per-verb allow map."
+
+[[fixture]]
+path = "wire/events.ndjson"
+sha256 = "4b4ced47a3ddf26f22e0bfbc51c742e5afa841825562b6341195567051562fed"
+bytes = 1766
+note = "8 real spine events from ~/.pij/pij-revolutionary-lungfish/events.ndjson, one per (type, data.type) pair."
+answer = "seq is monotonic; every line is one complete JSON object."
+
+[[fixture]]
+path = "malformed/truncated-event.ndjson"
+sha256 = "8775b9c173f5d83662d687a8f9d128d46503d7bc8a5feacbc8b5648fd5eea9ae"
+bytes = 87
+note = "A line cut mid-object \u2014 the shape a crashed writer leaves."
+answer = "MUST fail to parse, and the failure must name the line."
+
+[[fixture]]
+path = "malformed/unknown-event-kind.ndjson"
+sha256 = "f061b0f8e9456879e162b863ff2589a193641b6abedb154b3cc557b43149ae70"
+bytes = 198
+note = "An event kind this build has never heard of, followed by a known one."
+answer = "MUST NOT abort the stream: the unknown line is forwarded as Unknown and the known line still arrives (tk-d162)."
+
+[[fixture]]
+path = "malformed/not-json.ndjson"
+sha256 = "3895474b6d1080352db59f11be39ddb080389238c95489e80a1d894b98d10ee4"
+bytes = 124
+note = "A stray human-readable warning printed into a machine stream \u2014 this exact class bricked a pi boot."
+answer = "MUST be reported as a bad line, never silently skipped and never fatal."
+
+[[fixture]]
+path = "malformed/empty.ndjson"
+sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+bytes = 0
+note = "Zero bytes."
+answer = "An empty stream is EMPTY, not an error."
+
+[[fixture]]
+path = "malformed/future-envelope.json"
+sha256 = "ef29c521ed87b10adf2e40a1dd33872e4fb9086fdf00913c5ec2399bf50c9b14"
+bytes = 113
+note = "An envelope with v=99."
+answer = "MUST refuse rather than half-read: `v` exists so a reader can decline a payload from a future it does not understand."
+
+[[fixture]]
+path = "malformed/models-missing-request-id.json"
+sha256 = "b67fd5207e73fbd14d44f41a586c8dc826fdd74c39a5f3c48a1872f45d5a1167"
+bytes = 184
+note = "A model row with no requestModelId."
+answer = "Whole-inventory failure: one malformed row invalidates the catalog, per s106 semantics."
+
+[[fixture]]
+path = "malformed/models-levels-empty-list.json"
+sha256 = "93aa2a309613c16472451c7057589f2d93fbccb3201f5e96cb993ea8b11d4f29"
+bytes = 212
+note = "A model row with `levels: []` where null was meant."
+answer = "MUST be distinguishable from null: [] claims levels exist and none work."
+
+[[fixture]]
+path = "malformed/whoami-missing-folder.json"
+sha256 = "d7bc0e9e82aa647fa9127439d1aab8e627ba112cda73b6dcf38f88c7a471b47a"
+bytes = 105
+note = "A whoami envelope with no folder."
+answer = "MUST fail: absent is not the empty string, and a seat with no folder would resolve relative paths against the wrong tree."

@@ -12,6 +12,8 @@ workspace = true
 # never confused with "the graph is wrong". Each is named in this crate's
 # allow-list row with the same rationale.
 [dependencies]
+async-trait = { workspace = true }
+pij-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

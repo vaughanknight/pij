@@ -1,8 +1,24 @@
 //! `pij-testkit` — test substrate shipped as a crate, not copied per unit.
 //!
-//! Fakes for every port, the addressable fixture corpus, the `FreshStore`
-//! primitive, and the gate binaries (`pij-arch-check`, `pij-gate`) live here so
-//! no unit re-invents them. Never a dependency of production code: every crate
-//! that uses it declares it `@dev`, and the arch check enforces that.
+//! * [`fakes`] — a deterministic, scriptable fake for each of the seven frozen
+//!   ports. Doubles come from here or they do not exist.
+//! * [`contract`] — the shared contract suites. One seam, one suite: the fake and
+//!   the real adapter answer the same questions, so "it works with the fake" and
+//!   "it works" cannot drift apart silently.
+//! * [`fixtures`] — the addressable corpus of real captured pij traffic,
+//!   malformed cases included, so every packet can cite a fixture by name.
+//! * [`exec`] — a ten-line executor, so core's tests await without a runtime.
+//! * [`arch`] — the architecture drift gate.
+//!
+//! Never a dependency of production code: every consumer declares it `@dev`, and
+//! the arch gate enforces the suffix.
+
+#![deny(missing_docs)]
 
 pub mod arch;
+pub mod contract;
+pub mod exec;
+pub mod fakes;
+pub mod fixtures;
+
+pub use exec::block_on;

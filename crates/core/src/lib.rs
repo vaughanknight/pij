@@ -1,7 +1,17 @@
-//! `pij-core` — Pure domain: types, config, error taxonomy, ports, and the logic that
-//! operates on them. NO IO, NO tokio, NO sqlx, NO HTTP — enforced mechanically by
-//! the arch allowlist (tk-3a93), not by intent. Everything the daemon and CLI
-//! decide is decided here, so it can be tested with zero doubles.
+//! `pij-core` — the functional core.
 //!
-//! Empty at tk-5f1d: this task proves the graph compiles, not that it does
-//! anything. Content arrives with the task that owns it.
+//! Domain types, configuration, the error taxonomy, the seven frozen ports, and
+//! the pure logic over them. **No IO, no tokio, no SQL, no HTTP** — enforced
+//! mechanically by `crates/testkit/arch-allowlist.toml`, not asserted here.
+//!
+//! Everything the daemon and CLI DECIDE is decided in this crate, which is what
+//! lets those decisions be tested with zero doubles: give the function the facts,
+//! check the verdict.
+
+#![deny(missing_docs)]
+
+pub mod config;
+pub mod error;
+pub mod liveness;
+pub mod model;
+pub mod ports;

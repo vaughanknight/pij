@@ -1,0 +1,435 @@
+//! The domain, as types.
+//!
+//! Everything here is data plus the rules that are true of it — no IO, no
+//! runtime, no adapters. If a decision can be made from these types alone, it
+//! belongs in this crate and gets tested with zero doubles.
+
+use std::fmt;
+
+use serde::{Deserialize, Serialize};
+
+/// A seat's stable identity — the name every other surface addresses it by.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SeatId(pub String);
+
+impl SeatId {
+    /// Borrow the underlying id.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for SeatId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<&str> for SeatId {
+    fn from(value: &str) -> Self {
+        SeatId(value.to_string())
+    }
+}
+
+/// Which agent harness a seat runs.
+///
+/// `Omp` is a distinct variant rather than an alias of `Pi`: they share a
+/// lineage but not their session artifacts, and TS defect #3 (subagents
+/// registering as seats) turned on telling them apart.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Harness {
+    /// Anthropic Claude Code.
+    Claude,
+    /// GitHub Copilot CLI.
+    Copilot,
+    /// OpenAI Codex CLI.
+    Codex,
+    /// Pi.
+    Pi,
+    /// Oh My Pi.
+    Omp,
+}
+
+impl Harness {
+    /// The lowercase wire spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Harness::Claude => "claude",
+            Harness::Copilot => "copilot",
+            Harness::Codex => "codex",
+            Harness::Pi => "pi",
+            Harness::Omp => "omp",
+        }
+    }
+
+    /// Parse the wire spelling. `None` for anything else — an unknown harness is
+    /// a fact to report, never a silent default (the TS CLI guessed `pi` here and
+    /// bound seats to the wrong readiness anchor).
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "claude" => Some(Harness::Claude),
+            "copilot" => Some(Harness::Copilot),
+            "codex" => Some(Harness::Codex),
+            "pi" => Some(Harness::Pi),
+            "omp" => Some(Harness::Omp),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for Harness {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// What the machine can observe about a seat: is its process doing work.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SystemState {
+    /// No inference in flight.
+    Idle,
+    /// A turn is running.
+    Working,
+}
+
+/// What the seat SAYS about itself. Observation and declaration are different
+/// facts and are stored separately: a seat that is idle because it is waiting
+/// for a human answer is not the same as one that has wedged, and collapsing the
+/// two is what made the TS watchdog nudge parked seats (defect #9).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SemanticState {
+    /// Adopted, idle, available for dispatch.
+    Ready,
+    /// Waiting on a peer or a dispatch.
+    Waiting,
+    /// Deliberately parked by its operator.
+    Hold,
+    /// Waiting on an external dependency it cannot influence.
+    Blocked,
+    /// Waiting on a human answer.
+    Question,
+    /// Work finished.
+    Done,
+}
+
+impl SemanticState {
+    /// May the watchdog nudge a seat in this state?
+    ///
+    /// Deliberate silence is not a stall. This is the predicate TS lacked; the
+    /// decision table in `pij-core`'s tests is its regression proof.
+    pub const fn nudgeable(self) -> bool {
+        match self {
+            SemanticState::Ready | SemanticState::Waiting => true,
+            SemanticState::Hold
+            | SemanticState::Blocked
+            | SemanticState::Question
+            | SemanticState::Done => false,
+        }
+    }
+}
+
+/// A process identity that survives pid recycling.
+///
+/// A pid alone is NOT an identity: the OS reissues it, and a recycled pid made
+/// the TS `revive` refuse live seats and accept dead ones. The pair (pid, start
+/// time) is unique for the life of the machine's boot, so every liveness verdict
+/// in this workspace is keyed on the pair or it is not a verdict.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcIdentity {
+    /// Process id.
+    pub pid: u32,
+    /// Process start time, in whatever monotonic-per-boot unit the platform
+    /// adapter reports. Compared, never interpreted.
+    pub proc_start: u64,
+}
+
+/// Everything the registry knows about one seat.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeatDescriptor {
+    /// Stable id.
+    pub id: SeatId,
+    /// Harness it runs.
+    pub harness: Harness,
+    /// tmux pane, when it has one. `None` means paneless (external pull mode) —
+    /// distinct from "we have not looked", which is the absence of the seat.
+    pub pane: Option<String>,
+    /// Process identity, when the seat has been bound to a live process.
+    pub proc: Option<ProcIdentity>,
+    /// Absolute path of the folder the seat works in.
+    pub folder: String,
+    /// Observed state.
+    pub state: SystemState,
+    /// Declared state, when the seat has declared one.
+    pub semantic_state: Option<SemanticState>,
+    /// Role, when assigned.
+    pub role: Option<String>,
+    /// The seat that governs this one, self-declared at adoption.
+    pub parent: Option<SeatId>,
+    /// A relay/bridge forwards its inbox to an external sink; its idleness is
+    /// correct by design and it is never watched.
+    #[serde(default)]
+    pub relay: bool,
+}
+
+impl SeatDescriptor {
+    /// A minimal descriptor: unbound, idle, undeclared.
+    pub fn new(id: impl Into<SeatId>, harness: Harness, folder: impl Into<String>) -> Self {
+        SeatDescriptor {
+            id: id.into(),
+            harness,
+            pane: None,
+            proc: None,
+            folder: folder.into(),
+            state: SystemState::Idle,
+            semantic_state: None,
+            role: None,
+            parent: None,
+            relay: false,
+        }
+    }
+
+    /// Is this seat eligible for a watchdog nudge right now?
+    ///
+    /// Three independent reasons to leave a seat alone, each a real incident:
+    /// a relay's silence is its job; a declared non-working state is deliberate;
+    /// a working seat is not stalled just because it is quiet.
+    pub fn nudgeable(&self) -> bool {
+        !self.relay
+            && self.state != SystemState::Working
+            && self.semantic_state.is_none_or(SemanticState::nudgeable)
+    }
+}
+
+impl From<String> for SeatId {
+    fn from(value: String) -> Self {
+        SeatId(value)
+    }
+}
+
+/// A monotonic sequence number handed out by the store.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Seq(pub u64);
+
+/// The wire envelope every command answers in.
+///
+/// `data` is open by contract — a verb's payload is whatever that verb returns —
+/// and `v` is what lets a reader refuse a payload from a future it does not
+/// understand instead of half-reading it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Envelope<T> {
+    /// Did the command succeed.
+    pub ok: bool,
+    /// The command that produced this envelope.
+    pub command: String,
+    /// Envelope version.
+    pub v: u32,
+    /// The payload, absent on failure.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<T>,
+    /// Out-of-band notes: timing, warnings, the next action to take.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<String>,
+}
+
+impl<T> Envelope<T> {
+    /// A successful envelope for `command`.
+    pub fn ok(command: impl Into<String>, data: T) -> Self {
+        Envelope {
+            ok: true,
+            command: command.into(),
+            v: ENVELOPE_VERSION,
+            data: Some(data),
+            meta: None,
+        }
+    }
+
+    /// A failed envelope for `command`, carrying the reason in `meta`.
+    pub fn err(command: impl Into<String>, meta: impl Into<String>) -> Self {
+        Envelope {
+            ok: false,
+            command: command.into(),
+            v: ENVELOPE_VERSION,
+            data: None,
+            meta: Some(meta.into()),
+        }
+    }
+}
+
+/// The envelope version this build speaks.
+pub const ENVELOPE_VERSION: u32 = 1;
+
+/// A message in flight between two seats.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Msg {
+    /// Sender.
+    pub from: SeatId,
+    /// Recipient.
+    pub to: SeatId,
+    /// Body.
+    pub body: String,
+    /// Stable id, so a route can be traced end to end. Every delivery logs it.
+    pub msg_id: String,
+}
+
+/// What honestly happened to a message.
+///
+/// `Queued` is a promise the store has already kept — the row exists — not an
+/// optimistic guess. TS defect #1 reported success for messages that vanished
+/// because the seat had not bound yet; the distinction between these variants is
+/// the fix.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase", tag = "outcome")]
+pub enum DeliveryOutcome {
+    /// Handed to the seat's transport and accepted.
+    Delivered,
+    /// Durably queued; will be delivered when the seat can receive.
+    Queued,
+    /// Withheld pending an approval step.
+    Held {
+        /// Why it is being held.
+        reason: String,
+    },
+}
+
+/// A unit of deferred work.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Job {
+    /// What kind of work.
+    pub kind: String,
+    /// Work claimed one-at-a-time per key, so two workers never act on one
+    /// entity concurrently.
+    pub serial_key: String,
+    /// Opaque payload for the consumer.
+    pub payload: String,
+    /// Jobs equal on this key collapse to one live row: N rapid submits produce
+    /// one unit of work, not N.
+    pub dedupe_key: String,
+}
+
+/// A job's identity in the queue.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct JobId(pub u64);
+
+/// How a claimed job ended.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase", tag = "outcome")]
+pub enum Outcome {
+    /// Finished.
+    Done,
+    /// Failed; the reason is kept for the anomaly detectors.
+    Failed {
+        /// Why.
+        reason: String,
+    },
+}
+
+/// An append-only fact about the fleet.
+///
+/// Carries `v` and `at` from its first commit so the reusable event stream
+/// (PRD req-0015, unit `u-events`) lands on this shape without a version bump.
+/// The forward-compatible `Unknown` decode — an event kind this build has never
+/// heard of must be forwarded, not dropped — lives in `wire.rs` at tk-d162,
+/// because it is a decoding rule rather than a fact about an event.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Event {
+    /// Event-schema version, so a reader can refuse a payload from a future it
+    /// does not understand instead of half-reading it.
+    pub v: u32,
+    /// When it happened: milliseconds since the Unix epoch, supplied by the
+    /// caller's clock so core stays free of time IO.
+    pub at: u64,
+    /// What happened.
+    pub kind: String,
+    /// Which seat it happened to, when it was about one.
+    pub seat: Option<SeatId>,
+    /// Opaque payload.
+    pub payload: String,
+}
+
+/// A tmux pane, as this workspace models it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Pane {
+    /// Pane id, e.g. `%255`.
+    pub id: String,
+    /// Session name.
+    pub session: String,
+    /// Window name.
+    pub window: String,
+    /// Pane title.
+    pub title: String,
+}
+
+/// Whether a harness session is ready to receive a turn.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "readiness")]
+pub enum Readiness {
+    /// Anchor observed: the seat can take a turn.
+    Ready,
+    /// The harness is up but busy.
+    Busy,
+    /// No anchor yet — booting, or never will.
+    NotYet {
+        /// What was observed instead, so a never-bind is diagnosable rather than
+        /// a timeout (the codex never-bind class).
+        observed: String,
+    },
+}
+
+/// The health of a seat's binding to a live process.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "bind")]
+pub enum BindHealth {
+    /// Bound to a live process.
+    Bound {
+        /// The process it is bound to.
+        proc: ProcIdentity,
+    },
+    /// Not bound, with the evidence for why.
+    Unbound {
+        /// What was observed.
+        evidence: String,
+    },
+}
+
+/// One row of a harness's model catalog.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelRow {
+    /// The runtime that executes the model.
+    pub runtime: String,
+    /// The provider that serves it.
+    pub provider: String,
+    /// How the user selects it.
+    pub selector: String,
+    /// What the harness sends on the wire.
+    pub request_model_id: String,
+    /// Available thinking efforts. `None` is a valid "this model has no levels",
+    /// distinct from an empty list, which would claim it has levels and none work.
+    pub thinking: Option<Vec<String>>,
+}
+
+/// A liveness verdict.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "liveness")]
+pub enum Liveness {
+    /// The recorded process is still the running one.
+    Active,
+    /// The process is gone.
+    Dead {
+        /// What proved it.
+        evidence: String,
+    },
+    /// The pid exists but belongs to a DIFFERENT process — the recycled-pid
+    /// case, which must never be reported as `Active`.
+    Recycled {
+        /// The start time observed now.
+        observed_start: u64,
+        /// The start time recorded at bind.
+        recorded_start: u64,
+    },
+}
