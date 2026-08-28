@@ -466,3 +466,61 @@ fn a_staged_key_survives_other_attempts_coming_and_going() {
 
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// ROUND 4 — the compile-time half of the previous finding.
+///
+/// The property test above proves attempts do not share paths. It does NOT prove
+/// what the missing `Clone` protects: the reviewer re-added `#[derive(Clone)]`
+/// and the test still passed, so the defect could return with its own regression
+/// staying green. A test that cannot fail for the reason the bug would is not
+/// covering the bug.
+///
+/// This detects `Clone` at COMPILE time, without a proc-macro dependency, via
+/// autoref specialisation: the inherent method on `Probe<T>` requires
+/// `T: Clone` and wins method resolution when it applies; otherwise resolution
+/// falls back through the reference to the trait impl. So `is_clone()` answers
+/// "does this type implement Clone" as a constant the compiler chose.
+#[test]
+fn staged_key_must_not_be_clone_or_two_owners_share_one_drop() {
+    use std::marker::PhantomData;
+
+    struct Probe<T>(PhantomData<T>);
+
+    impl<T: Clone> Probe<T> {
+        fn is_clone(&self) -> bool {
+            true
+        }
+    }
+
+    trait NotClone {
+        fn is_clone(&self) -> bool {
+            false
+        }
+    }
+
+    impl<T> NotClone for &Probe<T> {}
+
+    // Sanity first: the probe must be able to SEE a Clone type, or the assertion
+    // below would pass for the wrong reason (a probe that always answers false
+    // is a test that always passes).
+    assert!(
+        Probe::<String>(PhantomData).is_clone(),
+        "the probe itself is broken — it cannot detect a type that IS Clone"
+    );
+    assert!(
+        Probe::<pij_daemon::BootKey>(PhantomData).is_clone(),
+        "BootKey is deliberately Clone; if that changed, this probe needs revisiting"
+    );
+
+    // The assertion that matters. The `&` is LOAD-BEARING here and nowhere else:
+    // for a non-Clone type there is no inherent method to find, so resolution
+    // must reach the trait impl on `&Probe<T>`. clippy flags the borrow on the
+    // two probes above — correctly, since the inherent method applies there — and
+    // stays silent on this one, which is the difference the trick turns on.
+    assert!(
+        !(&Probe::<pij_daemon::auth::StagedKey>(PhantomData)).is_clone(),
+        "StagedKey must NOT be Clone: its Drop deletes the staged file, so a second \
+         owner deletes the first owner's key and `publish` fails with 'No such file \
+         or directory'. A guard that can be duplicated is not a guard."
+    );
+}

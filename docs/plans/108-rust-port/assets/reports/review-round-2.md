@@ -94,3 +94,60 @@ pij-gate verdict
 
 Tests 78 → 81. Working tree clean after the gate (`git status --short` empty),
 which is now a property the gate itself defends.
+
+
+---
+
+# Rounds 3 and 4 — the fixes were checked by tests that could not fail
+
+Both later rounds found the same class, and it is the most useful thing this
+review produced: **a regression that exercises the path without exercising the
+property.**
+
+## Round 3
+
+1. **The lock stage could not detect a stale lock.** It ran
+   `cargo metadata --locked --no-deps`, and without resolving the graph there is
+   nothing to disagree with — 0 against a lock missing a dependency. The reviewer
+   proved it by building the gate from one export and running it against a
+   doctored one. Now an in-process full resolve, with the documented invocation
+   `cargo run --locked` so the build that produces the gate cannot repair the lock
+   first. Three tests over a generated two-crate workspace: current lock passes;
+   stale lock fails **and is left byte-identical**; and `--no-deps` still returns
+   0 on that same tree — kept executable so nobody re-adds the flag as a speedup.
+2. **`StagedKey` was `Clone`** while its `Drop` deletes the staging file, so two
+   values owned one path: dropping a clone destroyed the original attempt's key
+   and `publish` failed with "No such file or directory". `Clone` removed.
+
+## Round 4
+
+The `Clone` removal shipped with a regression that **could not detect it coming
+back**: the reviewer re-added `#[derive(Clone)]` and
+`a_staged_key_survives_other_attempts_coming_and_going` still passed. It proves
+attempts do not share paths; it does not prove the guard cannot gain a second
+owner.
+
+Fixed with a compile-time assertion — autoref specialisation, no proc-macro
+dependency — that answers "does this type implement `Clone`" as a constant the
+compiler chose. It carries its own sanity check (the probe must SEE `String` and
+`BootKey` as `Clone`, or it would pass for the wrong reason), and the mutation was
+re-run:
+
+```
+$ sed  #[derive(Debug)] -> #[derive(Clone, Debug)]   on StagedKey
+$ cargo test --locked -p pij-daemon --test review_regressions \
+    staged_key_must_not_be_clone_or_two_owners_share_one_drop -- --exact
+test ... FAILED
+  StagedKey must NOT be Clone: its Drop deletes the staged file, so a second owner
+  deletes the first owner's key and `publish` fails with 'No such file or
+  directory'. A guard that can be duplicated is not a guard.
+$ (restore)                                          → 1 passed
+```
+
+clippy flagged the borrow on the two probes where the inherent method applies —
+correctly — and stayed silent on the one where the borrow is the mechanism. The
+two were removed; the load-bearing one is commented as such.
+
+## Final gate
+
+Six stages green under `cargo run --locked`, 86 tests, working tree clean.
