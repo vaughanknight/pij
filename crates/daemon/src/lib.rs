@@ -17,22 +17,39 @@ use std::sync::Arc;
 
 use pij_core::config::{AdapterChoice, Config};
 use pij_core::error::{PijError, Result};
-use pij_core::ports::{Registry, Spine};
-use pij_store::{SqliteRegistry, SqliteSpine};
-use pij_testkit::fakes::{FakeRegistry, FakeSpine};
+use pij_core::ports::{HarnessPort, LivenessPort, Queue, Registry, Spine, TmuxPort, Transport};
+use pij_store::{SqliteQueue, SqliteRegistry, SqliteSpine};
+use pij_testkit::fakes::{
+    FakeHarness, FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
+};
 
 pub use auth::BootKey;
 
 /// The build id reported in the event stream's Hello line.
 pub const BUILD: &str = concat!("pij-rs ", env!("CARGO_PKG_VERSION"));
 
-/// Everything the routes are allowed to touch.
+/// Everything the routes are allowed to touch: ALL SEVEN ports.
+///
+/// Seven fields, not two. An earlier version wired only `registry` and `spine`
+/// while `offline` was computed from all seven config choices, so selecting a
+/// real transport reported `offline=false` while constructing no transport at
+/// all — a composition root that lies about what it composed. Found in review.
 #[derive(Clone)]
 pub struct Services {
     /// Seat roster.
     pub registry: Arc<dyn Registry>,
     /// Append-only history.
     pub spine: Arc<dyn Spine>,
+    /// Deferred work.
+    pub queue: Arc<dyn Queue>,
+    /// Message delivery.
+    pub transport: Arc<dyn Transport>,
+    /// tmux IO.
+    pub tmux: Arc<dyn TmuxPort>,
+    /// Harness quirks.
+    pub harness: Arc<dyn HarnessPort>,
+    /// Process liveness.
+    pub liveness: Arc<dyn LivenessPort>,
     /// Whether this daemon is running entirely on fakes.
     pub offline: bool,
 }
@@ -84,28 +101,78 @@ pub async fn build_services(config: &Config) -> Result<Services> {
             Arc::new(SqliteSpine::new(pij_store::open(&config.store_path).await?))
         }
     };
+    let queue: Arc<dyn Queue> = match config.adapters.queue {
+        AdapterChoice::Fake => Arc::new(FakeQueue::new()),
+        AdapterChoice::Real => {
+            Arc::new(SqliteQueue::new(pij_store::open(&config.store_path).await?))
+        }
+    };
+
+    // The four seams whose real adapters land in waves 1-3. They wire to fakes
+    // and REFUSE explicitly when asked to be real: "not built yet" is a fact the
+    // operator should be told at boot, not discovered when a call silently does
+    // nothing. Each `Real` arm is also the exact site the wave that implements it
+    // replaces — a one-line change at a named place.
+    let transport: Arc<dyn Transport> = match config.adapters.transport {
+        AdapterChoice::Fake => Arc::new(FakeTransport::reachable()),
+        AdapterChoice::Real => return Err(not_yet("transport", "u-uds, wave 3")),
+    };
+    let tmux: Arc<dyn TmuxPort> = match config.adapters.tmux {
+        AdapterChoice::Fake => Arc::new(FakeTmux::new()),
+        AdapterChoice::Real => return Err(not_yet("tmux", "u-tmux, wave 1")),
+    };
+    let harness: Arc<dyn HarnessPort> = match config.adapters.harness {
+        AdapterChoice::Fake => Arc::new(FakeHarness::new(pij_core::model::Harness::Pi)),
+        AdapterChoice::Real => return Err(not_yet("harness", "u-harness, wave 2")),
+    };
+    let liveness: Arc<dyn LivenessPort> = match config.adapters.liveness {
+        AdapterChoice::Fake => Arc::new(FakeLiveness::new()),
+        AdapterChoice::Real => return Err(not_yet("liveness", "u-liveness, wave 1")),
+    };
 
     Ok(Services {
         registry,
         spine,
+        queue,
+        transport,
+        tmux,
+        harness,
+        liveness,
         offline: config.is_fully_offline(),
     })
 }
 
-/// Boot the daemon: key first, then bind.
+/// The refusal for a real adapter that has not been built yet.
+fn not_yet(port: &str, unit: &str) -> PijError {
+    PijError::Adapter {
+        adapter: format!("daemon/{port}"),
+        message: format!(
+            "config selects the REAL {port} adapter, which does not exist yet (it lands with \
+             {unit}). Set it back to `fake`, or run a build from the wave that ships it — this \
+             daemon will not pretend to have wired something it has not."
+        ),
+    }
+}
+
+/// Boot the daemon: stage the key, bind, publish, serve.
 ///
-/// The order is the security property, not an implementation detail — see
-/// [`auth`]. `state_dir` is where the key is written.
+/// The ORDER is the security property, and review sharpened it: staging before
+/// the bind and publishing after means a boot that loses the port race cannot
+/// overwrite the running daemon's credential, while the key is still in place
+/// before any request is answered (`bind` opens the socket; nothing is served
+/// until `axum::serve`). See [`auth`].
 ///
 /// # Errors
 /// [`PijError::Adapter`] when the key cannot be written or the port refuses.
 pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     let services = build_services(config).await?;
 
-    // 1. Key on disk, 0600.
-    let key = auth::write_key(&state_dir)?;
+    // 1. Stage the key 0600 under a unique name. NOT published: a boot that
+    //    fails below must not touch a running daemon's credential.
+    let staged = auth::stage_key(&state_dir)?;
+    let token = staged.token().to_string();
 
-    // 2. Only now, a socket.
+    // 2. Bind. This is the step that fails when another daemon holds the port.
     let listener = tokio::net::TcpListener::bind(&config.bind_addr)
         .await
         .map_err(|error| PijError::Adapter {
@@ -120,7 +187,12 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         message: format!("could not resolve the bound address: {error}"),
     })?;
 
-    let router = http::router(services, key.token.clone());
+    // 3. The bind succeeded, so this boot owns the port: publish the key
+    //    atomically. Still before anything is SERVED — `bind` only opens the
+    //    listen socket; no request is answered until `axum::serve` runs below.
+    let key = staged.publish()?;
+
+    let router = http::router(services, token);
     let (shutdown, shutdown_rx) = tokio::sync::oneshot::channel();
     let joined = tokio::spawn(async move {
         let _ = axum::serve(listener, router)

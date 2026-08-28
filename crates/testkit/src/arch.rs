@@ -241,6 +241,20 @@ pub enum Violation {
         /// The stale entry.
         crate_name: String,
     },
+    /// A permitted edge that the crate no longer has.
+    ///
+    /// The check used to be one-directional — it judged every real edge against
+    /// the list but never the list against reality — so a dependency that was
+    /// removed stayed PRE-APPROVED, and reintroducing it later would pass without
+    /// the reviewed line the allow-list exists to force. Found in review.
+    StaleRule {
+        /// The crate whose rule is unused.
+        crate_name: String,
+        /// The dependency nobody depends on any more.
+        dep: String,
+        /// Which table the rule permits it in.
+        kind: DepKind,
+    },
     /// A workspace-internal edge the architecture refuses.
     ForbiddenInternal {
         /// The crate that declared it.
@@ -294,6 +308,16 @@ impl std::fmt::Display for Violation {
                 f,
                 "{crate_name}: named in crates/testkit/arch-allowlist.toml but absent from the \
                  workspace — remove the entry or restore the crate"
+            ),
+            Violation::StaleRule {
+                crate_name,
+                dep,
+                kind,
+            } => write!(
+                f,
+                "{crate_name} -> {dep} ({kind}): allow-listed but no longer a dependency — remove \
+                 the row from crates/testkit/arch-allowlist.toml, so re-adding the edge costs the \
+                 reviewed line it is supposed to cost"
             ),
             Violation::ForbiddenInternal {
                 crate_name,
@@ -442,6 +466,32 @@ pub fn check(graph: &Graph, allowlist: &Allowlist) -> Vec<Violation> {
             violations.push(Violation::StaleAllowlistEntry {
                 crate_name: name.clone(),
             });
+        }
+    }
+
+    // ...and so is a RULE that outlives its edge: permission nobody is using is
+    // permission nobody reviewed recently.
+    for krate in &graph.crates {
+        let Some(rules) = allowlist.crates.get(&krate.name) else {
+            continue;
+        };
+        for (rule, internal) in rules
+            .internal
+            .iter()
+            .map(|rule| (rule, true))
+            .chain(rules.external.iter().map(|rule| (rule, false)))
+        {
+            let used = krate
+                .deps
+                .iter()
+                .any(|dep| dep.name == rule.dep && members.contains(dep.name.as_str()) == internal);
+            if !used {
+                violations.push(Violation::StaleRule {
+                    crate_name: krate.name.clone(),
+                    dep: rule.dep.clone(),
+                    kind: rule.kind,
+                });
+            }
         }
     }
 

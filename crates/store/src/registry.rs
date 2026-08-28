@@ -13,6 +13,8 @@ use pij_core::model::{
 };
 use pij_core::ports::{Registry, SeatFilter};
 
+use crate::migrate::{begin_write, require_current_schema};
+
 /// A [`Registry`] backed by the SQLite store.
 pub struct SqliteRegistry {
     pool: Pool<Sqlite>,
@@ -129,6 +131,7 @@ fn state_str(state: SystemState) -> &'static str {
 #[async_trait]
 impl Registry for SqliteRegistry {
     async fn get(&self, seat: &SeatId) -> Result<Option<SeatDescriptor>> {
+        require_current_schema(&self.pool).await?;
         let row = sqlx::query("SELECT * FROM seats WHERE id = ?1")
             .bind(seat.as_str())
             .fetch_optional(&self.pool)
@@ -138,14 +141,20 @@ impl Registry for SqliteRegistry {
     }
 
     async fn put(&self, descriptor: SeatDescriptor) -> Result<Seq> {
-        // Persist before mutate, and hand back the sequence the write got: a
-        // caller that cannot name its own write cannot prove it happened.
+        require_current_schema(&self.pool).await?;
+
+        // ONE transaction. Persist-before-mutate orders the two writes; the
+        // transaction is what makes them one fact. Review found the split
+        // version: a failed second statement left the spine claiming something
+        // the registry never did.
+        let mut tx = begin_write(&self.pool).await?;
+
         let seq: i64 = sqlx::query_scalar(
             "INSERT INTO spine_events (v, at, kind, seat, payload) VALUES (1, 0, 'seat.put', ?1, '') \
              RETURNING seq",
         )
         .bind(descriptor.id.as_str())
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(adapter_error)?;
 
@@ -171,14 +180,16 @@ impl Registry for SqliteRegistry {
         .bind(descriptor.parent.as_ref().map(SeatId::as_str))
         .bind(i64::from(descriptor.relay))
         .bind(seq)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(adapter_error)?;
 
+        tx.commit().await.map_err(adapter_error)?;
         Ok(Seq(seq as u64))
     }
 
     async fn list(&self, filter: SeatFilter) -> Result<Vec<SeatDescriptor>> {
+        require_current_schema(&self.pool).await?;
         // Absent filter fields mean "do not filter" — expressed as an IS NULL
         // guard per field rather than by building SQL strings, so an empty
         // string can never be mistaken for "no filter".
@@ -200,13 +211,16 @@ impl Registry for SqliteRegistry {
     }
 
     async fn tombstone(&self, seat: &SeatId, reason: &str) -> Result<Seq> {
+        require_current_schema(&self.pool).await?;
+        let mut tx = begin_write(&self.pool).await?;
+
         let seq: i64 = sqlx::query_scalar(
             "INSERT INTO spine_events (v, at, kind, seat, payload) \
              VALUES (1, 0, 'seat.tombstone', ?1, ?2) RETURNING seq",
         )
         .bind(seat.as_str())
         .bind(reason)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(adapter_error)?;
 
@@ -217,16 +231,21 @@ impl Registry for SqliteRegistry {
         .bind(seq)
         .bind(reason)
         .bind(seq)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(adapter_error)?
         .rows_affected();
 
         if affected == 0 {
             // Tombstoning a seat nobody registered is a fact, not a no-op: a
-            // silent success teaches the caller nothing.
+            // silent success teaches the caller nothing. ROLL BACK first — the
+            // split version committed the event anyway, so the spine recorded a
+            // tombstone for a seat that was never there (review finding 6).
+            tx.rollback().await.map_err(adapter_error)?;
             return Err(PijError::NoRegistryEntry { seat: seat.clone() });
         }
+
+        tx.commit().await.map_err(adapter_error)?;
         Ok(Seq(seq as u64))
     }
 }

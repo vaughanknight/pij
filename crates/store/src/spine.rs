@@ -12,6 +12,8 @@ use pij_core::error::{PijError, Result};
 use pij_core::model::{Event, SeatId, Seq};
 use pij_core::ports::Spine;
 
+use crate::migrate::require_current_schema;
+
 /// A [`Spine`] backed by the SQLite store.
 pub struct SqliteSpine {
     pool: Pool<Sqlite>,
@@ -34,6 +36,7 @@ fn adapter_error(error: sqlx::Error) -> PijError {
 #[async_trait]
 impl Spine for SqliteSpine {
     async fn append(&self, event: Event) -> Result<Seq> {
+        require_current_schema(&self.pool).await?;
         let seq: i64 = sqlx::query_scalar(
             "INSERT INTO spine_events (v, at, kind, seat, payload) \
              VALUES (?1, ?2, ?3, ?4, ?5) RETURNING seq",
@@ -50,6 +53,7 @@ impl Spine for SqliteSpine {
     }
 
     async fn tail(&self, seat: Option<&SeatId>, since: Seq) -> Result<Vec<Event>> {
+        require_current_schema(&self.pool).await?;
         let rows = sqlx::query(
             "SELECT v, at, kind, seat, payload FROM spine_events \
              WHERE seq > ?1 AND (?2 IS NULL OR seat = ?2) ORDER BY seq",

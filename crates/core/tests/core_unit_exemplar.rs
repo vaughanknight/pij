@@ -24,13 +24,20 @@ fn watchdog_eligibility_is_a_decision_table_not_a_timeout() {
         descriptor
     };
 
-    // Silent and idle with nothing declared: the case the watchdog exists for.
+    // Silent and idle with nothing declared, or declared available: the case the
+    // watchdog exists for.
     assert!(seat(None, SystemState::Idle, false).nudgeable());
     assert!(seat(Some(SemanticState::Ready), SystemState::Idle, false).nudgeable());
-    assert!(seat(Some(SemanticState::Waiting), SystemState::Idle, false).nudgeable());
 
     // Declared non-working states: deliberate silence, never a stall.
+    //
+    // `Waiting` belongs in THIS list, and an earlier draft of this table had it
+    // in the one above — matching the implementation rather than the settled
+    // guide ("eligible(seat) excludes waiting|hold|blocked|question"). The test
+    // passed, which is the whole problem: it locked in the contradiction instead
+    // of catching it. Caught by the cross-model reviewer, 2026-08-28.
     for parked in [
+        SemanticState::Waiting,
         SemanticState::Hold,
         SemanticState::Blocked,
         SemanticState::Question,

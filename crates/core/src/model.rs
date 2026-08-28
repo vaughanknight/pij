@@ -123,8 +123,16 @@ impl SemanticState {
     /// decision table in `pij-core`'s tests is its regression proof.
     pub const fn nudgeable(self) -> bool {
         match self {
-            SemanticState::Ready | SemanticState::Waiting => true,
-            SemanticState::Hold
+            // Only a seat that declared itself available for work.
+            SemanticState::Ready => true,
+            // `Waiting` is on this side of the line by RULING (services.dd.md:
+            // "eligible(seat) excludes waiting|hold|blocked|question"), and the
+            // ruling is right: a seat waiting on a peer or a dispatch is silent
+            // for a reason it already told us, and nudging it asks a question it
+            // has answered. An earlier draft here had Waiting nudgeable and a
+            // test that locked the contradiction in — caught in review, 2026-08-28.
+            SemanticState::Waiting
+            | SemanticState::Hold
             | SemanticState::Blocked
             | SemanticState::Question
             | SemanticState::Done => false,
@@ -408,9 +416,17 @@ pub struct ModelRow {
     pub selector: String,
     /// What the harness sends on the wire.
     pub request_model_id: String,
-    /// Available thinking efforts. `None` is a valid "this model has no levels",
-    /// distinct from an empty list, which would claim it has levels and none work.
-    pub thinking: Option<Vec<String>>,
+    /// Available thinking efforts; **empty means this model has no levels**.
+    ///
+    /// A `Vec`, not an `Option<Vec>`, and that is a ruling rather than taste: the
+    /// TS CLI expresses "no levels" as `"levels": []` on some rows and by OMITTING
+    /// the key on others (the claude family), and the raw `null` some upstream
+    /// providers send never reaches pij's output. Three encodings of one fact
+    /// collapse here into one representation, so no consumer can branch on a
+    /// distinction that does not exist. Measured 2026-08-28; services.dd.md
+    /// corrected the same day.
+    #[serde(default)]
+    pub thinking_levels: Vec<String>,
 }
 
 /// A liveness verdict.

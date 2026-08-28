@@ -24,4 +24,8 @@ tokio = { workspace = true }
 # The end-to-end tests speak HTTP to the daemon over loopback, and use FreshStore
 # when they make the store real.
 [dev-dependencies]
+# The review regressions drive a real store and a real socket: the findings they
+# lock in were all invisible to unit-level doubles.
+pij-store = { workspace = true }
 reqwest = { workspace = true }
+sqlx = { workspace = true }

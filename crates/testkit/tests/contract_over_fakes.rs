@@ -142,6 +142,24 @@ fn an_unscripted_readiness_says_what_it_observed() {
 }
 
 #[test]
+fn the_harness_busy_gate_is_scriptable_and_defaults_to_not_busy() {
+    // `busy(pane)` is part of the SETTLED HarnessPort (services.dd.md:45) and was
+    // missing from the first draft of ports.rs — caught in review. It is the
+    // BUSY_RE-class seam: one place per harness where "is it mid-turn" is decided.
+    let harness = FakeHarness::new(Harness::Pi)
+        .script_busy(true)
+        .script_busy(false);
+
+    assert!(block_on(harness.busy("%1")).expect("busy"));
+    assert!(!block_on(harness.busy("%1")).expect("busy"));
+    assert!(
+        !block_on(FakeHarness::new(Harness::Pi).busy("%1")).expect("busy"),
+        "unscripted means NOT busy — a fake that claims mid-turn by default makes \
+         every delivery test arrange its way out of a state it never asked for"
+    );
+}
+
+#[test]
 fn liveness_tells_recycled_from_active_and_dead() {
     // The verdict that TS got wrong in both directions. Pure core logic over one
     // observed fact, so all three branches are one line each to arrange.

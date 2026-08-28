@@ -128,7 +128,19 @@ pub async fn schema_version(pool: &Pool<Sqlite>) -> Result<u32> {
 }
 
 /// Refuse to proceed unless the open store is exactly the schema this binary
-/// speaks. Called by commands, not by `open` — `open` migrates, commands verify.
+/// speaks.
+///
+/// Called by EVERY public store operation, not left to a caller to remember.
+/// Review found the earlier version — a helper nothing invoked — which meant the
+/// documented promise ("every db-touching command runs a fast schema check") was
+/// true only of the tests that called it directly. A schema can change under a
+/// live pool (another binary migrating the same file), so checking once at `open`
+/// is not the same guarantee.
+///
+/// The cost is one `PRAGMA user_version` per operation: a page already in cache,
+/// no join, no IO in the common case. If it ever shows up in a profile, the fix
+/// is a cached generation counter invalidated on migration — not dropping the
+/// check.
 ///
 /// # Errors
 /// [`PijError::StoreSchemaStale`] in either skew direction, with the fix that
@@ -147,6 +159,24 @@ pub async fn require_current_schema(pool: &Pool<Sqlite>) -> Result<()> {
             "upgrade pij — this binary is older than the store it was handed".to_string()
         },
     })
+}
+
+/// Begin a transaction that intends to WRITE.
+///
+/// `BEGIN IMMEDIATE`, never the default deferred: two deferred transactions
+/// upgrading a read lock deadlock, and SQLite answers SQLITE_BUSY *without*
+/// invoking the busy handler, so `busy_timeout` buys nothing. Shared by every
+/// writer in this crate so the rule has one home rather than a copy per module.
+///
+/// # Errors
+/// [`PijError::Adapter`] when the transaction cannot be opened.
+pub async fn begin_write(pool: &Pool<Sqlite>) -> Result<sqlx::Transaction<'_, Sqlite>> {
+    pool.begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(|error| PijError::Adapter {
+            adapter: "store".to_string(),
+            message: error.to_string(),
+        })
 }
 
 /// Whether the WAL journal actually took. Reported rather than assumed: the

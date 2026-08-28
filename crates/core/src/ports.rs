@@ -144,6 +144,11 @@ pub trait HarnessPort: Send + Sync {
     /// so a never-bind is diagnosable instead of a timeout.
     async fn readiness(&self, pane: &str) -> Result<Readiness>;
 
+    /// Is the harness mid-turn? Owned here rather than by each caller because
+    /// the "is it busy" regex drifts per harness release, and one place to fix it
+    /// is the entire reason this port exists (BUSY_RE-class drift).
+    async fn busy(&self, pane: &str) -> Result<bool>;
+
     /// This harness's model catalog.
     async fn models(&self) -> Result<Vec<ModelRow>>;
 }

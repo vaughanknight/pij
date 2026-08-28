@@ -13,6 +13,18 @@
 //!   working check.
 //! * the LIVE workspace — must be GREEN, so the fixtures cannot drift away from
 //!   the tree they claim to describe.
+//!
+//! **Regenerating the fixtures** (needed whenever the real crate graph changes,
+//! because a snapshot of an old graph now reports its unused permissions as
+//! `StaleRule` — which is the check working):
+//!
+//! ```bash
+//! cargo metadata --no-deps --format-version 1 \
+//!   | jq '{packages: [.packages[] | {name, id, dependencies: [.dependencies[] | {name, kind}]}],
+//!          workspace_members, version: 1}' \
+//!   > crates/testkit/fixtures/arch/clean-metadata.json
+//! # then re-plant tokio in pij-core and mockall@dev in pij-store for drifted-metadata.json
+//! ```
 
 use pij_testkit::arch::{self, DepKind, Violation};
 
@@ -80,6 +92,43 @@ fn the_live_workspace_matches_the_ratified_graph() {
     assert!(
         violations.is_empty(),
         "live crate graph has drifted from workshop 001 R2: {violations:?}"
+    );
+}
+
+#[test]
+fn a_permission_nobody_uses_is_reported_as_drift() {
+    // The check used to be one-directional: it judged real edges against the list
+    // but never the list against reality, so a REMOVED dependency stayed
+    // pre-approved and could be reintroduced later without the reviewed line the
+    // allow-list exists to force. Found in review, 2026-08-28.
+    let graph =
+        arch::Graph::from_cargo_metadata(include_str!("../fixtures/arch/clean-metadata.json"))
+            .expect("fixture");
+
+    let mut allowlist = allowlist();
+    allowlist
+        .crates
+        .get_mut("pij-core")
+        .expect("core is described")
+        .external
+        .push(arch::Rule {
+            dep: "nobody-depends-on-this".to_string(),
+            kind: DepKind::Normal,
+        });
+
+    let violations = arch::check(&graph, &allowlist);
+    assert!(
+        violations.contains(&Violation::StaleRule {
+            crate_name: "pij-core".to_string(),
+            dep: "nobody-depends-on-this".to_string(),
+            kind: DepKind::Normal,
+        }),
+        "an unused permission must be reported: {violations:?}"
+    );
+    assert!(
+        violations[0].to_string().contains("no longer a dependency"),
+        "and the message must say what to do: {}",
+        violations[0]
     );
 }
 

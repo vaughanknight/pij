@@ -483,6 +483,7 @@ struct HarnessState {
     session: Option<String>,
     bind: Option<BindHealth>,
     readiness: VecDeque<Readiness>,
+    busy: VecDeque<bool>,
     models: Vec<ModelRow>,
 }
 
@@ -515,6 +516,17 @@ impl FakeHarness {
             .expect("fake harness mutex")
             .readiness
             .push_back(readiness);
+        self
+    }
+
+    /// Queue a `busy` answer. Queued, so a test can walk a seat from mid-turn to
+    /// idle without a clock — the shape every delivery-gating decision needs.
+    pub fn script_busy(self, busy: bool) -> Self {
+        self.state
+            .lock()
+            .expect("fake harness mutex")
+            .busy
+            .push_back(busy);
         self
     }
 
@@ -552,6 +564,14 @@ impl HarnessPort for FakeHarness {
         Ok(state.readiness.pop_front().unwrap_or(Readiness::NotYet {
             observed: "fake harness: nothing scripted".to_string(),
         }))
+    }
+
+    async fn busy(&self, _pane: &str) -> Result<bool> {
+        // Unscripted means NOT busy: a fake that claims a seat is mid-turn by
+        // default would make every delivery test arrange its way out of a state
+        // it never asked for.
+        let mut state = self.state.lock().expect("fake harness mutex");
+        Ok(state.busy.pop_front().unwrap_or(false))
     }
 
     async fn models(&self) -> Result<Vec<ModelRow>> {

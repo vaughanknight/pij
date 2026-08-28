@@ -21,6 +21,8 @@ use pij_core::error::{PijError, Result};
 use pij_core::model::{Job, JobId, Outcome};
 use pij_core::ports::Queue;
 
+use crate::migrate::require_current_schema;
+
 /// A [`Queue`] backed by the SQLite store.
 pub struct SqliteQueue {
     pool: Pool<Sqlite>,
@@ -32,7 +34,7 @@ impl SqliteQueue {
         SqliteQueue { pool }
     }
 
-    /// Begin a transaction that intends to WRITE.
+    /// Begin a transaction that intends to WRITE (delegates to the shared rule).
     ///
     /// `BEGIN IMMEDIATE`, never the default `BEGIN DEFERRED`, and this is not a
     /// tuning preference — it is a correctness fix measured here. A deferred
@@ -47,10 +49,7 @@ impl SqliteQueue {
     /// `BEGIN IMMEDIATE` takes the write lock up front, so the second writer
     /// WAITS (and the busy timeout finally means something) instead of failing.
     async fn begin_write(&self) -> Result<sqlx::Transaction<'_, Sqlite>> {
-        self.pool
-            .begin_with("BEGIN IMMEDIATE")
-            .await
-            .map_err(adapter_error)
+        crate::migrate::begin_write(&self.pool).await
     }
 
     /// How many rows are live (pending or running) — the dedupe assertion
@@ -79,6 +78,7 @@ fn adapter_error(error: sqlx::Error) -> PijError {
 #[async_trait]
 impl Queue for SqliteQueue {
     async fn enqueue(&self, job: Job) -> Result<JobId> {
+        require_current_schema(&self.pool).await?;
         // `ON CONFLICT ... DO NOTHING` against the partial index, then read the
         // live row back. Both statements run in ONE transaction so a concurrent
         // enqueue cannot slip between them and leave this caller with no id.
@@ -110,6 +110,7 @@ impl Queue for SqliteQueue {
     }
 
     async fn claim(&self, kinds: &[String], worker: &str) -> Result<Option<(JobId, Job)>> {
+        require_current_schema(&self.pool).await?;
         if kinds.is_empty() {
             return Ok(None);
         }
@@ -169,6 +170,7 @@ impl Queue for SqliteQueue {
     }
 
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {
+        require_current_schema(&self.pool).await?;
         let (state, detail) = match &outcome {
             Outcome::Done => ("done", None),
             Outcome::Failed { reason } => ("failed", Some(reason.clone())),
