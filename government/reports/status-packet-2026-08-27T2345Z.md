@@ -112,3 +112,6 @@ The 04:25:54Z PA sweep arrived without the "watchdog unknown — not a health cl
 
 ## Amendment 04:4xZ — §2/§3 item 32
 PR #33 item 32 (direct-child daemon launch; SIGHUP handled; locks released on every signal) merged → main after 32-FX (relay probe via resolved tsx CLI, 15 s cold ceiling); verified at the merge product 4160/0. Not live until restart #7, asked after the 05:15Z bridge measurement. Item 32 leaves §3's open list once live.
+
+## Amendment 04:5xZ — item 24 live evidence
+Interim reading since restart #6 (04:11–04:52Z): 0 of 6 real bridge sends needed a second attempt (pre-fix baseline 9 of 24). The restored bridge log recorded one in-lease retry after `Network request for 'sendMessage' failed!` that succeeded — the transient-network cause of the pre-fix attempt-2 rows is now evidenced on the live bridge. Final 24b decision at 05:15Z.

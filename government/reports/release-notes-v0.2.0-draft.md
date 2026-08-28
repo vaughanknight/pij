@@ -14,7 +14,7 @@ Peer comms move from filesystem inboxes to a **SQLite WAL durable queue** with *
 - Watchdog: projection reads the live fire clock; "unknown" verdicts are never delivered; stall threshold is standby-aware; notices are signed by the sensor, not the observed seat (31).
 
 ## Known gaps (honest)
-- Telegram bridge: a retry inside one delivery pass after an ambiguous send failure (network error after Telegram may have accepted) can duplicate one bubble; it never omits. Cross-pass redelivery is idempotent (plan-hash marks). Bounded backoff and this case: item 24b. Measured on 188c877 (23:15–02:45Z): 9 of 24 bridge sends (≈1 in 3) failed their first attempt (transient; not length-related — a 692-char body succeeded first try while a 315-char one did not) and landed ~65–80 s later on the retry.
+- Telegram bridge: a retry inside one delivery pass after an ambiguous send failure (network error after Telegram may have accepted) can duplicate one bubble; it never omits. Cross-pass redelivery is idempotent (plan-hash marks). Bounded backoff and this case: item 24b. Measured on 188c877 (23:15–02:45Z): 9 of 24 bridge sends (≈1 in 3) failed their first attempt (transient network errors on `sendMessage`, evidenced in the bridge log after item 24 restored it; not length-related) and landed ~65–80 s later on the lease retry. With item 24's in-lease retry live (2026-08-28 04:11Z), the first hour showed 0 of 6 sends needing a second attempt and one transient recovered in-lease.
 - Claude-socket receipts: `acked (reader=X)` proves injected-to-socket, not read (item 23b pending).
 - Codex `app-server --remote` path deferred; Codex seats use the pointer line.
 - `pij list --json` / `pij state --json` omit harness/pane/statusAt.
