@@ -46,3 +46,19 @@ Port contract consequences (owning units: u-orchestration + u-store):
   declared unrecoverable at death-record time — never discovered at revive time.
 - events.ndjson stands as the interview substitute: the seat's complete wire
   history in its own words at the time.
+
+## Addendum 2 — real implementer found (lynx telemetry, 2026-08-28)
+The fs3 foundations were written by ONE omp coder: pij-alternative-turtle
+(github-copilot/claude-opus-5 high), flow-pair dlg-0002 under PM gibbon, reviewed by mink
+rev-0001..0006. Attribution: flowspace3 scratch/reconstruct/11-plan001-attribution.md.
+Interview substitute (better): turtle's COMPLETE native transcript survives —
+~/.omp/agent/sessions/-substrate-flowspace-flowspace3/2026-08-26T02-08-44-234Z_01a03bd3-*.jsonl
+(entire scaffold source inline + every decision in sequence); flow-pair run ledger in the main
+clone's .flow-pair/runs/2026-08-26T02-07-44Z-*/.
+Two port-ledger updates:
+- R5 item 5 REFRAMED: revive E-NOREG for omp seats is a WRONG-PATH resolution bug — the native
+  artifact EXISTS (proven for turtle) while revive reports it missing. Fix resolution FIRST;
+  snapshot/checksum second. All of today's "omp seats unrecoverable" verdicts are suspect.
+- NEW defect row 11: omp EVAL python FILES-dict batch writes (~60 files by turtle) are invisible
+  to git-ai attribution AND write/edit surveys — an implementation modality with no attribution
+  trace. Port: attribution must hook the write SINK, not the tool surface.
