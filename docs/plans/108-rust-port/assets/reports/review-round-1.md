@@ -144,7 +144,7 @@ pij-gate verdict
 pij-gate: all stages green
 ```
 
-Test count 69 → 84. Nothing was fixed by relaxing an assertion: every change moved
+Test count 69 → 78 (measured: `cargo test --workspace`, summed over the result lines — an earlier draft of this report said 84, which was my estimate rather than a count; corrected before it became a citation). Nothing was fixed by relaxing an assertion: every change moved
 the CODE, and three assertions got stricter.
 
 ## The reviewer's own measurements, kept
