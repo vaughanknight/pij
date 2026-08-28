@@ -369,7 +369,15 @@ pub struct Event {
     /// without gaps or duplicates. Two wave-1 coders found that independently
     /// (u-store D5, u-events D1). Fixing it additively here keeps `ports.rs`
     /// frozen — the trait signature never changed.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// **Never on the wire.** R7 fixes the v1 event shape at exactly
+    /// `{v, at, kind, seat, payload}`, and a cursor is a property of a STREAM,
+    /// not of the fact that happened: putting it in the body would make every
+    /// consumer's payload depend on whether the event came from a tail or a
+    /// publish. When the NDJSON stream needs resumability it belongs in the
+    /// FRAME — a wave-3 design point this deliberately does not pre-empt.
+    /// `crates/core/tests/wire_over_corpus.rs` asserts the absence.
+    #[serde(skip)]
     pub seq: Option<Seq>,
     /// Event-schema version, so a reader can refuse a payload from a future it
     /// does not understand instead of half-reading it.

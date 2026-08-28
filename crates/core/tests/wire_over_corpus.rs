@@ -156,3 +156,47 @@ fn an_event_without_a_kind_is_a_shape_error_not_an_unknown_kind() {
         other => panic!("wrong error: {other:?}"),
     }
 }
+
+#[test]
+fn a_sequenced_event_never_carries_its_cursor_onto_the_wire() {
+    // R7 fixes the v1 event shape at exactly {v, at, kind, seat, payload}. The
+    // store assigns `seq` on the read path so a consumer can advance a durable
+    // cursor, but that is a property of the STREAM, not of the fact that
+    // happened — an event that has been tailed and one that has just been
+    // published must look identical on the wire.
+    //
+    // This test exists because the first version of the seam shipped
+    // `skip_serializing_if = "Option::is_none"`, which serialises `seq` the
+    // moment it is `Some` — the doc comment said one thing and the attribute did
+    // another. Caught by a coder reading the merged code rather than the receipt.
+    let tailed = Event {
+        seq: Some(pij_core::model::Seq(42)),
+        v: wire::EVENT_VERSION,
+        at: 1_724_800_000_000,
+        kind: "report".to_string(),
+        seat: Some("pij-seat".into()),
+        payload: "{}".to_string(),
+    };
+
+    let line = wire::encode_event(&tailed).expect("encode");
+    assert!(
+        !line.contains("seq") && !line.contains("42"),
+        "the cursor must not reach the wire: {line}"
+    );
+
+    let published = Event {
+        seq: None,
+        ..tailed.clone()
+    };
+    assert_eq!(
+        wire::encode_event(&published).expect("encode"),
+        line,
+        "a tailed event and a freshly published one must be byte-identical on the wire"
+    );
+
+    // ...and decoding never invents one.
+    match wire::decode_event_line(1, line.trim()).expect("decode") {
+        WireEvent::Known(decoded) => assert_eq!(decoded.seq, None),
+        other => panic!("expected Known, got {other:?}"),
+    }
+}

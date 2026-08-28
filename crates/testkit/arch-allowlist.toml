@@ -85,9 +85,9 @@ external = ["async-trait"]
 why = "Every tmux syscall in the workspace lives here, so pane/window quirks have exactly one home to fix; testkit is dev-only shared contract proof."
 
 [crates.pij-harnesses]
-internal = []
-external = []
-why = "Per-harness detect/bind/readiness/canary/model-catalog quirks; owns readiness-anchor drift in ONE place."
+internal = ["pij-core", "pij-testkit@dev"]
+external = ["async-trait"]
+why = "Per-harness adapters plus exact-pid process liveness. pij-core supplies the frozen ports, async-trait implements them, and testkit@dev supplies only the executor used by adapter tests."
 
 [crates.pij-transport]
 internal = []

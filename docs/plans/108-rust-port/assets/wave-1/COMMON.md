@@ -75,6 +75,24 @@ sequence the merge (this list is R6e/DL-007):
 | `crates/testkit/arch-allowlist.toml` | your reviewed row(s) |
 | `crates/<shared>/src/lib.rs` | one `pub mod` line for a new module |
 
+### Derived artifacts — regenerate, NEVER hand-merge
+
+Three files are generated from the tree rather than authored, and four parallel
+worktrees each produce a version that is true only for that branch:
+
+* `Cargo.lock`
+* `crates/testkit/fixtures/arch/clean-metadata.json`
+* `crates/testkit/fixtures/arch/drifted-metadata.json`
+
+**They are in your fence, in your own worktree.** Regenerate them locally so your
+own gate is honest — a green gate on a stale fixture is exactly the shape wave 0
+kept finding. Expect the PM to regenerate them authoritatively at compose time,
+overwriting yours; that is not your delta being rejected, it is a derived file
+being derived once, by one mind, from the merged tree.
+
+Never resolve a conflict in them by hand. The regeneration commands are in
+`crates/testkit/tests/arch_drift.rs`'s module doc.
+
 **FROZEN for wave 1 — a change here is a stop-and-ask, not an edit:**
 
 * `crates/core/src/ports.rs` — the seven traits. An eighth port is stop-and-ask;

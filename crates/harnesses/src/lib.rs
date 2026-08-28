@@ -3,3 +3,5 @@
 //!
 //! Empty at tk-5f1d: this task proves the graph compiles, not that it does
 //! anything. Content arrives with the task that owns it.
+
+pub mod proc;

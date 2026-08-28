@@ -181,3 +181,11 @@ prime rulings recorded in this file.
   (d) resolve judged paths at RUNTIME (env!(CARGO_MANIFEST_DIR) is compile-time — a gate
   binary judged a deleted temp tree from anywhere; silent form = green for a checkout
   nobody is looking at).
+- WAVE-1 FIELD NOTES (2026-08-29): machine-wide #19 census — four pre-existing pid groups
+  carry multi-descriptors (11456x4, 14495x6, 18285x5, 39459x2) while all four wave-1 coder
+  pids scan clean; reconciliation backlog is real and quantified. And a receipt-vs-code
+  instance INSIDE the fleet: PM's seam commit said #[serde(skip)] while code had
+  skip_serializing_if — cursor would have hit the R7 wire the moment it was Some; coder
+  gurgeh read merged code against the ruling rather than trusting the commit message; fixed
+  ae78332b with wire-absence now ASSERTED (tailed vs fresh event byte-identical). The
+  wave-0 lesson (verify the artifact, not the report) is reproducing in coders unprompted.
