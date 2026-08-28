@@ -22,8 +22,9 @@ fn allowlist() -> arch::Allowlist {
 
 #[test]
 fn drifted_metadata_is_refused_with_the_reason_named() {
-    let graph = arch::Graph::from_cargo_metadata(include_str!("../fixtures/arch/drifted-metadata.json"))
-        .expect("fixture must be readable cargo metadata");
+    let graph =
+        arch::Graph::from_cargo_metadata(include_str!("../fixtures/arch/drifted-metadata.json"))
+            .expect("fixture must be readable cargo metadata");
 
     let violations = arch::check(&graph, &allowlist());
 
@@ -60,8 +61,9 @@ fn drifted_metadata_is_refused_with_the_reason_named() {
 
 #[test]
 fn clean_metadata_passes() {
-    let graph = arch::Graph::from_cargo_metadata(include_str!("../fixtures/arch/clean-metadata.json"))
-        .expect("fixture must be readable cargo metadata");
+    let graph =
+        arch::Graph::from_cargo_metadata(include_str!("../fixtures/arch/clean-metadata.json"))
+            .expect("fixture must be readable cargo metadata");
 
     assert_eq!(
         arch::check(&graph, &allowlist()),
@@ -97,8 +99,14 @@ fn a_dev_only_rule_never_permits_a_shipped_edge() {
         kind: DepKind::Normal,
     };
     assert!(ship_rule.permits(DepKind::Normal));
-    assert!(ship_rule.permits(DepKind::Dev), "cleared to ship implies cleared for tests");
-    assert!(!ship_rule.permits(DepKind::Build), "build scripts are a separate axis");
+    assert!(
+        ship_rule.permits(DepKind::Dev),
+        "cleared to ship implies cleared for tests"
+    );
+    assert!(
+        !ship_rule.permits(DepKind::Build),
+        "build scripts are a separate axis"
+    );
 }
 
 #[test]

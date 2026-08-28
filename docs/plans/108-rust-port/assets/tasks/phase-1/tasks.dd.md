@@ -37,7 +37,7 @@ Execute in order; each task's gate must be green before the next starts. Rulings
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | tk-48f2 | Toolchain pin + repo hygiene: rust-toolchain.toml (stable, rustfmt+clippy), root Cargo.toml workspace with pocs/ exclude, .gitignore for target/. First commit, nothing else in it. | — | — | [x] checked | R6a,R6c | — | [ ] 0/1 [tk-48f2](#tk-48f2) | — | — | — |
 | tk-5f1d | Workspace skeleton: 8 member crates (core,store,tmux,harnesses,transport,daemon,cli-&gt;one binary,testkit) compiling empty at hello-world depth; cargo build --workspace green. | — | — | [x] checked | R2 / ac-0001,ac-0002 | — | [x] 1/1 [tk-5f1d](#tk-5f1d) | — | — | — |
-| tk-3a93 | Drift gate: arch-allowlist committed with per-row rationale + the test that walks the dep graph; NEGATIVE PROOF recorded (add tokio to core, red, revert; transcript to assets/reports/). | — | — | [ ] unchecked | R2 / ac-0003 | — | [ ] 0/1 [tk-3a93](#tk-3a93) | — | — | — |
+| tk-3a93 | Drift gate: arch-allowlist committed with per-row rationale + the test that walks the dep graph; NEGATIVE PROOF recorded (add tokio to core, red, revert; transcript to assets/reports/). | — | — | [x] checked | R2 / ac-0003 | — | [x] 1/1 [tk-3a93](#tk-3a93) | — | — | — |
 | tk-ddf1 | Ports + fakes: the six frozen traits in core/src/ports.rs ('a seventh port is stop-and-ask' comment) + a shipped, deterministic, scriptable fake per port in testkit; fake-as-default config; port contract exemplar test. | — | — | [ ] unchecked | R3 / ac-0006 | — | [ ] 0/1 [tk-ddf1](#tk-ddf1) | — | — | — |
 | tk-d4c3 | Store skeleton: SQLite via sqlx, migration 0001 (WAL+user_version), boot self-migration, stale-schema refusal (skew rule both directions), FreshStore-per-test primitive; store integration exemplar. | — | — | [ ] unchecked | R1 / ac-0004-analog,ac-0006 | — | [ ] 0/1 [tk-d4c3](#tk-d4c3) | — | — | — |
 | tk-f8ff | Queue primitive: enqueue/claim/ack, dedupe partial-unique over live jobs, per-entity serial keys; contention test with set-equality; mutation-check the dedupe. | — | — | [ ] unchecked | R4 | — | [ ] 0/1 [tk-f8ff](#tk-f8ff) | — | — | — |
@@ -66,7 +66,7 @@ Execute in order; each task's gate must be green before the next starts. Rulings
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-1be7 | allowlist test green AND negative proof recorded (forbidden dep -&gt; red -&gt; revert, transcript in assets/reports/) | [ ] unchecked | not-applicable |
+| dw-1be7 | allowlist test green AND negative proof recorded (forbidden dep -&gt; red -&gt; revert, transcript in assets/reports/) | [x] checked | not-applicable |
 
 ### tk-ddf1
 

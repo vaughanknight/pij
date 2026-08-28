@@ -36,7 +36,7 @@
         {
           "id": "tk-3a93",
           "title": "Drift gate: arch-allowlist committed with per-row rationale + the test that walks the dep graph; NEGATIVE PROOF recorded (add tokio to core, red, revert; transcript to assets/reports/).",
-          "state": "unchecked",
+          "state": "checked",
           "note": "R2 / ac-0003",
           "done": "#done_when/tk-3a93"
         },
@@ -114,7 +114,7 @@
           {
             "id": "dw-1be7",
             "assertion": "allowlist test green AND negative proof recorded (forbidden dep -> red -> revert, transcript in assets/reports/)",
-            "state": "unchecked",
+            "state": "checked",
             "pressure": "not-applicable"
           }
         ],
