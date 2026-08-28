@@ -26,3 +26,8 @@ Dispatch sequencing for this stream:
 - **PR #32 (item 24) MERGED → main f3016b3** (o-prime verified at merge product 716c244: 4148/0, tsc 0, skill-check 0, +20 tests). Item 24 DONE.
 - **Rebase item 30 onto f3016b3 now**; item-30's PR is the LAST thing before the restart-6 baton (o-prime holds the ≤1 h ask for it).
 - **Order after item 30**: 12-FX (skill-check flake isolation, mine), then HOLD 24b for the post-restart measurement (residual>0 trigger).
+
+## 2026-08-28 — PR #34 merged; restart #6 asked; tail order
+- **PR #34 (item 30) MERGED → main 3411794** (o-prime verified at merge product: 4155/0, tsc 0, skill-check 0, +26 tests). Item 30 DONE.
+- **Restart #6 ASKED at 3411794** (carries 24 + 30 + 15/15-FX/16/29b/31).
+- **My order**: 12-FX (now) → HOLD 24b for post-restart measurement (chore 6, ≥1 h) → then 22 (unpark), E22, 23b, 21b, 29b-rest.
