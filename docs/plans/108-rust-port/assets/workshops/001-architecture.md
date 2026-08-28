@@ -85,3 +85,11 @@ prime rulings recorded in this file.
   forced by R1 (sqlx has no sync API; sync traits would block_on inside adapters and deadlock on
   tokio workers). Core remains tokio-free; core tests use a hand-rolled executor. async-trait is
   one allowlist row citing this amendment. Alternative (sync + rusqlite) rejected: reverses R1.
+- R5-EVIDENCE (2026-08-28, ermine): fresh verified #19 recurrence — one OMP seat
+  (pij-driving-nigel, lynx's fleet) running four internal scouts minted FIVE active
+  descriptors sharing pid 18285 / pane %287 / one spawnId, five native session ids
+  (aliases useless-eel, private-spoonbill, adjacent-wolf, cheerful-unaha). Mechanism +
+  required fix source-grounded at pij#19 issuecomment-5447883985. Port consequence for
+  R5 item 3: registration requires BIND EVIDENCE and subagent scoping, and the store
+  needs descriptor-only reconciliation (merge/tombstone aliases by (pid,proc_start,
+  spawnId) equivalence) — TS has none; no alias cleanup is safe there.
