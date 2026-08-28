@@ -11,11 +11,11 @@ Peer comms move from filesystem inboxes to a **SQLite WAL durable queue** with *
 - Safety: pane-misbind guard (10a/10b, 17, 21); registry publishes serialized (13); stale spine/platform write-locks released and reclaimed (15); creator notices route to the current parent, liveness-aware (16).
 - Spawn/models: `--context long_context` gated per model (6); gemini-3.6-flash marked upstream-unstable, warn-don't-block (6b).
 - Harness/docs: skill-check debt and hardening (9, 11, 12); report vocabulary remedies (4); C9 watchdog doc (14, 18); pointer doctrine (7).
+- Watchdog: projection reads the live fire clock; "unknown" verdicts are never delivered; stall threshold is standby-aware; notices are signed by the sensor, not the observed seat (31).
 
 ## Known gaps (honest)
 - Telegram bridge: a retry inside one delivery pass after an ambiguous send failure (network error after Telegram may have accepted) can duplicate one bubble; it never omits. Cross-pass redelivery is idempotent (plan-hash marks). Bounded backoff and this case: item 24b. Measured on 188c877 (23:15–02:25Z): 7 of 22 bridge sends (≈32%) failed their first attempt (transient; not length-related — a 692-char body succeeded first try while a 315-char one did not) and landed ~65–80 s later on the retry.
 - Claude-socket receipts: `acked (reader=X)` proves injected-to-socket, not read (item 23b pending).
-- Watchdog projection/verdict noise: stale `next due`, "unknown" and boundary-stall notices delivered (item 31 pending).
 - Codex `app-server --remote` path deferred; Codex seats use the pointer line.
 - `pij list --json` / `pij state --json` omit harness/pane/statusAt.
 - The plan-055 watchdog smoke proof (`docs/plans/055-pij-watchdog/proofs/run-proofs.ts`) is stale since item 5 (asserts the pre-pointer delivery model; unawaited ticks; FsChannel while the CLI writes sqlite) and reads red on the harness smoke line for those reasons — item 33.

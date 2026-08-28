@@ -91,3 +91,6 @@ PR #30 item 29b-T001 (bridge-restart notice via pij-telegram watchers; deps extr
 
 ## Amendment 02:2xZ — §7 decision 1 answered
 Vaughan (Telegram, verbatim "Yes"): item 30 must land before the tag. Sequence: item-24 PR → item 30 dispatched immediately → one restart carrying both if 30 is within ~1 h, else two → RC tag after the restart that carries 30. Decisions 2–6 open.
+
+## Amendment 02:5xZ — §2/§3
+PR #31 item 31 (watchdog projection = live fire clock; unknown never delivered; standby-aware stall threshold; sensor-signed notices) merged → main 16a7c42; not live until restart #6, which now carries 15, 15-FX, 16, 29b-T001, 31 (+24, +30 if close). Item 31 leaves §3's open list.
