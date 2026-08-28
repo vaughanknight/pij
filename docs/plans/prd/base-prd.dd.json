@@ -137,10 +137,10 @@
           "id": "req-0014",
           "num": 14,
           "title": "Coexistence and cutover behind parity",
-          "requirement": "TS and Rust run side-by-side against the same store during migration; the TS CLI retires only after a soak behind the parity harness; cutover is its own plan.",
+          "requirement": "TS and Rust run side-by-side against the same store during migration; the TS CLI retires only after a soak behind the parity harness; cutover is its own plan. Cutover asymmetry (Jordan 2026-08-28): claude/copilot/codex seats survive the daemon swap live (outside-bound, subprocess CLI only \u2014 no restart); pi/OMP seats carry the in-process extension and change over version-gated behind a logged compat shim, never flag-day.",
           "state": "unchecked",
           "completed_evidence": "",
-          "note": "plan 108 non-goal; later plan"
+          "note": "design: docs/plans/prd/cutover-design.md"
         },
         {
           "id": "req-0015",
