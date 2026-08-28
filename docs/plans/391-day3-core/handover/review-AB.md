@@ -1,0 +1,5 @@
+# Cold-read packet A+B — handover sections 34, 31b, 19 (branch s391/handover-v0.2.0-a @ 464ce95) and 25, 26, 27, 28 (branch s391/handover-v0.2.0-c @ 4f08d42)
+
+Same question and checks as `review-C.md` (rebuildability by a stranger with the repo + #311; every pointer resolves on origin/main — kept logs are `docs/plans/391-day3-core/kept-logs/*.log.txt` via PR #40; line refs at d120c53; section 3 names call site AND adapter; section 4 mutants name hunk + test; E-rules exist in README; no machine-local paths; three factual spot-checks per section; no contradiction with 00/01 frame docs). Extra for 34: the live-row evidence (queue rows to `pij-watchdog`, `~/.pij/pij-gravitas-shortfall/watchdog.json`) must carry the numbers inline; and verify the orchestrator's correction that the `pij-watchdog` receipt rows come from the SEAT-side writers (`core/session.ts:~697`, `cli.ts:~1285`, `core/cli.ts:~4858`), not the daemon writer (`daemon.ts:1669-1690`).
+
+**Verdict**: `docs/plans/391-day3-core/handover/review-AB-verdict.md` (only that file); per section YES/NO + findings; reply verdict + pointer only (C10).
