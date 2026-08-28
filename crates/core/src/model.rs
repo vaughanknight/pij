@@ -181,6 +181,14 @@ pub struct SeatDescriptor {
     /// correct by design and it is never watched.
     #[serde(default)]
     pub relay: bool,
+    /// When the seat was tombstoned, if it was. A live seat has `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tombstoned_at: Option<u64>,
+    /// Why it was tombstoned. The row IS the post-mortem, so the reason has to be
+    /// readable through the port — before this, only the fake could answer, which
+    /// meant the promise could not be proven against SQL (u-store D3).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tombstone_reason: Option<String>,
 }
 
 impl SeatDescriptor {
@@ -197,6 +205,8 @@ impl SeatDescriptor {
             role: None,
             parent: None,
             relay: false,
+            tombstoned_at: None,
+            tombstone_reason: None,
         }
     }
 
@@ -346,6 +356,21 @@ pub enum Outcome {
 /// because it is a decoding rule rather than a fact about an event.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Event {
+    /// The store-assigned position in the total order, once it HAS one.
+    ///
+    /// `None` on the write path — nobody has assigned a sequence to an event that
+    /// has not been appended yet — and `Some` on every read path, set from the
+    /// store's AUTOINCREMENT. Absent and assigned are different facts, kept
+    /// distinct rather than collapsed onto a sentinel `0`.
+    ///
+    /// It exists because `Spine::tail(since)` returns `Vec<Event>`: without a
+    /// sequence on the event itself, a consumer cannot advance a durable cursor
+    /// from what it just read, so replay and live streams cannot be joined
+    /// without gaps or duplicates. Two wave-1 coders found that independently
+    /// (u-store D5, u-events D1). Fixing it additively here keeps `ports.rs`
+    /// frozen — the trait signature never changed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seq: Option<Seq>,
     /// Event-schema version, so a reader can refuse a payload from a future it
     /// does not understand instead of half-reading it.
     pub v: u32,

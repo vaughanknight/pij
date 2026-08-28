@@ -227,6 +227,7 @@ async fn a_schema_that_changes_under_a_live_pool_stops_the_next_operation() {
             "spine append",
             SqliteSpine::new(pool.clone())
                 .append(pij_core::model::Event {
+                    seq: None,
                     v: 1,
                     at: 0,
                     kind: "report".to_string(),
@@ -392,6 +393,7 @@ async fn every_public_store_operation_rejects_a_stale_schema() {
         dedupe_key: "d".to_string(),
     };
     let event = pij_core::model::Event {
+        seq: None,
         v: 1,
         at: 0,
         kind: "report".to_string(),

@@ -120,6 +120,7 @@ fn the_hello_line_comes_first_and_declares_the_version() {
 #[test]
 fn a_known_event_round_trips_through_the_wire() {
     let event = Event {
+        seq: None,
         v: wire::EVENT_VERSION,
         at: 1_724_800_000_000,
         kind: "report".to_string(),

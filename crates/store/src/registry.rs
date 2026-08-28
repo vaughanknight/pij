@@ -107,6 +107,11 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
         role: row.try_get("role").map_err(adapter_error)?,
         parent: parent.map(SeatId),
         relay: relay != 0,
+        tombstoned_at: row
+            .try_get::<Option<i64>, _>("tombstoned_at")
+            .map_err(adapter_error)?
+            .map(|at| at as u64),
+        tombstone_reason: row.try_get("tombstone_reason").map_err(adapter_error)?,
     })
 }
 
