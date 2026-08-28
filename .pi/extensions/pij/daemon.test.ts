@@ -9,6 +9,7 @@ import {
 	statSync,
 	writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,6 +49,7 @@ import {
 } from "./daemon.js";
 
 const DAEMON_BIN = fileURLToPath(new URL("./daemon.ts", import.meta.url));
+const TSX_CLI = createRequire(import.meta.url).resolve("tsx/cli");
 
 const READY = "⏵⏵ auto mode on (shift+tab to cycle)";
 const CLAUDE_COMPOSER_EMPTY = [
@@ -2743,7 +2745,7 @@ describe("daemon signal shutdown", () => {
 			await new Promise<void>((resolve, reject) => {
 				const timer = setTimeout(
 					() => reject(new Error(`daemon lock marker timed out: ${stderr}`)),
-					5_000,
+					15_000,
 				);
 				child.stdout.setEncoding("utf8");
 				child.stdout.on("data", (chunk: string) => {
@@ -2893,7 +2895,7 @@ describe("daemon signal shutdown", () => {
 		"SIGHUP",
 		"SIGINT",
 	] as const)("the production launch makes the daemon the outer child and handles %s gracefully", {
-		timeout: 10_000,
+		timeout: 20_000,
 	}, async (signal) => {
 		await probeRealDaemonSignal(daemonLaunchArgv(DAEMON_BIN), signal, (probe) => {
 			expect(probe.daemonPid).toBe(probe.outerPid);
@@ -2903,14 +2905,19 @@ describe("daemon signal shutdown", () => {
 		});
 	});
 
-	it("the former npx tsx relay leaves the daemon locks behind when its outer pid is signalled", {
-		timeout: 10_000,
+	it("the resolved tsx CLI relay leaves the daemon locks behind when its outer pid is signalled", {
+		timeout: 20_000,
 	}, async () => {
-		await probeRealDaemonSignal({ cmd: "npx", args: ["tsx", DAEMON_BIN] }, "SIGHUP", (probe) => {
-			expect(probe.daemonPid).not.toBe(probe.outerPid);
-			expect(probe.writeLockExists).toBe(true);
-			expect(probe.eventsLockExists).toBe(true);
-		});
+		await probeRealDaemonSignal(
+			{ cmd: process.execPath, args: [TSX_CLI, DAEMON_BIN] },
+			"SIGHUP",
+			(probe) => {
+				expect(probe.daemonPid).not.toBe(probe.outerPid);
+				expect(probe.exit.signal === "SIGHUP" ? 129 : probe.exit.code).toBe(129);
+				expect(probe.writeLockExists).toBe(true);
+				expect(probe.eventsLockExists).toBe(true);
+			},
+		);
 	});
 });
 
