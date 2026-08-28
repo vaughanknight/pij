@@ -78,7 +78,7 @@
         {
           "id": "tk-388a",
           "title": "Spike lane + shared components: pocs/<name> template ([workspace]+.gitignore+out/), spike gate-posture sentence in README; wire.rs stub; discovery/admission component with shared case table.",
-          "state": "unchecked",
+          "state": "checked",
           "note": "R6c,R6d,R6f",
           "done": "#done_when/tk-388a"
         },
@@ -162,7 +162,7 @@
           {
             "id": "dw-8f8d",
             "assertion": "pocs/ template builds standalone; spike gate-posture sentence present; wire.rs stub + admission component with shared case table in gate",
-            "state": "unchecked",
+            "state": "checked",
             "pressure": "not-applicable"
           }
         ],
