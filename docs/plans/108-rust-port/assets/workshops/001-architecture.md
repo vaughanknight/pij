@@ -106,3 +106,11 @@ prime rulings recorded in this file.
   journal_mode back OFF DISK and asserts 'wal'. Also: user_version is a CACHE of the
   authoritative _sqlx_migrations ledger, reconciled at boot — never a second truth
   (second-boot no-op left the cache stale and refused a healthy store; caught by test).
+- R4-TRAP, WAVE-PACKET LINE (tk-f8ff, 2026-08-28 — REQUIRED in every wave 1-4 coder packet
+  touching sqlx): sqlx transactions default to BEGIN DEFERRED; two deferred writers
+  upgrading read->write deadlock and SQLite returns SQLITE_BUSY IMMEDIATELY, bypassing the
+  busy handler — the 5s busy_timeout is inert for exactly this case. Any write transaction
+  uses BEGIN IMMEDIATE (pool.begin_with). The symptom LIES ('database is locked' reads as
+  'SQLite cannot do concurrency' and invites serialization or useless retry loops).
+  Proven: contention test failed on deferred, green on immediate; mutation transcript
+  assets/reports/queue-mutation.md (BEGIN IMMEDIATE reverted -> deadlock reproduced).
