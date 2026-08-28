@@ -154,3 +154,8 @@ prime rulings recorded in this file.
   snapshot attachment group, trigger LSP diagnostics, concurrent process+registry capture,
   PASS only if new identity appears post-worker-creation on same pid/pane/spawnId;
   negative control without the worker feature. Never on a live coder; close no alias.
+- R5 item 3 CAUSALLY CLOSED (2026-08-28, controlled): prime's two-arm falsifier — Arm A
+  (LSP diagnostics, no subagent) minted nothing; Arm B (one read-only logical subagent)
+  minted alias pij-fragile-magpie on the probe's pid within seconds, no new OS process.
+  Worker-process hypothesis formally withdrawn by its author. Report:
+  assets/reports/19-falsifier-run.md.
