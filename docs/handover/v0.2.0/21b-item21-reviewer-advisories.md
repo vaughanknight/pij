@@ -5,7 +5,7 @@
 **Size estimate:** S, ~2–3 h · **Order / dependencies:** after item 21 (merged) and item 23b (o-prime ordered 21b after 23b, `docs/plans/392-day3-codex-doctrine/rulings.md:224`).
 
 ## 1. Why this exists (the observed failure, with evidence) — `docs/plans/392-day3-codex-doctrine/rulings.md:219-223`
-- **ADV-2 (undocumented + unsensored):** item-21's `settled = false` reset (`core/daemon/loop.ts:566`) also RE-ARMS the `fail()` notice (`:590`/`:604`). Main was SILENTLY SUPPRESSING a real post-rebind bind-failure (0 vs 1 notice). Reviewer says KEEP (arguably a 2nd bugfix) but it is undocumented and has no test.
+- **ADV-2 (undocumented + unsensored):** item-21's `settled = false` reset (`core/daemon/loop.ts:566`) also RE-ARMS the SHARED `fail()` notice latch (`settled`, gated at `loop.ts:618`, common to ALL five fail() sites). Main was SILENTLY SUPPRESSING a real post-rebind bind-failure (0 vs 1 notice). Reviewer says KEEP (arguably a 2nd bugfix) but it is undocumented and has no test.
 - **ADV-C (silent narrowing):** the pane-misbind grep-sweep is a TRADE, not a tightening — it GAINED aliased-destructure shapes but LOST literal-RHS comparisons (`descriptor.paneId === "%42"`, backtick-`%n`) and has a latent object-literal false positive (paneIdAliases matches object literals, scope-blind). LOW severity (sweep skips `.test.ts`, 0 real occurrences today) — but a safety-brake narrowing must be STATED, not silent.
 
 ## 2. What is ruled (design / spec)
@@ -18,8 +18,8 @@
 - Advisory table + anchors: `docs/plans/392-day3-codex-doctrine/rulings.md:219-223` (note: MUT-C line 270 was the `it.each` decl; real RED at 275 — imprecise, noted in the ruling).
 
 ## 4. Acceptance (behavioural, mechanical)
-- Test (ADV-2): a bind → refuse → bad-model sequence in a surviving process emits the fail notice exactly once per incident. Mutant `MUT-FAIL-REARM-OFF`: drop the `settled = false` re-arm → the notice-emitted test REDs (proving the re-arm is load-bearing, not incidental). Name the covering test (E40).
-- ADV-C is a comment-only disclosure on the pane-misbind sweep (its test resolves to `.pi/extensions/pij/core/index-state.test.ts:50`) — assert (a source-pin or doc test) that the sweep comment names the traded-away shapes; no behavioural mutant.
+- Test (ADV-2): a bind → refuse → bad-model sequence (the bad-model `fail()` site is `loop.ts:389`; the `settled` latch it gates is shared at `:618`) in a surviving process emits the fail notice exactly once per incident. Mutant `MUT-FAIL-REARM-OFF`: drop the `settled = false` re-arm → the notice-emitted test REDs (proving the re-arm is load-bearing, not incidental). Name the covering test (E40).
+- ADV-C is a comment-only disclosure on the pane-misbind sweep (its test resolves to `.pi/extensions/pij/core/daemon/index-state.test.ts:50`) — assert (a source-pin or doc test) that the sweep comment names the traded-away shapes; no behavioural mutant.
 - Gates: full suite at merge product, `just typecheck`, two green runs, logs kept.
 
 ## 5. Live verification
