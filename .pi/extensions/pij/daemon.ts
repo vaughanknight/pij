@@ -1919,7 +1919,7 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 	};
 }
 
-type DaemonShutdownSignal = "SIGINT" | "SIGTERM";
+type DaemonShutdownSignal = "SIGHUP" | "SIGINT" | "SIGTERM";
 
 interface DaemonShutdownOptions {
 	readonly onSignal?: (signal: DaemonShutdownSignal, handler: () => void) => void;
@@ -1942,6 +1942,7 @@ export function installDaemonShutdownHandlers(
 		(options.releaseHeldLocks ?? releaseHeldLocks)();
 		exit(0);
 	};
+	onSignal("SIGHUP", shutdown);
 	onSignal("SIGINT", shutdown);
 	onSignal("SIGTERM", shutdown);
 }

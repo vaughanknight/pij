@@ -1,0 +1,68 @@
+# Phase 15 execution log
+
+## T001 — production launch argv
+
+- Initial branch/base: `s391/item32-daemon-direct-child` at `f9e9b1f640a44749593e0d86504ff45ecb8e7d66`.
+- Added `daemonLaunchArgv()` as the single source for the daemon window command and arguments, initially preserving `cmd: "npx"` / `args: ["tsx", daemonPath]`.
+- RED command: `npx vitest run .pi/extensions/pij/cli.integration.test.ts -t "composes the daemon window from the direct production Node argv"`.
+- RED result: expected `/opt/homebrew/Cellar/node/26.3.1/bin/node --import file:///Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/node_modules/tsx/dist/loader.mjs daemon.ts`; received `npx tsx daemon.ts`.
+- Preserved output: `.harness/temp/s391/dlg-0030-t001-red.log`.
+- The fake-tmux sensor also asserts that the resolved loader is a file URL ending in `tsx/dist/loader.mjs`, exists on disk, and the final production tmux argv contains no `npx`.
+
+## T002 — real outer-pid signal proof
+
+- Added real temp-home launches using exactly `daemonLaunchArgv(DAEMON_BIN)`.
+- Each launch sets `PIJ_TEST_HOLD_LOCKS_ON_START=1`, waits for `PIJ_TEST_LOCKS_HELD`, reads `daemon.lock`, and proves the spawned outer pid equals the daemon pid.
+- The SIGTERM and SIGHUP cases require `{ code: 0, signal: null }` and removal of both `spine/write.lock` and `spine/events.lock`.
+- RED command: `npx vitest run .pi/extensions/pij/daemon.test.ts -t "the production launch makes|the former npx tsx relay"`.
+- RED result on the relay argv: both production cases found different outer and daemon pids.
+- Preserved output: `.harness/temp/s391/dlg-0030-t002-red.log`.
+- The retained relay control signals the outer `npx tsx` process with SIGHUP and proves both held locks remain. On this Node 26/npm 11 machine, an exploratory outer-pid SIGTERM exited 0 and released the locks; the earlier deterministic 143 race remains preserved in the Phase 14 review evidence rather than being falsely claimed as reproduced here.
+
+## Rebases before implementation commit
+
+- Main advanced while the RED tests were uncommitted.
+- Preserved the four-file diff at `.harness/temp/s391/dlg-0030-pre-rebase.patch`, restored the tracked files, fetched `origin/main`, rebased, and reapplied the patch.
+- First rebased base: `f22b791912f5c3bc37fbfe3377e330c996c20198`.
+- Main advanced again before the first commit with the Item 24 merge, including a non-overlapping `daemon.test.ts` change.
+- Preserved the five tracked-file diff at `.harness/temp/s391/dlg-0030-pre-final-rebase.patch`, restored it, rebased, and reapplied it without conflict.
+- Final rebased base: `71171648d275baffda7b8e62f8c935133a7d9666`.
+
+## T003 — direct Node child and SIGHUP
+
+- `daemonLaunchArgv()` now returns:
+  - `cmd`: `/opt/homebrew/Cellar/node/26.3.1/bin/node` (`process.execPath`).
+  - `args[0]`: `--import`.
+  - `args[1]`: `file:///Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/node_modules/tsx/dist/loader.mjs`, resolved with `createRequire(import.meta.url).resolve("tsx")` and converted to a file URL.
+  - `args[2]`: the absolute `daemon.ts` path.
+- `ensureDaemonRunning()` passes that builder output directly to `TmuxAdapter.newWindow()`.
+- `installDaemonShutdownHandlers()` now installs the same graceful shutdown path for SIGHUP, SIGINT, and SIGTERM.
+- Targeted GREEN output: `.harness/temp/s391/dlg-0030-targeted-green-rebased.log` — 6 passed, 208 skipped across the two test files.
+- Windows launcher review: `harness/scripts/cli-invocation.ts` contains generic npm/npx invocation helpers and does not derive from or mirror the daemon launch argv; no Windows file changed.
+
+## Mutation evidence
+
+- Relay restoration: changed `daemonLaunchArgv()` back to `cmd: "npx"` / `args: ["tsx", daemonPath]`.
+  - RED: the fake-tmux composition test and both production SIGTERM/SIGHUP cases failed.
+  - The real-launch failures showed `daemon.lock` pids different from the spawned outer pids.
+  - Preserved output: `.harness/temp/s391/dlg-0030-relay-mutation-red.log`.
+- SIGHUP removal: removed only `onSignal("SIGHUP", shutdown)`.
+  - RED: the real SIGHUP launch exited as `{ code: null, signal: "SIGHUP" }` instead of `{ code: 0, signal: null }`.
+  - Preserved output: `.harness/temp/s391/dlg-0030-sighup-mutation-red.log`.
+- Both mutations were restored before the GREEN run.
+
+## T004 — final gates
+
+- Complete affected files: `npx vitest run .pi/extensions/pij/cli.integration.test.ts .pi/extensions/pij/daemon.test.ts` passed — 211 tests passed, 3 skipped.
+- Final post-rebase targeted proof: `.harness/temp/s391/dlg-0030-targeted-final-rebased.log` — 6 passed, 208 skipped.
+- Root TypeScript check: `npx tsc --noEmit -p .` passed after the final rebase.
+- Scoped Biome: `npx biome check .pi/extensions/pij/cli.ts .pi/extensions/pij/daemon.ts .pi/extensions/pij/cli.integration.test.ts .pi/extensions/pij/daemon.test.ts` passed after the final rebase.
+- Pre-final-rebase full extension suite: 172 files passed, 2 skipped; 4,133 tests passed, 15 skipped.
+- Authoritative post-rebase full extension suite: 172 files passed, 2 skipped; 4,152 tests passed, 15 skipped.
+- Full-suite output: `.harness/temp/s391/vitest-phase15.log`.
+- Detached job output: `/Users/vaughanknight/.pij/pij-jolly-moose/bg-mtcd6dg0-24lt4r.log`.
+- `harness checks --quick` passed local-path portability, typecheck, package audit, and snapshots. Its three failures are unchanged baseline conditions:
+  - `lint`: existing `osc-7337-producer.ts` Biome findings; that file is byte-unchanged from `origin/main`.
+  - `test`: local `pwsh` is absent for `release-age-policy.test.ts`; that test is byte-unchanged from `origin/main`.
+  - `windows-compat`: repeats the same existing producer lint.
+- Harness output: `.harness/temp/s391/harness-checks-phase15.log`.

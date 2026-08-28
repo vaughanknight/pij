@@ -20,6 +20,7 @@ import { FakeDelivery, FakeRegistry } from "./adapters/fakes.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { SqliteQueue } from "./adapters/sqlite-queue.js";
 import { FsWatchdogStore } from "./adapters/watchdog-store.js";
+import { daemonLaunchArgv } from "./cli.js";
 import { type DaemonPorts, INIT_HELD_TIMEOUT_MS } from "./core/daemon/loop.js";
 import type { PaneListing } from "./core/daemon/pane-signals.js";
 import { renderedComposerLength, USER_TYPING_IDLE_MS } from "./core/daemon/pane-signals.js";
@@ -2710,6 +2711,104 @@ describe("touchDaemonHeartbeat — the tick-loop liveness rider (#40 Defect 2)",
 });
 
 describe("daemon signal shutdown", () => {
+	async function probeRealDaemonSignal(
+		launch: { readonly cmd: string; readonly args: readonly string[] },
+		signal: "SIGHUP" | "SIGTERM",
+		assertProbe: (probe: {
+			readonly daemonPid: number;
+			readonly outerPid: number;
+			readonly exit: { readonly code: number | null; readonly signal: NodeJS.Signals | null };
+			readonly writeLockExists: boolean;
+			readonly eventsLockExists: boolean;
+		}) => void,
+	): Promise<void> {
+		const childHome = mkdtempSync(join(tmpdir(), "pij-daemon-signal-"));
+		const child = spawn(launch.cmd, [...launch.args], {
+			env: {
+				...process.env,
+				PIJ_HOME: childHome,
+				PIJ_TEST_HOLD_LOCKS_ON_START: "1",
+				TMUX: "",
+				TMUX_PANE: "",
+			},
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		let daemonPid: number | undefined;
+		let stderr = "";
+		child.stderr.setEncoding("utf8");
+		child.stderr.on("data", (chunk: string) => {
+			stderr += chunk;
+		});
+		try {
+			await new Promise<void>((resolve, reject) => {
+				const timer = setTimeout(
+					() => reject(new Error(`daemon lock marker timed out: ${stderr}`)),
+					5_000,
+				);
+				child.stdout.setEncoding("utf8");
+				child.stdout.on("data", (chunk: string) => {
+					if (!chunk.includes("PIJ_TEST_LOCKS_HELD")) return;
+					clearTimeout(timer);
+					resolve();
+				});
+				child.once("error", reject);
+				child.once("exit", (code, exitSignal) => {
+					clearTimeout(timer);
+					reject(
+						new Error(`daemon exited before marker: code=${code} signal=${exitSignal}: ${stderr}`),
+					);
+				});
+			});
+
+			const lock = JSON.parse(readFileSync(join(childHome, "daemon.lock"), "utf8")) as {
+				pid?: unknown;
+			};
+			if (typeof lock.pid !== "number") throw new Error("daemon lock did not contain a pid");
+			daemonPid = lock.pid;
+			const outerPid = child.pid;
+			if (outerPid === undefined) throw new Error("spawned daemon had no outer pid");
+
+			const writeLock = join(childHome, "spine", "write.lock");
+			const eventsLock = join(childHome, "spine", "events.lock");
+			expect(existsSync(writeLock)).toBe(true);
+			expect(existsSync(eventsLock)).toBe(true);
+
+			child.kill(signal);
+			const exit = await new Promise<{
+				code: number | null;
+				signal: NodeJS.Signals | null;
+			}>((resolve, reject) => {
+				const timer = setTimeout(
+					() => reject(new Error(`daemon did not exit after ${signal}: ${stderr}`)),
+					5_000,
+				);
+				child.once("error", reject);
+				child.once("exit", (code, exitSignal) => {
+					clearTimeout(timer);
+					resolve({ code, signal: exitSignal });
+				});
+			});
+
+			assertProbe({
+				daemonPid,
+				outerPid,
+				exit,
+				writeLockExists: existsSync(writeLock),
+				eventsLockExists: existsSync(eventsLock),
+			});
+		} finally {
+			if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+			if (daemonPid !== undefined && daemonPid !== child.pid) {
+				try {
+					process.kill(daemonPid, "SIGKILL");
+				} catch {
+					/* already gone */
+				}
+			}
+			rmSync(childHome, { recursive: true, force: true });
+		}
+	}
+
 	it("logs a descriptor-lock reclaim through the production daemon registry factory", () => {
 		const id = "pij-daemon-reclaim";
 		const lockPath = join(home, `${id}.json.lock`);
@@ -2786,6 +2885,30 @@ describe("daemon signal shutdown", () => {
 			if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
 			rmSync(childHome, { recursive: true, force: true });
 		}
+	});
+
+	it.each([
+		"SIGTERM",
+		"SIGHUP",
+	] as const)("the production launch makes the daemon the outer child and handles %s gracefully", {
+		timeout: 10_000,
+	}, async (signal) => {
+		await probeRealDaemonSignal(daemonLaunchArgv(DAEMON_BIN), signal, (probe) => {
+			expect(probe.daemonPid).toBe(probe.outerPid);
+			expect(probe.exit).toEqual({ code: 0, signal: null });
+			expect(probe.writeLockExists).toBe(false);
+			expect(probe.eventsLockExists).toBe(false);
+		});
+	});
+
+	it("the former npx tsx relay leaves the daemon locks behind when its outer pid is signalled", {
+		timeout: 10_000,
+	}, async () => {
+		await probeRealDaemonSignal({ cmd: "npx", args: ["tsx", DAEMON_BIN] }, "SIGHUP", (probe) => {
+			expect(probe.daemonPid).not.toBe(probe.outerPid);
+			expect(probe.writeLockExists).toBe(true);
+			expect(probe.eventsLockExists).toBe(true);
+		});
 	});
 });
 
