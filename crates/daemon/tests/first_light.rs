@@ -6,8 +6,10 @@
 //! cannot take the port — are properties of the BOOT, not of a handler.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use pij_core::config::{AdapterChoice, Config};
+use pij_core::model::Event;
 use pij_core::wire::{self, WireEvent};
 
 fn state_dir() -> PathBuf {
@@ -130,27 +132,46 @@ async fn an_unauthenticated_request_is_refused_and_told_what_to_do() {
 
 #[tokio::test]
 async fn the_event_stream_opens_with_hello_and_survives_an_unknown_kind() {
-    let dir = state_dir();
-    let daemon = pij_daemon::boot(&config(), dir.clone())
+    let services = pij_daemon::build_services(&Config::default())
         .await
-        .expect("boot");
+        .expect("fake services");
+    let bus = services.event_bus.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("address");
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            pij_daemon::http::router_with_config(
+                services,
+                pij_daemon::http::HttpConfig {
+                    local_key: "key".to_string(),
+                    peer_keys: Vec::new(),
+                    machine_alias: "first-light".to_string(),
+                },
+            ),
+        )
+        .await
+        .expect("serve");
+    });
 
-    let body = reqwest::Client::new()
-        .get(format!("http://{}/v1/events", daemon.addr))
-        .header(reqwest::header::AUTHORIZATION, daemon.key.header())
+    let mut response = reqwest::Client::new()
+        .get(format!("http://{addr}/v1/events"))
+        .bearer_auth("key")
         .send()
         .await
-        .expect("request")
-        .text()
+        .expect("request");
+    let hello = response
+        .chunk()
         .await
-        .expect("body");
-
-    let decoded = wire::decode_event_stream(&body);
-    assert!(decoded.len() >= 2, "hello plus at least one event: {body}");
-
-    match decoded[0].as_ref().expect("the first line decodes") {
+        .expect("hello chunk")
+        .expect("stream starts with bytes");
+    match wire::decode_event_line(1, std::str::from_utf8(&hello).expect("utf8").trim())
+        .expect("the first line decodes")
+    {
         WireEvent::Hello { v, build } => {
-            assert_eq!(*v, wire::EVENT_VERSION);
+            assert_eq!(v, wire::EVENT_VERSION);
             assert!(
                 build.starts_with("pij-rs"),
                 "hello names the build: {build}"
@@ -159,22 +180,35 @@ async fn the_event_stream_opens_with_hello_and_survives_an_unknown_kind() {
         other => panic!("the stream must open with Hello, got {other:?}"),
     }
 
-    // The daemon deliberately emits a kind this build does not know, so wave 3's
-    // consumer is written against a stream that already contains one.
+    bus.publish(Event {
+        seq: None,
+        v: wire::EVENT_VERSION,
+        at: 7,
+        kind: "future.kind".to_string(),
+        seat: Some("pij-reader".into()),
+        payload: "{\"new\":true}".to_string(),
+    })
+    .await
+    .expect("publish unknown event");
+    let frame = tokio::time::timeout(Duration::from_secs(1), response.chunk())
+        .await
+        .expect("unknown event must not be filtered")
+        .expect("frame chunk")
+        .expect("frame");
+    let frame: pij_daemon::http::EventFrame = serde_json::from_slice(&frame).expect("event frame");
+    assert_eq!(frame.machine, "first-light");
+    assert_eq!(frame.cursor, 1, "cursor is assigned by the local spine");
+    assert_eq!(frame.event.kind, "future.kind");
+    assert_eq!(frame.event.payload, "{\"new\":true}");
     assert!(
-        decoded.iter().any(|line| matches!(
-            line,
-            Ok(WireEvent::Unknown { kind, .. }) if kind == "daemon.forward-compat-probe"
-        )),
-        "an unknown kind must survive decoding as Unknown: {body}"
-    );
-    assert!(
-        decoded.iter().all(Result::is_ok),
-        "no line in a healthy stream may fail to decode: {decoded:?}"
+        serde_json::to_value(&frame).expect("frame json")["event"]
+            .get("seq")
+            .is_none(),
+        "the cursor belongs to the frame, never the event body"
     );
 
-    daemon.shutdown().await.expect("shutdown");
-    let _ = std::fs::remove_dir_all(dir);
+    drop(response);
+    server.abort();
 }
 
 #[tokio::test]
