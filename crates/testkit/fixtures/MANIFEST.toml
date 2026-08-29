@@ -164,24 +164,24 @@ answer = "Exactly one Pane whose complete title is `human · title | nested`; sp
 
 [[fixture]]
 path = "harnesses/claude-ready.txt"
-sha256 = "4aa195a81d46951393114c7015eb62c2f0bfcf8ed07bb07666386eda2095c919"
-bytes = 179
-note = "Captured Claude narrow-pane readiness shape, copied from the live-capture TS regression corpus and augmented with the native session environment evidence the Rust observer accepts."
-answer = "Claude is Ready from the persistent bypass-permissions footer; cwd, Opus 4.8 model, pane and native session id remain distinct observed bind facts."
+sha256 = "43b17308b5175ac6bbc4ee3085d69e012335d9d1cd5742d2be18838057f09506"
+bytes = 120
+note = "Captured Claude narrow-pane readiness shape copied from the live-capture TS regression corpus; no synthetic environment or session-id line is appended."
+answer = "Claude is Ready from the persistent bypass-permissions footer; cwd and Opus 4.8 remain pane-observed facts, while native session id must come from caller transcript discovery."
 
 [[fixture]]
 path = "harnesses/copilot-ready.txt"
-sha256 = "4355d826af04f20932c0b80eed266285f227f8ed9d159d05ad4326537ab9e082"
-bytes = 562
-note = "Captured Copilot composer and status footer shape, copied from the live-capture TS regression corpus with its current-session environment evidence."
-answer = "Copilot is Ready only when the stable '? help' and 'tab next tab' footer is present; the model is GPT-5.5 and the native UUID is preserved."
+sha256 = "d15a4c76b79ded5fe8557143acd1abeab2e7471b434e01679447ed5519b105d2"
+bytes = 482
+note = "Captured Copilot composer and status-footer shape copied from the live-capture TS regression corpus; no synthetic environment or session-id line is appended."
+answer = "Copilot is Ready only when the stable '? help' and 'tab next tab' footer is present; model is GPT-5.5, while native session id must come from caller planned-session evidence."
 
 [[fixture]]
 path = "harnesses/codex-rotated-placeholder-ready.txt"
-sha256 = "608a9e853dbfbfc8654efb26c9fcc331c2c4365d2017986ae70e449da4899712"
-bytes = 210
-note = "Live Codex v0.142.3 shape from the TS readiness incident: the placeholder rotated away from Use /skills while the model/effort/cwd footer persisted."
-answer = "Ready from the persistent middot-plus-absolute-cwd footer. The rotating 'Find and fix' placeholder contributes no readiness evidence."
+sha256 = "0afc30bc9542d84ed9dde8f93e03e332604d628ba581bc397d1e917f8edd4453"
+bytes = 139
+note = "Live Codex v0.142.3 shape from the TS readiness incident: the placeholder rotated away from Use /skills while the model/effort/cwd footer persisted; no synthetic session-id line is appended."
+answer = "Ready from the persistent middot-plus-cwd footer. The rotating 'Find and fix' placeholder contributes no readiness evidence; native id comes from caller rollout discovery."
 
 [[fixture]]
 path = "harnesses/codex-placeholder-only.txt"
@@ -191,18 +191,11 @@ note = "Captured Codex boot banner with one rotating Use /skills placeholder but
 answer = "NotYet, retaining the observed placeholder in diagnostics. Treating the placeholder as Ready reproduces the codex never-bind incident."
 
 [[fixture]]
-path = "harnesses/pi-ready.txt"
-sha256 = "fcd92c4008f7427280f75a5fbcf75c7d212d469623aa2e0b1d3e7f17eaf23408"
-bytes = 111
-note = "Captured Pi textual ready line with model, cwd and native-session environment evidence."
-answer = "Pi uses its own ready anchor and remains a distinct Harness adapter from Omp."
-
-[[fixture]]
-path = "harnesses/omp-ready.txt"
-sha256 = "3e6d4af21a881e8b8623c39c62bdd687c66548659224e2733a3f4115a462f249"
-bytes = 253
-note = "Captured OMP pane header and whitespace-padded empty composer shape, copied from the live pane-signal regression corpus."
-answer = "Omp is Ready only from its header plus composer shape; a whitespace-padded composer is empty, not active typing."
+path = "harnesses/omp-working.txt"
+sha256 = "e4c9d1ad69ef4bea6cd8e38267a88f3a9cddd98a1168911c3ba3c969bd441699"
+bytes = 471
+note = "Exact working-spinner/header/composer excerpt from .pi/extensions/pij/core/daemon/__fixtures__/pane-signals/live_omp_blank_padded.txt; no synthetic cwd or session-id line is appended."
+answer = "Omp is Busy because the spinner row carries the esc interaction marker even though the persistent header and padded composer are visible."
 
 [[fixture]]
 path = "harnesses/pi-pane-ready.txt"

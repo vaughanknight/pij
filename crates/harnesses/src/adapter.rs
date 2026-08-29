@@ -57,6 +57,7 @@ impl AdapterCore {
     async fn observe_bind(
         &self,
         descriptor: &SeatDescriptor,
+        native_session_id: Option<String>,
         subagent_of: Option<String>,
     ) -> Result<BindObservation> {
         let Some(pane) = descriptor.pane.as_deref() else {
@@ -64,7 +65,7 @@ impl AdapterCore {
                 descriptor,
                 subagent_of,
                 ObservedBindFacts {
-                    native_session_id: None,
+                    native_session_id,
                     pane: None,
                     model: None,
                     cwd: None,
@@ -79,7 +80,7 @@ impl AdapterCore {
         let text = self.capture(pane).await?;
         let readiness = classify_readiness(self.kind, &text);
         let facts = ObservedBindFacts {
-            native_session_id: session_id(&text),
+            native_session_id,
             pane: Some(pane.to_string()),
             model: observed_model(self.kind, &text),
             cwd: observed_cwd(self.kind, &text),
@@ -105,7 +106,7 @@ impl AdapterCore {
     }
 
     async fn bind(&self, descriptor: &SeatDescriptor) -> Result<BindHealth> {
-        Ok(self.observe_bind(descriptor, None).await?.health)
+        Ok(self.observe_bind(descriptor, None, None).await?.health)
     }
 
     fn models(&self) -> Result<Vec<ModelRow>> {
@@ -138,6 +139,9 @@ fn refused_observation(
         (Admission::Admit, None) => BindHealth::Unbound {
             evidence: "admission passed but descriptor has no process identity".to_string(),
         },
+        (Admission::Refuse(_), _) if facts.native_session_id.is_none() => BindHealth::Unbound {
+            evidence: "no caller-supplied native session id — transcript discovery, planned session id, or phonehome evidence must resolve before binding".to_string(),
+        },
         (Admission::Refuse(reason), _) => BindHealth::Unbound {
             evidence: reason.to_string(),
         },
@@ -158,7 +162,8 @@ fn is_busy(text: &str) -> bool {
         || lower.contains("◎ working")
         || text.lines().any(|line| {
             let trimmed = line.trim();
-            trimmed.starts_with('↓') && trimmed.contains("token")
+            (trimmed.starts_with('↓') && trimmed.contains("token"))
+                || trimmed.contains("⟦esc⟧")
         })
 }
 
@@ -176,9 +181,11 @@ fn classify_readiness(kind: Harness, text: &str) -> Readiness {
             .lines()
             .any(|line| line.contains("? help") && line.contains("tab next tab")),
         Harness::Codex => text.lines().any(is_codex_footer),
-        Harness::Pi => text
-            .lines()
-            .any(|line| line.contains("pi coding agent") && line.contains("model:")),
+        Harness::Pi => {
+            text.lines()
+                .any(|line| line.contains("╭──") && line.contains("◫") && line.contains("⬢"))
+                && text.lines().any(is_omp_composer)
+        }
         Harness::Omp => {
             text.lines()
                 .any(|line| line.contains("╭──") && line.contains("⬢"))
@@ -257,8 +264,9 @@ fn observed_model(kind: Harness, text: &str) -> Option<String> {
                 .map(str::to_string)
         }),
         Harness::Pi => text.lines().rev().find_map(|line| {
-            let (_, value) = line.split_once("model:")?;
-            value.split_whitespace().next().map(str::to_string)
+            let (_, value) = line.split_once('⬢')?;
+            let model = value.split(['·', '>']).next()?.trim();
+            (!model.is_empty()).then(|| model.to_string())
         }),
         Harness::Omp => text.lines().rev().find_map(|line| {
             let (_, value) = line.split_once('⬢')?;
@@ -300,6 +308,7 @@ trait BindObserver: Send + Sync {
     async fn observe_bind(
         &self,
         descriptor: &SeatDescriptor,
+        native_session_id: Option<String>,
         subagent_of: Option<String>,
     ) -> Result<BindObservation>;
 }
@@ -320,9 +329,12 @@ macro_rules! adapter {
             pub async fn observe_bind(
                 &self,
                 descriptor: &SeatDescriptor,
+                native_session_id: Option<String>,
                 subagent_of: Option<String>,
             ) -> Result<BindObservation> {
-                self.core.observe_bind(descriptor, subagent_of).await
+                self.core
+                    .observe_bind(descriptor, native_session_id, subagent_of)
+                    .await
             }
         }
 
@@ -331,9 +343,12 @@ macro_rules! adapter {
             async fn observe_bind(
                 &self,
                 descriptor: &SeatDescriptor,
+                native_session_id: Option<String>,
                 subagent_of: Option<String>,
             ) -> Result<BindObservation> {
-                self.core.observe_bind(descriptor, subagent_of).await
+                self.core
+                    .observe_bind(descriptor, native_session_id, subagent_of)
+                    .await
             }
         }
 
@@ -475,11 +490,14 @@ impl HarnessRegistry {
     }
 
     /// Observe real harness facts and run the one shared admission decision.
+    /// `native_session_id` is caller knowledge: transcript discovery for
+    /// Claude/Codex, the planned id for Copilot, and phonehome for Pi/Omp.
     /// `subagent_of` comes from the caller's process/session scope; inherited
-    /// `PIJ_*` claims are never accepted as a substitute for that fact.
+    /// `PIJ_*` claims are never accepted as a substitute for either fact.
     pub async fn observe_bind(
         &self,
         descriptor: &SeatDescriptor,
+        native_session_id: Option<String>,
         subagent_of: Option<String>,
     ) -> Result<BindObservation> {
         let observer = self
@@ -492,7 +510,9 @@ impl HarnessRegistry {
                     descriptor.harness
                 ),
             })?;
-        observer.observe_bind(descriptor, subagent_of).await
+        observer
+            .observe_bind(descriptor, native_session_id, subagent_of)
+            .await
     }
 
     pub fn len(&self) -> usize {
@@ -524,7 +544,7 @@ mod tests {
         include_str!("../../testkit/fixtures/harnesses/codex-rotated-placeholder-ready.txt");
     const CODEX_PLACEHOLDER: &str =
         include_str!("../../testkit/fixtures/harnesses/codex-placeholder-only.txt");
-    const PI: &str = include_str!("../../testkit/fixtures/harnesses/pi-ready.txt");
+    const PI: &str = include_str!("../../testkit/fixtures/harnesses/pi-pane-ready.txt");
     fn adapter_with_captures(kind: Harness, fixture: &str) -> Arc<dyn HarnessPort> {
         let tmux = Arc::new(
             FakeTmux::new()
@@ -545,37 +565,38 @@ mod tests {
     #[test]
     fn every_harness_port_operation_runs_against_each_recorded_pane() {
         let cases = [
-            (Harness::Claude, CLAUDE, "Opus 4.8"),
-            (Harness::Copilot, COPILOT, "GPT-5.5"),
-            (Harness::Codex, CODEX, "gpt-5.5"),
-            (Harness::Pi, PI, "pi/llama-3.3"),
-            (Harness::Omp, OMP, "GPT-5.6 Sol · ◒ high"),
+            (Harness::Claude, CLAUDE, "Opus 4.8", Readiness::Ready),
+            (Harness::Copilot, COPILOT, "GPT-5.5", Readiness::Ready),
+            (Harness::Codex, CODEX, "gpt-5.5", Readiness::Ready),
+            (Harness::Pi, PI, "Opus 5 1M (Copilot)", Readiness::Ready),
+            (Harness::Omp, OMP, "Opus 5 (1M)", Readiness::Busy),
         ];
-        for (kind, fixture, model) in cases {
+        for (kind, fixture, model, expected) in cases {
             let adapter = adapter_with_captures(kind, fixture);
             assert_eq!(adapter.kind(), kind);
-            assert!(
-                block_on(adapter.discover_session("%108"))
-                    .expect("session discovery")
-                    .is_some(),
-                "{kind} fixture carries native-session evidence"
+            assert_eq!(
+                block_on(adapter.discover_session("%108")).expect("session discovery"),
+                None,
+                "real pane bytes do not invent a native session id for {kind}"
             );
             assert_eq!(
                 block_on(adapter.readiness("%108")).expect("readiness"),
-                Readiness::Ready
+                expected
             );
-            assert!(!block_on(adapter.busy("%108")).expect("busy"));
-            assert!(matches!(
-                block_on(adapter.bind(&descriptor(kind, model))).expect("bind"),
-                pij_core::model::BindHealth::Bound { .. }
-            ));
+            assert_eq!(block_on(adapter.busy("%108")).expect("busy"), expected == Readiness::Busy);
+            match block_on(adapter.bind(&descriptor(kind, model))).expect("bind") {
+                pij_core::model::BindHealth::Unbound { evidence } => {
+                    assert!(evidence.contains("no caller-supplied native session id"));
+                }
+                other => panic!("trait bind cannot invent caller evidence: {other:?}"),
+            }
             assert!(
                 block_on(adapter.models()).is_err(),
                 "absent wave-3 catalog is an error, never an empty inventory"
             );
         }
     }
-    const OMP: &str = include_str!("../../testkit/fixtures/harnesses/omp-ready.txt");
+    const OMP: &str = include_str!("../../testkit/fixtures/harnesses/omp-working.txt");
     const CWD: &str = "/Users/jordanknight/pi-hacking/pij";
 
     fn descriptor(kind: Harness, model: &str) -> SeatDescriptor {
@@ -590,7 +611,7 @@ mod tests {
     }
 
     #[test]
-    fn every_harness_variant_has_its_own_ready_fixture_and_adapter() {
+    fn every_harness_variant_classifies_its_recorded_fixture() {
         let cases: [(Harness, &str, Arc<dyn HarnessPort>); 5] = [
             (
                 Harness::Claude,
@@ -629,10 +650,15 @@ mod tests {
 
         for (kind, _fixture, adapter) in cases {
             assert_eq!(adapter.kind(), kind);
+            let expected = if kind == Harness::Omp {
+                Readiness::Busy
+            } else {
+                Readiness::Ready
+            };
             assert_eq!(
                 block_on(adapter.readiness("%108")).expect("fixture readiness"),
-                Readiness::Ready,
-                "{kind} fixture must reach its own anchor"
+                expected,
+                "{kind} fixture must reach its own classifier"
             );
         }
     }
@@ -674,6 +700,7 @@ mod tests {
         let adapter = ClaudeHarness::new(Arc::new(FakeTmux::new().script_capture(CLAUDE)));
         let observation = block_on(adapter.observe_bind(
             &descriptor(Harness::Claude, "Opus 4.8"),
+            Some("claude-native-108".to_string()),
             Some("pij-parent".to_string()),
         ))
         .expect("observation");
@@ -694,7 +721,12 @@ mod tests {
         let adapter = ClaudeHarness::new(Arc::new(FakeTmux::new().script_capture(CLAUDE)));
         let mut wrong = descriptor(Harness::Claude, "Opus 4.8");
         wrong.folder = "/some/other/worktree".to_string();
-        let observation = block_on(adapter.observe_bind(&wrong, None)).expect("observation");
+        let observation = block_on(adapter.observe_bind(
+            &wrong,
+            Some("claude-native-108".to_string()),
+            None,
+        ))
+        .expect("observation");
         assert_eq!(
             observation.admission,
             Admission::Refuse(RefusalReason::NoBindEvidence),
@@ -705,9 +737,12 @@ mod tests {
     #[test]
     fn concrete_observation_returns_native_id_model_cwd_and_pane() {
         let adapter = CopilotHarness::new(Arc::new(FakeTmux::new().script_capture(COPILOT)));
-        let observation =
-            block_on(adapter.observe_bind(&descriptor(Harness::Copilot, "GPT-5.5"), None))
-                .expect("observation");
+        let observation = block_on(adapter.observe_bind(
+            &descriptor(Harness::Copilot, "GPT-5.5"),
+            Some("df4f1111-2222-4333-8444-555555555555".to_string()),
+            None,
+        ))
+        .expect("observation");
         assert_eq!(observation.admission, Admission::Admit);
         assert_eq!(
             observation.facts.native_session_id.as_deref(),

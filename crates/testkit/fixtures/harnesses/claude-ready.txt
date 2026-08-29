@@ -1,4 +1,3 @@
 ❯
-/Users/jordanknight/pi-hacking/pij ⎇ main • Opus 4.8 • high
+~/pi-hacking/pij ⎇ main • Opus 4.8 • high
 ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents
-CLAUDE_CODE_SESSION_ID=claude-native-108
