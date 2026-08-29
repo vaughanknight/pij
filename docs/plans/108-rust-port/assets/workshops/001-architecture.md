@@ -215,3 +215,29 @@ prime rulings recorded in this file.
   1787963637387-000001-89164 reported DELIVERED for a body that never injected into the
   recipient's turn (recipient was u-delivery itself, mid-build) — the delivered-is-suspect
   inversion reproduced on a pij receipt, recorded in the unit's assumptions.
+
+## R3-AMEND-3 — Transport::can_deliver carries the message (2026-08-30, vicuna ruling)
+
+**ACCEPTED**: `Transport::can_deliver(&SeatDescriptor)` widens to
+`can_deliver(&SeatDescriptor, &Msg)`. PM escalation (lungfish), recommendation ACCEPT, taken.
+
+**The evidence that forced it** (s105 first-party, verified on-machine): a remote-control
+command (`/compact`, `/new`) MUST take the pty path even when the seat has a healthy socket —
+Claude renders a socket-delivered `/compact` as plain TEXT instead of executing it. The correct
+transport therefore depends on the MESSAGE, not only the seat.
+
+**Why in the seam and not a carve-out**: an out-of-band rule a reader cannot see from the
+trait is exactly the rule that rots (three waves of house evidence; twin of
+computed-but-unconsulted). The refusal fallback (routing-policy carve-out + trait doc note)
+was workable, not good.
+
+**Why now is cheap**: one fake impl + one consumer, both in-tree, both the PM's to migrate at
+compose; u-uds has NOT dispatched. After u-uds ships against the old shape this becomes a wire
+rename. Timing is the whole argument — the same amendment post-dispatch would likely be REFUSED.
+
+**Ratified alongside (PM's own calls, endorsed)**: rung-4 typed-body path does NOT exist in
+u-uds (last body-loss path upstream; R4 removes its reason to exist); codex stays on the
+pointer path for wave 3 (fork's app-server design has zero live proof — no inheriting design
+without evidence mid-wave); /v1/send accepts LOCAL destinations only this wave (origin side
+does not route; destination side always enqueues locally — req-0017 routing lands with
+federation, not before).
