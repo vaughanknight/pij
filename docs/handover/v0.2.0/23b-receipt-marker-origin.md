@@ -38,3 +38,8 @@ On the Claude-socket path, a durable `acked (reader=X)` receipt row is written B
 
 ## 7. Open questions for the human
 - Legacy receipts (no origin) render as `injected` (unknown) or a distinct `legacy`? (Recommend `injected` — conservative, never over-claims.)
+
+
+## Addendum 2026-08-29 (observed live)
+
+A Copilot seat (`pij-ready-perosteck`, the pij PA) acked a daemon delivery over RPC — `deliveries.state=acked, attempt=0` for `messages.seq 8936` (watchdog nudge #87, 10:25:01Z) — and produced no turn; the previous 17 identical nudges each produced a sweep within ~20 s. The seat stayed silent 39 min and then reported that nothing had been delivered. This is the acked≠read gap this item labels, on the RPC path (not only the Claude socket path): the receipt must say who wrote the marker (`acked (harness=copilot-rpc)`) so a consumer never reads it as "the seat turned". Rate seen: ~1 in 18. Mitigation in the field: a supervisor-side chaser (tick + grace → last-event age → direction). Evidence: `~/.pij/queue/pij.sqlite` rows seq 8878/8936/8989; spine note 10:4xZ Aug 29; E52 in `government/briefs/encode-candidates-2026-08-27.md`.
