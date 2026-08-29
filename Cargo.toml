@@ -72,7 +72,10 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 # OS randomness for the per-boot bearer key: no PRNG state, no seed, no extra
 # dependency tree — each boot asks the operating system for 256 bits.
 getrandom = "0.3"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time", "net", "signal"] }
+# Portable hostname lookup for the federation machine alias default. Reading
+# environment variables is not equivalent on Windows and can be unset on Unix.
+hostname = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time", "net", "signal", "test-util"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 
 # Warnings are errors in the gate (`clippy -D warnings`); this keeps a plain
