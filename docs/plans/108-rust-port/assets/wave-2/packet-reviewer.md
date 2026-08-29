@@ -25,10 +25,15 @@ there.
 1. `docs/plans/108-rust-port/services.dd.md` — the settled unit rows.
 2. `docs/plans/108-rust-port/assets/wave-2/COMMON.md` — the contract every coder
    worked under, including the five rules wave 0 paid for.
-3. The four unit packets beside it (`packet-u-*.md`).
-4. `docs/plans/108-rust-port/assets/reports/done-u-liveness.md`,
-   `done-u-tmux.md`, `done-wave-2-u-store.md`, and the u-events report —
+3. The six unit packets beside it (`packet-u-*.md`).
+4. The six wave-2 receipts in `docs/plans/108-rust-port/assets/reports/`:
+   `done-u-report.md`, `done-u-watchdog.md`, `done-u-anomalies.md`,
+   `done-u-delivery.md`, `done-u-harness.md`, `done-u-orchestration.md` —
    **these are the receipts you are checking, not evidence you may assume.**
+   Check that each one EXISTS before you check what it says. (An earlier version
+   of this list named `done-wave-2-u-store.md`, which never existed: it was a
+   wave-1 filename mangled by a mechanical rewrite. The reviewer found it by
+   reading the tree instead of the packet — finding 1 of the wave-2 review.)
 5. `docs/plans/108-rust-port/assets/reports/first-light-wave-2.md`.
 6. `docs/plans/108-rust-port/assets/reports/review-round-{1,2}.md` — wave 0's
    eleven findings, none refuted. **Read these before writing your first note**:

@@ -227,6 +227,37 @@ integrates. The corollary this wave proves is narrower and worth stating —
 **a type that two units both consume is not a unit's work at all; it is the
 PM's, and it should land before either unit needs it.**
 
+## E-020 — a mechanical rewrite plus a targeted edit that silently no-oped
+
+I built the wave-2 reviewer packet by sed-rewriting the wave-1 one (`s/wave-1/
+wave-2/g`) and then patching the receipt list by exact-text match. The sed ran
+FIRST, so the text my patch was looking for no longer existed; the patch matched
+nothing, said nothing, and left behind `done-wave-2-u-store.md` — a filename for
+a receipt that never existed in any wave.
+
+The reviewer found it by reading the TREE instead of the packet, which is the
+second time in three waves that checking a named receipt against disk has been
+the whole finding.
+
+**Two lessons, and the second is the transferable one:**
+
+1. A targeted edit after a mechanical rewrite must be verified, because "replaced
+   nothing" and "replaced correctly" look identical from the outside. Python's
+   `str.replace` and `sed` both fail silently by design.
+2. **The wave-1 lesson generalised**: receipts must be files, AND the list of
+   receipts must itself be checked against the files. A checklist derived from
+   last wave's checklist inherits last wave's names.
+
+## E-021 — the fixture I hashed was the fixture I wrote, not the one I meant
+
+`pi-pane-ready.txt` shipped as 16 blank lines with a manifest entry whose sha and
+byte count were *correct* — because I hashed what I had written. Only the `answer`
+field, describing content the bytes did not contain, made the contradiction
+visible, and only because a coder read one against the other.
+
+A checksum proves a file has not changed. It cannot prove the file was ever right.
+That is what the corpus's ANSWER field is for, and it earned its place here.
+
 ## What I would change in the pij-team templates
 
 1. **State the tree-sharing posture and write-set split in the packet** (E-005/6).
