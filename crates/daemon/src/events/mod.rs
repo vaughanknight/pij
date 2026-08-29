@@ -109,6 +109,22 @@ impl EventBus {
             dropped: Arc::new(AtomicU64::new(0)),
         })
     }
+
+    /// Attach to events published after this call without replaying the spine.
+    ///
+    /// Use this for a consumer that only needs a wake-up for future work. A
+    /// durable consumer resuming known work uses [`Self::subscribe`] with
+    /// `Some(cursor)`; `subscribe(None, ..)` is reserved for an intentional cold
+    /// replay from the beginning.
+    pub fn subscribe_live(&self, filter: EventFilter) -> Subscription {
+        Subscription {
+            replay: VecDeque::new(),
+            live: BroadcastStream::new(self.live.subscribe()),
+            filter,
+            last_seq: Seq(0),
+            dropped: Arc::new(AtomicU64::new(0)),
+        }
+    }
 }
 
 /// One replay-then-live event stream with an observable lag counter.

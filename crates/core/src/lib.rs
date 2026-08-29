@@ -12,6 +12,7 @@
 
 pub mod admission;
 pub mod config;
+pub mod delivery;
 pub mod error;
 pub mod events;
 pub mod liveness;
