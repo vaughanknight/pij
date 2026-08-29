@@ -6,7 +6,9 @@
 //! stops "green with the fake" and "green for real" from drifting apart, and it
 //! is why the contract ships in wave 0 rather than with the first adapter.
 
-use pij_core::model::{DeliveryOutcome, Harness, Liveness, Msg, ProcIdentity, Readiness};
+use pij_core::model::{
+    DeliveryOrigin, DeliveryOutcome, Harness, Liveness, Msg, ProcIdentity, Readiness,
+};
 use pij_core::ports::{HarnessPort, LivenessPort, TmuxPort, Transport};
 use pij_testkit::block_on;
 use pij_testkit::contract::{queue_contract, registry_contract, sample_seat, spine_contract};
@@ -91,7 +93,9 @@ fn a_reachable_transport_delivers_and_records_the_message_id() {
     assert!(block_on(transport.can_deliver(&seat)).expect("can_deliver"));
     assert_eq!(
         block_on(transport.deliver(&seat, &msg)).expect("deliver"),
-        DeliveryOutcome::Delivered
+        DeliveryOutcome::Delivered {
+            origin: DeliveryOrigin::InjectedToTransport
+        }
     );
     assert_eq!(transport.delivered(), vec![msg]);
 }

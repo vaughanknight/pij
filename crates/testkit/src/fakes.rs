@@ -22,8 +22,8 @@ use std::sync::Mutex;
 use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
 use pij_core::model::{
-    BindHealth, DeliveryOutcome, Event, Harness, Job, JobId, ModelRow, Msg, Outcome, Pane,
-    ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
+    BindHealth, DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, ModelRow, Msg,
+    Outcome, Pane, ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
 };
 use pij_core::ports::{
     HarnessPort, LivenessPort, Queue, Registry, SeatFilter, Spine, TmuxPort, Transport,
@@ -379,7 +379,12 @@ impl Transport for FakeTransport {
             return Ok(DeliveryOutcome::Queued);
         }
         state.delivered.push(msg.clone());
-        Ok(DeliveryOutcome::Delivered)
+        // A fake transport observes only that it accepted the bytes — the
+        // weakest honest claim (erratum-23b). A fake that claimed
+        // VerifiedArrival would let a test prove something no transport did.
+        Ok(DeliveryOutcome::Delivered {
+            origin: DeliveryOrigin::InjectedToTransport,
+        })
     }
 }
 

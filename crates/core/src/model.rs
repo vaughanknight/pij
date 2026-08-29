@@ -354,6 +354,52 @@ pub struct Msg {
     pub msg_id: String,
 }
 
+/// Where the evidence for a delivery claim came from (erratum-23b, s105).
+///
+/// **A receipt word names what was OBSERVED, never what was INFERRED.** Where the
+/// two differ, the weaker word is the honest one, and a consumer that cannot
+/// distinguish these renders the weakest applicable claim.
+///
+/// The defect this closes, found by s105 in the TS tree: `confirmed` was returned
+/// immediately after pressing Enter, having observed nothing at all. The TYPE
+/// permitted the lie, so one got written — which is why `origin` is a required
+/// field here rather than an optional annotation. "Confirmed without an origin"
+/// is now unrepresentable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DeliveryOrigin {
+    /// Bytes accepted by a socket, RPC or pane — and nothing more. No recipient
+    /// confirmation exists. This is what a Claude UDS write can honestly claim,
+    /// and the fork's mistake was calling it `acked`.
+    InjectedToTransport,
+    /// A positive transport-level acknowledgement came back: Copilot RPC returns
+    /// a message id, the Telegram bridge confirms.
+    VerifiedArrival,
+    /// The recipient itself acknowledged — it ran `pij inbox`, or replied.
+    ReaderRead,
+}
+
+impl DeliveryOrigin {
+    /// How strong this evidence is, weakest first. Used when several claims
+    /// describe one delivery and a consumer must render only one.
+    pub const fn strength(self) -> u8 {
+        match self {
+            DeliveryOrigin::InjectedToTransport => 0,
+            DeliveryOrigin::VerifiedArrival => 1,
+            DeliveryOrigin::ReaderRead => 2,
+        }
+    }
+
+    /// The honest claim when two observations disagree: the WEAKER one.
+    pub fn weakest(self, other: Self) -> Self {
+        if other.strength() < self.strength() {
+            other
+        } else {
+            self
+        }
+    }
+}
+
 /// What honestly happened to a message.
 ///
 /// `Queued` is a promise the store has already kept — the row exists — not an
@@ -363,8 +409,16 @@ pub struct Msg {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase", tag = "outcome")]
 pub enum DeliveryOutcome {
-    /// Handed to the seat's transport and accepted.
-    Delivered,
+    /// The message reached the seat — qualified by WHAT WAS OBSERVED.
+    ///
+    /// The origin is required (erratum-23b, ruled by the prime as the v1 wire
+    /// vocabulary): a bare "delivered" conflates "we wrote bytes to a transport"
+    /// with "the recipient got it", and those are different facts with different
+    /// consequences for whoever is waiting.
+    Delivered {
+        /// What was actually observed.
+        origin: DeliveryOrigin,
+    },
     /// Durably queued; will be delivered when the seat can receive.
     Queued,
     /// Withheld pending an approval step.

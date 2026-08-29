@@ -195,3 +195,58 @@ fn errors_separate_the_states_they_observe_and_name_the_fix() {
     };
     assert!(too_long.to_string().contains("280"));
 }
+
+#[test]
+fn a_delivery_claim_cannot_exist_without_saying_what_was_observed() {
+    // erratum-23b, ruled by the prime as the v1 wire vocabulary. The defect this
+    // closes was found by s105 in the TS tree: `confirmed` was returned
+    // immediately after pressing Enter, having observed nothing at all. The TYPE
+    // permitted the lie, so one got written.
+    //
+    // This test is a type-level assertion as much as a value one: `Delivered`
+    // takes a required `origin`, so "confirmed, provenance unknown" cannot be
+    // constructed at all.
+    use pij_core::model::{DeliveryOrigin, DeliveryOutcome};
+
+    let injected = DeliveryOutcome::Delivered {
+        origin: DeliveryOrigin::InjectedToTransport,
+    };
+    let read = DeliveryOutcome::Delivered {
+        origin: DeliveryOrigin::ReaderRead,
+    };
+    assert_ne!(
+        injected, read,
+        "bytes accepted by a socket and a recipient having read them are different facts"
+    );
+
+    // Strength order: what a Claude UDS write can claim is the weakest, what the
+    // recipient itself says is the strongest.
+    assert!(
+        DeliveryOrigin::InjectedToTransport.strength() < DeliveryOrigin::VerifiedArrival.strength()
+    );
+    assert!(DeliveryOrigin::VerifiedArrival.strength() < DeliveryOrigin::ReaderRead.strength());
+
+    // The governing rule: where observations differ, the WEAKER word is honest.
+    assert_eq!(
+        DeliveryOrigin::ReaderRead.weakest(DeliveryOrigin::InjectedToTransport),
+        DeliveryOrigin::InjectedToTransport,
+        "a consumer that cannot distinguish renders the weakest applicable claim"
+    );
+    assert_eq!(
+        DeliveryOrigin::InjectedToTransport.weakest(DeliveryOrigin::VerifiedArrival),
+        DeliveryOrigin::InjectedToTransport,
+        "weakest is symmetric — it is about the evidence, not the argument order"
+    );
+    assert_eq!(
+        DeliveryOrigin::ReaderRead.weakest(DeliveryOrigin::ReaderRead),
+        DeliveryOrigin::ReaderRead
+    );
+
+    // The origin travels on the wire in the erratum's own words, so a TS consumer
+    // and a Rust one read the same vocabulary.
+    let json = serde_json::to_string(&injected).expect("serialize");
+    assert!(
+        json.contains("injected-to-transport"),
+        "the wire word is the erratum's word, not a Rust-shaped rename: {json}"
+    );
+}

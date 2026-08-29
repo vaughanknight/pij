@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use pij_core::delivery::{DeliveryRoute, QueueReason, delivery_kind, route};
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
-use pij_core::model::{DeliveryOutcome, Event, Job, Msg, Outcome, Receipt, SeatId};
+use pij_core::model::{DeliveryOrigin, DeliveryOutcome, Event, Job, Msg, Outcome, Receipt, SeatId};
 use pij_core::ports::{Queue, Registry, Transport};
 use serde::Serialize;
 use tokio_stream::StreamExt;
@@ -278,9 +278,20 @@ struct OutcomeEvent<'a> {
     transport: &'a str,
 }
 
+/// The audit word for an outcome — and for a delivery, the ORIGIN travels with
+/// it (erratum-23b). An audit line that says only "delivered" re-creates the
+/// ambiguity the origin exists to remove, so the two are never separated here.
 fn outcome_name(outcome: &DeliveryOutcome) -> &'static str {
     match outcome {
-        DeliveryOutcome::Delivered => "delivered",
+        DeliveryOutcome::Delivered {
+            origin: DeliveryOrigin::InjectedToTransport,
+        } => "delivered:injected-to-transport",
+        DeliveryOutcome::Delivered {
+            origin: DeliveryOrigin::VerifiedArrival,
+        } => "delivered:verified-arrival",
+        DeliveryOutcome::Delivered {
+            origin: DeliveryOrigin::ReaderRead,
+        } => "delivered:reader-read",
         DeliveryOutcome::Queued => "queued",
         DeliveryOutcome::Held { .. } => "held",
     }
@@ -302,6 +313,7 @@ fn system_time_ms() -> Result<u64> {
 
 #[cfg(test)]
 mod tests {
+    use pij_core::model::DeliveryOrigin;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -390,7 +402,12 @@ mod tests {
             .send("pij-from".into(), "pij-delivered".into(), "hello")
             .await
             .expect("delivered receipt");
-        assert_eq!(receipt.outcome, DeliveryOutcome::Delivered);
+        assert_eq!(
+            receipt.outcome,
+            DeliveryOutcome::Delivered {
+                origin: DeliveryOrigin::InjectedToTransport
+            }
+        );
         assert_eq!(receipt.at, 1_234);
         assert_eq!(delivered.transport.delivered().len(), 1);
         assert!(
