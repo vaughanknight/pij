@@ -241,3 +241,17 @@ pointer path for wave 3 (fork's app-server design has zero live proof — no inh
 without evidence mid-wave); /v1/send accepts LOCAL destinations only this wave (origin side
 does not route; destination side always enqueues locally — req-0017 routing lands with
 federation, not before).
+
+## Cross-government compare (2026-08-30, lynx's sol-fast reviewer — Jordan's courtesy exercise)
+
+Report: flowspace3 scratch/arch-compare-pij.md (62 file:line cites, independently rechecked).
+Convergent on 9 majors; our three declared divergences all judged PRINCIPLED.
+- **STALE-NOTE CORRECTION**: our row-53 framing ("fs3 publishes key before bind") is now
+  historical — fs3 main adopted stage->bind->publish->serve; key ordering is IDENTICAL.
+- **DRIFT accepted as wave-3 fix**: build_services opens the same SQLite store three times
+  (daemon lib.rs:129,135,141) — one Pool<Sqlite> feeds all three constructors; saves up to
+  12 connections + repeated open/migration. Owner: compose (lungfish), wave 3.
+- **Two SUPERIOR-ADOPT flowing back to fs3**: our raw unknown-event-byte preservation, and
+  our hardened arch gate (required 'why', runtime workspace resolution, --locked metadata).
+- **Standing item**: promote the architecture map from plan-108 assets to a repo front door
+  before the plan closes.
