@@ -11,7 +11,12 @@ pub mod admission;
 pub mod auth;
 pub mod delivery;
 pub mod events;
+
+// u-orchestration's git-facts gatherer: IO belongs at the runtime root, and a
+// ninth crate would have been a graph change for one module.
 pub mod http;
+#[path = "orchestration/repo.rs"]
+pub mod orchestration_repo;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -19,7 +24,10 @@ use std::sync::Arc;
 
 use pij_core::config::{AdapterChoice, Config};
 use pij_core::error::{PijError, Result};
+use pij_core::model::Harness;
+use pij_core::orchestration::OrchestrationService;
 use pij_core::ports::{HarnessPort, LivenessPort, Queue, Registry, Spine, TmuxPort, Transport};
+use pij_harnesses::HarnessRegistry;
 use pij_harnesses::proc::ProcLiveness;
 use pij_store::{SqliteQueue, SqliteRegistry, SqliteSpine};
 use pij_testkit::fakes::{
@@ -50,8 +58,16 @@ pub struct Services {
     pub transport: Arc<dyn Transport>,
     /// tmux IO.
     pub tmux: Arc<dyn TmuxPort>,
-    /// Harness quirks.
-    pub harness: Arc<dyn HarnessPort>,
+    /// Per-harness adapters, one per `Harness` variant.
+    ///
+    /// A registry rather than a single `Arc<dyn HarnessPort>`: the wave-0 shape
+    /// assumed one fake, but a composite's `kind()` has no truthful value, so
+    /// u-harness shipped five adapters and a lookup instead of one adapter
+    /// pretending to be all of them.
+    /// Wrapped in `Arc` at composition, not in the unit: `Services` is `Clone`
+    /// because every route handler holds one, and the registry owns trait
+    /// objects that cannot be. Shared ownership is a composition concern.
+    pub harnesses: Arc<HarnessRegistry>,
     /// Process liveness.
     pub liveness: Arc<dyn LivenessPort>,
     /// The event bus: publish once, fan out to every subscriber, with a durable
@@ -61,6 +77,13 @@ pub struct Services {
     /// service composed FROM one (the spine). There was no `not_yet` refusal to
     /// delete here — its coder said so rather than inventing one.
     pub event_bus: Arc<events::EventBus>,
+    /// Governance: batons, projects, streams, ordinals, roles — and the
+    /// equivalence merge that stops one seat becoming six descriptors.
+    ///
+    /// Like the bus, not behind an `AdapterChoice`: it composes existing store
+    /// and daemon IO rather than implementing an eighth port, so there was no
+    /// refusal to delete.
+    pub orchestration: Arc<OrchestrationService>,
     /// Whether this daemon is running entirely on fakes.
     pub offline: bool,
 }
@@ -134,10 +157,17 @@ pub async fn build_services(config: &Config) -> Result<Services> {
         AdapterChoice::Fake => Arc::new(FakeTmux::new()),
         AdapterChoice::Real => Arc::new(TmuxAdapter::new()),
     };
-    let harness: Arc<dyn HarnessPort> = match config.adapters.harness {
-        AdapterChoice::Fake => Arc::new(FakeHarness::new(pij_core::model::Harness::Pi)),
-        AdapterChoice::Real => return Err(not_yet("harness", "u-harness, wave 2")),
-    };
+    // WIRED, wave 2 (u-harness). The refusal this replaces is gone.
+    let harnesses = Arc::new(match config.adapters.harness {
+        AdapterChoice::Fake => HarnessRegistry::new([
+            Arc::new(FakeHarness::new(Harness::Claude)) as Arc<dyn HarnessPort>,
+            Arc::new(FakeHarness::new(Harness::Copilot)),
+            Arc::new(FakeHarness::new(Harness::Codex)),
+            Arc::new(FakeHarness::new(Harness::Pi)),
+            Arc::new(FakeHarness::new(Harness::Omp)),
+        ])?,
+        AdapterChoice::Real => HarnessRegistry::real(tmux.clone()),
+    });
     // WIRED, wave 1 (u-liveness). The refusal this replaces is gone; the recipe
     // came from the unit's public doc comment, and the PM pastes it — one mind at
     // convergence, four worktrees at edit time.
@@ -153,14 +183,17 @@ pub async fn build_services(config: &Config) -> Result<Services> {
         config.event_buffer_capacity,
     )?);
 
+    let orchestration = Arc::new(OrchestrationService::new());
+
     Ok(Services {
         registry,
         spine,
         event_bus,
+        orchestration,
         queue,
         transport,
         tmux,
-        harness,
+        harnesses,
         liveness,
         offline: config.is_fully_offline(),
     })

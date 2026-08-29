@@ -126,7 +126,22 @@ async fn the_composition_root_wires_every_port_it_claims() {
     assert!(services.queue.claim(&[], "w").await.is_ok());
     assert!(services.tmux.list_panes().await.is_ok());
     assert!(services.liveness.proc_start(1).await.is_ok());
-    assert_eq!(services.harness.kind(), Harness::Pi);
+    // Wave 2 replaced the single harness adapter with a registry: a composite
+    // adapter's kind() had no truthful value, so every variant now has its own.
+    // The assertion follows the shape rather than being deleted with it.
+    for kind in [
+        Harness::Claude,
+        Harness::Copilot,
+        Harness::Codex,
+        Harness::Pi,
+        Harness::Omp,
+    ] {
+        assert_eq!(
+            services.harnesses.get(kind).kind(),
+            kind,
+            "the registry must return the adapter it was asked for"
+        );
+    }
     assert_eq!(services.transport.name(), "fake");
     assert!(services.offline);
 }
@@ -136,24 +151,14 @@ async fn the_composition_root_wires_every_port_it_claims() {
 /// `offline` a lie in the other direction.
 #[tokio::test]
 async fn selecting_an_unbuilt_real_adapter_refuses_and_names_the_wave() {
-    for (label, adapters, expected) in [
-        (
-            "transport",
-            Adapters {
-                transport: AdapterChoice::Real,
-                ..Adapters::default()
-            },
-            "u-uds",
-        ),
-        (
-            "harness",
-            Adapters {
-                harness: AdapterChoice::Real,
-                ..Adapters::default()
-            },
-            "u-harness",
-        ),
-    ] {
+    for (label, adapters, expected) in [(
+        "transport",
+        Adapters {
+            transport: AdapterChoice::Real,
+            ..Adapters::default()
+        },
+        "u-uds",
+    )] {
         let config = Config {
             adapters,
             ..Config::default()
