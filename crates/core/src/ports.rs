@@ -96,9 +96,19 @@ pub trait Transport: Send + Sync {
     /// Name, for receipts and diagnostics.
     fn name(&self) -> &str;
 
-    /// Can this transport reach that seat right now? A `false` here is why a
-    /// message gets queued rather than dropped.
-    async fn can_deliver(&self, seat: &SeatDescriptor) -> Result<bool>;
+    /// Can this transport carry THIS message to THAT seat right now?
+    ///
+    /// A `false` here is why a message gets queued rather than dropped.
+    ///
+    /// **The message is a parameter by ruling (R3-AMEND-3), not for symmetry.**
+    /// A remote-control command (`/compact`, `/new`) must take the pty path even
+    /// for a seat with a perfectly good socket, because Claude renders a
+    /// socket-delivered `/compact` as plain TEXT rather than executing it
+    /// (s105, first-party). So the right transport depends on the MESSAGE, not
+    /// only on the seat — and with the seat alone, that carve-out has to live
+    /// somewhere a reader of this trait cannot see it, which is the rule that
+    /// rots.
+    async fn can_deliver(&self, seat: &SeatDescriptor, msg: &Msg) -> Result<bool>;
 
     /// Attempt delivery. The outcome is what actually happened, never an
     /// optimistic guess.

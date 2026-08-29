@@ -361,9 +361,13 @@ impl Transport for FakeTransport {
         &self.name
     }
 
-    async fn can_deliver(&self, seat: &SeatDescriptor) -> Result<bool> {
+    async fn can_deliver(&self, seat: &SeatDescriptor, msg: &Msg) -> Result<bool> {
         let mut state = self.state.lock().expect("fake transport mutex");
-        state.recorder.record(format!("can_deliver:{}", seat.id));
+        // The message id is recorded too: a fake that forgot which message it was
+        // asked about could not prove the command carve-out (R3-AMEND-3) either.
+        state
+            .recorder
+            .record(format!("can_deliver:{}:{}", seat.id, msg.msg_id));
         Ok(state.reachable)
     }
 

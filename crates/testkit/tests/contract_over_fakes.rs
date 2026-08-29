@@ -90,7 +90,7 @@ fn a_reachable_transport_delivers_and_records_the_message_id() {
         msg_id: "m-2".to_string(),
     };
 
-    assert!(block_on(transport.can_deliver(&seat)).expect("can_deliver"));
+    assert!(block_on(transport.can_deliver(&seat, &msg)).expect("can_deliver"));
     assert_eq!(
         block_on(transport.deliver(&seat, &msg)).expect("deliver"),
         DeliveryOutcome::Delivered {

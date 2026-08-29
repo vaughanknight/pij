@@ -122,7 +122,7 @@ impl DeliveryService {
                 DeliveryOutcome::Queued
             }
             DeliveryRoute::Transport => {
-                if !self.transport.can_deliver(&recipient).await? {
+                if !self.transport.can_deliver(&recipient, &msg).await? {
                     debug_assert_eq!(
                         route(&from, &recipient, false)?,
                         DeliveryRoute::Queue(QueueReason::Unreachable)
