@@ -72,10 +72,34 @@ Rules, each with the incident behind it:
 ### `POST /v1/send`
 
 ```json
-{ "from": "pij-a", "to": "pij-b", "body": "…", "msg_id": "…" }
+{
+  "from": "pij-a",
+  "to": { "seat": "pij-b" },
+  "body": "…",
+  "msg_id": "…",
+  "in_reply_to": null
+}
 ```
 
-`to` may be `<seat>` (local, always) or `<seat>@<machine-alias>` (federated).
+**`to` is a `Destination` OBJECT on the wire, not a string.** An earlier version of
+this document showed `"to": "pij-b"` while the landed `Destination` type
+serialises as an object — so the documented example would have 422'd against the
+handler that consumes it. Found by `u-daemon-http` before fixtures froze;
+corrected here rather than papered over in the handler.
+
+The split is deliberate: **the CLI owns string parsing** (`<seat>` or
+`<seat>@<machine-alias>`, with the escaping grammar `u-cli` proposes), and the
+daemon receives an already-resolved destination. One parser, at the edge where a
+human types.
+
+`machine` absent means local, always. **This wave, a non-local destination is
+REFUSED** with a named error pointing at `u-federation` (wave 4): `delivery_kind`
+is keyed on the seat alone, so `alice@local` and `alice@remote` would collide and
+`inbox(alice)` could claim a job meant for another machine. The origin side does
+not route; the destination side always enqueues locally.
+
+`in_reply_to` is `Option<String>` and carries the `msg_id` being answered — see
+§ Pushed turns and replies, which required it while the field list omitted it.
 The route performs **one enqueue** — job kind `delivery:<seat-id>` via
 `core::delivery::delivery_kind` — and returns a `Receipt { msg_id, outcome, at }`
 whose outcome is `Queued`. The drain worker does the rest, off the request path
