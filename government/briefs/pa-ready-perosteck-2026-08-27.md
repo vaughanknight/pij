@@ -54,3 +54,6 @@ Report the number in the sweep line as `TG attempt>1: N`. N>0 means a body whose
 
 ## Amendment (post-handover, 2026-08-28) — standing watch
 The v0.2.0 handover is complete; streams s391 and s392 are closed. Your chores continue unchanged on the 20-min cadence: 1–4 (prime card age, open PRs, anomalies unscoped, subtree), 5 (bridge liveness via `pij state pij-telegram`), 6 (`TG attempt>1` count). Subtree is now the prime alone; report "no streams" rather than an empty chase. Escalate to the prime (never actuate) if: the bridge is not alive at a sweep; `TG attempt>1` > 0 on a real send; the prime's card crosses 600 s; a new anomaly names the prime's subtree. Nothing else changes.
+
+## Amendment 2026-08-29 02:5xZ — the activity axis is not a state
+`pij tree` / `pij state` render two axes: the activity axis (`working` / `done` = whether the last turn is still running or finished; `active` / `dead` = process liveness) and the card/lifecycle state. `done · active` means "last turn finished, process alive" — it is what every idle seat shows, including the prime's. It is never a reason to pause. Terminal states read `dissolved` / `closed`. Sweeps continue regardless of what the activity axis says.
