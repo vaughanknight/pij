@@ -210,3 +210,10 @@ sha256 = "0a990c53f27ee1b46c5b355e369058e3fc8e984ad78b869e5858bcb05945654f"
 bytes = 1466
 note = "A REAL upstream-pi pane MID-TURN, captured 2026-08-29 from the PM's own seat while it was running a command."
 answer = "Must classify as busy/working, never Ready. The discriminator is the spinner row with its label; the status footer is present in BOTH this fixture and the ready one, which is exactly why the footer alone cannot mean ready."
+
+[[fixture]]
+path = "harnesses/omp-pane-ready.txt"
+sha256 = "aa0d5b6f031b9c06831f6b7558c83a73b336cc859520f91e197c63a6ff92b982"
+bytes = 898
+note = "A REAL OMP pane AT REST, captured 2026-08-29 from one of the PM's own wave-2 coder seats after it finished its unit \u2014 capture only, the seat was neither driven nor disturbed. Home paths replaced with /Users/USER. Non-blank content asserted before writing."
+answer = "Must classify as READY. Pair it with the repo's live_omp_blank_padded.txt, which shows the same chrome carrying '\u280b Working\u2026 \u27e6esc\u27e7' and must classify as BUSY. The discriminator is the spinner row, not the footer and not the prompt \u2014 both fixtures have those."

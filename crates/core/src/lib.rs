@@ -13,10 +13,12 @@
 pub mod admission;
 pub mod anomalies;
 pub mod config;
+pub mod delivery;
 pub mod error;
 pub mod events;
 pub mod liveness;
 pub mod model;
+pub mod orchestration;
 pub mod ports;
 pub mod report;
 pub mod watchdog;
