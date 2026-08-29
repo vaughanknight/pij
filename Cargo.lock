@@ -1146,6 +1146,7 @@ dependencies = [
  "async-trait",
  "pij-core",
  "pij-testkit",
+ "serde_json",
 ]
 
 [[package]]

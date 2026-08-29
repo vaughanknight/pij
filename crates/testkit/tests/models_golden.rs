@@ -27,6 +27,24 @@ fn thinking_encoding(row: &serde_json::Value) -> &'static str {
         Some(_) => "not-a-list",
     }
 }
+/// The production fold: raw absent/empty/null all become no levels.
+fn folded_levels(row: &serde_json::Value) -> String {
+    match row.get("levels") {
+        None | Some(serde_json::Value::Null) => "<none>".to_string(),
+        Some(serde_json::Value::Array(levels)) => {
+            let levels: Vec<&str> = levels
+                .iter()
+                .map(|level| level.as_str().expect("thinking level must be a string"))
+                .collect();
+            if levels.is_empty() {
+                "<none>".to_string()
+            } else {
+                levels.join("/")
+            }
+        }
+        Some(_) => panic!("levels must be an array, null, or absent"),
+    }
+}
 
 /// The derivation under golden: one line per model, in the s106 order
 /// (runtime · provider · selector · request id · thinking encoding).
@@ -51,7 +69,7 @@ fn summarise(catalog: &str) -> String {
                 field("provider"),
                 field("selector"),
                 field("requestModelId"),
-                thinking_encoding(row)
+                folded_levels(row)
             )
         })
         .collect();
