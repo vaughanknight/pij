@@ -326,6 +326,32 @@ impl Destination {
 #[serde(transparent)]
 pub struct Seq(pub u64);
 
+/// Why a command refused, in a form a caller can BRANCH on.
+///
+/// `meta` is prose for a human; an exit-code table cannot be built from prose.
+/// u-cli found this: "refused" and "not found" were indistinguishable to a
+/// client, so any four-row exit contract would have been guesswork over string
+/// matching.
+///
+/// **HTTP status maps FROM this, never the reverse.** The daemon's own word is
+/// the truth; the status code is a courtesy to `curl`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorKind {
+    /// The daemon understood and declined — a tombstoned recipient, a refused
+    /// registration, a capability the caller does not hold.
+    Refused,
+    /// The thing asked about does not exist. Distinct from `Refused`: absent is
+    /// not the same as forbidden, and a caller does different things about each.
+    NotFound,
+    /// Missing or wrong bearer key.
+    Auth,
+    /// An envelope version this build will not act on. Never half-read.
+    Skew,
+    /// An adapter failed at its boundary, carrying its own words in `meta`.
+    Adapter,
+}
+
 /// The wire envelope every command answers in.
 ///
 /// `data` is open by contract — a verb's payload is whatever that verb returns —
@@ -342,9 +368,13 @@ pub struct Envelope<T> {
     /// The payload, absent on failure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<T>,
-    /// Out-of-band notes: timing, warnings, the next action to take.
+    /// Out-of-band notes: timing, warnings, the next action to take. PROSE, for a
+    /// human — never the thing a client branches on. See `error`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub meta: Option<String>,
+    /// Why it failed, in a form a caller can branch on. Absent when `ok`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<ErrorKind>,
 }
 
 impl<T> Envelope<T> {
@@ -356,6 +386,7 @@ impl<T> Envelope<T> {
             v: ENVELOPE_VERSION,
             data: Some(data),
             meta: None,
+            error: None,
         }
     }
 
@@ -367,6 +398,19 @@ impl<T> Envelope<T> {
             v: ENVELOPE_VERSION,
             data: None,
             meta: Some(meta.into()),
+            error: None,
+        }
+    }
+
+    /// A failed envelope that says WHY in a form a caller can branch on.
+    pub fn refused(command: impl Into<String>, error: ErrorKind, meta: impl Into<String>) -> Self {
+        Envelope {
+            ok: false,
+            command: command.into(),
+            v: ENVELOPE_VERSION,
+            data: None,
+            meta: Some(meta.into()),
+            error: Some(error),
         }
     }
 }
