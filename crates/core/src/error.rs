@@ -61,6 +61,31 @@ pub enum PijError {
         reason: String,
     },
 
+    /// The registry row is a post-mortem; this seat will never receive again.
+    #[error(
+        "{seat}: seat is tombstoned ({reason}) — the message was not queued because a tombstoned seat will never receive it",
+        reason = tombstone_reason.as_deref().unwrap_or("no reason recorded")
+    )]
+    SeatIsGone {
+        /// The seat whose row is tombstoned.
+        seat: SeatId,
+        /// The reason retained in the post-mortem row, when present.
+        tombstone_reason: Option<String>,
+    },
+
+    /// Delivery acted, but the separate durable audit write failed.
+    #[error(
+        "message {msg_id} was {outcome}, but its audit event was not written ({audit_error}) — reconcile by msg-id; do not blindly resend"
+    )]
+    DeliveryAuditFailed {
+        /// The message whose action already landed.
+        msg_id: String,
+        /// The action that landed: queued, delivered, or held.
+        outcome: String,
+        /// The event bus failure, preserved verbatim.
+        audit_error: String,
+    },
+
     /// A report card exceeded the documented limit.
     ///
     /// The limit is a const with a name, and the error states it: TS defect #7
@@ -97,3 +122,38 @@ pub enum PijError {
 /// The error parameter is defaulted rather than fixed, so the common call site
 /// stays `Result<T>` while a module needing a narrower error can still name one.
 pub type Result<T, E = PijError> = std::result::Result<T, E>;
+
+#[cfg(test)]
+mod tests {
+    use super::PijError;
+    use crate::model::SeatId;
+
+    #[test]
+    fn tombstoned_refusal_says_why_nothing_was_queued() {
+        let error = PijError::SeatIsGone {
+            seat: SeatId::from("pij-gone"),
+            tombstone_reason: Some("process exited".to_string()),
+        }
+        .to_string();
+
+        assert!(error.contains("pij-gone: seat is tombstoned"));
+        assert!(error.contains("process exited"));
+        assert!(error.contains("message was not queued"));
+        assert!(error.contains("will never receive it"));
+    }
+
+    #[test]
+    fn audit_failure_names_the_effect_that_landed_and_forbids_blind_resend() {
+        let error = PijError::DeliveryAuditFailed {
+            msg_id: "m-42".to_string(),
+            outcome: "queued".to_string(),
+            audit_error: "spine unavailable".to_string(),
+        }
+        .to_string();
+
+        assert!(error.contains("message m-42 was queued"));
+        assert!(error.contains("audit event was not written"));
+        assert!(error.contains("reconcile by msg-id"));
+        assert!(error.contains("do not blindly resend"));
+    }
+}
