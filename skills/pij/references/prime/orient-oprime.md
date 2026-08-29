@@ -177,12 +177,14 @@ tombstone, never erase).
 
 ## Your boot sequence
 
-1. Confirm your channel — **a fresh seat is always un-registered: lead with
-   `pij adopt "$TMUX_PANE" --harness <h>`** (`E-AMBIG` from `phonehome`/`whoami`
-   means exactly this; the pane binding survives per-call shells where an
-   exported `PIJ_SESSION_ID` does not). Then `pij phonehome` to confirm; purge
-   any dead descriptor of your own prior seat — a stale descriptor can
-   wedge delivery for EVERYONE (INC-001 class).
+1. Confirm your channel. **Pi/OMP: the extension registered you at boot; run
+   `pij whoami` to confirm, never adopt or inbox register. Claude/Copilot/Codex:
+   a fresh seat is unregistered, so lead with `pij adopt "$TMUX_PANE" --harness
+   <h>`.** For those control-plane seats, `E-AMBIG` from `phonehome`/`whoami`
+   means exactly this; the pane binding survives per-call shells where an exported
+   `PIJ_SESSION_ID` does not. Then `pij phonehome` to confirm; purge any dead
+   descriptor of your own prior seat — a stale descriptor can wedge delivery for
+   EVERYONE (INC-001 class).
 2. Read the government you inherit: spine → baton book → prime-flow → open briefs →
    latest reports. Audit for restart drift: dead holders in the baton book, stale
    roster rows, orphaned peers in `pij list` — reconcile before acting.

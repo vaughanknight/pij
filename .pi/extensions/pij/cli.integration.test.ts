@@ -254,6 +254,16 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 
 		const routing = readFileSync(join(REPO_ROOT, "skills/pij/references/00-routing.md"), "utf8");
 		const peer = readFileSync(join(REPO_ROOT, "skills/pij/references/routes/peer.md"), "utf8");
+		const ready = readFileSync(join(REPO_ROOT, "skills/pij/references/routes/ready.md"), "utf8");
+		const skill = readFileSync(join(REPO_ROOT, "skills/pij/SKILL.md"), "utf8");
+		const primeOrient = readFileSync(
+			join(REPO_ROOT, "skills/pij/references/prime/orient-oprime.md"),
+			"utf8",
+		);
+		const seatHandover = readFileSync(
+			join(REPO_ROOT, "skills/pij/references/prime/templates/seat-handover.md"),
+			"utf8",
+		);
 		const skillGuidance = `${routing}\n${peer}`;
 		const tableCells = (prefix: string): string[] => {
 			const row = routing.split("\n").find((line) => line.startsWith(prefix));
@@ -290,10 +300,23 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		);
 		expect(tableCells("| prereq |")).toEqual([
 			"prereq",
-			"pi extension loaded",
+			"**You are a pi/omp seat: the extension registered you at boot. Run NO pij identity command (no adopt, no inbox register).**",
 			`daemon (spawn auto-starts it) + self-adopt once using only the exact non-empty current-process pane: \`pij adopt "$TMUX_PANE" --harness <h> \${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}\``,
 			"`pij inbox register` or first `pij inbox --wait` — auto-registers the ambient session as pull-owned",
 		]);
+		const piOmpReadyStop =
+			"You are a pi/omp seat: the extension registered you at boot. Reply `Ready.` and";
+		expect(ready).toContain(piOmpReadyStop);
+		expect(ready).toContain("STOP — run NO pij identity command (no adopt, no inbox register).");
+		expect(skill).toContain(
+			"pi/omp replies `Ready.` and STOPS — run NO pij identity command (no adopt, no inbox register)",
+		);
+		expect(primeOrient).toContain(
+			"Pi/OMP: the extension registered you at boot; run\n   `pij whoami` to confirm, never adopt or inbox register.",
+		);
+		expect(seatHandover).toContain(
+			"Pi/OMP: the extension registered the incoming seat at boot; run `pij whoami`\n   to confirm, never adopt or inbox register.",
+		);
 
 		const externalPullBan = [
 			"Empty or absent `TMUX_PANE` means external pull mode.",

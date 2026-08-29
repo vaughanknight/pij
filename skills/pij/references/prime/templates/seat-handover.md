@@ -8,12 +8,13 @@
 
 ## Boot path for the incoming seat
 
-1. `pij adopt "$TMUX_PANE" --harness <h>` FIRST (fresh seats always E-AMBIG),
-   then lever 0. Persist the incoming seat with
-   `pij orchestration prime set --json`; confirm its id appears in
-   `pij list --prime --here --json` before changing any writer line.
-   Until step 5 retires the outgoing marker, both seats are intentionally prime;
-   this bounded overlap prevents a discovery gap during writer transfer.
+1. **Pi/OMP: the extension registered the incoming seat at boot; run `pij whoami`
+   to confirm, never adopt or inbox register. Claude/Copilot/Codex: run `pij adopt
+   "$TMUX_PANE" --harness <h>` FIRST.** Then lever 0. Persist the incoming seat
+   with `pij orchestration prime set --json`; confirm its id appears in `pij list
+   --prime --here --json` before changing any writer line. Until step 5 retires
+   the outgoing marker, both seats are intentionally prime; this bounded overlap
+   prevents a discovery gap during writer transfer.
 2. Read: spine → baton book → prime-flow (CLI-only) → briefs → THIS PACK →
    local orient. Check the spine `Seq:` counter against this pack's
    `spine-seq at write:` line — a mismatch means you are reading mid-write.

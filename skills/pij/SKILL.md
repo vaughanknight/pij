@@ -72,7 +72,7 @@ primitive. `baton` is the other orchestration subcommand.
 
 | typed / intent | resolves to |
 |---|---|
-| "adopt your window and wait" / "report ready; prime will contact shortly" | `/pij ready` |
+| "adopt your window and wait" / "report ready; prime will contact shortly" | `/pij ready`; pi/omp replies `Ready.` and STOPS — run NO pij identity command (no adopt, no inbox register) |
 | `/flow-pair start\|dispatch\|observe\|review\|fix\|accept\|ledger\|learn …` | `/pij pair …` (same args) |
 | "spawn a worker / colleague / peer" | `/pij peer` |
 | "run flowspace search" / "ask an agent" | `/pij agent` |

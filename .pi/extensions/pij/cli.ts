@@ -933,7 +933,9 @@ function runInbox(argv: readonly string[]): void {
 		if (output.harness === "pi") {
 			const rendered = parsed.value.json
 				? JSON.stringify(output)
-				: `registered ${output.id} ↔ pi session ${output.harnessSessionId} (push${output.existing ? "; existing" : ""})`;
+				: output.existing
+					? "pi/omp seats self-register at boot; you are already reachable — run `pij whoami` to confirm, never adopt"
+					: `registered ${output.id} ↔ pi session ${output.harnessSessionId} (push)`;
 			process.stdout.write(`${rendered}\n`);
 		} else {
 			process.stdout.write(

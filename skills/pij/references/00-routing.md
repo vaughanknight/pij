@@ -29,7 +29,7 @@ Delivery-owner detection happens before any self-registration advice. Detect **o
 
 | Intent | pi push | tmux control-plane push | external pull |
 |---|---|---|---|
-| prereq | pi extension loaded | daemon (spawn auto-starts it) + self-adopt once using only the exact non-empty current-process pane: `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}` | `pij inbox register` or first `pij inbox --wait` — auto-registers the ambient session as pull-owned |
+| prereq | **You are a pi/omp seat: the extension registered you at boot. Run NO pij identity command (no adopt, no inbox register).** | daemon (spawn auto-starts it) + self-adopt once using only the exact non-empty current-process pane: `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}` | `pij inbox register` or first `pij inbox --wait` — auto-registers the ambient session as pull-owned |
 | spawn | `pij_spawn({model, layout})` | `pij spawn --harness claude\|copilot\|codex\|pi …` | unavailable without tmux; converse with existing peers |
 | message | `pij_send({to, message})` | `pij send <id> "<text>"` | register/inbox first, then `pij send <id> "<text>"` |
 | receive | automatic injected turn | automatic daemon-injected turn | `pij inbox --wait [ms]` |
