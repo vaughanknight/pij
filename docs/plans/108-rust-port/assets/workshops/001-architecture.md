@@ -189,3 +189,16 @@ prime rulings recorded in this file.
   gurgeh read merged code against the ruling rather than trusting the commit message; fixed
   ae78332b with wire-absence now ASSERTED (tailed vs fresh event byte-identical). The
   wave-0 lesson (verify the artifact, not the report) is reproducing in coders unprompted.
+- WAVE-2 PRECEDENTS (PM rulings, 2026-08-29, ratified by prime): (a) STALENESS AXIS — a card
+  is stale on the clock alone (>10min default, configured never const); parking suspends
+  NUDGING only; u-report freshness must NOT consult semantic_state, u-watchdog eligibility
+  MUST (parity with TS; first-principles would have silently broken it). (b) models() on an
+  unavailable catalog returns an ERROR, never an empty Vec — empty CLAIMS no models (the
+  absent-vs-empty collapse, again). (c) R5 item 16: state+note spans Registry then Spine
+  with NO atomic path across the frozen ports — partial failure is REPORTED (state landed,
+  note did not), never faked atomic; visible limitation for wave-3 surface design.
+  (d) Parity-first on names: anomaly kind stays delivered-unacked-stale per live TS; the
+  packet's shorter spelling was a packet defect, recorded as a decision not left as a
+  discovery. (e) A branch a ruling mandates must be TESTABLE the day it lands — u-report's
+  partial-failure path got a scripted-failure fake capability the same day (the
+  exercises-the-path-not-the-property shape, caught at ack).
