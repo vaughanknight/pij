@@ -38,3 +38,6 @@ CLI-only (no restart): `pij state $(pij whoami) --json | jq '{id,harness,paneId,
 
 ## 7. Open questions for the human
 None — `parent` (= `effectiveParent`, the same notion `node show` projects) is already ruled in code (`core/cli.ts:2952-2961`, D-041); keep it.
+
+### Addendum 2026-08-29 (o-prime) — the two-axis render
+`pij tree` and `pij state` print `<turn> · <liveness>` (e.g. `done · active`) with no axis labels. On 2026-08-29 the standing-watch PA read its own `done · active` as a terminal state and paused its sweeps for a cycle (E50). Fold into this item: label the axes in the human render (e.g. `turn: done · proc: alive`), and make the only terminal words `dissolved` / `closed`. Same lossy-surface class as the JSON gaps above.
