@@ -11,6 +11,7 @@
 #![deny(missing_docs)]
 
 pub mod admission;
+pub mod anomalies;
 pub mod config;
 pub mod error;
 pub mod events;
