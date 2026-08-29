@@ -1,7 +1,6 @@
 {
 	"packages": [
 		"git:https://github.com/hasit/pi-community-themes@v0.3.0",
-		"npm:pi-lean-ctx",
 		"git:github.com/ghoseb/pi-askuserquestion",
 		"npm:pi-smart-fetch",
 		"npm:@tintinweb/pi-subagents"
