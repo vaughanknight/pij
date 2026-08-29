@@ -62,10 +62,31 @@ Rules, each with the incident behind it:
   extension and the daemon compare the same number.
 * **Every optional field is genuinely optional.** A seat a human adopted has no
   `spawn_id`; absent must stay absent, never an empty string.
-* **The daemon decides admission, not the caller.** The payload is EVIDENCE;
-  `core::admission` rules on it (subagents inheriting `PIJ_*` can claim an id but
-  cannot manufacture bind evidence). A refused registration returns `ok: false`
-  with the refusal reason — which is a fact the caller must surface, not retry.
+* **The daemon decides admission, not the caller** — and it VERIFIES rather than
+  trusts. The payload is a claim; every field in it is self-reported by a process
+  that may be a subagent wearing its parent's environment (#19).
+
+  Registration is therefore explicitly **three cheap statements, not one**, and
+  this is a deliberate carve-out from R4's one-statement rule, granted because
+  admission is the DECISION rather than the work:
+
+  1. `LivenessPort::proc_start(pid)` — does that process exist, with that start
+     time? A claimed `(pid, proc_start)` that the machine does not corroborate is
+     refused. This is what a subagent cannot forge about a session it does not own.
+  2. `Registry` — **is that `(pid, proc_start)` already bound to a DIFFERENT seat
+     id?** This is the #19 discriminator that self-reporting cannot supply: a
+     subagent shares its parent's process, so its claim collides with a row that
+     already exists. Same id ⇒ re-registration; different id ⇒ refused as a
+     subagent, naming the seat it collided with.
+  3. `Registry::put` — the write, once admission has ruled.
+
+  R4 is not being weakened: the rule exists so a handler does not do WORK inline,
+  and these are three bounded local statements with no network and no job. What
+  R4 forbids here is deferring admission to a worker — a row that exists before it
+  has been judged is the defect, not the cost of judging it.
+
+  A refused registration returns `ok: false` with the refusal reason, which is a
+  fact the caller must SURFACE, never retry.
 * Response `data` is the accepted `SeatDescriptor` as stored, so the caller learns
   what the authority actually recorded rather than assuming its own payload won.
 
