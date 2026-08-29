@@ -152,6 +152,7 @@ pub struct FakeSpine {
 struct SpineState {
     events: Vec<(Seq, Event)>,
     seq: u64,
+    append_errors: VecDeque<String>,
 }
 
 impl FakeSpine {
@@ -169,12 +170,27 @@ impl FakeSpine {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Make the next append fail with an adapter error carrying `message`.
+    pub fn script_append_error(&self, message: impl Into<String>) {
+        self.state
+            .lock()
+            .expect("fake spine mutex")
+            .append_errors
+            .push_back(message.into());
+    }
 }
 
 #[async_trait]
 impl Spine for FakeSpine {
     async fn append(&self, mut event: Event) -> Result<Seq> {
         let mut state = self.state.lock().expect("fake spine mutex");
+        if let Some(message) = state.append_errors.pop_front() {
+            return Err(PijError::Adapter {
+                adapter: "fake/spine".to_string(),
+                message,
+            });
+        }
         state.seq += 1;
         let seq = Seq(state.seq);
         event.seq = None;
