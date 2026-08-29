@@ -202,3 +202,16 @@ prime rulings recorded in this file.
   discovery. (e) A branch a ruling mandates must be TESTABLE the day it lands — u-report's
   partial-failure path got a scripted-failure fake capability the same day (the
   exercises-the-path-not-the-property shape, caught at ack).
+- WAVE-2 COMPOSE NOTES (2026-08-29, 2132d73f): (a) fixture-manifest trap — sha+bytecount
+  matched the manifest because the AUTHOR hashed what the author wrote; only reading CONTENT
+  against the ANSWER field caught 16 blank rows (pane taller than content); corroborating an
+  artifact with your own hash is N=1. Non-blank assertion added. (b) frozen-Queue cross-seat
+  claim (inbox could claim another seat's job): ruled the boring fix — kind=delivery:<seat>,
+  one formatter, no trait widening. (c) NotDeliverable's text promised 'queued, not lost'
+  unconditionally = false receipt for the tombstoned case; new variant granted rather than
+  weakening the one honest error. (d) FIVE harness adapters + registry over a parameterised
+  pi/omp composite: a composite kind() has no truthful value; pi and omp differ in artifacts
+  and anchors. (e) LIVE TS EVIDENCE for R5 item 8 / PRD req-0008: receipt
+  1787963637387-000001-89164 reported DELIVERED for a body that never injected into the
+  recipient's turn (recipient was u-delivery itself, mid-build) — the delivered-is-suspect
+  inversion reproduced on a pij receipt, recorded in the unit's assumptions.
