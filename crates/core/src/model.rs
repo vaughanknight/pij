@@ -288,6 +288,39 @@ impl From<String> for SeatId {
     }
 }
 
+/// Where a message is going: a seat, and optionally the machine it lives on.
+///
+/// **`machine: None` always means LOCAL** (PRD req-0017). That invariant is what
+/// keeps single-machine usage unchanged when federation lands, so it is asserted
+/// as its own test rather than left as a comment.
+///
+/// Parsed by the CLI from `<seat>` or `<seat>@<machine-alias>`; consumed by the
+/// daemon already resolved. Landed by the PM before either unit could invent its
+/// own half.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Destination {
+    /// The seat.
+    pub seat: SeatId,
+    /// The machine alias, or `None` for this machine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine: Option<String>,
+}
+
+impl Destination {
+    /// A destination on this machine.
+    pub fn local(seat: impl Into<SeatId>) -> Self {
+        Destination {
+            seat: seat.into(),
+            machine: None,
+        }
+    }
+
+    /// Is this destination on the machine handling it?
+    pub fn is_local(&self) -> bool {
+        self.machine.is_none()
+    }
+}
+
 /// A monotonic sequence number handed out by the store.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
