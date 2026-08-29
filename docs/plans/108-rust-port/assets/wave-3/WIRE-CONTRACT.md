@@ -138,9 +138,21 @@ The stream opens with the Hello line, then one JSON object per line:
   each daemon has its own `Seq`; a federated consumer keeps a MAP, not a scalar.
 * Query: absent `since` ⇒ live-only attach (`subscribe_live`); `since=N` ⇒
   `subscribe(Some(Seq(N)))` for the local machine.
-* **An unknown `kind` is forwarded, not dropped** (R7). The daemon deliberately
-  emits one probe kind so every consumer is written against a stream that already
-  contains one.
+* **An unknown `kind` is forwarded, not dropped** (R7) — and it is proven by a
+  TEST publishing a real unknown-kind event, **not** by the route synthesising
+  one.
+
+  Wave 0's hello-depth route injected a `daemon.forward-compat-probe` on every
+  request. That was honest when a frame was just an event; it stopped being
+  honest the moment frames carried a store-assigned cursor, because a synthetic
+  event has no sequence. Emitting it with `cursor: 0` would be a lie, and
+  appending it to the spine on every subscriber attach would make a READ route
+  write. Both are worse than the thing the probe was defending against. Found by
+  `u-daemon-http`.
+
+  The property is unchanged and still enforced: `EventFilter` matches kinds as
+  open strings, so a production event of an unheard-of kind passes through
+  naturally. What changed is that the proof lives where proofs belong.
 
 ### Pushed turns and replies
 
