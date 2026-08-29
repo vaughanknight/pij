@@ -364,3 +364,71 @@ fn a_dropped_fresh_store_takes_its_wal_sidecars_with_it() {
         );
     }
 }
+
+#[tokio::test]
+async fn bind_evidence_round_trips_and_absent_stays_absent() {
+    // R5 items 13-15, and the class behind them: the registry row lacked facts
+    // another surface already held. A row that ROUND-TRIPS them is the fix; a row
+    // that invents them for an adopted seat would be the same defect mirrored.
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let registry = SqliteRegistry::new(pool);
+
+    let mut spawned = SeatDescriptor::new("pij-spawned", Harness::Omp, "/abs/tree");
+    spawned.spawn_id = Some("s1787958708582-43870".to_string());
+    spawned.model = Some("github-copilot/gpt-5.6-sol-fast".to_string());
+    spawned.provider = Some("github-copilot".to_string());
+    spawned.effort = Some("high".to_string());
+
+    registry.put(spawned.clone()).await.expect("put");
+    assert_eq!(
+        registry.get(&spawned.id).await.expect("get"),
+        Some(spawned),
+        "every fact the spawn knew must be readable from the registry"
+    );
+
+    // A seat a human adopted never had a spawn id. Absent must stay absent.
+    let adopted = SeatDescriptor::new("pij-adopted", Harness::Claude, "/abs/other");
+    registry.put(adopted.clone()).await.expect("put");
+    let read_back = registry
+        .get(&adopted.id)
+        .await
+        .expect("get")
+        .expect("present");
+    assert_eq!(read_back.spawn_id, None);
+    assert_eq!(read_back.model, None);
+    assert_eq!(read_back, adopted);
+}
+
+#[tokio::test]
+async fn an_older_store_gains_the_bind_evidence_columns_by_migrating_forward() {
+    // Migration 0003 is additive over a store that already has seats in it: the
+    // rows survive, and their new columns read absent rather than defaulting to
+    // a value nobody chose.
+    let fresh = FreshStore::new();
+    {
+        let pool = pij_store::open(&fresh.path()).await.expect("open");
+        SqliteRegistry::new(pool)
+            .put(SeatDescriptor::new("pij-legacy", Harness::Pi, "/abs/old"))
+            .await
+            .expect("put");
+    }
+
+    let pool = pij_store::open(&fresh.path())
+        .await
+        .expect("re-open migrates");
+    assert_eq!(
+        pij_store::schema_version(&pool).await.expect("version"),
+        pij_store::SCHEMA_VERSION
+    );
+    let legacy = SqliteRegistry::new(pool)
+        .get(&SeatId::from("pij-legacy"))
+        .await
+        .expect("get")
+        .expect("the row survives the migration");
+    assert_eq!(
+        legacy.spawn_id, None,
+        "a pre-0003 row has no bind evidence, not a fake one"
+    );
+    assert_eq!(legacy.folder, "/abs/old");
+}

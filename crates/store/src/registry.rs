@@ -112,6 +112,10 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
             .map_err(adapter_error)?
             .map(|at| at as u64),
         tombstone_reason: row.try_get("tombstone_reason").map_err(adapter_error)?,
+        spawn_id: row.try_get("spawn_id").map_err(adapter_error)?,
+        model: row.try_get("model").map_err(adapter_error)?,
+        provider: row.try_get("provider").map_err(adapter_error)?,
+        effort: row.try_get("effort").map_err(adapter_error)?,
     })
 }
 
@@ -165,15 +169,19 @@ impl Registry for SqliteRegistry {
 
         sqlx::query(
             "INSERT INTO seats (id, harness, pane, pid, proc_start, folder, state, \
-             semantic_state, role, parent, relay, tombstoned_at, tombstone_reason, seq) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) \
+             semantic_state, role, parent, relay, tombstoned_at, tombstone_reason, seq, \
+             spawn_id, model, provider, effort) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
+             ?17, ?18) \
              ON CONFLICT(id) DO UPDATE SET \
              harness=excluded.harness, pane=excluded.pane, pid=excluded.pid, \
              proc_start=excluded.proc_start, folder=excluded.folder, state=excluded.state, \
              semantic_state=excluded.semantic_state, role=excluded.role, \
              parent=excluded.parent, relay=excluded.relay, \
              tombstoned_at=excluded.tombstoned_at, \
-             tombstone_reason=excluded.tombstone_reason, seq=excluded.seq",
+             tombstone_reason=excluded.tombstone_reason, seq=excluded.seq, \
+             spawn_id=excluded.spawn_id, model=excluded.model, \
+             provider=excluded.provider, effort=excluded.effort",
         )
         .bind(descriptor.id.as_str())
         .bind(descriptor.harness.as_str())
@@ -189,6 +197,10 @@ impl Registry for SqliteRegistry {
         .bind(descriptor.tombstoned_at.map(|value| value as i64))
         .bind(descriptor.tombstone_reason.as_deref())
         .bind(seq)
+        .bind(descriptor.spawn_id.as_deref())
+        .bind(descriptor.model.as_deref())
+        .bind(descriptor.provider.as_deref())
+        .bind(descriptor.effort.as_deref())
         .execute(&mut *tx)
         .await
         .map_err(adapter_error)?;

@@ -189,7 +189,63 @@ pub struct SeatDescriptor {
     /// meant the promise could not be proven against SQL (u-store D3).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tombstone_reason: Option<String>,
+
+    // --- bind evidence (R5 items 13-15) ------------------------------------
+    //
+    // The class these four close: **the registry row lacked facts another
+    // surface already held.** `pij whoami` knew a seat's folder while its
+    // descriptor read null; a spawn's argv and the pane footer both knew the
+    // model while the row did not. A fact that exists in one instrument and not
+    // in the authority is a fact nobody can act on.
+    //
+    // All optional, because a seat adopted by a human never had a spawn id and
+    // pretending otherwise would be the same lie in the other direction.
+    /// The launch this seat came from, self-declared at registration. `None` for
+    /// a seat that was adopted rather than spawned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spawn_id: Option<String>,
+    /// The model the seat is actually running, as the spawn requested it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// The provider behind that model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// Thinking effort, where the runtime has levels at all. Absent is a valid
+    /// "this model has no levels" — the same fold u-models inherited.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
 }
+
+/// A seat's status card: what it last said it did, and what it said it would do.
+///
+/// Shared between `u-report` (which writes them) and `u-anomalies` (whose
+/// staleness detector reads them), so it lives here rather than in either.
+///
+/// **The limit is a documented constant, not a silent truncation.** TS clipped a
+/// card at 280 characters with no error and no note, so the end of a card
+/// vanished into a length nobody had been told about.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Card {
+    /// Whose card this is.
+    pub seat: SeatId,
+    /// What the seat just finished.
+    pub did: String,
+    /// What it intends to do next.
+    pub next: String,
+    /// When it was written: milliseconds since the Unix epoch, from the caller's
+    /// clock — core reads no clock of its own.
+    pub at: u64,
+    /// The sequence the store assigned, once it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seq: Option<Seq>,
+}
+
+/// The documented maximum length of a card field, after whitespace collapsing.
+///
+/// One const, named, with the error that cites it living beside
+/// [`crate::error::PijError::ReportTooLong`]. A limit nobody can name is a limit
+/// that eats the end of somebody's sentence.
+pub const CARD_LIMIT: usize = 280;
 
 impl SeatDescriptor {
     /// A minimal descriptor: unbound, idle, undeclared.
@@ -207,6 +263,10 @@ impl SeatDescriptor {
             relay: false,
             tombstoned_at: None,
             tombstone_reason: None,
+            spawn_id: None,
+            model: None,
+            provider: None,
+            effort: None,
         }
     }
 
