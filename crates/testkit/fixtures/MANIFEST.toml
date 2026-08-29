@@ -164,10 +164,10 @@ answer = "Exactly one Pane whose complete title is `human · title | nested`; sp
 
 [[fixture]]
 path = "harnesses/pi-pane-ready.txt"
-sha256 = "d66fef87c0f962f116952b4fc318d76686d5625b8d43cf22d608bb20f79638ae"
-bytes = 16
-note = "A REAL upstream-pi pane at rest, captured 2026-08-29 from a throwaway seat the PM spawned, let settle, captured and closed \u2014 no live fleet seat was touched. Home path replaced with /Users/USER; nothing else altered."
-answer = "The readiness anchor is the prompt row plus the status footer (context/model/branch), NOT the spinner's absence \u2014 a pane can be quiet mid-turn. Note the MCP failure lines sitting ABOVE the anchor: real panes carry noise between the last output and the prompt, and an anchor matcher that assumes the footer is the last line will fail on this fixture."
+sha256 = "484254392e095ddc2a53215e0228c56b20f4cc182a76d28995b7689667f9c8fb"
+bytes = 1620
+note = "A REAL upstream-pi pane at rest: captured 2026-08-29 from a throwaway seat the PM spawned, let settle, captured and closed \u2014 no live fleet seat was touched. Home path replaced with /Users/USER. RE-CAPTURED after the first attempt committed 16 blank lines: the pane is taller than its content, so a naive tail() grabs the empty rows BELOW the prompt. u-harness caught the contradiction between the manifest's answer and the bytes."
+answer = "The readiness anchor is the prompt row plus the status footer (context/model/branch), NOT the absence of a spinner \u2014 a pane can be quiet mid-turn. Compare with pi-pane-working.txt, which carries the SAME footer: the footer alone therefore cannot mean ready. Blank rows follow the footer in a real capture, so an anchor matcher that reads the last line finds nothing."
 
 [[fixture]]
 path = "harnesses/pi-pane-working.txt"
