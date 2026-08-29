@@ -1,0 +1,4 @@
+cwd /Users/jordanknight/pi-hacking/pij
+╭── pij-striped-cockroach > ⬢ GPT-5.6 Sol · ◒ high > ⑂ main ▶────────╮
+╰─                                                                    ─╯
+PI_SESSION_ID=omp-native-108

@@ -1,7 +1,13 @@
-//! `pij-harnesses` — Per-harness quirks (claude, copilot, codex, pi/omp): discovery, bind, readiness,
-//! canary, model catalog. Owns readiness-anchor drift in ONE place.
-//!
-//! Empty at tk-5f1d: this task proves the graph compiles, not that it does
-//! anything. Content arrives with the task that owns it.
+//! `pij-harnesses` — per-harness discovery, binding, readiness, busy-state,
+//! and interaction-safety quirks. Drift belongs here, once per harness.
+
+mod adapter;
+mod interaction;
 
 pub mod proc;
+
+pub use adapter::{
+    BindObservation, ClaudeHarness, CodexHarness, CopilotHarness, HarnessRegistry,
+    ObservedBindFacts, OmpHarness, PiHarness,
+};
+pub use interaction::InteractionGate;

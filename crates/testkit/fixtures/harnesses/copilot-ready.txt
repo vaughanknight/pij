@@ -1,0 +1,6 @@
+/Users/jordanknight/pi-hacking/pij [⎇ main] Session: 0 AIC used
+─────────────────────────────────────────────────────────────
+❯
+─────────────────────────────────────────────────────────────
+/ commands · ? help · tab next tab                  GPT-5.5
+COPILOT_AGENT_SESSION_ID=df4f1111-2222-4333-8444-555555555555

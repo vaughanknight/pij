@@ -1,0 +1,743 @@
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use pij_core::admission::{Admission, Candidate, admit};
+use pij_core::error::{PijError, Result};
+use pij_core::model::{BindHealth, Harness, ModelRow, Readiness, SeatDescriptor};
+use pij_core::ports::{HarnessPort, TmuxPort};
+
+const CAPTURE_LINES: u32 = 200;
+
+/// Facts a harness adapter observed rather than copied from the registry row.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ObservedBindFacts {
+    pub native_session_id: Option<String>,
+    pub pane: Option<String>,
+    pub model: Option<String>,
+    pub cwd: Option<String>,
+    pub readiness: Readiness,
+}
+
+/// The shared admission decision and the harness evidence that produced it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BindObservation {
+    pub facts: ObservedBindFacts,
+    pub admission: Admission,
+    pub health: BindHealth,
+}
+
+struct AdapterCore {
+    kind: Harness,
+    tmux: Arc<dyn TmuxPort>,
+}
+
+impl AdapterCore {
+    fn new(kind: Harness, tmux: Arc<dyn TmuxPort>) -> Self {
+        Self { kind, tmux }
+    }
+
+    async fn capture(&self, pane: &str) -> Result<String> {
+        self.tmux.capture(pane, CAPTURE_LINES).await
+    }
+
+    async fn discover_session(&self, pane: &str) -> Result<Option<String>> {
+        Ok(session_id(&self.capture(pane).await?))
+    }
+
+    async fn readiness(&self, pane: &str) -> Result<Readiness> {
+        let text = self.capture(pane).await?;
+        Ok(classify_readiness(self.kind, &text))
+    }
+
+    async fn busy(&self, pane: &str) -> Result<bool> {
+        Ok(is_busy(&self.capture(pane).await?))
+    }
+
+    async fn observe_bind(
+        &self,
+        descriptor: &SeatDescriptor,
+        subagent_of: Option<String>,
+    ) -> Result<BindObservation> {
+        let Some(pane) = descriptor.pane.as_deref() else {
+            return Ok(refused_observation(
+                descriptor,
+                subagent_of,
+                ObservedBindFacts {
+                    native_session_id: None,
+                    pane: None,
+                    model: None,
+                    cwd: None,
+                    readiness: Readiness::NotYet {
+                        observed: "descriptor has no pane to inspect".to_string(),
+                    },
+                },
+                false,
+            ));
+        };
+
+        let text = self.capture(pane).await?;
+        let readiness = classify_readiness(self.kind, &text);
+        let facts = ObservedBindFacts {
+            native_session_id: session_id(&text),
+            pane: Some(pane.to_string()),
+            model: observed_model(self.kind, &text),
+            cwd: observed_cwd(self.kind, &text),
+            readiness: readiness.clone(),
+        };
+        let facts_match = descriptor.harness == self.kind
+            && matches!(readiness, Readiness::Ready)
+            && descriptor.proc.is_some()
+            && facts.native_session_id.is_some()
+            && facts.cwd.as_deref() == Some(descriptor.folder.as_str())
+            && descriptor.model.as_ref().is_none_or(|expected| {
+                facts
+                    .model
+                    .as_ref()
+                    .is_some_and(|actual| actual == expected)
+            });
+        Ok(refused_observation(
+            descriptor,
+            subagent_of,
+            facts,
+            facts_match,
+        ))
+    }
+
+    async fn bind(&self, descriptor: &SeatDescriptor) -> Result<BindHealth> {
+        Ok(self.observe_bind(descriptor, None).await?.health)
+    }
+
+    fn models(&self) -> Result<Vec<ModelRow>> {
+        Err(PijError::Adapter {
+            adapter: format!("{} model catalog", self.kind),
+            message:
+                "catalog ownership belongs to u-models in wave 3 — retry after that adapter lands"
+                    .to_string(),
+        })
+    }
+}
+
+fn refused_observation(
+    descriptor: &SeatDescriptor,
+    subagent_of: Option<String>,
+    facts: ObservedBindFacts,
+    bind_evidence: bool,
+) -> BindObservation {
+    let candidate = Candidate {
+        id: descriptor.id.to_string(),
+        harness: Some(descriptor.harness.to_string()),
+        pane: facts.pane.clone(),
+        folder: facts.cwd.clone(),
+        bind_evidence,
+        subagent_of,
+    };
+    let admission = admit(&candidate);
+    let health = match (&admission, descriptor.proc) {
+        (Admission::Admit, Some(proc)) => BindHealth::Bound { proc },
+        (Admission::Admit, None) => BindHealth::Unbound {
+            evidence: "admission passed but descriptor has no process identity".to_string(),
+        },
+        (Admission::Refuse(reason), _) => BindHealth::Unbound {
+            evidence: reason.to_string(),
+        },
+    };
+    BindObservation {
+        facts,
+        admission,
+        health,
+    }
+}
+
+fn is_busy(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("esc to interrupt")
+        || lower.contains("esc interrupt")
+        || lower.contains("esc cancel")
+        || lower.contains(" working (")
+        || lower.contains("◎ working")
+        || text.lines().any(|line| {
+            let trimmed = line.trim();
+            trimmed.starts_with('↓') && trimmed.contains("token")
+        })
+}
+
+fn classify_readiness(kind: Harness, text: &str) -> Readiness {
+    if is_busy(text) {
+        return Readiness::Busy;
+    }
+    let ready = match kind {
+        Harness::Claude => {
+            text.contains("bypass permissions on")
+                || text.contains("shift+tab to cycle")
+                || text.contains("auto mode on")
+        }
+        Harness::Copilot => text
+            .lines()
+            .any(|line| line.contains("? help") && line.contains("tab next tab")),
+        Harness::Codex => text.lines().any(is_codex_footer),
+        Harness::Pi => text
+            .lines()
+            .any(|line| line.contains("pi coding agent") && line.contains("model:")),
+        Harness::Omp => {
+            text.lines()
+                .any(|line| line.contains("╭──") && line.contains("⬢"))
+                && text.lines().any(is_omp_composer)
+        }
+    };
+    if ready {
+        Readiness::Ready
+    } else {
+        Readiness::NotYet {
+            observed: last_non_empty_line(text)
+                .unwrap_or("empty pane capture")
+                .to_string(),
+        }
+    }
+}
+
+fn is_codex_footer(line: &str) -> bool {
+    let Some((left, right)) = line.rsplit_once('·') else {
+        return false;
+    };
+    let path = right.trim();
+    let words = left.split_whitespace().count();
+    words >= 2 && (path.starts_with('/') || path.starts_with("~/"))
+}
+
+fn is_omp_composer(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.starts_with("╰─") && trimmed.ends_with("─╯")
+}
+
+fn last_non_empty_line(text: &str) -> Option<&str> {
+    text.lines()
+        .rev()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+}
+
+fn session_id(text: &str) -> Option<String> {
+    const LABELS: [&str; 4] = [
+        "CLAUDE_CODE_SESSION_ID=",
+        "COPILOT_AGENT_SESSION_ID=",
+        "CODEX_THREAD_ID=",
+        "PI_SESSION_ID=",
+    ];
+    text.lines().find_map(|line| {
+        LABELS.iter().find_map(|label| {
+            line.split_once(label).and_then(|(_, value)| {
+                let id = value.split_whitespace().next()?.trim_matches(['\'', '"']);
+                (!id.is_empty()).then(|| id.to_string())
+            })
+        })
+    })
+}
+
+fn observed_model(kind: Harness, text: &str) -> Option<String> {
+    match kind {
+        Harness::Claude => text.lines().rev().find_map(|line| {
+            line.split('•')
+                .map(str::trim)
+                .find(|field| {
+                    field.contains("Opus") || field.contains("Sonnet") || field.contains("Haiku")
+                })
+                .map(str::to_string)
+        }),
+        Harness::Copilot => text.lines().rev().find_map(|line| {
+            let (_, suffix) = line.split_once("tab next tab")?;
+            let model = suffix.trim();
+            (!model.is_empty()).then(|| model.to_string())
+        }),
+        Harness::Codex => text.lines().rev().find_map(|line| {
+            is_codex_footer(line)
+                .then(|| line.rsplit_once('·').map(|(left, _)| left.trim()))
+                .flatten()
+                .and_then(|left| left.split_whitespace().next())
+                .map(str::to_string)
+        }),
+        Harness::Pi => text.lines().rev().find_map(|line| {
+            let (_, value) = line.split_once("model:")?;
+            value.split_whitespace().next().map(str::to_string)
+        }),
+        Harness::Omp => text.lines().rev().find_map(|line| {
+            let (_, value) = line.split_once('⬢')?;
+            let model = value.split('>').next()?.trim();
+            (!model.is_empty()).then(|| model.to_string())
+        }),
+    }
+}
+
+fn observed_cwd(kind: Harness, text: &str) -> Option<String> {
+    match kind {
+        Harness::Codex => text.lines().rev().find_map(|line| {
+            is_codex_footer(line)
+                .then(|| {
+                    line.rsplit_once('·')
+                        .map(|(_, path)| expand_home(path.trim()))
+                })
+                .flatten()
+        }),
+        _ => text.lines().find_map(|line| {
+            line.split_whitespace()
+                .find(|word| word.starts_with('/') || word.starts_with("~/"))
+                .map(|word| expand_home(word.trim_matches(['[', ']', '(', ')'])))
+        }),
+    }
+}
+
+fn expand_home(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix("~/")
+        && let Some(home) = std::env::var_os("HOME")
+    {
+        return format!("{}/{rest}", home.to_string_lossy().trim_end_matches('/'));
+    }
+    path.to_string()
+}
+
+#[async_trait]
+trait BindObserver: Send + Sync {
+    async fn observe_bind(
+        &self,
+        descriptor: &SeatDescriptor,
+        subagent_of: Option<String>,
+    ) -> Result<BindObservation>;
+}
+
+macro_rules! adapter {
+    ($name:ident, $kind:ident) => {
+        pub struct $name {
+            core: AdapterCore,
+        }
+
+        impl $name {
+            pub fn new(tmux: Arc<dyn TmuxPort>) -> Self {
+                Self {
+                    core: AdapterCore::new(Harness::$kind, tmux),
+                }
+            }
+
+            pub async fn observe_bind(
+                &self,
+                descriptor: &SeatDescriptor,
+                subagent_of: Option<String>,
+            ) -> Result<BindObservation> {
+                self.core.observe_bind(descriptor, subagent_of).await
+            }
+        }
+
+        #[async_trait]
+        impl BindObserver for $name {
+            async fn observe_bind(
+                &self,
+                descriptor: &SeatDescriptor,
+                subagent_of: Option<String>,
+            ) -> Result<BindObservation> {
+                self.core.observe_bind(descriptor, subagent_of).await
+            }
+        }
+
+        #[async_trait]
+        impl HarnessPort for $name {
+            fn kind(&self) -> Harness {
+                Harness::$kind
+            }
+
+            async fn discover_session(&self, pane: &str) -> Result<Option<String>> {
+                self.core.discover_session(pane).await
+            }
+
+            async fn bind(&self, descriptor: &SeatDescriptor) -> Result<BindHealth> {
+                self.core.bind(descriptor).await
+            }
+
+            async fn readiness(&self, pane: &str) -> Result<Readiness> {
+                self.core.readiness(pane).await
+            }
+
+            async fn busy(&self, pane: &str) -> Result<bool> {
+                self.core.busy(pane).await
+            }
+
+            async fn models(&self) -> Result<Vec<ModelRow>> {
+                self.core.models()
+            }
+        }
+    };
+}
+
+adapter!(ClaudeHarness, Claude);
+adapter!(CopilotHarness, Copilot);
+adapter!(CodexHarness, Codex);
+adapter!(PiHarness, Pi);
+adapter!(OmpHarness, Omp);
+
+/// Five distinct adapters, addressed by the frozen [`Harness`] enum.
+///
+/// This is deliberately a registry, not a composite `HarnessPort`: a composite
+/// cannot return one truthful value from `kind()`, and Pi/Omp have separate
+/// artifacts and readiness anchors.
+///
+/// # Composition recipe
+///
+/// In `crates/daemon/src/lib.rs`, use the following replacement for the
+/// wave-0 single-fake shape (the PM owns this composition-root edit):
+///
+/// ```ignore
+/// use pij_harnesses::HarnessRegistry;
+///
+/// pub harnesses: HarnessRegistry,
+///
+/// let harnesses = match config.adapters.harness {
+///     AdapterChoice::Fake => HarnessRegistry::new([
+///         Arc::new(FakeHarness::new(Harness::Claude)) as Arc<dyn HarnessPort>,
+///         Arc::new(FakeHarness::new(Harness::Copilot)),
+///         Arc::new(FakeHarness::new(Harness::Codex)),
+///         Arc::new(FakeHarness::new(Harness::Pi)),
+///         Arc::new(FakeHarness::new(Harness::Omp)),
+///     ])?,
+///     AdapterChoice::Real => HarnessRegistry::real(tmux.clone()),
+/// };
+/// ```
+///
+/// This deletes `not_yet("harness", "u-harness, wave 2")`. No config field is
+/// required. Callers select ports with `get`, and real binding evidence with
+/// `observe_bind`; the latter accepts the caller's authoritative subagent scope.
+pub struct HarnessRegistry {
+    adapters: BTreeMap<Harness, Arc<dyn HarnessPort>>,
+    observers: BTreeMap<Harness, Arc<dyn BindObserver>>,
+}
+
+impl HarnessRegistry {
+    pub fn new(adapters: impl IntoIterator<Item = Arc<dyn HarnessPort>>) -> Result<Self> {
+        let mut by_kind = BTreeMap::new();
+        for adapter in adapters {
+            let kind = adapter.kind();
+            if by_kind.insert(kind, adapter).is_some() {
+                return Err(PijError::Adapter {
+                    adapter: "harness registry".to_string(),
+                    message: format!("duplicate adapter for {kind} — keep exactly one per harness"),
+                });
+            }
+        }
+        for kind in [
+            Harness::Claude,
+            Harness::Copilot,
+            Harness::Codex,
+            Harness::Pi,
+            Harness::Omp,
+        ] {
+            if !by_kind.contains_key(&kind) {
+                return Err(PijError::Adapter {
+                    adapter: "harness registry".to_string(),
+                    message: format!(
+                        "missing adapter for {kind} — register all five harness variants"
+                    ),
+                });
+            }
+        }
+        Ok(Self {
+            adapters: by_kind,
+            observers: BTreeMap::new(),
+        })
+    }
+
+    pub fn real(tmux: Arc<dyn TmuxPort>) -> Self {
+        let claude = Arc::new(ClaudeHarness::new(tmux.clone()));
+        let copilot = Arc::new(CopilotHarness::new(tmux.clone()));
+        let codex = Arc::new(CodexHarness::new(tmux.clone()));
+        let pi = Arc::new(PiHarness::new(tmux.clone()));
+        let omp = Arc::new(OmpHarness::new(tmux));
+        let adapters = [
+            claude.clone() as Arc<dyn HarnessPort>,
+            copilot.clone(),
+            codex.clone(),
+            pi.clone(),
+            omp.clone(),
+        ];
+        let observers = BTreeMap::from([
+            (Harness::Claude, claude as Arc<dyn BindObserver>),
+            (Harness::Copilot, copilot as Arc<dyn BindObserver>),
+            (Harness::Codex, codex as Arc<dyn BindObserver>),
+            (Harness::Pi, pi as Arc<dyn BindObserver>),
+            (Harness::Omp, omp as Arc<dyn BindObserver>),
+        ]);
+        let mut registry = Self::new(adapters)
+            .expect("the built-in registry contains exactly one adapter per Harness variant");
+        registry.observers = observers;
+        registry
+    }
+
+    pub fn get(&self, kind: Harness) -> &Arc<dyn HarnessPort> {
+        self.adapters
+            .get(&kind)
+            .expect("HarnessRegistry construction proves every variant is present")
+    }
+
+    /// Observe real harness facts and run the one shared admission decision.
+    /// `subagent_of` comes from the caller's process/session scope; inherited
+    /// `PIJ_*` claims are never accepted as a substitute for that fact.
+    pub async fn observe_bind(
+        &self,
+        descriptor: &SeatDescriptor,
+        subagent_of: Option<String>,
+    ) -> Result<BindObservation> {
+        let observer = self
+            .observers
+            .get(&descriptor.harness)
+            .ok_or_else(|| PijError::Adapter {
+                adapter: "harness registry".to_string(),
+                message: format!(
+                    "{} uses a fake adapter with no real bind observer — script HarnessPort::bind in the testkit fake",
+                    descriptor.harness
+                ),
+            })?;
+        observer.observe_bind(descriptor, subagent_of).await
+    }
+
+    pub fn len(&self) -> usize {
+        self.adapters.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.adapters.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use pij_core::admission::{Admission, RefusalReason};
+    use pij_core::model::{Harness, ProcIdentity, Readiness, SeatDescriptor};
+    use pij_core::ports::HarnessPort;
+    use pij_testkit::block_on;
+    use pij_testkit::fakes::FakeTmux;
+
+    use super::{
+        ClaudeHarness, CodexHarness, CopilotHarness, HarnessRegistry, OmpHarness, PiHarness,
+    };
+
+    const CLAUDE: &str = include_str!("../../testkit/fixtures/harnesses/claude-ready.txt");
+    const COPILOT: &str = include_str!("../../testkit/fixtures/harnesses/copilot-ready.txt");
+    const CODEX: &str =
+        include_str!("../../testkit/fixtures/harnesses/codex-rotated-placeholder-ready.txt");
+    const CODEX_PLACEHOLDER: &str =
+        include_str!("../../testkit/fixtures/harnesses/codex-placeholder-only.txt");
+    const PI: &str = include_str!("../../testkit/fixtures/harnesses/pi-ready.txt");
+    fn adapter_with_captures(kind: Harness, fixture: &str) -> Arc<dyn HarnessPort> {
+        let tmux = Arc::new(
+            FakeTmux::new()
+                .script_capture(fixture)
+                .script_capture(fixture)
+                .script_capture(fixture)
+                .script_capture(fixture),
+        );
+        match kind {
+            Harness::Claude => Arc::new(ClaudeHarness::new(tmux)),
+            Harness::Copilot => Arc::new(CopilotHarness::new(tmux)),
+            Harness::Codex => Arc::new(CodexHarness::new(tmux)),
+            Harness::Pi => Arc::new(PiHarness::new(tmux)),
+            Harness::Omp => Arc::new(OmpHarness::new(tmux)),
+        }
+    }
+
+    #[test]
+    fn every_harness_port_operation_runs_against_each_recorded_pane() {
+        let cases = [
+            (Harness::Claude, CLAUDE, "Opus 4.8"),
+            (Harness::Copilot, COPILOT, "GPT-5.5"),
+            (Harness::Codex, CODEX, "gpt-5.5"),
+            (Harness::Pi, PI, "pi/llama-3.3"),
+            (Harness::Omp, OMP, "GPT-5.6 Sol · ◒ high"),
+        ];
+        for (kind, fixture, model) in cases {
+            let adapter = adapter_with_captures(kind, fixture);
+            assert_eq!(adapter.kind(), kind);
+            assert!(
+                block_on(adapter.discover_session("%108"))
+                    .expect("session discovery")
+                    .is_some(),
+                "{kind} fixture carries native-session evidence"
+            );
+            assert_eq!(
+                block_on(adapter.readiness("%108")).expect("readiness"),
+                Readiness::Ready
+            );
+            assert!(!block_on(adapter.busy("%108")).expect("busy"));
+            assert!(matches!(
+                block_on(adapter.bind(&descriptor(kind, model))).expect("bind"),
+                pij_core::model::BindHealth::Bound { .. }
+            ));
+            assert!(
+                block_on(adapter.models()).is_err(),
+                "absent wave-3 catalog is an error, never an empty inventory"
+            );
+        }
+    }
+    const OMP: &str = include_str!("../../testkit/fixtures/harnesses/omp-ready.txt");
+    const CWD: &str = "/Users/jordanknight/pi-hacking/pij";
+
+    fn descriptor(kind: Harness, model: &str) -> SeatDescriptor {
+        let mut descriptor = SeatDescriptor::new("pij-harness-fixture", kind, CWD);
+        descriptor.pane = Some("%108".to_string());
+        descriptor.proc = Some(ProcIdentity {
+            pid: 10_108,
+            proc_start: 20_260_829_120_000,
+        });
+        descriptor.model = Some(model.to_string());
+        descriptor
+    }
+
+    #[test]
+    fn every_harness_variant_has_its_own_ready_fixture_and_adapter() {
+        let cases: [(Harness, &str, Arc<dyn HarnessPort>); 5] = [
+            (
+                Harness::Claude,
+                CLAUDE,
+                Arc::new(ClaudeHarness::new(Arc::new(
+                    FakeTmux::new().script_capture(CLAUDE),
+                ))),
+            ),
+            (
+                Harness::Copilot,
+                COPILOT,
+                Arc::new(CopilotHarness::new(Arc::new(
+                    FakeTmux::new().script_capture(COPILOT),
+                ))),
+            ),
+            (
+                Harness::Codex,
+                CODEX,
+                Arc::new(CodexHarness::new(Arc::new(
+                    FakeTmux::new().script_capture(CODEX),
+                ))),
+            ),
+            (
+                Harness::Pi,
+                PI,
+                Arc::new(PiHarness::new(Arc::new(FakeTmux::new().script_capture(PI)))),
+            ),
+            (
+                Harness::Omp,
+                OMP,
+                Arc::new(OmpHarness::new(Arc::new(
+                    FakeTmux::new().script_capture(OMP),
+                ))),
+            ),
+        ];
+
+        for (kind, _fixture, adapter) in cases {
+            assert_eq!(adapter.kind(), kind);
+            assert_eq!(
+                block_on(adapter.readiness("%108")).expect("fixture readiness"),
+                Readiness::Ready,
+                "{kind} fixture must reach its own anchor"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_rotating_placeholder_is_not_a_readiness_anchor() {
+        let placeholder =
+            CodexHarness::new(Arc::new(FakeTmux::new().script_capture(CODEX_PLACEHOLDER)));
+        match block_on(placeholder.readiness("%108")).expect("placeholder classification") {
+            Readiness::NotYet { observed } => {
+                assert!(
+                    observed.contains("Use /skills"),
+                    "actual observation is retained"
+                )
+            }
+            other => panic!("rotating placeholder must remain NotYet, got {other:?}"),
+        }
+
+        let rotated = CodexHarness::new(Arc::new(FakeTmux::new().script_capture(CODEX)));
+        assert_eq!(
+            block_on(rotated.readiness("%108")).expect("stable footer classification"),
+            Readiness::Ready,
+            "the persistent model/effort/cwd footer, not placeholder text, is the anchor"
+        );
+    }
+
+    #[test]
+    fn busy_guard_wins_over_a_visible_ready_anchor() {
+        let pane = format!("{CLAUDE}\n↓ 42 tokens · esc to interrupt");
+        let adapter = ClaudeHarness::new(Arc::new(FakeTmux::new().script_capture(pane)));
+        assert_eq!(
+            block_on(adapter.readiness("%108")).expect("busy classification"),
+            Readiness::Busy
+        );
+    }
+
+    #[test]
+    fn bind_observation_uses_shared_admission_and_refuses_subagents() {
+        let adapter = ClaudeHarness::new(Arc::new(FakeTmux::new().script_capture(CLAUDE)));
+        let observation = block_on(adapter.observe_bind(
+            &descriptor(Harness::Claude, "Opus 4.8"),
+            Some("pij-parent".to_string()),
+        ))
+        .expect("observation");
+        assert_eq!(
+            observation.admission,
+            Admission::Refuse(RefusalReason::Subagent {
+                parent: "pij-parent".to_string()
+            })
+        );
+        assert!(matches!(
+            observation.health,
+            pij_core::model::BindHealth::Unbound { .. }
+        ));
+    }
+
+    #[test]
+    fn bind_evidence_depends_on_observed_cwd_model_and_process() {
+        let adapter = ClaudeHarness::new(Arc::new(FakeTmux::new().script_capture(CLAUDE)));
+        let mut wrong = descriptor(Harness::Claude, "Opus 4.8");
+        wrong.folder = "/some/other/worktree".to_string();
+        let observation = block_on(adapter.observe_bind(&wrong, None)).expect("observation");
+        assert_eq!(
+            observation.admission,
+            Admission::Refuse(RefusalReason::NoBindEvidence),
+            "claimed descriptor facts are not bind evidence; observed facts must agree"
+        );
+    }
+
+    #[test]
+    fn concrete_observation_returns_native_id_model_cwd_and_pane() {
+        let adapter = CopilotHarness::new(Arc::new(FakeTmux::new().script_capture(COPILOT)));
+        let observation =
+            block_on(adapter.observe_bind(&descriptor(Harness::Copilot, "GPT-5.5"), None))
+                .expect("observation");
+        assert_eq!(observation.admission, Admission::Admit);
+        assert_eq!(
+            observation.facts.native_session_id.as_deref(),
+            Some("df4f1111-2222-4333-8444-555555555555")
+        );
+        assert_eq!(observation.facts.model.as_deref(), Some("GPT-5.5"));
+        assert_eq!(observation.facts.cwd.as_deref(), Some(CWD));
+        assert_eq!(observation.facts.pane.as_deref(), Some("%108"));
+    }
+
+    #[test]
+    fn registry_enumerates_exactly_the_five_frozen_variants() {
+        let tmux = Arc::new(FakeTmux::new());
+        let registry = HarnessRegistry::real(tmux);
+        assert_eq!(registry.len(), 5);
+        for kind in [
+            Harness::Claude,
+            Harness::Copilot,
+            Harness::Codex,
+            Harness::Pi,
+            Harness::Omp,
+        ] {
+            assert_eq!(registry.get(kind).kind(), kind);
+        }
+    }
+
+    #[test]
+    fn model_catalog_absence_is_an_error_not_an_empty_inventory() {
+        let adapter = PiHarness::new(Arc::new(FakeTmux::new()));
+        let error = block_on(adapter.models()).expect_err("u-models owns the catalog");
+        assert!(error.to_string().contains("u-models in wave 3"));
+    }
+}

@@ -1,0 +1,4 @@
+• You have 1 usage limit reset available. Run /usage to use one.
+› Find and fix a bug in @filename
+  gpt-5.5 xhigh · /Users/jordanknight/pi-hacking/pij
+CODEX_THREAD_ID=abcdef01-2222-4333-8444-555555555555

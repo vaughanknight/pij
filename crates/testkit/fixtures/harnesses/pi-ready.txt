@@ -1,0 +1,3 @@
+pi coding agent ready · model:pi/llama-3.3
+cwd /Users/jordanknight/pi-hacking/pij
+PI_SESSION_ID=pi-native-108
