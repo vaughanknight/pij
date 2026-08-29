@@ -374,6 +374,22 @@ pub enum DeliveryOutcome {
     },
 }
 
+/// What a sender is told, and what an auditor can follow.
+///
+/// The outcome alone is not a receipt: TS could report success for a message that
+/// vanished and leave nothing to trace, because no id travelled with the verdict
+/// (ermine handover gap #8). A receipt binds the two, so "it said delivered" and
+/// "which message" are the same fact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Receipt {
+    /// The message this verdict is about.
+    pub msg_id: String,
+    /// What honestly happened to it.
+    pub outcome: DeliveryOutcome,
+    /// When, in milliseconds since the Unix epoch, from the caller's clock.
+    pub at: u64,
+}
+
 /// A unit of deferred work.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Job {
