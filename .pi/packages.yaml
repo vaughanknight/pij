@@ -44,18 +44,6 @@ packages:
       date: 2026-07-14T00:04:28.333Z
       score: 100
       agentRubric: cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720
-  - source: npm:pi-lean-ctx
-    enabled: true
-    note: 60-90% token compression on bash/read/grep/find/ls
-    requires:
-      bin: lean-ctx
-      # pi-lean-ctx's resolveBinary() searches ~/.cargo/bin, ~/.local/bin,
-      # /usr/local/bin, then PATH. Brew on Apple Silicon installs to
-      # /opt/homebrew/bin which isn't searched — symlink into ~/.local/bin.
-      install: brew tap yvgude/lean-ctx && brew install lean-ctx && mkdir -p ~/.local/bin && ln -sf "$(brew --prefix)/bin/lean-ctx" ~/.local/bin/lean-ctx
-    vetted:
-      date: 2026-07-14T00:04:29.893Z
-      score: 100
   - source: git:github.com/ghoseb/pi-askuserquestion
     enabled: true
     note: batched AskUserQuestion modal
