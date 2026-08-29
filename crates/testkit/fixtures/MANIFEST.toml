@@ -161,3 +161,17 @@ sha256 = "113f30efcc4dec510c968509f3ca6ac9e06765f38916693d1aa394f69278b723"
 bytes = 57
 note = "Same isolated capture after setting the user-controlled pane title to `human · title | nested`, including the list-panes field separator."
 answer = "Exactly one Pane whose complete title is `human · title | nested`; splitting stops after the three structural separators so the title's pipe is data, not a fifth field."
+
+[[fixture]]
+path = "harnesses/pi-pane-ready.txt"
+sha256 = "d66fef87c0f962f116952b4fc318d76686d5625b8d43cf22d608bb20f79638ae"
+bytes = 16
+note = "A REAL upstream-pi pane at rest, captured 2026-08-29 from a throwaway seat the PM spawned, let settle, captured and closed \u2014 no live fleet seat was touched. Home path replaced with /Users/USER; nothing else altered."
+answer = "The readiness anchor is the prompt row plus the status footer (context/model/branch), NOT the spinner's absence \u2014 a pane can be quiet mid-turn. Note the MCP failure lines sitting ABOVE the anchor: real panes carry noise between the last output and the prompt, and an anchor matcher that assumes the footer is the last line will fail on this fixture."
+
+[[fixture]]
+path = "harnesses/pi-pane-working.txt"
+sha256 = "0a990c53f27ee1b46c5b355e369058e3fc8e984ad78b869e5858bcb05945654f"
+bytes = 1466
+note = "A REAL upstream-pi pane MID-TURN, captured 2026-08-29 from the PM's own seat while it was running a command."
+answer = "Must classify as busy/working, never Ready. The discriminator is the spinner row with its label; the status footer is present in BOTH this fixture and the ready one, which is exactly why the footer alone cannot mean ready."
