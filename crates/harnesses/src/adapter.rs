@@ -162,8 +162,7 @@ fn is_busy(text: &str) -> bool {
         || lower.contains("◎ working")
         || text.lines().any(|line| {
             let trimmed = line.trim();
-            (trimmed.starts_with('↓') && trimmed.contains("token"))
-                || trimmed.contains("⟦esc⟧")
+            (trimmed.starts_with('↓') && trimmed.contains("token")) || trimmed.contains("⟦esc⟧")
         })
 }
 
@@ -182,14 +181,16 @@ fn classify_readiness(kind: Harness, text: &str) -> Readiness {
             .any(|line| line.contains("? help") && line.contains("tab next tab")),
         Harness::Codex => text.lines().any(is_codex_footer),
         Harness::Pi => {
-            text.lines()
-                .any(|line| line.contains("╭──") && line.contains("◫") && line.contains("⬢"))
-                && text.lines().any(is_omp_composer)
+            has_rule_prompt(text)
+                && text
+                    .lines()
+                    .any(|line| line.contains("◫") && line.contains("⬢"))
         }
         Harness::Omp => {
-            text.lines()
-                .any(|line| line.contains("╭──") && line.contains("⬢"))
-                && text.lines().any(is_omp_composer)
+            has_rule_prompt(text)
+                && text
+                    .lines()
+                    .any(|line| line.contains("◫") && !line.contains("⬢"))
         }
     };
     if ready {
@@ -212,9 +213,16 @@ fn is_codex_footer(line: &str) -> bool {
     words >= 2 && (path.starts_with('/') || path.starts_with("~/"))
 }
 
-fn is_omp_composer(line: &str) -> bool {
+fn is_horizontal_rule(line: &str) -> bool {
     let trimmed = line.trim();
-    trimmed.starts_with("╰─") && trimmed.ends_with("─╯")
+    trimmed.chars().count() >= 8 && trimmed.chars().all(|ch| ch == '─')
+}
+
+fn has_rule_prompt(text: &str) -> bool {
+    let lines: Vec<_> = text.lines().collect();
+    lines.windows(3).any(|window| {
+        is_horizontal_rule(window[0]) && window[1].trim() == "❯" && is_horizontal_rule(window[2])
+    })
 }
 
 fn last_non_empty_line(text: &str) -> Option<&str> {
@@ -545,6 +553,10 @@ mod tests {
     const CODEX_PLACEHOLDER: &str =
         include_str!("../../testkit/fixtures/harnesses/codex-placeholder-only.txt");
     const PI: &str = include_str!("../../testkit/fixtures/harnesses/pi-pane-ready.txt");
+    const PI_WORKING: &str = include_str!("../../testkit/fixtures/harnesses/pi-pane-working.txt");
+    const OMP: &str = include_str!("../../testkit/fixtures/harnesses/omp-pane-ready.txt");
+    const OMP_WORKING: &str = include_str!("../../testkit/fixtures/harnesses/omp-working.txt");
+
     fn adapter_with_captures(kind: Harness, fixture: &str) -> Arc<dyn HarnessPort> {
         let tmux = Arc::new(
             FakeTmux::new()
@@ -568,8 +580,13 @@ mod tests {
             (Harness::Claude, CLAUDE, "Opus 4.8", Readiness::Ready),
             (Harness::Copilot, COPILOT, "GPT-5.5", Readiness::Ready),
             (Harness::Codex, CODEX, "gpt-5.5", Readiness::Ready),
-            (Harness::Pi, PI, "Opus 5 1M (Copilot)", Readiness::Ready),
-            (Harness::Omp, OMP, "Opus 5 (1M)", Readiness::Busy),
+            (
+                Harness::Pi,
+                PI,
+                "GPT-5.6 Sol Fast (Internal only)",
+                Readiness::Ready,
+            ),
+            (Harness::Omp, OMP, "", Readiness::Ready),
         ];
         for (kind, fixture, model, expected) in cases {
             let adapter = adapter_with_captures(kind, fixture);
@@ -583,7 +600,10 @@ mod tests {
                 block_on(adapter.readiness("%108")).expect("readiness"),
                 expected
             );
-            assert_eq!(block_on(adapter.busy("%108")).expect("busy"), expected == Readiness::Busy);
+            assert_eq!(
+                block_on(adapter.busy("%108")).expect("busy"),
+                expected == Readiness::Busy
+            );
             match block_on(adapter.bind(&descriptor(kind, model))).expect("bind") {
                 pij_core::model::BindHealth::Unbound { evidence } => {
                     assert!(evidence.contains("no caller-supplied native session id"));
@@ -596,7 +616,6 @@ mod tests {
             );
         }
     }
-    const OMP: &str = include_str!("../../testkit/fixtures/harnesses/omp-working.txt");
     const CWD: &str = "/Users/jordanknight/pi-hacking/pij";
 
     fn descriptor(kind: Harness, model: &str) -> SeatDescriptor {
@@ -650,17 +669,32 @@ mod tests {
 
         for (kind, _fixture, adapter) in cases {
             assert_eq!(adapter.kind(), kind);
-            let expected = if kind == Harness::Omp {
-                Readiness::Busy
-            } else {
-                Readiness::Ready
-            };
             assert_eq!(
                 block_on(adapter.readiness("%108")).expect("fixture readiness"),
-                expected,
-                "{kind} fixture must reach its own classifier"
+                Readiness::Ready,
+                "{kind} fixture must reach its own idle anchor"
             );
         }
+    }
+
+    #[test]
+    fn pi_status_footer_is_not_ready_while_the_spinner_is_active() {
+        let adapter = PiHarness::new(Arc::new(FakeTmux::new().script_capture(PI_WORKING)));
+        assert_eq!(
+            block_on(adapter.readiness("%108")).expect("working fixture readiness"),
+            Readiness::Busy,
+            "the ready and working panes both contain a status footer; the active spinner wins"
+        );
+    }
+
+    #[test]
+    fn omp_status_footer_is_not_ready_while_the_spinner_is_active() {
+        let adapter = OmpHarness::new(Arc::new(FakeTmux::new().script_capture(OMP_WORKING)));
+        assert_eq!(
+            block_on(adapter.readiness("%108")).expect("working fixture readiness"),
+            Readiness::Busy,
+            "the ready and working OMP panes share chrome; only the spinner distinguishes work"
+        );
     }
 
     #[test]
@@ -721,12 +755,9 @@ mod tests {
         let adapter = ClaudeHarness::new(Arc::new(FakeTmux::new().script_capture(CLAUDE)));
         let mut wrong = descriptor(Harness::Claude, "Opus 4.8");
         wrong.folder = "/some/other/worktree".to_string();
-        let observation = block_on(adapter.observe_bind(
-            &wrong,
-            Some("claude-native-108".to_string()),
-            None,
-        ))
-        .expect("observation");
+        let observation =
+            block_on(adapter.observe_bind(&wrong, Some("claude-native-108".to_string()), None))
+                .expect("observation");
         assert_eq!(
             observation.admission,
             Admission::Refuse(RefusalReason::NoBindEvidence),
