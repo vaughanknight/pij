@@ -17,6 +17,14 @@ use sqlx::{Pool, Sqlite};
 
 use pij_core::error::{PijError, Result};
 
+/// An open connection pool for the pij store.
+///
+/// Named here so a composition root can hold one WITHOUT depending on sqlx: the
+/// daemon shares one pool across the three store adapters (registry, spine,
+/// queue) and must not therefore grow a SQL dependency to describe it. The trait
+/// split stays three ports; what they share is a resource, not a contract.
+pub type StorePool = Pool<Sqlite>;
+
 /// The schema version this binary speaks.
 pub const SCHEMA_VERSION: u32 = 4;
 

@@ -123,24 +123,37 @@ impl Daemon {
 /// # Errors
 /// [`PijError`] from whichever real adapter refuses to start.
 pub async fn build_services(config: &Config) -> Result<Services> {
+    // ONE pool, shared by every real store adapter (lynx's cross-government
+    // comparison, wave-3 compose fix). This opened the store three times: three
+    // connection pools, three sets of connections, three boot self-migrations
+    // racing each other on first run — for one file.
+    //
+    // The trait split is unchanged and is the point: Registry, Spine and Queue
+    // stay three ports with three implementations. What they share is the
+    // CONNECTION, which is a resource, not a contract.
+    let pool = if needs_store(config) {
+        Some(pij_store::open(&config.store_path).await?)
+    } else {
+        None
+    };
+    let pool = |name: &str| -> Result<pij_store::StorePool> {
+        pool.clone().ok_or_else(|| PijError::Adapter {
+            adapter: format!("daemon/{name}"),
+            message: "a real adapter was selected but no store was opened".to_string(),
+        })
+    };
+
     let registry: Arc<dyn Registry> = match config.adapters.registry {
         AdapterChoice::Fake => Arc::new(FakeRegistry::new()),
-        AdapterChoice::Real => Arc::new(SqliteRegistry::new(
-            pij_store::open(&config.store_path).await?,
-        )),
+        AdapterChoice::Real => Arc::new(SqliteRegistry::new(pool("registry")?)),
     };
     let spine: Arc<dyn Spine> = match config.adapters.spine {
         AdapterChoice::Fake => Arc::new(FakeSpine::new()),
-        AdapterChoice::Real => {
-            Arc::new(SqliteSpine::new(pij_store::open(&config.store_path).await?))
-        }
+        AdapterChoice::Real => Arc::new(SqliteSpine::new(pool("spine")?)),
     };
     let queue: Arc<dyn Queue> = match config.adapters.queue {
         AdapterChoice::Fake => Arc::new(FakeQueue::new()),
-        AdapterChoice::Real => Arc::new(SqliteQueue::new(
-            pij_store::open(&config.store_path).await?,
-            config.claim_lease_secs,
-        )?),
+        AdapterChoice::Real => Arc::new(SqliteQueue::new(pool("queue")?, config.claim_lease_secs)?),
     };
 
     // The four seams whose real adapters land in waves 1-3. They wire to fakes
@@ -197,6 +210,12 @@ pub async fn build_services(config: &Config) -> Result<Services> {
         liveness,
         offline: config.is_fully_offline(),
     })
+}
+
+/// Does this config select any adapter that needs the store open?
+fn needs_store(config: &Config) -> bool {
+    let a = &config.adapters;
+    a.registry.is_real() || a.spine.is_real() || a.queue.is_real()
 }
 
 /// The refusal for a real adapter that has not been built yet.
