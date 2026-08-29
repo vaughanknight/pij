@@ -11,10 +11,13 @@
 #![deny(missing_docs)]
 
 pub mod admission;
+pub mod anomalies;
 pub mod config;
 pub mod error;
 pub mod events;
 pub mod liveness;
 pub mod model;
 pub mod ports;
+pub mod report;
+pub mod watchdog;
 pub mod wire;
