@@ -93,8 +93,10 @@ Timer wins ⇒ "confirmed" — which means **"no drop report within 150 ms"**, n
 So your outcome is `DeliveryOutcome::Delivered { origin:
 DeliveryOrigin::InjectedToTransport }` — already landed, already required by the
 type. **You cannot express the lie**: `Delivered` without an origin does not
-compile. That is deliberate; s105's own tree returns `confirmed` immediately after
-pressing Enter having observed nothing, because their type permitted it.
+compile. That is deliberate; s105's tree returns `confirmed` immediately after
+pressing Enter having observed nothing **on the claude and codex paths** (copilot
+has a real verification path there — a different defect), because their type
+permitted it.
 
 Use OUR `msg_id` in the frame so drop reports correlate.
 
@@ -110,16 +112,30 @@ rather than bypassed, and `from-mode` is populated with what is actually true.
 Asserting `bypass` to get past a gate you did not configure is the kind of thing
 that works until the day it matters.
 
-### 6. The ladder — and the rung that does NOT exist
+### 6. The ladder — and it is NOT a fallback chain
 
-Rungs: socket (this unit) → pty → pointer. **There is no typed-body rung.**
+**The command check comes FIRST, before the socket.** This ordering is the whole
+design, and an earlier draft of this packet got it wrong by listing
+"socket → pty → pointer", which reads as *try the socket, fall back to the pty* —
+body typing wearing a different name. s105 caught it before dispatch.
 
-s105 recommended deleting it and I ruled it gone: it survives upstream only as an
-fs-backend escape hatch and it is the single remaining path that LOSES bodies
-(their G19 — an "unverified" typed body is marked read, so a composer cleared by
-Esc or auto-compact loses it silently). **If delivery cannot use socket or pty,
-the row STAYS QUEUED and is retried. It is never typed.** With R4 always present
-there is no reason for the loss path to exist.
+```
+0. not a bound pane seat      -> observe (an in-process consumer owns it)
+1. the message is a COMMAND   -> pty. ALWAYS, and ONLY commands. Never a body.
+2. a body, seat has a socket  -> byte-exact over the socket
+3. a body, no socket          -> composer-idle guard, then ONE pointer line
+4. none of the above applies  -> the row STAYS QUEUED and is retried. Never typed.
+```
+
+**There is no rung that types a BODY.** The pty appears exactly once, at rung 1,
+and only for commands. For a command the pty is not a fallback — it is the first
+and only choice, because Claude renders a socket-delivered `/compact` as text.
+
+s105 recommended deleting the typed-body rung and I ruled it gone: it survives
+upstream only as an fs-backend escape hatch and it is the single remaining path
+that LOSES bodies (their G19 — an "unverified" typed body is marked read, so a
+composer cleared by Esc or auto-compact loses it silently). **If a body can use
+neither the socket nor a pointer, the row stays queued and is retried.**
 
 If you find yourself building a fallback that writes a body into a composer, stop
 and message me — that is the rung, wearing a different name.
@@ -174,8 +190,26 @@ insert-time id idempotence. Do not read their weaker guarantee as a requirement.
 
 * `Msg` carries `msg_id`; use it in the frame so a drop report names something you
   can join on.
-* ~1 MB per message, 50-deep receive queue, per-sender rate limit, identical-repeat
-  dedupe are documented limits. A body over the limit is a routing decision, not a
-  panic.
+* ~1 MB per message, 50-deep receive queue, per-sender rate limit,
+  identical-repeat dedupe are **documented by Anthropic and unverified by us** —
+  s105 measured none of them, and corrected their own evidence table when this
+  packet asked. Confirm before relying on a threshold. A body over the limit is a
+  routing decision, not a panic.
+
+  **Single out the 50-deep receive queue** for re-verification: it is the only one
+  of the four that is a BACKPRESSURE threshold, so being wrong about it means
+  silent drops under load — precisely the class this unit exists to eliminate. The
+  1 MB cap fails loudly; a queue depth does not.
+
+* **A silently failed bind is INDISTINGUISHABLE from a legitimately socketless
+  seat** — both present as "no `messagingSocketPath`" (s105 §8, trap G22). So
+  "normal routing outcome" without observability becomes "silently degraded
+  forever, and nobody notices": a Claude seat that should be getting byte-exact
+  bodies quietly takes pointers for the rest of its life.
+
+  The distinguishing signal is LONGITUDINAL, not per-send. **Log it when a
+  claude-harness seat routes to the pointer**, and treat a seat that keeps doing so
+  as a finding worth surfacing. Not an error at the send site — that would be wrong
+  for exactly the reason above.
 * The socket is off under `--bare`, on Bedrock/Vertex/Foundry, and with several
   telemetry-disabling env vars. Absent capability is normal, not exceptional.
