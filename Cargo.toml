@@ -38,6 +38,7 @@ pij-store = { path = "crates/store" }
 pij-tmux = { path = "crates/tmux" }
 pij-harnesses = { path = "crates/harnesses" }
 pij-transport = { path = "crates/transport" }
+pij-sidecars = { path = "crates/sidecars" }
 pij-daemon = { path = "crates/daemon" }
 pij-cli = { path = "crates/cli" }
 pij-testkit = { path = "crates/testkit" }

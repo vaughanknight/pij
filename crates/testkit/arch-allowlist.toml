@@ -104,7 +104,15 @@ why = "Queue consumers over the seven frozen ports plus concrete Telegram HTTP, 
 # ONE place allowed to know every adapter. `pij-testkit` is a SHIPPED edge here,
 # not `@dev`, because the fakes are the default wiring — offline-first means the
 # binary must contain them.
-internal = ["pij-core", "pij-harnesses", "pij-store", "pij-testkit", "pij-tmux", "pij-transport"]
+internal = [
+  "pij-core",
+  "pij-harnesses",
+  "pij-sidecars",
+  "pij-store",
+  "pij-testkit",
+  "pij-tmux",
+  "pij-transport",
+]
 # `axum` is the server; `getrandom` is the per-boot bearer key (OS entropy, no
 # PRNG state to seed or leak); `reqwest` is the one-request peer forwarding
 # primitive; `hostname` resolves the portable default machine alias; `tokio` is
