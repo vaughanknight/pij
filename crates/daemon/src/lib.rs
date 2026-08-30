@@ -24,14 +24,15 @@ pub mod orchestration_repo;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use pij_core::config::{AdapterChoice, Config};
 use pij_core::error::{PijError, Result};
 use pij_core::model::Harness;
 use pij_core::orchestration::OrchestrationService;
 use pij_core::ports::{HarnessPort, LivenessPort, Queue, Registry, Spine, TmuxPort, Transport};
-use pij_harnesses::HarnessRegistry;
 use pij_harnesses::proc::ProcLiveness;
+use pij_harnesses::{HarnessRegistry, InteractionGate};
 use pij_store::{SqliteQueue, SqliteRegistry, SqliteSpine};
 use pij_testkit::fakes::{
     FakeHarness, FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
@@ -102,7 +103,6 @@ pub struct Services {
 }
 
 /// A running daemon.
-#[derive(Debug)]
 pub struct Daemon {
     /// Where it is actually listening — resolved, so a `:0` config becomes a
     /// real port a client can be told about.
@@ -111,6 +111,11 @@ pub struct Daemon {
     pub key: BootKey,
     shutdown: tokio::sync::oneshot::Sender<()>,
     joined: tokio::task::JoinHandle<()>,
+    /// Owned so it cannot outlive the boot that started it: a worker still
+    /// forwarding for a daemon that has stopped serving is a process nobody can
+    /// see and nothing can stop.
+    federation_worker: federation::FederationWorker,
+    drain_loop: lifecycle::TickLoop,
 }
 
 impl Daemon {
@@ -119,11 +124,32 @@ impl Daemon {
     /// # Errors
     /// [`PijError::Adapter`] when the server task panicked.
     pub async fn shutdown(self) -> Result<()> {
+        // Stop SERVING first, then the workers: a worker that keeps forwarding for
+        // a daemon still accepting requests is fine; the reverse is a daemon
+        // taking work nothing will move. Both are awaited, so "shut down" means
+        // every task this boot started has ended — a background task that outlives
+        // its daemon is a process nobody can see and nothing can stop.
         let _ = self.shutdown.send(());
-        self.joined.await.map_err(|error| PijError::Adapter {
+        let served = self.joined.await.map_err(|error| PijError::Adapter {
             adapter: "daemon".to_string(),
             message: format!("the server task did not stop cleanly: {error}"),
-        })
+        });
+        let drained = self.drain_loop.shutdown().await;
+        let forwarded = self.federation_worker.shutdown().await;
+        served?;
+        drained?;
+        forwarded
+    }
+}
+
+impl std::fmt::Debug for Daemon {
+    /// Hand-written because the worker handles are not `Debug` and a boot is a
+    /// thing tests `expect_err` on. Prints what an operator would ask.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Daemon")
+            .field("addr", &self.addr)
+            .field("key", &self.key.path)
+            .finish_non_exhaustive()
     }
 }
 
@@ -318,14 +344,62 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     // 5. Publish the key atomically. EVERY fallible step is now above this line.
     //    Still before anything is SERVED — `bind` only opens the listen socket;
     //    no request is answered until `axum::serve`.
+    // 5. Federation: validate the peer table BEFORE publishing the key, because a
+    //    duplicate or self-aliased peer is a config error that must not cost a
+    //    running daemon its credential.
+    let federation = Arc::new(
+        federation::FederationService::new(
+            identity.alias().to_string(),
+            config.peers.clone(),
+            Arc::clone(&services.queue),
+            Arc::clone(&services.event_bus),
+        )
+        .map_err(|error| PijError::Adapter {
+            adapter: "daemon/federation".to_string(),
+            message: error.to_string(),
+        })?,
+    );
+
+    // 6. The drain worker. Its pointer rung is INERT in this composition: nothing
+    //    yet feeds `InteractionGate`, which denies on unknown, so a pointer never
+    //    fires. That is deliberate and it is the same honest ship as the socket
+    //    transport — the mechanism is real and tested, its precondition does not
+    //    exist, and wave 5's `u-tap` is the sensor. Inverting the gate to make the
+    //    rung reachable would discard Jordan's politeness ruling while appearing
+    //    to honour it.
+    let interaction = Arc::new(InteractionGate::new(Arc::clone(&services.tmux)));
+    let drain = Arc::new(pointer::DrainWorker::new(
+        Arc::clone(&services.registry),
+        Arc::clone(&services.queue),
+        Arc::clone(&services.transport),
+        Arc::clone(&services.tmux),
+        Arc::clone(&interaction),
+        Arc::clone(&services.event_bus),
+        Duration::from_secs(config.pointer_announce_cadence_secs),
+    )?);
+
+    // 7. Publish the key atomically. EVERY fallible step is now above this line.
+    //    Still before anything is SERVED — `bind` only opens the listen socket;
+    //    no request is answered until `axum::serve`.
     let key = staged.publish()?;
-    let router = http::router_with_config(
+
+    let federation_worker = Arc::clone(&federation).start();
+    let drain_loop = lifecycle::TickLoop::start(
+        Duration::from_secs(config.delivery_interval_secs),
+        move || {
+            let drain = Arc::clone(&drain);
+            async move { drain.drain_once().await.map(|_| ()) }
+        },
+    )?;
+
+    let router = http::router_with_federation(
         services,
         http::HttpConfig {
             local_key: token,
             peer_keys: config.peers.iter().map(|peer| peer.key.clone()).collect(),
             machine_alias: identity.alias().to_string(),
         },
+        federation,
     );
     let (shutdown, shutdown_rx) = tokio::sync::oneshot::channel();
     let joined = tokio::spawn(async move {
@@ -341,5 +415,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         key,
         shutdown,
         joined,
+        federation_worker,
+        drain_loop,
     })
 }

@@ -81,6 +81,14 @@ pub struct Config {
     /// This is policy, not a safety brake: age changes the outcome to failed.
     /// Expired jobs never return to pending; retrying creates a new attempt.
     pub claim_lease_secs: u64,
+    /// How often the drain worker runs a pass over queued work.
+    pub delivery_interval_secs: u64,
+    /// How long before the same seat may be told AGAIN that a message is waiting.
+    ///
+    /// A cadence, not a retry: the body is released immediately on every pass
+    /// (E-028), so this only rate-limits the ANNOUNCEMENT. Configured because a
+    /// default is a number nobody chose.
+    pub pointer_announce_cadence_secs: u64,
     /// Maximum live events buffered per subscriber before drops are counted.
     pub event_buffer_capacity: usize,
     /// This machine's alias on the federated wire. `None` defaults from the
@@ -110,6 +118,8 @@ impl Default for Config {
             store_path: String::new(),
             watchdog_interval_secs: 20 * 60,
             claim_lease_secs: 5 * 60,
+            delivery_interval_secs: 5,
+            pointer_announce_cadence_secs: 90,
             event_buffer_capacity: 1_024,
             machine_alias: None,
             peers: Vec::new(),
