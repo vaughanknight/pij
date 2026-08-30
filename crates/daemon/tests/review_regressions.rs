@@ -89,6 +89,8 @@ async fn a_failed_boot_cannot_brick_the_running_daemon() {
         .await
         .expect("first boot");
     let live_token = first.key.token.clone();
+    let live_runtime =
+        std::fs::read(dir.join(pij_daemon::DAEMON_RUNTIME_FILE)).expect("read live runtime record");
 
     // Same state dir, same port: the bind must fail.
     let error = pij_daemon::boot(&offline(&first.addr.to_string()), dir.clone())
@@ -105,6 +107,11 @@ async fn a_failed_boot_cannot_brick_the_running_daemon() {
         std::fs::read_to_string(dir.join("daemon.key")).expect("read"),
         live_token,
         "a failed boot must not touch the published key"
+    );
+    assert_eq!(
+        std::fs::read(dir.join(pij_daemon::DAEMON_RUNTIME_FILE)).expect("read runtime record"),
+        live_runtime,
+        "a failed boot must not replace the running daemon's process identity"
     );
 
     // ...and still authenticates.
@@ -123,7 +130,7 @@ async fn a_failed_boot_cannot_brick_the_running_daemon() {
         .expect("read dir")
         .flatten()
         .map(|entry| entry.file_name().to_string_lossy().to_string())
-        .filter(|name| name != "daemon.key")
+        .filter(|name| name != "daemon.key" && name != pij_daemon::DAEMON_RUNTIME_FILE)
         .collect();
     assert!(
         strays.is_empty(),
@@ -232,6 +239,9 @@ async fn selecting_the_real_transport_ships_closed_until_a_seat_opts_in() {
 async fn emitted_spawn_argv_is_the_stamp_that_opens_the_real_transport() {
     let plan = |accept_inbound| {
         build_spawn_plan(SpawnPlanInput {
+            // The seat id the launcher assigned: spawn emits it as
+            // PIJ_SESSION_ID so `pij inbox` can resolve who it is.
+            seat_id: SeatId::from("pij-stamped"),
             harness: Harness::Claude,
             executable: None,
             model: None,

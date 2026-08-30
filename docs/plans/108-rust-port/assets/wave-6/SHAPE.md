@@ -42,6 +42,15 @@ decision.
 
 ## Backlog with named triggers (post-cutover, ruled)
 
+* **Seat-level authentication.** The bearer key authenticates a MACHINE, not a
+  seat, so `ReaderRead` over HTTP is attestable to machine granularity only — the
+  ack row records which key performed it so the limit is auditable rather than
+  silent. Trigger: **the day two mutually untrusting seats share one machine key.**
+  Not invented mid-wave; req-0007's row states the current truth.
+* **The duplicate-read window.** A client that read its inbox and died before
+  acking gets those messages again. Duplicate over lost-with-a-lie, ruled three
+  times and now doctrine.
+
 * The evicted-id window becomes work when a recipient plausibly takes more than
   1,024 distinct messages inside a five-minute retry window. A traffic fact.
 * The claim-crash window becomes work if a duplicate-suppressed receipt appears

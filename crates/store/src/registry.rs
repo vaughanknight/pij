@@ -21,6 +21,20 @@ pub struct SqliteRegistry {
 }
 
 impl SqliteRegistry {
+    /// The store this registry actually reads, for absence messages.
+    ///
+    /// sqlx does not hand back the opened path, so this names the connection
+    /// rather than inventing a filename — the honest form of "where I looked"
+    /// when the exact file is not available to us.
+    fn store_description(&self) -> String {
+        format!(
+            "the SQLite store this daemon opened ({} connections)",
+            self.pool.size()
+        )
+    }
+}
+
+impl SqliteRegistry {
     /// Wrap an open pool.
     pub fn new(pool: Pool<Sqlite>) -> Self {
         SqliteRegistry { pool }
@@ -272,7 +286,14 @@ impl Registry for SqliteRegistry {
             // split version committed the event anyway, so the spine recorded a
             // tombstone for a seat that was never there (review finding 6).
             tx.rollback().await.map_err(adapter_error)?;
-            return Err(PijError::NoRegistryEntry { seat: seat.clone() });
+            return Err(PijError::NoRegistryEntry {
+                seat: seat.clone(),
+                // The ADAPTER knows the file it actually opened, so it names it.
+                // An absence is only evidence about the place that was searched,
+                // and a sibling generation shipped an E-NOREG blaming a missing
+                // extension when the real fact was HOME pointing at a fixture.
+                store: self.store_description(),
+            });
         }
 
         tx.commit().await.map_err(adapter_error)?;

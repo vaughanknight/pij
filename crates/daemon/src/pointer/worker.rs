@@ -902,11 +902,25 @@ mod tests {
             Arc::clone(&fixture.event_bus),
         )
         .expect("delivery service");
+        // Two-step now (u-inbox): the reader CLAIMS, and acks separately. The
+        // unpark rides on the claim, because the seat has been GIVEN its message
+        // at that point whether or not the client survives to ack.
         let read = delivery
-            .inbox(&SeatId::from("pij-parked"), false)
+            .claim_inbox(&SeatId::from("pij-parked"), false)
             .await
             .expect("parked mail stays readable");
-        assert_eq!(read, [msg]);
+        assert_eq!(
+            read.iter()
+                .map(|claim| claim.message.clone())
+                .collect::<Vec<_>>(),
+            [msg]
+        );
+        for claim in &read {
+            delivery
+                .acknowledge_inbox(claim.job_id)
+                .await
+                .expect("ack the claim the reader received");
+        }
         assert_eq!(fixture.queue.live_len(), 0);
         let events = fixture
             .spine
@@ -1326,8 +1340,9 @@ mod tests {
                 .expect("enqueue delivery");
         }
 
-        let loop_ = crate::start_resilient_delivery_drain(worker, Duration::from_secs(1))
-            .expect("start production drain wrapper");
+        let interval = crate::lifecycle::TickInterval::new(Duration::from_secs(1))
+            .expect("validate production drain interval");
+        let loop_ = crate::start_resilient_delivery_drain(worker, interval);
         tokio::task::yield_now().await;
         tokio::time::advance(Duration::from_secs(1)).await;
         queue.ack_called.notified().await;

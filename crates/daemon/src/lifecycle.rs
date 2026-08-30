@@ -102,6 +102,27 @@ fn identity_error(message: impl Into<String>) -> PijError {
     }
 }
 
+/// A non-zero interval proven safe to hand to Tokio's scheduler.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TickInterval(Duration);
+
+impl TickInterval {
+    /// Validate an interval before a daemon publishes its point-of-no-return key.
+    ///
+    /// # Errors
+    /// Returns [`PijError::Adapter`] when `interval` is zero.
+    pub fn new(interval: Duration) -> Result<Self> {
+        if interval.is_zero() {
+            return Err(PijError::Adapter {
+                adapter: "daemon/lifecycle".to_string(),
+                message: "tick interval must be greater than zero — configure tick_interval_secs"
+                    .to_string(),
+            });
+        }
+        Ok(Self(interval))
+    }
+}
+
 /// A running periodic action.
 ///
 /// The first tick is delayed by one full configured interval. Ticks never
@@ -123,33 +144,24 @@ impl TickLoop {
     ///
     /// # Errors
     /// Returns [`PijError::Adapter`] when `interval` is zero.
-    pub fn start<F, Fut>(interval: Duration, mut tick: F) -> Result<Self>
+    pub fn start<F, Fut>(interval: Duration, tick: F) -> Result<Self>
     where
         F: FnMut() -> Fut + Send + 'static,
         Fut: Future<Output = Result<()>> + Send + 'static,
     {
-        if interval.is_zero() {
-            return Err(PijError::Adapter {
-                adapter: "daemon/lifecycle".to_string(),
-                message: "tick interval must be greater than zero — configure tick_interval_secs"
-                    .to_string(),
-            });
-        }
+        Ok(Self::start_validated(TickInterval::new(interval)?, tick))
+    }
 
-        let (stop, mut stop_rx) = oneshot::channel();
-        let joined = tokio::spawn(async move {
-            let mut schedule = tokio::time::interval_at(Instant::now() + interval, interval);
-            schedule.set_missed_tick_behavior(MissedTickBehavior::Delay);
-
-            loop {
-                tokio::select! {
-                    _ = &mut stop_rx => return Ok(()),
-                    _ = schedule.tick() => tick().await?,
-                }
-            }
-        });
-
-        Ok(Self { stop, joined })
+    /// Start after the caller has already validated every fallible boot input.
+    pub fn start_validated<F, Fut>(interval: TickInterval, tick: F) -> Self
+    where
+        F: FnMut() -> Fut + Send + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
+    {
+        let (stop, stop_rx) = oneshot::channel();
+        let schedule = tokio::time::interval_at(Instant::now() + interval.0, interval.0);
+        let joined = tokio::spawn(run_ticks(stop_rx, schedule, tick));
+        Self { stop, joined }
     }
 
     /// Stop scheduling, drain an in-progress action, and join the task.
@@ -163,6 +175,25 @@ impl TickLoop {
             adapter: "daemon/lifecycle".to_string(),
             message: format!("tick scheduler did not stop cleanly: {error}"),
         })?
+    }
+}
+
+async fn run_ticks<F, Fut>(
+    mut stop_rx: oneshot::Receiver<()>,
+    mut schedule: tokio::time::Interval,
+    mut tick: F,
+) -> Result<()>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<()>>,
+{
+    schedule.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    loop {
+        tokio::select! {
+            biased;
+            _ = &mut stop_rx => return Ok(()),
+            _ = schedule.tick() => tick().await?,
+        }
     }
 }
 
@@ -243,6 +274,35 @@ mod tests {
         loop_.shutdown().await.expect("shutdown");
         tokio::time::advance(Duration::from_secs(70)).await;
         assert_eq!(received.recv().await, None, "shutdown drops the producer");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn shutdown_wins_when_stop_and_next_tick_are_both_ready() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        for _ in 0..64 {
+            let (stop, stop_rx) = oneshot::channel();
+            let schedule = tokio::time::interval_at(Instant::now(), Duration::from_secs(1));
+            stop.send(()).expect("receiver remains live");
+
+            run_ticks(stop_rx, schedule, {
+                let calls = Arc::clone(&calls);
+                move || {
+                    let calls = Arc::clone(&calls);
+                    async move {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
+                    }
+                }
+            })
+            .await
+            .expect("stop");
+        }
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "no post-stop tick may start"
+        );
     }
 
     #[tokio::test(start_paused = true)]

@@ -483,9 +483,13 @@ async fn spawn_stamps_only_the_argv_that_reached_the_observed_launch() {
 
     let calls = tmux.calls();
     assert_eq!(calls[0], "list_panes");
-    assert!(calls[1].contains("new_window:fleet:pij-closed:/path with spaces/claude"));
+    assert!(calls[1].contains("new_window:fleet:pij-closed:env"));
+    assert!(calls[1].contains("PIJ_SESSION_ID=pij-closed"));
+    assert!(calls[1].contains("/path with spaces/claude"));
     assert!(!calls[1].contains("crossSessionInbound"));
-    assert!(calls[2].contains("new_window:fleet:pij-open:/path with spaces/claude"));
+    assert!(calls[2].contains("new_window:fleet:pij-open:env"));
+    assert!(calls[2].contains("PIJ_SESSION_ID=pij-open"));
+    assert!(calls[2].contains("/path with spaces/claude"));
     assert!(calls[2].contains(r#"{\"crossSessionInbound\":\"accept\"}"#));
 
     let collision = client
@@ -621,6 +625,101 @@ async fn send_enqueues_exactly_once_and_refuses_remote_without_federation() {
         1,
         "a refused remote send enqueues nothing"
     );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn inbox_claims_without_evidence_then_ack_records_machine_graded_reader_read() {
+    let registry = Arc::new(FakeRegistry::new());
+    registry
+        .put(SeatDescriptor::new("pij-reader", Harness::Omp, "/abs/tree"))
+        .await
+        .expect("register pull recipient");
+    let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
+    let spine = Arc::new(FakeSpine::new());
+    let services = test_services(registry, queue.clone(), spine.clone()).await;
+    services
+        .delivery
+        .accept(Msg {
+            from: "pij-sender".into(),
+            from_machine: None,
+            to: "pij-reader".into(),
+            body: "one durable body".to_string(),
+            msg_id: "m-inbox-1".to_string(),
+            in_reply_to: None,
+            command: None,
+        })
+        .await
+        .expect("queue message");
+    let (addr, server) = spawn(router_with_config(
+        services,
+        config("local-key", &["peer-key"]),
+    ))
+    .await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(format!("http://{addr}/v1/inbox"))
+        .bearer_auth("local-key")
+        .query(&[("seat", "pij-reader"), ("wait", "false")])
+        .send()
+        .await
+        .expect("claim inbox");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let page: Envelope<Vec<crate::delivery::InboxClaim>> =
+        response.json().await.expect("inbox page envelope");
+    let claims = page.data.expect("claimed page");
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].message.body, "one durable body");
+    assert!(queue.acked().is_empty(), "GET records no ReaderRead");
+    assert!(
+        spine
+            .tail(Some(&SeatId::from("pij-reader")), Seq(0))
+            .await
+            .expect("audit before ack")
+            .iter()
+            .all(|event| event.kind != INBOX_ACK_EVENT_KIND),
+        "GET emits no read attestation"
+    );
+
+    let acknowledgement = InboxAckRequest {
+        seat: "pij-reader".into(),
+        job_id: claims[0].job_id,
+    };
+    let ack = client
+        .post(format!("http://{addr}/v1/inbox/ack"))
+        .bearer_auth("local-key")
+        .json(&acknowledgement)
+        .send()
+        .await
+        .expect("ack inbox");
+    assert_eq!(ack.status(), reqwest::StatusCode::OK);
+    assert_eq!(queue.acked(), [(claims[0].job_id, Outcome::Done)]);
+    let read_events: Vec<_> = spine
+        .tail(Some(&SeatId::from("pij-reader")), Seq(0))
+        .await
+        .expect("read audit")
+        .into_iter()
+        .filter(|event| event.kind == INBOX_ACK_EVENT_KIND)
+        .collect();
+    assert_eq!(read_events.len(), 1);
+    let audit: serde_json::Value =
+        serde_json::from_str(&read_events[0].payload).expect("read audit payload");
+    assert_eq!(audit["job_id"], claims[0].job_id.0);
+    assert_eq!(audit["authenticated_machine"], "local");
+    assert_eq!(audit["evidence_grade"], "machine");
+
+    let empty = client
+        .get(format!("http://{addr}/v1/inbox"))
+        .bearer_auth("peer-key")
+        .query(&[("seat", "pij-reader"), ("wait", "false")])
+        .send()
+        .await
+        .expect("second read");
+    let empty: Envelope<Vec<crate::delivery::InboxClaim>> =
+        empty.json().await.expect("empty inbox envelope");
+    assert!(empty.data.expect("empty page").is_empty());
 
     server.abort();
 }

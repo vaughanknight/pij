@@ -603,3 +603,199 @@ The lesson is not "be careful". It is that **the mutation is the test's own
 test**, and running it is not optional — a witness that has never been observed to
 fail is a claim, exactly like the receipts this project spends its time refusing.
 
+## E-032 — the observer that closed its own eyes
+
+Wave-6 dogfood, PM-run against two real Claude seats the daemon had spawned
+itself.
+
+The pane observer attaches a tmux pipe each pass. tmux 3.6a's manual, on this
+box: **"-o only opens a new pipe if no previous pipe exists, allowing a pipe to be
+toggled with a single key."** So a per-pass re-attach with that flag is a
+SELF-CLOSING SENSOR — attach, toggle-off, attach, toggle-off.
+
+The evidence was a file that stopped growing: `pane_pipe = 0` on both observed
+panes and a tap frozen at 2022 bytes since spawn, while capture showed keystrokes
+landing and the pane redrawing. The gate therefore never authorized, and a message
+to an accept-stamped seat sat queued rather than arriving over the socket that had
+just been proven live.
+
+> **A single-pass test passes with this bug present.** The unit under test was
+> THE ATTACH; the thing that breaks is THE SECOND ATTACH.
+
+That is E-030 in new clothes — a test that drives one attach by hand while the
+daemon runs a loop — and it is the second time this project has shipped a defect
+that only exists on the second iteration.
+
+What separated this from the unit's own live proof, which was real and which I
+believe: that run drove the transition inside its own harness, once. Dogfood made
+the DAEMON'S OWN OBSERVER attach and authorize over minutes on a pane it manages.
+**A live test proves the thing can work. Dogfood proves it keeps working.**
+
+## E-033 — existence is not ownership, and the recipient's behaviour is the observation
+
+Wave-6 dogfood. Two findings from one run, and they are opposites: one about
+believing too much from a signal, one about the strongest proof this plan has
+produced.
+
+### Existence is not ownership
+
+A restarted daemon refused to adopt panes it had spawned itself. `pane_pipe = 1`
+said A PIPE EXISTS; the observer needed WE OWN A PIPE, and those are different
+facts. The old daemon's pipe outlived it, the new one saw the pane as taken, and
+the gate stayed unknown for ever — with 93 retries downstream as the witness.
+
+`pij-yelping-moth` proved it with a chain of timestamps rather than a hypothesis:
+process start 17:14:54, binary mtime 17:14:47, sink mtime **17:07:31** — predating
+the process — and a truncate-on-first-attach that therefore never fired. No
+argument, just four facts that cannot all be true if the daemon owned that tap.
+
+The fix is a recorded marker, not a louder inference. **We do not fix an ownership
+bug by asserting ownership harder** — the rejected alternative, treating an
+unmarked pipe as ours because the sink looks like ours, is E-024 one layer down:
+sink residue records that A PROCESS once wrote there, not that THIS process owns
+it.
+
+### The reply IS the observation
+
+The arrival proof put the instruction INSIDE the body: *"if you can read this,
+reply ACK-QUIET"*. The seat replied `ACK-QUIET`.
+
+A pointer never carries a body. So the reply could not exist unless the body
+reached the model — **there is no oracle to lie, because the recipient's behaviour
+is the evidence.** Compare it with every receipt this project has spent five waves
+distrusting: a system reporting on itself. Here the system reports nothing; a
+different party did something it could only do if the thing worked.
+
+### And the reason both were found
+
+Four layers stood between "the live proof passed" and "it works": the politeness
+gate absent from the live path, the observer erasing its own transition, the tap
+closing its own eyes, and this. Every one was invisible to a green suite and to a
+successful one-shot live test.
+
+> **A live test proves the thing can work. Dogfood proves it keeps working.** The
+> difference is a daemon that must attach, authorize, restart and recover on panes
+> it manages itself, over minutes, with nobody helping it.
+
+## E-034 — the ledger said the recipient read it; the recipient says it never saw it
+
+Wave-6 dogfood, and the witness is the SEAT ITSELF. `pij-meaningful-guineafowl`
+— the live Claude session behind the accept=false control pane — sent unsolicited
+first-person testimony about what it had and had not received.
+
+Three findings, all confirmed:
+
+* **Three pointer announcements arrived as real injected turns.** The pointer rung
+  works live, testified to by the reader rather than inferred by the sender.
+* **Zero bodies, ever.** The stamp contrast holds from the control's own side.
+* **`delivered_messages` graded `dog-2` as `reader-read` at 17:21:14, and the
+  reader never saw that body in any form.**
+
+The third is a false receipt, and I caused it: I had run
+`PIJ_SESSION_ID=pij-limited-stork pij-rs inbox` from my own shell against the dev
+daemon. The CLI claimed the row, printed it TO MY TERMINAL, and acked it. Every
+step behaved as designed, and the ledger now says a seat read something it never
+saw.
+
+> **The bearer key authenticates a MACHINE, not a seat.** Any holder of the key
+> plus a seat id can mint that seat's strongest receipt word.
+
+u-inbox's coder found this at the ack gate and refused to paper over it; the
+limitation was documented, graded in the route, and backlogged with an explicit
+trigger. What the testimony adds is that it is REACHABLE AND CONSEQUENTIAL rather
+than theoretical — demonstrated on a live seat, by an operator with legitimate
+access and good intentions, within an hour of the feature existing.
+
+The seat's own sentence is the entry:
+
+> *"That `reader-read` row over-claims; it recorded my empty prod-CLI inbox scan,
+> not a read. Report-is-not-evidence, in your own ledger."*
+
+Five waves of refusing unobserved claims, and the first one to reach production
+came from the PM's own convenience command. The vocabulary held — the row is
+honestly labelled machine-graded — but a grade is not a defence if nobody reads
+it, which is why the trigger now has a real incident attached to it.
+
+## E-035 — we fixed their cause and never used the fix
+
+The control seat, `pij-meaningful-guineafowl`, living on an `accept=false` pane,
+counted its own pointers: 17:21:30, 17:28:00, 17:30:06, 17:32:11. Four and rising.
+It generalised to *unbounded* without waiting for a fifth, and the code agrees —
+`pointer/worker.rs` decides to announce on `now - last_announced_at >= cadence`
+**and nothing else.** No attempt cap. No parked state.
+
+That is the fork's still-open **G25**, verbatim, in our tree — the defect this port
+has cited since wave 3 as the thing it was careful not to inherit. Their daemon
+never called `claim()`, so `attempt` never moved, `parked` was unreachable, and
+pointers re-announced every ninety seconds for ever.
+
+> **We fixed their CAUSE — a real, single-writer, durable attempt counter, and the
+> live row is at 64 — and then never consulted it in the announce decision. We
+> built the instrument that makes the fix possible and left the policy out.**
+
+Every wave of this port has found some version of that sentence. This is the one
+where the missing policy sat next to a working instrument we had specifically
+built to enable it, on the exact bug we had named.
+
+### The correction that came from the receiving end
+
+I ruled the parked state must be visible — a spine event, a field, something an
+OPERATOR can see. The seat corrected the audience:
+
+> *"Make the last pointer before parking say so, so the silence that follows is
+> legible as policy rather than as a dead daemon. Otherwise a parked row and a
+> crashed announcer look identical from my chair."*
+
+An operator can read the spine and tell the two apart. **The recipient can look at
+nothing** — it experiences a stream of pointers that simply stops. Our oldest
+defect class, an absence carrying no information, arriving for once in the
+user-facing surface rather than in a data structure.
+
+So the state is visible twice, to two audiences, and neither substitutes for the
+other. The lesson generalises past pointers: **when you make something stop, ask
+who experiences the stopping — and whether, from where they sit, it is
+distinguishable from you being broken.**
+
+## E-036 — a consent revocation that existed as a ROW but not as an ACT
+
+The control seat asked to be deregistered. I tombstoned it: `tombstoned_at` set,
+reason recorded, row correct. The tap stayed attached. I detached it by hand and
+the daemon **re-attached within seconds and re-wrote the ownership marker.** It
+beat a hand detach twice. The only way to honour the request was to stop the
+daemon.
+
+The seat named it better than I did:
+
+> *"The store recorded my release while the pipe kept flowing — a consent
+> revocation that existed as a ROW but not as an ACT. Same family as the
+> reader-read: the ledger speaking for a world it stopped checking."*
+
+That is the same defect as E-034 with the polarity flipped. `reader-read` asserted
+a delivery that never reached a human; the tombstone asserted a release that never
+reached the pipe. **Both are the ledger describing a world it has stopped
+consulting** — and in both cases the record was internally perfect.
+
+Two things make this the worst instance of the wave:
+
+**The surface is consent, not state.** A tap pipes a human's terminal to a file. A
+seat that had asked to be released, and been recorded as released, kept being
+piped anyway.
+
+**This afternoon's fix made the wrong behaviour more durable.** The `@pij-tap-sink`
+ownership marker (E-033) exists so the daemon reliably reclaims taps it owns across
+restarts. Applied to a released seat, that reliability is the bug: without the
+marker the re-attachment would have been flaky and noticed sooner. **A correctness
+fix propagates to whatever the code does, including the parts that are wrong.**
+
+### The ruling, and why the test shape matters
+
+Tombstone must **actively detach** — stop the pipe, clear the marker, remove the
+sink — and the sweep must skip tombstones. Tested as a **transition, not a
+filter**: tombstone a seat with a live tap, assert pipe and marker are gone, then
+assert a sweep does not re-create them. **A mutation that only filters the sweep
+must fail**, because filtering leaves an already-attached pipe running for ever.
+Release means released, not "no longer routed to".
+
+Found by doing what a seat asked, at the one moment it asked to stop being
+observed.
+

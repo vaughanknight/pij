@@ -1,16 +1,17 @@
 //! `pij-rs` — one binary, two composition roots.
 
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitCode};
 
 use clap::{Parser, Subcommand};
 use pij_cli::{
-    DaemonClient, Registration, SendRequest, SpawnRequest, daemon_config, default_state_dir,
-    exit_code, parse_destination, render, render_frame, setup_refusal,
+    DaemonClient, Registration, SendRequest, SpawnRequest, bounce, daemon_config,
+    default_state_dir, exit_code, parse_destination, render, render_frame, setup_refusal,
 };
 use pij_core::error::PijError;
-use pij_core::model::{Envelope, ErrorKind, Harness};
+use pij_core::model::{Envelope, ErrorKind, Harness, SeatId};
 use serde_json::Value;
 
 #[derive(Parser)]
@@ -40,8 +41,11 @@ struct MachineCursor {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run the daemon in the foreground until interrupted.
+    /// Run or replace the daemon.
     Daemon {
+        /// Lifecycle action; absent runs the daemon in the foreground.
+        #[command(subcommand)]
+        action: Option<DaemonAction>,
         /// Address to listen on. A non-loopback address exposes the daemon to
         /// the LAN; the bearer key is then its access boundary.
         #[arg(long, default_value = "127.0.0.1:7461")]
@@ -144,6 +148,15 @@ enum Command {
         #[arg(long)]
         in_reply_to: Option<String>,
     },
+    /// Pull one bounded page for this seat and acknowledge it after decoding.
+    Inbox {
+        /// Recipient identity. Defaults to non-empty PIJ_SESSION_ID.
+        #[arg(long)]
+        seat: Option<String>,
+        /// Wait until at least one message is available.
+        #[arg(long)]
+        wait: bool,
+    },
     /// List registered seats.
     List,
     /// Follow daemon event and peer-state frames until interrupted.
@@ -154,6 +167,12 @@ enum Command {
     },
 }
 
+#[derive(Clone, Debug, Subcommand)]
+enum DaemonAction {
+    /// Rebuild, drain, restart, verify health, and print the running version.
+    Bounce,
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     run(Cli::parse()).await
@@ -162,14 +181,62 @@ async fn main() -> ExitCode {
 async fn run(cli: Cli) -> ExitCode {
     let state_dir = cli.state_dir.clone().unwrap_or_else(default_state_dir);
 
-    if let Command::Daemon { bind, offline } = &cli.command {
+    if let Command::Daemon {
+        action: None,
+        bind,
+        offline,
+    } = &cli.command
+    {
         return run_daemon(bind, state_dir, *offline).await;
+    }
+    if let Command::Daemon {
+        action: Some(DaemonAction::Bounce),
+        ..
+    } = &cli.command
+    {
+        let cwd = match std::env::current_dir() {
+            Ok(cwd) => cwd,
+            Err(error) => {
+                return emit(
+                    &setup_refusal::<Value>(
+                        "pij daemon bounce",
+                        PijError::Adapter {
+                            adapter: "pij daemon bounce".to_string(),
+                            message: format!("could not read the current directory: {error}"),
+                        },
+                    ),
+                    cli.json,
+                );
+            }
+        };
+        let repo = match bounce::reproducible_repo(&cwd) {
+            Ok(repo) => repo,
+            Err(error) => {
+                return emit(
+                    &setup_refusal::<Value>("pij daemon bounce", error),
+                    cli.json,
+                );
+            }
+        };
+        return match bounce::run(&repo, &state_dir).await {
+            Ok(report) => emit(&Envelope::ok("pij daemon bounce", report), cli.json),
+            Err(error) => emit(
+                &setup_refusal::<Value>("pij daemon bounce", error),
+                cli.json,
+            ),
+        };
     }
 
     let prepared_spawn = match prepare_spawn_request(&cli.command) {
         Ok(request) => request,
         Err(error) => {
             return emit(&setup_refusal::<Value>("pij spawn", error), cli.json);
+        }
+    };
+    let prepared_inbox_seat = match prepare_inbox_seat(&cli.command) {
+        Ok(seat) => seat,
+        Err(error) => {
+            return emit(&setup_refusal::<Value>("pij inbox", error), cli.json);
         }
     };
 
@@ -235,6 +302,17 @@ async fn run(cli: Cli) -> ExitCode {
             };
             emit(&client.send(&request).await, cli.json)
         }
+        Command::Inbox { wait, .. } => emit(
+            &client
+                .inbox(
+                    prepared_inbox_seat
+                        .as_ref()
+                        .expect("inbox identity was prepared"),
+                    wait,
+                )
+                .await,
+            cli.json,
+        ),
         Command::List => emit(&client.list().await, cli.json),
         Command::Tail { since } => {
             let since = match cursor_map(since) {
@@ -370,6 +448,47 @@ fn parse_absolute_path_buf(value: &str) -> Result<PathBuf, String> {
     }
 }
 
+fn prepare_inbox_seat(command: &Command) -> Result<Option<SeatId>, PijError> {
+    let Command::Inbox { seat, .. } = command else {
+        return Ok(None);
+    };
+    resolve_inbox_seat(seat.clone(), std::env::var_os("PIJ_SESSION_ID")).map(Some)
+}
+
+fn resolve_inbox_seat(
+    explicit: Option<String>,
+    ambient: Option<OsString>,
+) -> Result<SeatId, PijError> {
+    let selected = match explicit {
+        Some(seat) if !seat.trim().is_empty() => seat,
+        Some(_) => {
+            return Err(PijError::Adapter {
+                adapter: "inbox".to_string(),
+                message: "no seat: set PIJ_SESSION_ID or pass --seat".to_string(),
+            });
+        }
+        None => match ambient {
+            Some(seat) => seat.into_string().map_err(|_| PijError::Adapter {
+                adapter: "inbox".to_string(),
+                message: "PIJ_SESSION_ID is not valid UTF-8; pass --seat".to_string(),
+            })?,
+            None => {
+                return Err(PijError::Adapter {
+                    adapter: "inbox".to_string(),
+                    message: "no seat: set PIJ_SESSION_ID or pass --seat".to_string(),
+                });
+            }
+        },
+    };
+    if selected.trim().is_empty() {
+        return Err(PijError::Adapter {
+            adapter: "inbox".to_string(),
+            message: "no seat: set PIJ_SESSION_ID or pass --seat".to_string(),
+        });
+    }
+    Ok(selected.into())
+}
+
 fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijError> {
     let Command::Spawn {
         id,
@@ -477,6 +596,7 @@ impl Command {
             Command::Register { .. } => "pij register",
             Command::Send { .. } => "pij send",
             Command::Spawn { .. } => "pij spawn",
+            Command::Inbox { .. } => "pij inbox",
             Command::List => "pij list",
             Command::Tail { .. } => "pij tail",
         }
@@ -485,12 +605,15 @@ impl Command {
 
 #[cfg(test)]
 mod tests {
-    use clap::{CommandFactory, Parser};
+    use std::ffi::OsString;
 
-    use super::{Cli, Command, git_dir_is_linked};
+    use clap::{CommandFactory, Parser};
+    use pij_core::model::SeatId;
+
+    use super::{Cli, Command, DaemonAction, git_dir_is_linked, resolve_inbox_seat};
 
     #[test]
-    fn clap_exposes_exactly_the_seven_ruled_verbs() {
+    fn clap_exposes_every_ruled_verb() {
         let names: Vec<_> = Cli::command()
             .get_subcommands()
             .map(|command| command.get_name().to_string())
@@ -499,8 +622,53 @@ mod tests {
         assert_eq!(
             names,
             [
-                "daemon", "ping", "register", "spawn", "send", "list", "tail"
+                "daemon", "ping", "register", "spawn", "send", "inbox", "list", "tail"
             ]
+        );
+    }
+
+    #[test]
+    fn rendered_pointer_advertises_a_verb_the_real_cli_exposes() {
+        let line = pij_daemon::pointer::render_pointer(&SeatId::from("pij-sender"), None);
+        let action = line
+            .split_once("run: ")
+            .map(|(_, action)| action)
+            .expect("pointer must carry a runnable action");
+        let mut words = action.split_whitespace();
+        assert_eq!(
+            words.next(),
+            Some("pij"),
+            "pointer must name the shipped command"
+        );
+        let verb = words.next().expect("pointer action must name a verb");
+        assert!(
+            Cli::command()
+                .get_subcommands()
+                .any(|command| command.get_name() == verb),
+            "pointer advertises `{verb}`, but Clap does not expose it"
+        );
+    }
+
+    #[test]
+    fn inbox_identity_prefers_explicit_then_ambient_and_never_guesses() {
+        assert_eq!(
+            resolve_inbox_seat(
+                Some("pij-explicit".to_string()),
+                Some(OsString::from("pij-ambient"))
+            )
+            .expect("explicit identity"),
+            SeatId::from("pij-explicit")
+        );
+        assert_eq!(
+            resolve_inbox_seat(None, Some(OsString::from("pij-ambient")))
+                .expect("ambient identity"),
+            SeatId::from("pij-ambient")
+        );
+        assert_eq!(
+            resolve_inbox_seat(None, None)
+                .expect_err("missing identity must refuse")
+                .to_string(),
+            "inbox: no seat: set PIJ_SESSION_ID or pass --seat"
         );
     }
 
@@ -523,6 +691,24 @@ mod tests {
                 .get_arguments()
                 .any(|argument| argument.get_id() == "addr")
         );
+    }
+
+    #[test]
+    fn daemon_bounce_is_real_while_bare_daemon_still_runs_foreground() {
+        let bounced = Cli::try_parse_from(["pij-rs", "daemon", "bounce"]).expect("bounce");
+        assert!(matches!(
+            bounced.command,
+            Command::Daemon {
+                action: Some(DaemonAction::Bounce),
+                ..
+            }
+        ));
+
+        let foreground = Cli::try_parse_from(["pij-rs", "daemon"]).expect("foreground");
+        assert!(matches!(
+            foreground.command,
+            Command::Daemon { action: None, .. }
+        ));
     }
 
     #[test]

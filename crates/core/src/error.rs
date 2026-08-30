@@ -23,7 +23,7 @@ pub enum PijError {
     /// for a cursor that can never be satisfied leaves a consumer waiting for
     /// ever on a stream that reads healthy (review F7, wave 5).
     #[error(
-        "requested cursor {requested} is beyond this spine's newest {newest} — its history was reset; resume from the peer's real position"
+        "requested cursor {requested} is beyond this spine's newest {newest} — that history MAY have been reset (reprovision, wiped store, or a cursor from a different machine); resume from the source's real position"
     )]
     CursorBeyondSpine {
         /// What the consumer asked for.
@@ -32,8 +32,18 @@ pub enum PijError {
         newest: u64,
     },
     /// No registry row for this seat. Recoverable: adopt or register it.
-    #[error("{seat}: no registry entry — adopt the seat (`pij adopt`) or spawn it again")]
+    #[error(
+        "{seat}: no registry row in {store} — the seat MAY never have registered, or this \
+         daemon may be reading a different store than the one you expect; adopt it \
+         (`pij adopt`) or spawn it again"
+    )]
     NoRegistryEntry {
+        /// WHERE we actually looked. Printed because an absence is only evidence
+        /// about the place that was searched, and the sibling generation shipped
+        /// `E-NOREG` asserting "is the extension loaded?" when the real fact was
+        /// `HOME` resolving `~/.pij` to a fixture path (coral/meadowlark,
+        /// cross-government). **An absence observed is not a cause diagnosed.**
+        store: String,
         /// The seat that has no row.
         seat: SeatId,
     },

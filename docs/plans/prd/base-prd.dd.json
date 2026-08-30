@@ -77,7 +77,7 @@
           "requirement": "Envelope {ok,command,v,data,meta}, per-boot 0600 bearer key written before bind, NDJSON event stream with Hello line and Unknown variant — portable across macOS/Linux/Windows with no socket platform splits. AUTH (fs3 #43 pattern, source-verified auth.rs 2026-08-28): one 256-bit key minted per daemon boot, 64 lowercase hex, written 0600-before-bytes via same-dir tempfile + atomic rename, published BEFORE the listener binds (race designed out); Authorization: Bearer on EVERY route, /health included (whole-router middleware, no exemption list); raw HTTP client private behind the authenticated wrapper so the type system refuses bypass; 401 envelope carries key_file detail + next_action naming the exact path and the self-heal; key path+format are FROZEN CONTRACT (CLI, doctor, tests, restart-verify all consume it). Config-dir trap from fs3's one real incident: if the daemon serves the default port under a non-default config root, refuse or mirror the key to the ambient location — the key file's LOCATION is part of the credential.",
           "state": "unchecked",
           "completed_evidence": "",
-          "note": "fs3 req-0017 pattern auth per lynx source-grounded answer + crates/daemon/src/auth.rs (read whole; tests encode the contract)"
+          "note": "fs3 req-0017 pattern auth per lynx source-grounded answer + crates/daemon/src/auth.rs (read whole; tests encode the contract) | AMEND vicuna 2026-08-31: the bearer key authenticates a MACHINE, not a seat — ReaderRead over HTTP is attestable to machine granularity only; ack rows record the acking key for audit. Seat-level auth = backlog, trigger: two mutually untrusting seats share one machine key."
         },
         {
           "id": "req-0008",

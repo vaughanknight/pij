@@ -168,6 +168,7 @@ fn errors_separate_the_states_they_observe_and_name_the_fix() {
     // TS's E-NOREG meant two different things with two different recoveries.
     let missing_row = PijError::NoRegistryEntry {
         seat: SeatId::from("pij-ghost"),
+        store: "/Users/x/.pij-rs/pij.sqlite".to_string(),
     };
     let missing_artifact = PijError::NativeArtifactMissing {
         seat: SeatId::from("pij-ghost"),
@@ -180,6 +181,19 @@ fn errors_separate_the_states_they_observe_and_name_the_fix() {
     assert!(
         row.contains("adopt"),
         "a recoverable error names the recovery: {row}"
+    );
+    // An absence is only evidence about the place that was SEARCHED, and the
+    // cause is hedged rather than asserted. The sibling generation shipped an
+    // E-NOREG blaming a missing extension when the real fact was HOME resolving
+    // to a fixture path — the message diagnosed a cause nobody observed
+    // (coral/meadowlark, cross-government; ruled by the prime for this wave).
+    assert!(
+        row.contains("/Users/x/.pij-rs/pij.sqlite"),
+        "an absence names WHERE it looked: {row}"
+    );
+    assert!(
+        row.contains("MAY"),
+        "and HEDGES the cause it did not observe: {row}"
     );
 
     let artifact = missing_artifact.to_string();

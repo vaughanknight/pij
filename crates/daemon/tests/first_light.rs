@@ -91,6 +91,32 @@ async fn the_key_is_0600_and_exists_before_the_socket_can_be_reached() {
 }
 
 #[tokio::test]
+async fn boot_publishes_complete_runtime_identity_as_restart_safe_residue() {
+    let dir = state_dir();
+    let daemon = pij_daemon::boot(&config(), dir.clone())
+        .await
+        .expect("boot");
+    let path = dir.join(pij_daemon::DAEMON_RUNTIME_FILE);
+    let runtime: pij_daemon::DaemonRuntime = serde_json::from_slice(
+        &std::fs::read(&path).expect("runtime record must exist before serving"),
+    )
+    .expect("typed runtime record");
+
+    assert_eq!(runtime.process.pid, std::process::id());
+    assert_ne!(runtime.process.proc_start, 0);
+    assert_eq!(runtime.addr, daemon.addr);
+    assert!(runtime.offline);
+    assert!(!runtime.machine.is_empty());
+
+    daemon.shutdown().await.expect("shutdown");
+    assert!(
+        path.exists(),
+        "shutdown leaves identity residue; the next reader corroborates pid and start"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
 async fn an_unauthenticated_request_is_refused_and_told_what_to_do() {
     let dir = state_dir();
     let daemon = pij_daemon::boot(&config(), dir.clone())
