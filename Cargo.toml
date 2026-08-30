@@ -18,6 +18,7 @@ members = [
   "crates/tmux",
   "crates/harnesses",
   "crates/transport",
+  "crates/sidecars",
   "crates/daemon",
   "crates/cli",
   "crates/testkit",
