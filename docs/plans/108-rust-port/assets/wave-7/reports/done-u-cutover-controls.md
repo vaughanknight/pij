@@ -10,9 +10,9 @@ Plan 108 req-0019 is implemented on branch `s108/w7-cutover`.
 - Every present-but-empty or malformed environment value fails loudly with the variable name and quoted value.
 - The extension now decodes `/v1/seats` as the existing `FederatedRoster { seats, unavailable }` contract. This closes reviewer R7-1, where `seats.find` received the roster object and registration was unreachable.
 
-Implementation commit: `acb1399a` (`feat(rust): add daemon cutover controls`).
+Initial implementation commit: `acb1399a` (`feat(rust): add daemon cutover controls`). Round-1 fixes for Bun refusal recognition, recovery guidance, and whitespace state-dir parity land with this final receipt update.
 
-Composed sidecars head `e17e7488` was merged as true ancestry; final pre-report head was `bd4df8f30536d6f2af09a3969af41b52bca2ba03`.
+Composed sidecars head `e17e7488` was merged as true ancestry before the final gate.
 
 ## Control table
 
@@ -22,8 +22,8 @@ Composed sidecars head `e17e7488` was merged as true ancestry; final pre-report 
 | Extension Rust endpoint | — | `PIJ_RS_ADDR` | `127.0.0.1:7461` | Env then default. Requires `host:port`, port 1..65535. Empty/malformed names `PIJ_RS_ADDR` and value. |
 | Rust client endpoint | `--addr` | `PIJ_RS_ADDR` | `127.0.0.1:7461` | CLI > env > default. Clap fields are `Option<T>`, so an explicit flag equal to the default still wins. Empty/malformed names the selected flag/variable and value. |
 | Rust daemon bind | `daemon --bind` | `PIJ_RS_BIND` | `127.0.0.1:7461` | CLI > env > default. Requires `IP:port`, port 1..65535. Empty/malformed names the selected flag/variable and value. |
-| Extension state/key directory | — | `PIJ_RS_STATE_DIR` | `$HOME/.pij-rs` | Env then default. Present-empty is a named error, never a cwd-relative key path. |
-| Rust client/daemon state directory | `--state-dir` | `PIJ_RS_STATE_DIR` | `$HOME/.pij-rs` (temp fallback only when `HOME` is absent) | CLI > env > default. Present-empty names `PIJ_RS_STATE_DIR` and `""`. |
+| Extension state/key directory | — | `PIJ_RS_STATE_DIR` | `$HOME/.pij-rs` | Env then default. Empty or whitespace-only values are named errors, never cwd-relative key paths. |
+| Rust client/daemon state directory | `--state-dir` | `PIJ_RS_STATE_DIR` | `$HOME/.pij-rs` (temp fallback only when `HOME` is absent) | CLI > env > default. Empty or whitespace-only values name `PIJ_RS_STATE_DIR` and preserve the quoted value. |
 
 No new dependency and no daemon composition line are required for this unit. Bind resolution stays in the existing `pij-rs` CLI composition root before `run_daemon`; the PM-owned daemon wiring files need no cutover edit.
 
@@ -49,16 +49,19 @@ All daemons used fresh `/tmp/pij-w7-cutover-final.srxRKd/**` stores and ports 17
 
 ## Negative selected-Rust case
 
-With no listener on `127.0.0.1:17684`:
+This case was exercised in both hosts. The transcript below is the decisive OMP/Bun leg after FIX-1, with no listener on `127.0.0.1:17684`:
 
 ```text
+Host: /Users/jordanknight/.npm-global/bin/omp (Bun runtime)
 PIJ_DAEMON_GENERATION=rs
 PIJ_RS_ADDR=127.0.0.1:17684
-Error: pij: No pij daemon answered at 127.0.0.1:17684. Start pij-rs there or set PIJ_RS_ADDR ...
+Error: pij: No pij daemon answered at 127.0.0.1:17684. Start pij-rs there or set PIJ_RS_ADDR;
+set PIJ_DAEMON_GENERATION=legacy to use the legacy TS daemon for this seat.
+The state directory came from PIJ_RS_STATE_DIR, then HOME/.pij-rs (/tmp/pij-w7-cutover-fix-negative).
 daemon error
 ```
 
-The throwaway legacy home remained absent. The extension failed loudly; it neither fell back nor manufactured legacy residue.
+The same named refusal was observed in plain Pi/Node. The throwaway legacy homes remained absent. Both runtimes failed loudly; neither fell back nor manufactured legacy residue.
 
 ## Focused proof
 
@@ -66,14 +69,20 @@ The throwaway legacy home remained absent. The extension failed loudly; it neith
 npx vitest run daemon-http.test.ts rust-runtime.test.ts
 2 files passed; 8 tests passed
 
+npx vitest run daemon-http.test.ts daemon-wire.test.ts  # round 2
+2 files passed; 13 tests passed
+
 cargo test --locked -p pij-cli
 31 passed (6 suites)
+
+cargo test --locked -p pij-cli malformed_environment_values_name_the_variable_and_value
+1 passed
 
 just typecheck
 PASS
 
-npx biome check <four changed TS files>
-Checked 4 files. No fixes applied.
+npx biome check <changed TS files>
+No fixes applied
 ```
 
 Mutation witnesses, each using `harness/scripts/flow-pair-mutate.sh` (which asserts the edit matched, restores, and reruns):
@@ -81,14 +90,16 @@ Mutation witnesses, each using `harness/scripts/flow-pair-mutate.sh` (which asse
 1. Disabled the explicit `legacy` branch: `daemon-http.test.ts` went red (`1 failed, 6 passed`), then green (`7 passed`) after restore.
 2. Returned the whole `FederatedRoster` instead of `.seats`: `rust-runtime.test.ts` went red (`1 failed`), then green (`1 passed`) after restore.
 3. Replaced explicit CLI address selection with the default: the precedence test went red, then green after restore.
+4. Removed Bun's direct `ConnectionRefused` discriminator: the dual-runtime refusal suite went red (`1 failed, 7 passed`), then green (`8 passed`) after restore.
+5. Removed trimming from Rust state-dir validation: the whitespace-value test went red, then green after restore.
 
 ## Gate
 
-Final gate ran after merging composed head `e17e7488`, with a worktree-private target directory:
+Final gate ran after merging composed head `e17e7488`. `CARGO_TARGET_DIR` was unset, so Cargo used this worktree's own freshly rebuilt `target/`; no cross-worktree artifact cache participated.
 
 ```text
 CARGO_INCREMENTAL=0
-CARGO_TARGET_DIR=/tmp/pij-w7-cutover-final-gate-target
+unset CARGO_TARGET_DIR
 cargo run --locked -p pij-testkit --bin pij-gate
 
 pij-gate verdict
@@ -116,7 +127,8 @@ cargo 1.98.0 (797e8a9bc 2026-08-05)
 
 - Initial `harness boot` was red before this change because the original worktree had no root `node_modules/@types/node`. Per PM ruling, it was not repaired or counted as the Rust proof surface. Focused TS checks used a temporary read-only symlink to the canonical checkout's existing `node_modules`; it is ignored and uncommitted.
 - Repo-wide `just lint` remains red on pre-existing warnings outside this fence. The four changed TS files pass Biome directly.
-- The first isolated `pij-gate` attempt used the PM-requested shared `CARGO_TARGET_DIR=/Users/jordanknight/pi-hacking/.s108-target` while another worktree compiled the same package names. It reused the other tree's in-flight `pij-testkit` binary and falsely reported a stale `pij-sidecars` allowlist entry. The branch files never contained that entry. A clean per-worktree target made all six stages green; this is captured as harness observation `DL-001`.
+- The first isolated `pij-gate` attempt used the now-withdrawn shared `CARGO_TARGET_DIR=/Users/jordanknight/pi-hacking/.s108-target`. It reused another worktree's in-flight `pij-testkit` binary and falsely reported a stale `pij-sidecars` allowlist entry that did not exist in this branch. Final proof uses only this worktree's `target/`; this is captured as harness observation `DL-001`.
+  The operational lesson: a claim about a commit is valid only when the measured tree and artifacts belong to that commit. A live working tree can make an old commit look fixed; a shared build directory can make a clean tree look broken. Inspect both before accepting either a green or red verdict.
 
 ## Fence and shared paths
 

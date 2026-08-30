@@ -255,7 +255,9 @@ function isConnectionRefused(error: unknown): boolean {
 	let current: unknown = error;
 	for (let depth = 0; depth < 5 && current !== null && typeof current === "object"; depth++) {
 		const record = current as { readonly code?: unknown; readonly cause?: unknown };
-		if (record.code === "ECONNREFUSED") return true;
+		// Node fetch wraps ECONNREFUSED in cause.code; Bun reports ConnectionRefused
+		// directly on the error. Pi and OMP exercise one shape each.
+		if (record.code === "ECONNREFUSED" || record.code === "ConnectionRefused") return true;
 		current = record.cause;
 	}
 	return false;

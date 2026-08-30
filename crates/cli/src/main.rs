@@ -384,9 +384,10 @@ fn resolve_state_dir(flag: Option<PathBuf>, env: Option<OsString>) -> Result<Pat
             None => return Ok(default_state_dir()),
         },
     };
-    if path.as_os_str().is_empty() {
+    let rendered = path.as_os_str().to_string_lossy();
+    if rendered.trim().is_empty() {
         return Err(format!(
-            "{source} has malformed value \"\": value must not be empty"
+            "{source} has malformed value {rendered:?}: value must not be empty"
         ));
     }
     Ok(path)
@@ -916,10 +917,13 @@ mod tests {
         assert!(invalid_bind.contains("PIJ_RS_BIND"));
         assert!(invalid_bind.contains("\"localhost:7461\""));
 
-        assert_eq!(
-            resolve_state_dir(None, Some(OsString::from(""))).expect_err("empty state dir"),
-            "PIJ_RS_STATE_DIR has malformed value \"\": value must not be empty"
-        );
+        for value in ["", "  "] {
+            assert_eq!(
+                resolve_state_dir(None, Some(OsString::from(value)))
+                    .expect_err("empty or whitespace state dir"),
+                format!("PIJ_RS_STATE_DIR has malformed value {value:?}: value must not be empty")
+            );
+        }
     }
 
     #[test]

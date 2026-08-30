@@ -28,9 +28,13 @@ function deps(fetchImpl: typeof fetch): DaemonHttpDeps {
 	return { fetch: fetchImpl, readFile, processStart: () => 20260829103052 };
 }
 
-function refused(): Error {
-	const error = new TypeError("fetch failed", { cause: { code: "ECONNREFUSED" } });
-	return error;
+function refused(runtime: "node" | "bun"): Error {
+	if (runtime === "bun") {
+		return Object.assign(new Error("Unable to connect. Is the computer able to access the url?"), {
+			code: "ConnectionRefused",
+		});
+	}
+	return new TypeError("fetch failed", { cause: { code: "ECONNREFUSED" } });
 }
 
 afterEach(() => {
@@ -62,9 +66,11 @@ describe("daemon generation controls", () => {
 				`PIJ_RS_ADDR has malformed value ${JSON.stringify(value)}`,
 			);
 		}
-		expect(() => daemonLocation({ PIJ_RS_STATE_DIR: "" })).toThrow(
-			'PIJ_RS_STATE_DIR has malformed value ""',
-		);
+		for (const value of ["", "  "]) {
+			expect(() => daemonLocation({ PIJ_RS_STATE_DIR: value })).toThrow(
+				`PIJ_RS_STATE_DIR has malformed value ${JSON.stringify(value)}`,
+			);
+		}
 	});
 
 	it("uses the authenticated Rust daemon when rs is selected", async () => {
@@ -100,10 +106,13 @@ describe("daemon generation controls", () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
-	it("fails loudly instead of falling back when selected Rust is unavailable", async () => {
+	it.each([
+		"node",
+		"bun",
+	] as const)("fails loudly instead of falling back when selected Rust is unavailable in %s", async (runtime) => {
 		const base = root();
 		const fetchMock = vi.fn(async () => {
-			throw refused();
+			throw refused(runtime);
 		});
 		try {
 			await detectDaemonGeneration(
@@ -120,6 +129,7 @@ describe("daemon generation controls", () => {
 				stateDir: join(base, "missing-rust"),
 			});
 			expect(String(error)).toContain("Start pij-rs");
+			expect(String(error)).toContain("PIJ_DAEMON_GENERATION=legacy");
 		}
 	});
 });
