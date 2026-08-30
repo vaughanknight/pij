@@ -176,7 +176,7 @@
           "requirement": "pij adopts flowspace3 daemon build-and-restart so the live daemon restarts automatically when work merges to main: build, health-check, restart sequenced without dropping in-flight deliveries, with a guard against restarting mid-delivery. Applies to the TS daemon immediately (tsx off source, no hot-reload, restarts are manual and forgettable today) and carries into the Rust daemon post-cutover.",
           "state": "unchecked",
           "completed_evidence": "",
-          "note": "Jordan 2026-08-30: lynx has a way to build and restart their daemon that we should adopt, then restart auto when merging to main as we work. Mechanism details requested from pij-instant-lynx (pointers pending); port not wrap."
+          "note": "Jordan 2026-08-30: adopt lynx bounce, auto-restart on merge to main. Lynx mechanism (source-grounded reply 2026-08-30): symlink-into-target/release makes build=deploy; bounce = pull-ff-only, build, C-c, relaunch, poll /health for the auth 401 liveness tell; NO-DROP lives in the DAEMON not the script (shutdown finishes in-flight only, never dequeues post-signal; queue rows durable) — restart safe by construction so the trigger can be dumb (o-prime merge loop, no watcher). Adopt-fresh advice taken as CONTRACT: (a) a real verb from day one — pij daemon bounce: refuse-if-HEAD!=origin/main, build, drain-restart, health-verify, version-print; (b) bind/reserve port BEFORE any mutating boot step (their row-80: losing racer ran 108s of mutating boot pre-refusal); (c) announce to active seats pre-bounce. TS interim: just bounce-daemon recipe + prime ritual now; Rust: owned by u-daemon-lifecycle (wave 4 scope add)."
         }
       ]
     }
