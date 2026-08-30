@@ -93,7 +93,8 @@ export class PijNoDaemonError extends Error {
 	) {
 		super(
 			`No pij daemon answered at ${addr}. Start pij-rs there or set PIJ_RS_ADDR; ` +
-				`the state directory came from PIJ_RS_STATE_DIR, then HOME/.pij-rs (${stateDir}).`,
+				`set PIJ_DAEMON_GENERATION=legacy to use the legacy TS daemon for this seat. ` +
+				`The state directory came from PIJ_RS_STATE_DIR, then HOME/.pij-rs (${stateDir}).`,
 		);
 		this.name = "PijNoDaemonError";
 	}

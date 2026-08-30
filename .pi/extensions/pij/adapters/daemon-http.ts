@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -23,6 +23,13 @@ export interface DaemonLocation {
 	readonly stateDir: string;
 }
 
+interface FederatedRoster {
+	readonly seats: readonly RustSeatDescriptor[];
+	readonly unavailable: readonly { readonly machine: string; readonly reason: string }[];
+}
+
+export type DaemonGenerationPreference = "rs" | "legacy";
+
 export type DaemonGeneration =
 	| { readonly kind: "legacy"; readonly location: DaemonLocation }
 	| {
@@ -35,32 +42,45 @@ export type DaemonGeneration =
 export interface DaemonHttpDeps {
 	readonly fetch: typeof fetch;
 	readonly readFile: typeof readFile;
-	readonly readdir: typeof readdir;
 	readonly processStart: (pid: number) => number;
 }
 
 const DEFAULT_DEPS: DaemonHttpDeps = {
 	fetch,
 	readFile,
-	readdir,
 	processStart: observedProcessStart,
 };
 
+/** Resolve extension transport controls: explicit environment, then Rust defaults. */
 export function daemonLocation(
 	env: NodeJS.ProcessEnv = process.env,
 	home: string = homedir(),
 ): DaemonLocation {
+	const addr = configuredValue("PIJ_RS_ADDR", env.PIJ_RS_ADDR, DEFAULT_PIJ_RS_ADDR);
+	assertDaemonAddr(addr);
 	return {
-		addr: env.PIJ_RS_ADDR?.trim() || DEFAULT_PIJ_RS_ADDR,
-		stateDir: env.PIJ_RS_STATE_DIR?.trim() || join(home, ".pij-rs"),
+		addr,
+		stateDir: configuredValue("PIJ_RS_STATE_DIR", env.PIJ_RS_STATE_DIR, join(home, ".pij-rs")),
 	};
 }
 
+/** req-0019: explicit generation wins; absence cuts over to Rust with no fallback. */
+export function daemonGenerationPreference(
+	env: NodeJS.ProcessEnv = process.env,
+): DaemonGenerationPreference {
+	const value = env.PIJ_DAEMON_GENERATION;
+	if (value === undefined) return "rs";
+	if (value === "rs" || value === "legacy") return value;
+	throw invalidEnvironment("PIJ_DAEMON_GENERATION", value, 'expected exactly "rs" or "legacy"');
+}
+
 export async function detectDaemonGeneration(
-	pijHome: string,
 	location: DaemonLocation = daemonLocation(),
+	preference: DaemonGenerationPreference = daemonGenerationPreference(),
 	deps: DaemonHttpDeps = DEFAULT_DEPS,
 ): Promise<DaemonGeneration> {
+	if (preference === "legacy") return { kind: "legacy", location };
+
 	let key: string | undefined;
 	try {
 		key = (await deps.readFile(join(location.stateDir, "daemon.key"), "utf8")).trim();
@@ -87,12 +107,9 @@ export async function detectDaemonGeneration(
 			client: new PijDaemonClient(location, key, deps),
 		};
 	} catch (error) {
-		if (!isConnectionRefused(error)) throw error;
+		if (isConnectionRefused(error)) throw new PijNoDaemonError(location.addr, location.stateDir);
+		throw error;
 	}
-	if (await hasLegacyFileSurface(pijHome, deps.readdir)) {
-		return { kind: "legacy", location };
-	}
-	throw new PijNoDaemonError(location.addr, location.stateDir);
 }
 
 export class PijDaemonClient {
@@ -110,8 +127,8 @@ export class PijDaemonClient {
 		return this.post<RustSeatDescriptor>("/v1/register", claim);
 	}
 
-	seats(): Promise<readonly RustSeatDescriptor[]> {
-		return this.get<readonly RustSeatDescriptor[]>("/v1/seats");
+	async seats(): Promise<readonly RustSeatDescriptor[]> {
+		return (await this.get<FederatedRoster>("/v1/seats")).seats;
 	}
 
 	send(request: SendRequest): Promise<QueueReceipt> {
@@ -208,20 +225,23 @@ async function pumpEventStream(
 	}
 }
 
-async function hasLegacyFileSurface(pijHome: string, list: typeof readdir): Promise<boolean> {
-	try {
-		const entries = await list(pijHome, { withFileTypes: true });
-		return entries.some(
-			(entry) =>
-				(entry.isFile() &&
-					(entry.name === "daemon.lock" || /^pij-[^/]+\.json$/.test(entry.name))) ||
-				(entry.isDirectory() && entry.name.startsWith("pij-")),
-		);
-	} catch {
-		return false;
+function configuredValue(name: string, value: string | undefined, fallback: string): string {
+	if (value === undefined) return fallback;
+	if (value.trim() === "") throw invalidEnvironment(name, value, "value must not be empty");
+	return value;
+}
+
+function assertDaemonAddr(value: string): void {
+	const match = /^(?:\[[^\]]+\]|[^:/\s]+):(\d+)$/.exec(value);
+	const port = match ? Number(match[1]) : Number.NaN;
+	if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+		throw invalidEnvironment("PIJ_RS_ADDR", value, "expected host:port with port 1..65535");
 	}
 }
 
+function invalidEnvironment(name: string, value: string, detail: string): Error {
+	return new Error(`${name} has malformed value ${JSON.stringify(value)}: ${detail}`);
+}
 function observedProcessStart(pid: number): number {
 	const row = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], {
 		encoding: "utf8",
@@ -235,7 +255,9 @@ function isConnectionRefused(error: unknown): boolean {
 	let current: unknown = error;
 	for (let depth = 0; depth < 5 && current !== null && typeof current === "object"; depth++) {
 		const record = current as { readonly code?: unknown; readonly cause?: unknown };
-		if (record.code === "ECONNREFUSED") return true;
+		// Node fetch wraps ECONNREFUSED in cause.code; Bun reports ConnectionRefused
+		// directly on the error. Pi and OMP exercise one shape each.
+		if (record.code === "ECONNREFUSED" || record.code === "ConnectionRefused") return true;
 		current = record.cause;
 	}
 	return false;

@@ -23,19 +23,16 @@ use std::path::{Path, PathBuf};
 use pij_core::config::{AdapterChoice, Adapters, Config};
 use pij_core::model::{Envelope, ErrorKind};
 
-/// Where a daemon keeps its per-boot key and, later, its store.
+/// Platform default for daemon state when neither `--state-dir` nor
+/// `PIJ_RS_STATE_DIR` is set. Environment override precedence is resolved once
+/// by the binary composition root, not hidden inside this default.
 pub fn default_state_dir() -> PathBuf {
-    std::env::var_os("PIJ_RS_STATE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(
-                // No HOME is a real environment (some launchd and CI contexts).
-                // A temp dir keeps the binary usable and, crucially, says so
-                // rather than silently writing the key somewhere surprising.
-                || std::env::temp_dir().join("pij-rs-no-home"),
-            );
-            home.join(".pij-rs")
-        })
+    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(
+        // No HOME is a real environment (some launchd and CI contexts). A temp
+        // dir keeps the binary usable and says where state went.
+        || std::env::temp_dir().join("pij-rs-no-home"),
+    );
+    home.join(".pij-rs")
 }
 
 /// Render an envelope for a human, or as the JSON it already is.
