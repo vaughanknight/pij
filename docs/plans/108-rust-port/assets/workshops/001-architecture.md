@@ -280,3 +280,25 @@ destination field exists and the UDS ruling forbids inventing one).
 
 **Precedent note**: second seam change accepted at an ACK with zero implementations built
 against the new shape ([[seam-change-window]] holding twice in one plan).
+
+## Wave-4 federation ratifications (2026-08-30, vicuna)
+
+**R4-AMEND-1 — Queue::retry(job_id, delay), ACCEPTED**: atomic in the store — row returns to
+pending with attempt count incremented, one transaction. No eighth port. The argument that
+carried it: Queue is the ONE WRITER of attempt accounting; ack-then-enqueue has a crash gap
+that LOSES the message, enqueue-then-ack violates live dedupe, and ratifying once serves both
+u-federation (failed remote send) and u-pointer (re-announce) instead of two units inventing
+two mechanisms for one problem.
+
+**R7-AMEND-1 — Msg.from_machine: Option<String> + wire field, ACCEPTED**: None = local,
+symmetric with Destination.machine. Additive on the frozen v1 wire; u-extension consumers must
+TOLERATE the new optional field (unknown-field tolerance is already our shipped posture —
+raw unknown-event-byte preservation). Without it a forwarded message arrives with no way to
+address the origin machine, and a same-named seat trips the self-address refusal.
+
+**Scope cut ratified**: wave 4 federation = REMOTE SEND ONLY. Registry fan-in / roster / event
+streaming deferred — five defects were one fact from five angles (no machine field on
+SeatDescriptor, /v1/seats can't express two alices, scalar events cursor, POST-only peer
+client, second-seq spine loops), every one a wire change; the deferred half gets a packet
+written from knowledge, not assumption. NOTE FOR PRD: req-0017's registry-visibility half moves
+past wave 4; row stays unchecked until it lands.
