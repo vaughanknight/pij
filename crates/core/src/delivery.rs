@@ -5,7 +5,7 @@
 //! queueing, or make future delivery impossible.
 
 use crate::error::{PijError, Result};
-use crate::model::{SeatDescriptor, SeatId, SemanticState, SystemState};
+use crate::model::{SeatDescriptor, SeatId, SemanticState};
 
 /// Why a message must be durably queued instead of attempted now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,8 +46,22 @@ pub fn delivery_kind(seat: &SeatId) -> String {
 /// Select a route without performing IO.
 ///
 /// Tombstones dominate every transient fact: a dead seat is never given an
-/// immortal queue row. Busy, pre-bind, operator hold, and transport
-/// unreachability are temporary and therefore queue honestly.
+/// immortal queue row. Pre-bind, operator hold, and transport unreachability are
+/// temporary and therefore queue honestly.
+///
+/// **`Working` is deliberately NOT decided here.** It used to be — a busy
+/// recipient queued before the transport was ever consulted — and u-uds found at
+/// its ack gate that this forecloses the entire reason the socket transport
+/// exists: Claude accepts a socket frame BETWEEN TOOL CALLS MID-TURN, which is to
+/// say precisely when the seat is `Working`. A correct socket transport could not
+/// have overcome a prefilter that ran before it; the unit would have passed every
+/// one of its own tests and delivered nothing.
+///
+/// "Busy" was a pty-era fact: typing races a live composer, so a pty transport
+/// declines a working seat — and that is the PTY's judgement to make, in
+/// `can_deliver`, where the transport that knows its own medium answers for it.
+/// The queue reason is still [`QueueReason::Busy`] when a working seat is
+/// declined; what moved is WHO decides, not what the operator is told.
 ///
 /// # Errors
 /// [`PijError::SelfAddressed`] when a seat addresses itself.
@@ -63,9 +77,6 @@ pub fn route(
         return Ok(DeliveryRoute::Tombstoned {
             reason: recipient.tombstone_reason.clone(),
         });
-    }
-    if recipient.state == SystemState::Working {
-        return Ok(DeliveryRoute::Queue(QueueReason::Busy));
     }
     if recipient.semantic_state == Some(SemanticState::Hold) {
         return Ok(DeliveryRoute::Queue(QueueReason::OperatorHold));
@@ -100,10 +111,16 @@ mod tests {
         let mut seat = bound_recipient();
         assert_eq!(route(&from, &seat, true), Ok(DeliveryRoute::Transport));
 
+        // A WORKING seat still routes to the transport: whether a busy recipient
+        // can be reached is the transport's judgement, because only it knows
+        // whether its medium interrupts (a socket does, a pty does not). The
+        // operator still hears `Busy` — the caller supplies that reason when the
+        // transport declines a working seat.
         seat.state = SystemState::Working;
+        assert_eq!(route(&from, &seat, true), Ok(DeliveryRoute::Transport));
         assert_eq!(
-            route(&from, &seat, true),
-            Ok(DeliveryRoute::Queue(QueueReason::Busy))
+            route(&from, &seat, false),
+            Ok(DeliveryRoute::Queue(QueueReason::Unreachable))
         );
 
         seat.state = SystemState::Idle;

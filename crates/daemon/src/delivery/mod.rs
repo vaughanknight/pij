@@ -127,6 +127,10 @@ impl DeliveryService {
             }
             DeliveryRoute::Transport => {
                 if !self.transport.can_deliver(&recipient, &msg).await? {
+                    // The transport declined. WHY it declined is the recipient's
+                    // state: a working seat is Busy, anything else is Unreachable.
+                    // The operator sees the same two words as before; the decision
+                    // simply now belongs to the transport that knows its medium.
                     debug_assert_eq!(
                         route(&from, &recipient, false)?,
                         DeliveryRoute::Queue(QueueReason::Unreachable)
@@ -448,36 +452,79 @@ mod tests {
         assert_eq!(inbox[0].body, "before bind");
         assert_audit(&prebind, &SeatId::from("pij-prebind"), "queued").await;
 
-        // Busy and operator-held seats are temporary conditions, so both queue
-        // without consulting transport and remain retrievable.
-        for (id, mut seat) in [
-            ("pij-busy", bound("pij-busy")),
-            ("pij-hold", bound("pij-hold")),
-        ] {
-            if id == "pij-busy" {
-                seat.state = SystemState::Working;
-            } else {
-                seat.semantic_state = Some(SemanticState::Hold);
-            }
-            let queued = fixture(FakeTransport::reachable());
-            register(&queued, seat).await;
-            let receipt = queued
+        // An operator hold is a REGISTRY fact and still queues without consulting
+        // the transport at all.
+        let held_seat = {
+            let mut seat = bound("pij-hold");
+            seat.semantic_state = Some(SemanticState::Hold);
+            seat
+        };
+        let queued = fixture(FakeTransport::reachable());
+        register(&queued, held_seat).await;
+        let receipt = queued
+            .service
+            .send("pij-from".into(), "pij-hold".into(), "pij-hold")
+            .await
+            .expect("operator hold queues");
+        assert_eq!(receipt.outcome, DeliveryOutcome::Queued);
+        assert!(queued.transport.calls().is_empty());
+        assert_eq!(
+            queued
                 .service
-                .send("pij-from".into(), id.into(), id)
+                .inbox(&SeatId::from("pij-hold"), false)
                 .await
-                .expect("temporary condition queues");
-            assert_eq!(receipt.outcome, DeliveryOutcome::Queued);
-            assert!(queued.transport.calls().is_empty());
-            assert_eq!(
-                queued
-                    .service
-                    .inbox(&SeatId::from(id), false)
-                    .await
-                    .expect("queued inbox")
-                    .len(),
-                1
-            );
-        }
+                .expect("queued inbox")
+                .len(),
+            1
+        );
+
+        // BUSY is now the transport's judgement, not the policy's. A pty-shaped
+        // transport declines a working seat, because typing races a live
+        // composer — and the operator still hears "queued".
+        //
+        // This moved because a socket transport delivers to Claude BETWEEN TOOL
+        // CALLS MID-TURN, which is to say exactly when the seat is Working. The
+        // old prefilter queued first and asked afterwards, which would have made
+        // a correct socket transport unreachable in the one case it exists for
+        // (found by u-uds at its ack gate, wave 3).
+        let busy_seat = {
+            let mut seat = bound("pij-busy");
+            seat.state = SystemState::Working;
+            seat
+        };
+        let busy = fixture(FakeTransport::unreachable());
+        register(&busy, busy_seat.clone()).await;
+        let receipt = busy
+            .service
+            .send("pij-from".into(), "pij-busy".into(), "pij-busy")
+            .await
+            .expect("a declining transport queues");
+        assert_eq!(receipt.outcome, DeliveryOutcome::Queued);
+        assert_eq!(busy.transport.calls().len(), 1, "the transport was ASKED");
+        assert_eq!(
+            busy.service
+                .inbox(&SeatId::from("pij-busy"), false)
+                .await
+                .expect("queued inbox")
+                .len(),
+            1
+        );
+
+        // ...and an interrupting transport DELIVERS to that same working seat.
+        // This assertion is the whole point of the move.
+        let mid_turn = fixture(FakeTransport::reachable());
+        register(&mid_turn, busy_seat).await;
+        let receipt = mid_turn
+            .service
+            .send("pij-from".into(), "pij-busy".into(), "mid-turn")
+            .await
+            .expect("an interrupting transport delivers mid-turn");
+        assert_eq!(
+            receipt.outcome,
+            DeliveryOutcome::Delivered {
+                origin: DeliveryOrigin::InjectedToTransport
+            }
+        );
 
         // A genuine approval hold comes only from transport and is not queued.
         let held = fixture(
