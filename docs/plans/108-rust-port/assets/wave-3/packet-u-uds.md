@@ -169,6 +169,34 @@ the more detailed document and is therefore the easier one to copy by accident:
 Our partial-unique dedupe over live rows is strictly STRONGER than their
 insert-time id idempotence. Do not read their weaker guarantee as a requirement.
 
+## NARROWED, after the ack (read this before the done bar)
+
+The first version of this packet asked a leaf socket adapter to implement the
+whole delivery ladder. It cannot, and the reason is structural: there is ONE
+`Arc<dyn Transport>` and `can_deliver(false)` means ENQUEUE, so nothing inside
+`crates/transport` can "select the pty" or "select the pointer" — those words
+describe a caller that does not exist. u-uds found this at the ack gate.
+
+**Yours**: discovery, capability, framing, auth/keys, negative-only ack.
+**Not yours** (PM at compose, or wave 4): the ladder, the pointer rung, the
+composer guard, command ROUTING, `from-mode` sourcing, the spawn setting,
+longitudinal observability.
+
+Two further rulings worth carrying here, because both were packet defects:
+
+* **`Msg.command` did not exist.** R3-AMEND-3 landed the signature without the
+  field. Landed at `7be1910f`; `can_deliver` returns false when it is `Some`.
+* **`DeliveryService::send` queued every `Working` recipient BEFORE consulting the
+  transport**, which foreclosed mid-turn socket delivery — the entire reason this
+  unit exists. Fixed at compose: capability is consulted before state, because
+  "busy" is a pty-era fact and a socket-capable seat mid-turn is exactly the case
+  the socket was built for.
+* **`wereHeld` maps to `DeliveryOutcome::Held { reason }`** — a word the
+  vocabulary already had.
+* **Discovery by filesystem IS the exception this wave.** "Not a send-path probe"
+  forbids CONNECTING to learn whether you can connect; reading a session record is
+  cheap and side-effect-free. Descriptor stamping at bind is wave 4.
+
 ## Done bar
 
 * Gate six stages green (COMMON § 2).
