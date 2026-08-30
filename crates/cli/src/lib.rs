@@ -8,12 +8,18 @@
 //! meet a newer daemon on one machine: they are the same artifact.
 
 #![deny(missing_docs)]
+pub mod address;
+pub mod client;
+
+pub use address::{AddressError, parse_destination, render_destination};
+pub use client::{
+    DaemonClient, EventFrame, Registration, SendRequest, TailError, TailStream, setup_refusal,
+};
 
 use std::path::PathBuf;
 
 use pij_core::config::Config;
-use pij_core::error::{PijError, Result};
-use pij_core::model::Envelope;
+use pij_core::model::{Envelope, ErrorKind};
 
 /// Where a daemon keeps its per-boot key and, later, its store.
 pub fn default_state_dir() -> PathBuf {
@@ -30,74 +36,59 @@ pub fn default_state_dir() -> PathBuf {
         })
 }
 
-/// Ask a running daemon whether it is healthy.
-///
-/// Reads the per-boot key from `state_dir`, calls `/health`, and returns the
-/// daemon's own envelope — the CLI does not invent a verdict, it relays one.
-///
-/// # Errors
-/// [`PijError::Adapter`] when the key is unreadable, the daemon is unreachable,
-/// or the reply is not an envelope this build understands.
-pub async fn ping(state_dir: &std::path::Path, addr: &str) -> Result<Envelope<serde_json::Value>> {
-    let token = pij_daemon::auth::read_key(&state_dir.join("daemon.key"))?;
-
-    let response = reqwest::Client::new()
-        .get(format!("http://{addr}/health"))
-        .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
-        .send()
-        .await
-        .map_err(|error| PijError::Adapter {
-            adapter: "cli".to_string(),
-            message: format!("could not reach the daemon at {addr}: {error}"),
-        })?;
-
-    let status = response.status();
-    let body = response.text().await.map_err(|error| PijError::Adapter {
-        adapter: "cli".to_string(),
-        message: format!("could not read the daemon's reply: {error}"),
-    })?;
-
-    if status == reqwest::StatusCode::UNAUTHORIZED {
-        // Relay the daemon's own words: it already knows the fix, and rewriting
-        // the cause here is how a diagnosis gets lost in translation.
-        return Err(PijError::Adapter {
-            adapter: "cli".to_string(),
-            message: format!("the daemon refused this key ({body})"),
-        });
-    }
-
-    pij_core::wire::decode_envelope(&body).map_err(|error| PijError::Adapter {
-        adapter: "cli".to_string(),
-        message: error.to_string(),
-    })
-}
-
 /// Render an envelope for a human, or as the JSON it already is.
 pub fn render<T: serde::Serialize>(envelope: &Envelope<T>, as_json: bool) -> String {
     if as_json {
-        return serde_json::to_string_pretty(envelope).unwrap_or_else(|error| error.to_string());
+        return serde_json::to_string(envelope).unwrap_or_else(|error| error.to_string());
     }
-    if envelope.ok {
-        format!(
-            "{}: ok{}",
-            envelope.command,
-            envelope
-                .data
-                .as_ref()
-                .and_then(|data| serde_json::to_value(data).ok())
-                .and_then(|value| value
-                    .get("status")
-                    .and_then(|s| s.as_str())
-                    .map(String::from))
-                .map(|status| format!(" — {status}"))
-                .unwrap_or_default()
-        )
-    } else {
-        format!(
+    if !envelope.ok {
+        return format!(
             "{}: FAILED — {}",
             envelope.command,
             envelope.meta.as_deref().unwrap_or("no reason given")
-        )
+        );
+    }
+
+    match envelope.data.as_ref() {
+        Some(data) => format!(
+            "{}: ok — {}",
+            envelope.command,
+            serde_json::to_string(data).unwrap_or_else(|error| error.to_string())
+        ),
+        None => format!("{}: ok", envelope.command),
+    }
+}
+
+/// Render one tail frame from the same value for either output face.
+pub fn render_frame(frame: &EventFrame, as_json: bool) -> String {
+    if as_json {
+        return serde_json::to_string(frame).unwrap_or_else(|error| error.to_string());
+    }
+    format!(
+        "{}:{} {}{} {}",
+        frame.machine,
+        frame.cursor,
+        frame.event.kind,
+        frame
+            .event
+            .seat
+            .as_ref()
+            .map(|seat| format!(" seat={seat}"))
+            .unwrap_or_default(),
+        frame.event.payload
+    )
+}
+
+/// Stable process exit code for a daemon envelope.
+pub fn exit_code<T>(envelope: &Envelope<T>) -> u8 {
+    if envelope.ok {
+        return 0;
+    }
+    match envelope.error {
+        Some(ErrorKind::Refused) => 2,
+        Some(ErrorKind::NotFound) => 3,
+        Some(ErrorKind::Auth) => 4,
+        Some(ErrorKind::Skew | ErrorKind::Adapter) | None => 1,
     }
 }
 
@@ -106,5 +97,37 @@ pub fn hello_config(bind_addr: &str) -> Config {
     Config {
         bind_addr: bind_addr.to_string(),
         ..Config::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pij_core::model::{Envelope, ErrorKind};
+
+    use super::exit_code;
+
+    #[test]
+    fn exit_code_contract_is_an_explicit_table() {
+        let cases = [
+            (Envelope::ok("pij ping", ()), 0),
+            (Envelope::refused("pij send", ErrorKind::Refused, "no"), 2),
+            (
+                Envelope::refused("pij list", ErrorKind::NotFound, "gone"),
+                3,
+            ),
+            (
+                Envelope::refused("pij ping", ErrorKind::Auth, "wrong key"),
+                4,
+            ),
+            (Envelope::refused("pij ping", ErrorKind::Skew, "newer"), 1),
+            (
+                Envelope::refused("pij ping", ErrorKind::Adapter, "offline"),
+                1,
+            ),
+        ];
+
+        for (envelope, expected) in cases {
+            assert_eq!(exit_code(&envelope), expected, "{envelope:?}");
+        }
     }
 }

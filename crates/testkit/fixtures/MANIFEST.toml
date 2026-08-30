@@ -217,3 +217,24 @@ sha256 = "aa0d5b6f031b9c06831f6b7558c83a73b336cc859520f91e197c63a6ff92b982"
 bytes = 898
 note = "A REAL OMP pane AT REST, captured 2026-08-29 from one of the PM's own wave-2 coder seats after it finished its unit \u2014 capture only, the seat was neither driven nor disturbed. Home paths replaced with /Users/USER. Non-blank content asserted before writing."
 answer = "Must classify as READY. Pair it with the repo's live_omp_blank_padded.txt, which shows the same chrome carrying '\u280b Working\u2026 \u27e6esc\u27e7' and must classify as BUSY. The discriminator is the spinner row, not the footer and not the prompt \u2014 both fixtures have those."
+
+[[fixture]]
+path = "golden/cli/register-envelope.json"
+sha256 = "7787b2f8fe57f84e1b81d60a03860ee576ce86ed438277f1ccdf2c01dd39c257"
+bytes = 356
+note = "Computed pij register success envelope rendered by u-cli from the accepted SeatDescriptor; editorial text is deliberately absent."
+answer = "Must match render(Envelope::ok(\"pij register\", descriptor), true) byte-for-byte, including absent optional fields staying absent and error staying absent on success."
+
+[[fixture]]
+path = "golden/cli/send-envelope.json"
+sha256 = "d939a4afc02772b9bceb3e9d8782c6c1103eed70f148b9adb7959b0c47d5a3f9"
+bytes = 117
+note = "Computed pij send success envelope rendered by u-cli from a durable queued Receipt."
+answer = "Must preserve msg_id, the tagged queued outcome, and at exactly; the CLI must not upgrade queued into delivered."
+
+[[fixture]]
+path = "golden/cli/list-envelope.json"
+sha256 = "c0c9901f03abf9d4cbb75497791db26fe7f464a67d40fc5a258c4e836c17d02d"
+bytes = 521
+note = "Computed pij list success envelope rendered by u-cli from two daemon-owned SeatDescriptors."
+answer = "Must preserve registry order and absent fields, including a paneless relay; the CLI relays descriptors rather than recomputing liveness or state."
