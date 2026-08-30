@@ -43,3 +43,43 @@ pub fn check(workspace_root: &Path, cargo: &Path) -> Result<(), String> {
         stderr.trim().lines().next().unwrap_or("(no output)")
     ))
 }
+
+/// Is the `Cargo.lock` on disk the one that is COMMITTED?
+///
+/// [`check`] answers "does the lock match the manifests"; this answers "is the
+/// lock a fact of the repository, or of this working tree". Wave 3 shipped a head
+/// that passed the first and failed the second: an outer `cargo` invocation
+/// repaired the file, the gate then judged the repaired copy, and six consecutive
+/// green runs said nothing about the commit — a fresh `--locked` clone failed at
+/// stage 2.
+///
+/// Ruled a governance item by the prime after review finding F1: **a gate that
+/// repairs its own input is a formatter that reports PASS.**
+///
+/// Outside a git checkout this is not a question that can be asked, so it passes.
+/// A check that invents a verdict when it cannot observe is the failure this whole
+/// stage exists to prevent.
+pub fn committed(workspace_root: &Path) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain", "--", "Cargo.lock"])
+        .current_dir(workspace_root)
+        .output();
+
+    let Ok(output) = output else {
+        return Ok(());
+    };
+    if !output.status.success() {
+        return Ok(());
+    }
+    let dirty = String::from_utf8_lossy(&output.stdout);
+    if dirty.trim().is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "Cargo.lock is modified and NOT committed ({}). The gate would be judging a \
+         lock only this working tree has.\n  Fix: commit Cargo.lock. Regenerating it is \
+         correct; leaving it uncommitted means the next person's `--locked` checkout \
+         still fails while your gate reports PASS.",
+        dirty.trim()
+    ))
+}

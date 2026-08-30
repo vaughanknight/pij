@@ -66,14 +66,37 @@ fn main() -> ExitCode {
     // Stage 2 — the lockfile, in-process so the check cannot be weakened by an
     // argument list drifting (its first version used `--no-deps`, which returns 0
     // against a stale lock; review caught it).
+    //
+    // Two questions, because wave 3 shipped a head that passed the first and
+    // failed the second: does the lock match the manifests, AND is the lock on
+    // disk the one that is COMMITTED? A gate run against a locally-repaired lock
+    // judges a tree nobody else can clone — which is exactly what happened, six
+    // green runs in a row, because the outer `cargo run` repaired the file before
+    // the gate started. Ruled a governance item by the prime: **a gate that
+    // repairs its own input is a formatter that reports PASS.**
     match lockfile::check(&root, &cargo) {
-        Ok(()) => verdicts.push(("lock", true, "Cargo.lock matches the manifests".to_string())),
+        Ok(()) => match lockfile::committed(&root) {
+            Ok(()) => {
+                verdicts.push((
+                    "lock",
+                    true,
+                    "Cargo.lock matches the manifests, and the tree".to_string(),
+                ));
+            }
+            Err(message) => {
+                verdicts.push(("lock", false, message));
+                failures.push("lock");
+            }
+        },
         Err(message) => {
             verdicts.push(("lock", false, message));
             failures.push("lock");
         }
     }
 
+    // `--locked` on EVERY cargo stage, not just the outer invocation. Any of
+    // these will silently rewrite a stale lock and then pass, which makes the
+    // stage a repair step wearing a check's name.
     let stages = [
         Stage {
             name: "fmt",
@@ -83,6 +106,7 @@ fn main() -> ExitCode {
             name: "clippy",
             args: vec![
                 "clippy",
+                "--locked",
                 "--workspace",
                 "--all-targets",
                 "--",
@@ -92,7 +116,7 @@ fn main() -> ExitCode {
         },
         Stage {
             name: "test",
-            args: vec!["test", "--workspace"],
+            args: vec!["test", "--locked", "--workspace"],
         },
     ];
 
@@ -101,6 +125,12 @@ fn main() -> ExitCode {
             .args(&stage.args)
             .current_dir(&root)
             .env("CARGO_INCREMENTAL", "0")
+            // The test stage's ONE self-healing vector: `UPDATE_GOLDENS` makes a
+            // failing golden re-record itself and pass. Removed from the child's
+            // environment rather than trusted to be unset, because an exported
+            // variable in the caller's shell would otherwise turn the whole stage
+            // into a recording session that reports PASS.
+            .env_remove("UPDATE_GOLDENS")
             .status();
 
         match status {
