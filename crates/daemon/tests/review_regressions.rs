@@ -151,9 +151,12 @@ async fn a_failed_boot_cannot_brick_the_running_daemon() {
 /// from seven, so a config could report `offline=false` with nothing constructed.
 #[tokio::test]
 async fn the_composition_root_wires_every_port_it_claims() {
-    let services = pij_daemon::build_services(&Config::default())
-        .await
-        .expect("all-fake services");
+    let services = pij_daemon::build_services(
+        &Config::default(),
+        std::path::Path::new("/tmp/pij-test-pane-signals"),
+    )
+    .await
+    .expect("all-fake services");
 
     // Each port is present and answers — a null wiring would panic or refuse.
     assert!(services.registry.get(&SeatId::from("nobody")).await.is_ok());
@@ -205,9 +208,10 @@ async fn selecting_the_real_transport_ships_closed_until_a_seat_opts_in() {
         },
         ..Config::default()
     };
-    let services = pij_daemon::build_services(&config)
-        .await
-        .expect("the real transport exists now and must build");
+    let services =
+        pij_daemon::build_services(&config, std::path::Path::new("/tmp/pij-test-pane-signals"))
+            .await
+            .expect("the real transport exists now and must build");
 
     let mut seat = SeatDescriptor::new("pij-claude-seat", Harness::Claude, "/abs/tree");
     seat.proc = Some(ProcIdentity {
@@ -358,7 +362,12 @@ async fn selecting_the_real_liveness_adapter_reaches_the_process_table() {
         ..Config::default()
     };
 
-    let services = match pij_daemon::build_services(&config).await {
+    let services = match pij_daemon::build_services(
+        &config,
+        std::path::Path::new("/tmp/pij-test-pane-signals"),
+    )
+    .await
+    {
         Ok(services) => services,
         Err(error) => panic!("the real liveness adapter must build: {error}"),
     };
@@ -374,13 +383,16 @@ async fn selecting_the_real_liveness_adapter_reaches_the_process_table() {
         "a real LivenessPort must see this test's own process"
     );
     assert_eq!(
-        pij_daemon::build_services(&Config::default())
-            .await
-            .expect("all-fake")
-            .liveness
-            .proc_start(mine)
-            .await
-            .expect("fake"),
+        pij_daemon::build_services(
+            &Config::default(),
+            std::path::Path::new("/tmp/pij-test-pane-signals"),
+        )
+        .await
+        .expect("all-fake")
+        .liveness
+        .proc_start(mine)
+        .await
+        .expect("fake"),
         None,
         "...and the fake must NOT — which is what proves the wiring changed"
     );

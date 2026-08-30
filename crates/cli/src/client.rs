@@ -132,6 +132,15 @@ impl DaemonClient {
         self.post("pij send", "/v1/send", request).await
     }
 
+    /// Enqueue one sidecar job (telegram / bg / chore).
+    ///
+    /// The sidecar consumers are queue-backed, so this is the SHIPPED producer:
+    /// live-fire proof that enqueues by hand-written SQL proves the harness, not
+    /// the product.
+    pub async fn sidecar(&self, request: &Value) -> Envelope<Value> {
+        self.post("pij sidecar", "/v1/sidecar", request).await
+    }
+
     /// List the local authority plus typed remote availability.
     pub async fn list(&self) -> Envelope<FederatedRoster> {
         self.get("pij list", "/v1/seats").await

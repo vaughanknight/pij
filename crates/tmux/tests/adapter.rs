@@ -8,7 +8,7 @@ use pij_core::ports::TmuxPort;
 use pij_testkit::block_on;
 use pij_testkit::contract::{TmuxContractFixture, tmux_contract};
 use pij_testkit::fakes::FakeTmux;
-use pij_tmux::TmuxAdapter;
+use pij_tmux::{TmuxAdapter, tap_sink_path};
 
 static SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -97,7 +97,10 @@ fn fake_tmux_honours_the_shared_contract() {
 
 #[test]
 fn missing_tmux_names_the_installation_fix() {
-    let tmux = TmuxAdapter::with_binary("/definitely/not/a/tmux-binary");
+    let tmux = TmuxAdapter::with_binary(
+        "/definitely/not/a/tmux-binary",
+        std::env::temp_dir().join("pij-missing-tmux-signals"),
+    );
     let error = block_on(tmux.list_panes()).expect_err("missing binary must fail");
     let message = error.to_string();
     assert!(message.contains("install tmux"), "{message}");
@@ -109,19 +112,20 @@ fn real_tmux_honours_the_shared_contract_inside_its_own_session() {
     let Some(session) = TestSession::start_or_skip("contract") else {
         return;
     };
-    let tmux = TmuxAdapter::for_server(&session.server);
+    let tmux = TmuxAdapter::for_server(&session.server, &session.tap_root);
     let pane = block_on(tmux.list_panes())
         .expect("list isolated panes")
         .into_iter()
         .next()
         .expect("isolated session pane");
+    let tap_sink = tap_sink_path(&session.tap_root, &pane.id);
     let fixture = Fixture {
         pane,
         initial_capture: "\n".repeat(23),
         sent_keys: "literal | payload".to_string(),
         sent_keys_capture: "literal | payload".to_string(),
         new_window_name: "contract-created".to_string(),
-        tap_sink: std::env::temp_dir().join(format!("{}-tap.raw", session.name)),
+        tap_sink,
     };
 
     block_on(tmux_contract(&tmux, &fixture));
@@ -132,7 +136,7 @@ fn capture_proves_zero_and_more_than_the_pane_contains() {
     let Some(session) = TestSession::start_or_skip("capture") else {
         return;
     };
-    let tmux = TmuxAdapter::for_server(&session.server);
+    let tmux = TmuxAdapter::for_server(&session.server, &session.tap_root);
     let pane = block_on(tmux.list_panes())
         .expect("list isolated panes")
         .into_iter()
@@ -198,13 +202,13 @@ fn pane_tap_drains_each_raw_byte_once_and_detaches_cleanly() {
     let Some(session) = TestSession::start_or_skip("tap") else {
         return;
     };
-    let tmux = TmuxAdapter::for_server(&session.server);
+    let tmux = TmuxAdapter::for_server(&session.server, &session.tap_root);
     let pane = block_on(tmux.list_panes())
         .expect("list isolated panes")
         .into_iter()
         .next()
         .expect("isolated session pane");
-    let sink = std::env::temp_dir().join(format!("{}-tap.raw", session.name));
+    let sink = tap_sink_path(&session.tap_root, &pane.id);
 
     assert!(
         block_on(tmux.drain_pane_tap(&pane.id)).is_err(),
@@ -242,13 +246,13 @@ fn matching_marker_adopts_restart_pipe_and_detach_clears_ownership() {
     let Some(session) = TestSession::start_or_skip("tap-adopt") else {
         return;
     };
-    let first = TmuxAdapter::for_server(&session.server);
+    let first = TmuxAdapter::for_server(&session.server, &session.tap_root);
     let pane = block_on(first.list_panes())
         .expect("list isolated panes")
         .into_iter()
         .next()
         .expect("isolated session pane");
-    let sink = std::env::temp_dir().join(format!("{}-tap.raw", session.name));
+    let sink = tap_sink_path(&session.tap_root, &pane.id);
     block_on(first.attach_pane_tap(&pane.id, &sink)).expect("initial attach");
     let marker = session.run([
         "show-options",
@@ -266,7 +270,7 @@ fn matching_marker_adopts_restart_pipe_and_detach_clears_ownership() {
 
     // A fresh adapter has no process-local tap map. The matching pane marker is
     // the durable ownership fact that lets it replace the orphan safely.
-    let restarted = TmuxAdapter::for_server(&session.server);
+    let restarted = TmuxAdapter::for_server(&session.server, &session.tap_root);
     block_on(restarted.attach_pane_tap(&pane.id, &sink)).expect("restart adoption");
     block_on(restarted.send_keys(&pane.id, "after-restart")).expect("emit after restart");
     let bytes = drain_until_quiet(&restarted, &session.server, &pane.id, "after-restart");
@@ -293,13 +297,13 @@ fn mismatched_marker_refuses_to_replace_a_foreign_pipe() {
     let Some(session) = TestSession::start_or_skip("tap-foreign") else {
         return;
     };
-    let first = TmuxAdapter::for_server(&session.server);
+    let first = TmuxAdapter::for_server(&session.server, &session.tap_root);
     let pane = block_on(first.list_panes())
         .expect("list isolated panes")
         .into_iter()
         .next()
         .expect("isolated session pane");
-    let sink = std::env::temp_dir().join(format!("{}-tap.raw", session.name));
+    let sink = tap_sink_path(&session.tap_root, &pane.id);
     block_on(first.attach_pane_tap(&pane.id, &sink)).expect("initial attach");
     session.run([
         "set-option",
@@ -310,17 +314,57 @@ fn mismatched_marker_refuses_to_replace_a_foreign_pipe() {
         "/foreign/sink",
     ]);
 
-    let restarted = TmuxAdapter::for_server(&session.server);
+    let restarted = TmuxAdapter::for_server(&session.server, &session.tap_root);
     let error = block_on(restarted.attach_pane_tap(&pane.id, &sink))
         .expect_err("mismatched owner must be refused");
     assert!(
         error.to_string().contains("not owned by this sink"),
         "{error}"
     );
+
     let pipe = session.run(["display-message", "-p", "-t", &pane.id, "#{pane_pipe}"]);
     assert_eq!(String::from_utf8_lossy(&pipe.stdout).trim(), "1");
 
     block_on(first.detach_pane_tap(&pane.id)).expect("clean up original tap");
+}
+#[test]
+fn direct_detach_refuses_foreign_marker_and_preserves_its_file() {
+    let Some(session) = TestSession::start_or_skip("tap-detach-foreign") else {
+        return;
+    };
+    let tmux = TmuxAdapter::for_server(&session.server, &session.tap_root);
+    let pane = block_on(tmux.list_panes())
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    let victim = std::env::temp_dir().join(format!("{}-victim.raw", session.name));
+    std::fs::write(&victim, b"FOREIGN FILE").expect("create foreign file");
+    let pipe_command = format!("cat >> '{}'", victim.display());
+    session.run(["pipe-pane", "-O", "-t", &pane.id, &pipe_command]);
+    session.run([
+        "set-option",
+        "-p",
+        "-t",
+        &pane.id,
+        "@pij-tap-sink",
+        victim.to_str().expect("UTF-8 victim path"),
+    ]);
+
+    let result = block_on(tmux.detach_pane_tap(&pane.id));
+    assert_eq!(
+        std::fs::read(&victim).expect("foreign file survives"),
+        b"FOREIGN FILE",
+        "identity mutation must fail on the file, not only the pipe"
+    );
+    let error = result.expect_err("foreign marker cannot authorize direct detach");
+    assert!(error.to_string().contains("foreign tap"), "{error}");
+    let pipe = session.run(["display-message", "-p", "-t", &pane.id, "#{pane_pipe}"]);
+    assert_eq!(String::from_utf8_lossy(&pipe.stdout).trim(), "1");
+
+    session.run(["pipe-pane", "-t", &pane.id]);
+    session.run(["set-option", "-p", "-u", "-t", &pane.id, "@pij-tap-sink"]);
+    std::fs::remove_file(victim).expect("remove foreign fixture");
 }
 
 #[test]
@@ -328,7 +372,7 @@ fn pane_in_mode_is_the_only_typing_fact_this_adapter_claims() {
     let Some(session) = TestSession::start_or_skip("typing") else {
         return;
     };
-    let tmux = TmuxAdapter::for_server(&session.server);
+    let tmux = TmuxAdapter::for_server(&session.server, &session.tap_root);
     let pane = block_on(tmux.list_panes())
         .expect("list isolated panes")
         .into_iter()
@@ -349,7 +393,7 @@ fn kill_refuses_an_id_not_freshly_resolved_in_the_owned_session() {
     let Some(session) = TestSession::start_or_skip("kill-brake") else {
         return;
     };
-    let tmux = TmuxAdapter::for_server(&session.server);
+    let tmux = TmuxAdapter::for_server(&session.server, &session.tap_root);
 
     let error = block_on(tmux.kill("%999999")).expect_err("unknown pane must be refused");
     assert!(error.to_string().contains("fresh list-panes"), "{error}");
@@ -365,6 +409,7 @@ fn kill_refuses_an_id_not_freshly_resolved_in_the_owned_session() {
 struct TestSession {
     name: String,
     server: String,
+    tap_root: PathBuf,
 }
 
 impl TestSession {
@@ -391,7 +436,12 @@ impl TestSession {
         let count = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
         let name = format!("pij-rs-{label}-{}-{nonce}-{count}", std::process::id());
         let server = format!("{name}-server");
-        let session = Self { name, server };
+        let tap_root = std::env::temp_dir().join(format!("{name}-signals"));
+        let session = Self {
+            name,
+            server,
+            tap_root,
+        };
         session.run([
             "new-session",
             "-d",
