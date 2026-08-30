@@ -1,7 +1,7 @@
 # Takeover brief — pij o-prime failover (Claude → Copilot)
 
 **Written by** `pij-relative-panther` (the Claude o-prime) **on** 2026-08-30, for the standby
-`pij-other-ptarmigan` (copilot harness, `claude-opus-5`, effort high, pane `%536`).
+`pij-compact-heron` (copilot harness, `claude-opus-5`, effort high, pane `%539`, own tmux window).
 **Read this ONLY after you receive a DIRECTION that names it.** Until then you are idle:
 answer any wake nudge with one line, `standby, idle`, and do nothing else.
 
@@ -103,3 +103,20 @@ get a ruling before coding it in TS).
 - `pij compact-self --help` is NOT a read: it types into your own pane.
 - Registry `boundModel` is stamped once at spawn and cannot be re-stamped (E53) — it may name
   a model the seat is no longer running.
+
+## Operational facts (as built, 2026-08-30)
+
+| thing | value |
+|---|---|
+| standby seat | `pij-compact-heron` — copilot harness, `claude-opus-5`, effort high, pane `%539`, its own tmux window in session `pij-prime` |
+| why Copilot | a Claude/Fable credit exhaustion must not take the failover down with it |
+| watcher | `prime-failover.sh` in tmux session `pij-prime-failover`, 60 s cycle |
+| promote when | (usage-limit frame in the prime's pane tail **or** registry `failureReason` ∈ {quota, auth}) **and** the prime has been quiet ≥ 600 s, **and** that holds for 2 consecutive checks |
+| never promote on | silence alone; or the limit words appearing while the prime is still `working` (that is scrollback, not death) |
+| on silence ≥ 90 min with no evidence | notify Vaughan on Telegram, do **not** promote |
+| standby health | checked every cycle; if it is not `bound`, Vaughan is told once that there is no failover target |
+| watchdog | the standby is `exempt` for 30 days — it is idle by design, and exempt still lets provider-failure notices through |
+
+**Spawn note that cost an hour**: a Copilot/OMP seat must be spawned with `--layout window`.
+The default `stack` layout split the caller's window down to **19 columns**, and the TUI never
+bound (`DEGRADED: never bound … wedged boot`). Own window, never a split pane.
