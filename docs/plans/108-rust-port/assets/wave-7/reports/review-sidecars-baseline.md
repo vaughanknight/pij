@@ -129,8 +129,72 @@ command-success-is-not-effect exactly.
 
 I will: run the witness live; then mutate the shipped path by removing the
 await-observed-exit and require the named test to FAIL. A witness never observed
-to fail is a claim (E-031). Any surviving pid in the tree at receipt time is a
-finding.
+to fail is a claim (E-031).
+
+#### P1a — I exercised my own instrument first, and it was wrong twice
+
+Before grading anyone's cancel path I built the probe I would grade it with, and
+it produced two false readings. Both are recorded because the second one changes
+the acceptance criterion.
+
+**First error — I signalled my own process group.** `sh -c '…' &` from a
+non-interactive shell does NOT create a new process group; the backgrounded tree
+inherited my pgid, so `kill -TERM -$PGID` terminated the probe itself (exit 143).
+The instrument now carries the interlock it should have had from the start:
+`assert pgid != os.getpgid(0)` — refuse to signal a group that is not provably
+the job's own. This is also a real constraint on the unit: the bg child must be
+its own group leader (the legacy adapter says so —
+`.pi/extensions/pij/adapters/background-launcher.ts:1-26`, `detached: true`), or
+a group cancel reaches the daemon's own group.
+
+**Second error, and the one that matters — I read a zombie as a survivor.** With
+a correct detached tree, `ps` said one member was still present six seconds after
+`SIGTERM`, and I was one step from filing "SIGTERM does not kill the group
+leader". It does. Measured:
+
+```
+python3 /tmp/araminta-zombie.py   # ps -Ao pid=,pgid=,state=,comm=
+before:            [(73033,'Ss','sh'), (73044,'S','sleep'),
+                    (73045,'S','sleep'), (73046,'S','sleep')]
+1s after SIGTERM:  [(73033,'Z','<defunct>')]
+child.poll() = -15                        # dead, killed by SIGTERM
+after we wait() the leader: []
+```
+
+The leader was dead the whole time. It stayed visible in `ps`, holding its pgid,
+until its parent reaped it. My earlier `killpg(pgid, 9)` escalation then failed
+with `PermissionError: Operation not permitted` — you cannot signal a group whose
+only member is already defunct, which is the same fact wearing an error code.
+
+**A zombie row is a residue, not a state** (E-024): it records that a process ran
+here, not that it runs here. My probe conflated the two, which is precisely the
+conflation the unit under review must not make.
+
+#### What P1 therefore requires
+
+"Every pid observed gone" must NOT be implemented, or witnessed, as "no rows in
+`ps` for this pgid". A correctly-killed tree passes through a zombie state whose
+duration is owned by the reaper, not by the killer. Consequences the unit is
+graded on:
+
+1. **The child is its own group leader** — assert its pgid differs from the
+   daemon's, or cancel signals the daemon.
+2. **Death of the direct child is established by `waitpid`**, which is
+   authoritative and yields the status; `ps` visibility is not.
+3. **Grandchildren are established from the process table excluding state `Z`**,
+   or by a reaper that owns them.
+4. If the runner remains the wrapper's parent and never reaps, a naive
+   `ps`-based convergence loop **cannot terminate** on a process that is already
+   dead — cancel then hangs or falsely reports failure. If the wrapper is fully
+   detached and reparented to `init`, it is reaped promptly and the same loop
+   passes. **The witness therefore behaves differently depending on a seam the
+   test does not mention**, which is how it passes for the wrong reason.
+5. A witness built on `sleep` alone, with no intermediate shell, never creates
+   the zombie and never exercises any of this. A tree with a shell leader is the
+   honest fixture.
+
+Any surviving non-defunct pid in the tree at receipt time is a finding. A
+`cancelled` receipt written before convergence is the issue-#322 defect intact.
 
 ### P2 — each consumer's LOOP survives a transient failure (E-030)
 
