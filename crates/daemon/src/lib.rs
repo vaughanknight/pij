@@ -35,6 +35,7 @@ use pij_testkit::fakes::{
     FakeHarness, FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
 };
 use pij_tmux::TmuxAdapter;
+use pij_transport::UdsTransport;
 
 pub use auth::BootKey;
 
@@ -164,7 +165,15 @@ pub async fn build_services(config: &Config) -> Result<Services> {
     // replaces — a one-line change at a named place.
     let transport: Arc<dyn Transport> = match config.adapters.transport {
         AdapterChoice::Fake => Arc::new(FakeTransport::reachable()),
-        AdapterChoice::Real => return Err(not_yet("transport", "u-uds, wave 3")),
+        // Real, and deliberately INERT: `UdsTransport` refuses every seat whose
+        // descriptor does not carry `cross_session_inbound_accept: Some(true)`,
+        // which nothing stamps until wave 4's spawn surface exists. u-uds
+        // MEASURED why (Claude 2.1.251): an authenticated daemon-origin frame to
+        // a seat without that setting is held behind a Deny/Deliver dialog,
+        // reaches the model never, and returns zero socket bytes — so the
+        // inherited 150ms silence timer was measuring nothing and reporting
+        // success. Shipping closed is the honest ship.
+        AdapterChoice::Real => Arc::new(UdsTransport::new()?),
     };
     // WIRED, wave 1 (u-tmux).
     let tmux: Arc<dyn TmuxPort> = match config.adapters.tmux {
@@ -219,17 +228,14 @@ fn needs_store(config: &Config) -> bool {
     a.registry.is_real() || a.spine.is_real() || a.queue.is_real()
 }
 
-/// The refusal for a real adapter that has not been built yet.
-fn not_yet(port: &str, unit: &str) -> PijError {
-    PijError::Adapter {
-        adapter: format!("daemon/{port}"),
-        message: format!(
-            "config selects the REAL {port} adapter, which does not exist yet (it lands with \
-             {unit}). Set it back to `fake`, or run a build from the wave that ships it — this \
-             daemon will not pretend to have wired something it has not."
-        ),
-    }
-}
+// `not_yet` is GONE. It was the refusal a `Real` adapter returned before its wave
+// shipped — "this daemon will not pretend to have wired something it has not" —
+// and with u-uds composed there is no port left that can be selected and not
+// built. All seven are real-capable.
+//
+// The scaffold is deleted rather than kept "in case": a helper with no callers is
+// a claim that some port might still be missing, and the next reader would have to
+// check.
 
 /// Boot the daemon: stage the key, BIND, build, publish, serve.
 ///

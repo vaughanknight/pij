@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use pij_core::config::{AdapterChoice, Adapters, Config};
 use pij_core::error::PijError;
-use pij_core::model::{Harness, SeatDescriptor, SeatId, Seq};
+use pij_core::model::{Harness, Msg, ProcIdentity, SeatDescriptor, SeatId, Seq};
 use pij_core::ports::{Registry, Spine};
 use pij_store::{SqliteRegistry, SqliteSpine};
 use pij_testkit::FreshStore;
@@ -146,34 +146,59 @@ async fn the_composition_root_wires_every_port_it_claims() {
     assert!(services.offline);
 }
 
-/// FINDING 3b — asking for a real adapter that has not been built must REFUSE,
-/// naming the unit that will ship it. Silently handing back a fake would make
-/// `offline` a lie in the other direction.
+/// FINDING 3b, FLIPPED FOR THE LAST TIME — the refusal is gone because there is
+/// no port left that can be selected and not built. All seven are real-capable
+/// as of u-uds.
+///
+/// The assertion flips rather than being deleted, exactly as it did for liveness
+/// in wave 1: selecting `Real` must hand back something that is really the
+/// socket transport, and it is distinguished BEHAVIOURALLY rather than by type
+/// name, because a fake wearing the right name would pass a name check.
+///
+/// The behaviour that identifies it is the one u-uds MEASURED: a real
+/// `UdsTransport` refuses a seat whose descriptor does not carry
+/// `cross_session_inbound_accept: Some(true)`, because an authenticated
+/// daemon-origin frame to such a seat is held behind a Deny/Deliver dialog,
+/// reaches the model never, and returns no bytes at all. `FakeTransport::reachable`
+/// says yes to that same seat.
 #[tokio::test]
-async fn selecting_an_unbuilt_real_adapter_refuses_and_names_the_wave() {
-    for (label, adapters, expected) in [(
-        "transport",
-        Adapters {
+async fn selecting_the_real_transport_ships_closed_until_a_seat_opts_in() {
+    let config = Config {
+        adapters: Adapters {
             transport: AdapterChoice::Real,
             ..Adapters::default()
         },
-        "u-uds",
-    )] {
-        let config = Config {
-            adapters,
-            ..Config::default()
-        };
-        // `Services` holds trait objects and is deliberately not `Debug`, so the
-        // error is matched rather than unwrapped through `expect_err`.
-        let message = match pij_daemon::build_services(&config).await {
-            Err(error) => error.to_string(),
-            Ok(_) => panic!("{label}: an unbuilt real adapter must refuse, not hand back a fake"),
-        };
-        assert!(
-            message.contains(expected) && message.contains("does not exist yet"),
-            "the {label} refusal must name the unit that will ship it: {message}"
-        );
-    }
+        ..Config::default()
+    };
+    let services = pij_daemon::build_services(&config)
+        .await
+        .expect("the real transport exists now and must build");
+
+    let mut seat = SeatDescriptor::new("pij-claude-seat", Harness::Claude, "/abs/tree");
+    seat.proc = Some(ProcIdentity {
+        pid: std::process::id(),
+        proc_start: 1,
+    });
+    assert_eq!(
+        seat.cross_session_inbound_accept, None,
+        "unknown by default"
+    );
+
+    let msg = Msg {
+        from: SeatId::from("pij-sender"),
+        to: seat.id.clone(),
+        body: "body".to_string(),
+        msg_id: "m-1".to_string(),
+        command: None,
+    };
+    assert!(
+        !services
+            .transport
+            .can_deliver(&seat, &msg)
+            .await
+            .expect("capability is a cheap descriptor question, not an IO failure"),
+        "an unknown accept precondition must be treated as CLOSED — a fake would say yes here"
+    );
 }
 
 /// WAVE 1 — the refusal for `liveness` is GONE because the adapter now exists,

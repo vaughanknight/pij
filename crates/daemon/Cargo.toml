@@ -21,6 +21,7 @@ pij-harnesses = { workspace = true }
 pij-store = { workspace = true }
 # Wired at wave-1 composition: the real TmuxPort adapter (u-tmux).
 pij-tmux = { workspace = true }
+pij-transport = { workspace = true }
 pij-testkit = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
@@ -39,4 +40,5 @@ async-trait = { workspace = true }
 pij-store = { workspace = true }
 # Wired at wave-1 composition: the real TmuxPort adapter (u-tmux).
 pij-tmux = { workspace = true }
+pij-transport = { workspace = true }
 sqlx = { workspace = true }
