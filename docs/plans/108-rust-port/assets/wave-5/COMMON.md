@@ -95,6 +95,17 @@ must be read by an assertion that would fail without it.
 
 ## 4. Ship the recipe, not the integration
 
+**A constructor CALLSITE following a signature you own is mechanical conformance**,
+exactly like a fake following a ratified port amendment — keep it, and name it in
+your shared-merge list. WIRING is different: choosing what gets built, in what
+order, with what lifecycle and shutdown. Changing the arguments to a constructor
+that already exists is not wiring; deciding that the thing exists at boot is.
+
+Never leave a branch intentionally uncompilable to prove a point about ownership.
+A unit whose gate has never been green is a unit nobody has evidence for. (Ruled
+after three coders in one wave asked the same question.)
+
+
 End your unit with a `# Composition recipe` doc comment: the exact `use`, the
 constructor, the config field, the call site, and — if you start anything — the
 shutdown contract. The PM pastes it. A worker that outlives its daemon is a
