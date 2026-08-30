@@ -756,3 +756,46 @@ other. The lesson generalises past pointers: **when you make something stop, ask
 who experiences the stopping — and whether, from where they sit, it is
 distinguishable from you being broken.**
 
+## E-036 — a consent revocation that existed as a ROW but not as an ACT
+
+The control seat asked to be deregistered. I tombstoned it: `tombstoned_at` set,
+reason recorded, row correct. The tap stayed attached. I detached it by hand and
+the daemon **re-attached within seconds and re-wrote the ownership marker.** It
+beat a hand detach twice. The only way to honour the request was to stop the
+daemon.
+
+The seat named it better than I did:
+
+> *"The store recorded my release while the pipe kept flowing — a consent
+> revocation that existed as a ROW but not as an ACT. Same family as the
+> reader-read: the ledger speaking for a world it stopped checking."*
+
+That is the same defect as E-034 with the polarity flipped. `reader-read` asserted
+a delivery that never reached a human; the tombstone asserted a release that never
+reached the pipe. **Both are the ledger describing a world it has stopped
+consulting** — and in both cases the record was internally perfect.
+
+Two things make this the worst instance of the wave:
+
+**The surface is consent, not state.** A tap pipes a human's terminal to a file. A
+seat that had asked to be released, and been recorded as released, kept being
+piped anyway.
+
+**This afternoon's fix made the wrong behaviour more durable.** The `@pij-tap-sink`
+ownership marker (E-033) exists so the daemon reliably reclaims taps it owns across
+restarts. Applied to a released seat, that reliability is the bug: without the
+marker the re-attachment would have been flaky and noticed sooner. **A correctness
+fix propagates to whatever the code does, including the parts that are wrong.**
+
+### The ruling, and why the test shape matters
+
+Tombstone must **actively detach** — stop the pipe, clear the marker, remove the
+sink — and the sweep must skip tombstones. Tested as a **transition, not a
+filter**: tombstone a seat with a live tap, assert pipe and marker are gone, then
+assert a sweep does not re-create them. **A mutation that only filters the sweep
+must fail**, because filtering leaves an already-attached pipe running for ever.
+Release means released, not "no longer routed to".
+
+Found by doing what a seat asked, at the one moment it asked to stop being
+observed.
+
