@@ -1,3 +1,22 @@
+> **INVALIDATED 2026-08-31 — DO NOT CITE THIS AS PROOF.**
+>
+> This matrix is green for a surface that has been broken since wave 4. The
+> extension cannot register against pij-rs at all: `adapters/daemon-http.ts`
+> types `/v1/seats` as an array while the daemon returns
+> `FederatedRoster { seats, unavailable }`, so `rust-runtime.ts` dies with
+> `seats.find is not a function` and the authority shows no registration.
+> `5a2a2c09` updated the Rust client and not the TypeScript one.
+>
+> The transcript still passed because **a host swallows a dead extension and
+> exits 0 with the expected model reply** — reproduced twice, once with the
+> extension not loaded at all. So a matrix leg without an **authority
+> observation** cannot distinguish *registered* from *never loaded*, and this
+> archive is the proof that it never could.
+>
+> Re-run required against a fixed client, and no leg counts without a
+> registration observed at the authority. (E-025: nothing re-ran these after the
+> surface moved.)
+
 # u-extension matrix — OMP
 
 ## Isolation

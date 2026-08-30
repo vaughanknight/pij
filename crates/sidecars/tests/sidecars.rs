@@ -1,0 +1,501 @@
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
+
+use async_trait::async_trait;
+use axum::{
+    Json, Router,
+    routing::{get, post},
+};
+use pij_core::config::Config;
+use pij_core::delivery::delivery_kind;
+use pij_core::error::{PijError, Result};
+use pij_core::model::{DeliveryOrigin, Job, JobId, Msg, Outcome, SeatId, Seq};
+use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Spine};
+use pij_sidecars::background::{self, BgRequest, BgStatus, BgWorker, group_pids};
+use pij_sidecars::chore::{self, ChoreRequest, ChoreStatus, ChoreWorker};
+use pij_sidecars::telegram::{self, TelegramConfig, TelegramSend, TelegramWorker};
+use pij_store::SqliteQueue;
+use pij_testkit::{FreshStore, fakes::FakeSpine};
+
+async fn sqlite_queue(fresh: &FreshStore) -> Arc<SqliteQueue> {
+    let config = Config::default();
+    Arc::new(
+        SqliteQueue::new(
+            pij_store::open(&fresh.path())
+                .await
+                .expect("open test store"),
+            config.claim_lease_secs,
+            config.delivered_id_capacity,
+        )
+        .expect("queue policy"),
+    )
+}
+
+fn temp_path(fresh: &FreshStore, name: &str) -> PathBuf {
+    PathBuf::from(format!("{}.{}", fresh.path(), name))
+}
+
+async fn wait_for(mut condition: impl FnMut() -> bool, timeout: Duration) {
+    let deadline = Instant::now() + timeout;
+    while !condition() {
+        assert!(Instant::now() < deadline, "condition timed out");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+struct FailFirstClaim {
+    inner: Arc<dyn Queue>,
+    fail: AtomicBool,
+}
+
+impl FailFirstClaim {
+    fn new(inner: Arc<dyn Queue>) -> Self {
+        Self {
+            inner,
+            fail: AtomicBool::new(true),
+        }
+    }
+}
+
+#[async_trait]
+impl Queue for FailFirstClaim {
+    async fn enqueue(&self, job: Job) -> Result<JobId> {
+        self.inner.enqueue(job).await
+    }
+    async fn enqueue_delivery(&self, job: Job) -> Result<DeliveryEnqueue> {
+        self.inner.enqueue_delivery(job).await
+    }
+    async fn claim(&self, kinds: &[String], worker: &str) -> Result<Option<(JobId, Job)>> {
+        if self.fail.swap(false, Ordering::SeqCst) {
+            return Err(PijError::Adapter {
+                adapter: "test/transient".to_string(),
+                message: "injected transient claim failure".to_string(),
+            });
+        }
+        self.inner.claim(kinds, worker).await
+    }
+    async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {
+        self.inner.ack(job, outcome).await
+    }
+    async fn ack_delivery(&self, job: JobId, origin: DeliveryOrigin) -> Result<DeliveryAck> {
+        self.inner.ack_delivery(job, origin).await
+    }
+    async fn note_delivered(
+        &self,
+        recipient: &SeatId,
+        msg_id: &str,
+        origin: DeliveryOrigin,
+    ) -> Result<Option<DeliveryOrigin>> {
+        self.inner.note_delivered(recipient, msg_id, origin).await
+    }
+    async fn forget_delivered(&self, recipient: &SeatId, msg_id: &str) -> Result<()> {
+        self.inner.forget_delivered(recipient, msg_id).await
+    }
+    async fn retry(&self, job: JobId, delay: Duration) -> Result<()> {
+        self.inner.retry(job, delay).await
+    }
+}
+
+#[tokio::test]
+async fn chore_run_never_advances_baseline_ack_does_and_failed_probe_stays_visible() {
+    let fresh = FreshStore::new();
+    let queue = sqlite_queue(&fresh).await;
+    let queue_port: Arc<dyn Queue> = queue.clone();
+    let worker = ChoreWorker::new(queue_port, temp_path(&fresh, "chores.json")).expect("worker");
+    let target = SeatId::from("pij-test");
+
+    for (name, probe) in [("healthy", "printf alpha"), ("broken", "exit 7")] {
+        let request = ChoreRequest::Add {
+            name: name.to_string(),
+            probe: probe.to_string(),
+            target: target.clone(),
+        };
+        queue
+            .enqueue(chore::job(&request, &format!("add-{name}")).expect("job"))
+            .await
+            .expect("enqueue");
+    }
+    assert_eq!(
+        worker.run_once(9).await.expect("add pass").count,
+        2,
+        "reported count is observed, not configured limit"
+    );
+
+    queue
+        .enqueue(
+            chore::job(
+                &ChoreRequest::Run {
+                    target: target.clone(),
+                },
+                "run-1",
+            )
+            .expect("job"),
+        )
+        .await
+        .expect("enqueue");
+    worker.run_once(9).await.expect("run");
+    let first = worker.entries().expect("entries");
+    assert_eq!(
+        first["healthy"].baseline, None,
+        "run must not advance the baseline"
+    );
+    assert_eq!(first["healthy"].pending.as_deref(), Some("alpha"));
+    assert!(
+        matches!(first["broken"].status, ChoreStatus::NotProbeable { .. }),
+        "a failed probe stays in the roster as NOT-PROBEABLE"
+    );
+
+    queue
+        .enqueue(
+            chore::job(
+                &ChoreRequest::Run {
+                    target: target.clone(),
+                },
+                "run-2",
+            )
+            .expect("job"),
+        )
+        .await
+        .expect("enqueue");
+    worker.run_once(9).await.expect("rerun");
+    assert_eq!(
+        worker.entries().expect("entries")["healthy"].baseline,
+        None,
+        "unacked delta must re-surface without baseline mutation"
+    );
+
+    queue
+        .enqueue(
+            chore::job(
+                &ChoreRequest::Ack {
+                    name: "healthy".to_string(),
+                    target,
+                },
+                "ack",
+            )
+            .expect("job"),
+        )
+        .await
+        .expect("enqueue");
+    worker.run_once(9).await.expect("ack");
+    let acked = worker.entries().expect("entries");
+    assert_eq!(acked["healthy"].baseline.as_deref(), Some("alpha"));
+    assert_eq!(acked["healthy"].pending, None);
+}
+
+#[tokio::test]
+async fn bg_cancel_observes_the_full_process_group_dead_before_cancelled_receipt() {
+    let fresh = FreshStore::new();
+    let queue = sqlite_queue(&fresh).await;
+    let queue_port: Arc<dyn Queue> = queue.clone();
+    let worker = BgWorker::new(queue_port, temp_path(&fresh, "bg")).expect("worker");
+    let target = SeatId::from("pij-test");
+
+    for run in 0..3 {
+        let id = format!("tree-{run}");
+        let start = BgRequest::Start {
+            id: id.clone(),
+            title: "cancellation witness".to_string(),
+            command: "trap 'sleep 1; exit' TERM; while :; do sleep 30; done".to_string(),
+            target: target.clone(),
+        };
+        queue
+            .enqueue(background::job(&start, &format!("start-{run}")).expect("job"))
+            .await
+            .expect("enqueue");
+        worker.run_once(7).await.expect("start");
+        let record = worker.load(&id).expect("record");
+        wait_for(
+            || group_pids(record.pgid).is_ok_and(|pids| pids.len() >= 2),
+            Duration::from_secs(2),
+        )
+        .await;
+        let before = group_pids(record.pgid).expect("observe child tree");
+        assert!(
+            before.contains(&record.pgid),
+            "spawned shell pid must equal its process-group id; inheriting the daemon group makes cancellation kill the daemon"
+        );
+
+        let cancel = BgRequest::Cancel {
+            id: id.clone(),
+            target: target.clone(),
+        };
+        queue
+            .enqueue(background::job(&cancel, &format!("cancel-{run}")).expect("job"))
+            .await
+            .expect("enqueue");
+        worker.run_once(7).await.expect("cancel");
+
+        let receipt = worker.load(&id).expect("cancelled receipt");
+        assert_eq!(receipt.status, BgStatus::Cancelled);
+        assert!(
+            receipt.observed_pids.len() >= 2,
+            "witness must observe a child tree, not one sleep"
+        );
+        assert!(
+            group_pids(receipt.pgid)
+                .expect("observe after receipt")
+                .is_empty(),
+            "cancelled receipt must not exist before every live group member is gone"
+        );
+    }
+}
+
+#[tokio::test]
+async fn all_three_shipped_loops_survive_a_transient_claim_failure() {
+    // Chore loop.
+    let chore_fresh = FreshStore::new();
+    let chore_queue = sqlite_queue(&chore_fresh).await;
+    chore_queue
+        .enqueue(
+            chore::job(
+                &ChoreRequest::Add {
+                    name: "loop".to_string(),
+                    probe: "printf ok".to_string(),
+                    target: SeatId::from("pij-test"),
+                },
+                "chore-loop",
+            )
+            .expect("job"),
+        )
+        .await
+        .expect("enqueue");
+    let inner: Arc<dyn Queue> = chore_queue.clone();
+    let flaky: Arc<dyn Queue> = Arc::new(FailFirstClaim::new(inner));
+    let chore_worker = Arc::new(
+        ChoreWorker::new(flaky, temp_path(&chore_fresh, "loop-chores.json")).expect("worker"),
+    );
+    let chore_loop = Arc::clone(&chore_worker)
+        .start(Duration::from_millis(10), 5)
+        .expect("loop");
+    wait_for(
+        || {
+            chore_worker
+                .entries()
+                .is_ok_and(|entries| entries.contains_key("loop"))
+        },
+        Duration::from_secs(2),
+    )
+    .await;
+    chore_loop.shutdown().await;
+
+    // Background loop.
+    let bg_fresh = FreshStore::new();
+    let bg_queue = sqlite_queue(&bg_fresh).await;
+    bg_queue
+        .enqueue(
+            background::job(
+                &BgRequest::Start {
+                    id: "loop-bg".to_string(),
+                    title: "loop".to_string(),
+                    command: "printf done".to_string(),
+                    target: SeatId::from("pij-test"),
+                },
+                "bg-loop",
+            )
+            .expect("job"),
+        )
+        .await
+        .expect("enqueue");
+    let inner: Arc<dyn Queue> = bg_queue.clone();
+    let flaky: Arc<dyn Queue> = Arc::new(FailFirstClaim::new(inner));
+    let bg_worker =
+        Arc::new(BgWorker::new(flaky, temp_path(&bg_fresh, "loop-bg-state")).expect("worker"));
+    let bg_loop = Arc::clone(&bg_worker)
+        .start(Duration::from_millis(10), 5)
+        .expect("loop");
+    wait_for(
+        || {
+            bg_worker
+                .load("loop-bg")
+                .is_ok_and(|record| record.status == BgStatus::Done)
+        },
+        Duration::from_secs(2),
+    )
+    .await;
+    bg_loop.shutdown().await;
+
+    // Telegram loop over a real local HTTP surface.
+    async fn send_message() -> Json<serde_json::Value> {
+        Json(serde_json::json!({"ok": true, "result": {"message_id": 1}}))
+    }
+    async fn updates() -> Json<serde_json::Value> {
+        Json(serde_json::json!({"ok": true, "result": []}))
+    }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind fixture");
+    let addr = listener.local_addr().expect("fixture addr");
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new()
+                .route("/botTOKEN/sendMessage", post(send_message))
+                .route("/botTOKEN/getUpdates", get(updates)),
+        )
+        .await
+        .expect("serve fixture")
+    });
+    let telegram_fresh = FreshStore::new();
+    let telegram_queue = sqlite_queue(&telegram_fresh).await;
+    telegram_queue
+        .enqueue(
+            telegram::send_job(&TelegramSend {
+                from: SeatId::from("pij-test"),
+                body: "hello".to_string(),
+                msg_id: "telegram-loop".to_string(),
+                chat_id: None,
+            })
+            .expect("job"),
+        )
+        .await
+        .expect("enqueue");
+    let inner: Arc<dyn Queue> = telegram_queue.clone();
+    let flaky: Arc<dyn Queue> = Arc::new(FailFirstClaim::new(inner));
+    let spine = Arc::new(FakeSpine::new());
+    let spine_port: Arc<dyn Spine> = spine.clone();
+    let telegram_worker = Arc::new(
+        TelegramWorker::new(
+            flaky,
+            spine_port,
+            TelegramConfig {
+                token: "TOKEN".to_string(),
+                allowed_user_ids: vec![7],
+                chat_id: "42".to_string(),
+                api_root: format!("http://{addr}"),
+            },
+            temp_path(&telegram_fresh, "telegram.lock"),
+        )
+        .expect("worker"),
+    );
+    let telegram_loop = Arc::clone(&telegram_worker)
+        .start(Duration::from_millis(10), 5)
+        .expect("loop");
+    wait_for(
+        || {
+            pij_testkit::block_on(spine.tail(None, Seq(0)))
+                .is_ok_and(|events| events.iter().any(|event| event.kind == "telegram.binding"))
+        },
+        Duration::from_secs(2),
+    )
+    .await;
+    telegram_loop.shutdown().await;
+    server.abort();
+}
+
+#[tokio::test]
+async fn telegram_reply_uses_only_the_persisted_outbound_binding_and_refuses_when_unbound() {
+    async fn send_message() -> Json<serde_json::Value> {
+        Json(serde_json::json!({"ok": true, "result": {"message_id": 41}}))
+    }
+    async fn updates() -> Json<serde_json::Value> {
+        Json(serde_json::json!({"ok": true, "result": [{
+            "update_id": 77,
+            "message": {"from": {"id": 7}, "chat": {"id": 42}, "text": "Jordan reply"}
+        }]}))
+    }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind fixture");
+    let addr = listener.local_addr().expect("fixture addr");
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new()
+                .route("/botTOKEN/sendMessage", post(send_message))
+                .route("/botTOKEN/getUpdates", get(updates)),
+        )
+        .await
+        .expect("serve fixture")
+    });
+
+    let fresh = FreshStore::new();
+    let queue = sqlite_queue(&fresh).await;
+    let queue_port: Arc<dyn Queue> = queue.clone();
+    let spine = Arc::new(FakeSpine::new());
+    let spine_port: Arc<dyn Spine> = spine.clone();
+    let worker = TelegramWorker::new(
+        queue_port,
+        spine_port,
+        TelegramConfig {
+            token: "TOKEN".to_string(),
+            allowed_user_ids: vec![7],
+            chat_id: "42".to_string(),
+            api_root: format!("http://{addr}"),
+        },
+        temp_path(&fresh, "bound-telegram.lock"),
+    )
+    .expect("worker");
+    queue
+        .enqueue(
+            telegram::send_job(&TelegramSend {
+                from: SeatId::from("pij-target"),
+                body: "live fire".to_string(),
+                msg_id: "outbound-1".to_string(),
+                chat_id: None,
+            })
+            .expect("job"),
+        )
+        .await
+        .expect("enqueue");
+    assert_eq!(
+        worker.run_once(17).await.expect("send and poll").count,
+        1,
+        "observed count must differ from configured limit"
+    );
+    let (_, delivery) = queue
+        .claim(
+            &[delivery_kind(&SeatId::from("pij-target"))],
+            "assert-reply",
+        )
+        .await
+        .expect("claim")
+        .expect("reply delivery");
+    let message: Msg = serde_json::from_str(&delivery.payload).expect("message payload");
+    assert_eq!(message.from, SeatId::from("pij-telegram"));
+    assert_eq!(message.to, SeatId::from("pij-target"));
+    assert_eq!(message.body, "Jordan reply");
+    let events = spine.tail(None, Seq(0)).await.expect("spine");
+    assert!(
+        events.iter().any(|event| event.kind == "telegram.binding"),
+        "outbound must persist binding before inbound can route"
+    );
+    drop(worker);
+
+    let unbound = FreshStore::new();
+    let queue = sqlite_queue(&unbound).await;
+    let queue_port: Arc<dyn Queue> = queue.clone();
+    let spine = Arc::new(FakeSpine::new());
+    let spine_port: Arc<dyn Spine> = spine.clone();
+    let worker = TelegramWorker::new(
+        queue_port,
+        spine_port,
+        TelegramConfig {
+            token: "TOKEN".to_string(),
+            allowed_user_ids: vec![7],
+            chat_id: "42".to_string(),
+            api_root: format!("http://{addr}"),
+        },
+        temp_path(&unbound, "unbound-telegram.lock"),
+    )
+    .expect("worker");
+    assert_eq!(worker.run_once(17).await.expect("unbound poll").count, 0);
+    let events = spine.tail(None, Seq(0)).await.expect("spine");
+    assert!(
+        events
+            .iter()
+            .any(|event| event.kind == "telegram.inbound-refused"
+                && event.payload.contains("no persisted outbound binding"))
+    );
+    assert!(
+        queue
+            .claim(&[delivery_kind(&SeatId::from("pij-target"))], "assert-none")
+            .await
+            .expect("claim")
+            .is_none(),
+        "unbound inbound must not guess a target"
+    );
+    server.abort();
+}

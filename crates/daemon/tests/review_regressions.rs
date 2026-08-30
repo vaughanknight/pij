@@ -130,7 +130,13 @@ async fn a_failed_boot_cannot_brick_the_running_daemon() {
         .expect("read dir")
         .flatten()
         .map(|entry| entry.file_name().to_string_lossy().to_string())
-        .filter(|name| name != "daemon.key" && name != pij_daemon::DAEMON_RUNTIME_FILE)
+        // "sidecars" is a DIRECTORY the sidecar consumers own (bg state, chore
+        // baseline), created at construction. This assertion is about credential
+        // LITTER — a stray file that looks like a key — not about every artifact
+        // a subsystem legitimately owns.
+        .filter(|name| {
+            name != "daemon.key" && name != pij_daemon::DAEMON_RUNTIME_FILE && name != "sidecars"
+        })
         .collect();
     assert!(
         strays.is_empty(),

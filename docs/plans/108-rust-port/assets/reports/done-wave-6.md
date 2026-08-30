@@ -64,8 +64,62 @@ records internally perfect. **The ownership-marker fix made the wrong behaviour 
 durable**: hardening propagates to whatever the code does, including the parts that
 are wrong.
 
+## Review round 1 — nine findings, none refuted
+
+The reviewer (`glm-5.3-flash`, briefed with `assets/REVIEWER.md`) raised nine, all
+accepted, with **F2 raised above the reviewer's own severity** to the most serious
+item in the wave.
+
+- **F2 — a tombstoned seat's tap survives a daemon restart.** The in-process
+  retirement shipped this afternoon had no restart arm: tombstone, kill the daemon
+  before the next sweep, and the pane is in neither `wanted` (tombstoned) nor
+  `tracked_panes()` (new process), so a released human's terminal keeps piping into
+  a growing sink for ever. **Marker adoption gave live seats a restart story and the
+  tombstone arm inherited the durability without the discrimination.**
+- **F3 — the attestation event was forgeable.** Published before the ledger write,
+  carrying no outcome, with the seat taken **from the request body**. Any
+  machine-graded key could mint spine rows asserting reads by any seat. The PM ruled
+  attestation onto the spine because the ledger evicts, and never checked the claim
+  being relocated was true: **durable storage for a forgeable assertion**, E-034 on
+  the surface built to prove reader-reads.
+- **F1 — the gate can fail correct code.** `drain_until_quiet` bounds settling at
+  80x25ms; the reviewer reproduced a red under a cold gate's compile load and
+  characterised it (5/5 isolated, 3/3 at 8-way, 1/1 at 16-way) rather than re-running
+  until green. The gate is the ruled definition of done, so a gate that can fail
+  correct code **makes every future green an assertion rather than a proof**.
+- **F6 is a violation of P9**, this repo's own written pattern: the pointer is typed
+  into the pane before the spine records it, so a failing spine re-types the line
+  every pass — including the explanatory "parked" line, the pointer built to stop
+  shouting becoming the shouting.
+- F4 lock recovery, F5 policy riding a lossy broadcast whose lag counter nothing
+  reads, F7 park overwriting a concurrent unpark, F8 the placement enforced by prose
+  rather than a red test.
+- **F9 was found independently by the PM and the reviewer within the same hour.**
+
+## Three ports amendments, all ratified
+
+`ports.rs` had been frozen at seven traits since wave 3. This wave took three:
+
+- **R3-AMEND-7 `Spine::latest_matching`** — mandatory seat scope, `kinds` non-empty,
+  `EventBus::history` deleted in the same change. The unpark check was reading the
+  ENTIRE spine on every inbox claim to call `.last()`. **The bounded-ledger trap from
+  the opposite direction**: attestation gave eviction to a question needing
+  durability; this gave a full scan to a question needing one row. Shared root —
+  not asking what the read actually needs. Ratified with the `CountingSpine`
+  instrument as part of the ratification, because **a cost claim without an
+  instrument is a comment**.
+- **AMEND-8 `TmuxPort::pane_tap_sink`** + marker-as-ownership for detach. Not a
+  relaxation of E-033 but **E-033 finally used for the case it was invented for**:
+  after a crash the marker is the only surviving ownership evidence, and that is
+  exactly when consent is least defended. Retirement sourced from the WORLD, which
+  is transition-not-filter extended across restarts.
+- **AMEND-9 `Queue::ack_delivery -> DeliveryAck`** — authority-owned recipient read
+  inside the commit transaction, so attribution cannot be taken from the body.
+
+The pair banked as doctrine: **ask the WORLD what it owns; ask the AUTHORITY who
+read.**
+
 ## Outstanding
 
-- [ ] tombstone detaches (transition, not filter) — `u-uds-open`
-- [ ] parked count window counts announcements since the last unpark
-- [ ] wave-6 review to APPROVE
+- [ ] coder's single pass over nine findings + three amendments
+- [ ] review round 2 to APPROVE

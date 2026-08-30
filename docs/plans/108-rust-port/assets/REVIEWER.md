@@ -95,3 +95,78 @@ makes the findings believable.
 * `assets/reports/done-*.md` — every receipt is a claim you can test.
 * `assets/experiences.md` — E-001…E-031. **E-023 through E-031 are the last two
   waves and they name the mistakes this codebase makes.**
+
+---
+
+## Added after wave 6 — four more classes, all found in shipped-and-gated code
+
+**10. The config echo.** A reported value that is actually the configured limit.
+Wave 6's parked event said `announcements: 3` to a seat that had experienced
+eighteen; the publisher substituted the policy constant for the reconstructed
+count. **Structurally invisible in ordinary tests, because ordinary parking happens
+exactly AT the limit** — the two values coincide by construction, and only a subject
+already over budget can tell them apart. Ask of any reported number: *could this be
+the setting rather than the observation, and would any existing test notice?*
+
+**11. Consent that holds only while the process holding it lives.** Tombstoning a
+seat retired its tap in-process and had no restart arm: kill the daemon between the
+tombstone and the next sweep and the pane is in neither the wanted set (tombstoned)
+nor the tracked set (new process), so a released human's terminal keeps piping
+for ever. For any withdrawal, revocation, or stop: **ask what happens if the process
+that heard it dies before acting.** A record of release that never reached the world
+is not a release.
+
+**12. A durable home for a forgeable claim.** Wave 6 moved read-attestation onto the
+spine *because the ledger evicts* — and never checked the claim being relocated was
+true. The event was published before the ledger write, carried no outcome, and took
+its seat **from the request body**. Relocating evidence does not make it evidence.
+Ask: *who supplied each field, and could a caller assert it about someone else?*
+
+**13. A gate that can fail correct code.** A fixed tick-count settle in a real-tmux
+fixture went red under a cold full-workspace gate's compile load. The gate is the
+ruled definition of done, so **flakiness there makes every future green an assertion
+rather than a proof, and buys a re-run before anyone believes a red.** If you
+reproduce a red, characterise it (isolated, under N-way load) and report it — do not
+re-run until green. That reflex was the most valuable single act of the wave-6
+review.
+
+### A third reviewer habit
+
+**Report your own red.** The instinct to re-run a failing gate until it passes,
+then review the code as if nothing happened, discards the most interesting signal
+available: that the proof surface itself is unsound. Characterise, then raise it.
+
+### A fourth reviewer habit — report the number AND the command
+
+Four people on this plan caught themselves at the same error within one day, which
+makes it structural rather than personal:
+
+- a PM reported a **null result as a positive** (a discriminator that never ran on
+  71 unmarked panes, read as 71 correct decisions);
+- the same PM then nearly reported a **contaminated red** as a defect, having armed
+  a live test while the pre-fix binary was still running — testing the thing the fix
+  replaced;
+- a reviewer piped a gate through `tail -12`, **kept the verdict and dropped the
+  evidence**, reporting `0 passed` beside a green;
+- a coder shipped a `parked` event whose count was the configured limit rather than
+  the observed number.
+
+One shape: **the conclusion is cheap to carry and the evidence is easy to drop, so
+what reaches the reader is the half that cannot be checked.**
+
+So: report the number and the command that produced it. If you truncated the
+output, say where. If a result depends on which binary or process was live, pin it
+and say which. **A test whose instrument state is not pinned reports the
+environment, not the change.**
+
+### A fifth habit — pre-register the falsifier, in a file
+
+Two findings this plan's reviewers produced arrived **before the code existed**: the
+marker-identity gap, and the Telegram single-consumer trap where outbound takes no
+lock and inbound is single-consumer, so the reply leg can be served by the very
+bridge being replaced while every artefact looks like a pass.
+
+Both were cheap because they arrived while the design was still free to change. Write
+the falsifier down **before** the result exists — a falsifier recalled afterwards is
+just an opinion about what would have convinced you.
+
