@@ -68,7 +68,7 @@ axum = "0.8"
 clap = { version = "4", features = ["derive"] }
 # rustls, not native-tls: the build stays `cargo build` on every platform, and the
 # CLI only ever talks to loopback anyway.
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 # OS randomness for the per-boot bearer key: no PRNG state, no seed, no extra
 # dependency tree — each boot asks the operating system for 256 bits.
 getrandom = "0.3"

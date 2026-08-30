@@ -2,7 +2,7 @@
   "packages": [
     {
       "name": "pij-core",
-      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/core#pij-core@0.1.0",
+      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/core#pij-core@0.1.0",
       "dependencies": [
         {
           "name": "async-trait",
@@ -32,7 +32,7 @@
     },
     {
       "name": "pij-testkit",
-      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/testkit#pij-testkit@0.1.0",
+      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/testkit#pij-testkit@0.1.0",
       "dependencies": [
         {
           "name": "async-trait",
@@ -62,7 +62,7 @@
     },
     {
       "name": "pij-store",
-      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/store#pij-store@0.1.0",
+      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/store#pij-store@0.1.0",
       "dependencies": [
         {
           "name": "async-trait",
@@ -96,7 +96,7 @@
     },
     {
       "name": "pij-tmux",
-      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/tmux#pij-tmux@0.1.0",
+      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/tmux#pij-tmux@0.1.0",
       "dependencies": [
         {
           "name": "async-trait",
@@ -114,7 +114,7 @@
     },
     {
       "name": "pij-harnesses",
-      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/harnesses#pij-harnesses@0.1.0",
+      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/harnesses#pij-harnesses@0.1.0",
       "dependencies": [
         {
           "name": "async-trait",
@@ -136,12 +136,12 @@
     },
     {
       "name": "pij-transport",
-      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/transport#pij-transport@0.1.0",
+      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/transport#pij-transport@0.1.0",
       "dependencies": []
     },
     {
       "name": "pij-daemon",
-      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/daemon#pij-daemon@0.1.0",
+      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/daemon#pij-daemon@0.1.0",
       "dependencies": [
         {
           "name": "axum",
@@ -219,7 +219,7 @@
     },
     {
       "name": "pij-cli",
-      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/cli#pij-cli@0.1.0",
+      "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/cli#pij-cli@0.1.0",
       "dependencies": [
         {
           "name": "clap",
@@ -248,19 +248,23 @@
         {
           "name": "tokio",
           "kind": null
+        },
+        {
+          "name": "pij-testkit",
+          "kind": "dev"
         }
       ]
     }
   ],
   "workspace_members": [
-    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/core#pij-core@0.1.0",
-    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/testkit#pij-testkit@0.1.0",
-    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/store#pij-store@0.1.0",
-    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/tmux#pij-tmux@0.1.0",
-    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/harnesses#pij-harnesses@0.1.0",
-    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/transport#pij-transport@0.1.0",
-    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/daemon#pij-daemon@0.1.0",
-    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/cli#pij-cli@0.1.0"
+    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/core#pij-core@0.1.0",
+    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/testkit#pij-testkit@0.1.0",
+    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/store#pij-store@0.1.0",
+    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/tmux#pij-tmux@0.1.0",
+    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/harnesses#pij-harnesses@0.1.0",
+    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/transport#pij-transport@0.1.0",
+    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/daemon#pij-daemon@0.1.0",
+    "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-w3-cli/crates/cli#pij-cli@0.1.0"
   ],
   "version": 1
 }

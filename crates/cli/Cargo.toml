@@ -18,6 +18,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 
+[dev-dependencies]
+pij-testkit = { workspace = true }
+
 # The workspace's ONLY binary. `daemon` and `cli` are two composition roots inside
 # it (plan 108 R2): one artifact ships both, so a stale CLI can never meet a newer
 # daemon on the same machine.
