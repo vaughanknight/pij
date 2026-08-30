@@ -71,6 +71,16 @@ pub struct Config {
     pub claim_lease_secs: u64,
     /// Maximum live events buffered per subscriber before drops are counted.
     pub event_buffer_capacity: usize,
+    /// This machine's alias on the federated wire. `None` defaults from the
+    /// hostname at boot, which lifecycle resolves — a machine that never chose a
+    /// name still has to be addressable, and a constant would collide.
+    pub machine_alias: Option<String>,
+    /// Persistent bearer credentials for manually bootstrapped peer machines.
+    ///
+    /// Distinct from the per-boot local key in both lifetime and blast radius:
+    /// the local key dies with the process, a peer key survives it, and removing
+    /// one from this list is how an operator revokes a machine.
+    pub peer_keys: Vec<String>,
 }
 
 impl Default for Config {
@@ -82,6 +92,8 @@ impl Default for Config {
             watchdog_interval_secs: 20 * 60,
             claim_lease_secs: 5 * 60,
             event_buffer_capacity: 1_024,
+            machine_alias: None,
+            peer_keys: Vec::new(),
         }
     }
 }

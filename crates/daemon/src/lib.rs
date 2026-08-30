@@ -231,25 +231,38 @@ fn not_yet(port: &str, unit: &str) -> PijError {
     }
 }
 
-/// Boot the daemon: stage the key, bind, publish, serve.
+/// Boot the daemon: stage the key, BIND, build, publish, serve.
 ///
-/// The ORDER is the security property, and review sharpened it: staging before
-/// the bind and publishing after means a boot that loses the port race cannot
-/// overwrite the running daemon's credential, while the key is still in place
-/// before any request is answered (`bind` opens the socket; nothing is served
-/// until `axum::serve`). See [`auth`].
+/// The ORDER is the security property, and it has been sharpened twice.
+///
+/// Review's first pass: staging before the bind and publishing after means a boot
+/// that loses the port race cannot overwrite the running daemon's credential,
+/// while the key is still in place before any request is answered (`bind` opens
+/// the socket; nothing is served until `axum::serve`). See [`auth`].
+///
+/// **The second: BIND BEFORE ANY MUTATING STEP** (lynx's row-80 trap, ruled a
+/// boot invariant by the prime). `build_services` opens the store, and opening
+/// the store RUNS MIGRATIONS — which used to happen before the bind. A second
+/// daemon starting against the same store therefore migrated the schema and only
+/// then discovered it had lost the port race. Migrations are one-way: a newer
+/// binary losing the race would still have upgraded the schema underneath the
+/// running older daemon, which had already passed its own version check.
+///
+/// The bind is the cheapest possible test of "am I allowed to exist", so it goes
+/// first. Staging the key stays above it because a staged key is inert — a unique
+/// 0600 name nothing reads until `publish`.
 ///
 /// # Errors
 /// [`PijError::Adapter`] when the key cannot be written or the port refuses.
 pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
-    let services = build_services(config).await?;
-
-    // 1. Stage the key 0600 under a unique name. NOT published: a boot that
-    //    fails below must not touch a running daemon's credential.
+    // 1. Stage the key 0600 under a unique name. NOT published, and NOT a
+    //    mutation of any shared resource: a boot that fails below must not touch
+    //    a running daemon's credential.
     let staged = auth::stage_key(&state_dir)?;
     let token = staged.token().to_string();
 
-    // 2. Bind. This is the step that fails when another daemon holds the port.
+    // 2. Bind. This is the step that fails when another daemon holds the port,
+    //    and it comes before anything that changes state on disk.
     let listener = tokio::net::TcpListener::bind(&config.bind_addr)
         .await
         .map_err(|error| PijError::Adapter {
@@ -264,12 +277,23 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         message: format!("could not resolve the bound address: {error}"),
     })?;
 
-    // 3. The bind succeeded, so this boot owns the port: publish the key
-    //    atomically. Still before anything is SERVED — `bind` only opens the
-    //    listen socket; no request is answered until `axum::serve` runs below.
+    // 3. This boot owns the port, so it may now touch the store. Migrations run
+    //    here, exactly once, by the process that won.
+    let services = build_services(config).await?;
+
+    // 4. Publish the key atomically. Still before anything is SERVED — `bind`
+    //    only opens the listen socket; no request is answered until `axum::serve`.
     let key = staged.publish()?;
 
-    let router = http::router(services, token);
+    let identity = lifecycle::MachineIdentity::resolve(config.machine_alias.as_deref())?;
+    let router = http::router_with_config(
+        services,
+        http::HttpConfig {
+            local_key: token,
+            peer_keys: config.peer_keys.clone(),
+            machine_alias: identity.alias().to_string(),
+        },
+    );
     let (shutdown, shutdown_rx) = tokio::sync::oneshot::channel();
     let joined = tokio::spawn(async move {
         let _ = axum::serve(listener, router)
