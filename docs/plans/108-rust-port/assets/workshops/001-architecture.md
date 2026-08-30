@@ -353,3 +353,31 @@ integration test. Tmux IO belongs to the tmux crate BY CONTRACT, not by conventi
 - The TS 60-second first-sight release is NOT ported: age cannot distinguish a parked draft
   from a paused human; a stale nonblank stays blocked, and no threshold is invented to make a
   rung reachable.
+
+## R4-AMEND-3 — atomic delivery dedupe in the Queue (2026-08-30, vicuna ruling)
+
+**ACCEPTED**: two delivery-specific Queue methods, no eighth port —
+`enqueue_delivery` (ledger-check + enqueue-or-collapse, ONE transaction, returns queued id OR
+the stored `Delivered{origin}`) and `ack_delivery` (validate claim + record
+(recipient,msg_id,origin) + prune to capacity + ack, ONE transaction). Generic enqueue/ack
+stay for non-delivery work. **Schema 8 APPROVED** — the second sanctioned migration; the
+wave-4 "exactly one" bound is amended by this ruling, not eroded silently.
+
+**The proof pattern**: check-then-enqueue loses (ack commits between, frees the dedupe key,
+second row); record-after-ack loses inversely (delivered, crash, ledger never learns, retry
+redelivers). Same theorem as Queue::retry — delivery invariants are transactions or they are
+prose.
+
+**Origin replay (coder's insight, singled out)**: a suppressed duplicate answers with the
+STORED `Delivered{origin}` — `Queued` would claim a row that does not exist; non-ok makes
+federation refuse or retry a message that WAS delivered. Honesty preserved with zero new
+vocabulary: the receipt says what was observed, when it was observed.
+
+**PM policy endorsed**: per-recipient bound, oldest-first eviction (a global count lets one hot
+recipient erase everyone's protection), residual window NAMED (evicted id + no live row =
+redelivery) — config, not constant. Event suppressed with the row so "seen once" is true of
+message.pushed too.
+
+**D9 rider (E-030 one level up)**: drain survives errors only because COMPOSITION catches
+drain_once before TickLoop sees it, and no test exercises that production wrapper — CLOSE THIS
+WAVE: the loop rule applies to the wrapper actually shipped, not the loop the test constructs.
