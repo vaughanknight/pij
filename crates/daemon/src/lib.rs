@@ -117,6 +117,10 @@ pub struct Daemon {
     /// see and nothing can stop.
     federation_worker: federation::FederationWorker,
     drain_loop: lifecycle::TickLoop,
+    /// Owned so no tap outlives the daemon that attached it: `shutdown` joins an
+    /// in-flight observation and DETACHES every pane. A tap left open is a
+    /// `pipe-pane` writing into a sink nobody drains.
+    pane_observer: pane_observer::PaneObserverLoop,
 }
 
 impl Daemon {
@@ -136,9 +140,14 @@ impl Daemon {
             message: format!("the server task did not stop cleanly: {error}"),
         });
         let drained = self.drain_loop.shutdown().await;
+        // Observer BEFORE federation, and after the delivery loop: it holds OS
+        // resources (a `pipe-pane` per observed pane) where the others hold only
+        // tasks, and the recipe's order is the one its shutdown was written for.
+        let observed = self.pane_observer.shutdown().await;
         let forwarded = self.federation_worker.shutdown().await;
         served?;
         drained?;
+        observed?;
         forwarded
     }
 }
@@ -397,6 +406,18 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     //    rung reachable would discard Jordan's politeness ruling while appearing
     //    to honour it.
     let interaction = Arc::new(InteractionGate::new(Arc::clone(&services.tmux)));
+    // The SENSOR. Until wave 5 nothing fed `InteractionGate`, so it denied on
+    // unknown and the pointer rung never fired — shipped that way on purpose,
+    // because a gate with no sensor answering "go ahead" discards the politeness
+    // ruling while appearing to honour it. This is the producer that changes it.
+    let pane_observer = Arc::new(pane_observer::PaneObserver::new(
+        Arc::clone(&services.registry),
+        Arc::clone(&services.tmux),
+        Arc::clone(&interaction),
+        state_dir.join("pane-signals"),
+        Duration::from_millis(config.pane_observer_interval_ms),
+    )?);
+
     let drain = Arc::new(pointer::DrainWorker::new(
         Arc::clone(&services.registry),
         Arc::clone(&services.queue),
@@ -412,6 +433,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     //    no request is answered until `axum::serve`.
     let key = staged.publish()?;
 
+    let pane_observer = pane_observer.start();
     let federation_worker = Arc::clone(&federation).start();
     let drain_loop =
         start_resilient_delivery_drain(drain, Duration::from_secs(config.delivery_interval_secs))?;
@@ -441,5 +463,6 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         joined,
         federation_worker,
         drain_loop,
+        pane_observer,
     })
 }
