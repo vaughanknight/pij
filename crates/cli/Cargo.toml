@@ -19,6 +19,8 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
+axum = { workspace = true }
+pij-store = { workspace = true }
 pij-testkit = { workspace = true }
 
 # The workspace's ONLY binary. `daemon` and `cli` are two composition roots inside

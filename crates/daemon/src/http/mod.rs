@@ -8,7 +8,10 @@ mod client;
 mod exposure;
 mod types;
 
+use std::fmt::Write as _;
 use std::io;
+use std::path::Path;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::Router;
@@ -22,8 +25,9 @@ use pij_core::events::EventFilter;
 use pij_core::model::{
     Envelope, ErrorKind, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId, Seq,
 };
-use pij_core::ports::SeatFilter;
+use pij_core::ports::{LaunchCommand, SeatFilter};
 use pij_core::wire;
+use pij_harnesses::{SpawnPlanInput, build_spawn_plan};
 use serde::Deserialize;
 use tokio_stream::StreamExt;
 
@@ -32,13 +36,14 @@ use crate::{BUILD, Services};
 pub use auth::AuthRing;
 pub use client::{PeerEndpoint, post_to_peer};
 pub use exposure::{Exposure, boot_banner, exposure};
-pub use types::{EventFrame, Registration, SendRequest};
+pub use types::{EventFrame, Registration, SendRequest, SpawnRequest};
 
 #[derive(Clone)]
 struct AppState {
     services: Services,
     auth: AuthRing,
     machine_alias: String,
+    spawn_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 /// HTTP configuration supplied by the daemon composition root.
@@ -67,15 +72,17 @@ impl HttpConfig {
 enum Endpoint {
     Health,
     Register,
+    Spawn,
     Send,
     Seats,
     Events,
 }
 
 impl Endpoint {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 6] = [
         Self::Health,
         Self::Register,
+        Self::Spawn,
         Self::Send,
         Self::Seats,
         Self::Events,
@@ -85,6 +92,7 @@ impl Endpoint {
         match self {
             Self::Health => "/health",
             Self::Register => "/v1/register",
+            Self::Spawn => "/v1/spawn",
             Self::Send => "/v1/send",
             Self::Seats => "/v1/seats",
             Self::Events => "/v1/events",
@@ -93,7 +101,7 @@ impl Endpoint {
 
     const fn method(self) -> Method {
         match self {
-            Self::Register | Self::Send => Method::POST,
+            Self::Register | Self::Spawn | Self::Send => Method::POST,
             Self::Health | Self::Seats | Self::Events => Method::GET,
         }
     }
@@ -122,12 +130,16 @@ pub fn router_with_config(services: Services, config: HttpConfig) -> Router {
         services,
         auth: AuthRing::new(config.local_key, config.peer_keys),
         machine_alias: config.machine_alias,
+        spawn_lock: Arc::new(tokio::sync::Mutex::new(())),
     };
     let mut router = Router::new();
     for endpoint in Endpoint::ALL {
         debug_assert_eq!(
             endpoint.method(),
-            if matches!(endpoint, Endpoint::Register | Endpoint::Send) {
+            if matches!(
+                endpoint,
+                Endpoint::Register | Endpoint::Spawn | Endpoint::Send
+            ) {
                 Method::POST
             } else {
                 Method::GET
@@ -136,6 +148,7 @@ pub fn router_with_config(services: Services, config: HttpConfig) -> Router {
         router = match endpoint {
             Endpoint::Health => router.route(endpoint.path(), get(health)),
             Endpoint::Register => router.route(endpoint.path(), post(register)),
+            Endpoint::Spawn => router.route(endpoint.path(), post(spawn_seat)),
             Endpoint::Send => router.route(endpoint.path(), post(send)),
             Endpoint::Seats => router.route(endpoint.path(), get(seats)),
             Endpoint::Events => router.route(endpoint.path(), get(events)),
@@ -300,10 +313,20 @@ async fn register(State(state): State<AppState>, Json(claim): Json<Registration>
     descriptor.folder = claim.folder;
     descriptor.pane = claim.pane;
     descriptor.proc = proc;
-    descriptor.spawn_id = claim.spawn_id;
-    descriptor.model = claim.model;
-    descriptor.provider = claim.provider;
-    descriptor.effort = claim.effort;
+    // A launcher observation is stronger than the process describing its own
+    // argv later. Registration fills absent facts; it never downgrades a stamp.
+    if descriptor.spawn_id.is_none() {
+        descriptor.spawn_id = claim.spawn_id;
+    }
+    if descriptor.model.is_none() {
+        descriptor.model = claim.model;
+    }
+    if descriptor.provider.is_none() {
+        descriptor.provider = claim.provider;
+    }
+    if descriptor.effort.is_none() {
+        descriptor.effort = claim.effort;
+    }
     descriptor.parent = claim.parent;
     descriptor.relay = claim.relay;
     // Tombstone the predecessor BEFORE writing the successor, and name the
@@ -333,6 +356,128 @@ async fn register(State(state): State<AppState>, Json(claim): Json<Registration>
         return internal("pij register", error);
     }
     envelope(StatusCode::OK, &Envelope::ok("pij register", descriptor))
+}
+
+async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequest>) -> Response {
+    if request.id.as_str().trim().is_empty() {
+        return refused("pij spawn", "--id must be non-empty");
+    }
+    if !Path::new(&request.cwd).is_absolute() {
+        return refused(
+            "pij spawn",
+            "--cwd must be absolute so the descriptor cannot depend on daemon cwd",
+        );
+    }
+
+    let session = match request.session.as_deref() {
+        Some(session) if !session.trim().is_empty() => session.to_string(),
+        Some(_) => return refused("pij spawn", "--session must be non-empty"),
+        None => {
+            let Some(caller_pane) = request.caller_pane.as_deref() else {
+                return refused(
+                    "pij spawn",
+                    "no caller pane was supplied — pass --session <tmux> explicitly",
+                );
+            };
+            let panes = match state.services.tmux.list_panes().await {
+                Ok(panes) => panes,
+                Err(error) => return internal("pij spawn", error),
+            };
+            let Some(pane) = panes.iter().find(|pane| pane.id == caller_pane) else {
+                return refused(
+                    "pij spawn",
+                    format!(
+                        "caller pane `{caller_pane}` did not resolve to a tmux session — pass --session <tmux> explicitly"
+                    ),
+                );
+            };
+            pane.session.clone()
+        }
+    };
+
+    let plan = match build_spawn_plan(SpawnPlanInput {
+        harness: request.harness,
+        executable: request.executable,
+        model: request.model,
+        resolved_provider: None,
+        effort: request.effort,
+        accept_inbound: request.accept_inbound,
+    }) {
+        Ok(plan) => plan,
+        Err(error) => return refused("pij spawn", error),
+    };
+    let command = LaunchCommand {
+        executable: plan.executable,
+        args: plan.args,
+    };
+    let name = request
+        .name
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| request.id.as_str().to_string());
+
+    // Keep the collision check, observed launch, and descriptor write in one
+    // daemon-local critical section. Registry::put is an upsert; without this
+    // lock two concurrent requests for one id could both launch before either
+    // row existed, then silently overwrite one another.
+    let _spawn_guard = state.spawn_lock.lock().await;
+    match state.services.registry.get(&request.id).await {
+        Ok(Some(_)) => {
+            return refused(
+                "pij spawn",
+                format!(
+                    "seat `{}` already exists — choose another --id; spawn never overwrites a roster row",
+                    request.id
+                ),
+            );
+        }
+        Ok(None) => {}
+        Err(error) => return internal("pij spawn", error),
+    }
+
+    let spawn_id = match mint_spawn_id() {
+        Ok(spawn_id) => spawn_id,
+        Err(error) => return internal("pij spawn", error),
+    };
+    let pane = match state
+        .services
+        .tmux
+        .new_window(&session, &name, &request.cwd, Some(&command))
+        .await
+    {
+        Ok(pane) => pane,
+        Err(error) => return internal("pij spawn", error),
+    };
+
+    let mut descriptor = SeatDescriptor::new(request.id, plan.harness, request.cwd);
+    descriptor.pane = Some(pane.id.clone());
+    descriptor.parent = request.parent;
+    descriptor.cross_session_inbound_accept = Some(plan.cross_session_inbound_accept);
+    descriptor.spawn_id = Some(spawn_id);
+    descriptor.model = plan.model;
+    descriptor.provider = plan.provider;
+    descriptor.effort = plan.effort;
+    if let Err(write_error) = state.services.registry.put(descriptor.clone()).await {
+        let rollback = state.services.tmux.kill(&pane.id).await;
+        let message = match rollback {
+            Ok(()) => format!(
+                "observed launch in pane {} but registry write failed ({write_error}); the pane was removed",
+                pane.id
+            ),
+            Err(kill_error) => format!(
+                "observed launch in pane {} but registry write failed ({write_error}); rollback also failed ({kill_error})",
+                pane.id
+            ),
+        };
+        return internal(
+            "pij spawn",
+            PijError::Adapter {
+                adapter: "spawn".to_string(),
+                message,
+            },
+        );
+    }
+
+    envelope(StatusCode::OK, &Envelope::ok("pij spawn", descriptor))
 }
 
 async fn send(State(state): State<AppState>, Json(request): Json<SendRequest>) -> Response {
@@ -448,6 +593,20 @@ fn encode_frame(machine: String, event: pij_core::model::Event) -> io::Result<St
     })
     .map(|line| format!("{line}\n"))
     .map_err(io::Error::other)
+}
+
+fn mint_spawn_id() -> Result<String> {
+    let mut bytes = [0_u8; 16];
+    getrandom::fill(&mut bytes).map_err(|error| PijError::Adapter {
+        adapter: "spawn".to_string(),
+        message: format!("the OS refused randomness for the spawn id: {error}"),
+    })?;
+    let mut id = String::with_capacity(34);
+    id.push_str("s-");
+    for byte in bytes {
+        write!(&mut id, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    Ok(id)
 }
 
 fn system_time_ms() -> Result<u64> {

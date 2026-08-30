@@ -26,7 +26,8 @@ use pij_core::model::{
     Outcome, Pane, ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
 };
 use pij_core::ports::{
-    HarnessPort, LivenessPort, Queue, Registry, SeatFilter, Spine, TmuxPort, Transport,
+    HarnessPort, LaunchCommand, LivenessPort, Queue, Registry, SeatFilter, Spine, TmuxPort,
+    Transport,
 };
 
 /// One recorded interaction, rendered as a stable string so assertions read as
@@ -475,11 +476,24 @@ impl TmuxPort for FakeTmux {
         Ok(())
     }
 
-    async fn new_window(&self, session: &str, name: &str, cwd: &str) -> Result<Pane> {
+    async fn new_window(
+        &self,
+        session: &str,
+        name: &str,
+        cwd: &str,
+        command: Option<&LaunchCommand>,
+    ) -> Result<Pane> {
         let mut state = self.state.lock().expect("fake tmux mutex");
-        state
-            .recorder
-            .record(format!("new_window:{session}:{name}"));
+        let call = command.map_or_else(
+            || format!("new_window:{session}:{name}"),
+            |command| {
+                format!(
+                    "new_window:{session}:{name}:{}:{:?}",
+                    command.executable, command.args
+                )
+            },
+        );
+        state.recorder.record(call);
         let pane = Pane {
             id: format!("%{}", 100 + state.panes.len()),
             session: session.to_string(),

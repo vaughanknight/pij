@@ -4,6 +4,7 @@
 mod adapter;
 mod interaction;
 mod models;
+mod spawn;
 
 pub mod proc;
 
@@ -13,3 +14,4 @@ pub use adapter::{
 };
 pub use interaction::InteractionGate;
 pub use models::ModelCatalog;
+pub use spawn::{SpawnPlan, SpawnPlanInput, build_spawn_plan};

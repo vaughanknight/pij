@@ -7,6 +7,7 @@ use pij_core::model::{
     Destination, ENVELOPE_VERSION, Envelope, ErrorKind, Event, Harness, Receipt, SeatDescriptor,
     SeatId,
 };
+pub use pij_daemon::http::SpawnRequest;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -124,6 +125,11 @@ impl DaemonClient {
     pub async fn register(&self, registration: &Registration) -> Envelope<SeatDescriptor> {
         self.post("pij register", "/v1/register", registration)
             .await
+    }
+
+    /// Ask the daemon to launch and record one pre-bind seat.
+    pub async fn spawn(&self, request: &SpawnRequest) -> Envelope<SeatDescriptor> {
+        self.post("pij spawn", "/v1/spawn", request).await
     }
 
     /// Durably enqueue one message.
