@@ -1127,3 +1127,50 @@ async fn peer_key_removal_takes_effect_when_router_restarts() {
 
     restarted_server.abort();
 }
+
+/// Review round 2 — the memorable allocator has BEHAVIOURAL coverage at the
+/// surface it changed, not only a clap-parse test.
+///
+/// The candidate order is deterministic per seed, so occupancy is the only reason
+/// to advance: pre-register the first candidate and the allocator must return the
+/// second. A mutation that returns the first candidate unconditionally fails here.
+#[tokio::test]
+async fn the_memorable_allocator_advances_past_an_occupied_name() {
+    let registry = Arc::new(FakeRegistry::new());
+    let seed = "s-review-round-2";
+    let mut candidates = pij_core::names::memorable_pij_id_candidates(seed);
+    let first = candidates.next().expect("a first candidate");
+    let second = candidates.next().expect("a second candidate");
+    assert_ne!(first, second);
+
+    assert_eq!(
+        super::allocate_memorable_id(registry.as_ref(), seed)
+            .await
+            .expect("allocation"),
+        Some(first.clone()),
+        "an empty roster yields the first candidate"
+    );
+
+    registry
+        .put(SeatDescriptor::new(
+            first.clone(),
+            Harness::Omp,
+            "/abs/tree",
+        ))
+        .await
+        .expect("occupy the first candidate");
+
+    assert_eq!(
+        super::allocate_memorable_id(registry.as_ref(), seed)
+            .await
+            .expect("allocation"),
+        Some(second),
+        "an occupied name must ADVANCE, not collide and not refuse"
+    );
+
+    // ...and the shape a human reads is the memorable one, not hex.
+    assert!(
+        first.as_str().starts_with("pij-"),
+        "allocated ids keep the product's name shape: {first}"
+    );
+}

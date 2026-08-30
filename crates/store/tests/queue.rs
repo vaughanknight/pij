@@ -479,7 +479,7 @@ async fn the_lease_sweep_does_not_reach_another_workers_kind() {
 
     let federation = queue
         .enqueue(Job {
-            kind: "federation:laptop".to_string(),
+            kind: "federation:laptop".to_string(), // the shape federation::remote_send_kind emits
             serial_key: "laptop".to_string(),
             payload: "forward".to_string(),
             dedupe_key: "m-fed".to_string(),

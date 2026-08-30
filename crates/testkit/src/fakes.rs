@@ -284,10 +284,15 @@ impl Queue for FakeQueue {
         let mut state = self.state.lock().expect("fake queue mutex");
         // Dedupe over LIVE rows only: an acked job's key is free again, which is
         // what makes "one row per burst" different from "one row for ever".
+        //
+        // Keyed by (KIND, dedupe_key), matching the schema-7 index. Keyed by the
+        // dedupe_key alone — as this fake was — one caller-chosen `msg_id` sent to
+        // two different recipients collapses to one row, and every service test
+        // above it agrees with a queue that no longer behaves that way.
         if let Some((id, _)) = state
             .live
             .iter()
-            .find(|(_, live)| live.dedupe_key == job.dedupe_key)
+            .find(|(_, live)| live.dedupe_key == job.dedupe_key && live.kind == job.kind)
         {
             return Ok(*id);
         }

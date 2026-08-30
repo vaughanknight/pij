@@ -26,7 +26,7 @@ use pij_core::model::{
     Envelope, ErrorKind, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId, Seq,
 };
 use pij_core::names::memorable_pij_id_candidates;
-use pij_core::ports::{LaunchCommand, SeatFilter};
+use pij_core::ports::{LaunchCommand, Registry, SeatFilter};
 use pij_core::wire;
 use pij_harnesses::{SpawnPlanInput, build_spawn_plan};
 use serde::Deserialize;
@@ -379,6 +379,24 @@ async fn register(State(state): State<AppState>, Json(claim): Json<Registration>
     envelope(StatusCode::OK, &Envelope::ok("pij register", descriptor))
 }
 
+/// The first memorable name this roster does not already hold.
+///
+/// Extracted from the route so it can be TESTED (review round 2 found the loop had
+/// no coverage at all): the candidate order is deterministic per seed, so a test
+/// pre-registers the first candidate and asserts allocation advances — which the
+/// inline version could not express, because the seed was minted inside the route.
+///
+/// `Ok(None)` means the space is exhausted, which is a refusal rather than an
+/// error: nothing failed, there is simply no name left.
+async fn allocate_memorable_id(registry: &dyn Registry, seed: &str) -> Result<Option<SeatId>> {
+    for candidate in memorable_pij_id_candidates(seed) {
+        if registry.get(&candidate).await?.is_none() {
+            return Ok(Some(candidate));
+        }
+    }
+    Ok(None)
+}
+
 async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequest>) -> Response {
     if let Some(id) = request.id.as_ref()
         && id.as_str().trim().is_empty()
@@ -466,28 +484,16 @@ async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequ
         // advance — the reservation loop is the queue-side half u-names
         // deliberately did not own, held under the same lock as the launch so two
         // concurrent spawns cannot pick one name.
-        None => {
-            let mut chosen = None;
-            for candidate in memorable_pij_id_candidates(&spawn_id) {
-                match state.services.registry.get(&candidate).await {
-                    Ok(Some(_)) => continue,
-                    Ok(None) => {
-                        chosen = Some(candidate);
-                        break;
-                    }
-                    Err(error) => return internal("pij spawn", error),
-                }
+        None => match allocate_memorable_id(&*state.services.registry, &spawn_id).await {
+            Ok(Some(id)) => id,
+            Ok(None) => {
+                return refused(
+                    "pij spawn",
+                    "every memorable name is taken — pass an explicit --id",
+                );
             }
-            match chosen {
-                Some(id) => id,
-                None => {
-                    return refused(
-                        "pij spawn",
-                        "every memorable name is taken — pass an explicit --id",
-                    );
-                }
-            }
-        }
+            Err(error) => return internal("pij spawn", error),
+        },
     };
 
     let name = request

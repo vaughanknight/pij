@@ -7,7 +7,8 @@
 -- message that was never going anywhere. User-reachable silent loss, widened
 -- cross-machine by wave 4.
 --
--- `kind` is `delivery:<seat>` / `federation:<machine>`, so scoping by it makes the
+-- `kind` is `delivery:<seat>` / `federation:<machine>` — the federation half was
+-- ONE kind for every peer until review round 2 probed it — so scoping by it makes the
 -- rule what it was always meant to be: N rapid submits of ONE message to ONE
 -- recipient collapse to one row; the same id to a different recipient is a
 -- different message.

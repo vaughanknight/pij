@@ -16,7 +16,20 @@ use serde::Serialize;
 use crate::events::EventBus;
 use crate::http::{PeerEndpoint, SendRequest, post_to_peer};
 
-const REMOTE_SEND_KIND: &str = "federation.send";
+/// The queue kind for a remote send to `alias`.
+///
+/// PER DESTINATION, not one kind for every peer. Dedupe is scoped by
+/// `(kind, dedupe_key)` since schema 7, so a single shared kind made the fix for
+/// that defect apply to delivery rows and NOT to federation rows: one msg_id sent
+/// to `bob@laptop` and then `bob@desktop` still collapsed, and the second caller
+/// was told `Queued` for a row destined to the first machine. Found by review
+/// round 2, against a scratch database rather than by reading.
+///
+/// It also makes the sweep scoping honest: a federation worker claims the kinds of
+/// its configured peers, so another worker's pass cannot reach its claims.
+fn remote_send_kind(alias: &str) -> String {
+    format!("federation:{alias}")
+}
 const OUTCOME_EVENT_KIND: &str = "delivery.outcome";
 const REMOTE_REFUSED_EVENT_KIND: &str = "delivery.remote-refused";
 const WORKER_NAME: &str = "federation";
@@ -97,6 +110,11 @@ impl PeerTable {
             }
         }
         Ok(Self { peers })
+    }
+
+    /// Every configured peer alias, in order.
+    pub fn aliases(&self) -> impl Iterator<Item = &str> {
+        self.peers.keys().map(String::as_str)
     }
 
     /// Resolve a destination without ever treating an unqualified seat as remote.
@@ -214,7 +232,7 @@ impl FederationService {
         })?;
         self.queue
             .enqueue(Job {
-                kind: REMOTE_SEND_KIND.to_string(),
+                kind: remote_send_kind(alias),
                 serial_key: format!("{}@{alias}", request.to.seat),
                 payload,
                 dedupe_key: request.msg_id.clone(),
@@ -246,7 +264,9 @@ impl FederationService {
     /// # Errors
     /// Queue, wire, or audit failures outside normal delivery outcomes.
     pub async fn process_one(&self) -> Result<WorkerStep> {
-        let kinds = [REMOTE_SEND_KIND.to_string()];
+        // Every configured peer's kind. `claim` takes a list, so one worker still
+        // serves all peers — what changed is that the QUEUE can tell them apart.
+        let kinds: Vec<String> = self.peers.aliases().map(remote_send_kind).collect();
         let Some((job_id, job)) = self.queue.claim(&kinds, WORKER_NAME).await? else {
             return Ok(WorkerStep::Idle);
         };
@@ -615,6 +635,47 @@ mod tests {
             Arc::new(Ok),
         )
         .expect("federation")
+    }
+
+    /// Review round 2 — ONE msg_id to TWO peers is TWO rows.
+    ///
+    /// The schema-7 dedupe fix scoped `(kind, dedupe_key)`, and federation stamped
+    /// every peer with one shared kind, so the user-reachable loss survived the
+    /// migration for exactly the rows the migration's own comment claimed to
+    /// cover: `--msg-id m1 --to bob@laptop` then `--to bob@desktop` collapsed, and
+    /// the second caller was told `Queued` for a row bound to the first machine.
+    ///
+    /// Mutation witness: make `remote_send_kind` return a constant and this fails
+    /// with one row where two are required.
+    #[tokio::test]
+    async fn one_msg_id_to_two_peers_is_two_rows() {
+        let queue = Arc::new(FakeQueue::new());
+        let bus = Arc::new(EventBus::new(Arc::new(FakeSpine::new()), 16).expect("event bus"));
+        let service = FederationService::with_sources(
+            "desktop".to_string(),
+            [
+                peer("laptop", "http://laptop".to_string()),
+                peer("tower", "http://tower".to_string()),
+            ],
+            Arc::clone(&queue) as Arc<dyn pij_core::ports::Queue>,
+            bus,
+            Arc::new(|| Ok(1234)),
+            Arc::new(Ok),
+        )
+        .expect("federation");
+
+        for machine in ["laptop", "tower"] {
+            service
+                .enqueue_remote(&request(machine))
+                .await
+                .expect("a remote send to a configured peer");
+        }
+
+        assert_eq!(
+            queue.live_len(),
+            2,
+            "the same msg_id addressed to two MACHINES is two messages"
+        );
     }
 
     #[test]
