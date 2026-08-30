@@ -18,6 +18,7 @@ pub mod error;
 pub mod events;
 pub mod liveness;
 pub mod model;
+pub mod names;
 pub mod orchestration;
 pub mod ports;
 pub mod report;
