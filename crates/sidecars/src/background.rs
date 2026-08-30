@@ -3,7 +3,8 @@
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -20,6 +21,7 @@ use crate::common::{LoopHandle, Processed, enqueue_turn, now_ms, start_resilient
 /// Queue kind for background-runner commands.
 pub const BG_KIND: &str = "sidecar:bg";
 const WORKER_ID: &str = "sidecar-bg";
+static WORKER_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 /// A background runner request.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,6 +75,8 @@ pub struct BgRecord {
     pub title: String,
     /// Process-group id (the spawned shell is group leader).
     pub pgid: u32,
+    /// Boot-local ownership marker; a restarted daemon must never signal this pgid.
+    pub owner_id: String,
     /// Target seat.
     pub target: SeatId,
     /// Captured output path.
@@ -83,6 +87,8 @@ pub struct BgRecord {
     pub observed_pids: Vec<u32>,
     /// Terminal observation time.
     pub finished_at: Option<u64>,
+    /// Observed shell exit code; absent for signals and lost ownership.
+    pub exit_code: Option<i32>,
 }
 
 /// Background command lifecycle.
@@ -91,8 +97,12 @@ pub struct BgRecord {
 pub enum BgStatus {
     /// Process group is observed live.
     Running,
-    /// Process group exited normally.
+    /// Process group exited successfully and was reaped by this worker.
     Done,
+    /// Process group exited non-zero and was reaped by this worker.
+    Failed,
+    /// No owning child handle survived to establish an exit outcome.
+    Lost,
     /// Process group was signalled and then observed gone.
     Cancelled,
 }
@@ -103,6 +113,8 @@ pub struct BgWorker {
     state_dir: PathBuf,
     children: Mutex<BTreeMap<String, Child>>,
     cancel_deadline: Duration,
+    owner_id: String,
+    own_pgid: u32,
 }
 
 impl BgWorker {
@@ -110,11 +122,18 @@ impl BgWorker {
     pub fn new(queue: Arc<dyn Queue>, state_dir: PathBuf) -> Result<Self> {
         fs::create_dir_all(&state_dir)
             .map_err(|error| io_error("create state directory", &state_dir, error))?;
+        let pid = std::process::id();
         Ok(Self {
             queue,
             state_dir,
             children: Mutex::new(BTreeMap::new()),
             cancel_deadline: Duration::from_secs(5),
+            owner_id: format!(
+                "{pid}-{}-{}",
+                now_ms()?,
+                WORKER_GENERATION.fetch_add(1, Ordering::Relaxed)
+            ),
+            own_pgid: process_group_of(pid)?,
         })
     }
 
@@ -134,32 +153,42 @@ impl BgWorker {
 
     /// Claim at most `limit` commands and observe every running group once.
     pub async fn run_once(&self, limit: usize) -> Result<Processed> {
+        self.observe_completions().await?;
         let mut count = 0;
+        let mut first_error = None;
         while count < limit {
             let Some((queue_id, row)) = self.queue.claim(&[BG_KIND.to_string()], WORKER_ID).await?
             else {
                 break;
             };
-            let request: BgRequest = serde_json::from_str(&row.payload).map_err(codec_error)?;
-            let result = match request {
-                BgRequest::Start {
+            let result = match serde_json::from_str::<BgRequest>(&row.payload).map_err(codec_error)
+            {
+                Ok(BgRequest::Start {
                     id,
                     title,
                     command,
                     target,
-                } => self.start_command(id, title, command, target),
-                BgRequest::Cancel { id, target } => self.cancel_command(&id, &target).await,
+                }) => self.start_command(id, title, command, target),
+                Ok(BgRequest::Cancel { id, target }) => self.cancel_command(&id, &target).await,
+                Err(error) => Err(error),
             };
             match result {
                 Ok(()) => self.queue.ack(queue_id, Outcome::Done).await?,
                 Err(error) => {
-                    self.queue.retry(queue_id, Duration::ZERO).await?;
-                    return Err(error);
+                    self.queue
+                        .retry(queue_id, Duration::from_millis(100))
+                        .await?;
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
                 }
             }
             count += 1;
         }
         self.observe_completions().await?;
+        if let Some(error) = first_error {
+            return Err(error);
+        }
         Ok(Processed { count })
     }
 
@@ -207,11 +236,13 @@ impl BgWorker {
             id: id.clone(),
             title,
             pgid,
+            owner_id: self.owner_id.clone(),
             target,
             output_path,
             status: BgStatus::Running,
             observed_pids: Vec::new(),
             finished_at: None,
+            exit_code: None,
         })?;
         self.children
             .lock()
@@ -226,6 +257,24 @@ impl BgWorker {
             return Err(PijError::Adapter {
                 adapter: "sidecars/bg".to_string(),
                 message: format!("background job `{id}` is not running"),
+            });
+        }
+        if record.owner_id != self.owner_id {
+            return Err(PijError::Adapter {
+                adapter: "sidecars/bg".to_string(),
+                message: format!(
+                    "refusing to signal process group {} for `{id}`: durable owner {} is not this boot {}",
+                    record.pgid, record.owner_id, self.owner_id
+                ),
+            });
+        }
+        if record.pgid == self.own_pgid {
+            return Err(PijError::Adapter {
+                adapter: "sidecars/bg".to_string(),
+                message: format!(
+                    "refusing to signal process group {} for `{id}`: it is the daemon's own group",
+                    record.pgid
+                ),
             });
         }
         let observed = group_pids(record.pgid)?;
@@ -252,7 +301,7 @@ impl BgWorker {
     pub async fn await_group_exit(&self, id: &str, pgid: u32) -> Result<()> {
         let deadline = Instant::now() + self.cancel_deadline;
         loop {
-            self.reap(id)?;
+            let _ = self.reap(id)?;
             let survivors = group_pids(pgid)?;
             if survivors.is_empty() {
                 return Ok(());
@@ -287,11 +336,21 @@ impl BgWorker {
             if record.status != BgStatus::Running {
                 continue;
             }
-            self.reap(&record.id)?;
+            let exit = self.reap(&record.id)?;
             if !group_pids(record.pgid)?.is_empty() {
                 continue;
             }
-            record.status = BgStatus::Done;
+            let (status, exit_code, label) = match exit {
+                Some(status) if status.success() => (BgStatus::Done, status.code(), "finished"),
+                Some(status) => (BgStatus::Failed, status.code(), "failed"),
+                None => (
+                    BgStatus::Lost,
+                    None,
+                    "lost: process exited without an owning completion observation",
+                ),
+            };
+            record.status = status;
+            record.exit_code = exit_code;
             record.finished_at = Some(now_ms()?);
             self.persist(&record)?;
             let output = fs::read_to_string(&record.output_path)
@@ -301,34 +360,33 @@ impl BgWorker {
                 "pij-bg",
                 &record.target,
                 format!(
-                    "background job `{}` finished\n{}",
+                    "background job `{}` {label}{}\n{}",
                     record.id,
+                    exit_code
+                        .map(|code| format!(" (exit {code})"))
+                        .unwrap_or_default(),
                     output.trim_end()
                 ),
-                format!("bg-{}-done", record.id),
+                format!("bg-{}-terminal", record.id),
             )
             .await?;
         }
         Ok(())
     }
 
-    fn reap(&self, id: &str) -> Result<()> {
+    fn reap(&self, id: &str) -> Result<Option<ExitStatus>> {
         let mut children = self.children.lock().expect("bg children mutex");
-        let exited = if let Some(child) = children.get_mut(id) {
-            child
-                .try_wait()
-                .map_err(|error| PijError::Adapter {
-                    adapter: "sidecars/bg".to_string(),
-                    message: format!("could not observe child `{id}`: {error}"),
-                })?
-                .is_some()
-        } else {
-            false
+        let status = match children.get_mut(id) {
+            Some(child) => child.try_wait().map_err(|error| PijError::Adapter {
+                adapter: "sidecars/bg".to_string(),
+                message: format!("could not observe child `{id}`: {error}"),
+            })?,
+            None => None,
         };
-        if exited {
+        if status.is_some() {
             children.remove(id);
         }
-        Ok(())
+        Ok(status)
     }
 
     /// Read one durable record.
@@ -351,6 +409,26 @@ impl BgWorker {
     fn record_path(&self, id: &str) -> PathBuf {
         self.state_dir.join(format!("{id}.json"))
     }
+}
+
+fn process_group_of(pid: u32) -> Result<u32> {
+    let output = Command::new("/bin/ps")
+        .args(["-o", "pgid=", "-p", &pid.to_string()])
+        .output()
+        .map_err(|error| PijError::Adapter {
+            adapter: "sidecars/bg".to_string(),
+            message: format!("could not execute /bin/ps for pid {pid}: {error}"),
+        })?;
+    let raw = String::from_utf8(output.stdout).map_err(|error| PijError::Adapter {
+        adapter: "sidecars/bg".to_string(),
+        message: format!("/bin/ps returned non-UTF-8 process-group output: {error}"),
+    })?;
+    raw.trim()
+        .parse::<u32>()
+        .map_err(|error| PijError::Adapter {
+            adapter: "sidecars/bg".to_string(),
+            message: format!("could not resolve process group for pid {pid} from {raw:?}: {error}"),
+        })
 }
 
 fn signal_group(pgid: u32) -> Result<()> {

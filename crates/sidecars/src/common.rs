@@ -95,8 +95,8 @@ pub(crate) async fn enqueue_turn(
         in_reply_to: None,
         command: None,
     };
-    queue
-        .enqueue(Job {
+    let _ = queue
+        .enqueue_delivery(Job {
             kind: delivery_kind(to),
             serial_key: to.to_string(),
             payload: serde_json::to_string(&message).map_err(|error| PijError::Adapter {
