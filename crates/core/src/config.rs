@@ -81,6 +81,14 @@ pub struct Config {
     /// This is policy, not a safety brake: age changes the outcome to failed.
     /// Expired jobs never return to pending; retrying creates a new attempt.
     pub claim_lease_secs: u64,
+    /// Maximum delivered message ids retained for each recipient.
+    ///
+    /// Federation retries cap at five minutes and observed peak traffic is only
+    /// a few messages per recipient per minute. `1_024` is roughly three orders
+    /// of magnitude above that practical duplicate window while keeping a
+    /// hundred-seat fleet's absolute ceiling to single-digit megabytes. Once a
+    /// recipient exceeds the bound, the oldest ids lose duplicate protection.
+    pub delivered_id_capacity: usize,
     /// How often the drain worker runs a pass over queued work.
     pub delivery_interval_secs: u64,
     /// How long before the same seat may be told AGAIN that a message is waiting.
@@ -118,6 +126,7 @@ impl Default for Config {
             store_path: String::new(),
             watchdog_interval_secs: 20 * 60,
             claim_lease_secs: 5 * 60,
+            delivered_id_capacity: 1_024,
             delivery_interval_secs: 5,
             pointer_announce_cadence_secs: 90,
             event_buffer_capacity: 1_024,

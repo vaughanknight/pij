@@ -19,8 +19,8 @@ use sqlx::{Pool, Row, Sqlite};
 use std::time::Duration;
 
 use pij_core::error::{PijError, Result};
-use pij_core::model::{Job, JobId, Outcome};
-use pij_core::ports::Queue;
+use pij_core::model::{DeliveryOrigin, Job, JobId, Outcome};
+use pij_core::ports::{DeliveryEnqueue, Queue};
 
 use crate::migrate::require_current_schema;
 
@@ -28,15 +28,20 @@ use crate::migrate::require_current_schema;
 pub struct SqliteQueue {
     pool: Pool<Sqlite>,
     claim_lease_secs: i64,
+    delivered_id_capacity: i64,
 }
 
 impl SqliteQueue {
-    /// Wrap an open pool with the configured maximum running-claim age.
+    /// Wrap an open pool with its configured claim age and delivered-id bound.
     ///
     /// # Errors
-    /// [`PijError::Adapter`] when `claim_lease_secs` is zero or exceeds SQLite's
+    /// [`PijError::Adapter`] when either policy is zero or exceeds SQLite's
     /// signed integer range.
-    pub fn new(pool: Pool<Sqlite>, claim_lease_secs: u64) -> Result<Self> {
+    pub fn new(
+        pool: Pool<Sqlite>,
+        claim_lease_secs: u64,
+        delivered_id_capacity: usize,
+    ) -> Result<Self> {
         let claim_lease_secs = i64::try_from(claim_lease_secs)
             .ok()
             .filter(|seconds| *seconds > 0)
@@ -44,9 +49,17 @@ impl SqliteQueue {
                 adapter: "store/queue".to_string(),
                 message: "claim_lease_secs must be between 1 and i64::MAX".to_string(),
             })?;
+        let delivered_id_capacity = i64::try_from(delivered_id_capacity)
+            .ok()
+            .filter(|capacity| *capacity > 0)
+            .ok_or_else(|| PijError::Adapter {
+                adapter: "store/queue".to_string(),
+                message: "delivered_id_capacity must be between 1 and i64::MAX".to_string(),
+            })?;
         Ok(SqliteQueue {
             pool,
             claim_lease_secs,
+            delivered_id_capacity,
         })
     }
 
@@ -136,6 +149,50 @@ impl Queue for SqliteQueue {
         Ok(JobId(id as u64))
     }
 
+    async fn enqueue_delivery(&self, job: Job) -> Result<DeliveryEnqueue> {
+        require_current_schema(&self.pool).await?;
+        require_delivery_job(&job)?;
+        let mut tx = self.begin_write().await?;
+
+        let delivered_origin: Option<String> = sqlx::query_scalar(
+            "SELECT origin FROM delivered_messages WHERE recipient = ?1 AND msg_id = ?2",
+        )
+        .bind(&job.serial_key)
+        .bind(&job.dedupe_key)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(adapter_error)?;
+        if let Some(origin) = delivered_origin {
+            let origin = decode_origin(&origin)?;
+            tx.commit().await.map_err(adapter_error)?;
+            return Ok(DeliveryEnqueue::AlreadyDelivered(origin));
+        }
+
+        sqlx::query(
+            "INSERT INTO jobs (kind, serial_key, payload, dedupe_key, enqueued_at) \
+             VALUES (?1, ?2, ?3, ?4, unixepoch()) ON CONFLICT DO NOTHING",
+        )
+        .bind(&job.kind)
+        .bind(&job.serial_key)
+        .bind(&job.payload)
+        .bind(&job.dedupe_key)
+        .execute(&mut *tx)
+        .await
+        .map_err(adapter_error)?;
+
+        let id: i64 = sqlx::query_scalar(
+            "SELECT id FROM jobs WHERE kind = ?1 AND dedupe_key = ?2 \
+               AND state IN ('pending', 'running') ORDER BY id LIMIT 1",
+        )
+        .bind(&job.kind)
+        .bind(&job.dedupe_key)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(adapter_error)?;
+
+        tx.commit().await.map_err(adapter_error)?;
+        Ok(DeliveryEnqueue::Queued(JobId(id as u64)))
+    }
     async fn claim(&self, kinds: &[String], worker: &str) -> Result<Option<(JobId, Job)>> {
         require_current_schema(&self.pool).await?;
         if kinds.is_empty() {
@@ -299,5 +356,100 @@ impl Queue for SqliteQueue {
             });
         }
         Ok(())
+    }
+
+    async fn ack_delivery(&self, job: JobId, origin: DeliveryOrigin) -> Result<()> {
+        require_current_schema(&self.pool).await?;
+
+        let mut tx = self.begin_write().await?;
+        let row = sqlx::query(
+            "SELECT kind, serial_key, dedupe_key FROM jobs WHERE id = ?1 AND state = 'running'",
+        )
+        .bind(job.0 as i64)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(adapter_error)?
+        .ok_or_else(|| PijError::Adapter {
+            adapter: "store/queue".to_string(),
+            message: format!(
+                "job {} is not running — it was already acked, or never claimed",
+                job.0
+            ),
+        })?;
+        let claimed = Job {
+            kind: row.try_get("kind").map_err(adapter_error)?,
+            serial_key: row.try_get("serial_key").map_err(adapter_error)?,
+            payload: String::new(),
+            dedupe_key: row.try_get("dedupe_key").map_err(adapter_error)?,
+            attempt: 0,
+        };
+        require_delivery_job(&claimed)?;
+
+        sqlx::query(
+            "UPDATE jobs SET state = 'done', outcome = NULL, acked_at = unixepoch() \
+             WHERE id = ?1 AND state = 'running'",
+        )
+        .bind(job.0 as i64)
+        .execute(&mut *tx)
+        .await
+        .map_err(adapter_error)?;
+        sqlx::query(
+            "INSERT INTO delivered_messages (recipient, msg_id, origin) VALUES (?1, ?2, ?3) \
+             ON CONFLICT (recipient, msg_id) DO NOTHING",
+        )
+        .bind(&claimed.serial_key)
+        .bind(&claimed.dedupe_key)
+        .bind(encode_origin(origin))
+        .execute(&mut *tx)
+        .await
+        .map_err(adapter_error)?;
+        sqlx::query(
+            "DELETE FROM delivered_messages WHERE recipient = ?1 AND seq NOT IN (\
+                 SELECT seq FROM delivered_messages WHERE recipient = ?1 \
+                 ORDER BY seq DESC LIMIT ?2\
+             )",
+        )
+        .bind(&claimed.serial_key)
+        .bind(self.delivered_id_capacity)
+        .execute(&mut *tx)
+        .await
+        .map_err(adapter_error)?;
+
+        tx.commit().await.map_err(adapter_error)?;
+        Ok(())
+    }
+}
+
+fn require_delivery_job(job: &Job) -> Result<()> {
+    let expected = format!("delivery:{}", job.serial_key);
+    if job.kind == expected {
+        return Ok(());
+    }
+    Err(PijError::Adapter {
+        adapter: "store/queue".to_string(),
+        message: format!(
+            "delivery operation requires kind {expected}, got {}",
+            job.kind
+        ),
+    })
+}
+
+const fn encode_origin(origin: DeliveryOrigin) -> &'static str {
+    match origin {
+        DeliveryOrigin::InjectedToTransport => "injected-to-transport",
+        DeliveryOrigin::VerifiedArrival => "verified-arrival",
+        DeliveryOrigin::ReaderRead => "reader-read",
+    }
+}
+
+fn decode_origin(origin: &str) -> Result<DeliveryOrigin> {
+    match origin {
+        "injected-to-transport" => Ok(DeliveryOrigin::InjectedToTransport),
+        "verified-arrival" => Ok(DeliveryOrigin::VerifiedArrival),
+        "reader-read" => Ok(DeliveryOrigin::ReaderRead),
+        other => Err(PijError::Adapter {
+            adapter: "store/queue".to_string(),
+            message: format!("delivered message has unknown origin {other:?}"),
+        }),
     }
 }

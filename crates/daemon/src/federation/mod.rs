@@ -649,7 +649,7 @@ mod tests {
     /// with one row where two are required.
     #[tokio::test]
     async fn one_msg_id_to_two_peers_is_two_rows() {
-        let queue = Arc::new(FakeQueue::new());
+        let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
         let bus = Arc::new(EventBus::new(Arc::new(FakeSpine::new()), 16).expect("event bus"));
         let service = FederationService::with_sources(
             "desktop".to_string(),
@@ -714,7 +714,7 @@ mod tests {
 
     #[tokio::test]
     async fn enqueue_claims_only_durable_local_queueing() {
-        let queue = Arc::new(FakeQueue::new());
+        let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
         let spine = Arc::new(FakeSpine::new());
         let service = service(queue.clone(), spine.clone(), "http://peer".to_string());
         let receipt = service
@@ -733,7 +733,7 @@ mod tests {
 
     #[tokio::test]
     async fn network_failure_retries_with_persisted_exponential_attempt() {
-        let queue = Arc::new(FakeQueue::new());
+        let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
         let spine = Arc::new(FakeSpine::new());
         let service = service(queue.clone(), spine, "http://127.0.0.1:1".to_string());
         service
@@ -764,7 +764,7 @@ mod tests {
 
     #[test]
     fn retry_delay_is_exponential_and_caps_at_five_minutes() {
-        let queue = Arc::new(FakeQueue::new());
+        let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
         let spine = Arc::new(FakeSpine::new());
         let service = service(queue, spine, "http://peer".to_string());
         assert_eq!(
@@ -791,7 +791,7 @@ mod tests {
 
     #[tokio::test]
     async fn idle_worker_shutdown_leaves_no_orphan_task() {
-        let queue = Arc::new(FakeQueue::new());
+        let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
         let spine = Arc::new(FakeSpine::new());
         let worker = Arc::new(service(queue, spine, "http://peer".to_string())).start();
         worker.shutdown().await.expect("shutdown");

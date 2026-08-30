@@ -10,9 +10,10 @@
 //! core's tests drive it with [`crate::block_on`], adapters with tokio.
 
 use pij_core::model::{
-    Event, Harness, Job, JobId, Outcome, Pane, SeatDescriptor, SeatId, Seq, SystemState,
+    DeliveryOrigin, Event, Harness, Job, JobId, Outcome, Pane, SeatDescriptor, SeatId, Seq,
+    SystemState,
 };
-use pij_core::ports::{Queue, Registry, SeatFilter, Spine, TmuxPort};
+use pij_core::ports::{DeliveryEnqueue, Queue, Registry, SeatFilter, Spine, TmuxPort};
 
 /// Every promise the [`Registry`] port makes, in one place.
 ///
@@ -290,6 +291,48 @@ pub async fn queue_contract(queue: &dyn Queue) {
         .await
         .expect("claim");
     assert!(none.is_none(), "claim must respect the kind filter");
+
+    // 5. Destination delivery dedupe spans terminal acknowledgement and replays
+    //    the evidence that was actually recorded, not a synthetic queue claim.
+    let delivery = Job {
+        kind: "delivery:seat-delivered".to_string(),
+        serial_key: "seat-delivered".to_string(),
+        payload: "{}".to_string(),
+        dedupe_key: "delivered-1".to_string(),
+        attempt: 0,
+    };
+    let first = queue
+        .enqueue_delivery(delivery.clone())
+        .await
+        .expect("enqueue delivery");
+    let DeliveryEnqueue::Queued(first) = first else {
+        panic!("a new delivery must queue");
+    };
+    assert_eq!(
+        queue
+            .enqueue_delivery(delivery.clone())
+            .await
+            .expect("collapse live delivery"),
+        DeliveryEnqueue::Queued(first),
+        "the durable ledger must not weaken live-row collapse"
+    );
+    let claimed = queue
+        .claim(std::slice::from_ref(&delivery.kind), "delivery-worker")
+        .await
+        .expect("claim delivery")
+        .expect("delivery row");
+    assert_eq!(claimed.0, first);
+    queue
+        .ack_delivery(first, DeliveryOrigin::ReaderRead)
+        .await
+        .expect("record delivered id");
+    assert_eq!(
+        queue
+            .enqueue_delivery(delivery)
+            .await
+            .expect("consult delivered id"),
+        DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::ReaderRead)
+    );
 }
 
 /// A seat descriptor with the shape most contract tests want.

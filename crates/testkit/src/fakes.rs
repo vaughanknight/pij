@@ -27,8 +27,8 @@ use pij_core::model::{
     Outcome, Pane, ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
 };
 use pij_core::ports::{
-    HarnessPort, LaunchCommand, LivenessPort, Queue, Registry, SeatFilter, Spine, TmuxPort,
-    Transport,
+    DeliveryEnqueue, HarnessPort, LaunchCommand, LivenessPort, Queue, Registry, SeatFilter, Spine,
+    TmuxPort, Transport,
 };
 
 /// One recorded interaction, rendered as a stable string so assertions read as
@@ -218,9 +218,9 @@ impl Spine for FakeSpine {
 
 /// The job queue, in memory — dedupe and serial keys included, because a fake
 /// that drops the semantics is a fake of the wrong thing.
-#[derive(Default)]
 pub struct FakeQueue {
     state: Mutex<QueueState>,
+    delivered_id_capacity: usize,
 }
 
 #[derive(Default)]
@@ -233,12 +233,25 @@ struct QueueState {
     not_before: HashMap<u64, Duration>,
     now: Duration,
     next_id: u64,
+    delivered: Vec<(String, String, DeliveryOrigin)>,
 }
 
 impl FakeQueue {
-    /// An empty queue.
-    pub fn new() -> Self {
-        Self::default()
+    /// An empty queue with a configured per-recipient delivered-id bound.
+    ///
+    /// # Errors
+    /// [`PijError::Adapter`] when `delivered_id_capacity` is zero.
+    pub fn new(delivered_id_capacity: usize) -> Result<Self> {
+        if delivered_id_capacity == 0 {
+            return Err(PijError::Adapter {
+                adapter: "testkit/fake-queue".to_string(),
+                message: "delivered_id_capacity must be greater than zero".to_string(),
+            });
+        }
+        Ok(Self {
+            state: Mutex::new(QueueState::default()),
+            delivered_id_capacity,
+        })
     }
 
     /// How many live (unclaimed) rows exist — the assertion surface for dedupe.
@@ -302,6 +315,27 @@ impl Queue for FakeQueue {
         Ok(id)
     }
 
+    async fn enqueue_delivery(&self, job: Job) -> Result<DeliveryEnqueue> {
+        require_delivery_job(&job)?;
+        let mut state = self.state.lock().expect("fake queue mutex");
+        if let Some((_, _, origin)) = state.delivered.iter().find(|(recipient, msg_id, _)| {
+            recipient == &job.serial_key && msg_id == &job.dedupe_key
+        }) {
+            return Ok(DeliveryEnqueue::AlreadyDelivered(*origin));
+        }
+        if let Some((id, _)) = state
+            .live
+            .iter()
+            .find(|(_, live)| live.dedupe_key == job.dedupe_key && live.kind == job.kind)
+        {
+            return Ok(DeliveryEnqueue::Queued(*id));
+        }
+        state.next_id += 1;
+        let id = JobId(state.next_id);
+        state.live.push((id, job));
+        Ok(DeliveryEnqueue::Queued(id))
+    }
+
     async fn claim(&self, kinds: &[String], worker: &str) -> Result<Option<(JobId, Job)>> {
         let mut state = self.state.lock().expect("fake queue mutex");
         let busy: Vec<String> = state
@@ -339,6 +373,45 @@ impl Queue for FakeQueue {
         Ok(())
     }
 
+    async fn ack_delivery(&self, job: JobId, origin: DeliveryOrigin) -> Result<()> {
+        let mut state = self.state.lock().expect("fake queue mutex");
+        let Some((claimed, _worker)) = state.claimed.remove(&job.0) else {
+            return Err(PijError::Adapter {
+                adapter: "testkit/fake-queue".to_string(),
+                message: format!(
+                    "job {} is not running — it was already acked, or never claimed",
+                    job.0
+                ),
+            });
+        };
+        require_delivery_job(&claimed)?;
+        if !state.delivered.iter().any(|(recipient, msg_id, _)| {
+            recipient == &claimed.serial_key && msg_id == &claimed.dedupe_key
+        }) {
+            state.delivered.push((
+                claimed.serial_key.clone(),
+                claimed.dedupe_key.clone(),
+                origin,
+            ));
+        }
+        let recipient_count = state
+            .delivered
+            .iter()
+            .filter(|(recipient, _, _)| recipient == &claimed.serial_key)
+            .count();
+        let mut remove = recipient_count.saturating_sub(self.delivered_id_capacity);
+        state.delivered.retain(|(recipient, _, _)| {
+            if recipient == &claimed.serial_key && remove > 0 {
+                remove -= 1;
+                false
+            } else {
+                true
+            }
+        });
+        state.acked.push((job, Outcome::Done));
+        Ok(())
+    }
+
     /// R4-AMEND-1. The fake counts attempts too, because a caller that reads
     /// `attempts()` must get the same answer from either implementation — a fake
     /// that forgot the counter would let a one-writer test pass against nothing.
@@ -367,6 +440,20 @@ impl Queue for FakeQueue {
         state.retried.push((job, delay));
         Ok(())
     }
+}
+
+fn require_delivery_job(job: &Job) -> Result<()> {
+    let expected = format!("delivery:{}", job.serial_key);
+    if job.kind == expected {
+        return Ok(());
+    }
+    Err(PijError::Adapter {
+        adapter: "testkit/fake-queue".to_string(),
+        message: format!(
+            "delivery operation requires kind {expected}, got {}",
+            job.kind
+        ),
+    })
 }
 
 /// A transport whose reachability and outcome are scripted.

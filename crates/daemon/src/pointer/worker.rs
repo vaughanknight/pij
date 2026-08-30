@@ -5,7 +5,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use pij_core::delivery::{DeliveryRung, delivery_kind, select_rung};
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
-use pij_core::model::{DeliveryOutcome, Event, Job, JobId, Msg, Outcome, SeatId, SemanticState};
+use pij_core::model::{
+    DeliveryOrigin, DeliveryOutcome, Event, Job, JobId, Msg, Outcome, SeatId, SemanticState,
+};
 use pij_core::ports::{Queue, Registry, SeatFilter, TmuxPort, Transport};
 use pij_harnesses::InteractionGate;
 use serde::Serialize;
@@ -204,8 +206,8 @@ impl DrainWorker {
         };
         match select_rung(&recipient, &msg, socket_available, false, true) {
             DeliveryRung::Socket => match self.transport.deliver(&recipient, &msg).await {
-                Ok(DeliveryOutcome::Delivered { .. }) => {
-                    self.queue.ack(job_id, Outcome::Done).await
+                Ok(DeliveryOutcome::Delivered { origin }) => {
+                    self.queue.ack_delivery(job_id, origin).await
                 }
                 Ok(DeliveryOutcome::Queued | DeliveryOutcome::Held { .. }) => {
                     self.release_body(job_id).await
@@ -236,7 +238,9 @@ impl DrainWorker {
             self.backoff_command(job_id, attempt).await?;
             return Err(error);
         }
-        self.queue.ack(job_id, Outcome::Done).await
+        self.queue
+            .ack_delivery(job_id, DeliveryOrigin::InjectedToTransport)
+            .await
     }
 
     async fn announce_pointer(&self, job_id: JobId, pane: &str, msg: &Msg) -> Result<()> {
@@ -360,17 +364,23 @@ fn system_time_ms() -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::time::Duration;
 
+    use async_trait::async_trait;
     use pij_core::config::Config;
     use pij_core::delivery::delivery_kind;
-    use pij_core::model::{Harness, Job, Msg, Outcome, ProcIdentity, SeatDescriptor, SeatId, Seq};
-    use pij_core::ports::{Queue, Registry, Spine, TmuxPort, Transport};
+    use pij_core::model::{
+        DeliveryOrigin, Harness, Job, JobId, Msg, Outcome, ProcIdentity, SeatDescriptor, SeatId,
+        Seq,
+    };
+    use pij_core::ports::{DeliveryEnqueue, Queue, Registry, Spine, TmuxPort, Transport};
     use pij_harnesses::InteractionGate;
     use pij_store::SqliteQueue;
     use pij_testkit::FreshStore;
     use pij_testkit::fakes::{FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport};
     use serde_json::Value;
+    use tokio::sync::Notify;
 
     use super::{DrainWorker, EventBus};
 
@@ -389,7 +399,7 @@ mod tests {
 
     fn fixture(transport: FakeTransport, tmux: FakeTmux) -> Fixture {
         let registry = Arc::new(FakeRegistry::new());
-        let queue = Arc::new(FakeQueue::new());
+        let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
         let transport = Arc::new(transport);
         let tmux = Arc::new(tmux);
         let interaction = Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>));
@@ -741,8 +751,12 @@ mod tests {
         let fresh = FreshStore::new();
         let pool = pij_store::open(&fresh.path()).await.expect("open store");
         let queue = Arc::new(
-            SqliteQueue::new(pool.clone(), Config::default().claim_lease_secs)
-                .expect("sqlite queue"),
+            SqliteQueue::new(
+                pool.clone(),
+                Config::default().claim_lease_secs,
+                Config::default().delivered_id_capacity,
+            )
+            .expect("sqlite queue"),
         );
         let registry = Arc::new(FakeRegistry::new());
         registry
@@ -792,5 +806,133 @@ mod tests {
             .expect("zero-delay release is immediately reader-claimable");
         assert_eq!(claimed_id, id);
         assert_eq!(claimed.attempt, 1);
+    }
+    struct FailFirstDeliveryAck {
+        inner: FakeQueue,
+        fail_first: AtomicBool,
+        ack_calls: AtomicUsize,
+        ack_called: Notify,
+    }
+
+    impl FailFirstDeliveryAck {
+        fn new() -> Self {
+            Self {
+                inner: FakeQueue::new(1_024).expect("valid fake queue policy"),
+                fail_first: AtomicBool::new(true),
+                ack_calls: AtomicUsize::new(0),
+                ack_called: Notify::new(),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Queue for FailFirstDeliveryAck {
+        async fn enqueue(&self, job: Job) -> pij_core::error::Result<JobId> {
+            self.inner.enqueue(job).await
+        }
+
+        async fn enqueue_delivery(&self, job: Job) -> pij_core::error::Result<DeliveryEnqueue> {
+            self.inner.enqueue_delivery(job).await
+        }
+
+        async fn claim(
+            &self,
+            kinds: &[String],
+            worker: &str,
+        ) -> pij_core::error::Result<Option<(JobId, Job)>> {
+            self.inner.claim(kinds, worker).await
+        }
+
+        async fn ack(&self, job: JobId, outcome: Outcome) -> pij_core::error::Result<()> {
+            self.inner.ack(job, outcome).await
+        }
+
+        async fn ack_delivery(
+            &self,
+            job: JobId,
+            origin: DeliveryOrigin,
+        ) -> pij_core::error::Result<()> {
+            self.ack_calls.fetch_add(1, Ordering::SeqCst);
+            self.ack_called.notify_one();
+            if self.fail_first.swap(false, Ordering::SeqCst) {
+                return Err(pij_core::error::PijError::Adapter {
+                    adapter: "test/fail-first-delivery-ack".to_string(),
+                    message: "injected transient delivery ack failure".to_string(),
+                });
+            }
+            self.inner.ack_delivery(job, origin).await
+        }
+
+        async fn retry(&self, job: JobId, delay: Duration) -> pij_core::error::Result<()> {
+            self.inner.retry(job, delay).await
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn drain_loop_survives_transient_delivery_ack_failure_and_processes_next_message() {
+        let queue = Arc::new(FailFirstDeliveryAck::new());
+        let registry = Arc::new(FakeRegistry::new());
+        let transport = Arc::new(FakeTransport::reachable());
+        let tmux = Arc::new(FakeTmux::new());
+        let interaction = Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>));
+        let event_bus = Arc::new(EventBus::new(Arc::new(FakeSpine::new()), 16).expect("event bus"));
+        let worker = Arc::new(
+            DrainWorker::new(
+                Arc::clone(&registry) as Arc<dyn Registry>,
+                Arc::clone(&queue) as Arc<dyn Queue>,
+                Arc::clone(&transport) as Arc<dyn Transport>,
+                Arc::clone(&tmux) as Arc<dyn TmuxPort>,
+                Arc::clone(&interaction),
+                event_bus,
+                CADENCE,
+            )
+            .expect("drain worker"),
+        );
+        for (seat_id, pane) in [("pij-first", "%21"), ("pij-next", "%22")] {
+            registry
+                .put(seat(seat_id, Some(pane)))
+                .await
+                .expect("register recipient");
+            interaction.observe_composer(pane, "");
+            let msg = message(seat_id, seat_id, None);
+            queue
+                .enqueue(Job {
+                    kind: delivery_kind(&msg.to),
+                    serial_key: msg.to.0.clone(),
+                    payload: serde_json::to_string(&msg).expect("message json"),
+                    dedupe_key: msg.msg_id,
+                    attempt: 0,
+                })
+                .await
+                .expect("enqueue delivery");
+        }
+
+        let loop_ = crate::start_resilient_delivery_drain(worker, Duration::from_secs(1))
+            .expect("start production drain wrapper");
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(1)).await;
+        queue.ack_called.notified().await;
+        assert_eq!(
+            queue.ack_calls.load(Ordering::SeqCst),
+            1,
+            "first ack failed"
+        );
+
+        tokio::time::advance(Duration::from_secs(1)).await;
+        queue.ack_called.notified().await;
+        assert_eq!(
+            queue.ack_calls.load(Ordering::SeqCst),
+            2,
+            "the production loop must process the next item after one dependency error"
+        );
+        assert_eq!(
+            transport
+                .delivered()
+                .iter()
+                .map(|msg| msg.to.0.as_str())
+                .collect::<Vec<_>>(),
+            ["pij-first", "pij-next"]
+        );
+        loop_.shutdown().await.expect("shutdown drain loop");
     }
 }

@@ -7,9 +7,9 @@
 //! is why the contract ships in wave 0 rather than with the first adapter.
 
 use pij_core::model::{
-    DeliveryOrigin, DeliveryOutcome, Harness, Liveness, Msg, ProcIdentity, Readiness,
+    DeliveryOrigin, DeliveryOutcome, Harness, Job, Liveness, Msg, ProcIdentity, Readiness,
 };
-use pij_core::ports::{HarnessPort, LivenessPort, TmuxPort, Transport};
+use pij_core::ports::{DeliveryEnqueue, HarnessPort, LivenessPort, Queue, TmuxPort, Transport};
 use pij_testkit::block_on;
 use pij_testkit::contract::{queue_contract, registry_contract, sample_seat, spine_contract};
 use pij_testkit::fakes::{
@@ -30,10 +30,57 @@ fn fake_spine_honours_the_spine_contract() {
 
 #[test]
 fn fake_queue_honours_the_queue_contract() {
-    let queue = FakeQueue::new();
+    let queue = FakeQueue::new(1_024).expect("valid fake queue policy");
     block_on(queue_contract(&queue));
 }
 
+#[test]
+fn fake_queue_enforces_its_per_recipient_delivered_id_bound() {
+    block_on(async {
+        let queue = FakeQueue::new(1).expect("one delivered id per recipient");
+        let job = |recipient: &str, msg_id: &str| Job {
+            kind: format!("delivery:{recipient}"),
+            serial_key: recipient.to_string(),
+            payload: "{}".to_string(),
+            dedupe_key: msg_id.to_string(),
+            attempt: 0,
+        };
+        for msg_id in ["first", "second"] {
+            let DeliveryEnqueue::Queued(id) = queue
+                .enqueue_delivery(job("pij-a", msg_id))
+                .await
+                .expect("enqueue")
+            else {
+                panic!("new id must queue");
+            };
+            let claimed = queue
+                .claim(&["delivery:pij-a".to_string()], "worker")
+                .await
+                .expect("claim")
+                .expect("delivery row");
+            assert_eq!(claimed.0, id);
+            queue
+                .ack_delivery(id, DeliveryOrigin::ReaderRead)
+                .await
+                .expect("ack delivery");
+        }
+
+        assert!(matches!(
+            queue
+                .enqueue_delivery(job("pij-a", "first"))
+                .await
+                .expect("oldest id evicted"),
+            DeliveryEnqueue::Queued(_)
+        ));
+        assert_eq!(
+            queue
+                .enqueue_delivery(job("pij-a", "second"))
+                .await
+                .expect("newest id retained"),
+            DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::ReaderRead)
+        );
+    });
+}
 #[test]
 fn fakes_record_what_the_code_did_not_only_what_it_returned() {
     // The recorder is the reason these are fakes and not stubs: a test can

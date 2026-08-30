@@ -191,8 +191,12 @@ pub async fn build_services(config: &Config) -> Result<Services> {
         AdapterChoice::Real => Arc::new(SqliteSpine::new(pool("spine")?)),
     };
     let queue: Arc<dyn Queue> = match config.adapters.queue {
-        AdapterChoice::Fake => Arc::new(FakeQueue::new()),
-        AdapterChoice::Real => Arc::new(SqliteQueue::new(pool("queue")?, config.claim_lease_secs)?),
+        AdapterChoice::Fake => Arc::new(FakeQueue::new(config.delivered_id_capacity)?),
+        AdapterChoice::Real => Arc::new(SqliteQueue::new(
+            pool("queue")?,
+            config.claim_lease_secs,
+            config.delivered_id_capacity,
+        )?),
     };
 
     // The four seams whose real adapters land in waves 1-3. They wire to fakes
@@ -281,6 +285,27 @@ fn needs_store(config: &Config) -> bool {
 // The scaffold is deleted rather than kept "in case": a helper with no callers is
 // a claim that some port might still be missing, and the next reader would have to
 // check.
+
+fn start_resilient_delivery_drain(
+    drain: Arc<pointer::DrainWorker>,
+    interval: Duration,
+) -> Result<lifecycle::TickLoop> {
+    lifecycle::TickLoop::start(interval, move || {
+        let drain = Arc::clone(&drain);
+        async move {
+            // SURVIVE errors, for the same reason the federation worker does
+            // (review F2). TickLoop terminates on an Err, and a seat exiting
+            // with queued mail is ROUTINE: one dead pane between the registry
+            // read and the submit would have ended all below-socket delivery
+            // for the daemon's lifetime — no pointers, no commands, no socket
+            // bodies — silently, until someone restarted it.
+            if let Err(error) = drain.drain_once().await {
+                eprintln!("pij-rs drain: {error}");
+            }
+            Ok(())
+        }
+    })
+}
 
 /// Boot the daemon: stage the key, BIND, build, publish, serve.
 ///
@@ -382,24 +407,8 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     let key = staged.publish()?;
 
     let federation_worker = Arc::clone(&federation).start();
-    let drain_loop = lifecycle::TickLoop::start(
-        Duration::from_secs(config.delivery_interval_secs),
-        move || {
-            let drain = Arc::clone(&drain);
-            async move {
-                // SURVIVE errors, for the same reason the federation worker does
-                // (review F2). TickLoop terminates on an Err, and a seat exiting
-                // with queued mail is ROUTINE: one dead pane between the registry
-                // read and the submit would have ended all below-socket delivery
-                // for the daemon's lifetime — no pointers, no commands, no socket
-                // bodies — silently, until someone restarted it.
-                if let Err(error) = drain.drain_once().await {
-                    eprintln!("pij-rs drain: {error}");
-                }
-                Ok(())
-            }
-        },
-    )?;
+    let drain_loop =
+        start_resilient_delivery_drain(drain, Duration::from_secs(config.delivery_interval_secs))?;
 
     let router = http::router_with_federation(
         services,
