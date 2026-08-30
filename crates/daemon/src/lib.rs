@@ -468,7 +468,10 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         Arc::clone(&services.tmux),
         Arc::clone(&services.interaction),
         Arc::clone(&services.event_bus),
-        Duration::from_secs(config.pointer_announce_cadence_secs),
+        pointer::PointerPolicy {
+            cadence: Duration::from_secs(config.pointer_announce_cadence_secs),
+            announcement_limit: config.pointer_announce_limit,
+        },
     )?);
 
     // 7. Validate the scheduler while refusal is still safe. Starting a worker

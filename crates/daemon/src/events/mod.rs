@@ -135,6 +135,21 @@ impl EventBus {
         })
     }
 
+    /// Return the current durable events matching `filter`, in spine order.
+    ///
+    /// This is a state reconstruction read, not a subscription. Pointer inbox
+    /// reads use it to publish `unparked` only when a preceding parked event is
+    /// still the latest policy fact for that seat.
+    pub async fn history(&self, filter: EventFilter) -> Result<Vec<Event>> {
+        Ok(self
+            .spine
+            .tail(None, Seq(0))
+            .await?
+            .into_iter()
+            .filter(|event| filter.matches(event))
+            .collect())
+    }
+
     /// Attach to events published after this call without replaying the spine.
     ///
     /// Use this for a consumer that only needs a wake-up for future work. A
