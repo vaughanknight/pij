@@ -453,3 +453,62 @@ when the anchor is absent**, in place of blind replacement. A tool that errors o
 a missing anchor makes step 1 impossible; nothing else in the loop was ever going
 to catch it, because steps 2 and 3 are both silent by construction.
 
+## E-027 — a witness must ACTIVATE the mechanism it mutates
+
+`pij-fond-tarantula` (u-names), running the two mutation witnesses my packet
+demanded, and finding that NEITHER CAN FIRE.
+
+* Remove the avalanche mix: both distribution tests stayed green. Measured
+  independently — unmixed spawn 503/3000 vs mixed 513/3000, and 66/78/73 at
+  N=405, not the 10/405 the TS comment records. The historical measurement no
+  longer reproduces under the current corpus and seed formulas.
+* Replace the coprime stride with 1: the 405-seat test stayed green too, and
+  structurally must — 405 independent seeds start uniformly across 493,920 pairs,
+  so there are almost no collisions and **the stride is only used after one**.
+
+> A broad distribution check defends the OUTCOME. It never activates the
+> MECHANISM, so it cannot witness the mechanism's removal.
+
+The honest replacements: the TS golden vectors fail without the mix (proving the
+exact mapping), and a FORCED 80-collision sequence from one pair-start fails with
+stride 1 (only one adjective row) — a test that constructs the condition under
+which the mechanism is used.
+
+**The refusal is the valuable half.** Tightening a near-designed-rate bound until
+it could distinguish 503 from 513 would have manufactured a failing test and
+called it evidence. The coder said so and declined, keeping the distribution
+assertions as honest independent properties instead.
+
+Note also what this makes of a packet: I wrote "watch reachability fail" for the
+stride mutation, and the source I was citing states plainly that stride 1 is
+coprime and preserves full coverage. **I demanded a proof the source I quoted
+proves impossible.**
+
+## E-028 — one field, two schedules
+
+`pij-flying-wildebeest` (u-pointer), found while WRITING THE FINAL REPORT and
+before writing a receipt for it.
+
+`Queue::retry(job, delay)` sets `not_before` on the body row. The pointer worker
+was to use it for its re-announce cadence — so a message that had just been
+announced as *"message waiting — run: pij inbox"* would be **hidden from the
+reader for up to five minutes**, because `inbox` claims through the same
+predicate. With `wait=true` the reader could attach after the empty claim and
+never wake, since nothing emits an event at eligibility time.
+
+> `not_before` was being asked to carry TWO SCHEDULES — when the ANNOUNCER may
+> speak again, and when the READER may have the message. Different subjects,
+> different schedules, one field.
+
+The fix needed no seam once the conflation was named: the body is released with
+`Duration::ZERO` always (a message that has been announced is immediately
+claimable — that is what the pointer just promised), and the cadence becomes a
+property of the SEAT, read from the most recent `delivery.pointer-announced` on
+the spine. Durable and restart-safe for free; an in-memory map would have been
+residue (E-024) recording that this PROCESS once announced, not that a seat was
+told.
+
+The coder declined to write the receipt. A report describing a worker whose
+pointer promises an action the same worker prevents would have been a receipt for
+a defect.
+
