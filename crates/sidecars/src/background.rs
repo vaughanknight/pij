@@ -89,6 +89,10 @@ pub struct BgRecord {
     pub finished_at: Option<u64>,
     /// Observed shell exit code; absent for signals and lost ownership.
     pub exit_code: Option<i32>,
+    /// Whether the owning direct child exited successfully, persisted even while
+    /// grandchildren still keep the process group alive.
+    #[serde(default)]
+    pub exit_success: Option<bool>,
 }
 
 /// Background command lifecycle.
@@ -241,6 +245,7 @@ impl BgWorker {
             observed_pids: Vec::new(),
             finished_at: None,
             exit_code: None,
+            exit_success: None,
         })?;
         self.children
             .lock()
@@ -335,12 +340,21 @@ impl BgWorker {
                 continue;
             }
             let exit = self.reap(&record.id)?;
+            if let Some(status) = exit {
+                // Persist the direct-child observation BEFORE a lingering
+                // grandchild can make this pass defer terminal classification.
+                // Otherwise the handle is reaped and the next pass mistakes
+                // "already observed" for "never ours".
+                record.exit_code = status.code();
+                record.exit_success = Some(status.success());
+                self.persist(&record)?;
+            }
             if !group_pids(record.pgid)?.is_empty() {
                 continue;
             }
-            let (status, exit_code, label) = match exit {
-                Some(status) if status.success() => (BgStatus::Done, status.code(), "finished"),
-                Some(status) => (BgStatus::Failed, status.code(), "failed"),
+            let (status, exit_code, label) = match record.exit_success {
+                Some(true) => (BgStatus::Done, record.exit_code, "finished"),
+                Some(false) => (BgStatus::Failed, record.exit_code, "failed"),
                 None => (
                     BgStatus::Lost,
                     None,
