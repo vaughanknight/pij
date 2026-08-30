@@ -16,9 +16,9 @@ pub use client::{
     DaemonClient, EventFrame, Registration, SendRequest, TailError, TailStream, setup_refusal,
 };
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use pij_core::config::Config;
+use pij_core::config::{AdapterChoice, Adapters, Config};
 use pij_core::model::{Envelope, ErrorKind};
 
 /// Where a daemon keeps its per-boot key and, later, its store.
@@ -92,10 +92,47 @@ pub fn exit_code<T>(envelope: &Envelope<T>) -> u8 {
     }
 }
 
-/// The config a hello-depth daemon boots with: every port fake, loopback only.
-pub fn hello_config(bind_addr: &str) -> Config {
+/// The config the SHIPPED daemon boots with: every port real, loopback only,
+/// SQLite under the state directory.
+///
+/// This replaces `hello_config`, which selected `Config::default()` — all seven
+/// adapters fake and an empty (in-memory) store. That was correct for wave 0's
+/// hello daemon and quietly wrong from wave 1 onward: the binary a user actually
+/// runs could not corroborate a registration (`FakeLiveness` observes no
+/// process, so every claim carrying `(pid, proc_start)` is refused), and its
+/// roster, queue and history lived in process memory and died with it.
+///
+/// u-extension found it trying to run the matrix against the shipped binary. The
+/// tell is worth remembering: **the default was inherited from the wave where it
+/// was true, and nothing re-asked once the real adapters existed.** Each wave
+/// added an adapter and none of them owned this line.
+///
+/// `offline` keeps the all-fake wiring for the demo and for tests that want a
+/// daemon touching nothing outside the process. It is opt-IN, because a default
+/// that silently persists nothing is the more dangerous of the two.
+pub fn daemon_config(bind_addr: &str, store_path: &Path, offline: bool) -> Config {
+    if offline {
+        return Config {
+            bind_addr: bind_addr.to_string(),
+            ..Config::default()
+        };
+    }
     Config {
         bind_addr: bind_addr.to_string(),
+        store_path: store_path.display().to_string(),
+        adapters: Adapters {
+            registry: AdapterChoice::Real,
+            spine: AdapterChoice::Real,
+            queue: AdapterChoice::Real,
+            liveness: AdapterChoice::Real,
+            tmux: AdapterChoice::Real,
+            harness: AdapterChoice::Real,
+            // Real, and inert: `UdsTransport` refuses every seat whose descriptor
+            // does not carry `cross_session_inbound_accept: Some(true)`, which
+            // nothing stamps until wave 4. Selecting the fake here instead would
+            // make the shipped daemon claim deliveries it never performed.
+            transport: AdapterChoice::Real,
+        },
         ..Config::default()
     }
 }

@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use pij_cli::{
-    DaemonClient, Registration, SendRequest, default_state_dir, exit_code, hello_config,
+    DaemonClient, Registration, SendRequest, daemon_config, default_state_dir, exit_code,
     parse_destination, render, render_frame, setup_refusal,
 };
 use pij_core::model::{Envelope, ErrorKind, Harness};
@@ -38,6 +38,11 @@ enum Command {
         /// the LAN; the bearer key is then its access boundary.
         #[arg(long, default_value = "127.0.0.1:7461")]
         bind: String,
+        /// Boot with every adapter FAKE: no store, no process table, nothing
+        /// outside this process. Opt-in, because a daemon that silently persists
+        /// nothing is the more dangerous default.
+        #[arg(long)]
+        offline: bool,
     },
     /// Ask a running daemon whether it is healthy.
     Ping,
@@ -115,8 +120,8 @@ async fn main() -> ExitCode {
 async fn run(cli: Cli) -> ExitCode {
     let state_dir = cli.state_dir.clone().unwrap_or_else(default_state_dir);
 
-    if let Command::Daemon { bind } = &cli.command {
-        return run_daemon(bind, state_dir).await;
+    if let Command::Daemon { bind, offline } = &cli.command {
+        return run_daemon(bind, state_dir, *offline).await;
     }
 
     let command_name = cli.command.name();
@@ -212,8 +217,8 @@ async fn run(cli: Cli) -> ExitCode {
     }
 }
 
-async fn run_daemon(bind: &str, state_dir: PathBuf) -> ExitCode {
-    let config = hello_config(bind);
+async fn run_daemon(bind: &str, state_dir: PathBuf, offline: bool) -> ExitCode {
+    let config = daemon_config(bind, &state_dir.join("pij.sqlite"), offline);
     match pij_daemon::boot(&config, state_dir).await {
         Ok(daemon) => {
             println!(
