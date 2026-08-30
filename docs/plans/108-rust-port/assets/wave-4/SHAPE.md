@@ -46,6 +46,23 @@ Also here: re-verify the drop-report decoder, which ships marked UNPROVEN ON THI
 CONNECTION SHAPE. It is correct code against a channel that may exist in another
 build; it has never been observed to fire.
 
+## 2b. `u-names` — memorable seat ids
+
+Added mid-wave, after u-spawn asked to mint seat ids from hex (D14) and I ruled
+against it. **Memorable names are a product surface**: every message in this fleet
+addresses seats by name, and a roster of `pij-a3f9c21b0e77` would be a visible
+regression in the thing pij is for.
+
+It is a separate unit rather than a corner of u-spawn because the TS generator is
+not a wordlist lookup — it is a curated corpus plus a seeded generator whose
+properties were tuned against measurement (strided probing for reachability, an
+avalanche mix because FNV-1a's low bits are biased on the seed shapes pij actually
+produces, resume-safe determinism). Porting that inside a launcher packet is how
+you get a subtly wrong port that passes its own tests. Golden vectors from the TS
+implementation are the proof.
+
+Until it lands, `/v1/spawn` requires an explicit `--id`.
+
 ## 3. `u-federation` — the peer half that u-daemon-http deliberately did not build
 
 Carved out at that unit's ack (D6) so a wave-3 route could not grow a
