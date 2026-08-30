@@ -716,3 +716,43 @@ came from the PM's own convenience command. The vocabulary held — the row is
 honestly labelled machine-graded — but a grade is not a defence if nobody reads
 it, which is why the trigger now has a real incident attached to it.
 
+## E-035 — we fixed their cause and never used the fix
+
+The control seat, `pij-meaningful-guineafowl`, living on an `accept=false` pane,
+counted its own pointers: 17:21:30, 17:28:00, 17:30:06, 17:32:11. Four and rising.
+It generalised to *unbounded* without waiting for a fifth, and the code agrees —
+`pointer/worker.rs` decides to announce on `now - last_announced_at >= cadence`
+**and nothing else.** No attempt cap. No parked state.
+
+That is the fork's still-open **G25**, verbatim, in our tree — the defect this port
+has cited since wave 3 as the thing it was careful not to inherit. Their daemon
+never called `claim()`, so `attempt` never moved, `parked` was unreachable, and
+pointers re-announced every ninety seconds for ever.
+
+> **We fixed their CAUSE — a real, single-writer, durable attempt counter, and the
+> live row is at 64 — and then never consulted it in the announce decision. We
+> built the instrument that makes the fix possible and left the policy out.**
+
+Every wave of this port has found some version of that sentence. This is the one
+where the missing policy sat next to a working instrument we had specifically
+built to enable it, on the exact bug we had named.
+
+### The correction that came from the receiving end
+
+I ruled the parked state must be visible — a spine event, a field, something an
+OPERATOR can see. The seat corrected the audience:
+
+> *"Make the last pointer before parking say so, so the silence that follows is
+> legible as policy rather than as a dead daemon. Otherwise a parked row and a
+> crashed announcer look identical from my chair."*
+
+An operator can read the spine and tell the two apart. **The recipient can look at
+nothing** — it experiences a stream of pointers that simply stops. Our oldest
+defect class, an absence carrying no information, arriving for once in the
+user-facing surface rather than in a data structure.
+
+So the state is visible twice, to two audiences, and neither substitutes for the
+other. The lesson generalises past pointers: **when you make something stop, ask
+who experiences the stopping — and whether, from where they sit, it is
+distinguishable from you being broken.**
+
