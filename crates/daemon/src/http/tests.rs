@@ -382,7 +382,7 @@ async fn spawn_stamps_only_the_argv_that_reached_the_observed_launch() {
 
     let request =
         |id: &str, accept_inbound: bool, session: Option<&str>, pane: Option<&str>| SpawnRequest {
-            id: id.into(),
+            id: Some(id.into()),
             harness: Harness::Claude,
             executable: Some("/path with spaces/claude".to_string()),
             model: Some("provider/model".to_string()),

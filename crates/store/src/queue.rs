@@ -118,9 +118,15 @@ impl Queue for SqliteQueue {
         .map_err(adapter_error)?;
 
         let id: i64 = sqlx::query_scalar(
-            "SELECT id FROM jobs WHERE dedupe_key = ?1 AND state IN ('pending', 'running') \
+            // Scoped by KIND as well as key, matching the index: the read-back
+            // must find the row this insert collapsed onto, and a global lookup
+            // would hand back a live row for a DIFFERENT recipient that happens
+            // to share a caller-chosen msg_id (review F5).
+            "SELECT id FROM jobs WHERE kind = ?1 AND dedupe_key = ?2 \
+               AND state IN ('pending', 'running') \
              ORDER BY id LIMIT 1",
         )
+        .bind(&job.kind)
         .bind(&job.dedupe_key)
         .fetch_one(&mut *tx)
         .await
@@ -146,6 +152,12 @@ impl Queue for SqliteQueue {
         // Claim age is POLICY: removing this statement changes expired work from
         // terminally failed to indefinitely running. Never put the same id back
         // in pending; that would let the old worker and a new worker both act.
+        //
+        // SCOPED TO THE KINDS BEING CLAIMED (review F6). Unscoped, the pointer
+        // drain's 5-second tick decided the fate of federation claims: a row held
+        // by a slow forward was terminally failed by a worker that knows nothing
+        // about forwarding, underneath the worker still doing it. A sweep is a
+        // judgement about work of a KIND, made by a claimant of that kind.
         sqlx::query(
             "UPDATE jobs \
              SET state = 'failed', \
@@ -154,9 +166,11 @@ impl Queue for SqliteQueue {
                  acked_at = unixepoch() \
              WHERE state = 'running' \
                AND claimed_at IS NOT NULL \
-               AND claimed_at <= unixepoch() - ?1",
+               AND claimed_at <= unixepoch() - ?1 \
+               AND kind IN (SELECT value FROM json_each(?2))",
         )
         .bind(self.claim_lease_secs)
+        .bind(&kinds_json)
         .execute(&mut *tx)
         .await
         .map_err(adapter_error)?;

@@ -341,12 +341,10 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     //    there is no reason for it to be down here.
     let identity = lifecycle::MachineIdentity::resolve(config.machine_alias.as_deref())?;
 
-    // 5. Publish the key atomically. EVERY fallible step is now above this line.
-    //    Still before anything is SERVED — `bind` only opens the listen socket;
-    //    no request is answered until `axum::serve`.
-    // 5. Federation: validate the peer table BEFORE publishing the key, because a
-    //    duplicate or self-aliased peer is a config error that must not cost a
-    //    running daemon its credential.
+    // 5. Federation and the drain worker. BOTH FALLIBLE, and therefore above the
+    //    publish: peer-table validation rejects a duplicate or self-aliased
+    //    alias, and DrainWorker rejects a zero cadence.
+    //    A config error must never cost a running daemon its credential.
     let federation = Arc::new(
         federation::FederationService::new(
             identity.alias().to_string(),
@@ -378,7 +376,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         Duration::from_secs(config.pointer_announce_cadence_secs),
     )?);
 
-    // 7. Publish the key atomically. EVERY fallible step is now above this line.
+    // 6. Publish the key atomically. EVERY fallible step is now above this line.
     //    Still before anything is SERVED — `bind` only opens the listen socket;
     //    no request is answered until `axum::serve`.
     let key = staged.publish()?;
@@ -388,7 +386,18 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         Duration::from_secs(config.delivery_interval_secs),
         move || {
             let drain = Arc::clone(&drain);
-            async move { drain.drain_once().await.map(|_| ()) }
+            async move {
+                // SURVIVE errors, for the same reason the federation worker does
+                // (review F2). TickLoop terminates on an Err, and a seat exiting
+                // with queued mail is ROUTINE: one dead pane between the registry
+                // read and the submit would have ended all below-socket delivery
+                // for the daemon's lifetime — no pointers, no commands, no socket
+                // bodies — silently, until someone restarted it.
+                if let Err(error) = drain.drain_once().await {
+                    eprintln!("pij-rs drain: {error}");
+                }
+                Ok(())
+            }
         },
     )?;
 

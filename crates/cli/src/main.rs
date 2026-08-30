@@ -87,9 +87,10 @@ enum Command {
     },
     /// Launch one pre-bind seat through the daemon.
     Spawn {
-        /// Explicit seat id. Memorable defaults land in u-names.
+        /// Seat id. OMIT IT and the daemon allocates a memorable one
+        /// (`pij-<adjective>-<noun>`).
         #[arg(long)]
-        id: String,
+        id: Option<String>,
         /// Harness to launch.
         #[arg(long, value_parser = parse_harness)]
         harness: Harness,
@@ -374,7 +375,7 @@ fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijE
         })?;
 
     Ok(Some(SpawnRequest {
-        id: id.clone().into(),
+        id: id.clone().map(Into::into),
         harness: *harness,
         executable: bin.clone(),
         model: model.clone(),
@@ -436,7 +437,7 @@ impl Command {
 mod tests {
     use clap::{CommandFactory, Parser};
 
-    use super::{Cli, git_dir_is_linked};
+    use super::{Cli, Command, git_dir_is_linked};
 
     #[test]
     fn clap_exposes_exactly_the_seven_ruled_verbs() {
@@ -491,10 +492,22 @@ mod tests {
         assert!(parsed.is_err());
     }
 
+    /// FLIPPED when u-names was wired into `/v1/spawn` (review F4): omitting
+    /// `--id` is now how you ASK for a memorable name, not an error. The
+    /// assertion flips rather than being deleted, as the refusal tests did in
+    /// waves 1 and 3 — deleting it would quietly drop the guarantee that the
+    /// argument is optional while the diff looked like tidying.
     #[test]
-    fn spawn_requires_an_explicit_id() {
-        let parsed = Cli::try_parse_from(["pij-rs", "spawn", "--harness", "claude"]);
-        assert!(parsed.is_err());
+    fn spawn_without_an_id_parses_and_leaves_allocation_to_the_daemon() {
+        let parsed = Cli::try_parse_from(["pij-rs", "spawn", "--harness", "claude"])
+            .expect("omitting --id is how a caller asks for a memorable name");
+        let Command::Spawn { id, .. } = parsed.command else {
+            panic!("expected the spawn command");
+        };
+        assert!(
+            id.is_none(),
+            "the CLI must not invent an id: the daemon holds the roster and the lock"
+        );
     }
 
     #[test]

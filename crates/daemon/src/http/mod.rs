@@ -25,6 +25,7 @@ use pij_core::events::EventFilter;
 use pij_core::model::{
     Envelope, ErrorKind, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId, Seq,
 };
+use pij_core::names::memorable_pij_id_candidates;
 use pij_core::ports::{LaunchCommand, SeatFilter};
 use pij_core::wire;
 use pij_harnesses::{SpawnPlanInput, build_spawn_plan};
@@ -379,8 +380,10 @@ async fn register(State(state): State<AppState>, Json(claim): Json<Registration>
 }
 
 async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequest>) -> Response {
-    if request.id.as_str().trim().is_empty() {
-        return refused("pij spawn", "--id must be non-empty");
+    if let Some(id) = request.id.as_ref()
+        && id.as_str().trim().is_empty()
+    {
+        return refused("pij spawn", "--id must be non-empty when supplied");
     }
     if !Path::new(&request.cwd).is_absolute() {
         return refused(
@@ -430,34 +433,68 @@ async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequ
         executable: plan.executable,
         args: plan.args,
     };
-    let name = request
-        .name
-        .filter(|name| !name.trim().is_empty())
-        .unwrap_or_else(|| request.id.as_str().to_string());
-
     // Keep the collision check, observed launch, and descriptor write in one
     // daemon-local critical section. Registry::put is an upsert; without this
     // lock two concurrent requests for one id could both launch before either
     // row existed, then silently overwrite one another.
-    let _spawn_guard = state.spawn_lock.lock().await;
-    match state.services.registry.get(&request.id).await {
-        Ok(Some(_)) => {
-            return refused(
-                "pij spawn",
-                format!(
-                    "seat `{}` already exists — choose another --id; spawn never overwrites a roster row",
-                    request.id
-                ),
-            );
-        }
-        Ok(None) => {}
-        Err(error) => return internal("pij spawn", error),
-    }
-
+    // Minted BEFORE the lock: it is this launch's identity and it also seeds the
+    // memorable allocation below, so the name a spawn gets is a function of the
+    // spawn rather than of the clock or the roster's shape.
     let spawn_id = match mint_spawn_id() {
         Ok(spawn_id) => spawn_id,
         Err(error) => return internal("pij spawn", error),
     };
+
+    let _spawn_guard = state.spawn_lock.lock().await;
+    let seat_id = match request.id.clone() {
+        // An explicit id is taken as given, and a collision REFUSES: spawn never
+        // overwrites a roster row.
+        Some(id) => match state.services.registry.get(&id).await {
+            Ok(Some(_)) => {
+                return refused(
+                    "pij spawn",
+                    format!(
+                        "seat `{id}` already exists — choose another --id; spawn never overwrites a roster row"
+                    ),
+                );
+            }
+            Ok(None) => id,
+            Err(error) => return internal("pij spawn", error),
+        },
+        // No id: ALLOCATE a memorable one. The generator yields candidates in a
+        // deterministic collision-free order, so occupancy is the only reason to
+        // advance — the reservation loop is the queue-side half u-names
+        // deliberately did not own, held under the same lock as the launch so two
+        // concurrent spawns cannot pick one name.
+        None => {
+            let mut chosen = None;
+            for candidate in memorable_pij_id_candidates(&spawn_id) {
+                match state.services.registry.get(&candidate).await {
+                    Ok(Some(_)) => continue,
+                    Ok(None) => {
+                        chosen = Some(candidate);
+                        break;
+                    }
+                    Err(error) => return internal("pij spawn", error),
+                }
+            }
+            match chosen {
+                Some(id) => id,
+                None => {
+                    return refused(
+                        "pij spawn",
+                        "every memorable name is taken — pass an explicit --id",
+                    );
+                }
+            }
+        }
+    };
+
+    let name = request
+        .name
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| seat_id.as_str().to_string());
+
     let pane = match state
         .services
         .tmux
@@ -468,7 +505,7 @@ async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequ
         Err(error) => return internal("pij spawn", error),
     };
 
-    let mut descriptor = SeatDescriptor::new(request.id, plan.harness, request.cwd);
+    let mut descriptor = SeatDescriptor::new(seat_id, plan.harness, request.cwd);
     descriptor.pane = Some(pane.id.clone());
     descriptor.parent = request.parent;
     descriptor.cross_session_inbound_accept = Some(plan.cross_session_inbound_accept);

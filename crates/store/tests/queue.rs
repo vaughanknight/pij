@@ -422,3 +422,97 @@ async fn a_zero_claim_lease_is_refused_before_work_can_be_lost() {
     let pool = pij_store::open(&fresh.path()).await.expect("open");
     assert!(SqliteQueue::new(pool, 0).is_err());
 }
+
+/// Review F5 — dedupe is per DESTINATION, not global.
+///
+/// The index was `dedupe_key` alone, and both delivery and federation rows carry
+/// the CALLER's `msg_id`. So two sends with one msg_id to two different
+/// recipients collapsed: the second insert hit `ON CONFLICT DO NOTHING`, the
+/// read-back returned the first row, and the caller was told `Queued` for a
+/// message that was never going anywhere.
+///
+/// Mutation witness: revert the index to `(dedupe_key)` and this fails with one
+/// row where two are required.
+#[tokio::test]
+async fn one_msg_id_to_two_recipients_is_two_rows() {
+    let fresh = FreshStore::new();
+    let queue = queue(&fresh).await;
+
+    let job = |seat: &str| Job {
+        kind: format!("delivery:{seat}"),
+        serial_key: seat.to_string(),
+        payload: format!("to {seat}"),
+        dedupe_key: "m-1".to_string(),
+        attempt: 0,
+    };
+
+    let first = queue.enqueue(job("pij-x")).await.expect("first enqueue");
+    let second = queue.enqueue(job("pij-y")).await.expect("second enqueue");
+    assert_ne!(
+        first, second,
+        "the same msg_id addressed to a DIFFERENT seat is a different message"
+    );
+
+    // ...and the rule it must not break: the same id to the SAME seat still
+    // collapses, which is what dedupe is for.
+    let repeat = queue.enqueue(job("pij-x")).await.expect("repeat enqueue");
+    assert_eq!(first, repeat, "N rapid submits to one seat are one row");
+
+    let claimed = queue
+        .claim(&["delivery:pij-y".to_string()], "worker")
+        .await
+        .expect("claim y")
+        .expect("the second recipient's row must exist");
+    assert_eq!(claimed.1.payload, "to pij-y");
+}
+
+/// Review F6 — the claim-lease sweep is SCOPED to the kinds being claimed.
+///
+/// Unscoped, the pointer drain's five-second tick decided the fate of federation
+/// claims: a row held by a slow forward was terminally failed by a worker that
+/// knows nothing about forwarding, underneath the worker still doing it.
+#[tokio::test]
+async fn the_lease_sweep_does_not_reach_another_workers_kind() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let queue = SqliteQueue::new(pool.clone(), 1).expect("one-second lease");
+
+    let federation = queue
+        .enqueue(Job {
+            kind: "federation:laptop".to_string(),
+            serial_key: "laptop".to_string(),
+            payload: "forward".to_string(),
+            dedupe_key: "m-fed".to_string(),
+            attempt: 0,
+        })
+        .await
+        .expect("enqueue federation");
+    let held = queue
+        .claim(&["federation:laptop".to_string()], "federation-worker")
+        .await
+        .expect("claim federation")
+        .expect("a federation row");
+    assert_eq!(held.0, federation);
+
+    // AGE the claim past its lease deterministically, rather than sleeping: the
+    // property under test is the sweep's SCOPE, and a test that sleeps to reach it
+    // proves the sleep as well.
+    sqlx::query("UPDATE jobs SET claimed_at = claimed_at - 3600 WHERE state = 'running'")
+        .execute(&pool)
+        .await
+        .expect("age the claim");
+
+    // A drain pass over DELIVERY kinds. It sweeps, and it must not touch the
+    // federation claim it is holding nothing of.
+    let _ = queue
+        .claim(&["delivery:pij-x".to_string()], "drain-worker")
+        .await
+        .expect("drain claim");
+
+    // The federation worker can still finish its own claim: if the sweep had
+    // reached it, this is `job is not running`.
+    queue
+        .retry(federation, std::time::Duration::from_secs(1))
+        .await
+        .expect("the holder must still own its claim after another kind's sweep");
+}

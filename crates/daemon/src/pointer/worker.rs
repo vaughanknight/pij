@@ -264,7 +264,7 @@ impl DrainWorker {
                 });
             }
         };
-        let pointer = render_pointer(&msg.from);
+        let pointer = render_pointer(&msg.from, msg.from_machine.as_deref());
         if let Err(error) = self.tmux.submit(pane, &pointer).await {
             self.release_body(job_id).await?;
             return Err(error);

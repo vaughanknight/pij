@@ -165,7 +165,15 @@ impl FederationService {
             queue,
             event_bus,
             clock,
-            client: reqwest::Client::new(),
+            // A TOTAL timeout. reqwest has NONE by default, so the receipt's
+            // "timeouts retry" was unreachable prose: a peer that accepts the
+            // connection and then stalls would hold its claim until the lease
+            // swept it out from under this worker, terminally failing a message
+            // nobody had answered for (review F3). Comfortably under the lease.
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
             jitter,
             wake: tokio::sync::Notify::new(),
         })
@@ -339,7 +347,23 @@ impl FederationService {
         let (shutdown, mut shutdown_rx) = tokio::sync::oneshot::channel();
         let joined = tokio::spawn(async move {
             loop {
-                match self.process_one().await? {
+                // SURVIVE errors. This loop used to `?` on every step, so one
+                // transient SQLite busy, one event-bus publish failure, or one ack
+                // against a swept claim ENDED the worker — silently, permanently,
+                // with every later remote send enqueuing into a queue nobody
+                // drains. A worker that dies on its first transient error is not
+                // the durable worker this unit claims to be (review F1).
+                //
+                // Reported and retried, never swallowed: the next pass reclaims
+                // the row, and the message is still in the queue where it belongs.
+                let step = match self.process_one().await {
+                    Ok(step) => step,
+                    Err(error) => {
+                        eprintln!("pij-rs federation: {error}");
+                        WorkerStep::Idle
+                    }
+                };
+                match step {
                     WorkerStep::Idle => {
                         tokio::select! {
                             _ = &mut shutdown_rx => return Ok(()),

@@ -21,8 +21,15 @@ pub const POINTER_ANNOUNCED_EVENT_KIND: &str = "delivery.pointer-announced";
 /// The pointer deliberately carries no count: queue cardinality is not exposed
 /// at this boundary, and an announce-time count would immediately become stale.
 #[must_use]
-pub fn render_pointer(from: &SeatId) -> String {
-    format!("[pij from {from}] message waiting — run: pij inbox")
+pub fn render_pointer(from: &SeatId, from_machine: Option<&str>) -> String {
+    match from_machine {
+        // A remote sender is named by ADDRESS. Two machines may hold seats with
+        // the same name, and a pane line reading "[pij from bob]" leaves the
+        // recipient unable to tell WHICH bob paged them — while the event they
+        // would read instead already carries the machine (review F8).
+        Some(machine) => format!("[pij from {from}@{machine}] message waiting — run: pij inbox"),
+        None => format!("[pij from {from}] message waiting — run: pij inbox"),
+    }
 }
 
 /// Render an explicitly tagged remote-control command for PTY submission.
@@ -73,7 +80,12 @@ mod tests {
     #[test]
     fn pointer_bytes_name_sender_and_pull_command_without_body() {
         let body = "SECRET BODY THAT MUST NEVER BE TYPED";
-        let line = render_pointer(&SeatId::from("pij-sender"));
+        let line = render_pointer(&SeatId::from("pij-sender"), None);
+        assert_eq!(
+            render_pointer(&SeatId::from("bob"), Some("desktop")),
+            "[pij from bob@desktop] message waiting — run: pij inbox",
+            "a remote sender is named by ADDRESS: two machines may both hold a bob"
+        );
 
         assert_eq!(
             line,
@@ -90,7 +102,7 @@ mod tests {
     #[test]
     fn every_pointer_uses_the_same_truthful_singular_line() {
         assert_eq!(
-            render_pointer(&SeatId::from("pij-one")),
+            render_pointer(&SeatId::from("pij-one"), None),
             "[pij from pij-one] message waiting — run: pij inbox"
         );
     }

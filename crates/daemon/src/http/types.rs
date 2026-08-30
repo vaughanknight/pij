@@ -56,8 +56,14 @@ pub struct Registration {
 /// Request accepted by `POST /v1/spawn`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SpawnRequest {
-    /// Explicit seat id. Memorable default allocation lands in u-names.
-    pub id: SeatId,
+    /// Seat id. ABSENT means the daemon allocates a memorable one.
+    ///
+    /// Optional since u-names landed: a caller that has a name uses it, and a
+    /// caller that does not gets `pij-<adjective>-<noun>` rather than being told
+    /// to invent one. Review found the generator shipped with zero production
+    /// callers — the unit existed, the surface it was built for did not (F4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<SeatId>,
     /// Harness to launch.
     pub harness: Harness,
     /// Executable override from `--bin`.
