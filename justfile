@@ -218,6 +218,11 @@ where:
     @echo "skill store → $(readlink ~/.agents/skills/pij 2>/dev/null || echo '(unlinked)')"
     @printf 'daemon      → '; pij daemon status
 
+# Restart the source-loaded daemon only from a fetched, current canonical checkout.
+# Uncommitted daemon source requires an explicit `just bounce-daemon --force`.
+bounce-daemon *ARGS:
+    harness/scripts/bounce-daemon.sh "$@"
+
 # Structural gates for the /pij router skill (plan 030): registry↔module parity,
 # sibling-blindness, line budgets, CLI-verb coverage, duplicated-prose scope.
 pij-skill-check:
