@@ -444,11 +444,25 @@ impl FederationService {
     /// Start remote-send, roster-poll, and per-peer event-source loops.
     pub fn start(self: Arc<Self>) -> FederationWorker {
         let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
+        self.start_with_shutdown(shutdown, shutdown_rx)
+    }
+
+    fn start_with_shutdown(
+        self: Arc<Self>,
+        shutdown: tokio::sync::watch::Sender<bool>,
+        shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> FederationWorker {
         let mut joined = self.fanin.start(shutdown_rx.clone());
         let mut send_shutdown = shutdown_rx;
         let send_service = Arc::clone(&self);
         joined.push(tokio::spawn(async move {
             loop {
+                // A wake and shutdown can become ready together. Check before
+                // claiming as well as after a completed claim: shutdown is a
+                // one-way barrier after which this worker must never dequeue.
+                if *send_shutdown.borrow() {
+                    return;
+                }
                 // A transient dependency failure is reported and the LOOP keeps
                 // running; the next queue item must not be abandoned for the
                 // lifetime of the daemon (COMMON 1.3 / E-030).
@@ -462,6 +476,7 @@ impl FederationService {
                 match step {
                     WorkerStep::Idle => {
                         tokio::select! {
+                            biased;
                             changed = send_shutdown.changed() => {
                                 if changed.is_err() || *send_shutdown.borrow() {
                                     return;
@@ -881,6 +896,56 @@ mod tests {
             service.retry_delay(u32::MAX).expect("delay"),
             Duration::from_secs(300)
         );
+    }
+
+    #[tokio::test]
+    async fn a_worker_started_with_stop_already_set_never_claims() {
+        let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
+        let spine = Arc::new(FakeSpine::new());
+        let service = Arc::new(service(
+            Arc::clone(&queue),
+            spine,
+            "http://127.0.0.1:1".to_string(),
+        ));
+        service
+            .enqueue_remote(&request("laptop"))
+            .await
+            .expect("enqueue before start");
+        let (shutdown, shutdown_rx) = tokio::sync::watch::channel(true);
+
+        let worker = Arc::clone(&service).start_with_shutdown(shutdown, shutdown_rx);
+        worker.shutdown().await.expect("shutdown");
+
+        assert_eq!(queue.live_len(), 1, "a post-stop worker must not claim");
+        assert!(
+            queue.retried().is_empty(),
+            "a retry proves the stopped worker claimed and performed network IO"
+        );
+    }
+
+    #[tokio::test]
+    async fn shutdown_wins_when_wake_and_stop_are_both_ready() {
+        for _ in 0..64 {
+            let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
+            let spine = Arc::new(FakeSpine::new());
+            let service = Arc::new(service(
+                Arc::clone(&queue),
+                spine,
+                "http://127.0.0.1:1".to_string(),
+            ));
+            let worker = Arc::clone(&service).start();
+
+            // The first empty claim puts the worker in its idle select. Enqueue
+            // makes wake ready; shutdown makes stop ready before the worker is
+            // scheduled again. Stop must win and leave the row pending.
+            tokio::task::yield_now().await;
+            service
+                .enqueue_remote(&request("laptop"))
+                .await
+                .expect("enqueue");
+            worker.shutdown().await.expect("shutdown");
+            assert_eq!(queue.live_len(), 1, "no post-stop claim may start");
+        }
     }
 
     #[tokio::test]

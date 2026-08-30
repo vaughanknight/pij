@@ -6,8 +6,8 @@ use std::process::{Command as ProcessCommand, ExitCode};
 
 use clap::{Parser, Subcommand};
 use pij_cli::{
-    DaemonClient, Registration, SendRequest, SpawnRequest, daemon_config, default_state_dir,
-    exit_code, parse_destination, render, render_frame, setup_refusal,
+    DaemonClient, Registration, SendRequest, SpawnRequest, bounce, daemon_config,
+    default_state_dir, exit_code, parse_destination, render, render_frame, setup_refusal,
 };
 use pij_core::error::PijError;
 use pij_core::model::{Envelope, ErrorKind, Harness};
@@ -40,8 +40,11 @@ struct MachineCursor {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run the daemon in the foreground until interrupted.
+    /// Run or replace the daemon.
     Daemon {
+        /// Lifecycle action; absent runs the daemon in the foreground.
+        #[command(subcommand)]
+        action: Option<DaemonAction>,
         /// Address to listen on. A non-loopback address exposes the daemon to
         /// the LAN; the bearer key is then its access boundary.
         #[arg(long, default_value = "127.0.0.1:7461")]
@@ -154,6 +157,12 @@ enum Command {
     },
 }
 
+#[derive(Clone, Debug, Subcommand)]
+enum DaemonAction {
+    /// Rebuild, drain, restart, verify health, and print the running version.
+    Bounce,
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     run(Cli::parse()).await
@@ -162,8 +171,50 @@ async fn main() -> ExitCode {
 async fn run(cli: Cli) -> ExitCode {
     let state_dir = cli.state_dir.clone().unwrap_or_else(default_state_dir);
 
-    if let Command::Daemon { bind, offline } = &cli.command {
+    if let Command::Daemon {
+        action: None,
+        bind,
+        offline,
+    } = &cli.command
+    {
         return run_daemon(bind, state_dir, *offline).await;
+    }
+    if let Command::Daemon {
+        action: Some(DaemonAction::Bounce),
+        ..
+    } = &cli.command
+    {
+        let cwd = match std::env::current_dir() {
+            Ok(cwd) => cwd,
+            Err(error) => {
+                return emit(
+                    &setup_refusal::<Value>(
+                        "pij daemon bounce",
+                        PijError::Adapter {
+                            adapter: "pij daemon bounce".to_string(),
+                            message: format!("could not read the current directory: {error}"),
+                        },
+                    ),
+                    cli.json,
+                );
+            }
+        };
+        let repo = match bounce::reproducible_repo(&cwd) {
+            Ok(repo) => repo,
+            Err(error) => {
+                return emit(
+                    &setup_refusal::<Value>("pij daemon bounce", error),
+                    cli.json,
+                );
+            }
+        };
+        return match bounce::run(&repo, &state_dir).await {
+            Ok(report) => emit(&Envelope::ok("pij daemon bounce", report), cli.json),
+            Err(error) => emit(
+                &setup_refusal::<Value>("pij daemon bounce", error),
+                cli.json,
+            ),
+        };
     }
 
     let prepared_spawn = match prepare_spawn_request(&cli.command) {
@@ -487,7 +538,7 @@ impl Command {
 mod tests {
     use clap::{CommandFactory, Parser};
 
-    use super::{Cli, Command, git_dir_is_linked};
+    use super::{Cli, Command, DaemonAction, git_dir_is_linked};
 
     #[test]
     fn clap_exposes_exactly_the_seven_ruled_verbs() {
@@ -523,6 +574,24 @@ mod tests {
                 .get_arguments()
                 .any(|argument| argument.get_id() == "addr")
         );
+    }
+
+    #[test]
+    fn daemon_bounce_is_real_while_bare_daemon_still_runs_foreground() {
+        let bounced = Cli::try_parse_from(["pij-rs", "daemon", "bounce"]).expect("bounce");
+        assert!(matches!(
+            bounced.command,
+            Command::Daemon {
+                action: Some(DaemonAction::Bounce),
+                ..
+            }
+        ));
+
+        let foreground = Cli::try_parse_from(["pij-rs", "daemon"]).expect("foreground");
+        assert!(matches!(
+            foreground.command,
+            Command::Daemon { action: None, .. }
+        ));
     }
 
     #[test]

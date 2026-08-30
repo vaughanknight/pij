@@ -13,6 +13,7 @@ workspace = true
 clap = { workspace = true }
 pij-core = { workspace = true }
 pij-daemon = { workspace = true }
+pij-harnesses = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

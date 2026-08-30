@@ -1126,6 +1126,7 @@ dependencies = [
  "clap",
  "pij-core",
  "pij-daemon",
+ "pij-harnesses",
  "pij-store",
  "pij-testkit",
  "reqwest",
