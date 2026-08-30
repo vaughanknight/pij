@@ -100,6 +100,10 @@ impl DeliveryService {
             to: to.clone(),
             body: body.into(),
             msg_id: self.next_message_id(),
+            // Bodies only, for now. The command producer is wave 4's; this call
+            // must not INFER a command from a leading slash, because a body may
+            // legitimately begin with one.
+            command: None,
         };
         let recipient = self
             .registry

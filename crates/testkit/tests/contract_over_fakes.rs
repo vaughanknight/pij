@@ -64,6 +64,7 @@ fn an_unreachable_transport_queues_rather_than_claiming_delivery() {
         to: seat.id.clone(),
         body: "before you bound".to_string(),
         msg_id: "m-1".to_string(),
+        command: None,
     };
 
     let outcome = block_on(transport.deliver(&seat, &msg)).expect("deliver");
@@ -88,6 +89,7 @@ fn a_reachable_transport_delivers_and_records_the_message_id() {
         to: seat.id.clone(),
         body: "hello".to_string(),
         msg_id: "m-2".to_string(),
+        command: None,
     };
 
     assert!(block_on(transport.can_deliver(&seat, &msg)).expect("can_deliver"));

@@ -429,6 +429,20 @@ pub struct Msg {
     pub body: String,
     /// Stable id, so a route can be traced end to end. Every delivery logs it.
     pub msg_id: String,
+    /// A REMOTE-CONTROL command (`/compact`, `/new`) rather than a body.
+    ///
+    /// This exists because the routing decision depends on it and nothing else
+    /// carried the fact: Claude renders a socket-delivered `/compact` as plain
+    /// TEXT rather than executing it, so a command must take the pty path even
+    /// for a seat with a perfect socket. `can_deliver` was widened to take the
+    /// message (R3-AMEND-3) to inspect exactly this — and u-uds found that the
+    /// amendment had landed the SIGNATURE without landing the FIELD, so the
+    /// carve-out it exists for could not be implemented or honestly tested.
+    ///
+    /// `None` is a body. Producers populate it; nothing infers it from a leading
+    /// slash, because a body may legitimately begin with one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
 }
 
 /// Where the evidence for a delivery claim came from (erratum-23b, s105).
