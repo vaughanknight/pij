@@ -219,22 +219,20 @@ impl PaneObserver {
             if blank {
                 if matches!(
                     previous,
-                    ComposerKnowledge::NonBlank | ComposerKnowledge::PendingClear
+                    ComposerKnowledge::Blank
+                        | ComposerKnowledge::NonBlank
+                        | ComposerKnowledge::PendingClear
                 ) {
-                    // The ONLY thing that clears: an observed nonblank -> blank
-                    // TRANSITION. We watched something leave.
+                    // Permission requires two observations, not one inference:
+                    // the parser positively recognized an empty composer, the
+                    // tap remained attached, and no bytes flowed between this
+                    // pass and the preceding recognized state.
                     self.gate.record_composer_cleared(&pane.id);
                 } else {
-                    // A blank composer on FIRST SIGHT is not evidence of anything.
-                    // It is what a quiet pane and an unparsed pane look like alike,
-                    // and permitting on it inverts the unit's whole premise —
-                    // review found the port was MORE permissive here than the TS
-                    // 60-second rule we declined to inherit for being too eager.
-                    //
-                    // One heuristic misread of an arbitrary program's dashed rules
-                    // around an empty row would otherwise flip a pane to permission
-                    // with zero transition evidence.
-                    self.set_unknown(&pane.id);
+                    // One recognized blank establishes knowledge but not
+                    // permission. An unparsed layout took the `None` branch
+                    // above, so unknown and looked-twice-and-quiet stay distinct.
+                    self.gate.record_unknown(&pane.id);
                     self.set_knowledge(&pane.id, ComposerKnowledge::Blank);
                     continue;
                 }
@@ -867,32 +865,23 @@ mod tests {
         loop_.shutdown().await.expect("shutdown");
     }
 
-    /// Review F2 — a BLANK composer on first sight is not evidence of anything.
+    /// A recognized blank is not permission on first sight. Two consecutive
+    /// recognized blanks with a live, byte-free tap are positive quiet evidence.
+    /// An unparsed layout is `None` and never enters this state machine.
     ///
-    /// It is what a quiet pane and an unparsed pane look like alike, so permitting
-    /// on it inverted the unit's premise: the port was MORE permissive here than
-    /// the TS 60-second rule we declined to inherit for being too eager. One
-    /// heuristic misread of an arbitrary program's dashed rules around an empty
-    /// row would flip a pane to permission with zero transition evidence.
-    ///
-    /// Mutation witness: restore the `observe_composer` call in the first-sight
-    /// branch and this test fails.
+    /// Mutation witness: permit the first recognized blank and the first
+    /// assertion fails.
     #[tokio::test]
-    async fn a_first_sight_blank_composer_does_not_permit_injection() {
+    async fn two_stable_recognized_blanks_are_required_to_permit_injection() {
         let tmux = Arc::new(
             FakeTmux::new()
-                // Cursor on the COMPOSER row (y=2), as the working decision-table
-                // fixture uses. y=1 is the rule line, and a cursor there makes
-                // rendered_composer return None — the pass then takes the
-                // unknown-layout branch and the test proves nothing.
                 .with_pane(pane("%9", 3, 2))
-                // TWO empty taps: the observer drains before and after the
-                // capture, and a fixture supplying one leaves the second drain
-                // unscripted — which sends the pass down the unknown-layout path
-                // and makes this test pass without ever reaching the branch it
-                // claims to defend. Found by running the mutation, not by reading.
+                // Two drains per observation; both passes are truly quiet.
                 .script_tap(Vec::new())
                 .script_tap(Vec::new())
+                .script_tap(Vec::new())
+                .script_tap(Vec::new())
+                .script_capture(framed(""))
                 .script_capture(framed("")),
         );
         let registry = registry(&["%9"]).await;
@@ -901,19 +890,70 @@ mod tests {
             Arc::clone(&registry) as Arc<dyn Registry>,
             Arc::clone(&tmux) as Arc<dyn TmuxPort>,
             Arc::clone(&gate),
-            PathBuf::from("/tmp/pij-observer-first-sight"),
+            PathBuf::from("/tmp/pij-observer-stable-blank"),
             Duration::from_millis(1),
         )
         .expect("observer");
 
-        observer.observe_once().await.expect("first observation");
-
+        observer
+            .observe_once()
+            .await
+            .expect("first recognized blank");
         assert!(
-            !gate
-                .permits_injection("%9")
-                .await
-                .expect("the pane was observed"),
-            "a blank composer we have never seen anything leave is UNKNOWN, not clear"
+            !gate.permits_injection("%9").await.expect("first sight"),
+            "one recognized blank must not authorize injection"
         );
+        observer
+            .observe_once()
+            .await
+            .expect("second recognized blank");
+        assert!(
+            gate.permits_injection("%9").await.expect("stable quiet"),
+            "two recognized blanks with no intervening tap bytes are positive quiet evidence"
+        );
+    }
+
+    /// Tap activity between recognized blanks invalidates stability. A third
+    /// quiet pass may corroborate the pending blank after the redraw.
+    ///
+    /// Mutation witness: ignore `tap_active` for a blank pass and the middle
+    /// assertion fails.
+    #[tokio::test]
+    async fn tap_bytes_between_recognized_blanks_require_another_quiet_pass() {
+        let tmux = Arc::new(
+            FakeTmux::new()
+                .with_pane(pane("%10", 3, 2))
+                .script_tap(Vec::new())
+                .script_tap(Vec::new())
+                .script_tap(b"redraw".to_vec())
+                .script_tap(Vec::new())
+                .script_tap(Vec::new())
+                .script_tap(Vec::new())
+                .script_capture(framed(""))
+                .script_capture(framed(""))
+                .script_capture(framed("")),
+        );
+        let registry = registry(&["%10"]).await;
+        let gate = Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>));
+        let observer = PaneObserver::new(
+            Arc::clone(&registry) as Arc<dyn Registry>,
+            Arc::clone(&tmux) as Arc<dyn TmuxPort>,
+            Arc::clone(&gate),
+            PathBuf::from("/tmp/pij-observer-tap-between-blanks"),
+            Duration::from_millis(1),
+        )
+        .expect("observer");
+
+        observer
+            .observe_once()
+            .await
+            .expect("first recognized blank");
+        observer.observe_once().await.expect("blank with tap bytes");
+        assert!(
+            !gate.permits_injection("%10").await.expect("active blank"),
+            "tap bytes between blanks must keep the gate closed"
+        );
+        observer.observe_once().await.expect("quiet corroboration");
+        assert!(gate.permits_injection("%10").await.expect("quiet blank"));
     }
 }
