@@ -631,3 +631,49 @@ believe: that run drove the transition inside its own harness, once. Dogfood mad
 the DAEMON'S OWN OBSERVER attach and authorize over minutes on a pane it manages.
 **A live test proves the thing can work. Dogfood proves it keeps working.**
 
+## E-033 — existence is not ownership, and the recipient's behaviour is the observation
+
+Wave-6 dogfood. Two findings from one run, and they are opposites: one about
+believing too much from a signal, one about the strongest proof this plan has
+produced.
+
+### Existence is not ownership
+
+A restarted daemon refused to adopt panes it had spawned itself. `pane_pipe = 1`
+said A PIPE EXISTS; the observer needed WE OWN A PIPE, and those are different
+facts. The old daemon's pipe outlived it, the new one saw the pane as taken, and
+the gate stayed unknown for ever — with 93 retries downstream as the witness.
+
+`pij-yelping-moth` proved it with a chain of timestamps rather than a hypothesis:
+process start 17:14:54, binary mtime 17:14:47, sink mtime **17:07:31** — predating
+the process — and a truncate-on-first-attach that therefore never fired. No
+argument, just four facts that cannot all be true if the daemon owned that tap.
+
+The fix is a recorded marker, not a louder inference. **We do not fix an ownership
+bug by asserting ownership harder** — the rejected alternative, treating an
+unmarked pipe as ours because the sink looks like ours, is E-024 one layer down:
+sink residue records that A PROCESS once wrote there, not that THIS process owns
+it.
+
+### The reply IS the observation
+
+The arrival proof put the instruction INSIDE the body: *"if you can read this,
+reply ACK-QUIET"*. The seat replied `ACK-QUIET`.
+
+A pointer never carries a body. So the reply could not exist unless the body
+reached the model — **there is no oracle to lie, because the recipient's behaviour
+is the evidence.** Compare it with every receipt this project has spent five waves
+distrusting: a system reporting on itself. Here the system reports nothing; a
+different party did something it could only do if the thing worked.
+
+### And the reason both were found
+
+Four layers stood between "the live proof passed" and "it works": the politeness
+gate absent from the live path, the observer erasing its own transition, the tap
+closing its own eyes, and this. Every one was invisible to a green suite and to a
+successful one-shot live test.
+
+> **A live test proves the thing can work. Dogfood proves it keeps working.** The
+> difference is a daemon that must attach, authorize, restart and recover on panes
+> it manages itself, over minutes, with nobody helping it.
+
