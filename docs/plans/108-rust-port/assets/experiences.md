@@ -799,3 +799,36 @@ Release means released, not "no longer routed to".
 Found by doing what a seat asked, at the one moment it asked to stop being
 observed.
 
+## E-037 — the wave was gated by compiles, not by thinking
+
+Wave 6's final pass took roughly two hours of wall clock, and the coder's own
+accounting attributes most of it to the toolchain rather than the work: **one
+`cargo check` at 12m55s, one `--no-run` build at 6m27s, another at 3m43s**, repeated
+across a nine-finding batch.
+
+The cause is structural to how this plan is run. Every stream gets its own linked
+worktree, and **every worktree gets its own `target/`**, so each coder pays a full
+cold build of the workspace — and pays it again after every merge from composed
+head, because a merge invalidates most of the graph. Six waves of coders have each
+paid this independently. Nothing in the plan's tooling shares compilation artifacts
+between worktrees.
+
+Two fixes, neither invented here, both cheap:
+
+- a **shared `CARGO_TARGET_DIR`** per machine (or per plan) so sibling worktrees
+  reuse each other's artifacts — the gate already strips `CARGO_TARGET_DIR` where it
+  must not leak into a launched binary's path, so the seam is understood;
+- **`sccache`**, which survives worktree deletion entirely.
+
+Worth recording because of what it distorts rather than what it costs. **A
+thirteen-minute edit-compile loop changes what an agent chooses to do**: it
+discourages the small experiment, rewards batching unrelated changes into one
+compile, and makes "just check whether X is true" a decision rather than a reflex.
+The wave-6 coder still asked five stop-and-ask questions and still built the
+CountingSpine instrument, but it did so against a loop that penalised curiosity.
+
+Filed against this plan's harness, not the repo's: the pij engineering harness
+(`harness checks`, `just`) cannot run in these worktrees at all — no node tooling —
+which is disclosed, accepted, and separate. This one is about the Rust loop the
+port actually lives in.
+
