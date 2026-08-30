@@ -142,6 +142,10 @@ pub struct Daemon {
     /// in-flight observation and DETACHES every pane. A tap left open is a
     /// `pipe-pane` writing into a sink nobody drains.
     pane_observer: pane_observer::PaneObserverLoop,
+    /// Telegram / background / chore consumers. Owned so their claims stop with
+    /// the daemon: a sidecar loop outliving its daemon would keep claiming queue
+    /// rows a successor has already taken.
+    sidecars: pij_sidecars::SidecarHandles,
 }
 
 impl Daemon {
@@ -154,7 +158,7 @@ impl Daemon {
         // shutdown future sends its stop before awaiting its join, so no slow
         // HTTP drain can leave queue workers claiming new rows in the meantime.
         let _ = self.shutdown.send(());
-        let (served, drained, observed, forwarded) = tokio::join!(
+        let (served, drained, observed, forwarded, ()) = tokio::join!(
             async {
                 self.joined.await.map_err(|error| PijError::Adapter {
                     adapter: "daemon".to_string(),
@@ -164,6 +168,7 @@ impl Daemon {
             self.drain_loop.shutdown(),
             self.pane_observer.shutdown(),
             self.federation_worker.shutdown(),
+            self.sidecars.shutdown(),
         );
         served?;
         drained?;
@@ -502,6 +507,45 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     };
     let runtime_path = write_runtime_record(&state_dir, &runtime)?;
 
+    // 8b. Sidecars: Telegram, background commands, chores. CONSTRUCTED HERE,
+    //     above the point of no return, because construction is FALLIBLE — it
+    //     opens state directories and validates a Telegram config, and a
+    //     refusal must never cost a running daemon its published key.
+    //
+    //     TELEGRAM IS OPT-IN, BY EXPLICIT PATH ONLY. There is deliberately no
+    //     `$HOME/.pij/telegram.env` default: that is the LEGACY bridge's
+    //     credential file, and defaulting to it means every dev daemon on this
+    //     machine tries to seize the production Telegram poll. Telegram allows
+    //     exactly one `getUpdates` consumer per bot, so an accidental default
+    //     does not fail loudly — it steals a live service from the person using
+    //     it, or is stolen from.
+    //
+    //     A HELD LOCK IS NOT A BOOT FAILURE. The bridge is one optional
+    //     consumer; messaging, delivery, and every seat-facing path work
+    //     without it. Refusing to boot the whole daemon because another process
+    //     holds a Telegram poll would take the system down over an accessory.
+    //     We refuse the LOOP, loudly, and serve.
+    let telegram_env = std::env::var_os("PIJ_TELEGRAM_ENV").map(PathBuf::from);
+    let sidecars = match pij_sidecars::Sidecars::new(
+        Arc::clone(&services.queue),
+        Arc::clone(&services.spine),
+        state_dir.join("sidecars"),
+        telegram_env.as_deref(),
+    ) {
+        Ok(sidecars) => sidecars,
+        Err(error) => {
+            eprintln!(
+                "pij-rs: telegram sidecar not started ({error}); every other path is unaffected"
+            );
+            pij_sidecars::Sidecars::new(
+                Arc::clone(&services.queue),
+                Arc::clone(&services.spine),
+                state_dir.join("sidecars"),
+                None,
+            )?
+        }
+    };
+
     // 9. Publish the key atomically. This is the point of no return: every
     //    operation above may refuse without rotating a running credential, and
     //    every operation below is already validated and cannot refuse.
@@ -516,6 +560,8 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     let pane_observer = pane_observer.start();
     let federation_worker = Arc::clone(&federation).start();
     let drain_loop = start_resilient_delivery_drain(drain, delivery_interval);
+    // Infallible by construction: every refusal happened in step 8b.
+    let sidecars = sidecars.start()?;
 
     let router = http::router_with_federation(
         services,
@@ -543,5 +589,6 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         federation_worker,
         drain_loop,
         pane_observer,
+        sidecars,
     })
 }

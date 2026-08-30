@@ -18,6 +18,7 @@ hostname = { workspace = true }
 pij-core = { workspace = true }
 # Wired at wave-1 composition: the real LivenessPort adapter (u-liveness).
 pij-harnesses = { workspace = true }
+pij-sidecars = { workspace = true }
 pij-store = { workspace = true }
 # Wired at wave-1 composition: the real TmuxPort adapter (u-tmux).
 pij-tmux = { workspace = true }
