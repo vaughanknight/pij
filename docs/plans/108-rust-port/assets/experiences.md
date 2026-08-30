@@ -381,3 +381,41 @@ ruled order tolerates them correctly.
 Third contradiction this coder found between two things the PM wrote, in one ack
 cycle.
 
+## E-025 — the default was true in the wave that wrote it
+
+`pij-eligible-squid` (u-extension), five findings in one unit, all the same shape:
+**two halves that are each internally consistent, wired to different worlds.**
+
+1. `/v1/send` persisted a private `QueuedSend` shape; `DeliveryService::inbox`
+   decoded that same queue as `Msg`. Neither could decode the other, and both
+   halves had passing tests. The route also consulted no routing policy, no
+   tombstone and no transport, and invented a `Queued` receipt for work nothing
+   had judged.
+2. Nothing published `message.pushed`, so a seat could observe that it had been
+   spoken to and never read what was said.
+3. `ErrorKind` was announced as landed while three helpers still emitted envelopes
+   with no discriminator at all.
+4. `Registration` had no way to supersede a seat, so the first `/new` from a
+   healthy seat would have been refused forever by the #19 alias guard.
+5. **The shipped daemon booted every adapter fake.** `hello_config` was
+   `Config::default()` — seven fakes and an in-memory store — so the binary a user
+   runs could not corroborate a registration and lost its roster on exit.
+
+> The default was inherited from the wave where it was TRUE, and nothing re-asked
+> once the real adapters existed.
+
+`hello_config` was CORRECT in wave 0; a hello daemon should be all fake. Waves 1,
+2 and 3 each added a real adapter and none of them owned that line, so an accurate
+config quietly became an old one. Every unit's tests passed throughout, because
+every unit tested its own adapter **and none of them ran the binary**.
+
+The generalisation, which is the reason this is worth an entry: a unit test proves
+a part against the world the test builds. Only running the shipped thing proves
+the part against the world the USER gets. Four of these five defects were
+invisible to a suite that was, at the time, 231 tests and entirely green.
+
+Related trap found in the same pass: `test_services` swapped `Services` fields
+AFTER `build_services` had constructed the delivery service from the original
+fakes — a fixture that looked injected and was not, so assertions ran against
+parts no test could see.
+
