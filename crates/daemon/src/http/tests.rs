@@ -9,11 +9,12 @@ use axum::http::HeaderMap;
 use axum::routing::post;
 use pij_core::error::Result;
 use pij_core::model::{
-    Destination, Envelope, Event, Job, JobId, Outcome, ProcIdentity, Receipt, SeatDescriptor,
+    Destination, Envelope, Event, Harness, Job, JobId, Outcome, Pane, ProcIdentity, Receipt,
+    SeatDescriptor,
 };
 use pij_core::ports::{Queue, Registry};
 use pij_core::wire::{self, WireEvent};
-use pij_testkit::fakes::{FakeLiveness, FakeQueue, FakeRegistry, FakeSpine};
+use pij_testkit::fakes::{FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux};
 
 use super::*;
 
@@ -231,6 +232,32 @@ async fn registration_corroborates_process_and_refuses_shared_process_aliases() 
     assert_eq!(accepted.data.expect("descriptor").proc, Some(identity));
     assert_eq!(registry.calls(), ["list", "put:pij-parent"]);
 
+    let self_declaration = Registration {
+        spawn_id: Some("self-declared-spawn".to_string()),
+        model: Some("self-declared/model".to_string()),
+        provider: Some("self-declared".to_string()),
+        effort: Some("low".to_string()),
+        ..registration.clone()
+    };
+    let response = client
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&self_declaration)
+        .send()
+        .await
+        .expect("repeat registration");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let accepted: Envelope<SeatDescriptor> = response.json().await.expect("descriptor envelope");
+    let accepted = accepted.data.expect("descriptor");
+    assert_eq!(accepted.spawn_id.as_deref(), Some("spawn-1"));
+    assert_eq!(accepted.model.as_deref(), Some("provider/model"));
+    assert_eq!(accepted.provider.as_deref(), Some("provider"));
+    assert_eq!(accepted.effort.as_deref(), Some("high"));
+    assert_eq!(
+        registry.calls(),
+        ["list", "put:pij-parent", "list", "put:pij-parent"]
+    );
+
     let alias = Registration {
         id: "pij-child-alias".to_string(),
         ..registration
@@ -250,7 +277,7 @@ async fn registration_corroborates_process_and_refuses_shared_process_aliases() 
     );
     assert_eq!(
         registry.calls(),
-        ["list", "put:pij-parent", "list"],
+        ["list", "put:pij-parent", "list", "put:pij-parent", "list",],
         "a refused alias is never persisted"
     );
 
@@ -315,6 +342,112 @@ async fn registration_refuses_uncorroborated_or_half_process_identity() {
         registry.calls().is_empty(),
         "invalid evidence reaches no registry statement"
     );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn spawn_stamps_only_the_argv_that_reached_the_observed_launch() {
+    let registry = Arc::new(FakeRegistry::new());
+    let tmux = Arc::new(FakeTmux::new().with_pane(Pane {
+        id: "%caller".to_string(),
+        session: "fleet".to_string(),
+        window: "orchestrator".to_string(),
+        title: String::new(),
+    }));
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new()),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.tmux = tmux.clone();
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+
+    let request =
+        |id: &str, accept_inbound: bool, session: Option<&str>, pane: Option<&str>| SpawnRequest {
+            id: id.into(),
+            harness: Harness::Claude,
+            executable: Some("/path with spaces/claude".to_string()),
+            model: Some("provider/model".to_string()),
+            effort: Some("high".to_string()),
+            cwd: "/abs/tree".to_string(),
+            session: session.map(str::to_string),
+            caller_pane: pane.map(str::to_string),
+            name: None,
+            parent: Some("pij-parent".into()),
+            accept_inbound,
+        };
+
+    for (id, accept, session, pane) in [
+        ("pij-closed", false, None, Some("%caller")),
+        ("pij-open", true, Some("fleet"), None),
+    ] {
+        let response = client
+            .post(format!("http://{addr}/v1/spawn"))
+            .bearer_auth("key")
+            .json(&request(id, accept, session, pane))
+            .send()
+            .await
+            .expect("spawn request");
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let envelope: Envelope<SeatDescriptor> = response.json().await.expect("spawn envelope");
+        let descriptor = envelope.data.expect("descriptor");
+        assert_eq!(descriptor.id.as_str(), id);
+        assert_eq!(descriptor.proc, None, "spawn writes a pre-bind row");
+        assert_eq!(descriptor.cross_session_inbound_accept, Some(accept));
+        let spawn_id = descriptor.spawn_id.expect("launcher stamps spawn id");
+        assert_eq!(spawn_id.len(), 34);
+        assert!(spawn_id.strip_prefix("s-").is_some_and(|hex| {
+            hex.chars()
+                .all(|ch| ch.is_ascii_hexdigit() && !ch.is_ascii_uppercase())
+        }));
+        assert_eq!(descriptor.model.as_deref(), Some("provider/model"));
+        assert_eq!(descriptor.provider, None, "provider was not resolved");
+        assert_eq!(descriptor.effort.as_deref(), Some("high"));
+    }
+
+    let calls = tmux.calls();
+    assert_eq!(calls[0], "list_panes");
+    assert!(calls[1].contains("new_window:fleet:pij-closed:/path with spaces/claude"));
+    assert!(!calls[1].contains("crossSessionInbound"));
+    assert!(calls[2].contains("new_window:fleet:pij-open:/path with spaces/claude"));
+    assert!(calls[2].contains(r#"{\"crossSessionInbound\":\"accept\"}"#));
+
+    let collision = client
+        .post(format!("http://{addr}/v1/spawn"))
+        .bearer_auth("key")
+        .json(&request("pij-open", true, Some("fleet"), None))
+        .send()
+        .await
+        .expect("collision request");
+    assert_eq!(collision.status(), reqwest::StatusCode::BAD_REQUEST);
+    assert!(
+        collision
+            .text()
+            .await
+            .expect("collision body")
+            .contains("spawn never overwrites")
+    );
+    assert_eq!(tmux.calls().len(), 3, "collision launches no extra process");
+
+    let unresolved = client
+        .post(format!("http://{addr}/v1/spawn"))
+        .bearer_auth("key")
+        .json(&request("pij-unresolved", false, None, Some("%missing")))
+        .send()
+        .await
+        .expect("unresolved request");
+    assert_eq!(unresolved.status(), reqwest::StatusCode::BAD_REQUEST);
+    assert!(
+        unresolved
+            .text()
+            .await
+            .expect("unresolved body")
+            .contains("pass --session")
+    );
+    assert_eq!(tmux.calls().last().expect("last call"), "list_panes");
 
     server.abort();
 }

@@ -280,3 +280,54 @@ destination field exists and the UDS ruling forbids inventing one).
 
 **Precedent note**: second seam change accepted at an ACK with zero implementations built
 against the new shape ([[seam-change-window]] holding twice in one plan).
+
+## Wave-4 federation ratifications (2026-08-30, vicuna)
+
+**R4-AMEND-1 — Queue::retry(job_id, delay), ACCEPTED**: atomic in the store — row returns to
+pending with attempt count incremented, one transaction. No eighth port. The argument that
+carried it: Queue is the ONE WRITER of attempt accounting; ack-then-enqueue has a crash gap
+that LOSES the message, enqueue-then-ack violates live dedupe, and ratifying once serves both
+u-federation (failed remote send) and u-pointer (re-announce) instead of two units inventing
+two mechanisms for one problem.
+
+**R7-AMEND-1 — Msg.from_machine: Option<String> + wire field, ACCEPTED**: None = local,
+symmetric with Destination.machine. Additive on the frozen v1 wire; u-extension consumers must
+TOLERATE the new optional field (unknown-field tolerance is already our shipped posture —
+raw unknown-event-byte preservation). Without it a forwarded message arrives with no way to
+address the origin machine, and a same-named seat trips the self-address refusal.
+
+**Scope cut ratified**: wave 4 federation = REMOTE SEND ONLY. Registry fan-in / roster / event
+streaming deferred — five defects were one fact from five angles (no machine field on
+SeatDescriptor, /v1/seats can't express two alices, scalar events cursor, POST-only peer
+client, second-seq spine loops), every one a wire change; the deferred half gets a packet
+written from knowledge, not assumption. NOTE FOR PRD: req-0017's registry-visibility half moves
+past wave 4; row stays unchecked until it lands.
+
+## Wave-4 second-round ratifications (2026-08-30, vicuna — ruled together on lungfish's escalation)
+
+**R4-AMEND-1 CONFIRMED, now corroborated**: u-pointer found the identical Queue hole
+independently from the other end (lease expiry terminal; enqueue-before-ack dedupes against
+the running row; ack-before-enqueue loses the body). Two units, one missing capability —
+`retry(job_id, delay)` stands as ratified. NOTE: independent discovery by two units working
+the same tree is real corroboration (different probes, same subject) — unlike two readers of
+one projection.
+
+**R4-AMEND-2 — Job.attempt column, ACCEPTED; migrations unfreeze for EXACTLY ONE migration.**
+The honesty catch is the record-worthy part: "one writer for attempt accounting" had been
+quoted into three packets as a property of our tree while being a property of NOTHING — an
+anti-goal inherited from reading the fork, repeated as if built. (House pattern: verify
+presence claims like absence claims.) The retry amendment is where it becomes real; attempt is
+born WITH its one writer rather than retrofitted across two.
+
+**R3-AMEND-5 — separate TmuxPort::submit(pane, text), ACCEPTED** over a submit flag on
+send_keys: "type without sending" must stay expressible as its own verb — the composer guard
+and the human-typing politeness gate depend on that distinction being REAL in the seam, not a
+boolean a caller can forget. send_keys stays literal-only.
+
+**PM scope call endorsed**: u-pointer narrowed to the pure ladder table + pointer rendering;
+drain worker and pty rung wait on the seams. Half a unit that is honest over a worker that
+fakes a retry.
+
+**Wave observation, banked**: every wave-4 unit touching delivery found the remaining gaps in
+the QUEUE, not the transport — waves 1-3 built around the queue and never asked it to do
+anything hard. Carry into the deferred-federation packet: budget queue work FIRST.

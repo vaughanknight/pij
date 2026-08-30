@@ -365,7 +365,7 @@ pub async fn tmux_contract(tmux: &dyn TmuxPort, fixture: &dyn TmuxContractFixtur
     );
 
     let created = tmux
-        .new_window(&pane.session, fixture.new_window_name(), "/tmp")
+        .new_window(&pane.session, fixture.new_window_name(), "/tmp", None)
         .await
         .expect("new_window must not fail");
     assert_eq!(

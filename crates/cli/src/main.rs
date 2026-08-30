@@ -1,13 +1,14 @@
 //! `pij-rs` — one binary, two composition roots.
 
-use std::path::PathBuf;
-use std::process::ExitCode;
+use std::path::{Path, PathBuf};
+use std::process::{Command as ProcessCommand, ExitCode};
 
 use clap::{Parser, Subcommand};
 use pij_cli::{
-    DaemonClient, Registration, SendRequest, daemon_config, default_state_dir, exit_code,
-    parse_destination, render, render_frame, setup_refusal,
+    DaemonClient, Registration, SendRequest, SpawnRequest, daemon_config, default_state_dir,
+    exit_code, parse_destination, render, render_frame, setup_refusal,
 };
+use pij_core::error::PijError;
 use pij_core::model::{Envelope, ErrorKind, Harness};
 use serde_json::Value;
 
@@ -84,6 +85,39 @@ enum Command {
         #[arg(long)]
         relay: bool,
     },
+    /// Launch one pre-bind seat through the daemon.
+    Spawn {
+        /// Explicit seat id. Memorable defaults land in u-names.
+        #[arg(long)]
+        id: String,
+        /// Harness to launch.
+        #[arg(long, value_parser = parse_harness)]
+        harness: Harness,
+        /// Executable override.
+        #[arg(long)]
+        bin: Option<String>,
+        /// Exact model selector.
+        #[arg(long)]
+        model: Option<String>,
+        /// Exact reasoning effort.
+        #[arg(long)]
+        effort: Option<String>,
+        /// Absolute working directory; defaults to the caller's directory.
+        #[arg(long, value_parser = parse_absolute_path_buf)]
+        cwd: Option<PathBuf>,
+        /// Target tmux session; defaults from the caller pane.
+        #[arg(long)]
+        session: Option<String>,
+        /// Tmux window name; defaults to the seat id.
+        #[arg(long)]
+        name: Option<String>,
+        /// Governing seat.
+        #[arg(long)]
+        parent: Option<String>,
+        /// Configure Claude to accept cross-session inbound messages.
+        #[arg(long)]
+        accept_inbound: bool,
+    },
     /// Durably enqueue one message.
     Send {
         /// Sending seat.
@@ -123,6 +157,13 @@ async fn run(cli: Cli) -> ExitCode {
     if let Command::Daemon { bind, offline } = &cli.command {
         return run_daemon(bind, state_dir, *offline).await;
     }
+
+    let prepared_spawn = match prepare_spawn_request(&cli.command) {
+        Ok(request) => request,
+        Err(error) => {
+            return emit(&setup_refusal::<Value>("pij spawn", error), cli.json);
+        }
+    };
 
     let command_name = cli.command.name();
     let client = match DaemonClient::new(&state_dir, &cli.addr) {
@@ -164,6 +205,12 @@ async fn run(cli: Cli) -> ExitCode {
             debug_assert!(registration.validate().is_ok());
             emit(&client.register(&registration).await, cli.json)
         }
+        Command::Spawn { .. } => emit(
+            &client
+                .spawn(prepared_spawn.as_ref().expect("spawn request was prepared"))
+                .await,
+            cli.json,
+        ),
         Command::Send {
             from,
             to,
@@ -263,6 +310,114 @@ fn parse_absolute_path(value: &str) -> Result<String, String> {
     }
 }
 
+fn parse_absolute_path_buf(value: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(value);
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Err("cwd must be an absolute path".to_string())
+    }
+}
+
+fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijError> {
+    let Command::Spawn {
+        id,
+        harness,
+        bin,
+        model,
+        effort,
+        cwd,
+        session,
+        name,
+        parent,
+        accept_inbound,
+    } = command
+    else {
+        return Ok(None);
+    };
+    let cwd = match cwd {
+        Some(cwd) => cwd.clone(),
+        None => std::env::current_dir().map_err(|error| PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: format!("could not read the caller directory: {error}"),
+        })?,
+    };
+    if matches!(harness, Harness::Pi | Harness::Omp) && is_linked_worktree(&cwd)? {
+        return Err(PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: format!(
+                "refusing {harness} spawn from linked worktree {}: global and project extension links collide and the peer dies before registration — spawn from the main checkout and cd afterwards",
+                cwd.display()
+            ),
+        });
+    }
+    let caller_pane = if session.is_none() {
+        Some(
+            std::env::var("TMUX_PANE")
+                .ok()
+                .filter(|pane| !pane.trim().is_empty())
+                .ok_or_else(|| PijError::Adapter {
+                    adapter: "spawn".to_string(),
+                    message: "TMUX_PANE is unavailable — pass --session <tmux> explicitly"
+                        .to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+    let cwd = cwd
+        .into_os_string()
+        .into_string()
+        .map_err(|_| PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: "cwd is not valid UTF-8 and cannot be stored in a descriptor".to_string(),
+        })?;
+
+    Ok(Some(SpawnRequest {
+        id: id.clone().into(),
+        harness: *harness,
+        executable: bin.clone(),
+        model: model.clone(),
+        effort: effort.clone(),
+        cwd,
+        session: session.clone(),
+        caller_pane,
+        name: name.clone(),
+        parent: parent.clone().map(Into::into),
+        accept_inbound: *accept_inbound,
+    }))
+}
+
+fn is_linked_worktree(cwd: &Path) -> Result<bool, PijError> {
+    let output = ProcessCommand::new("git")
+        .args(["rev-parse", "--git-dir"])
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: format!("could not inspect git worktree state: {error}"),
+        })?;
+    if !output.status.success() {
+        return Ok(false);
+    }
+    let raw = String::from_utf8(output.stdout).map_err(|error| PijError::Adapter {
+        adapter: "spawn".to_string(),
+        message: format!("git returned a non-UTF-8 git-dir: {error}"),
+    })?;
+    Ok(git_dir_is_linked(cwd, raw.trim()))
+}
+
+fn git_dir_is_linked(cwd: &Path, git_dir: &str) -> bool {
+    let path = PathBuf::from(git_dir);
+    let path = if path.is_absolute() {
+        path
+    } else {
+        cwd.join(path)
+    };
+    path.components()
+        .any(|part| part.as_os_str() == "worktrees")
+}
+
 impl Command {
     fn name(&self) -> &'static str {
         match self {
@@ -270,6 +425,7 @@ impl Command {
             Command::Ping => "pij ping",
             Command::Register { .. } => "pij register",
             Command::Send { .. } => "pij send",
+            Command::Spawn { .. } => "pij spawn",
             Command::List => "pij list",
             Command::Tail { .. } => "pij tail",
         }
@@ -280,10 +436,10 @@ impl Command {
 mod tests {
     use clap::{CommandFactory, Parser};
 
-    use super::Cli;
+    use super::{Cli, git_dir_is_linked};
 
     #[test]
-    fn clap_exposes_exactly_the_six_ruled_verbs() {
+    fn clap_exposes_exactly_the_seven_ruled_verbs() {
         let names: Vec<_> = Cli::command()
             .get_subcommands()
             .map(|command| command.get_name().to_string())
@@ -291,7 +447,9 @@ mod tests {
 
         assert_eq!(
             names,
-            ["daemon", "ping", "register", "send", "list", "tail"]
+            [
+                "daemon", "ping", "register", "spawn", "send", "list", "tail"
+            ]
         );
     }
 
@@ -331,5 +489,19 @@ mod tests {
         ]);
 
         assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn spawn_requires_an_explicit_id() {
+        let parsed = Cli::try_parse_from(["pij-rs", "spawn", "--harness", "claude"]);
+        assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn linked_worktree_detection_names_the_git_dir_shape() {
+        let cwd = std::path::Path::new("/repo/linked");
+        assert!(git_dir_is_linked(cwd, "/repo/main/.git/worktrees/linked"));
+        assert!(!git_dir_is_linked(cwd, "/repo/main/.git"));
+        assert!(!git_dir_is_linked(cwd, ".git"));
     }
 }

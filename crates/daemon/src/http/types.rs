@@ -1,4 +1,4 @@
-use pij_core::model::{Event, SeatId};
+use pij_core::model::{Event, Harness, SeatId};
 use serde::{Deserialize, Serialize};
 
 /// Evidence submitted by a process asking to register as a seat.
@@ -51,6 +51,41 @@ pub struct Registration {
     /// Whether this seat relays to an external sink.
     #[serde(default)]
     pub relay: bool,
+}
+
+/// Request accepted by `POST /v1/spawn`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnRequest {
+    /// Explicit seat id. Memorable default allocation lands in u-names.
+    pub id: SeatId,
+    /// Harness to launch.
+    pub harness: Harness,
+    /// Executable override from `--bin`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executable: Option<String>,
+    /// Exact requested model selector.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Exact requested reasoning effort.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    /// Absolute working directory stored on the descriptor.
+    pub cwd: String,
+    /// Explicit target tmux session, when supplied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    /// Calling pane used to resolve the target session when `session` is absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caller_pane: Option<String>,
+    /// Requested tmux window name; the explicit seat id is used when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Governing seat, when assigned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<SeatId>,
+    /// Emit Claude's cross-session inbound accept setting.
+    #[serde(default)]
+    pub accept_inbound: bool,
 }
 
 /// Request accepted by `POST /v1/send`.
