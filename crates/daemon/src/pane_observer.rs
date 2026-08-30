@@ -20,6 +20,10 @@ enum ComposerKnowledge {
     Unknown,
     Blank,
     NonBlank,
+    /// Text was observed, then a redraw produced a blank capture whose cursor
+    /// coordinates may be stale. The gate remains closed until a quiet blank
+    /// corroborates that the text actually left.
+    PendingClear,
 }
 
 #[derive(Debug)]
@@ -200,14 +204,23 @@ impl PaneObserver {
             let blank = composer.chars().all(char::is_whitespace);
             let previous = self.knowledge(&pane.id);
             if blank && tap_active {
-                // Cursor facts came from the listing before this activity. A
-                // blank clipped with stale coordinates is not evidence of a
-                // cleared composer; one quiet pass must corroborate it.
-                self.set_unknown(&pane.id);
+                // A redraw makes the current blank inconclusive, so close the
+                // gate. Preserve prior composer knowledge independently: the next
+                // quiet blank can corroborate either a pending nonblank→blank
+                // transition or a previously known-clear composer.
+                if previous != ComposerKnowledge::Unknown {
+                    self.set_knowledge(&pane.id, ComposerKnowledge::PendingClear);
+                    self.gate.record_unknown(&pane.id);
+                } else {
+                    self.set_unknown(&pane.id);
+                }
                 continue;
             }
             if blank {
-                if previous == ComposerKnowledge::NonBlank {
+                if matches!(
+                    previous,
+                    ComposerKnowledge::NonBlank | ComposerKnowledge::PendingClear
+                ) {
                     // The ONLY thing that clears: an observed nonblank -> blank
                     // TRANSITION. We watched something leave.
                     self.gate.record_composer_cleared(&pane.id);
@@ -579,6 +592,85 @@ mod tests {
         );
         observer.observe_once().await.expect("clear observation");
         assert!(gate.permits_injection("%1").await.expect("clear permits"));
+        observer.detach_all().await.expect("detach");
+    }
+
+    #[tokio::test]
+    async fn redraw_blank_preserves_pending_clear_until_a_quiet_pass_corroborates_it() {
+        let tmux = Arc::new(
+            FakeTmux::new()
+                .with_pane(pane("%108", 7, 2))
+                // Each observation drains once before and once after capture.
+                .script_tap(Vec::new())
+                .script_tap(Vec::new())
+                .script_tap(b"clear redraw".to_vec())
+                .script_tap(Vec::new())
+                .script_tap(Vec::new())
+                .script_tap(Vec::new())
+                .script_tap(b"idle redraw".to_vec())
+                .script_tap(Vec::new())
+                .script_tap(Vec::new())
+                .script_tap(Vec::new())
+                .script_capture(framed("draft"))
+                .script_capture(framed(""))
+                .script_capture(framed(""))
+                .script_capture(framed(""))
+                .script_capture(framed("")),
+        );
+        let registry = registry(&["%108"]).await;
+        let gate = Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>));
+        let observer = PaneObserver::new(
+            Arc::clone(&registry) as Arc<dyn Registry>,
+            Arc::clone(&tmux) as Arc<dyn TmuxPort>,
+            Arc::clone(&gate),
+            PathBuf::from("/tmp/pij-observer-redraw-clear"),
+            Duration::from_millis(1),
+        )
+        .expect("observer");
+
+        observer.observe_once().await.expect("nonblank observation");
+        assert!(!gate.permits_injection("%108").await.expect("draft blocks"));
+
+        observer
+            .observe_once()
+            .await
+            .expect("clear redraw observation");
+        assert!(
+            !gate
+                .permits_injection("%108")
+                .await
+                .expect("redraw blank stays closed"),
+            "an active redraw is not permission"
+        );
+        observer.observe_once().await.expect("clear corroboration");
+        assert!(
+            gate.permits_injection("%108")
+                .await
+                .expect("corroborated clear"),
+            "a quiet blank after the pending transition must authorize injection"
+        );
+
+        observer
+            .observe_once()
+            .await
+            .expect("idle redraw observation");
+        assert!(
+            !gate
+                .permits_injection("%108")
+                .await
+                .expect("idle redraw stays closed"),
+            "a redraw temporarily revokes even prior clear evidence"
+        );
+        observer
+            .observe_once()
+            .await
+            .expect("idle redraw corroboration");
+        assert!(
+            gate.permits_injection("%108")
+                .await
+                .expect("re-corroborated clear"),
+            "a quiet blank restores previously established clear evidence"
+        );
         observer.detach_all().await.expect("detach");
     }
 

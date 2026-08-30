@@ -116,6 +116,7 @@ async fn test_services(
             Arc::clone(&services.registry),
             Arc::clone(&services.queue),
             Arc::clone(&services.transport),
+            Arc::clone(&services.interaction),
             Arc::clone(&services.event_bus),
         )
         .expect("delivery service"),

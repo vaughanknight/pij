@@ -5,17 +5,39 @@
 //! bug failed, so a future change that reintroduces it is stopped by a message
 //! that describes the incident.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use pij_core::config::{AdapterChoice, Adapters, Config};
 use pij_core::error::PijError;
 use pij_core::model::{Harness, Msg, ProcIdentity, SeatDescriptor, SeatId, Seq};
-use pij_core::ports::{Registry, Spine};
+use pij_core::ports::{Registry, Spine, Transport};
+use pij_harnesses::{SpawnPlanInput, build_spawn_plan};
 use pij_store::{SqliteRegistry, SqliteSpine};
 use pij_testkit::FreshStore;
+use pij_transport::UdsTransport;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::net::UnixListener;
 
 fn state_dir() -> PathBuf {
     pij_testkit::fresh_dir("pij-rs-regression")
+}
+
+fn write_uds_record(dir: &Path, socket: &Path) {
+    const HASH: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    std::fs::write(
+        dir.join("4242.json"),
+        format!(
+            "{{\"pid\":4242,\"procStart\":\"observed-start\",\"pidDomain\":\"darwin\",\"tmux\":\"pij:@1.%108\",\"messagingSocketPath\":{}}}\n",
+            serde_json::to_string(&socket.to_string_lossy()).expect("socket path JSON")
+        ),
+    )
+    .expect("session record");
+    std::fs::write(
+        dir.join(format!("4242.{HASH}.key")),
+        "{\"peerToken\":\"observed-token\",\"procStart\":\"observed-start\",\"pidDomain\":\"darwin\"}\n",
+    )
+    .expect("peer key");
 }
 
 fn offline(bind: &str) -> Config {
@@ -208,6 +230,108 @@ async fn selecting_the_real_transport_ships_closed_until_a_seat_opts_in() {
             .expect("capability is a cheap descriptor question, not an IO failure"),
         "an unknown accept precondition must be treated as CLOSED — a fake would say yes here"
     );
+}
+
+/// Wave 6 rule 1.10 — spawn argv and transport capability are one agreement.
+/// Each side already had tests; only this composition-root test proves that the
+/// argv-derived stamp is the exact fact the real adapter consumes.
+#[tokio::test]
+async fn emitted_spawn_argv_is_the_stamp_that_opens_the_real_transport() {
+    let plan = |accept_inbound| {
+        build_spawn_plan(SpawnPlanInput {
+            // The seat id the launcher assigned: spawn emits it as
+            // PIJ_SESSION_ID so `pij inbox` can resolve who it is.
+            seat_id: SeatId::from("pij-stamped"),
+            harness: Harness::Claude,
+            executable: None,
+            model: None,
+            resolved_provider: None,
+            effort: None,
+            accept_inbound,
+        })
+        .expect("Claude spawn plan")
+    };
+    let dir = state_dir();
+    let socket = std::env::temp_dir().join(format!("pij-uds-agree-{}.sock", std::process::id()));
+    let listener = UnixListener::bind(&socket).expect("bind socket witness");
+    write_uds_record(&dir, &socket);
+    let transport = UdsTransport::from_sessions_dir(dir.clone());
+    let mut seat = SeatDescriptor::new("pij-claude-seat", Harness::Claude, "/abs/tree");
+    seat.proc = Some(ProcIdentity {
+        pid: 4242,
+        proc_start: 1,
+    });
+    seat.pane = Some("%108".to_string());
+    let msg = Msg {
+        from: SeatId::from("pij-sender"),
+        to: seat.id.clone(),
+        body: "joined agreement".to_string(),
+        msg_id: "spawn-transport-agreement".to_string(),
+        from_machine: None,
+        in_reply_to: None,
+        command: None,
+    };
+
+    let closed = plan(false);
+    assert!(!closed.args.iter().any(|arg| arg == "--settings"));
+    seat.cross_session_inbound_accept = Some(closed.cross_session_inbound_accept);
+    assert!(
+        !transport
+            .can_deliver(&seat, &msg)
+            .await
+            .expect("closed capability")
+    );
+    assert_eq!(
+        transport
+            .deliver(&seat, &msg)
+            .await
+            .expect("closed delivery"),
+        pij_core::model::DeliveryOutcome::Queued
+    );
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), listener.accept())
+            .await
+            .is_err(),
+        "argv without acceptance must produce no socket connection"
+    );
+
+    let accepted = plan(true);
+    assert!(accepted.args.windows(2).any(|pair| {
+        pair[0] == "--settings" && pair[1] == r#"{"crossSessionInbound":"accept"}"#
+    }));
+    seat.cross_session_inbound_accept = Some(accepted.cross_session_inbound_accept);
+    assert!(
+        transport
+            .can_deliver(&seat, &msg)
+            .await
+            .expect("open capability")
+    );
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("transport connects");
+        let mut reader = BufReader::new(stream);
+        let mut received = String::new();
+        reader.read_line(&mut received).await.expect("auth frame");
+        reader
+            .read_line(&mut received)
+            .await
+            .expect("message frame");
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        received
+    });
+    assert_eq!(
+        transport.deliver(&seat, &msg).await.expect("open delivery"),
+        pij_core::model::DeliveryOutcome::Delivered {
+            origin: pij_core::model::DeliveryOrigin::InjectedToTransport
+        }
+    );
+    let received = tokio::time::timeout(Duration::from_secs(1), server)
+        .await
+        .expect("socket reached")
+        .expect("socket witness");
+    assert!(received.contains("\"token\":\"observed-token\""));
+    assert!(received.contains("\"msg_id\":\"spawn-transport-agreement\""));
+    let _ = std::fs::remove_file(socket);
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 /// WAVE 1 — the refusal for `liveness` is GONE because the adapter now exists,

@@ -20,32 +20,30 @@ const DAEMON_ORIGIN: &str = "uds:pij-daemon";
 
 /// Claude Code's Unix-domain-socket message transport.
 ///
-/// Capability discovery deliberately reads Claude's session records on demand in
-/// this wave. That is the explicit exception to descriptor stamping: reading a
-/// record is cheap and side-effect-free; CONNECTING merely to discover whether a
-/// socket exists remains forbidden. Descriptor stamping moves to wave 4.
+/// Capability discovery reads Claude's session records on demand. Reading a
+/// record is cheap and side-effect-free; connecting merely to discover whether a
+/// socket exists remains forbidden.
 ///
-/// This capability says nothing about the caller's human-typing politeness gate.
-/// A socket does not corrupt a tmux composer, but interrupting a person who is
-/// composing remains gated by pane signals before this transport is called.
+/// Socket reachability is necessary but not sufficient. The descriptor must
+/// carry `cross_session_inbound_accept: Some(true)`, stamped by the spawn path
+/// only when it actually emitted Claude's explicit inbound-accept setting.
+/// `None` and `Some(false)` remain closed before discovery or socket IO.
+/// Human-typing politeness is a separate caller gate shared by direct delivery
+/// and queued retries.
 ///
 /// The `peer_message_status` drop/hold decoder is retained but UNPROVEN on this
-/// daemon-origin connection shape. On 2026-08-30, Claude Code 2.1.251 visibly
-/// held an authenticated frame behind its Deny/Deliver dialog while returning
-/// zero socket bytes for two seconds. Silence is therefore not an acknowledgement
-/// unless the recipient was explicitly spawned with inbound acceptance stamped.
-/// `None` and `Some(false)` are closed. Wave 3 therefore ships inert in
-/// production; wave 4's spawn surface is the first owner allowed to stamp
-/// `Some(true)` after it supplies Claude's explicit inbound-accept setting.
+/// daemon-origin connection shape. The done report records the current Claude
+/// build re-verification; silence never upgrades the receipt beyond
+/// `InjectedToTransport`.
 ///
 /// # Composition recipe
 ///
-/// In `crates/daemon/src/lib.rs`, add `use pij_transport::UdsTransport;`, then
-/// COMPOSED (wave 3). The `AdapterChoice::Real` arm builds this adapter; the
-/// wave-0 `not_yet` refusal it replaced no longer exists in the tree.
-/// with `AdapterChoice::Real => Arc::new(UdsTransport::new()?),`. Add
-/// `pij-transport.workspace = true` to `crates/daemon/Cargo.toml` and the matching
-/// reviewed `pij-transport` internal edge to the daemon architecture allow-list.
+/// In `crates/daemon/src/lib.rs`, import `pij_transport::UdsTransport`; construct
+/// `AdapterChoice::Real` with `Arc::new(UdsTransport::new()?)`; pass that shared
+/// `Arc<dyn Transport>` to both `DeliveryService` and `DrainWorker`. Construct one
+/// shared `InteractionGate` before `DeliveryService`, pass it to both consumers,
+/// and feed it from `PaneObserver`. No task starts in this adapter; shutdown is
+/// unchanged.
 #[derive(Clone, Debug)]
 pub struct UdsTransport {
     sessions_dir: PathBuf,
@@ -69,7 +67,12 @@ impl UdsTransport {
         ))
     }
 
-    fn from_sessions_dir(sessions_dir: PathBuf) -> Self {
+    /// Use an explicit Claude session registry directory.
+    ///
+    /// The daemon uses [`Self::new`]; composition tests use this constructor to
+    /// exercise the real adapter without reading or mutating the user's registry.
+    #[must_use]
+    pub fn from_sessions_dir(sessions_dir: PathBuf) -> Self {
         Self {
             sessions_dir,
             ack_wait: ACK_WAIT,
@@ -687,11 +690,15 @@ mod tests {
             received
         });
 
+        let target = seat(4242, Some("%99"), Harness::Claude);
         let outcome = transport
-            .deliver(&seat(4242, Some("%99"), Harness::Claude), &message(None))
+            .deliver(&target, &message(None))
             .await
             .expect("delivery result");
-        let received = server.await.expect("fixture server");
+        let received = tokio::time::timeout(Duration::from_millis(500), server)
+            .await
+            .expect("fixture socket must be reached")
+            .expect("fixture server");
         let expected = format!(
             "{{\"type\":\"auth\",\"token\":\"sanitized-peer-token\"}}\n{}",
             fixture("user-frame.ndjson")

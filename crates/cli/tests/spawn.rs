@@ -161,6 +161,12 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
             Arc::clone(&services.registry),
             Arc::clone(&services.queue),
             Arc::clone(&services.transport),
+            // The politeness gate now sits on the DIRECT path too, so rebuilding
+            // the service carries it — a rebuild that dropped it would test a
+            // delivery service the daemon does not compose.
+            Arc::new(pij_harnesses::InteractionGate::new(Arc::clone(
+                &services.tmux,
+            ))),
             Arc::clone(&services.event_bus),
         )
         .expect("rebuild delivery from pull-only transport"),
