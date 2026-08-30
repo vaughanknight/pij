@@ -37,9 +37,9 @@ async fn the_shipped_config_boots_real_adapters_and_leaves_a_store_on_disk() {
         ("liveness", config.adapters.liveness),
         ("tmux", config.adapters.tmux),
         ("harness", config.adapters.harness),
-        // Real, and inert: `UdsTransport` refuses every seat with no accept
-        // precondition. The FAKE would claim deliveries it never performed, which
-        // is why "fake here" is a defect rather than a harmless default.
+        // Real and conditionally open for spawn-stamped inbound acceptance.
+        // The FAKE would claim deliveries it never performed, which is why
+        // "fake here" is a defect rather than a harmless default.
         ("transport", config.adapters.transport),
     ] {
         assert!(

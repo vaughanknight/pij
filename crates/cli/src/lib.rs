@@ -155,10 +155,10 @@ pub fn daemon_config(bind_addr: &str, store_path: &Path, offline: bool) -> Confi
             liveness: AdapterChoice::Real,
             tmux: AdapterChoice::Real,
             harness: AdapterChoice::Real,
-            // Real, and inert: `UdsTransport` refuses every seat whose descriptor
-            // does not carry `cross_session_inbound_accept: Some(true)`, which
-            // nothing stamps until wave 4. Selecting the fake here instead would
-            // make the shipped daemon claim deliveries it never performed.
+            // Real and conditionally open: the spawn path stamps
+            // `cross_session_inbound_accept: Some(true)` only when it emitted
+            // Claude's explicit inbound-accept setting. Unstamped seats remain
+            // closed before socket discovery or IO.
             transport: AdapterChoice::Real,
         },
         ..Config::default()

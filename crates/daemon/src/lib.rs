@@ -64,6 +64,8 @@ pub struct Services {
     pub transport: Arc<dyn Transport>,
     /// tmux IO.
     pub tmux: Arc<dyn TmuxPort>,
+    /// Shared human-interaction veto for every pane-facing delivery path.
+    pub interaction: Arc<InteractionGate>,
     /// Per-harness adapters, one per `Harness` variant.
     ///
     /// A registry rather than a single `Arc<dyn HarnessPort>`: the wave-0 shape
@@ -209,21 +211,11 @@ pub async fn build_services(config: &Config) -> Result<Services> {
         )?),
     };
 
-    // The four seams whose real adapters land in waves 1-3. They wire to fakes
-    // and REFUSE explicitly when asked to be real: "not built yet" is a fact the
-    // operator should be told at boot, not discovered when a call silently does
-    // nothing. Each `Real` arm is also the exact site the wave that implements it
-    // replaces — a one-line change at a named place.
+    // Every port is real-capable. The real socket transport remains closed for
+    // unstamped seats, while the spawn path now truthfully stamps `Some(true)`
+    // only when Claude's inbound-accept setting was emitted in its argv.
     let transport: Arc<dyn Transport> = match config.adapters.transport {
         AdapterChoice::Fake => Arc::new(FakeTransport::reachable()),
-        // Real, and deliberately INERT: `UdsTransport` refuses every seat whose
-        // descriptor does not carry `cross_session_inbound_accept: Some(true)`,
-        // which nothing stamps until wave 4's spawn surface exists. u-uds
-        // MEASURED why (Claude 2.1.251): an authenticated daemon-origin frame to
-        // a seat without that setting is held behind a Deny/Deliver dialog,
-        // reaches the model never, and returns zero socket bytes — so the
-        // inherited 150ms silence timer was measuring nothing and reporting
-        // success. Shipping closed is the honest ship.
         AdapterChoice::Real => Arc::new(UdsTransport::new()?),
     };
     // WIRED, wave 1 (u-tmux).
@@ -231,6 +223,9 @@ pub async fn build_services(config: &Config) -> Result<Services> {
         AdapterChoice::Fake => Arc::new(FakeTmux::new()),
         AdapterChoice::Real => Arc::new(TmuxAdapter::new()),
     };
+    // One politeness gate, shared by direct delivery, queued retries, and the
+    // pane observer that supplies its composer evidence.
+    let interaction = Arc::new(InteractionGate::new(Arc::clone(&tmux)));
     // WIRED, wave 2 (u-harness). The refusal this replaces is gone.
     let harnesses = Arc::new(match config.adapters.harness {
         AdapterChoice::Fake => HarnessRegistry::new([
@@ -263,6 +258,7 @@ pub async fn build_services(config: &Config) -> Result<Services> {
         Arc::clone(&registry),
         Arc::clone(&queue),
         Arc::clone(&transport),
+        Arc::clone(&interaction),
         Arc::clone(&event_bus),
     )?);
 
@@ -274,6 +270,7 @@ pub async fn build_services(config: &Config) -> Result<Services> {
         queue,
         transport,
         tmux,
+        interaction,
         harnesses,
         liveness,
         delivery,
@@ -398,22 +395,13 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         })?,
     );
 
-    // 6. The drain worker. Its pointer rung is INERT in this composition: nothing
-    //    yet feeds `InteractionGate`, which denies on unknown, so a pointer never
-    //    fires. That is deliberate and it is the same honest ship as the socket
-    //    transport — the mechanism is real and tested, its precondition does not
-    //    exist, and wave 5's `u-tap` is the sensor. Inverting the gate to make the
-    //    rung reachable would discard Jordan's politeness ruling while appearing
-    //    to honour it.
-    let interaction = Arc::new(InteractionGate::new(Arc::clone(&services.tmux)));
-    // The SENSOR. Until wave 5 nothing fed `InteractionGate`, so it denied on
-    // unknown and the pointer rung never fired — shipped that way on purpose,
-    // because a gate with no sensor answering "go ahead" discards the politeness
-    // ruling while appearing to honour it. This is the producer that changes it.
+    // 6. The pane observer feeds the SAME `InteractionGate` used by first-attempt
+    //    delivery and the drain worker. Unknown or active human input vetoes both
+    //    paths; only two independently clear signals authorize injection.
     let pane_observer = Arc::new(pane_observer::PaneObserver::new(
         Arc::clone(&services.registry),
         Arc::clone(&services.tmux),
-        Arc::clone(&interaction),
+        Arc::clone(&services.interaction),
         state_dir.join("pane-signals"),
         Duration::from_millis(config.pane_observer_interval_ms),
     )?);
@@ -423,7 +411,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         Arc::clone(&services.queue),
         Arc::clone(&services.transport),
         Arc::clone(&services.tmux),
-        Arc::clone(&interaction),
+        Arc::clone(&services.interaction),
         Arc::clone(&services.event_bus),
         Duration::from_secs(config.pointer_announce_cadence_secs),
     )?);

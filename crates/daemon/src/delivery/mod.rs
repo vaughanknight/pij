@@ -9,6 +9,7 @@ use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::model::{DeliveryOrigin, DeliveryOutcome, Event, Job, Msg, Outcome, Receipt, SeatId};
 use pij_core::ports::{DeliveryEnqueue, Queue, Registry, Transport};
+use pij_harnesses::InteractionGate;
 use serde::Serialize;
 use tokio_stream::StreamExt;
 
@@ -33,17 +34,16 @@ type Clock = dyn Fn() -> Result<u64> + Send + Sync;
 ///
 /// # Composition recipe
 ///
-/// Add `delivered_id_capacity: usize` to [`pij_core::config::Config`]. Import
-/// `pij_store::SqliteQueue`; construct the real queue as
-/// `SqliteQueue::new(pool, config.claim_lease_secs,
-/// config.delivered_id_capacity)?` and the fake as
-/// `FakeQueue::new(config.delivered_id_capacity)?`. `DeliveryService` and
-/// `DrainWorker` keep receiving the composed `Arc<dyn Queue>` unchanged. No new
-/// task starts, so the daemon's shutdown contract is unchanged.
+/// Construct one `Arc<InteractionGate>` from the composed tmux port before
+/// `DeliveryService`, pass the same instance to this service and `DrainWorker`,
+/// and feed it from `PaneObserver`. This makes the human-typing veto apply to
+/// both first-attempt socket delivery and queued retries. No task starts here,
+/// so the daemon's shutdown contract is unchanged.
 pub struct DeliveryService {
     registry: Arc<dyn Registry>,
     queue: Arc<dyn Queue>,
     transport: Arc<dyn Transport>,
+    interaction: Arc<InteractionGate>,
     event_bus: Arc<EventBus>,
     id_prefix: u64,
     next_id: AtomicU64,
@@ -59,6 +59,7 @@ impl DeliveryService {
         registry: Arc<dyn Registry>,
         queue: Arc<dyn Queue>,
         transport: Arc<dyn Transport>,
+        interaction: Arc<InteractionGate>,
         event_bus: Arc<EventBus>,
     ) -> Result<Self> {
         let mut prefix = [0_u8; 8];
@@ -70,6 +71,7 @@ impl DeliveryService {
             registry,
             queue,
             transport,
+            interaction,
             event_bus,
             u64::from_be_bytes(prefix),
             Arc::new(system_time_ms),
@@ -80,6 +82,7 @@ impl DeliveryService {
         registry: Arc<dyn Registry>,
         queue: Arc<dyn Queue>,
         transport: Arc<dyn Transport>,
+        interaction: Arc<InteractionGate>,
         event_bus: Arc<EventBus>,
         id_prefix: u64,
         clock: Arc<Clock>,
@@ -88,6 +91,7 @@ impl DeliveryService {
             registry,
             queue,
             transport,
+            interaction,
             event_bus,
             id_prefix,
             next_id: AtomicU64::new(0),
@@ -195,7 +199,15 @@ impl DeliveryService {
                 }
             }
             DeliveryRoute::Transport => {
-                if !self.transport.can_deliver(&recipient, &msg).await? {
+                // Socket capability is not permission to interrupt a person.
+                // The same gate protects queued retries in `DrainWorker`; the
+                // first-attempt path is the common path and must consult it too.
+                // A paneless pull consumer has no composer to gate.
+                let interaction_permits = match recipient.pane.as_deref() {
+                    Some(pane) => self.interaction.permits_injection(pane).await?,
+                    None => true,
+                };
+                if !interaction_permits || !self.transport.can_deliver(&recipient, &msg).await? {
                     debug_assert_eq!(
                         route(&from, msg.from_machine.as_deref(), &recipient, false)?,
                         DeliveryRoute::Queue(QueueReason::Unreachable)
@@ -505,7 +517,8 @@ mod tests {
         SemanticState, Seq, SystemState,
     };
     use pij_core::ports::{Queue, Registry, Spine};
-    use pij_testkit::fakes::{FakeQueue, FakeRegistry, FakeSpine, FakeTransport};
+    use pij_harnesses::InteractionGate;
+    use pij_testkit::fakes::{FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport};
     use serde_json::Value;
     use tokio_stream::StreamExt;
 
@@ -518,19 +531,26 @@ mod tests {
         queue: Arc<FakeQueue>,
         spine: Arc<FakeSpine>,
         transport: Arc<FakeTransport>,
+        interaction: Arc<InteractionGate>,
     }
 
     fn fixture(transport: FakeTransport) -> Fixture {
+        fixture_with_gate(transport, FakeTmux::new())
+    }
+
+    fn fixture_with_gate(transport: FakeTransport, tmux: FakeTmux) -> Fixture {
         let registry = Arc::new(FakeRegistry::new());
         let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
         let spine = Arc::new(FakeSpine::new());
         let transport = Arc::new(transport);
+        let interaction = Arc::new(InteractionGate::new(Arc::new(tmux)));
         let bus =
             Arc::new(EventBus::new(Arc::clone(&spine) as Arc<dyn Spine>, 16).expect("event bus"));
         let service = Arc::new(DeliveryService::with_sources(
             Arc::clone(&registry) as Arc<dyn Registry>,
             Arc::clone(&queue) as Arc<dyn Queue>,
             Arc::clone(&transport) as Arc<dyn pij_core::ports::Transport>,
+            Arc::clone(&interaction),
             bus,
             0xfeed,
             Arc::new(|| Ok(1_234)),
@@ -541,6 +561,7 @@ mod tests {
             queue,
             spine,
             transport,
+            interaction,
         }
     }
 
@@ -578,6 +599,56 @@ mod tests {
         assert_eq!(payload["msg_id"], "000000000000feed-0000000000000000");
         assert_eq!(payload["outcome"]["outcome"], outcome);
         assert_eq!(payload["transport"], "fake");
+    }
+
+    #[tokio::test]
+    async fn first_attempt_socket_delivery_obeys_the_same_politeness_gate_as_retries() {
+        for (label, fixture, observe_clear) in [
+            ("unknown", fixture(FakeTransport::reachable()), false),
+            (
+                "tmux typing",
+                fixture_with_gate(
+                    FakeTransport::reachable(),
+                    FakeTmux::new().with_user_typing(),
+                ),
+                true,
+            ),
+        ] {
+            let mut recipient = bound(&format!("pij-{label}"));
+            recipient.pane = Some("%108".to_string());
+            if observe_clear {
+                fixture.interaction.observe_composer("%108", "   ");
+            }
+            register(&fixture, recipient.clone()).await;
+
+            let receipt = fixture
+                .service
+                .send("pij-from".into(), recipient.id, "do not interrupt")
+                .await
+                .expect("a politeness veto queues durably");
+
+            assert_eq!(receipt.outcome, DeliveryOutcome::Queued, "{label}");
+            assert!(fixture.transport.delivered().is_empty(), "{label}");
+        }
+
+        let clear = fixture(FakeTransport::reachable());
+        clear.interaction.observe_composer("%108", "   ");
+        let mut recipient = bound("pij-clear");
+        recipient.pane = Some("%108".to_string());
+        register(&clear, recipient.clone()).await;
+
+        let receipt = clear
+            .service
+            .send("pij-from".into(), recipient.id, "safe to deliver")
+            .await
+            .expect("known-clear delivery");
+        assert_eq!(
+            receipt.outcome,
+            DeliveryOutcome::Delivered {
+                origin: DeliveryOrigin::InjectedToTransport
+            }
+        );
+        assert_eq!(clear.transport.delivered().len(), 1);
     }
 
     #[tokio::test]
