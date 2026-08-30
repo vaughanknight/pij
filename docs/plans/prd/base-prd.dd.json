@@ -177,6 +177,15 @@
           "state": "unchecked",
           "completed_evidence": "",
           "note": "Jordan 2026-08-30: adopt lynx bounce, auto-restart on merge to main. Lynx mechanism (source-grounded reply 2026-08-30): symlink-into-target/release makes build=deploy; bounce = pull-ff-only, build, C-c, relaunch, poll /health for the auth 401 liveness tell; NO-DROP lives in the DAEMON not the script (shutdown finishes in-flight only, never dequeues post-signal; queue rows durable) — restart safe by construction so the trigger can be dumb (o-prime merge loop, no watcher). Adopt-fresh advice taken as CONTRACT: (a) a real verb from day one — pij daemon bounce: refuse-if-HEAD!=origin/main, build, drain-restart, health-verify, version-print; (b) bind/reserve port BEFORE any mutating boot step (their row-80: losing racer ran 108s of mutating boot pre-refusal); (c) announce to active seats pre-bounce. TS interim: just bounce-daemon recipe + prime ritual now; Rust: owned by u-daemon-lifecycle (wave 4 scope add)."
+        },
+        {
+          "id": "req-0019",
+          "num": 19,
+          "title": "Cutover controls: extension switches pi/OMP to pij-rs, env-var forceback, daemon addr via CLI and env",
+          "requirement": "pi and OMP cut over to the Rust daemon THROUGH the extension. Three controls are mandatory: (1) an env var forces a seat back to the legacy TS daemon (per-seat escape hatch, no rebuild); (2) the daemon address/port is settable via BOTH the pij CLI flag and an env var, so dev instances run beside production; (3) the state dir likewise (already PIJ_RS_STATE_DIR). Extension resolves in order: explicit env override, then default new daemon.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "Jordan 2026-08-31 verbatim: \"yes cut over omp and pi to the new version in the extension please. allow env var to force back to old one. remember we must be able to also set daemon port via pij cli or env vars... just incase we wanna run dev ones.\" Same ruling shipped ALL sidecars (telegram, bg, chore) in the Rust generation — u-sidecars unblocked."
         }
       ]
     }
