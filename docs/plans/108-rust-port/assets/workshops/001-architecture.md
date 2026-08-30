@@ -302,3 +302,32 @@ SeatDescriptor, /v1/seats can't express two alices, scalar events cursor, POST-o
 client, second-seq spine loops), every one a wire change; the deferred half gets a packet
 written from knowledge, not assumption. NOTE FOR PRD: req-0017's registry-visibility half moves
 past wave 4; row stays unchecked until it lands.
+
+## Wave-4 second-round ratifications (2026-08-30, vicuna — ruled together on lungfish's escalation)
+
+**R4-AMEND-1 CONFIRMED, now corroborated**: u-pointer found the identical Queue hole
+independently from the other end (lease expiry terminal; enqueue-before-ack dedupes against
+the running row; ack-before-enqueue loses the body). Two units, one missing capability —
+`retry(job_id, delay)` stands as ratified. NOTE: independent discovery by two units working
+the same tree is real corroboration (different probes, same subject) — unlike two readers of
+one projection.
+
+**R4-AMEND-2 — Job.attempt column, ACCEPTED; migrations unfreeze for EXACTLY ONE migration.**
+The honesty catch is the record-worthy part: "one writer for attempt accounting" had been
+quoted into three packets as a property of our tree while being a property of NOTHING — an
+anti-goal inherited from reading the fork, repeated as if built. (House pattern: verify
+presence claims like absence claims.) The retry amendment is where it becomes real; attempt is
+born WITH its one writer rather than retrofitted across two.
+
+**R3-AMEND-5 — separate TmuxPort::submit(pane, text), ACCEPTED** over a submit flag on
+send_keys: "type without sending" must stay expressible as its own verb — the composer guard
+and the human-typing politeness gate depend on that distinction being REAL in the seam, not a
+boolean a caller can forget. send_keys stays literal-only.
+
+**PM scope call endorsed**: u-pointer narrowed to the pure ladder table + pointer rendering;
+drain worker and pty rung wait on the seams. Half a unit that is honest over a worker that
+fakes a retry.
+
+**Wave observation, banked**: every wave-4 unit touching delivery found the remaining gaps in
+the QUEUE, not the transport — waves 1-3 built around the queue and never asked it to do
+anything hard. Carry into the deferred-federation packet: budget queue work FIRST.
