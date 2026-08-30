@@ -12,6 +12,7 @@ use pij_core::ports::{Registry, SeatFilter, TmuxPort};
 use pij_harnesses::InteractionGate;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+use tokio::task::JoinSet;
 use tokio::time::{Instant, MissedTickBehavior};
 
 const CAPTURE_LINES: u32 = u32::MAX;
@@ -155,9 +156,16 @@ impl PaneObserver {
                 if wanted.contains(&pane.id) {
                     continue;
                 }
+                let expected = self.sink_path(&pane.id);
                 match self.tmux.pane_tap_sink(&pane.id).await {
-                    Ok(Some(_)) => {
+                    Ok(Some(marker)) if marker == expected => {
                         retired.insert(pane.id.clone());
+                    }
+                    Ok(Some(marker)) => {
+                        eprintln!(
+                            "pij-rs pane observer: leaving foreign tap on pane {:?}: marker {:?} does not match expected {:?}",
+                            pane.id, marker, expected
+                        );
                     }
                     Ok(None) => {}
                     Err(error) => {
@@ -167,16 +175,33 @@ impl PaneObserver {
             }
         }
 
-        for pane in &retired {
-            match self.tmux.detach_pane_tap(pane).await {
-                Ok(()) => {
-                    self.panes.lock().expect("pane observer mutex").remove(pane);
+        let mut retirements = JoinSet::new();
+        for pane in retired {
+            let tmux = Arc::clone(&self.tmux);
+            retirements.spawn(async move {
+                let result = tmux.detach_pane_tap(&pane).await;
+                (pane, result)
+            });
+        }
+        while let Some(joined) = retirements.join_next().await {
+            match joined {
+                Ok((pane, Ok(()))) => {
+                    self.panes
+                        .lock()
+                        .expect("pane observer mutex")
+                        .remove(&pane);
+                    self.gate.record_unknown(&pane);
                 }
-                Err(error) => {
+                Ok((pane, Err(error))) => {
+                    self.gate.record_unknown(&pane);
                     first_error.get_or_insert(error);
                 }
+                Err(error) => {
+                    first_error.get_or_insert_with(|| {
+                        observer_error(format!("tap retirement task failed: {error}"))
+                    });
+                }
             }
-            self.gate.record_unknown(pane);
         }
 
         for pane in panes {
@@ -878,6 +903,69 @@ mod tests {
         assert!(String::from_utf8_lossy(&second).contains("second-pass"));
 
         observer.detach_all().await.expect("detach real tap");
+    }
+
+    #[tokio::test]
+    async fn foreign_marker_cannot_authorize_pipe_or_file_deletion() {
+        let Some(session) = LiveTmuxSession::start() else {
+            eprintln!("SKIP real pane observer test: tmux unavailable");
+            return;
+        };
+        let tmux = Arc::new(TmuxAdapter::for_server(&session.server));
+        let pane = tmux
+            .list_panes()
+            .await
+            .expect("list isolated pane")
+            .into_iter()
+            .next()
+            .expect("isolated pane");
+        let victim = std::env::temp_dir().join(format!("{}-decoy.raw", session.name));
+        std::fs::write(&victim, b"DO NOT DELETE").expect("create decoy file");
+        let pipe_command = format!("cat >> '{}'", victim.display());
+        session.run(["pipe-pane", "-O", "-t", &pane.id, &pipe_command]);
+        session.run([
+            "set-option",
+            "-p",
+            "-t",
+            &pane.id,
+            "@pij-tap-sink",
+            victim.to_str().expect("UTF-8 decoy path"),
+        ]);
+
+        let registry = Arc::new(FakeRegistry::new());
+        let observer = PaneObserver::new(
+            registry as Arc<dyn Registry>,
+            Arc::clone(&tmux) as Arc<dyn TmuxPort>,
+            Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>)),
+            std::env::temp_dir().join(format!("{}-expected-signals", session.name)),
+            Duration::from_millis(1),
+        )
+        .expect("observer");
+        observer.observe_once().await.expect("world reconciliation");
+
+        let pipe = session.run(["display-message", "-p", "-t", &pane.id, "#{pane_pipe}"]);
+        assert_eq!(String::from_utf8_lossy(&pipe.stdout).trim(), "1");
+        let marker = session.run([
+            "show-options",
+            "-p",
+            "-v",
+            "-q",
+            "-t",
+            &pane.id,
+            "@pij-tap-sink",
+        ]);
+        assert_eq!(
+            String::from_utf8_lossy(&marker.stdout).trim(),
+            victim.to_str().expect("UTF-8 decoy path")
+        );
+        assert_eq!(
+            std::fs::read(&victim).expect("decoy survives"),
+            b"DO NOT DELETE"
+        );
+
+        session.run(["pipe-pane", "-t", &pane.id]);
+        session.run(["set-option", "-p", "-u", "-t", &pane.id, "@pij-tap-sink"]);
+        std::fs::remove_file(victim).expect("remove decoy");
     }
 
     #[tokio::test]

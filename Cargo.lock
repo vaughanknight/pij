@@ -1209,6 +1209,7 @@ dependencies = [
  "async-trait",
  "pij-core",
  "pij-testkit",
+ "tokio",
 ]
 
 [[package]]

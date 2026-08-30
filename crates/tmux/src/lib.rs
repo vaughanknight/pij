@@ -10,13 +10,13 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
 use pij_core::model::Pane;
 use pij_core::ports::{LaunchCommand, TmuxPort};
+use tokio::time::{Instant, sleep};
 
 use crate::parse::{LIST_FORMAT, parse_one_pane, parse_panes};
 
@@ -168,7 +168,7 @@ impl TmuxAdapter {
         }
     }
 
-    fn wait_for_pipe_state(
+    async fn wait_for_pipe_state(
         &self,
         pane: &str,
         sink: &Path,
@@ -197,7 +197,7 @@ impl TmuxAdapter {
                     started.elapsed()
                 )));
             }
-            thread::sleep(Duration::from_millis(25));
+            sleep(Duration::from_millis(25)).await;
         }
     }
 
@@ -372,7 +372,7 @@ impl TmuxPort for TmuxAdapter {
             }
             return Err(error);
         }
-        self.wait_for_pipe_state(pane, sink, "1", "attach")?;
+        self.wait_for_pipe_state(pane, sink, "1", "attach").await?;
         if !tracked {
             self.taps.lock().expect("tmux tap mutex").insert(
                 pane.to_string(),
@@ -447,7 +447,7 @@ impl TmuxPort for TmuxAdapter {
             return Err(error);
         }
         if pane_exists {
-            self.wait_for_pipe_state(pane, &path, "0", "detach")?;
+            self.wait_for_pipe_state(pane, &path, "0", "detach").await?;
         }
         if pane_exists {
             self.clear_tap_marker(pane)?;
