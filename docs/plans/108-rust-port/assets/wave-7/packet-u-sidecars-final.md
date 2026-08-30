@@ -16,3 +16,18 @@ NOT yours: crates/tmux/**, crates/transport/**, .pi/extensions/**, anything the 
 
 ## Done
 Gate green (use shared CARGO_TARGET_DIR if set in COMMON), report with receipts as files, then: pij send pij-revolutionary-lungfish "u-sidecars done: <report path>" and pij send pij-dominant-vicuna the same.
+
+## AMENDMENT (Jordan 2026-08-31): LIVE-FIRE PROOF REQUIRED
+Unit tests and fakes do not close this unit. Each consumer proves itself against the REAL
+external surface, driven through the pij-rs dev instance (never production):
+1. **telegram**: send ONE real message to Jordan's Telegram through the Rust bridge (the
+   legacy config carries the credentials — read, don't move them). Body: "pij-rs telegram
+   bridge live-fire <timestamp>". His receipt on the phone is the acceptance; a swipe-reply
+   routing back as an injected turn is the stretch goal — attempt it, report honestly.
+2. **bg**: run a REAL background command (e.g. cargo --version then a 30s sleep tree), tail
+   its result arriving as an injected turn, then cancel a second one and show the observed
+   process-group death BEFORE the cancelled receipt.
+3. **chore**: define one real probe, run it, show the delta computed by the tool and that
+   run does NOT advance the baseline while ack does.
+Transcript + spine excerpts as files in wave-7/reports/. Coordinate the telegram send with
+the prime (pij-dominant-vicuna) so Jordan knows it's coming.
