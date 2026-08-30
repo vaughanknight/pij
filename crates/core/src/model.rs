@@ -604,6 +604,16 @@ pub struct Job {
     /// Jobs equal on this key collapse to one live row: N rapid submits produce
     /// one unit of work, not N.
     pub dedupe_key: String,
+    /// How many times this job has been retried. **Read-only to callers**: the
+    /// queue is the one writer (R4-AMEND-1), and a worker needs to READ it to
+    /// compute backoff that survives a restart.
+    ///
+    /// u-federation found the gap: `retry` wrote the counter and `claim` handed
+    /// back a `Job` that could not see it, so the only way to compute an
+    /// exponential delay was a process-local tally — which resets on reboot and
+    /// leaves the durable field consumed by nobody.
+    #[serde(default)]
+    pub attempt: u32,
 }
 
 /// A job's identity in the queue.

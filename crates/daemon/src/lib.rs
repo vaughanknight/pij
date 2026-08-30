@@ -321,7 +321,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         services,
         http::HttpConfig {
             local_key: token,
-            peer_keys: config.peer_keys.clone(),
+            peer_keys: config.peers.iter().map(|peer| peer.key.clone()).collect(),
             machine_alias: identity.alias().to_string(),
         },
     );

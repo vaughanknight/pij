@@ -283,6 +283,7 @@ impl DeliveryService {
                 serial_key: msg.to.0.clone(),
                 payload,
                 dedupe_key: msg.msg_id.clone(),
+                attempt: 0,
             })
             .await?;
         Ok(())
@@ -294,6 +295,7 @@ impl DeliveryService {
         let payload = serde_json::to_string(&PushedEvent {
             msg_id: &msg.msg_id,
             from: &msg.from,
+            from_machine: msg.from_machine.as_deref(),
             body: &msg.body,
             in_reply_to: msg.in_reply_to.as_deref(),
         })
@@ -342,6 +344,11 @@ impl DeliveryService {
 struct PushedEvent<'a> {
     msg_id: &'a str,
     from: &'a SeatId,
+    /// The sender's machine, when it is not this one. Without it a recipient can
+    /// see that a stranger spoke and cannot answer: the reply would route locally
+    /// to a seat name that means someone else here (u-federation).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    from_machine: Option<&'a str>,
     body: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     in_reply_to: Option<&'a str>,

@@ -46,6 +46,18 @@ pub struct Adapters {
     pub liveness: AdapterChoice,
 }
 
+/// One manually bootstrapped peer machine.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeerDefinition {
+    /// How this machine is addressed in `<seat>@<machine>`. Unique, and never
+    /// equal to the local alias.
+    pub alias: String,
+    /// Base URL of that machine's daemon.
+    pub url: String,
+    /// The shared bearer credential for this pair.
+    pub key: String,
+}
+
 /// Everything the composition roots need to build the world.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -75,12 +87,19 @@ pub struct Config {
     /// hostname at boot, which lifecycle resolves — a machine that never chose a
     /// name still has to be addressable, and a constant would collide.
     pub machine_alias: Option<String>,
-    /// Persistent bearer credentials for manually bootstrapped peer machines.
+    /// Manually bootstrapped peer machines, IN ORDER.
     ///
-    /// Distinct from the per-boot local key in both lifetime and blast radius:
-    /// the local key dies with the process, a peer key survives it, and removing
-    /// one from this list is how an operator revokes a machine.
-    pub peer_keys: Vec<String>,
+    /// A `Vec`, not a map, deliberately: the duplicate-alias rule is a rule about
+    /// what an operator WROTE, and a map has already erased the duplicate you are
+    /// trying to refuse. Validate the vec, then build the map (u-federation).
+    ///
+    /// The keys here are distinct from the per-boot local key in both lifetime and
+    /// blast radius: the local key dies with the process, a peer key survives it,
+    /// and removing an entry from this list is how an operator revokes a machine.
+    /// There is exactly ONE source for the inbound ring — a second would let a
+    /// revocation succeed in one place and leave the machine reachable through the
+    /// other.
+    pub peers: Vec<PeerDefinition>,
 }
 
 impl Default for Config {
@@ -93,7 +112,7 @@ impl Default for Config {
             claim_lease_secs: 5 * 60,
             event_buffer_capacity: 1_024,
             machine_alias: None,
-            peer_keys: Vec::new(),
+            peers: Vec::new(),
         }
     }
 }

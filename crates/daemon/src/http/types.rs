@@ -99,6 +99,14 @@ pub struct SendRequest {
     pub body: String,
     /// Caller-generated stable id used as the queue dedupe key.
     pub msg_id: String,
+    /// The machine the sender is on, when it is not this one (R7-AMEND-1).
+    ///
+    /// The WIRE half of `Msg.from_machine`. Landing the model field without this
+    /// left a federation worker unable to transmit the fact at all — the seam
+    /// existed in the type and nowhere a message could carry it. Found by
+    /// u-federation an hour after I claimed the amendment was landed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_machine: Option<String>,
     /// Message id being answered, when this is a reply.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub in_reply_to: Option<String>,

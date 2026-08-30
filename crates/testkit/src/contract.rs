@@ -250,6 +250,7 @@ pub async fn queue_contract(queue: &dyn Queue) {
         serial_key: serial.to_string(),
         payload: "{}".to_string(),
         dedupe_key: dedupe.to_string(),
+        attempt: 0,
     };
 
     // 1. Dedupe: N rapid submits collapse to ONE live row, and every caller gets

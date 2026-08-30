@@ -19,6 +19,7 @@ fn job(kind: &str, serial: &str, dedupe: &str) -> Job {
         serial_key: serial.to_string(),
         payload: "{}".to_string(),
         dedupe_key: dedupe.to_string(),
+        attempt: 0,
     }
 }
 
