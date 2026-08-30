@@ -51,17 +51,27 @@ rulings — three times in one ack cycle in wave 3.
    status --short` empty after the gate. Wave 3's review found a stale `Cargo.lock`
    at the committed head because every gate run silently repaired it first — *a
    gate that fixes its own input is a formatter that reports PASS.*
+
+   The gate now enforces this rather than asking for it: the `lock` stage checks
+   the lock against the **tree** as well as the manifests (uncommitted = FAIL),
+   `clippy` and `test` carry `--locked`, and `UPDATE_GOLDENS` is **removed from
+   the test stage's environment** so an exported variable in your shell cannot
+   turn the suite into a recording session that reports PASS. If your lock is
+   dirty after regenerating it, commit it — that is the fix, not a nuisance.
 5. **Absent is not empty, and empty is not absent.** And a **residue is not a
    state**: files record that something once ran here, not that it is running
    here (E-024).
 6. **A ruling that does not change code did not land.** Grep for the belief it
    overturns, not the file that recorded it.
-7. **A scripted edit must ASSERT its pattern matched**, and a commit claiming to
-   fix a review finding is verified by **re-running the reviewer's probe**, never
-   by re-reading the message. A replacement that matches nothing returns success,
-   the build stays green because **removing nothing compiles**, and a message
-   written from intent completes the illusion (E-026). Prefer anchored edits that
-   fail on a missing anchor.
+7. **A scripted edit MUST assert its pattern matched — this is a packet step, not
+   advice** (prime ruling, wave 4). A replacement that matches nothing returns
+   success, the build stays green because **removing nothing compiles**, and a
+   commit message written from intent completes the illusion (E-026). Use anchored
+   edits that FAIL on a missing anchor; if you script one, assert the match and
+   let the step fail when it does not. **A commit claiming to fix a review finding
+   is verified by re-running the reviewer's probe**, never by re-reading the
+   message. Wave 3's highest-severity review finding was invisible to every green
+   instrument in the harness for exactly this reason.
 8. **Only running the shipped thing proves it against the world the user gets**
    (E-025). A unit test proves a part against the world the test builds. Wave 3's
    binary booted every adapter fake through three waves of green suites, because
