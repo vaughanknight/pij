@@ -131,13 +131,32 @@ struct BridgeLock {
     pid: u32,
 }
 
+fn parse_lock_holder(raw: &str) -> Option<u32> {
+    let value: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let pid = u32::try_from(value.get("pid")?.as_u64()?).ok()?;
+    let legacy = value
+        .get("startedAt")
+        .is_some_and(serde_json::Value::is_string);
+    let transitional_rust = value
+        .get("startedAtMs")
+        .is_some_and(serde_json::Value::is_u64);
+    (legacy || transitional_rust).then_some(pid)
+}
+
 impl BridgeLock {
     fn acquire(path: PathBuf) -> Result<Self> {
         let pid = std::process::id();
         for _ in 0..2 {
             match OpenOptions::new().write(true).create_new(true).open(&path) {
                 Ok(mut file) => {
-                    let body = serde_json::json!({"pid": pid, "startedAtMs": now_ms()?});
+                    // Byte-shape compatible with the legacy bridge: it treats a
+                    // missing/non-string `startedAt` as corrupt and reclaims the
+                    // live lock. The value is diagnostic; mutual exclusion rests
+                    // on pid + string presence.
+                    let body = serde_json::json!({
+                        "pid": pid,
+                        "startedAt": format!("unix-ms:{}", now_ms()?),
+                    });
                     file.write_all(body.to_string().as_bytes())
                         .map_err(|error| PijError::Adapter {
                             adapter: "sidecars/telegram".to_string(),
@@ -156,24 +175,26 @@ impl BridgeLock {
                     return Ok(Self { path, pid });
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                    let holder = fs::read_to_string(&path)
-                        .ok()
-                        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
-                        .and_then(|value| value.get("pid")?.as_u64())
-                        .and_then(|value| u32::try_from(value).ok());
-                    if holder.is_some_and(process_exists) {
+                    let raw = fs::read_to_string(&path).map_err(|read_error| PijError::Adapter {
+                        adapter: "sidecars/telegram".to_string(),
+                        message: format!("could not read existing Telegram lock {} after {error}: {read_error}", path.display()),
+                    })?;
+                    let holder = parse_lock_holder(&raw).ok_or_else(|| PijError::Adapter {
+                        adapter: "sidecars/telegram".to_string(),
+                        message: format!("refusing to reclaim unrecognised Telegram lock {}: somebody may hold the single-consumer poll", path.display()),
+                    })?;
+                    if process_exists(holder) {
                         return Err(PijError::Adapter {
                             adapter: "sidecars/telegram".to_string(),
                             message: format!(
-                                "Telegram getUpdates lock {} is held by live pid {}",
-                                path.display(),
-                                holder.expect("checked")
+                                "Telegram getUpdates lock {} is held by live pid {holder}",
+                                path.display()
                             ),
                         });
                     }
                     fs::remove_file(&path).map_err(|remove_error| PijError::Adapter {
                         adapter: "sidecars/telegram".to_string(),
-                        message: format!("could not reclaim stale Telegram lock {} after {error}: {remove_error}", path.display()),
+                        message: format!("could not reclaim parsed dead-holder Telegram lock {} after {error}: {remove_error}", path.display()),
                     })?;
                 }
                 Err(error) => {
@@ -526,5 +547,77 @@ fn codec_error(error: serde_json::Error) -> PijError {
     PijError::Adapter {
         adapter: "sidecars/telegram".to_string(),
         message: error.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+
+    use super::{BridgeLock, parse_lock_holder};
+
+    fn lock_path(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "pij-sidecar-telegram-lock-{label}-{}-{}",
+            std::process::id(),
+            crate::common::now_ms().expect("clock")
+        ))
+    }
+
+    #[test]
+    fn both_generation_lock_shapes_refuse_live_holders_and_corrupt_is_not_free() {
+        let pid = std::process::id();
+        for (label, body) in [
+            (
+                "legacy",
+                serde_json::json!({"pid": pid, "startedAt": "2026-08-31T00:00:00Z"}),
+            ),
+            (
+                "rust-transitional",
+                serde_json::json!({"pid": pid, "startedAtMs": 1}),
+            ),
+        ] {
+            let path = lock_path(label);
+            fs::write(&path, body.to_string()).expect("seed live lock");
+            let error = BridgeLock::acquire(path.clone()).expect_err("live holder must refuse");
+            assert!(error.to_string().contains("held by live pid"));
+            assert!(path.exists(), "refusal must never delete a live lock");
+            fs::remove_file(path).expect("cleanup lock");
+        }
+
+        let corrupt = lock_path("corrupt");
+        fs::write(&corrupt, "{}").expect("seed corrupt lock");
+        let error = BridgeLock::acquire(corrupt.clone()).expect_err("unknown holder must refuse");
+        assert!(error.to_string().contains("somebody may hold"));
+        assert!(corrupt.exists());
+        fs::remove_file(corrupt).expect("cleanup corrupt lock");
+    }
+
+    #[test]
+    fn rust_writer_is_legacy_parseable_and_parsed_dead_holder_is_reclaimed() {
+        let path = lock_path("writer");
+        let lock = BridgeLock::acquire(path.clone()).expect("acquire fresh lock");
+        let raw = fs::read_to_string(&path).expect("read Rust lock");
+        let value: serde_json::Value = serde_json::from_str(&raw).expect("parse Rust lock");
+        assert!(
+            value["startedAt"].is_string(),
+            "legacy parser requires string startedAt"
+        );
+        assert_eq!(parse_lock_holder(&raw), Some(std::process::id()));
+        drop(lock);
+
+        fs::write(
+            &path,
+            serde_json::json!({"pid": u32::MAX, "startedAt": "dead"}).to_string(),
+        )
+        .expect("seed dead lock");
+        let reclaimed =
+            BridgeLock::acquire(path.clone()).expect("parsed dead holder is reclaimable");
+        assert_eq!(
+            parse_lock_holder(&fs::read_to_string(&path).expect("read replacement")),
+            Some(std::process::id())
+        );
+        drop(reclaimed);
     }
 }

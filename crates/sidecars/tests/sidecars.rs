@@ -661,6 +661,14 @@ async fn failed_inbound_delivery_keeps_the_update_unconfirmed_and_cursor_survive
     let lock = temp_path(&fresh, "cursor.lock");
     let worker =
         TelegramWorker::new(refusing, spine_port, config.clone(), lock.clone()).expect("worker");
+    let lock_json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&lock).expect("read bridge lock"))
+            .expect("parse bridge lock");
+    assert!(lock_json["startedAt"].is_string());
+    assert!(
+        lock_json.get("startedAtMs").is_none(),
+        "legacy treats the old Rust-only shape as corrupt and steals a live lock"
+    );
     queue
         .enqueue(
             telegram::send_job(&TelegramSend {
