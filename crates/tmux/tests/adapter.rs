@@ -149,6 +149,25 @@ fn capture_proves_zero_and_more_than_the_pane_contains() {
     );
 }
 
+fn drain_until_quiet(tmux: &TmuxAdapter, pane: &str, needle: &str) -> Vec<u8> {
+    let mut observed = Vec::new();
+    let mut quiet_after_match = 0;
+    for _ in 0..80 {
+        std::thread::sleep(Duration::from_millis(25));
+        let chunk = block_on(tmux.drain_pane_tap(pane)).expect("drain attached tap");
+        if chunk.is_empty() && String::from_utf8_lossy(&observed).contains(needle) {
+            quiet_after_match += 1;
+            if quiet_after_match == 2 {
+                return observed;
+            }
+        } else {
+            quiet_after_match = 0;
+            observed.extend_from_slice(&chunk);
+        }
+    }
+    panic!("tap did not settle after emitting {needle:?}: {observed:?}");
+}
+
 #[test]
 fn pane_tap_drains_each_raw_byte_once_and_detaches_cleanly() {
     let Some(session) = TestSession::start_or_skip("tap") else {
@@ -168,10 +187,10 @@ fn pane_tap_drains_each_raw_byte_once_and_detaches_cleanly() {
     );
     block_on(tmux.attach_pane_tap(&pane.id, &sink)).expect("attach tap");
     block_on(tmux.send_keys(&pane.id, "tap-one")).expect("emit first bytes");
-    std::thread::sleep(Duration::from_millis(100));
-    let first = block_on(tmux.drain_pane_tap(&pane.id)).expect("first drain");
-    assert!(
-        String::from_utf8_lossy(&first).contains("tap-one"),
+    let first = drain_until_quiet(&tmux, &pane.id, "tap-one");
+    assert_eq!(
+        String::from_utf8_lossy(&first).matches("tap-one").count(),
+        1,
         "{first:?}"
     );
     assert_eq!(
@@ -181,10 +200,10 @@ fn pane_tap_drains_each_raw_byte_once_and_detaches_cleanly() {
     );
 
     block_on(tmux.send_keys(&pane.id, "tap-two")).expect("emit second bytes");
-    std::thread::sleep(Duration::from_millis(100));
-    let second = block_on(tmux.drain_pane_tap(&pane.id)).expect("second drain");
-    assert!(
-        String::from_utf8_lossy(&second).contains("tap-two"),
+    let second = drain_until_quiet(&tmux, &pane.id, "tap-two");
+    assert_eq!(
+        String::from_utf8_lossy(&second).matches("tap-two").count(),
+        1,
         "{second:?}"
     );
 
