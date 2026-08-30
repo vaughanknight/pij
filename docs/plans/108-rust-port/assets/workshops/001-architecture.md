@@ -381,3 +381,29 @@ message.pushed too.
 **D9 rider (E-030 one level up)**: drain survives errors only because COMPOSITION catches
 drain_once before TickLoop sees it, and no test exercises that production wrapper — CLOSE THIS
 WAVE: the loop rule applies to the wrapper actually shipped, not the loop the test constructs.
+
+## R4-AMEND-4 — note_delivered closes the transport-direct dedupe hole (2026-08-30, vicuna)
+
+**ACCEPTED**: one Queue method, `note_delivered(recipient, msg_id, origin) ->
+Result<Option<DeliveryOrigin>>` — atomic check-and-claim in the ledger's one owner. Direct
+route calls it BEFORE injecting; `Some` = suppress + replay recorded origin, `None` = the
+caller now owns the right to deliver. Both rejected alternatives ratified as rejections:
+queue-routing every local send kills the mid-turn socket delivery wave 4's inversion exists
+for; separate record/read reintroduces the check-then-act race the amendment family removed.
+Third instance of the same theorem: delivery invariants are transactions or they are prose.
+
+**RIDER (vicuna, binding)**: claim-before-inject has the INVERSE window — claim lands, inject
+fails or the process dies, and a later retry is suppressed into a replayed
+`Delivered{origin}` for a message that never arrived: a LOST message wearing our most
+confident receipt, which violates the honesty doctrine harder than a duplicate ever could.
+Required: (a) a SYNCHRONOUS inject failure compensates in the same call path — the claim is
+deleted so the retry can deliver; (b) the residual window (hard crash between claim and
+inject) is NAMED in doc + test the way the eviction window was, not discovered later; (c) the
+witness test runs the failure path, not only the happy path (E-030 rule applies to this fix
+too).
+
+**PM self-diagnosis elevated to COMMON rule**: three of four fixes landed in one half — the
+path the FINDING described, not the path the DEFECT lives on. Rule: every fix names the path
+it executes on, and the reviewer verifies the fixed branch is REACHABLE through the shipped
+pipeline (E-027's unreachable-cursor branch is the type specimen; the peer now refuses an
+impossible cursor by name and the worker treats that refusal as Reset).
