@@ -5,7 +5,7 @@
 //! queueing, or make future delivery impossible.
 
 use crate::error::{PijError, Result};
-use crate::model::{SeatDescriptor, SeatId, SemanticState};
+use crate::model::{Msg, SeatDescriptor, SeatId, SemanticState};
 
 /// Why a message must be durably queued instead of attempted now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,6 +41,57 @@ pub enum DeliveryRoute {
 /// than formatting the open string independently.
 pub fn delivery_kind(seat: &SeatId) -> String {
     format!("delivery:{seat}")
+}
+
+/// The mechanism selected for one durably accepted message.
+///
+/// This is deliberately above [`crate::ports::Transport`]: a transport can
+/// answer whether it can carry a message, but it cannot select the PTY or
+/// pointer fallback when it answers `false`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeliveryRung {
+    /// A paneless seat owns its queue through an in-process pull consumer.
+    Observe,
+    /// Submit the message's explicitly tagged command through the PTY.
+    Pty,
+    /// Carry a body through the selected transport.
+    Socket,
+    /// Submit one body-free pointer telling the seat to pull its inbox.
+    Pointer,
+    /// No safe delivery mechanism is available; leave the row queued.
+    Queue,
+}
+
+/// Select the delivery ladder rung from already-observed facts.
+///
+/// `human_typing` is a veto on every pane-facing mechanism, including a socket:
+/// sockets do not corrupt composers, but interrupting a person remains rude.
+/// A command is identified only by [`Msg::command`]; a body beginning with `/`
+/// remains a body. A pointer is available only when the composer is known idle.
+#[must_use]
+pub fn select_rung(
+    recipient: &SeatDescriptor,
+    msg: &Msg,
+    socket_available: bool,
+    human_typing: bool,
+    composer_idle: bool,
+) -> DeliveryRung {
+    if recipient.pane.is_none() {
+        return DeliveryRung::Observe;
+    }
+    if human_typing {
+        return DeliveryRung::Queue;
+    }
+    if msg.command.is_some() {
+        return DeliveryRung::Pty;
+    }
+    if socket_available {
+        return DeliveryRung::Socket;
+    }
+    if composer_idle {
+        return DeliveryRung::Pointer;
+    }
+    DeliveryRung::Queue
 }
 
 /// Select a route without performing IO.
@@ -92,9 +143,11 @@ pub fn route(
 
 #[cfg(test)]
 mod tests {
-    use super::{DeliveryRoute, QueueReason, route};
+    use super::{DeliveryRoute, DeliveryRung, QueueReason, route, select_rung};
     use crate::error::PijError;
-    use crate::model::{Harness, ProcIdentity, SeatDescriptor, SeatId, SemanticState, SystemState};
+    use crate::model::{
+        Harness, Msg, ProcIdentity, SeatDescriptor, SeatId, SemanticState, SystemState,
+    };
 
     fn bound_recipient() -> SeatDescriptor {
         let mut seat = SeatDescriptor::new("pij-recipient", Harness::Omp, "/abs/tree");
@@ -153,6 +206,90 @@ mod tests {
             Ok(DeliveryRoute::Tombstoned {
                 reason: Some("process exited".to_string())
             })
+        );
+    }
+
+    fn message(body: &str, command: Option<&str>) -> Msg {
+        Msg {
+            from: SeatId::from("pij-sender"),
+            to: SeatId::from("pij-recipient"),
+            body: body.to_string(),
+            msg_id: "m-1".to_string(),
+            from_machine: None,
+            in_reply_to: None,
+            command: command.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn delivery_ladder_enumerates_every_rung_in_order() {
+        let body = message("hello", None);
+        let command = message("display text is not the command tag", Some("compact"));
+        let mut paneless = bound_recipient();
+        paneless.pane = None;
+        assert_eq!(
+            select_rung(&paneless, &command, true, false, false),
+            DeliveryRung::Observe,
+            "a paneless seat pulls; it is never pushed to"
+        );
+
+        let mut paned = bound_recipient();
+        paned.pane = Some("%7".to_string());
+        assert_eq!(
+            select_rung(&paned, &command, true, false, true),
+            DeliveryRung::Pty,
+            "an explicitly tagged command takes the PTY even when a socket exists"
+        );
+        assert_eq!(
+            select_rung(&paned, &body, true, false, true),
+            DeliveryRung::Socket,
+            "a body uses an available socket"
+        );
+        assert_eq!(
+            select_rung(&paned, &body, false, false, true),
+            DeliveryRung::Pointer,
+            "a socketless body gets one pointer only when the composer is idle"
+        );
+        assert_eq!(
+            select_rung(&paned, &body, false, false, false),
+            DeliveryRung::Queue,
+            "without a socket or a safe pointer, the body stays queued"
+        );
+    }
+
+    #[test]
+    fn human_typing_vetoes_socket_and_pointer_delivery() {
+        let mut recipient = bound_recipient();
+        recipient.pane = Some("%7".to_string());
+        let body = message("hello", None);
+        for socket_available in [false, true] {
+            assert_eq!(
+                select_rung(&recipient, &body, socket_available, true, true),
+                DeliveryRung::Queue,
+                "human typing must leave the row queued; socket_available={socket_available}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_the_command_field_selects_the_pty() {
+        let mut recipient = bound_recipient();
+        recipient.pane = Some("%7".to_string());
+        assert_eq!(
+            select_rung(&recipient, &message("/compact", None), true, false, true),
+            DeliveryRung::Socket,
+            "a leading slash in a body is still body text"
+        );
+        assert_eq!(
+            select_rung(
+                &recipient,
+                &message("not /compact", Some("compact")),
+                true,
+                false,
+                true,
+            ),
+            DeliveryRung::Pty,
+            "the bare command tag, not display text, selects the PTY"
         );
     }
 

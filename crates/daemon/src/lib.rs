@@ -12,6 +12,7 @@ pub mod auth;
 pub mod delivery;
 pub mod events;
 pub mod lifecycle;
+pub mod pointer;
 
 // u-orchestration's git-facts gatherer: IO belongs at the runtime root, and a
 // ninth crate would have been a graph change for one module.
