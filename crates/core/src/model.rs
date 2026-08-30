@@ -190,6 +190,37 @@ pub struct SeatDescriptor {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tombstone_reason: Option<String>,
 
+    /// Whether this seat was launched configured to ACCEPT cross-session inbound
+    /// messages — the precondition for socket delivery.
+    ///
+    /// `None` means UNKNOWN, and unknown is treated as closed. This is stamped at
+    /// spawn by whoever passed the setting; nothing infers it, and nothing reads
+    /// the harness's own configuration to guess it.
+    ///
+    /// It exists because u-uds MEASURED what the design document asserted
+    /// (Claude 2.1.251, isolated seat, wave 3): an authenticated frame to a seat
+    /// without this setting is HELD behind a five-minute approval dialog — "sender
+    /// did not attest its permission mode" — and the socket returns NOTHING. No
+    /// drop report, no positive ack, zero bytes over two seconds. The negative-ack
+    /// timer the fork uses relies on a sender SESSION having a channel to be
+    /// silent on; a daemon has no such channel, so silence stopped being evidence
+    /// while still producing the same confident word.
+    ///
+    /// So a socket transport must know this BEFORE it writes. Without it we would
+    /// be writing bytes and then reasoning about what they became, which is how
+    /// "delivered" comes to mean "held in a dialog nobody clicked".
+    ///
+    /// **The hold is not a bug to route around; it is Claude's security model
+    /// working.** Corroborated independently by the prime's pre-port PoC, which
+    /// hit the same wall from the other side: a foreign non-Claude sender CAN
+    /// write the socket, and the attestation is derived from THE SENDER'S VERIFIED
+    /// PID BEING A CLAUDE SESSION — never from a wire field. That is
+    /// anti-permission-laundering by design, and it means a daemon can never
+    /// truthfully attest. The only honest opens are this recipient-side setting,
+    /// stamped at spawn, or Claude-side changes we do not control.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cross_session_inbound_accept: Option<bool>,
+
     // --- bind evidence (R5 items 13-15) ------------------------------------
     //
     // The class these four close: **the registry row lacked facts another
@@ -263,6 +294,7 @@ impl SeatDescriptor {
             relay: false,
             tombstoned_at: None,
             tombstone_reason: None,
+            cross_session_inbound_accept: None,
             spawn_id: None,
             model: None,
             provider: None,

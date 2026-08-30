@@ -34,6 +34,9 @@ const DAEMON_ORIGIN: &str = "uds:pij-daemon";
 /// held an authenticated frame behind its Deny/Deliver dialog while returning
 /// zero socket bytes for two seconds. Silence is therefore not an acknowledgement
 /// unless the recipient was explicitly spawned with inbound acceptance stamped.
+/// `None` and `Some(false)` are closed. Wave 3 therefore ships inert in
+/// production; wave 4's spawn surface is the first owner allowed to stamp
+/// `Some(true)` after it supplies Claude's explicit inbound-accept setting.
 ///
 /// # Composition recipe
 ///
@@ -123,14 +126,20 @@ impl Transport for UdsTransport {
     }
 
     async fn can_deliver(&self, seat: &SeatDescriptor, msg: &Msg) -> Result<bool> {
-        if seat.harness != Harness::Claude || msg.command.is_some() {
+        if seat.harness != Harness::Claude
+            || msg.command.is_some()
+            || seat.cross_session_inbound_accept != Some(true)
+        {
             return Ok(false);
         }
         Ok(self.discover(seat).is_some())
     }
 
     async fn deliver(&self, seat: &SeatDescriptor, msg: &Msg) -> Result<DeliveryOutcome> {
-        if seat.harness != Harness::Claude || msg.command.is_some() {
+        if seat.harness != Harness::Claude
+            || msg.command.is_some()
+            || seat.cross_session_inbound_accept != Some(true)
+        {
             return Ok(DeliveryOutcome::Queued);
         }
         let Some(endpoint) = self.discover(seat) else {
@@ -413,6 +422,7 @@ mod tests {
         let mut seat = SeatDescriptor::new("pij-recipient", harness, "/sanitized/worktree");
         seat.proc = Some(ProcIdentity { pid, proc_start: 1 });
         seat.pane = pane.map(str::to_string);
+        seat.cross_session_inbound_accept = Some(true);
         seat
     }
 
@@ -523,6 +533,36 @@ mod tests {
                 "{harness} must not claim Claude's socket"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn unknown_or_refused_inbound_acceptance_is_closed_before_any_socket_write() {
+        let dir = TestDir::new();
+        let socket = dir.0.join("must-not-connect.sock");
+        let listener = UnixListener::bind(&socket).expect("bind no-connect witness");
+        write_record(&dir.0, 4242, "%99", &socket);
+        let transport = transport(&dir.0);
+        let mut target = seat(4242, Some("%99"), Harness::Claude);
+
+        for stamp in [None, Some(false)] {
+            target.cross_session_inbound_accept = stamp;
+            assert!(
+                !transport
+                    .can_deliver(&target, &message(None))
+                    .await
+                    .unwrap()
+            );
+            assert_eq!(
+                transport.deliver(&target, &message(None)).await.unwrap(),
+                DeliveryOutcome::Queued
+            );
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), listener.accept())
+                .await
+                .is_err(),
+            "a closed capability must not probe or write the socket"
+        );
     }
 
     #[tokio::test]

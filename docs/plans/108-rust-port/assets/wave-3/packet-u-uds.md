@@ -197,6 +197,27 @@ Two further rulings worth carrying here, because both were packet defects:
   forbids CONNECTING to learn whether you can connect; reading a session record is
   cheap and side-effect-free. Descriptor stamping at bind is wave 4.
 
+## STANDING RULING — the human-typing gate survives the inversion (Jordan, 2026-08-27)
+
+Ruled by the prime after the `Working` inversion landed, and it corrects a
+too-broad line in the earlier ruling on D8. **Two different gates were being
+called "the tmux guard", and only one of them is pty-era:**
+
+| gate | signal | what it protects | after the inversion |
+|---|---|---|---|
+| seat is `Working` | agent state | a pty write racing an agent's own output | **gone from policy** — the transport decides, and a socket interrupts safely |
+| a HUMAN is typing | tmux pane-signals | the person at the keyboard | **STANDS** |
+
+**Socket is transport; tmux is politeness.** A socket frame cannot corrupt a
+composer — it queues at the inbox rather than splicing into what someone is
+typing — so the residual reason is no longer corruption. It is that interrupting a
+human mid-sentence is rude, and that is Jordan's call to lift, not ours.
+
+So: when tmux is available and pane-signals say a human is composing, the send
+still gates, **even for a socket-capable seat**. Do not let the inversion sweep
+this away on the reasoning that "the socket is safe" — safety was only ever half
+the argument.
+
 ## Done bar
 
 * Gate six stages green (COMMON § 2).

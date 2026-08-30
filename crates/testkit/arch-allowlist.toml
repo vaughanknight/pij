@@ -113,7 +113,7 @@ why = "Composition root #1: wires Arc<dyn Port> from config, serves HTTP, runs t
 # The second composition root. It depends on the daemon because it SHIPS the
 # daemon: one artifact, so a stale CLI can never meet a newer daemon on one
 # machine.
-internal = ["pij-core", "pij-daemon"]
+internal = ["pij-core", "pij-daemon", "pij-testkit@dev"]
 external = ["clap", "reqwest", "serde", "serde_json", "tokio"]
 why = "Composition root #2 and the workspace's only binary (pij-rs). Ships the daemon in the same artifact, so CLI and daemon versions cannot skew."
 

@@ -312,3 +312,42 @@ back to the pty — which IS the rung I deleted, wearing a different name. My ow
 trap-door instruction invited the thing it warned about. **The ordering is the half a
 coder implements from; the prose is the half they quote afterwards.**
 
+## E-023 — a silence-based receipt is only honest if silence is a SIGNAL
+
+`pij-yearning-sma` (u-uds), measuring rather than quoting. Claude 2.1.251,
+isolated throwaway seat, authenticated frame (peer key matching `procStart` and
+`pidDomain`). The receiving UI visibly held it — *"Held peer message ... sender
+did not attest its permission mode ... not delivered to Claude (1 held)"* — and
+the socket returned **zero bytes**. Repeated with a raw capture client, waited two
+seconds: nothing.
+
+Our ~150 ms negative-ack timer therefore returned
+`Delivered { origin: InjectedToTransport }` for a message that was observably held
+and never reached the model. **We reproduced the exact defect the receipt
+vocabulary was built to prevent, inside the vocabulary.**
+
+The mechanism was ported across a SHAPE CHANGE and nobody re-verified its
+precondition. In the fork, a sender SESSION listens on its own channel, so silence
+is weak evidence. In a daemon there is no such channel, so silence carries nothing
+at all — and "no drop report within 150 ms" degrades from weak evidence to NO
+evidence **while producing the same confident word**. A receipt that gets weaker
+without changing its vocabulary is invisible by construction.
+
+> A mechanism ported across a shape change needs its PRECONDITION re-verified, not
+> just its behaviour.
+
+Ruled: capability defaults CLOSED. The daemon is not a Claude session and has no
+permission mode to attest, which is exactly why the frame is held — so we do not
+write bytes and then reason about what they became. u-uds ships inert and honest
+rather than live and lying, and the accept precondition arrives with wave 4's
+spawn surface.
+
+Note the near miss: the alternative on offer was to widen `InjectedToTransport` to
+mean "accepted, possibly held". The moment one word covers both, nobody downstream
+can distinguish delivery from limbo — which is the entire reason `origin` is a
+required field rather than an optional annotation.
+
+Third §4.1 correction this week, all from re-running a claim instead of reading
+it. s105's PM (`pij-fatal-woodpecker`) closed before this one reached them; the
+erratum belongs in their document and is recorded here instead.
+

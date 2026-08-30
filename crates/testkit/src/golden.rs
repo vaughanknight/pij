@@ -36,6 +36,14 @@ pub fn assert_golden(name: &str, actual: &str) {
     let path = dir().join(name);
 
     if std::env::var_os("UPDATE_GOLDENS").is_some() {
+        // Create the parent directory. A nested golden (`golden/cli/...`) is a
+        // normal thing to want, and failing to record one because a directory is
+        // missing teaches people to `mkdir -p` by hand — which is how a suite
+        // acquires files its own update mechanism cannot regenerate.
+        // Harness gift DL-001, u-cli, wave 3.
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
         std::fs::create_dir_all(dir()).expect("create the golden directory");
         std::fs::write(&path, actual).expect("write the golden");
         return;
