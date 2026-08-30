@@ -9,6 +9,7 @@
 
 #![deny(missing_docs)]
 pub mod address;
+pub mod bounce;
 pub mod client;
 
 pub use address::{AddressError, parse_destination, render_destination};

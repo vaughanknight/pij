@@ -924,8 +924,9 @@ mod tests {
                 .expect("enqueue delivery");
         }
 
-        let loop_ = crate::start_resilient_delivery_drain(worker, Duration::from_secs(1))
-            .expect("start production drain wrapper");
+        let interval = crate::lifecycle::TickInterval::new(Duration::from_secs(1))
+            .expect("validate production drain interval");
+        let loop_ = crate::start_resilient_delivery_drain(worker, interval);
         tokio::task::yield_now().await;
         tokio::time::advance(Duration::from_secs(1)).await;
         queue.ack_called.notified().await;

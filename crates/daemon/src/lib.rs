@@ -23,13 +23,13 @@ pub mod http;
 pub mod orchestration_repo;
 
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use pij_core::config::{AdapterChoice, Config};
 use pij_core::error::{PijError, Result};
-use pij_core::model::Harness;
+use pij_core::model::{Harness, ProcIdentity};
 use pij_core::orchestration::OrchestrationService;
 use pij_core::ports::{HarnessPort, LivenessPort, Queue, Registry, Spine, TmuxPort, Transport};
 use pij_harnesses::proc::ProcLiveness;
@@ -45,6 +45,25 @@ pub use auth::BootKey;
 
 /// The build id reported in the event stream's Hello line.
 pub const BUILD: &str = concat!("pij-rs ", env!("CARGO_PKG_VERSION"));
+
+/// File naming the exact process that won the daemon bind.
+pub const DAEMON_RUNTIME_FILE: &str = "daemon.runtime.json";
+
+/// Durable process identity and launch facts used by `pij daemon bounce`.
+///
+/// The pid and start stamp are indivisible: signalling a pid without first
+/// matching its start stamp can kill an unrelated process after pid reuse.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct DaemonRuntime {
+    /// Process identity observed after this daemon won the bind.
+    pub process: ProcIdentity,
+    /// The resolved address this process owns.
+    pub addr: SocketAddr,
+    /// Machine alias used to distinguish local seats in a federated roster.
+    pub machine: String,
+    /// Whether the daemon was launched with all adapters fake.
+    pub offline: bool,
+}
 
 /// Everything the routes are allowed to touch: ALL SEVEN ports.
 ///
@@ -129,22 +148,21 @@ impl Daemon {
     /// # Errors
     /// [`PijError::Adapter`] when the server task panicked.
     pub async fn shutdown(self) -> Result<()> {
-        // Stop SERVING first, then the workers: a worker that keeps forwarding for
-        // a daemon still accepting requests is fine; the reverse is a daemon
-        // taking work nothing will move. Both are awaited, so "shut down" means
-        // every task this boot started has ended — a background task that outlives
-        // its daemon is a process nobody can see and nothing can stop.
+        // Signal HTTP and poll every worker shutdown together. Each worker's
+        // shutdown future sends its stop before awaiting its join, so no slow
+        // HTTP drain can leave queue workers claiming new rows in the meantime.
         let _ = self.shutdown.send(());
-        let served = self.joined.await.map_err(|error| PijError::Adapter {
-            adapter: "daemon".to_string(),
-            message: format!("the server task did not stop cleanly: {error}"),
-        });
-        let drained = self.drain_loop.shutdown().await;
-        // Observer BEFORE federation, and after the delivery loop: it holds OS
-        // resources (a `pipe-pane` per observed pane) where the others hold only
-        // tasks, and the recipe's order is the one its shutdown was written for.
-        let observed = self.pane_observer.shutdown().await;
-        let forwarded = self.federation_worker.shutdown().await;
+        let (served, drained, observed, forwarded) = tokio::join!(
+            async {
+                self.joined.await.map_err(|error| PijError::Adapter {
+                    adapter: "daemon".to_string(),
+                    message: format!("the server task did not stop cleanly: {error}"),
+                })
+            },
+            self.drain_loop.shutdown(),
+            self.pane_observer.shutdown(),
+            self.federation_worker.shutdown(),
+        );
         served?;
         drained?;
         observed?;
@@ -298,9 +316,9 @@ fn needs_store(config: &Config) -> bool {
 
 fn start_resilient_delivery_drain(
     drain: Arc<pointer::DrainWorker>,
-    interval: Duration,
-) -> Result<lifecycle::TickLoop> {
-    lifecycle::TickLoop::start(interval, move || {
+    interval: lifecycle::TickInterval,
+) -> lifecycle::TickLoop {
+    lifecycle::TickLoop::start_validated(interval, move || {
         let drain = Arc::clone(&drain);
         async move {
             // SURVIVE errors, for the same reason the federation worker does
@@ -315,6 +333,43 @@ fn start_resilient_delivery_drain(
             Ok(())
         }
     })
+}
+
+fn write_runtime_record(state_dir: &Path, runtime: &DaemonRuntime) -> Result<PathBuf> {
+    use std::io::Write;
+
+    let bytes = serde_json::to_vec(runtime).map_err(|error| PijError::Adapter {
+        adapter: "daemon/lifecycle".to_string(),
+        message: format!("could not encode daemon runtime record: {error}"),
+    })?;
+    let path = state_dir.join(DAEMON_RUNTIME_FILE);
+    let staged = state_dir.join(format!(
+        ".{DAEMON_RUNTIME_FILE}.{}.{}.tmp",
+        runtime.process.pid, runtime.process.proc_start
+    ));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&staged)
+        .map_err(|error| PijError::Adapter {
+            adapter: "daemon/lifecycle".to_string(),
+            message: format!("could not stage {}: {error}", staged.display()),
+        })?;
+    if let Err(error) = file.write_all(&bytes).and_then(|()| file.sync_all()) {
+        let _ = std::fs::remove_file(&staged);
+        return Err(PijError::Adapter {
+            adapter: "daemon/lifecycle".to_string(),
+            message: format!("could not write {}: {error}", staged.display()),
+        });
+    }
+    std::fs::rename(&staged, &path).map_err(|error| {
+        let _ = std::fs::remove_file(&staged);
+        PijError::Adapter {
+            adapter: "daemon/lifecycle".to_string(),
+            message: format!("could not publish {}: {error}", path.display()),
+        }
+    })?;
+    Ok(path)
 }
 
 /// Boot the daemon: stage the key, BIND, build, publish, serve.
@@ -428,15 +483,48 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         Duration::from_secs(config.pointer_announce_cadence_secs),
     )?);
 
-    // 6. Publish the key atomically. EVERY fallible step is now above this line.
-    //    Still before anything is SERVED — `bind` only opens the listen socket;
-    //    no request is answered until `axum::serve`.
-    let key = staged.publish()?;
+    // 7. Validate the scheduler while refusal is still safe. Starting a worker
+    //    here would be wrong: it could deliver or move queue rows for a daemon
+    //    whose later key publication fails. Validation is fallible; start below
+    //    the point of no return is deliberately infallible.
+    let delivery_interval =
+        lifecycle::TickInterval::new(Duration::from_secs(config.delivery_interval_secs))?;
+
+    // 8. This record can be true only after bind: it says this exact process won
+    //    the port. It must also precede daemon.key, the point of no return. A
+    //    bounce compares BOTH pid and proc-start before signalling, so stale pid
+    //    reuse cannot kill an unrelated process.
+    let pid = std::process::id();
+    let proc_start =
+        ProcLiveness::new()
+            .proc_start(pid)
+            .await?
+            .ok_or_else(|| PijError::Adapter {
+                adapter: "daemon/lifecycle".to_string(),
+                message: format!("could not observe this daemon process at pid {pid}"),
+            })?;
+    let runtime = DaemonRuntime {
+        process: ProcIdentity { pid, proc_start },
+        addr,
+        machine: identity.alias().to_string(),
+        offline: config.is_fully_offline(),
+    };
+    let runtime_path = write_runtime_record(&state_dir, &runtime)?;
+
+    // 9. Publish the key atomically. This is the point of no return: every
+    //    operation above may refuse without rotating a running credential, and
+    //    every operation below is already validated and cannot refuse.
+    let key = match staged.publish() {
+        Ok(key) => key,
+        Err(error) => {
+            let _ = std::fs::remove_file(&runtime_path);
+            return Err(error);
+        }
+    };
 
     let pane_observer = pane_observer.start();
     let federation_worker = Arc::clone(&federation).start();
-    let drain_loop =
-        start_resilient_delivery_drain(drain, Duration::from_secs(config.delivery_interval_secs))?;
+    let drain_loop = start_resilient_delivery_drain(drain, delivery_interval);
 
     let router = http::router_with_federation(
         services,
