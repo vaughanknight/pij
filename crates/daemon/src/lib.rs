@@ -117,7 +117,6 @@ pub struct Daemon {
     /// see and nothing can stop.
     federation_worker: federation::FederationWorker,
     drain_loop: lifecycle::TickLoop,
-    pane_observer: pane_observer::PaneObserverLoop,
 }
 
 impl Daemon {
@@ -137,11 +136,9 @@ impl Daemon {
             message: format!("the server task did not stop cleanly: {error}"),
         });
         let drained = self.drain_loop.shutdown().await;
-        let observed = self.pane_observer.shutdown().await;
         let forwarded = self.federation_worker.shutdown().await;
         served?;
         drained?;
-        observed?;
         forwarded
     }
 }
@@ -362,9 +359,13 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         })?,
     );
 
-    // 6. The drain worker and its pane observer. Interaction starts unknown and
-    //    remains a conservative veto until the observer positively recognises a
-    //    composer. Both constructors validate configuration before key publish.
+    // 6. The drain worker. Its pointer rung is INERT in this composition: nothing
+    //    yet feeds `InteractionGate`, which denies on unknown, so a pointer never
+    //    fires. That is deliberate and it is the same honest ship as the socket
+    //    transport — the mechanism is real and tested, its precondition does not
+    //    exist, and wave 5's `u-tap` is the sensor. Inverting the gate to make the
+    //    rung reachable would discard Jordan's politeness ruling while appearing
+    //    to honour it.
     let interaction = Arc::new(InteractionGate::new(Arc::clone(&services.tmux)));
     let drain = Arc::new(pointer::DrainWorker::new(
         Arc::clone(&services.registry),
@@ -375,13 +376,6 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         Arc::clone(&services.event_bus),
         Duration::from_secs(config.pointer_announce_cadence_secs),
     )?);
-    let pane_observer = Arc::new(pane_observer::PaneObserver::new(
-        Arc::clone(&services.registry),
-        Arc::clone(&services.tmux),
-        Arc::clone(&interaction),
-        state_dir.join("pane-signals"),
-        Duration::from_millis(config.pane_observer_interval_ms),
-    )?);
 
     // 6. Publish the key atomically. EVERY fallible step is now above this line.
     //    Still before anything is SERVED — `bind` only opens the listen socket;
@@ -389,7 +383,6 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     let key = staged.publish()?;
 
     let federation_worker = Arc::clone(&federation).start();
-    let pane_observer = pane_observer.start();
     let drain_loop = lifecycle::TickLoop::start(
         Duration::from_secs(config.delivery_interval_secs),
         move || {
@@ -434,6 +427,5 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         joined,
         federation_worker,
         drain_loop,
-        pane_observer,
     })
 }
