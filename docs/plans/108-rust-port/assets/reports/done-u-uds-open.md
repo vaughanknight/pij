@@ -609,3 +609,65 @@ architecture fixtures regenerated; arch_drift: 6 passed
 ```
 
 The PM owns the final canonical gate on the warm composed tree. No additional cold gate was started after that handoff.
+
+## Wave 6 review round 3 — primitive ownership
+
+### F1 — the caller was fixed while the primitive stayed armed
+
+Round 2 compared marker identity in `PaneObserver`, but marker-fallback `TmuxAdapter::detach_pane_tap` still trusted any `@pij-tap-sink` string. A direct call with no process-local tap closed the foreign pipe and unlinked the attacker-named file. The port documentation claimed “matching durable marker” while the primitive enforced presence only.
+
+`TmuxAdapter` now takes its authorized tap root at construction, alongside server/session scope. `pij_tmux::tap_sink_path` is the single sink-identity function shared by adapter and observer. Attach refuses a caller-provided sink that differs from the adapter-computed path. Marker-fallback detach independently recomputes the expected path and refuses a mismatch before pipe or filesystem mutation. `build_services` receives the exact pane-signal root and passes the same value to adapter and observer.
+
+The permanent direct-adapter test has no local tap state. It creates a foreign pipe, foreign marker, and real decoy file; calls `detach_pane_tap` directly; asserts the file first, then the refusal and live pipe. Removing the primitive comparison fails on the file, not merely a boolean:
+
+```text
+FAILED direct_detach_refuses_foreign_marker_and_preserves_its_file
+foreign file survives: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+```
+
+Live proof at the primitive layer, with identical procedure and instrument state pinned:
+
+```text
+BEFORE — pre-fix daemon, armed while running
+/tmp/decoy-sink-1788122328.raw: DELETED; foreign marker cleared
+
+AFTER — composed head 55c38530, armed with ZERO daemons running,
+fixed binary launched foreground by hand
+/tmp/decoy-w6final-1788134026.raw: SURVIVES; foreign marker untouched
+owned %1566: tap and matching marker retained
+released %1567: pipe=0, not resurrected
+```
+
+Two intermediate deleted runs remain disclosed: one accidentally exercised the old daemon still alive; one used a supervised process that later exited non-zero. Neither is counted as evidence for or against the fixed primitive. The observer caller and adapter primitive are now separately witnessed; proving only the caller was the gap that created round 3.
+
+This is the round-2 pattern one layer down: the observer caller was fixed while the deletion primitive remained armed. The port documentation and implementation now enforce the same matching-identity guarantee.
+
+### F2 — pending fact retry is claimless
+
+Submit still precedes publication so `delivery.pointer-announced` means experienced. A failed publication retains the pending event in process state. `drain_once` now flushes all pending pointer facts before registry reads or queue claims.
+
+The regression lets submit succeed, injects publication failure, then has a reader claim and retain the body before the next pointer tick. The next `drain_once` handles zero jobs yet publishes the pending fact; submit count remains one. This closes the live-process hole where the reader removed the only job that could drive retry.
+
+The residual boundary is wider than the earlier receipt stated: a crash between successful submit and pending-state insertion may lose the fact and duplicate one pointer after restart. With the process alive, claimless top-of-loop retry no longer depends on the body row remaining available. Duplicate-over-lie remains the ruled trade.
+
+### F3 — explicit cold-path unbounded hydration
+
+Pointer hydration and lag recovery deliberately call `EventBus::subscribe(None, ..)`. That calls `Spine::tail` from sequence zero, materializes every spine row, and only then filters pointer kinds in Rust. The code now states this cost plainly.
+
+The full scan is accepted only on cold initialization and lossy-live recovery because reconstructing every announcement since the latest unpark requires durable history. It must not migrate to per-inbox or per-claim hot paths; those use mandatory-seat `latest_matching`.
+
+### Proof-environment correction
+
+The proposed shared `CARGO_TARGET_DIR` was withdrawn after another worktree consumed test artifacts built from this branch's unpushed future source and reported compiler paths as its own. A shared path cache let artifacts outlive and cross the facts they described. Final cited evidence returned to the per-worktree `/tmp/pij-w6-u-uds-open-target`; content-addressed `sccache` is the named future solution.
+
+Round-3 per-worktree evidence:
+
+```text
+direct primitive hostile-marker test: passed
+observer hostile-marker test: passed
+restart consent transition: passed
+pending fact with reader-held row: passed
+workspace: 347 passed / 52 suites / 3 ignored
+```
+
+The PM owns the final composed-head canonical gate.

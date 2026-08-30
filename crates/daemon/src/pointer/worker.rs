@@ -143,6 +143,7 @@ impl DrainWorker {
     /// failures. A fallible delivery action is returned to pending before its
     /// error is surfaced.
     pub async fn drain_once(&self) -> Result<usize> {
+        self.flush_pending_pointers().await?;
         self.refresh_cadence().await?;
         let mut kinds: Vec<String> = self
             .registry
@@ -366,6 +367,14 @@ impl DrainWorker {
         self.release_body(job_id).await
     }
 
+    async fn flush_pending_pointers(&self) -> Result<()> {
+        let seats: Vec<SeatId> = self.cadence.lock().await.pending.keys().cloned().collect();
+        for seat in seats {
+            self.persist_pending_pointer(&seat).await?;
+        }
+        Ok(())
+    }
+
     async fn persist_pending_pointer(&self, seat: &SeatId) -> Result<bool> {
         let Some(pending) = self.cadence.lock().await.pending.get(seat).cloned() else {
             return Ok(false);
@@ -491,6 +500,13 @@ impl DrainWorker {
         let mut cadence = self.cadence.lock().await;
         loop {
             if !cadence.hydrated {
+                // Intentionally unbounded only on cold hydration and lossy-live
+                // recovery: `EventBus::subscribe(None, ..)` calls `Spine::tail`
+                // from sequence zero, which materializes EVERY spine row before
+                // filtering pointer kinds in Rust. Reconstructing the complete
+                // since-unpark budget requires that durable history. This must
+                // never move onto the per-inbox or per-claim hot path; those use
+                // mandatory-seat `latest_matching` instead.
                 cadence.live = Some(
                     self.event_bus
                         .subscribe(
@@ -869,11 +885,25 @@ mod tests {
             "the seat experienced the pointer before its fact failed"
         );
 
-        fixture
-            .worker
-            .drain_once()
+        let claimed = fixture
+            .queue
+            .claim(
+                &[delivery_kind(&SeatId::from("pij-persist-first"))],
+                "reader",
+            )
             .await
-            .expect("retry after spine recovers");
+            .expect("reader claim")
+            .expect("body remains claimable");
+        assert_eq!(claimed.1.serial_key, "pij-persist-first");
+        assert_eq!(
+            fixture
+                .worker
+                .drain_once()
+                .await
+                .expect("claimless retry after spine recovers"),
+            0,
+            "pending fact retries before queue claims even after reader takes the row"
+        );
         assert_eq!(
             fixture
                 .tmux
