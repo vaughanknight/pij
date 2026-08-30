@@ -268,19 +268,21 @@ impl DrainWorker {
                 return Err(error);
             }
         };
-        let decision = self.pointer_decision(&msg.to, at).await;
-        let PointerDecision::Announce {
-            announcement,
-            final_announcement,
-        } = decision
-        else {
-            if decision == PointerDecision::ParkNow
-                && let Err(error) = self.publish_parked(&msg.to, at).await
-            {
-                self.release_body(job_id).await?;
-                return Err(error);
+        let (announcement, final_announcement) = match self.pointer_decision(&msg.to, at).await {
+            PointerDecision::Announce {
+                announcement,
+                final_announcement,
+            } => (announcement, final_announcement),
+            PointerDecision::ParkNow { announcements } => {
+                if let Err(error) = self.publish_parked(&msg.to, at, announcements).await {
+                    self.release_body(job_id).await?;
+                    return Err(error);
+                }
+                return self.release_body(job_id).await;
             }
-            return self.release_body(job_id).await;
+            PointerDecision::Wait | PointerDecision::Parked => {
+                return self.release_body(job_id).await;
+            }
         };
 
         let payload = match serde_json::to_string(&PointerEvent {
@@ -332,16 +334,18 @@ impl DrainWorker {
             state.announcements = announcement;
             state.last_announced_at = Some(at);
         }
-        if final_announcement && let Err(error) = self.publish_parked(&msg.to, at).await {
+        if final_announcement
+            && let Err(error) = self.publish_parked(&msg.to, at, announcement).await
+        {
             self.release_body(job_id).await?;
             return Err(error);
         }
         self.release_body(job_id).await
     }
 
-    async fn publish_parked(&self, seat: &SeatId, at: u64) -> Result<()> {
+    async fn publish_parked(&self, seat: &SeatId, at: u64, announcements: u32) -> Result<()> {
         let payload = serde_json::to_string(&PointerParkedEvent {
-            announcements: self.policy.announcement_limit,
+            announcements,
             reason: "announcement-limit",
         })
         .map_err(|error| PijError::Adapter {
@@ -360,7 +364,7 @@ impl DrainWorker {
             .await?;
         let mut cadence = self.cadence.lock().await;
         let state = cadence.seats.entry(seat.clone()).or_default();
-        state.announcements = state.announcements.max(self.policy.announcement_limit);
+        state.announcements = state.announcements.max(announcements);
         state.parked = true;
         Ok(())
     }
@@ -393,7 +397,9 @@ impl DrainWorker {
             return PointerDecision::Parked;
         }
         if state.announcements >= self.policy.announcement_limit {
-            return PointerDecision::ParkNow;
+            return PointerDecision::ParkNow {
+                announcements: state.announcements,
+            };
         }
         if state
             .last_announced_at
@@ -444,7 +450,9 @@ impl DrainWorker {
 enum PointerDecision {
     Wait,
     Parked,
-    ParkNow,
+    ParkNow {
+        announcements: u32,
+    },
     Announce {
         announcement: u32,
         final_announcement: bool,
@@ -532,8 +540,8 @@ mod tests {
     use pij_core::config::Config;
     use pij_core::delivery::delivery_kind;
     use pij_core::model::{
-        DeliveryOrigin, Harness, Job, JobId, Msg, Outcome, ProcIdentity, SeatDescriptor, SeatId,
-        Seq,
+        DeliveryOrigin, Event, Harness, Job, JobId, Msg, Outcome, ProcIdentity, SeatDescriptor,
+        SeatId, Seq,
     };
     use pij_core::ports::{DeliveryEnqueue, Queue, Registry, Spine, TmuxPort, Transport};
     use pij_harnesses::InteractionGate;
@@ -544,8 +552,8 @@ mod tests {
     use tokio::sync::Notify;
 
     use super::{
-        DrainWorker, EventBus, POINTER_PARKED_EVENT_KIND, POINTER_UNPARKED_EVENT_KIND,
-        PointerPolicy,
+        DrainWorker, EventBus, POINTER_ANNOUNCED_EVENT_KIND, POINTER_PARKED_EVENT_KIND,
+        POINTER_UNPARKED_EVENT_KIND, PointerPolicy,
     };
 
     const CADENCE: Duration = Duration::from_secs(90);
@@ -742,6 +750,68 @@ mod tests {
         assert_eq!(
             fixture.queue.retried(),
             [(pij_core::model::JobId(1), Duration::ZERO); 2]
+        );
+    }
+
+    #[tokio::test]
+    async fn legacy_history_counts_every_announcement_since_the_last_unpark() {
+        let fixture = fixture_with_limit(FakeTransport::unreachable(), FakeTmux::new(), 3);
+        let recipient = SeatId::from("pij-legacy-parked");
+        register(&fixture, seat(recipient.as_str(), Some("%legacy"))).await;
+        fixture.interaction.observe_composer("%legacy", "");
+        for announcement in 1..=18 {
+            fixture
+                .event_bus
+                .publish(Event {
+                    seq: None,
+                    v: 1,
+                    at: announcement,
+                    kind: POINTER_ANNOUNCED_EVENT_KIND.to_string(),
+                    seat: Some(recipient.clone()),
+                    // Pre-policy events had no ordinal; replay must count each
+                    // durable fact rather than resetting at deployment.
+                    payload: serde_json::json!({
+                        "msg_id": format!("legacy-{announcement}"),
+                        "from": "pij-sender"
+                    })
+                    .to_string(),
+                })
+                .await
+                .expect("historical pointer");
+        }
+        enqueue(
+            &fixture,
+            &message(recipient.as_str(), "legacy unread body", None),
+        )
+        .await;
+
+        fixture.worker.drain_once().await.expect("park legacy seat");
+        assert!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .all(|call| !call.starts_with("submit:")),
+            "legacy seat is already over budget; no unexplained extra pointer"
+        );
+        let events = fixture
+            .spine
+            .tail(Some(&recipient), Seq(0))
+            .await
+            .expect("legacy parking event");
+        let parked = events
+            .iter()
+            .find(|event| event.kind == POINTER_PARKED_EVENT_KIND)
+            .expect("parked transition");
+        assert_eq!(
+            serde_json::from_str::<Value>(&parked.payload).expect("parked payload"),
+            serde_json::json!({"announcements":18,"reason":"announcement-limit"}),
+            "announcements means what the seat experienced, not the policy limit"
+        );
+        assert_eq!(
+            fixture.queue.live_len(),
+            1,
+            "legacy parking keeps mail readable"
         );
     }
 

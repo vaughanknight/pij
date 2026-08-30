@@ -11,6 +11,7 @@ use pij_testkit::fakes::FakeTmux;
 use pij_tmux::TmuxAdapter;
 
 static SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
+const REAL_TMUX_TEST_LOCK: &str = "pij-rs-real-tmux-tests";
 
 struct Fixture {
     pane: Pane,
@@ -365,6 +366,7 @@ impl TestSession {
         let count = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
         let name = format!("pij-rs-{label}-{}-{nonce}-{count}", std::process::id());
         let session = Self { name };
+        session.run(["wait-for", "-L", REAL_TMUX_TEST_LOCK]);
         session.run([
             "new-session",
             "-d",
@@ -405,10 +407,20 @@ impl TestSession {
 
 impl Drop for TestSession {
     fn drop(&mut self) {
-        let output = Command::new("tmux")
+        let kill = Command::new("tmux")
             .args(["kill-session", "-t", &self.name])
             .output();
-        if let Ok(output) = output
+        let unlock = Command::new("tmux")
+            .args(["wait-for", "-U", REAL_TMUX_TEST_LOCK])
+            .output();
+        if let Ok(output) = unlock {
+            assert!(
+                output.status.success() || std::thread::panicking(),
+                "failed to unlock real tmux tests: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        if let Ok(output) = kill
             && !output.status.success()
             && !std::thread::panicking()
         {

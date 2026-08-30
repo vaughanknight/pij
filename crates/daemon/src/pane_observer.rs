@@ -32,7 +32,9 @@ struct PaneState {
 }
 
 /// Polls attached tmux pane taps and turns only positively recognised composer
-/// states into interaction-gate evidence.
+/// states into interaction-gate evidence. A tombstone is consent withdrawal:
+/// the next sweep actively detaches its pipe, clears ownership, and deletes the
+/// captured sink before it can ever consider reattaching.
 ///
 /// # Composition recipe
 ///
@@ -118,7 +120,11 @@ impl PaneObserver {
                 return Err(error);
             }
         };
-        let wanted: BTreeSet<String> = seats.into_iter().filter_map(|seat| seat.pane).collect();
+        let wanted: BTreeSet<String> = seats
+            .into_iter()
+            .filter(|seat| seat.tombstoned_at.is_none())
+            .filter_map(|seat| seat.pane)
+            .collect();
         let panes = match self.tmux.list_panes().await {
             Ok(panes) => panes
                 .into_iter()
@@ -485,7 +491,7 @@ fn observer_error(message: impl Into<String>) -> PijError {
 
 #[cfg(test)]
 mod tests {
-    use pij_core::model::{Harness, SeatDescriptor};
+    use pij_core::model::{Harness, SeatDescriptor, SeatId};
     use std::process::Command;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -496,6 +502,7 @@ mod tests {
     use super::*;
 
     static NEXT_TMUX_SESSION: AtomicU64 = AtomicU64::new(0);
+    const REAL_TMUX_TEST_LOCK: &str = "pij-rs-real-tmux-tests";
 
     fn pane(id: &str, x: u32, y: u32) -> Pane {
         Pane {
@@ -696,12 +703,18 @@ mod tests {
                 .as_nanos();
             let count = NEXT_TMUX_SESSION.fetch_add(1, Ordering::Relaxed);
             let name = format!("pij-rs-observer-{}-{nonce}-{count}", std::process::id());
+            let session = Self { name };
+            let lock = Command::new("tmux")
+                .args(["wait-for", "-L", REAL_TMUX_TEST_LOCK])
+                .output()
+                .expect("tmux became unavailable before test lock");
+            assert!(lock.status.success(), "tmux test lock failed");
             let output = Command::new("tmux")
                 .args([
                     "new-session",
                     "-d",
                     "-s",
-                    &name,
+                    &session.name,
                     "-x",
                     "80",
                     "-y",
@@ -715,7 +728,7 @@ mod tests {
                 "tmux new-session failed: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
-            Some(Self { name })
+            Some(session)
         }
     }
 
@@ -724,6 +737,13 @@ mod tests {
             let _ = Command::new("tmux")
                 .args(["kill-session", "-t", &self.name])
                 .status();
+            let unlock = Command::new("tmux")
+                .args(["wait-for", "-U", REAL_TMUX_TEST_LOCK])
+                .status();
+            assert!(
+                unlock.is_ok_and(|status| status.success()) || std::thread::panicking(),
+                "failed to unlock real tmux tests"
+            );
         }
     }
 
@@ -820,6 +840,80 @@ mod tests {
         assert!(String::from_utf8_lossy(&second).contains("second-pass"));
 
         observer.detach_all().await.expect("detach real tap");
+    }
+
+    #[tokio::test]
+    async fn tombstoning_an_observed_seat_detaches_marker_and_captured_bytes() {
+        let Some(session) = LiveTmuxSession::start() else {
+            eprintln!("SKIP real pane observer test: tmux unavailable");
+            return;
+        };
+        let tmux = Arc::new(TmuxAdapter::for_session(&session.name));
+        let pane = tmux
+            .list_panes()
+            .await
+            .expect("list isolated pane")
+            .into_iter()
+            .next()
+            .expect("isolated pane");
+        let registry = registry(&[pane.id.as_str()]).await;
+        let gate = Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>));
+        let observer = PaneObserver::new(
+            Arc::clone(&registry) as Arc<dyn Registry>,
+            Arc::clone(&tmux) as Arc<dyn TmuxPort>,
+            gate,
+            std::env::temp_dir().join(format!("{}-signals", session.name)),
+            Duration::from_millis(1),
+        )
+        .expect("observer");
+        observer.observe_once().await.expect("attach live tap");
+        let sink = observer.sink_path(&pane.id);
+        assert!(sink.exists());
+
+        let mut descriptor = registry
+            .get(&SeatId::from("pij-observed-0"))
+            .await
+            .expect("read seat")
+            .expect("registered seat");
+        descriptor.tombstoned_at = Some(1);
+        descriptor.tombstone_reason = Some("released by reader".to_string());
+        registry.put(descriptor).await.expect("persist tombstone");
+
+        observer
+            .observe_once()
+            .await
+            .expect("detach tombstoned tap");
+        let pipe = Command::new("tmux")
+            .args(["display-message", "-p", "-t", &pane.id, "#{pane_pipe}"])
+            .output()
+            .expect("read pane pipe");
+        assert_eq!(String::from_utf8_lossy(&pipe.stdout).trim(), "0");
+        let marker = Command::new("tmux")
+            .args([
+                "show-options",
+                "-p",
+                "-v",
+                "-q",
+                "-t",
+                &pane.id,
+                "@pij-tap-sink",
+            ])
+            .output()
+            .expect("read ownership marker");
+        assert!(marker.stdout.is_empty(), "release clears durable ownership");
+        assert!(!sink.exists(), "release deletes captured terminal bytes");
+
+        observer.observe_once().await.expect("post-release sweep");
+        let pipe = Command::new("tmux")
+            .args(["display-message", "-p", "-t", &pane.id, "#{pane_pipe}"])
+            .output()
+            .expect("read pane pipe after sweep");
+        assert_eq!(
+            String::from_utf8_lossy(&pipe.stdout).trim(),
+            "0",
+            "a later sweep must not reattach a released seat"
+        );
+        assert!(!sink.exists());
     }
 
     #[tokio::test(start_paused = true)]
