@@ -48,9 +48,11 @@ The descriptor a spawn produces must carry, truthfully:
   directly instead; a fact the launcher KNOWS travelling as a self-declaration by
   the launched process is a weaker chain than it needs to be.
 
-**`from-mode` provenance**: populate what is true. It is a self-assertion, not a
-security boundary, and asserting `bypass` to pass a gate you did not configure is
-the thing that works until the day it matters.
+**`from-mode` is STRUCK from this unit** (u-spawn D7). It has no destination
+field in `SeatDescriptor`, `Registration`, or any wire type, and the u-uds ruling
+forbids inventing an assertion — so "populate what is true" had nowhere to put it.
+A leftover from the wave-3 packet, where it belonged to a unit that no longer
+exists.
 
 ### 2. The pi-in-a-worktree trap is REAL and it kills silently
 
