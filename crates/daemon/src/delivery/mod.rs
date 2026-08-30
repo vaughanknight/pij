@@ -169,11 +169,13 @@ impl DeliveryService {
         // — a dead seat is never given an immortal queue row, wherever the message
         // came from.
         let selected = match arrival {
-            Arrival::Local => route(&from, &recipient, true)?,
-            Arrival::Forwarded => match route(&from, &recipient, true)? {
-                DeliveryRoute::Tombstoned { reason } => DeliveryRoute::Tombstoned { reason },
-                _ => DeliveryRoute::Queue(QueueReason::Unreachable),
-            },
+            Arrival::Local => route(&from, msg.from_machine.as_deref(), &recipient, true)?,
+            Arrival::Forwarded => {
+                match route(&from, msg.from_machine.as_deref(), &recipient, true)? {
+                    DeliveryRoute::Tombstoned { reason } => DeliveryRoute::Tombstoned { reason },
+                    _ => DeliveryRoute::Queue(QueueReason::Unreachable),
+                }
+            }
         };
         let outcome = match selected {
             DeliveryRoute::Tombstoned { reason } => {
@@ -193,7 +195,7 @@ impl DeliveryService {
                     // The operator sees the same two words as before; the decision
                     // simply now belongs to the transport that knows its medium.
                     debug_assert_eq!(
-                        route(&from, &recipient, false)?,
+                        route(&from, msg.from_machine.as_deref(), &recipient, false)?,
                         DeliveryRoute::Queue(QueueReason::Unreachable)
                     );
                     self.enqueue(&msg).await?;

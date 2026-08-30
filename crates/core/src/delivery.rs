@@ -67,10 +67,18 @@ pub fn delivery_kind(seat: &SeatId) -> String {
 /// [`PijError::SelfAddressed`] when a seat addresses itself.
 pub fn route(
     from: &SeatId,
+    from_machine: Option<&str>,
     recipient: &SeatDescriptor,
     transport_reachable: bool,
 ) -> Result<DeliveryRoute> {
-    if from == &recipient.id {
+    // Self-addressing is a question about ADDRESSES, not names. `alice@laptop`
+    // sending to the local `alice` is a stranger with a common name, and the bare
+    // comparison refused it — which is the exact collision R7-AMEND-1 exists to
+    // solve, still live inside the function that had to answer it (u-federation).
+    //
+    // A recipient reached through this function is always LOCAL, so a sender with
+    // any machine is by construction not it.
+    if from == &recipient.id && from_machine.is_none() {
         return Err(PijError::SelfAddressed { seat: from.clone() });
     }
     if recipient.tombstoned_at.is_some() {
@@ -109,7 +117,10 @@ mod tests {
     fn receipt_honesty_table_selects_only_recoverable_queue_routes() {
         let from = SeatId::from("pij-sender");
         let mut seat = bound_recipient();
-        assert_eq!(route(&from, &seat, true), Ok(DeliveryRoute::Transport));
+        assert_eq!(
+            route(&from, None, &seat, true),
+            Ok(DeliveryRoute::Transport)
+        );
 
         // A WORKING seat still routes to the transport: whether a busy recipient
         // can be reached is the transport's judgement, because only it knows
@@ -117,16 +128,19 @@ mod tests {
         // operator still hears `Busy` — the caller supplies that reason when the
         // transport declines a working seat.
         seat.state = SystemState::Working;
-        assert_eq!(route(&from, &seat, true), Ok(DeliveryRoute::Transport));
         assert_eq!(
-            route(&from, &seat, false),
+            route(&from, None, &seat, true),
+            Ok(DeliveryRoute::Transport)
+        );
+        assert_eq!(
+            route(&from, None, &seat, false),
             Ok(DeliveryRoute::Queue(QueueReason::Unreachable))
         );
 
         seat.state = SystemState::Idle;
         seat.proc = None;
         assert_eq!(
-            route(&from, &seat, true),
+            route(&from, None, &seat, true),
             Ok(DeliveryRoute::Queue(QueueReason::PreBind))
         );
 
@@ -136,20 +150,20 @@ mod tests {
         });
         seat.semantic_state = Some(SemanticState::Hold);
         assert_eq!(
-            route(&from, &seat, true),
+            route(&from, None, &seat, true),
             Ok(DeliveryRoute::Queue(QueueReason::OperatorHold))
         );
 
         seat.semantic_state = None;
         assert_eq!(
-            route(&from, &seat, false),
+            route(&from, None, &seat, false),
             Ok(DeliveryRoute::Queue(QueueReason::Unreachable))
         );
 
         seat.tombstoned_at = Some(42);
         seat.tombstone_reason = Some("process exited".to_string());
         assert_eq!(
-            route(&from, &seat, false),
+            route(&from, None, &seat, false),
             Ok(DeliveryRoute::Tombstoned {
                 reason: Some("process exited".to_string())
             })
@@ -157,13 +171,25 @@ mod tests {
     }
 
     #[test]
-    fn self_delivery_is_refused_before_routing() {
+    fn self_delivery_is_refused_by_address_not_by_name() {
         let seat = bound_recipient();
+
+        // Local, same name: still refused. This is the case the rule is for.
         assert_eq!(
-            route(&seat.id, &seat, true),
+            route(&seat.id, None, &seat, true),
             Err(PijError::SelfAddressed {
                 seat: seat.id.clone()
             })
+        );
+
+        // SAME NAME, DIFFERENT MACHINE: a stranger with a common name, and it must
+        // route. Two machines each holding a seat called `alice` is ordinary, and
+        // the bare-name comparison refused `alice@laptop -> alice` as if it were
+        // someone talking to themselves — inside the very function R7-AMEND-1 was
+        // ratified to unblock (u-federation).
+        assert_eq!(
+            route(&seat.id, Some("laptop"), &seat, true),
+            Ok(DeliveryRoute::Transport)
         );
     }
 }
