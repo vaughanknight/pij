@@ -46,17 +46,15 @@ pub struct Adapters {
     pub liveness: AdapterChoice,
 }
 
-/// One manually bootstrapped peer daemon.
-///
-/// Definitions remain ordered until validation so duplicate aliases cannot be
-/// erased by collecting into a map before they are refused.
+/// One manually bootstrapped peer machine.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PeerDefinition {
-    /// Unique machine alias used by qualified destinations.
+    /// How this machine is addressed in `<seat>@<machine>`. Unique, and never
+    /// equal to the local alias.
     pub alias: String,
-    /// Peer daemon base URL.
+    /// Base URL of that machine's daemon.
     pub url: String,
-    /// Persistent bearer credential shared with this peer.
+    /// The shared bearer credential for this pair.
     pub key: String,
 }
 
@@ -89,8 +87,18 @@ pub struct Config {
     /// hostname at boot, which lifecycle resolves — a machine that never chose a
     /// name still has to be addressable, and a constant would collide.
     pub machine_alias: Option<String>,
-    /// Ordered peer definitions. Federation validates aliases before building
-    /// its lookup table; keeping this as a vector preserves duplicate evidence.
+    /// Manually bootstrapped peer machines, IN ORDER.
+    ///
+    /// A `Vec`, not a map, deliberately: the duplicate-alias rule is a rule about
+    /// what an operator WROTE, and a map has already erased the duplicate you are
+    /// trying to refuse. Validate the vec, then build the map (u-federation).
+    ///
+    /// The keys here are distinct from the per-boot local key in both lifetime and
+    /// blast radius: the local key dies with the process, a peer key survives it,
+    /// and removing an entry from this list is how an operator revokes a machine.
+    /// There is exactly ONE source for the inbound ring — a second would let a
+    /// revocation succeed in one place and leave the machine reachable through the
+    /// other.
     pub peers: Vec<PeerDefinition>,
 }
 

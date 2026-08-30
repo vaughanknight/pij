@@ -129,6 +129,7 @@ fn send_request_uses_resolved_destination_object_and_optional_reply_id() {
         to: Destination::local("pij-b"),
         body: "answer".to_string(),
         msg_id: "m-2".to_string(),
+        from_machine: None,
         in_reply_to: Some("m-1".to_string()),
     };
     let json = serde_json::to_value(&request).expect("send request json");
@@ -490,6 +491,7 @@ async fn send_enqueues_exactly_once_and_refuses_remote_destinations() {
         to: Destination::local("pij-b"),
         body: "hello".to_string(),
         msg_id: "m-1".to_string(),
+        from_machine: None,
         in_reply_to: Some("m-0".to_string()),
     };
 

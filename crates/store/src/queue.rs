@@ -162,7 +162,7 @@ impl Queue for SqliteQueue {
         .map_err(adapter_error)?;
 
         let row = sqlx::query(
-            "SELECT id, kind, serial_key, payload, dedupe_key FROM jobs \
+            "SELECT id, kind, serial_key, payload, dedupe_key, attempt FROM jobs \
              WHERE state = 'pending' \
                AND not_before <= unixepoch() \
                AND kind IN (SELECT value FROM json_each(?1)) \
@@ -185,6 +185,10 @@ impl Queue for SqliteQueue {
             serial_key: row.try_get("serial_key").map_err(adapter_error)?,
             payload: row.try_get("payload").map_err(adapter_error)?,
             dedupe_key: row.try_get("dedupe_key").map_err(adapter_error)?,
+            attempt: row
+                .try_get::<i64, _>("attempt")
+                .map_err(adapter_error)?
+                .max(0) as u32,
         };
 
         // The UPDATE re-checks `state = 'pending'`, so two claimers racing on the

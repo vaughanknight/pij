@@ -230,6 +230,8 @@ struct QueueState {
     acked: Vec<(JobId, Outcome)>,
     retried: Vec<(JobId, Duration)>,
     attempts: HashMap<u64, u32>,
+    not_before: HashMap<u64, Duration>,
+    now: Duration,
     next_id: u64,
 }
 
@@ -247,6 +249,15 @@ impl FakeQueue {
     /// Everything acked, in order.
     pub fn acked(&self) -> Vec<(JobId, Outcome)> {
         self.state.lock().expect("fake queue mutex").acked.clone()
+    }
+
+    /// Advance the fake clock, making due retries claimable again.
+    ///
+    /// Injected rather than real: a test that sleeps to observe backoff is a test
+    /// that is slow AND flaky, and it proves the sleep rather than the schedule.
+    pub fn advance(&self, by: Duration) {
+        let mut state = self.state.lock().expect("fake queue mutex");
+        state.now += by;
     }
 
     /// Every retry, in order, with the delay each asked for.
@@ -293,11 +304,20 @@ impl Queue for FakeQueue {
             .values()
             .map(|(job, _)| job.serial_key.clone())
             .collect();
-        let Some(index) = state
-            .live
+        // not-before eligibility, so a backoff test can ADVANCE A CLOCK instead of
+        // sleeping. The real queue gates on `unixepoch()`; a fake that ignored the
+        // delay would let "the same semantics" be false in the one direction that
+        // matters — a retried row claimable instantly.
+        let now = state.now;
+        let ready: Vec<u64> = state
+            .not_before
             .iter()
-            .position(|(_, job)| kinds.contains(&job.kind) && !busy.contains(&job.serial_key))
-        else {
+            .filter(|(_, at)| **at > now)
+            .map(|(id, _)| *id)
+            .collect();
+        let Some(index) = state.live.iter().position(|(id, job)| {
+            kinds.contains(&job.kind) && !busy.contains(&job.serial_key) && !ready.contains(&id.0)
+        }) else {
             return Ok(None);
         };
         let (id, job) = state.live.remove(index);
@@ -319,8 +339,26 @@ impl Queue for FakeQueue {
     /// that forgot the counter would let a one-writer test pass against nothing.
     async fn retry(&self, job: JobId, delay: Duration) -> Result<()> {
         let mut state = self.state.lock().expect("fake queue mutex");
-        state.claimed.remove(&job.0);
-        *state.attempts.entry(job.0).or_insert(0) += 1;
+        // RETURN THE BODY TO THE QUEUE. The first version of this fake removed
+        // the claim, counted the attempt, recorded the delay — and dropped the
+        // job. A retry test against it would have observed perfect bookkeeping
+        // while the message was silently lost, which is the worst shape a fake
+        // can have: it certifies the thing it destroys. Found by two units within
+        // minutes of the seam landing.
+        let Some((claimed, _worker)) = state.claimed.remove(&job.0) else {
+            // Same contract as SqliteQueue: retrying a job nobody claimed means a
+            // worker believes it holds work the queue does not think is running.
+            return Err(PijError::Adapter {
+                adapter: "testkit/fake-queue".to_string(),
+                message: format!("job {} is not running, so it cannot be retried", job.0),
+            });
+        };
+        let attempt = state.attempts.entry(job.0).or_insert(0);
+        *attempt += 1;
+        let attempt = *attempt;
+        let not_before = state.now + delay;
+        state.live.push((job, Job { attempt, ..claimed }));
+        state.not_before.insert(job.0, not_before);
         state.retried.push((job, delay));
         Ok(())
     }
