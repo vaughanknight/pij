@@ -19,7 +19,7 @@ describe("RustRuntimeSession", () => {
 		const sends: Array<Record<string, unknown>> = [];
 		const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 			const path = new URL(String(url)).pathname;
-			if (path === "/v1/seats") return envelope("pij seats", []);
+			if (path === "/v1/seats") return envelope("pij seats", { seats: [], unavailable: [] });
 			if (path === "/v1/register") {
 				const claim = JSON.parse(String(init?.body)) as Record<string, unknown>;
 				registrations.push(claim);
