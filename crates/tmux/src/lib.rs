@@ -10,6 +10,8 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
@@ -40,6 +42,7 @@ const TAP_SINK_OPTION: &str = "@pij-tap-sink";
 #[derive(Clone, Debug)]
 pub struct TmuxAdapter {
     binary: OsString,
+    server: Option<String>,
     session: Option<String>,
     taps: Arc<Mutex<BTreeMap<String, TapState>>>,
 }
@@ -55,6 +58,7 @@ impl TmuxAdapter {
     pub fn new() -> Self {
         Self {
             binary: OsString::from("tmux"),
+            server: None,
             session: None,
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
@@ -64,6 +68,7 @@ impl TmuxAdapter {
     pub fn for_session(session: impl Into<String>) -> Self {
         Self {
             binary: OsString::from("tmux"),
+            server: None,
             session: Some(session.into()),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
@@ -73,6 +78,20 @@ impl TmuxAdapter {
     pub fn with_binary(binary: impl Into<OsString>) -> Self {
         Self {
             binary: binary.into(),
+            server: None,
+            session: None,
+            taps: Arc::new(Mutex::new(BTreeMap::new())),
+        }
+    }
+
+    /// Use an isolated named tmux server, invisible to the user's live server.
+    ///
+    /// Real integration fixtures use this instead of sharing a mutable global
+    /// server with production daemons that legitimately attach pane pipes.
+    pub fn for_server(server: impl Into<String>) -> Self {
+        Self {
+            binary: OsString::from("tmux"),
+            server: Some(server.into()),
             session: None,
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
@@ -94,7 +113,11 @@ impl TmuxAdapter {
     }
 
     fn run(&self, operation: &str, args: &[OsString]) -> Result<Output> {
-        let output = Command::new(&self.binary)
+        let mut command = Command::new(&self.binary);
+        if let Some(server) = &self.server {
+            command.args(["-L", server]);
+        }
+        let output = command
             .args(args)
             .output()
             .map_err(|error| self.spawn_error(operation, error))?;
@@ -142,6 +165,39 @@ impl TmuxAdapter {
         PijError::Adapter {
             adapter: "tmux".to_string(),
             message,
+        }
+    }
+
+    fn wait_for_pipe_state(
+        &self,
+        pane: &str,
+        sink: &Path,
+        expected: &str,
+        operation: &str,
+    ) -> Result<()> {
+        let started = Instant::now();
+        let deadline = started + Duration::from_secs(2);
+        loop {
+            let pipe = self.stdout(
+                &format!("verify pipe-pane {operation}"),
+                &os_args(["display-message", "-p", "-t", pane, "#{pane_pipe}"]),
+            )?;
+            let observed = pipe.trim();
+            if observed == expected {
+                return Ok(());
+            }
+            if !matches!(observed, "0" | "1") {
+                return Err(self.error(format!(
+                    "pane_pipe for {pane:?} was {observed:?} while verifying {operation}, expected 0 or 1"
+                )));
+            }
+            if Instant::now() >= deadline {
+                return Err(self.error(format!(
+                    "pipe-pane {operation} did not converge for pane {pane:?}, sink {sink:?}, within {:?}: expected pane_pipe={expected}, observed {observed} — ownership marker and sink retained; the next observer sweep will retry",
+                    started.elapsed()
+                )));
+            }
+            thread::sleep(Duration::from_millis(25));
         }
     }
 
@@ -316,6 +372,7 @@ impl TmuxPort for TmuxAdapter {
             }
             return Err(error);
         }
+        self.wait_for_pipe_state(pane, sink, "1", "attach")?;
         if !tracked {
             self.taps.lock().expect("tmux tap mutex").insert(
                 pane.to_string(),
@@ -326,6 +383,10 @@ impl TmuxPort for TmuxAdapter {
             );
         }
         Ok(())
+    }
+
+    async fn pane_tap_sink(&self, pane: &str) -> Result<Option<PathBuf>> {
+        Ok(self.tap_marker(pane)?.map(PathBuf::from))
     }
 
     async fn drain_pane_tap(&self, pane: &str) -> Result<Vec<u8>> {
@@ -360,13 +421,19 @@ impl TmuxPort for TmuxAdapter {
     }
 
     async fn detach_pane_tap(&self, pane: &str) -> Result<()> {
-        let path = self
+        let local_path = self
             .taps
             .lock()
             .expect("tmux tap mutex")
             .get(pane)
-            .map(|tap| tap.path.clone())
-            .ok_or_else(|| self.error(format!("pane {pane:?} has no attached tap to detach")))?;
+            .map(|tap| tap.path.clone());
+        let path = match local_path {
+            Some(path) => path,
+            None => self
+                .tap_marker(pane)?
+                .map(PathBuf::from)
+                .ok_or_else(|| self.error(format!("pane {pane:?} has no owned tap to detach")))?,
+        };
 
         let detach = self.run("pipe-pane detach", &os_args(["pipe-pane", "-t", pane]));
         let pane_exists = self
@@ -378,6 +445,9 @@ impl TmuxPort for TmuxAdapter {
             && pane_exists
         {
             return Err(error);
+        }
+        if pane_exists {
+            self.wait_for_pipe_state(pane, &path, "0", "detach")?;
         }
         if pane_exists {
             self.clear_tap_marker(pane)?;

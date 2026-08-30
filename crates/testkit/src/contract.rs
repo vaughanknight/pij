@@ -15,7 +15,7 @@ use pij_core::model::{
 };
 use std::path::Path;
 
-use pij_core::ports::{DeliveryEnqueue, Queue, Registry, SeatFilter, Spine, TmuxPort};
+use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, SeatFilter, Spine, TmuxPort};
 
 /// Every promise the [`Registry`] port makes, in one place.
 ///
@@ -223,8 +223,27 @@ pub async fn spine_contract(spine: &dyn Spine) {
     expected_first.seq = Some(first);
     assert_eq!(
         just_a,
-        vec![expected_first, expected_third],
+        vec![expected_first, expected_third.clone()],
         "a seat filter narrows without losing each returned event's durable cursor"
+    );
+    assert_eq!(
+        spine
+            .latest_matching(&seat_a, &["report", "future-kind"])
+            .await
+            .expect("latest matching"),
+        Some(expected_third),
+        "latest is mandatory-seat-scoped, kind-filtered, and returns one highest-seq fact"
+    );
+    assert!(
+        spine
+            .latest_matching(&seat_b, &["future-kind"])
+            .await
+            .expect("no matching kind")
+            .is_none()
+    );
+    assert!(
+        spine.latest_matching(&seat_a, &[]).await.is_err(),
+        "empty kinds must refuse rather than broaden the bounded query"
     );
     assert_eq!(
         spine.tail(None, third).await.expect("tail after third"),
@@ -324,10 +343,19 @@ pub async fn queue_contract(queue: &dyn Queue) {
         .expect("claim delivery")
         .expect("delivery row");
     assert_eq!(claimed.0, first);
-    queue
+    let acknowledged = queue
         .ack_delivery(first, DeliveryOrigin::ReaderRead)
         .await
         .expect("record delivered id");
+    assert_eq!(
+        acknowledged,
+        DeliveryAck {
+            recipient: SeatId::from("seat-delivered"),
+            msg_id: "delivered-1".to_string(),
+            origin: DeliveryOrigin::ReaderRead,
+        },
+        "ack authority returns identity from the claimed job"
+    );
     assert_eq!(
         queue
             .enqueue_delivery(delivery)
@@ -443,9 +471,21 @@ pub async fn tmux_contract(tmux: &dyn TmuxPort, fixture: &dyn TmuxContractFixtur
         tmux.drain_pane_tap(&pane.id).await.is_err(),
         "an unattached tap is absent, not an empty observation"
     );
+    assert_eq!(
+        tmux.pane_tap_sink(&pane.id)
+            .await
+            .expect("tap ownership read before attach"),
+        None
+    );
     tmux.attach_pane_tap(&pane.id, fixture.tap_sink())
         .await
         .expect("attach_pane_tap must not fail");
+    assert_eq!(
+        tmux.pane_tap_sink(&pane.id)
+            .await
+            .expect("tap ownership read after attach"),
+        Some(fixture.tap_sink().to_path_buf())
+    );
     assert!(
         tmux.drain_pane_tap(&pane.id)
             .await
@@ -456,6 +496,12 @@ pub async fn tmux_contract(tmux: &dyn TmuxPort, fixture: &dyn TmuxContractFixtur
     tmux.detach_pane_tap(&pane.id)
         .await
         .expect("detach_pane_tap must not fail");
+    assert_eq!(
+        tmux.pane_tap_sink(&pane.id)
+            .await
+            .expect("tap ownership read after detach"),
+        None
+    );
     assert!(
         tmux.drain_pane_tap(&pane.id).await.is_err(),
         "a detached tap returns to absent"

@@ -647,23 +647,33 @@ struct InboxAckAudit {
     job_id: pij_core::model::JobId,
     authenticated_machine: &'static str,
     evidence_grade: &'static str,
+    outcome: pij_core::model::DeliveryOrigin,
 }
 
-/// Record `ReaderRead` only for the job id a client names after decoding a GET.
-/// The bearer credential attests to a machine, not to `request.seat`. The durable
-/// spine event therefore records the machine-graded acknowledgement ATTEMPT
-/// before the ledger mutation; it stays truthful even if the job id is invalid or
-/// the ledger write fails. A successful event plus the done queue row establishes
-/// `ReaderRead`; seat-level auth is intentionally not invented here.
+/// Record `ReaderRead` only after the queue authority commits the named job.
+///
+/// Bearer auth attests to a machine, not `request.seat`; attribution therefore
+/// comes from the acknowledged job's serial key. The event carries the committed
+/// outcome and is never minted for an invalid job or failed ledger write.
 async fn ack_inbox(
     State(state): State<AppState>,
     Extension(authenticated): Extension<auth::AuthenticatedMachine>,
     Json(request): Json<InboxAckRequest>,
 ) -> Response {
+    let acknowledged = match state
+        .services
+        .delivery
+        .acknowledge_inbox(request.job_id)
+        .await
+    {
+        Ok(acknowledged) => acknowledged,
+        Err(error) => return internal("pij inbox", error),
+    };
     let payload = match serde_json::to_string(&InboxAckAudit {
         job_id: request.job_id,
         authenticated_machine: authenticated.0,
         evidence_grade: "machine",
+        outcome: acknowledged.origin,
     }) {
         Ok(payload) => payload,
         Err(error) => return internal("pij inbox", error),
@@ -680,17 +690,9 @@ async fn ack_inbox(
             v: wire::EVENT_VERSION,
             at,
             kind: INBOX_ACK_EVENT_KIND.to_string(),
-            seat: Some(request.seat),
+            seat: Some(acknowledged.recipient),
             payload,
         })
-        .await
-    {
-        return internal("pij inbox", error);
-    }
-    if let Err(error) = state
-        .services
-        .delivery
-        .acknowledge_inbox(request.job_id)
         .await
     {
         return internal("pij inbox", error);

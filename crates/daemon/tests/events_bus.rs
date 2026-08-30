@@ -56,6 +56,23 @@ impl Spine for TestSpine {
             .cloned()
             .collect())
     }
+
+    async fn latest_matching(&self, seat: &SeatId, kinds: &[&str]) -> Result<Option<Event>> {
+        assert!(
+            !kinds.is_empty(),
+            "test spine latest kinds must be non-empty"
+        );
+        Ok(self
+            .events
+            .lock()
+            .expect("test spine mutex")
+            .iter()
+            .rev()
+            .find(|event| {
+                event.seat.as_ref() == Some(seat) && kinds.iter().any(|kind| *kind == event.kind)
+            })
+            .cloned())
+    }
 }
 
 fn event(number: u64, kind: &str) -> Event {
