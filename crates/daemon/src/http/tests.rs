@@ -1249,7 +1249,7 @@ async fn roster_loop_survives_one_peer_error_and_processes_the_next_poll() {
         .expect("local alice");
     let a_services = test_services(
         a_registry,
-        Arc::new(FakeQueue::new()),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
         Arc::new(FakeSpine::new()),
     )
     .await;
@@ -1305,7 +1305,7 @@ async fn roster_loop_survives_one_peer_error_and_processes_the_next_poll() {
         .expect("remote alice");
     let b_services = test_services(
         b_registry,
-        Arc::new(FakeQueue::new()),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
         Arc::new(FakeSpine::new()),
     )
     .await;
@@ -1462,7 +1462,7 @@ async fn event_loop_survives_one_stream_error_and_processes_the_next_frame() {
 
     let a_services = test_services(
         Arc::new(FakeRegistry::new()),
-        Arc::new(FakeQueue::new()),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
         Arc::new(FakeSpine::new()),
     )
     .await;
