@@ -919,3 +919,46 @@ async fn duplicate_background_start_cannot_wedge_an_innocent_job() {
             .expect("cleanup reap");
     }
 }
+
+#[tokio::test]
+async fn direct_child_failure_survives_a_lingering_grandchild() {
+    let fresh = FreshStore::new();
+    let queue = sqlite_queue(&fresh).await;
+    let queue_port: Arc<dyn Queue> = queue.clone();
+    let worker =
+        BgWorker::new(queue_port, temp_path(&fresh, "bg-lingering-child")).expect("worker");
+    queue
+        .enqueue(
+            background::job(
+                &BgRequest::Start {
+                    id: "linger".to_string(),
+                    title: "linger".to_string(),
+                    command: "sleep 1 & echo partial; exit 3".to_string(),
+                    target: SeatId::from("pij-test"),
+                },
+                "start-linger",
+            )
+            .expect("job"),
+        )
+        .await
+        .expect("enqueue");
+    worker.run_once(4).await.expect("start");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    worker
+        .run_once(4)
+        .await
+        .expect("observe direct child while group remains");
+    let deferred = worker.load("linger").expect("deferred record");
+    assert_eq!(deferred.status, BgStatus::Running);
+    assert_eq!(
+        deferred.exit_success,
+        Some(false),
+        "observed exit must be durable before the lingering-group guard"
+    );
+    assert_eq!(deferred.exit_code, Some(3));
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    worker.run_once(4).await.expect("finish classification");
+    let terminal = worker.load("linger").expect("terminal record");
+    assert_eq!(terminal.status, BgStatus::Failed);
+    assert_eq!(terminal.exit_code, Some(3));
+}
