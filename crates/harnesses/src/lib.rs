@@ -3,6 +3,7 @@
 
 mod adapter;
 mod interaction;
+mod models;
 
 pub mod proc;
 
@@ -11,3 +12,4 @@ pub use adapter::{
     ObservedBindFacts, OmpHarness, PiHarness,
 };
 pub use interaction::InteractionGate;
+pub use models::ModelCatalog;

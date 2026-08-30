@@ -86,7 +86,7 @@ why = "Every tmux syscall in the workspace lives here, so pane/window quirks hav
 
 [crates.pij-harnesses]
 internal = ["pij-core", "pij-testkit@dev"]
-external = ["async-trait"]
+external = ["async-trait", "serde_json"]
 why = "Per-harness adapters plus exact-pid process liveness. pij-core supplies the frozen ports, async-trait implements them, and testkit@dev supplies only the executor used by adapter tests."
 
 [crates.pij-transport]

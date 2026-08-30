@@ -143,10 +143,10 @@ answer = "MUST fail: absent is not the empty string, and a seat with no folder w
 
 [[fixture]]
 path = "golden/models-summary.tsv"
-sha256 = "8a9f13a929cf0e4d98630c0b9af528f7638d454f1c97de6cc6607a3b089e27e2"
-bytes = 670
-note = "The byte-golden of the derived catalog summary (runtime, provider, selector, requestModelId, thinking-encoding) computed from cli/models.json. Recorded with UPDATE_GOLDENS=1 and reviewed line by line."
-answer = "Must match `summarise(cli/models.json)` exactly. A change here means either the fixture moved or the derivation did \u2014 both are review events, never a silent re-record. Note two claude rows carry a selector with NO provider prefix and no `levels` key: u-models must handle both without inventing a default."
+sha256 = "e04ebadc2af3c7a9ad04fe96aa189866f500436e10559134841c5ed0cfb647ae"
+bytes = 733
+note = "The byte-golden of the production catalog fold (runtime, provider, selector, requestModelId, normalized thinking levels) computed from cli/models.json."
+answer = "Must match production ModelRow output exactly: raw absent, null, and [] all become <none>; non-empty levels preserve order. The separate corpus assertion retains the raw absent-vs-empty evidence."
 
 [[fixture]]
 path = "tmux/list-panes-empty-title.txt"

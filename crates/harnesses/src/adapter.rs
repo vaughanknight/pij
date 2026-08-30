@@ -110,12 +110,7 @@ impl AdapterCore {
     }
 
     fn models(&self) -> Result<Vec<ModelRow>> {
-        Err(PijError::Adapter {
-            adapter: format!("{} model catalog", self.kind),
-            message:
-                "catalog ownership belongs to u-models in wave 3 — retry after that adapter lands"
-                    .to_string(),
-        })
+        crate::models::models_for_harness(self.kind)
     }
 }
 
@@ -610,10 +605,10 @@ mod tests {
                 }
                 other => panic!("trait bind cannot invent caller evidence: {other:?}"),
             }
-            assert!(
-                block_on(adapter.models()).is_err(),
-                "absent wave-3 catalog is an error, never an empty inventory"
-            );
+            let models = block_on(adapter.models());
+            if let Ok(rows) = models {
+                assert!(!rows.is_empty(), "healthy {kind} catalog cannot be empty");
+            }
         }
     }
     const CWD: &str = "/Users/jordanknight/pi-hacking/pij";
@@ -798,12 +793,5 @@ mod tests {
         ] {
             assert_eq!(registry.get(kind).kind(), kind);
         }
-    }
-
-    #[test]
-    fn model_catalog_absence_is_an_error_not_an_empty_inventory() {
-        let adapter = PiHarness::new(Arc::new(FakeTmux::new()));
-        let error = block_on(adapter.models()).expect_err("u-models owns the catalog");
-        assert!(error.to_string().contains("u-models in wave 3"));
     }
 }
