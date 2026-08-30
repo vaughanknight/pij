@@ -33,10 +33,18 @@ struct PointerState {
     latest_seq: Option<Seq>,
 }
 
+#[derive(Clone, Debug)]
+struct PendingPointer {
+    event: Event,
+    announcement: u32,
+    final_announcement: bool,
+}
+
 struct CadenceState {
     live: Option<Subscription>,
     seats: BTreeMap<SeatId, PointerState>,
     hydrated: bool,
+    pending: BTreeMap<SeatId, PendingPointer>,
 }
 
 /// One delivery-queue drain pass below the socket transport.
@@ -53,6 +61,12 @@ struct CadenceState {
 /// the stop visible and reconstruct the budget after restart. Queue `attempt` is
 /// deliberately not consulted: it counts every claim/release, not what a seat was
 /// actually told.
+///
+/// `delivery.pointer-announced` means the seat experienced the physical line, so
+/// submission precedes publication. If publication fails, a process-local pending
+/// fact is retried before any further submit. A crash may lose that pending fact
+/// and duplicate one pointer after restart; duplicate-over-lie is the deliberate
+/// residual. The event is never redefined as a pre-submit decision.
 ///
 /// # Composition recipe
 ///
@@ -112,6 +126,7 @@ impl DrainWorker {
                 live: None,
                 seats: BTreeMap::new(),
                 hydrated: false,
+                pending: BTreeMap::new(),
             }),
             clock: Arc::new(system_time_ms),
         })
@@ -263,6 +278,14 @@ impl DrainWorker {
     }
 
     async fn announce_pointer(&self, job_id: JobId, pane: &str, msg: &Msg) -> Result<()> {
+        match self.persist_pending_pointer(&msg.to).await {
+            Ok(true) => return self.release_body(job_id).await,
+            Ok(false) => {}
+            Err(error) => {
+                self.release_body(job_id).await?;
+                return Err(error);
+            }
+        }
         let at = match (self.clock)() {
             Ok(at) => at,
             Err(error) => {
@@ -316,47 +339,52 @@ impl DrainWorker {
         } else {
             render_pointer(&msg.from, msg.from_machine.as_deref())
         };
-        let announced_seq = match self
-            .event_bus
-            .publish(Event {
-                seq: None,
-                v: 1,
-                at,
-                kind: POINTER_ANNOUNCED_EVENT_KIND.to_string(),
-                seat: Some(msg.to.clone()),
-                payload,
-            })
-            .await
-        {
-            Ok(seq) => seq,
-            Err(error) => {
-                self.release_body(job_id).await?;
-                return Err(error);
-            }
-        };
-        {
-            let mut cadence = self.cadence.lock().await;
-            let state = cadence.seats.entry(msg.to.clone()).or_default();
-            state.announcements = announcement;
-            state.last_announced_at = Some(at);
-            state.latest_seq = Some(announced_seq);
-        }
-        if final_announcement
-            && let Err(error) = self
-                .publish_parked(&msg.to, at, announcement, Some(announced_seq))
-                .await
-        {
-            self.release_body(job_id).await?;
-            return Err(error);
-        }
-
-        // P9: the durable decision lands before the physical pane mutation. A
-        // failed submit never re-types an unrecorded pointer on every cadence.
         if let Err(error) = self.tmux.submit(pane, &pointer).await {
             self.release_body(job_id).await?;
             return Err(error);
         }
+        let event = Event {
+            seq: None,
+            v: 1,
+            at,
+            kind: POINTER_ANNOUNCED_EVENT_KIND.to_string(),
+            seat: Some(msg.to.clone()),
+            payload,
+        };
+        self.cadence.lock().await.pending.insert(
+            msg.to.clone(),
+            PendingPointer {
+                event,
+                announcement,
+                final_announcement,
+            },
+        );
+        if let Err(error) = self.persist_pending_pointer(&msg.to).await {
+            self.release_body(job_id).await?;
+            return Err(error);
+        }
         self.release_body(job_id).await
+    }
+
+    async fn persist_pending_pointer(&self, seat: &SeatId) -> Result<bool> {
+        let Some(pending) = self.cadence.lock().await.pending.get(seat).cloned() else {
+            return Ok(false);
+        };
+        let at = pending.event.at;
+        let announced_seq = self.event_bus.publish(pending.event).await?;
+        {
+            let mut cadence = self.cadence.lock().await;
+            cadence.pending.remove(seat);
+            let state = cadence.seats.entry(seat.clone()).or_default();
+            state.announcements = pending.announcement;
+            state.last_announced_at = Some(at);
+            state.latest_seq = Some(announced_seq);
+        }
+        if pending.final_announcement {
+            self.publish_parked(seat, at, pending.announcement, Some(announced_seq))
+                .await?;
+        }
+        Ok(true)
     }
 
     async fn publish_parked(
@@ -817,7 +845,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pointer_fact_persists_before_the_pane_is_mutated() {
+    async fn pending_pointer_fact_retries_without_resubmitting_experienced_line() {
         let fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
         register(&fixture, seat("pij-persist-first", Some("%persist"))).await;
         fixture.interaction.observe_composer("%persist", "");
@@ -830,13 +858,15 @@ mod tests {
             .await
             .expect_err("publish fails");
         assert!(error.to_string().contains("injected spine failure"));
-        assert!(
+        assert_eq!(
             fixture
                 .tmux
                 .calls()
                 .iter()
-                .all(|call| !call.starts_with("submit:")),
-            "a pointer with no durable fact must never reach the pane"
+                .filter(|call| call.starts_with("submit:"))
+                .count(),
+            1,
+            "the seat experienced the pointer before its fact failed"
         );
 
         fixture
@@ -852,7 +882,18 @@ mod tests {
                 .filter(|call| call.starts_with("submit:"))
                 .count(),
             1,
-            "recovery submits exactly once after persistence succeeds"
+            "pending fact retry must not submit the experienced line again"
+        );
+        assert_eq!(
+            fixture
+                .spine
+                .tail(Some(&SeatId::from("pij-persist-first")), Seq(0))
+                .await
+                .expect("persisted retry")
+                .iter()
+                .filter(|event| event.kind == POINTER_ANNOUNCED_EVENT_KIND)
+                .count(),
+            1
         );
     }
 
