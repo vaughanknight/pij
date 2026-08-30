@@ -5,7 +5,7 @@ use pij_core::error::{PijError, Result};
 use pij_core::model::{Envelope, ErrorKind};
 use pij_core::wire;
 
-use super::StreamFrame;
+use super::{CursorResetDetail, StreamFrame};
 
 /// A manually bootstrapped peer daemon.
 #[derive(Clone, PartialEq, Eq)]
@@ -96,13 +96,21 @@ pub async fn stream_from_peer(
         // (review F10). A peer too old to send a kind still produces the generic
         // Adapter error, which is exactly the mixed-version case the reviewer
         // named — and it now degrades to "retrying" rather than to silence.
-        let kind = serde_json::from_str::<Envelope<serde_json::Value>>(&body)
-            .ok()
-            .and_then(|envelope| envelope.error);
-        if kind == Some(ErrorKind::CursorReset) {
+        let refusal = serde_json::from_str::<Envelope<CursorResetDetail>>(&body).ok();
+        if refusal.as_ref().and_then(|envelope| envelope.error) == Some(ErrorKind::CursorReset) {
+            // Re-raise with the peer's OWN numbers. Fabricating zeroes gave an
+            // operator the right diagnosis carrying evidence nobody measured
+            // (review round 4) — the same defect as a receipt claiming an
+            // unobserved delivery, one layer down in the diagnostics.
+            let detail = refusal
+                .and_then(|envelope| envelope.data)
+                .unwrap_or(CursorResetDetail {
+                    requested: 0,
+                    newest: 0,
+                });
             return Err(PijError::CursorBeyondSpine {
-                requested: 0,
-                newest: 0,
+                requested: detail.requested,
+                newest: detail.newest,
             });
         }
         return Err(PijError::Adapter {

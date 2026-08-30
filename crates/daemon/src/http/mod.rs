@@ -41,8 +41,8 @@ pub use auth::AuthRing;
 pub use client::{PeerEndpoint, get_from_peer, post_to_peer, stream_from_peer};
 pub use exposure::{Exposure, boot_banner, exposure};
 pub use types::{
-    FederatedRoster, PeerStreamState, Registration, SendRequest, SpawnRequest, StreamFrame,
-    UnavailablePeer,
+    CursorResetDetail, FederatedRoster, PeerStreamState, Registration, SendRequest, SpawnRequest,
+    StreamFrame, UnavailablePeer,
 };
 
 #[derive(Clone)]
@@ -713,15 +713,16 @@ async fn events(State(state): State<AppState>, Query(query): Query<EventQuery>) 
             // A cursor beyond the spine is the CLIENT's stale state, not our
             // failure: 409 with a machine-readable kind, so a consumer branches on
             // the KIND and never on our wording (review F10).
-            Err(error @ PijError::CursorBeyondSpine { .. }) => {
-                return envelope(
-                    StatusCode::CONFLICT,
-                    &Envelope::<()>::refused(
-                        "pij events",
-                        ErrorKind::CursorReset,
-                        error.to_string(),
-                    ),
+            Err(error @ PijError::CursorBeyondSpine { requested, newest }) => {
+                let mut refusal = Envelope::<CursorResetDetail>::refused(
+                    "pij events",
+                    ErrorKind::CursorReset,
+                    error.to_string(),
                 );
+                // The numbers travel as DATA so a client never reads them out of a
+                // sentence, and never has to invent them.
+                refusal.data = Some(CursorResetDetail { requested, newest });
+                return envelope(StatusCode::CONFLICT, &refusal);
             }
             Err(error) => return internal("pij events", error),
         },

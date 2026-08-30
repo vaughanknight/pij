@@ -1773,3 +1773,58 @@ async fn the_event_loop_resumes_live_after_a_peer_refuses_an_impossible_cursor()
     worker.shutdown().await.expect("shutdown");
     b_server.abort();
 }
+
+/// Review round 4 — a re-raised refusal carries the peer's OWN numbers.
+///
+/// The client used to rebuild `CursorBeyondSpine` with fabricated zeroes, so an
+/// operator read "requested cursor 0 is beyond this spine's newest 0": the right
+/// diagnosis carrying evidence nobody measured. Parsing them back out of the
+/// message was the alternative, and this project had just finished removing the
+/// last place that branched on wording.
+///
+/// Mutation witness: drop the `data` field from the refusal, or restore the
+/// hardcoded zeroes in the client, and this fails.
+#[tokio::test]
+async fn a_reraised_cursor_refusal_carries_the_peers_own_numbers() {
+    async fn refuse(State(()): State<()>) -> Response {
+        let mut refusal = Envelope::<CursorResetDetail>::refused(
+            "pij events",
+            ErrorKind::CursorReset,
+            "requested cursor 57 is beyond this spine's newest 4",
+        );
+        refusal.data = Some(CursorResetDetail {
+            requested: 57,
+            newest: 4,
+        });
+        envelope(StatusCode::CONFLICT, &refusal)
+    }
+
+    let (addr, server) = spawn(
+        Router::new()
+            .route("/v1/events", get(refuse))
+            .with_state(()),
+    )
+    .await;
+    let endpoint = PeerEndpoint {
+        base_url: format!("http://{addr}"),
+        bearer_key: "key".to_string(),
+    };
+
+    let attempt = stream_from_peer(&reqwest::Client::new(), &endpoint, "/v1/events", &[]).await;
+    let Err(error) = attempt else {
+        panic!("the peer refused, so opening the stream must fail");
+    };
+
+    match error {
+        pij_core::error::PijError::CursorBeyondSpine { requested, newest } => {
+            assert_eq!(
+                (requested, newest),
+                (57, 4),
+                "the operator must see the numbers the PEER measured, not zeroes we invented"
+            );
+        }
+        other => panic!("expected a typed cursor refusal, got {other}"),
+    }
+
+    server.abort();
+}

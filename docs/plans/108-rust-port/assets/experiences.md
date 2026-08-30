@@ -568,3 +568,38 @@ holding it; the return path then hit "job is not running", which under the first
 defect killed the worker. **Three findings composing into one silent, permanent,
 message-losing state**, every one invisible to a green suite.
 
+## E-031 — I keep fixing the path the FINDING described, not the path the DEFECT lives on
+
+Wave-5 review, `pij-elderly-capybara`, four rounds and twelve findings — **four of
+them in code I had written to fix its earlier findings.**
+
+* The dedupe ledger was fixed for FORWARDED arrivals (the path the finding named),
+  leaving local queue-routed sends open. Fixed those; left the TRANSPORT-DIRECT
+  path open — which is the *likeliest* path, because first-attempt-online is the
+  common case for a local send.
+* The backwards-cursor fix was UNREACHABLE: a peer whose spine reset never emits a
+  low frame, because its own subscription filters `seq <= last_seq`. The branch
+  could not fire through the shipped pipeline and shipped with no test — E-027
+  inside the fix for the finding about silence.
+* The reset recovery then BRANCHED ON PROSE, matching the peer's `Display` string.
+  This project ruled in wave 3 that nothing may branch on prose; that ruling is why
+  `ErrorKind` exists. One reworded sentence would have silently disabled the
+  recovery, with nothing failing.
+* The re-raise FABRICATED its numbers — `requested: 0, newest: 0` — so an operator
+  read the right diagnosis carrying evidence nobody measured.
+
+> **Every fix names the path it executes on, and the reviewer verifies the fixed
+> branch is reachable through the shipped pipeline.** (Ratified into COMMON by the
+> prime, mid-wave.)
+
+Two of my regression tests also **passed their own mutations** before witnessing
+anything: the first-sight test scripted one tap where the observer drains twice,
+then put the cursor on the rule line instead of the composer row; the resume-live
+test refused on the first attempt, when the worker has no cursor to be refused, so
+"resumed live" and "never had a cursor" were indistinguishable. Both were green,
+both mutations were green, both proved nothing.
+
+The lesson is not "be careful". It is that **the mutation is the test's own
+test**, and running it is not optional — a witness that has never been observed to
+fail is a claim, exactly like the receipts this project spends its time refusing.
+

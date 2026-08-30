@@ -146,6 +146,22 @@ pub struct UnavailablePeer {
     pub reason: String,
 }
 
+/// The two numbers behind a [`pij_core::model::ErrorKind::CursorReset`] refusal.
+///
+/// Carried as DATA rather than left in the message, because the peer client used
+/// to re-raise the typed error with fabricated zeroes — so an operator read
+/// "requested cursor 0 is beyond this spine's newest 0": the right diagnosis
+/// carrying evidence nobody measured. Parsing them back out of the prose was the
+/// other option, and this project has just finished removing the last place that
+/// branched on wording (review round 4).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CursorResetDetail {
+    /// The cursor the consumer asked for.
+    pub requested: u64,
+    /// The newest sequence the spine actually holds.
+    pub newest: u64,
+}
+
 /// One line after the stream Hello. The tag makes source state observable
 /// without pretending it is an event with a store-assigned cursor.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
