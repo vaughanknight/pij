@@ -195,11 +195,19 @@ async fn the_event_stream_opens_with_hello_and_survives_an_unknown_kind() {
         .expect("unknown event must not be filtered")
         .expect("frame chunk")
         .expect("frame");
-    let frame: pij_daemon::http::EventFrame = serde_json::from_slice(&frame).expect("event frame");
-    assert_eq!(frame.machine, "first-light");
-    assert_eq!(frame.cursor, 1, "cursor is assigned by the local spine");
-    assert_eq!(frame.event.kind, "future.kind");
-    assert_eq!(frame.event.payload, "{\"new\":true}");
+    let frame: pij_daemon::http::StreamFrame = serde_json::from_slice(&frame).expect("event frame");
+    let pij_daemon::http::StreamFrame::Event {
+        machine,
+        cursor,
+        event,
+    } = &frame
+    else {
+        panic!("expected event frame");
+    };
+    assert_eq!(machine, "first-light");
+    assert_eq!(*cursor, 1, "cursor is assigned by the local spine");
+    assert_eq!(event.kind, "future.kind");
+    assert_eq!(event.payload, "{\"new\":true}");
     assert!(
         serde_json::to_value(&frame).expect("frame json")["event"]
             .get("seq")

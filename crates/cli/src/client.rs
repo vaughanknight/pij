@@ -1,13 +1,13 @@
 //! Authenticated HTTP client for the daemon wire.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use pij_core::error::{PijError, Result};
 use pij_core::model::{
-    Destination, ENVELOPE_VERSION, Envelope, ErrorKind, Event, Harness, Receipt, SeatDescriptor,
-    SeatId,
+    Destination, ENVELOPE_VERSION, Envelope, ErrorKind, Harness, Receipt, SeatDescriptor, SeatId,
 };
-pub use pij_daemon::http::SpawnRequest;
+pub use pij_daemon::http::{FederatedRoster, SpawnRequest, StreamFrame};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -76,16 +76,8 @@ pub struct SendRequest {
     pub in_reply_to: Option<String>,
 }
 
-/// One event frame from `/v1/events`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EventFrame {
-    /// Machine-local sequence namespace.
-    pub machine: String,
-    /// Sequence in that machine's spine.
-    pub cursor: u64,
-    /// Event body. Its `seq` remains absent on the wire.
-    pub event: Event,
-}
+// StreamFrame is owned by the daemon wire module and re-exported here so the
+// writer and reader cannot drift into two independently valid JSON shapes.
 
 /// An authenticated daemon client.
 ///
@@ -137,21 +129,30 @@ impl DaemonClient {
         self.post("pij send", "/v1/send", request).await
     }
 
-    /// List the daemon's registry.
-    pub async fn list(&self) -> Envelope<Vec<SeatDescriptor>> {
+    /// List the local authority plus typed remote availability.
+    pub async fn list(&self) -> Envelope<FederatedRoster> {
         self.get("pij list", "/v1/seats").await
     }
 
-    /// Open the event stream. A setup refusal is returned as the daemon's
-    /// envelope; successful streams yield frames incrementally through
-    /// [`TailStream::next_frame`].
+    /// Open the federated event stream. `since` is encoded as one URL-encoded
+    /// JSON object so every machine advances in its own sequence namespace.
     pub async fn tail(
         &self,
-        since: Option<u64>,
+        since: &BTreeMap<String, u64>,
     ) -> std::result::Result<TailStream, Envelope<Value>> {
         let mut request = self.auth(self.http.get(format!("{}/v1/events", self.base_url)));
-        if let Some(cursor) = since {
-            request = request.query(&[("since", cursor)]);
+        if !since.is_empty() {
+            let encoded = match serde_json::to_string(since) {
+                Ok(encoded) => encoded,
+                Err(error) => {
+                    return Err(refusal(
+                        "pij tail",
+                        ErrorKind::Adapter,
+                        format!("could not encode cursor map: {error}"),
+                    ));
+                }
+            };
+            request = request.query(&[("since", encoded)]);
         }
         let response = match request.send().await {
             Ok(response) => response,
@@ -163,7 +164,6 @@ impl DaemonClient {
                 ));
             }
         };
-
         if !response.status().is_success() {
             let body = match response.text().await {
                 Ok(body) => body,
@@ -177,7 +177,6 @@ impl DaemonClient {
             };
             return Err(decode_response("pij tail", &body));
         }
-
         Ok(TailStream {
             response,
             buffer: Vec::new(),
@@ -254,12 +253,12 @@ pub struct TailStream {
 }
 
 impl TailStream {
-    /// Read the next event frame.
+    /// Read the next event or peer-state frame.
     ///
     /// # Errors
     /// When the stream is unreadable, does not begin with a supported Hello
-    /// line, or carries a malformed frame.
-    pub async fn next_frame(&mut self) -> std::result::Result<Option<EventFrame>, TailError> {
+    /// line, or carries a malformed tagged frame.
+    pub async fn next_frame(&mut self) -> std::result::Result<Option<StreamFrame>, TailError> {
         loop {
             if let Some(line) = self.take_line()? {
                 self.line_number += 1;
@@ -426,6 +425,7 @@ pub fn setup_refusal<T>(command: &str, error: PijError) -> Envelope<T> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::sync::mpsc;
@@ -433,7 +433,7 @@ mod tests {
     use pij_core::model::{Destination, ENVELOPE_VERSION, ErrorKind, Harness};
     use serde_json::json;
 
-    use super::{DaemonClient, Registration, SendRequest, decode_response};
+    use super::{DaemonClient, Registration, SendRequest, StreamFrame, decode_response};
 
     #[test]
     fn registration_requires_pid_and_start_time_together() {
@@ -522,7 +522,7 @@ mod tests {
         let (request_tx, request_rx) = mpsc::channel();
         let body = concat!(
             "{\"hello\":true,\"v\":1,\"build\":\"test\"}\n",
-            "{\"machine\":\"local\",\"cursor\":7,\"event\":{\"v\":1,\"at\":9,\"kind\":\"future.kind\",\"seat\":null,\"payload\":\"{}\"}}\n"
+            "{\"type\":\"event\",\"machine\":\"local\",\"cursor\":7,\"event\":{\"v\":1,\"at\":9,\"kind\":\"future.kind\",\"seat\":null,\"payload\":\"{}\"}}\n"
         );
         let server = std::thread::spawn(move || {
             let (mut socket, _) = listener.accept().expect("accept client");
@@ -541,20 +541,29 @@ mod tests {
         });
 
         let client = DaemonClient::new(&state_dir, &addr.to_string()).expect("construct client");
-        let mut tail = client.tail(Some(6)).await.expect("open tail");
+        let cursors = BTreeMap::from([("local".to_string(), 6)]);
+        let mut tail = client.tail(&cursors).await.expect("open tail");
         let frame = tail
             .next_frame()
             .await
             .expect("read frame")
             .expect("one frame");
-        assert_eq!(frame.machine, "local");
-        assert_eq!(frame.cursor, 7);
-        assert_eq!(frame.event.kind, "future.kind");
+        let StreamFrame::Event {
+            machine,
+            cursor,
+            event,
+        } = frame
+        else {
+            panic!("expected event frame");
+        };
+        assert_eq!(machine, "local");
+        assert_eq!(cursor, 7);
+        assert_eq!(event.kind, "future.kind");
         assert_eq!(tail.next_frame().await.expect("read end"), None);
 
         let request = request_rx.recv().expect("captured request");
         assert!(
-            request.starts_with("GET /v1/events?since=6 HTTP/1.1"),
+            request.starts_with("GET /v1/events?since=%7B%22local%22%3A6%7D HTTP/1.1"),
             "{request}"
         );
         assert!(

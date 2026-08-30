@@ -1,4 +1,7 @@
 //! Cross-machine delivery owned by one long-lived worker.
+mod fanin;
+
+pub(crate) use fanin::RemoteSubscription;
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -8,13 +11,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use pij_core::config::PeerDefinition;
 use pij_core::error::{PijError, Result};
 use pij_core::model::{
-    DeliveryOutcome, Destination, Envelope, ErrorKind, Event, Job, JobId, Outcome, Receipt, SeatId,
+    DeliveryOutcome, Destination, Envelope, ErrorKind, Event, Job, JobId, Outcome, Receipt,
+    SeatDescriptor, SeatId,
 };
 use pij_core::ports::Queue;
 use serde::Serialize;
 
+use self::fanin::FanInService;
 use crate::events::EventBus;
-use crate::http::{PeerEndpoint, SendRequest, post_to_peer};
+use crate::http::{FederatedRoster, PeerEndpoint, SendRequest, post_to_peer};
 
 /// The queue kind for a remote send to `alias`.
 ///
@@ -33,12 +38,22 @@ fn remote_send_kind(alias: &str) -> String {
 const OUTCOME_EVENT_KIND: &str = "delivery.outcome";
 const REMOTE_REFUSED_EVENT_KIND: &str = "delivery.remote-refused";
 const WORKER_NAME: &str = "federation";
-const IDLE_POLL: Duration = Duration::from_secs(1);
-const MAX_RETRY_DELAY: Duration = Duration::from_secs(5 * 60);
+// Retry/poll timing is injected through `FederationPolicy`; it changes outcomes
+// and is policy rather than a safety brake.
 
 type Clock = dyn Fn() -> Result<u64> + Send + Sync;
 type Jitter = dyn Fn(Duration) -> Result<Duration> + Send + Sync;
 
+/// Injected timing and buffer policy for all federation workers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FederationPolicy {
+    /// Base roster poll and reconnect delay.
+    pub poll_interval: Duration,
+    /// Maximum send/reconnect backoff.
+    pub max_retry_delay: Duration,
+    /// Per-peer remote event buffer bound.
+    pub event_buffer_capacity: usize,
+}
 /// A peer-configuration refusal.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PeerConfigError {
@@ -48,6 +63,8 @@ pub enum PeerConfigError {
     LocalAlias(String),
     /// A destination names no configured peer.
     UnknownAlias(String),
+    /// Injected federation policy is invalid.
+    InvalidPolicy(String),
 }
 
 impl fmt::Display for PeerConfigError {
@@ -67,6 +84,7 @@ impl fmt::Display for PeerConfigError {
                 formatter,
                 "peer alias `{alias}` is not configured; add it to the ordered peer definitions"
             ),
+            Self::InvalidPolicy(reason) => formatter.write_str(reason),
         }
     }
 }
@@ -117,6 +135,12 @@ impl PeerTable {
         self.peers.keys().map(String::as_str)
     }
 
+    fn endpoints(&self) -> impl Iterator<Item = (&str, &PeerEndpoint)> {
+        self.peers
+            .iter()
+            .map(|(alias, endpoint)| (alias.as_str(), endpoint))
+    }
+
     /// Resolve a destination without ever treating an unqualified seat as remote.
     ///
     /// # Errors
@@ -145,24 +169,29 @@ pub struct FederationService {
     client: reqwest::Client,
     jitter: Arc<Jitter>,
     wake: tokio::sync::Notify,
+    retry_base: Duration,
+    retry_max: Duration,
+    fanin: Arc<FanInService>,
 }
 
 impl FederationService {
-    /// Validate peer definitions and build the remote-send service.
+    /// Validate peer definitions and build the remote-send and fan-in service.
     ///
     /// # Errors
-    /// Duplicate peer aliases or a peer alias equal to `local_alias`.
+    /// Duplicate/self aliases or an invalid zero/inverted worker policy.
     pub fn new(
         local_alias: String,
         definitions: impl IntoIterator<Item = PeerDefinition>,
         queue: Arc<dyn Queue>,
         event_bus: Arc<EventBus>,
+        policy: FederationPolicy,
     ) -> std::result::Result<Self, PeerConfigError> {
         Self::with_sources(
             local_alias,
             definitions,
             queue,
             event_bus,
+            policy,
             Arc::new(system_time_ms),
             Arc::new(random_jitter),
         )
@@ -173,28 +202,72 @@ impl FederationService {
         definitions: impl IntoIterator<Item = PeerDefinition>,
         queue: Arc<dyn Queue>,
         event_bus: Arc<EventBus>,
+        policy: FederationPolicy,
         clock: Arc<Clock>,
         jitter: Arc<Jitter>,
     ) -> std::result::Result<Self, PeerConfigError> {
+        if policy.poll_interval.is_zero() {
+            return Err(PeerConfigError::InvalidPolicy(
+                "federation poll/reconnect interval must be non-zero".to_string(),
+            ));
+        }
+        if policy.max_retry_delay < policy.poll_interval {
+            return Err(PeerConfigError::InvalidPolicy(
+                "federation retry maximum must be at least the poll/reconnect interval".to_string(),
+            ));
+        }
+        if policy.event_buffer_capacity == 0 {
+            return Err(PeerConfigError::InvalidPolicy(
+                "federation event buffer capacity must be non-zero".to_string(),
+            ));
+        }
         let peers = PeerTable::new(&local_alias, definitions)?;
+        // A TOTAL timeout. reqwest has NONE by default, so a stalled peer cannot
+        // hold a queue claim forever. Comfortably under the default lease.
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+        // A stream is intentionally unbounded in duration. A total request
+        // timeout would kill every healthy peer stream after 30 seconds, so it
+        // gets a connect timeout only; reconnect owns later failures.
+        let stream_client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+        let fanin = Arc::new(FanInService::new(
+            peers
+                .endpoints()
+                .map(|(alias, endpoint)| (alias.to_string(), endpoint.clone())),
+            client.clone(),
+            stream_client,
+            policy.poll_interval,
+            policy.max_retry_delay,
+            policy.event_buffer_capacity,
+        ));
         Ok(Self {
             local_alias,
             peers,
             queue,
             event_bus,
             clock,
-            // A TOTAL timeout. reqwest has NONE by default, so the receipt's
-            // "timeouts retry" was unreachable prose: a peer that accepts the
-            // connection and then stalls would hold its claim until the lease
-            // swept it out from under this worker, terminally failing a message
-            // nobody had answered for (review F3). Comfortably under the lease.
-            client: reqwest::Client::builder()
-                .timeout(Duration::from_secs(30))
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new()),
+            client,
             jitter,
             wake: tokio::sync::Notify::new(),
+            retry_base: policy.poll_interval,
+            retry_max: policy.max_retry_delay,
+            fanin,
         })
+    }
+
+    /// Merge authoritative local rows with retained remote roster views.
+    pub fn federated_roster(&self, local: Vec<SeatDescriptor>) -> FederatedRoster {
+        self.fanin.roster(local)
+    }
+
+    /// Attach to bounded remote event views at independent machine cursors.
+    pub(crate) fn subscribe_remote(&self, cursors: &BTreeMap<String, u64>) -> RemoteSubscription {
+        self.fanin.subscribe(cursors)
     }
 
     /// Resolve and durably enqueue one remote request.
@@ -362,21 +435,18 @@ impl FederationService {
         }
     }
 
-    /// Start the long-lived remote-send worker.
+    /// Start remote-send, roster-poll, and per-peer event-source loops.
     pub fn start(self: Arc<Self>) -> FederationWorker {
-        let (shutdown, mut shutdown_rx) = tokio::sync::oneshot::channel();
-        let joined = tokio::spawn(async move {
+        let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
+        let mut joined = self.fanin.start(shutdown_rx.clone());
+        let mut send_shutdown = shutdown_rx;
+        let send_service = Arc::clone(&self);
+        joined.push(tokio::spawn(async move {
             loop {
-                // SURVIVE errors. This loop used to `?` on every step, so one
-                // transient SQLite busy, one event-bus publish failure, or one ack
-                // against a swept claim ENDED the worker — silently, permanently,
-                // with every later remote send enqueuing into a queue nobody
-                // drains. A worker that dies on its first transient error is not
-                // the durable worker this unit claims to be (review F1).
-                //
-                // Reported and retried, never swallowed: the next pass reclaims
-                // the row, and the message is still in the queue where it belongs.
-                let step = match self.process_one().await {
+                // A transient dependency failure is reported and the LOOP keeps
+                // running; the next queue item must not be abandoned for the
+                // lifetime of the daemon (COMMON 1.3 / E-030).
+                let step = match send_service.process_one().await {
                     Ok(step) => step,
                     Err(error) => {
                         eprintln!("pij-rs federation: {error}");
@@ -386,19 +456,23 @@ impl FederationService {
                 match step {
                     WorkerStep::Idle => {
                         tokio::select! {
-                            _ = &mut shutdown_rx => return Ok(()),
-                            () = self.wake.notified() => {},
-                            () = tokio::time::sleep(IDLE_POLL) => {},
+                            changed = send_shutdown.changed() => {
+                                if changed.is_err() || *send_shutdown.borrow() {
+                                    return;
+                                }
+                            }
+                            () = send_service.wake.notified() => {},
+                            () = tokio::time::sleep(send_service.retry_base) => {},
                         }
                     }
                     WorkerStep::Forwarded | WorkerStep::Retried | WorkerStep::Refused => {
-                        if shutdown_rx.try_recv().is_ok() {
-                            return Ok(());
+                        if *send_shutdown.borrow() {
+                            return;
                         }
                     }
                 }
             }
-        });
+        }));
         FederationWorker {
             shutdown: Some(shutdown),
             joined,
@@ -412,11 +486,9 @@ impl FederationService {
     }
 
     fn retry_delay(&self, attempt: u32) -> Result<Duration> {
-        let seconds = 1_u64
-            .checked_shl(attempt.min(63))
-            .unwrap_or(u64::MAX)
-            .min(MAX_RETRY_DELAY.as_secs());
-        (self.jitter)(Duration::from_secs(seconds)).map(|delay| delay.min(MAX_RETRY_DELAY))
+        let factor = 1_u32.checked_shl(attempt.min(31)).unwrap_or(u32::MAX);
+        let base = self.retry_base.saturating_mul(factor).min(self.retry_max);
+        (self.jitter)(base).map(|delay| delay.min(self.retry_max))
     }
 
     async fn refuse_claim(
@@ -495,23 +567,31 @@ pub enum WorkerStep {
 
 /// Handle for explicit federation-worker shutdown.
 pub struct FederationWorker {
-    shutdown: Option<tokio::sync::oneshot::Sender<()>>,
-    joined: tokio::task::JoinHandle<Result<()>>,
+    shutdown: Option<tokio::sync::watch::Sender<bool>>,
+    joined: Vec<tokio::task::JoinHandle<()>>,
 }
 
 impl FederationWorker {
-    /// Stop the worker and wait until its task exits.
+    /// Stop every worker and wait until no task can outlive its daemon.
     ///
     /// # Errors
-    /// The worker's runtime failure or a panicked worker task.
+    /// The first worker task that panicked, after every task has been awaited.
     pub async fn shutdown(mut self) -> Result<()> {
         if let Some(shutdown) = self.shutdown.take() {
-            let _ = shutdown.send(());
+            let _ = shutdown.send(true);
         }
-        self.joined.await.map_err(|error| PijError::Adapter {
-            adapter: "daemon/federation".to_string(),
-            message: format!("worker task did not stop cleanly: {error}"),
-        })?
+        let mut failure = None;
+        for joined in self.joined {
+            if let Err(error) = joined.await
+                && failure.is_none()
+            {
+                failure = Some(PijError::Adapter {
+                    adapter: "daemon/federation".to_string(),
+                    message: format!("worker task did not stop cleanly: {error}"),
+                });
+            }
+        }
+        failure.map_or(Ok(()), Err)
     }
 }
 
@@ -559,11 +639,7 @@ fn refusal_reason<T>(envelope: &Envelope<T>) -> String {
 }
 
 fn random_jitter(base: Duration) -> Result<Duration> {
-    let room = MAX_RETRY_DELAY.saturating_sub(base);
-    if room.is_zero() {
-        return Ok(base);
-    }
-    let ceiling_ms = (base.as_millis() / 4).max(1).min(room.as_millis());
+    let ceiling_ms = (base.as_millis() / 4).max(1);
     let mut bytes = [0_u8; 8];
     getrandom::fill(&mut bytes).map_err(|error| PijError::Adapter {
         adapter: "daemon/federation".to_string(),
@@ -598,7 +674,9 @@ mod tests {
     use pij_core::ports::Spine;
     use pij_testkit::fakes::{FakeQueue, FakeSpine};
 
-    use super::{FederationService, PeerConfigError, PeerTable, ResolvedPeer, WorkerStep};
+    use super::{
+        FederationPolicy, FederationService, PeerConfigError, PeerTable, ResolvedPeer, WorkerStep,
+    };
     use crate::events::EventBus;
     use crate::http::SendRequest;
 
@@ -607,6 +685,14 @@ mod tests {
             alias: alias.to_string(),
             url,
             key: format!("key-{alias}"),
+        }
+    }
+
+    fn policy() -> FederationPolicy {
+        FederationPolicy {
+            poll_interval: Duration::from_secs(1),
+            max_retry_delay: Duration::from_secs(5 * 60),
+            event_buffer_capacity: 16,
         }
     }
 
@@ -631,6 +717,7 @@ mod tests {
             [peer("laptop", url)],
             queue,
             bus,
+            policy(),
             Arc::new(|| Ok(1234)),
             Arc::new(Ok),
         )
@@ -659,6 +746,7 @@ mod tests {
             ],
             Arc::clone(&queue) as Arc<dyn pij_core::ports::Queue>,
             bus,
+            policy(),
             Arc::new(|| Ok(1234)),
             Arc::new(Ok),
         )

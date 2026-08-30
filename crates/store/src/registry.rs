@@ -98,6 +98,9 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
 
     Ok(SeatDescriptor {
         id: SeatId(row.try_get::<String, _>("id").map_err(adapter_error)?),
+        // Machine identity belongs to the federated view, not durable local
+        // registry state. The HTTP boundary stamps the daemon's current alias.
+        machine: None,
         harness,
         pane: row.try_get("pane").map_err(adapter_error)?,
         proc,
