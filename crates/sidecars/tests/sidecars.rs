@@ -754,6 +754,8 @@ async fn background_reports_failed_and_lost_without_starving_other_completions()
 
     for (id, command) in [
         ("boom", "printf partial; exit 3"),
+        ("boom-four", "printf four; exit 4"),
+        ("boom-five", "printf five; exit 5"),
         ("healthy", "sleep 0.2; printf healthy"),
     ] {
         queue
@@ -775,9 +777,19 @@ async fn background_reports_failed_and_lost_without_starving_other_completions()
     worker.run_once(8).await.expect("starts");
     tokio::time::sleep(Duration::from_millis(300)).await;
     worker.run_once(8).await.expect("observe exits");
-    let failed = worker.load("boom").expect("failed record");
-    assert_eq!(failed.status, BgStatus::Failed);
-    assert_eq!(failed.exit_code, Some(3));
+    for (id, code) in [("boom", 3), ("boom-four", 4), ("boom-five", 5)] {
+        let failed = worker.load(id).expect("failed record");
+        assert_eq!(
+            failed.status,
+            BgStatus::Failed,
+            "{id} must retain its own observed outcome among multiple records"
+        );
+        assert_eq!(
+            failed.exit_code,
+            Some(code),
+            "{id} must retain its own exit code"
+        );
+    }
     assert_eq!(
         worker.load("healthy").expect("healthy record").status,
         BgStatus::Done
