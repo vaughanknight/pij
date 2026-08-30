@@ -160,9 +160,20 @@ The stream opens with the Hello line, then one JSON object per line:
   RECIPIENT and whose payload carries `{msg_id, from, body}`. A client filters the
   stream by its own seat id; the daemon does not open a per-seat stream.
 * A reply is an ordinary `POST /v1/send` from the recipient back to `from`,
-  carrying the same `msg_id` in its payload as `in_reply_to`. **Correlation is the
-  msg_id**, which is also what the audit event keys on, so a message and its
-  answer can be joined without guessing.
+  carrying the answered `msg_id` as `in_reply_to`. **Correlation is the msg_id**,
+  which is also what the audit event keys on, so a message and its answer can be
+  joined without guessing.
+
+  **It is DURABLE**: `in_reply_to` travels on `Msg`, through the queue payload,
+  and into the `message.pushed` event. Review found it accepted at the route and
+  dropped at the boundary — declared, sent, and silently discarded, leaving the
+  only working correlation in one client's in-memory map, which dies with the
+  process. A field the wire appears to honour and does not is worse than no field.
+
+  **Nothing infers a reply.** A turn that merely follows a message is not an
+  answer to it, so a forwarded session-generated turn carries no `in_reply_to`.
+  Manufacturing that link would be the same class of invention as a receipt
+  claiming an observation nobody made.
 
 ### Superseding a seat across `/new` and `/fork`
 

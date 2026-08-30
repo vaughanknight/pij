@@ -461,6 +461,20 @@ pub struct Msg {
     pub body: String,
     /// Stable id, so a route can be traced end to end. Every delivery logs it.
     pub msg_id: String,
+    /// The message this one ANSWERS, when it is a reply.
+    ///
+    /// Durable, because correlation that lives only in a client's memory is not
+    /// correlation: the wire contract promises a message and its answer can be
+    /// joined "without guessing", and review found the field was accepted at the
+    /// route, dropped at the boundary, and absent from the queue payload and both
+    /// events — declared, sent, and silently discarded.
+    ///
+    /// `None` is not a reply. Nothing infers one from timing or adjacency: a turn
+    /// that happens to follow a message is not an answer to it, and manufacturing
+    /// that link would be the same class of invention as a receipt claiming an
+    /// observation nobody made.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_reply_to: Option<String>,
     /// A REMOTE-CONTROL command (`/compact`, `/new`) rather than a body.
     ///
     /// This exists because the routing decision depends on it and nothing else

@@ -106,6 +106,7 @@ impl DeliveryService {
             to,
             body: body.into(),
             msg_id: self.next_message_id(),
+            in_reply_to: None,
             command: None,
         })
         .await
@@ -125,7 +126,6 @@ impl DeliveryService {
         let at = (self.clock)()?;
         let from = msg.from.clone();
         let to = msg.to.clone();
-        let msg = Msg { ..msg };
         let recipient = self
             .registry
             .get(&to)
@@ -294,6 +294,7 @@ impl DeliveryService {
             msg_id: &msg.msg_id,
             from: &msg.from,
             body: &msg.body,
+            in_reply_to: msg.in_reply_to.as_deref(),
         })
         .map_err(|error| PijError::Adapter {
             adapter: "daemon/delivery".to_string(),
@@ -341,6 +342,8 @@ struct PushedEvent<'a> {
     msg_id: &'a str,
     from: &'a SeatId,
     body: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    in_reply_to: Option<&'a str>,
 }
 
 #[derive(Serialize)]

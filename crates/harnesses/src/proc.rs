@@ -34,7 +34,7 @@ const ADAPTER: &str = "process-liveness/ps";
 /// };
 /// ```
 ///
-/// This replaces `not_yet("liveness", "u-liveness, wave 1")`; no new config
+/// COMPOSED (wave 1). The refusal it replaced no longer exists; no new config
 /// field is required.
 pub struct ProcLiveness {
     runner: Arc<dyn CommandRunner>,

@@ -41,7 +41,8 @@ const DAEMON_ORIGIN: &str = "uds:pij-daemon";
 /// # Composition recipe
 ///
 /// In `crates/daemon/src/lib.rs`, add `use pij_transport::UdsTransport;`, then
-/// replace `AdapterChoice::Real => return Err(not_yet("transport", "u-uds, wave 3"))`
+/// COMPOSED (wave 3). The `AdapterChoice::Real` arm builds this adapter; the
+/// wave-0 `not_yet` refusal it replaced no longer exists in the tree.
 /// with `AdapterChoice::Real => Arc::new(UdsTransport::new()?),`. Add
 /// `pij-transport.workspace = true` to `crates/daemon/Cargo.toml` and the matching
 /// reviewed `pij-transport` internal edge to the daemon architecture allow-list.
@@ -414,6 +415,7 @@ mod tests {
             to: SeatId::from("pij-recipient"),
             body: "first line\nsecond line".to_string(),
             msg_id: "msg-uds-001".to_string(),
+            in_reply_to: None,
             command: command.map(str::to_string),
         }
     }

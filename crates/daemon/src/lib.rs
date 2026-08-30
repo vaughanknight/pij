@@ -304,11 +304,19 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     //    here, exactly once, by the process that won.
     let services = build_services(config).await?;
 
-    // 4. Publish the key atomically. Still before anything is SERVED — `bind`
-    //    only opens the listen socket; no request is answered until `axum::serve`.
-    let key = staged.publish()?;
-
+    // 4. Resolve this machine's identity. FALLIBLE, and therefore BEFORE the
+    //    publish: hostname lookup can fail and a configured alias can be empty.
+    //    Review found this placed after the publish, which reopened the exact
+    //    hole `auth` documents as closed — a boot that wins the bind and then
+    //    fails identity resolution would exit having already overwritten a
+    //    healthy daemon's credential. It depends on nothing from `services`, so
+    //    there is no reason for it to be down here.
     let identity = lifecycle::MachineIdentity::resolve(config.machine_alias.as_deref())?;
+
+    // 5. Publish the key atomically. EVERY fallible step is now above this line.
+    //    Still before anything is SERVED — `bind` only opens the listen socket;
+    //    no request is answered until `axum::serve`.
+    let key = staged.publish()?;
     let router = http::router_with_config(
         services,
         http::HttpConfig {

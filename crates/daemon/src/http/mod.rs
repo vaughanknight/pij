@@ -343,6 +343,7 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendRequest>) -
         to: request.to.seat,
         body: request.body,
         msg_id: request.msg_id,
+        in_reply_to: request.in_reply_to,
         command: None,
     };
     match state.services.delivery.accept(msg).await {

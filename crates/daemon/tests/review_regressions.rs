@@ -189,6 +189,7 @@ async fn selecting_the_real_transport_ships_closed_until_a_seat_opts_in() {
         to: seat.id.clone(),
         body: "body".to_string(),
         msg_id: "m-1".to_string(),
+        in_reply_to: None,
         command: None,
     };
     assert!(

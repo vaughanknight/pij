@@ -26,10 +26,10 @@ use crate::parse::{LIST_FORMAT, parse_one_pane, parse_panes};
 ///
 /// # Composition recipe
 ///
-/// In `crates/daemon/src/lib.rs`, add `use pij_tmux::TmuxAdapter;`, then replace
-/// `AdapterChoice::Real => return Err(not_yet("tmux", "u-tmux, wave 1")),` with
-/// `AdapterChoice::Real => Arc::new(TmuxAdapter::new()),`. No config field is
-/// required.
+/// COMPOSED (wave 1), in `crates/daemon/src/lib.rs`:
+/// `AdapterChoice::Real => Arc::new(TmuxAdapter::new()),`, with
+/// `use pij_tmux::TmuxAdapter;`. No config field is required, and the wave-0
+/// refusal this replaced no longer exists in the tree.
 #[derive(Clone, Debug)]
 pub struct TmuxAdapter {
     binary: OsString,

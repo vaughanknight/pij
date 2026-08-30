@@ -418,7 +418,7 @@ adapter!(OmpHarness, Omp);
 /// };
 /// ```
 ///
-/// This deletes `not_yet("harness", "u-harness, wave 2")`. No config field is
+/// COMPOSED (wave 2). The refusal it replaced no longer exists. No config field is
 /// required. Callers select ports with `get`, and real binding evidence with
 /// `observe_bind`; the latter accepts the caller's authoritative subagent scope.
 pub struct HarnessRegistry {

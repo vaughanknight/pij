@@ -1156,6 +1156,7 @@ dependencies = [
  "pij-store",
  "pij-testkit",
  "pij-tmux",
+ "pij-transport",
  "reqwest",
  "serde",
  "serde_json",
