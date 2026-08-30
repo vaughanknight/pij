@@ -136,3 +136,37 @@ review.
 then review the code as if nothing happened, discards the most interesting signal
 available: that the proof surface itself is unsound. Characterise, then raise it.
 
+### A fourth reviewer habit — report the number AND the command
+
+Four people on this plan caught themselves at the same error within one day, which
+makes it structural rather than personal:
+
+- a PM reported a **null result as a positive** (a discriminator that never ran on
+  71 unmarked panes, read as 71 correct decisions);
+- the same PM then nearly reported a **contaminated red** as a defect, having armed
+  a live test while the pre-fix binary was still running — testing the thing the fix
+  replaced;
+- a reviewer piped a gate through `tail -12`, **kept the verdict and dropped the
+  evidence**, reporting `0 passed` beside a green;
+- a coder shipped a `parked` event whose count was the configured limit rather than
+  the observed number.
+
+One shape: **the conclusion is cheap to carry and the evidence is easy to drop, so
+what reaches the reader is the half that cannot be checked.**
+
+So: report the number and the command that produced it. If you truncated the
+output, say where. If a result depends on which binary or process was live, pin it
+and say which. **A test whose instrument state is not pinned reports the
+environment, not the change.**
+
+### A fifth habit — pre-register the falsifier, in a file
+
+Two findings this plan's reviewers produced arrived **before the code existed**: the
+marker-identity gap, and the Telegram single-consumer trap where outbound takes no
+lock and inbound is single-consumer, so the reply leg can be served by the very
+bridge being replaced while every artefact looks like a pass.
+
+Both were cheap because they arrived while the design was still free to change. Write
+the falsifier down **before** the result exists — a falsifier recalled afterwards is
+just an opinion about what would have convinced you.
+
