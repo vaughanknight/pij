@@ -116,6 +116,10 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
         model: row.try_get("model").map_err(adapter_error)?,
         provider: row.try_get("provider").map_err(adapter_error)?,
         effort: row.try_get("effort").map_err(adapter_error)?,
+        cross_session_inbound_accept: row
+            .try_get::<Option<i64>, _>("cross_session_inbound_accept")
+            .map_err(adapter_error)?
+            .map(|flag| flag != 0),
     })
 }
 
@@ -170,9 +174,9 @@ impl Registry for SqliteRegistry {
         sqlx::query(
             "INSERT INTO seats (id, harness, pane, pid, proc_start, folder, state, \
              semantic_state, role, parent, relay, tombstoned_at, tombstone_reason, seq, \
-             spawn_id, model, provider, effort) \
+             spawn_id, model, provider, effort, cross_session_inbound_accept) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
-             ?17, ?18) \
+             ?17, ?18, ?19) \
              ON CONFLICT(id) DO UPDATE SET \
              harness=excluded.harness, pane=excluded.pane, pid=excluded.pid, \
              proc_start=excluded.proc_start, folder=excluded.folder, state=excluded.state, \
@@ -181,7 +185,8 @@ impl Registry for SqliteRegistry {
              tombstoned_at=excluded.tombstoned_at, \
              tombstone_reason=excluded.tombstone_reason, seq=excluded.seq, \
              spawn_id=excluded.spawn_id, model=excluded.model, \
-             provider=excluded.provider, effort=excluded.effort",
+             provider=excluded.provider, effort=excluded.effort, \
+             cross_session_inbound_accept=excluded.cross_session_inbound_accept",
         )
         .bind(descriptor.id.as_str())
         .bind(descriptor.harness.as_str())
@@ -201,6 +206,7 @@ impl Registry for SqliteRegistry {
         .bind(descriptor.model.as_deref())
         .bind(descriptor.provider.as_deref())
         .bind(descriptor.effort.as_deref())
+        .bind(descriptor.cross_session_inbound_accept.map(i64::from))
         .execute(&mut *tx)
         .await
         .map_err(adapter_error)?;
