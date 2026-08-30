@@ -536,3 +536,76 @@ second warm canonical gate: all six stages green after 2869s
 ```
 
 The initial timeout is an environment proof ceiling, not a substituted result: a cold stream worktree pays the whole Rust build while the composed tree is warm. The PM owns the final central canonical gate on the merged head. No narrower command is reported as that final gate.
+
+## Wave 6 review round 2 — effect and ownership
+
+### F1 — marker presence is not ownership
+
+Boot reconciliation originally treated any `@pij-tap-sink` value as authority to close the pane's pipe and unlink the named path. Because any tmux-writing process can set that option, the daemon exposed an arbitrary file-deletion primitive at boot.
+
+Retirement now requires exact identity: the marker must equal the sink this daemon computes for that pane. An unrecognised marker belongs to someone else; the observer leaves pipe, marker, and file untouched and reports the mismatch. The hostile real-tmux test creates a decoy file and foreign marker on an unregistered pane, then proves reconciliation preserves all three.
+
+Mutation — reduce ownership back to marker presence:
+
+```text
+FAILED foreign_marker_cannot_authorize_pipe_or_file_deletion
+assertion `left == right` failed
+  left: "0"
+ right: "1"
+```
+
+Live both-halves proof:
+
+```text
+BEFORE — DELETED
+pre-fix daemon running; decoy marker named /tmp/decoy-sink-1788122328.raw
+boot reconciliation deleted a file it never created on a pane it never tapped
+
+AFTER — SURVIVES
+zero daemons running when armed; fixed binary launched foreground by hand
+decoy file: survives
+decoy marker: intact
+owned seat %1566: tapped, matching marker present
+released seat %1567: pipe=0, still released
+```
+
+Two intermediate DELETED runs were discarded, not hidden. Run 1 armed the decoy while the old daemon still ran, so the pre-fix 600 ms sweep consumed it before the fixed binary booted. Run 2 used a hub-supervised process that later exited non-zero and could not be accounted for as a clean instrument. The decisive run pinned zero daemons before arming and launched the exact fixed binary in the foreground. **A test whose instrument state is not pinned reports the environment, not the change.**
+
+This is the fourth form of the same axis: pipe **EXISTENCE**, tombstone **ROW**, detach **RETURN**, marker **PRESENCE**. Ownership is not that a marker exists; ownership is that the marker is ours.
+
+### F2 — experienced event with bounded retry
+
+`delivery.pointer-announced` continues to mean what the seat experienced. The worker submits first, then publishes. If publication fails, it retains the exact pending event in process state; every later claim retries that publication before any new submit. The regression injects one spine failure, observes one physical pointer, retries, and proves one event plus still exactly one submit.
+
+The named restart residual is deliberate: a crash can lose the process-local pending fact and duplicate one pointer. Duplicate-over-lie wins. Redefining the event as a pre-submit decision was rejected because it would make the ledger change its story to fit implementation order.
+
+### F3 — read attestation residual
+
+Inbox acknowledgement commits the delivered ledger before publishing its authority-attributed attestation. If that later publish fails, a committed read has no durable spine evidence; after delivered-ledger eviction, a consumer cannot distinguish it from no read. No compensating machinery was added. This silent residual is the price of never minting evidence for a read that did not commit.
+
+### F4 — asynchronous convergence and isolated instruments
+
+Attach and detach effect convergence now uses async sleep, so an unhappy pane yields the runtime. Retirements run concurrently through a `JoinSet`, bounding the sweep by one convergence deadline rather than serialising two seconds per pane.
+
+Real tmux fixtures no longer share the production server. Each owns a dedicated socket-name server and kills it in `Drop`; the cooperative global lock was removed. This closed both the cold-load settling flake and production-daemon pipe races.
+
+Stress history:
+
+```text
+detach not-yet recurred at run 10/20 before effect convergence
+foreign-owner attach refusal recurred at run 7/20 on the shared production server
+dedicated-server attach + restart-detach: 20/20 from zero after fixes
+```
+
+The first two reds had distinct production causes and were not classified away. The final sample exercises both attach and detach observation on every run.
+
+### Round 2 verification
+
+```text
+targeted round-2 regressions: green
+all pij-tmux adapter tests: 9 passed
+workspace: 342 passed / 49 suites / 3 ignored
+architecture fixtures regenerated; arch_drift: 6 passed
+```
+
+The PM owns the final canonical gate on the warm composed tree. No additional cold gate was started after that handoff.
