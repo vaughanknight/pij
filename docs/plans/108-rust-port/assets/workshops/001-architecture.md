@@ -445,3 +445,29 @@ times: not asking what the read actually needs.
 latest_matching calls and FAILS on tail from this path — one bounded call, zero scans,
 asserted at the service boundary; SQL LIMIT 1 proven separately against real SQLite. A cost
 claim without an instrument is a comment; this is a defended contract.
+
+## Ports amendments 8 & 9 (2026-08-31, vicuna ruling — ratified together as one correction twice)
+
+**AMEND-8 — consent across a restart (F2), ACCEPTED**: `TmuxPort::pane_tap_sink(pane) ->
+Option<PathBuf>`, and `detach_pane_tap` accepts process-local tracking OR a matching durable
+`@pij-tap-sink` marker as ownership proof. Not a relaxation of E-033 (pipe existence != 
+ownership) — it is E-033 used for the case it was invented for: after a crash the
+process-local set is empty BY DEFINITION, which is precisely when consent is least defended.
+The observer sources retirement from the WORLD (real panes, minus live non-tombstoned
+registry panes, detach every marked unwanted pane), not from a set a restart empties.
+
+**AMEND-9 — unforgeable attestation (F3), ACCEPTED**: `Queue::ack_delivery` returns
+`DeliveryAck { recipient, msg_id, origin }` (was `Result<()>`); SqliteQueue reads serial_key
+inside the same write transaction, so the recipient is authority-owned and exists only after
+commit. HTTP publishes AFTER success, seats the event from `ack.recipient`, ignores the body
+for attribution. Closes: attestation event published BEFORE the ledger write, seat taken FROM
+THE REQUEST BODY — any machine key could mint spine rows asserting reads by any seat.
+
+**Recorded with its embarrassment intact, at the PM's own insistence**: attestation was ruled
+onto the spine because the ledger evicts — durable storage chosen for a FORGEABLE assertion,
+without checking the claim being relocated was true. E-034 on the very surface built to
+prove reader-reads. The shared correction: replace inference with an asked question — ask the
+WORLD what it owns; ask the AUTHORITY who read.
+
+**Merge discipline ratified**: stream branch merges composed head rather than cherry-picking —
+true ancestry, one author.
