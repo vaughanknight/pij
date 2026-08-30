@@ -241,9 +241,7 @@ passes for the wrong reason, on the one leg that exists to prevent that.
 
 Evidence I will require for the reply leg — **both**:
 
-1. the injected turn present as a row in the pij-rs store spine (`~/.pij-rs`,
-   table `spine_events`; the directory does not exist yet, so the dev instance
-   creating it is itself part of the proof), and
+1. the injected turn present as a row in the pij-rs store spine, and
 2. the legacy bridge demonstrably not the receiver for that window — lock
    released or pid 59939 stopped, plus no new entry in
    `~/.pij/pij-telegram/inbox/` for that reply.
@@ -251,14 +249,81 @@ Evidence I will require for the reply leg — **both**:
 If (1) holds and (2) does not, the leg is one-way-only, which the amendment says
 is not a pass.
 
+#### P5a — the read instrument, rehearsed against a real store before the live-fire
+
+Same discipline as P1a: I do not want to be debugging my own query while grading
+someone else's round trip. Booted an isolated daemon off the reviewed binary, on
+a private port and state dir, touching nothing the coder uses:
+
+```
+pij-rs daemon --bind 127.0.0.1:7492 --state-dir /tmp/araminta-spine-XXXX
+```
+
+Established, not assumed:
+
+* the store is `<state-dir>/pij.sqlite` (**not** the `-wal`/`-shm` siblings — my
+  first `find` matched `pij.sqlite-wal` and sqlite3 answered `file is not a
+  database`; third instrument error of the session, caught before use);
+* `PRAGMA user_version` = **8**, matching the schema wave 6 COMMON declares;
+* `spine_events(seq, v, at, kind, seat, payload) STRICT`;
+* the verdict-time queries run and render:
+
+```sql
+SELECT seq, datetime(at/1000,'unixepoch','localtime') AS at_local,
+       kind, seat, payload
+  FROM spine_events
+ WHERE kind LIKE 'telegram%' OR kind LIKE '%bg%' OR kind LIKE '%chore%'
+ ORDER BY seq DESC LIMIT 10;
+
+SELECT kind, COUNT(*) AS n FROM spine_events GROUP BY kind ORDER BY n DESC;
+```
+
+The single row I read back was **synthetic — inserted by me, provenance mine, not
+the daemon's** — because this exercise validates the READ, and the writes at
+verdict time will be the daemon's. Saying so is the point: an unlabelled rehearsal
+row in a receipt is indistinguishable from evidence.
+
+Two facts about the shipped surface that shape the evidence path:
+
+* `pij-rs tail` follows event frames over HTTP from a **running** daemon. It is
+  the shipped surface and I will use it, but it dies with the daemon; the spine
+  table is the durable instrument, so I require the row, not the tail.
+* the daemon **refused** my scratch registration — *"no bind evidence — an id can
+  be claimed from an inherited environment, but a live session cannot"* — and
+  refused the follow-up send with an error that names both hypotheses (seat never
+  registered, or this daemon reads a different store) rather than collapsing them.
+  That is the seat-asserted-not-derived doctrine holding on the shipped path, and
+  it means the telegram bridge seat needs a real registration route. Noted as a
+  thing to check, **not** a finding.
+
+Probe daemon stopped, state dir and scratch scripts removed; `~/.pij-rs` still
+does not exist, so the coder's dev instance creating it remains part of its proof.
+`git status` in the shared tree shows nothing of mine.
+
 ### P6 — ancestry, and evidence that postdates the green base
 
-The unit must MERGE composed head `6987332e` (ancestry, not cherry-pick), and its
-gate evidence must postdate that merge. `git merge-base --is-ancestor 6987332e
-<unit head>` is the check.
+The unit's gate evidence must postdate the green base. Where the unit lands on a
+separate branch, `git merge-base --is-ancestor 6987332e <unit head>` is the check
+and a merge is required, never a cherry-pick. u-sidecars is being built **in the
+shared tree on `s108/rust-port` itself**, so ancestry is satisfied by
+construction and the live question is narrower: **was the gate run at or after
+the commit that carries the work?** A gate transcript timestamped before the
+final edits proves the tree that produced it, not the tree being graded.
 
-## 5. Standing
+## 5. Standing at the time of writing
 
-Nothing of u-sidecars exists at `6987332e`: no `crates/sidecars/`, no
-`crates/daemon/src/sidecars/`, no `done-u-sidecars.md`. This file records the base
-and the standard only. No verdict is expressed here.
+Composed head `d57dc9f4`. `crates/sidecars/` and `crates/cli/src/sidecars.rs`
+exist in the shared tree as **untracked** files, and `crates/cli`, `crates/daemon`,
+`Cargo.lock`, `arch-allowlist.toml` and four `.pi/extensions/**` files are
+modified and uncommitted. `git ls-files crates/sidecars` returns 0 — nothing of
+the unit has landed.
+
+I am not reading, running, or grading any of it. Uncommitted work is not a
+claim yet, and a reviewer who grades a working copy grades a tree that will never
+exist again. One trap already avoided on this basis: I read the CLI verb list out
+of the shared worktree and saw `telegram`/`bg`/`chore` present, which is
+**in-flight** — the committed head lists `daemon, ping, register, spawn, send,
+inbox, list, tail` and nothing more.
+
+This file records the base, the standard, and the instruments. **No verdict is
+expressed here.**
