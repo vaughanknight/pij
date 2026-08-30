@@ -339,6 +339,7 @@ impl BgWorker {
             if record.status != BgStatus::Running {
                 continue;
             }
+            let owned = self.owns_child(&record.id);
             let exit = self.reap(&record.id)?;
             if let Some(status) = exit {
                 // Persist the direct-child observation BEFORE a lingering
@@ -350,6 +351,11 @@ impl BgWorker {
                 self.persist(&record)?;
             }
             if !group_pids(record.pgid)?.is_empty() {
+                continue;
+            }
+            if owned && record.exit_success.is_none() {
+                // The direct child is still ours and `try_wait` said not exited.
+                // An empty process-table sample is not evidence of loss.
                 continue;
             }
             let (status, exit_code, label) = match record.exit_success {
@@ -384,6 +390,13 @@ impl BgWorker {
             .await?;
         }
         Ok(())
+    }
+
+    fn owns_child(&self, id: &str) -> bool {
+        self.children
+            .lock()
+            .expect("bg children mutex")
+            .contains_key(id)
     }
 
     fn reap(&self, id: &str) -> Result<Option<ExitStatus>> {
