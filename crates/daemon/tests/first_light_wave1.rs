@@ -46,9 +46,10 @@ async fn wave_1_first_light() {
          \x20                tmux here would tap the operator's live fleet)"
     );
 
-    let services = pij_daemon::build_services(&config)
-        .await
-        .expect("the composed tree must build its services");
+    let services =
+        pij_daemon::build_services(&config, std::path::Path::new("/tmp/pij-test-pane-signals"))
+            .await
+            .expect("the composed tree must build its services");
     println!(
         "offline          {} (a real store is not offline)",
         services.offline

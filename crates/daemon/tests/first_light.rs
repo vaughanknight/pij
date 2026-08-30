@@ -158,9 +158,12 @@ async fn an_unauthenticated_request_is_refused_and_told_what_to_do() {
 
 #[tokio::test]
 async fn the_event_stream_opens_with_hello_and_survives_an_unknown_kind() {
-    let services = pij_daemon::build_services(&Config::default())
-        .await
-        .expect("fake services");
+    let services = pij_daemon::build_services(
+        &Config::default(),
+        std::path::Path::new("/tmp/pij-test-pane-signals"),
+    )
+    .await
+    .expect("fake services");
     let bus = services.event_bus.clone();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await

@@ -52,9 +52,12 @@ async fn shipped_cli_spawns_both_capability_rows_through_real_registry() {
     .expect("open real store");
     let registry = Arc::new(SqliteRegistry::new(pool));
     let tmux = Arc::new(FakeTmux::new());
-    let mut services = pij_daemon::build_services(&Config::default())
-        .await
-        .expect("build services");
+    let mut services = pij_daemon::build_services(
+        &Config::default(),
+        std::path::Path::new("/tmp/pij-test-pane-signals"),
+    )
+    .await
+    .expect("build services");
     services.registry = registry;
     services.tmux = tmux.clone();
 
@@ -148,9 +151,10 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
         store_path: dir.join("pij.sqlite").display().to_string(),
         ..Config::default()
     };
-    let mut services = pij_daemon::build_services(&config)
-        .await
-        .expect("build real inbox services");
+    let mut services =
+        pij_daemon::build_services(&config, std::path::Path::new("/tmp/pij-test-pane-signals"))
+            .await
+            .expect("build real inbox services");
     services.liveness = Arc::new(FakeLiveness::new().with_proc(ProcIdentity {
         pid: 4242,
         proc_start: 20260830112233,

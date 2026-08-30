@@ -36,9 +36,10 @@ async fn wave_2_first_light() {
     println!("\n=== wave-2 first light ========================================");
     println!("store            {}", store.path());
 
-    let services = pij_daemon::build_services(&config)
-        .await
-        .expect("the composed tree must build its services");
+    let services =
+        pij_daemon::build_services(&config, std::path::Path::new("/tmp/pij-test-pane-signals"))
+            .await
+            .expect("the composed tree must build its services");
 
     // --- the five harness adapters, one per variant ------------------------
     println!("\n--- harness registry -------------------------------------------");

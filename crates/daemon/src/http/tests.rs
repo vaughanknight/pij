@@ -100,9 +100,12 @@ async fn test_services(
     queue: Arc<dyn Queue>,
     spine: Arc<FakeSpine>,
 ) -> Services {
-    let mut services = crate::build_services(&pij_core::config::Config::default())
-        .await
-        .expect("fake services");
+    let mut services = crate::build_services(
+        &pij_core::config::Config::default(),
+        std::path::Path::new("/tmp/pij-test-pane-signals"),
+    )
+    .await
+    .expect("fake services");
     services.registry = registry;
     services.queue = queue;
     services.spine = spine.clone();

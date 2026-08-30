@@ -359,17 +359,7 @@ impl PaneObserver {
     }
 
     fn sink_path(&self, pane: &str) -> PathBuf {
-        let safe: String = pane
-            .chars()
-            .map(|ch| {
-                if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
-                    ch
-                } else {
-                    '_'
-                }
-            })
-            .collect();
-        self.sink_dir.join(format!("{safe}.raw"))
+        pij_tmux::tap_sink_path(&self.sink_dir, pane)
     }
 }
 
@@ -753,6 +743,7 @@ mod tests {
     struct LiveTmuxSession {
         name: String,
         server: String,
+        tap_root: PathBuf,
     }
 
     impl LiveTmuxSession {
@@ -773,7 +764,12 @@ mod tests {
             let count = NEXT_TMUX_SESSION.fetch_add(1, Ordering::Relaxed);
             let name = format!("pij-rs-observer-{}-{nonce}-{count}", std::process::id());
             let server = format!("{name}-server");
-            let session = Self { name, server };
+            let tap_root = std::env::temp_dir().join(format!("{name}-signals"));
+            let session = Self {
+                name,
+                server,
+                tap_root,
+            };
             session.run([
                 "new-session",
                 "-d",
@@ -822,7 +818,7 @@ mod tests {
             eprintln!("SKIP real pane observer test: tmux unavailable");
             return;
         };
-        let tmux = Arc::new(TmuxAdapter::for_server(&session.server));
+        let tmux = Arc::new(TmuxAdapter::for_server(&session.server, &session.tap_root));
         let pane = tmux
             .list_panes()
             .await
@@ -836,7 +832,7 @@ mod tests {
             Arc::clone(&registry) as Arc<dyn Registry>,
             Arc::clone(&tmux) as Arc<dyn TmuxPort>,
             Arc::clone(&gate),
-            std::env::temp_dir().join(format!("{}-signals", session.name)),
+            session.tap_root.clone(),
             Duration::from_millis(1),
         )
         .expect("observer");
@@ -861,7 +857,7 @@ mod tests {
             eprintln!("SKIP real pane observer test: tmux unavailable");
             return;
         };
-        let tmux = Arc::new(TmuxAdapter::for_server(&session.server));
+        let tmux = Arc::new(TmuxAdapter::for_server(&session.server, &session.tap_root));
         let pane = tmux
             .list_panes()
             .await
@@ -875,7 +871,7 @@ mod tests {
             Arc::clone(&registry) as Arc<dyn Registry>,
             Arc::clone(&tmux) as Arc<dyn TmuxPort>,
             gate,
-            std::env::temp_dir().join(format!("{}-signals", session.name)),
+            session.tap_root.clone(),
             Duration::from_millis(1),
         )
         .expect("observer");
@@ -911,7 +907,7 @@ mod tests {
             eprintln!("SKIP real pane observer test: tmux unavailable");
             return;
         };
-        let tmux = Arc::new(TmuxAdapter::for_server(&session.server));
+        let tmux = Arc::new(TmuxAdapter::for_server(&session.server, &session.tap_root));
         let pane = tmux
             .list_panes()
             .await
@@ -937,7 +933,7 @@ mod tests {
             registry as Arc<dyn Registry>,
             Arc::clone(&tmux) as Arc<dyn TmuxPort>,
             Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>)),
-            std::env::temp_dir().join(format!("{}-expected-signals", session.name)),
+            session.tap_root.clone(),
             Duration::from_millis(1),
         )
         .expect("observer");
@@ -974,7 +970,7 @@ mod tests {
             eprintln!("SKIP real pane observer test: tmux unavailable");
             return;
         };
-        let tmux = Arc::new(TmuxAdapter::for_server(&session.server));
+        let tmux = Arc::new(TmuxAdapter::for_server(&session.server, &session.tap_root));
         let pane = tmux
             .list_panes()
             .await
@@ -988,7 +984,7 @@ mod tests {
             Arc::clone(&registry) as Arc<dyn Registry>,
             Arc::clone(&tmux) as Arc<dyn TmuxPort>,
             gate,
-            std::env::temp_dir().join(format!("{}-signals", session.name)),
+            session.tap_root.clone(),
             Duration::from_millis(1),
         )
         .expect("observer");
@@ -1039,7 +1035,7 @@ mod tests {
             eprintln!("SKIP real pane observer test: tmux unavailable");
             return;
         };
-        let first_tmux = Arc::new(TmuxAdapter::for_server(&session.server));
+        let first_tmux = Arc::new(TmuxAdapter::for_server(&session.server, &session.tap_root));
         let pane = first_tmux
             .list_panes()
             .await
@@ -1054,7 +1050,7 @@ mod tests {
             Arc::new(InteractionGate::new(
                 Arc::clone(&first_tmux) as Arc<dyn TmuxPort>
             )),
-            std::env::temp_dir().join(format!("{}-restart-signals", session.name)),
+            session.tap_root.clone(),
             Duration::from_millis(1),
         )
         .expect("first observer");
@@ -1077,7 +1073,7 @@ mod tests {
 
         // Fresh process memory: no tracked pane exists. Only the marker in tmux
         // can source ownership and make consent withdrawal an active transition.
-        let restarted_tmux = Arc::new(TmuxAdapter::for_server(&session.server));
+        let restarted_tmux = Arc::new(TmuxAdapter::for_server(&session.server, &session.tap_root));
         assert_eq!(
             restarted_tmux
                 .pane_tap_sink(&pane.id)
@@ -1104,7 +1100,7 @@ mod tests {
             Arc::new(InteractionGate::new(
                 Arc::clone(&restarted_tmux) as Arc<dyn TmuxPort>
             )),
-            std::env::temp_dir().join(format!("{}-restart-signals", session.name)),
+            session.tap_root.clone(),
             Duration::from_millis(1),
         )
         .expect("restarted observer");

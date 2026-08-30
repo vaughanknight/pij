@@ -191,7 +191,7 @@ impl std::fmt::Debug for Daemon {
 ///
 /// # Errors
 /// [`PijError`] from whichever real adapter refuses to start.
-pub async fn build_services(config: &Config) -> Result<Services> {
+pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<Services> {
     // ONE pool, shared by every real store adapter (lynx's cross-government
     // comparison, wave-3 compose fix). This opened the store three times: three
     // connection pools, three sets of connections, three boot self-migrations
@@ -239,7 +239,7 @@ pub async fn build_services(config: &Config) -> Result<Services> {
     // WIRED, wave 1 (u-tmux).
     let tmux: Arc<dyn TmuxPort> = match config.adapters.tmux {
         AdapterChoice::Fake => Arc::new(FakeTmux::new()),
-        AdapterChoice::Real => Arc::new(TmuxAdapter::new()),
+        AdapterChoice::Real => Arc::new(TmuxAdapter::new(pane_signal_dir)),
     };
     // One politeness gate, shared by direct delivery, queued retries, and the
     // pane observer that supplies its composer evidence.
@@ -417,7 +417,8 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
 
     // 3. This boot owns the port, so it may now touch the store. Migrations run
     //    here, exactly once, by the process that won.
-    let services = build_services(config).await?;
+    let pane_signal_dir = state_dir.join("pane-signals");
+    let services = build_services(config, &pane_signal_dir).await?;
 
     // 4. Resolve this machine's identity. FALLIBLE, and therefore BEFORE the
     //    publish: hostname lookup can fail and a configured alias can be empty.
@@ -457,7 +458,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         Arc::clone(&services.registry),
         Arc::clone(&services.tmux),
         Arc::clone(&services.interaction),
-        state_dir.join("pane-signals"),
+        pane_signal_dir,
         Duration::from_millis(config.pane_observer_interval_ms),
     )?);
 

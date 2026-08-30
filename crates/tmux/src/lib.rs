@@ -20,6 +20,22 @@ use tokio::time::{Instant, sleep};
 
 use crate::parse::{LIST_FORMAT, parse_one_pane, parse_panes};
 
+/// Deterministic sink identity shared by composition and the adapter authority.
+#[must_use]
+pub fn tap_sink_path(root: &Path, pane: &str) -> PathBuf {
+    let safe: String = pane
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    root.join(format!("{safe}.raw"))
+}
+
 const TAP_SINK_OPTION: &str = "@pij-tap-sink";
 
 /// The real [`TmuxPort`] implementation.
@@ -35,15 +51,16 @@ const TAP_SINK_OPTION: &str = "@pij-tap-sink";
 ///
 /// # Composition recipe
 ///
-/// COMPOSED (wave 1), in `crates/daemon/src/lib.rs`:
-/// `AdapterChoice::Real => Arc::new(TmuxAdapter::new()),`, with
-/// `use pij_tmux::TmuxAdapter;`. No config field is required, and the wave-0
-/// refusal this replaced no longer exists in the tree.
+/// COMPOSED in `crates/daemon/src/lib.rs`:
+/// `AdapterChoice::Real => Arc::new(TmuxAdapter::new(pane_signal_dir)),`.
+/// The same root is passed to `PaneObserver`; the adapter derives each exact sink
+/// identity from it before attach or marker-fallback detach.
 #[derive(Clone, Debug)]
 pub struct TmuxAdapter {
     binary: OsString,
     server: Option<String>,
     session: Option<String>,
+    tap_root: PathBuf,
     taps: Arc<Mutex<BTreeMap<String, TapState>>>,
 }
 
@@ -55,31 +72,34 @@ struct TapState {
 
 impl TmuxAdapter {
     /// Use `tmux` resolved from `PATH` and permit workspace-wide pane listings.
-    pub fn new() -> Self {
+    pub fn new(tap_root: impl Into<PathBuf>) -> Self {
         Self {
             binary: OsString::from("tmux"),
             server: None,
             session: None,
+            tap_root: tap_root.into(),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
     /// Limit listings, new windows, and destructive guards to `session`.
-    pub fn for_session(session: impl Into<String>) -> Self {
+    pub fn for_session(session: impl Into<String>, tap_root: impl Into<PathBuf>) -> Self {
         Self {
             binary: OsString::from("tmux"),
             server: None,
             session: Some(session.into()),
+            tap_root: tap_root.into(),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
     /// Inject the executable path while retaining the production argv contract.
-    pub fn with_binary(binary: impl Into<OsString>) -> Self {
+    pub fn with_binary(binary: impl Into<OsString>, tap_root: impl Into<PathBuf>) -> Self {
         Self {
             binary: binary.into(),
             server: None,
             session: None,
+            tap_root: tap_root.into(),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -88,11 +108,12 @@ impl TmuxAdapter {
     ///
     /// Real integration fixtures use this instead of sharing a mutable global
     /// server with production daemons that legitimately attach pane pipes.
-    pub fn for_server(server: impl Into<String>) -> Self {
+    pub fn for_server(server: impl Into<String>, tap_root: impl Into<PathBuf>) -> Self {
         Self {
             binary: OsString::from("tmux"),
             server: Some(server.into()),
             session: None,
+            tap_root: tap_root.into(),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -210,6 +231,10 @@ impl TmuxAdapter {
             self.session.as_deref().unwrap_or_default()
         )))
     }
+
+    fn expected_tap_sink(&self, pane: &str) -> PathBuf {
+        tap_sink_path(&self.tap_root, pane)
+    }
     fn tap_marker(&self, pane: &str) -> Result<Option<String>> {
         let value = self.stdout(
             "show-options tap owner",
@@ -241,12 +266,6 @@ impl TmuxAdapter {
             &os_args(["set-option", "-p", "-u", "-t", pane, TAP_SINK_OPTION]),
         )?;
         Ok(())
-    }
-}
-
-impl Default for TmuxAdapter {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -286,6 +305,12 @@ impl TmuxPort for TmuxAdapter {
     }
 
     async fn attach_pane_tap(&self, pane: &str, sink: &Path) -> Result<()> {
+        let expected = self.expected_tap_sink(pane);
+        if sink != expected {
+            return Err(self.error(format!(
+                "tap sink {sink:?} does not match this adapter's expected sink {expected:?} for pane {pane:?}"
+            )));
+        }
         let tracked = {
             let taps = self.taps.lock().expect("tmux tap mutex");
             match taps.get(pane) {
@@ -429,10 +454,18 @@ impl TmuxPort for TmuxAdapter {
             .map(|tap| tap.path.clone());
         let path = match local_path {
             Some(path) => path,
-            None => self
-                .tap_marker(pane)?
-                .map(PathBuf::from)
-                .ok_or_else(|| self.error(format!("pane {pane:?} has no owned tap to detach")))?,
+            None => {
+                let marker = self.tap_marker(pane)?.map(PathBuf::from).ok_or_else(|| {
+                    self.error(format!("pane {pane:?} has no owned tap to detach"))
+                })?;
+                let expected = self.expected_tap_sink(pane);
+                if marker != expected {
+                    return Err(self.error(format!(
+                        "refusing to detach foreign tap on pane {pane:?}: marker {marker:?} does not match expected {expected:?}"
+                    )));
+                }
+                marker
+            }
         };
 
         let detach = self.run("pipe-pane detach", &os_args(["pipe-pane", "-t", pane]));
@@ -448,8 +481,6 @@ impl TmuxPort for TmuxAdapter {
         }
         if pane_exists {
             self.wait_for_pipe_state(pane, &path, "0", "detach").await?;
-        }
-        if pane_exists {
             self.clear_tap_marker(pane)?;
         }
 
