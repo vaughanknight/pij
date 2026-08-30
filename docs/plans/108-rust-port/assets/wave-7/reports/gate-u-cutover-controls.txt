@@ -1,0 +1,625 @@
+pij-gate: /Users/jordanknight/pi-hacking/pij-worktrees/s108-w7-cutover · cargo /Users/jordanknight/.rustup/toolchains/1.98.0-aarch64-apple-darwin/bin/cargo
+
+running 13 tests
+test client::tests::registration_requires_pid_and_start_time_together ... ok
+test tests::exit_code_contract_is_an_explicit_table ... ok
+test client::tests::send_serializes_destination_as_an_object_and_keeps_reply_correlation ... ok
+test address::tests::address_parse_table_covers_degenerate_and_escaped_cases ... ok
+test address::tests::an_unqualified_address_always_means_local ... ok
+test address::tests::every_rendered_address_parses_back_to_the_same_destination ... ok
+test client::tests::unsupported_envelope_version_is_refused_before_payload_typing ... ok
+test tests::human_rendering_does_not_hide_a_success_warning ... ok
+test client::tests::every_unrecognised_version_is_skew_not_only_future_versions ... ok
+test client::tests::tail_reads_hello_then_frames_and_keeps_unknown_event_kinds ... ok
+test bounce::tests::unauthenticated_401_is_distinct_from_no_listener_and_wrong_status ... ok
+test bounce::tests::clean_head_equal_to_origin_main_is_reproducible ... ok
+test bounce::tests::dirty_and_divergent_are_named_as_different_refusals ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+
+
+running 11 tests
+test tests::linked_worktree_detection_names_the_git_dir_shape ... ok
+test tests::runtime_controls_resolve_flag_then_environment_then_default ... ok
+test tests::inbox_identity_prefers_explicit_then_ambient_and_never_guesses ... ok
+test tests::malformed_environment_values_name_the_variable_and_value ... ok
+test tests::rendered_pointer_advertises_a_verb_the_real_cli_exposes ... ok
+test tests::editorial_help_is_shape_checked_not_frozen ... ok
+test tests::clap_exposes_every_ruled_verb ... ok
+test tests::spawn_without_an_id_parses_and_leaves_allocation_to_the_daemon ... ok
+test tests::register_requires_a_complete_process_identity ... ok
+test tests::clap_leaves_runtime_defaults_unresolved ... ok
+test tests::daemon_bounce_is_real_while_bare_daemon_still_runs_foreground ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test list_computed_payload_matches_the_committed_golden ... ok
+test send_computed_payload_matches_the_committed_golden ... ok
+test register_computed_payload_matches_the_committed_golden ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+test the_offline_flag_selects_a_daemon_that_touches_nothing ... ok
+test the_shipped_config_boots_real_adapters_and_leaves_a_store_on_disk ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+
+running 2 tests
+test shipped_cli_spawns_both_capability_rows_through_real_registry ... ok
+test shipped_cli_registers_sends_reads_acks_and_does_not_read_twice ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.98s
+
+
+running 15 tests
+test anomalies::tests::delivered_unacked_uses_the_ts_kind_and_emits_the_exact_ack_command ... ok
+test delivery::tests::human_typing_vetoes_socket_and_pointer_delivery ... ok
+test delivery::tests::self_delivery_is_refused_by_address_not_by_name ... ok
+test error::tests::audit_failure_names_the_effect_that_landed_and_forbids_blind_resend ... ok
+test delivery::tests::receipt_honesty_table_selects_only_recoverable_queue_routes ... ok
+test delivery::tests::delivery_ladder_enumerates_every_rung_in_order ... ok
+test events::tests::all_forwards_additive_kinds_but_explicit_filters_stay_exact ... ok
+test events::tests::kind_and_seat_constraints_are_both_required ... ok
+test anomalies::tests::unverified_done_requires_a_verification_later_than_the_done_claim ... ok
+test error::tests::tombstoned_refusal_says_why_nothing_was_queued ... ok
+test delivery::tests::only_the_command_field_selects_the_pty ... ok
+test anomalies::tests::disposition_events_are_appendable_spine_facts_for_the_exact_occurrence ... ok
+test anomalies::tests::every_emitted_row_has_an_observable_and_runnable_remediation ... ok
+test anomalies::tests::status_staleness_is_clock_only_and_parking_suspends_nudging_not_detection ... ok
+test anomalies::tests::cleared_occurrence_stays_cleared_until_source_evidence_changes ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test a_harness_that_is_not_recognised_is_reported_not_guessed ... ok
+test watchdog_eligibility_is_a_decision_table_not_a_timeout ... ok
+test the_default_config_is_offline ... ok
+test errors_separate_the_states_they_observe_and_name_the_fix ... ok
+test a_delivery_claim_cannot_exist_without_saying_what_was_observed ... ok
+test a_seat_descriptor_round_trips_with_its_optional_facts_intact ... ok
+test the_envelope_round_trips_and_omits_absent_data_rather_than_nulling_it ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test boot_reset_reads_as_a_mismatch ... ok
+test matching_identity_is_active ... ok
+test later_start_at_the_same_pid_is_recycled ... ok
+test missing_pid_is_dead_with_evidence ... ok
+test permission_denied_is_unknown_not_dead ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+test rust_matches_the_typescript_oracle ... ok
+test collision_probes_leave_the_starting_adjective_row ... ok
+test curated_corpus_is_pinned_and_clean ... ok
+test realistic_collision_allocation_does_not_funnel_into_adjectives ... ok
+test realistic_spawn_seeds_hit_the_designed_ship_share ... ok
+test candidate_sequence_is_complete_without_repeats ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+
+
+running 5 tests
+test read_only_capability_is_enforced_at_one_exhaustive_chokepoint ... ok
+test ordinal_minting_unions_clone_worktrees_and_branch_heads ... ok
+test parent_attribution_names_each_evidence_path_and_each_absence ... ok
+test equivalence_merge_is_the_complete_five_row_table ... ok
+test reconciliation_uses_explicit_freshness_and_records_secondary_mismatches ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+test absent_card_and_present_empty_card_are_different_facts ... ok
+test malformed_latest_card_is_an_error_not_a_disappearing_card ... ok
+test stale_is_strictly_past_the_configured_threshold_and_ignores_clock_reversal ... ok
+test spine_failure_reports_that_state_landed_but_note_did_not ... ok
+test state_verbs_are_visible_correctable_clearable_and_independently_recorded ... ok
+test card_fields_enforce_279_280_281_after_whitespace_collapse ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test exemption_rearms_at_its_deadline_without_erasing_weaker_tiers ... ok
+test healthy_long_tool_call_is_not_the_ts_false_stall ... ok
+test pause_precedence_is_exempt_then_compact_then_self ... ok
+test real_working_transition_clears_only_the_compact_tier ... ok
+test configured_threshold_and_derived_reason_are_exact ... ok
+test tombstoned_relay_and_future_activity_are_never_nudged ... ok
+test every_pause_tier_and_declared_state_has_one_nudge_decision ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 10 tests
+test an_envelope_round_trips_and_a_current_version_is_accepted ... ok
+test the_hello_line_comes_first_and_declares_the_version ... ok
+test a_sequenced_event_never_carries_its_cursor_onto_the_wire ... ok
+test a_known_event_round_trips_through_the_wire ... ok
+test a_truncated_line_is_reported_with_its_line_number ... ok
+test a_stray_human_line_costs_that_line_and_nothing_else ... ok
+test an_empty_stream_is_empty_not_broken ... ok
+test an_event_without_a_kind_is_a_shape_error_not_an_unknown_kind ... ok
+test an_unknown_event_kind_is_forwarded_not_dropped ... ok
+test an_envelope_from_the_future_is_refused_whole ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 88 tests
+test federation::tests::duplicate_peer_alias_is_refused_before_collection_erases_it ... ok
+test delivery::tests::a_direct_delivery_is_claimed_before_injection_and_a_retry_is_suppressed ... ok
+test delivery::tests::a_failed_injection_releases_its_claim_so_the_retry_still_delivers ... ok
+test events::cursor_refusal_tests::a_cursor_beyond_the_spine_is_refused_by_name ... ok
+test delivery::tests::inbox_serialization_allows_one_claim_until_it_is_acknowledged ... ok
+test delivery::tests::forwarded_duplicate_after_reader_ack_replays_origin_without_second_turn ... ok
+test federation::tests::peer_alias_equal_to_local_alias_is_refused ... ok
+test delivery::tests::first_attempt_socket_delivery_obeys_the_same_politeness_gate_as_retries ... ok
+test delivery::tests::inbox_for_a_never_claims_b_even_when_b_was_enqueued_first ... ok
+test federation::tests::unqualified_destination_is_always_local ... ok
+test delivery::tests::receipt_honesty_decision_table_covers_busy_prebind_dead_held_and_delivered ... ok
+test http::auth::tests::bearer_identity_is_machine_graded_without_exposing_key_material ... ok
+test delivery::tests::inbox_unpark_reads_one_bounded_latest_fact_not_the_whole_spine ... ok
+test delivery::tests::waiting_inbox_attaches_live_before_checking_the_queue ... ok
+test federation::fanin::tests::cursor_older_than_bounded_buffer_emits_named_lag_before_remaining_frames ... ok
+test federation::tests::one_msg_id_to_two_peers_is_two_rows ... ok
+test federation::tests::enqueue_claims_only_durable_local_queueing ... ok
+test federation::tests::retry_delay_is_exponential_and_caps_at_five_minutes ... ok
+test http::tests::exposure_banner_names_the_address_it_classifies ... ok
+test federation::tests::a_worker_started_with_stop_already_set_never_claims ... ok
+test http::tests::a_reraised_cursor_refusal_carries_the_peers_own_numbers ... ok
+test federation::tests::network_failure_retries_with_persisted_exponential_attempt ... ok
+test http::tests::peer_forwarding_makes_one_authenticated_request ... ok
+test http::tests::send_request_uses_resolved_destination_object_and_optional_reply_id ... ok
+test http::tests::events_are_live_by_default_and_frame_unknown_kinds_with_a_cursor ... ok
+test http::tests::explicit_since_replays_then_stays_live ... ok
+test http::tests::the_memorable_allocator_advances_past_an_occupied_name ... ok
+test http::tests::registration_refuses_uncorroborated_or_half_process_identity ... ok
+test http::tests::seats_performs_one_unfiltered_registry_list ... ok
+test http::tests::a_native_session_boundary_supersedes_its_own_seat_but_never_another ... ok
+test lifecycle::tests::a_configured_alias_wins_without_consulting_hostname ... ok
+test lifecycle::tests::a_zero_tick_interval_refuses_instead_of_panicking ... ok
+test lifecycle::tests::an_absent_alias_defaults_to_hostname ... ok
+test lifecycle::tests::hostname_failure_names_the_operator_fix ... ok
+test lifecycle::tests::shutdown_wins_when_stop_and_next_tick_are_both_ready ... ok
+test lifecycle::tests::shutdown_drains_the_tick_already_in_progress ... ok
+test http::tests::peer_key_removal_takes_effect_when_router_restarts ... ok
+test pane_observer::tests::cursor_clips_suggestion_text_to_the_right ... ok
+test lifecycle::tests::ticks_wait_one_configured_interval_repeat_and_stop ... ok
+test pane_observer::tests::missing_cursor_pair_or_unknown_layout_is_unknown ... ok
+test pane_observer::tests::decision_table_keeps_unknown_and_stale_nonblank_blocked_until_clear ... ok
+test pane_observer::tests::omp_inline_composer_is_clipped_at_the_measured_cursor ... ok
+test pane_observer::tests::observer_loop_survives_one_tmux_error_and_processes_the_next_pane ... ok
+test pane_observer::tests::redraw_blank_preserves_pending_clear_until_a_quiet_pass_corroborates_it ... ok
+test http::tests::registration_corroborates_process_and_refuses_shared_process_aliases ... ok
+test http::tests::send_enqueues_exactly_once_and_refuses_remote_without_federation ... ok
+test pane_observer::tests::tap_bytes_between_recognized_blanks_require_another_quiet_pass ... ok
+test http::tests::inbox_claims_without_evidence_then_ack_records_machine_graded_reader_read ... ok
+test http::tests::wrong_peer_key_is_permanent_and_never_hot_loops ... ok
+test pane_observer::tests::two_stable_recognized_blanks_are_required_to_permit_injection ... ok
+test pointer::tests::command_rendering_adds_the_pty_slash_to_the_bare_tag ... ok
+test pointer::tests::command_submission_is_distinct_from_typing_without_sending ... ok
+test pointer::tests::durable_attempt_selects_exponential_backoff_capped_at_five_minutes ... ok
+test pointer::tests::every_pointer_uses_the_same_truthful_singular_line ... ok
+test pointer::tests::final_pointer_explains_the_silence_to_the_recipient ... ok
+test pointer::tests::pointer_bytes_name_sender_and_pull_command_without_body ... ok
+test pane_observer::tests::foreign_marker_cannot_authorize_pipe_or_file_deletion ... ok
+test pointer::worker::tests::drain_loop_survives_transient_delivery_ack_failure_and_processes_next_message ... ok
+test pane_observer::tests::restarted_observer_retires_world_owned_tap_for_tombstoned_seat ... ok
+test http::tests::two_daemons_forward_remote_send_into_destination_queue_and_spine ... ok
+test http::tests::spawn_stamps_only_the_argv_that_reached_the_observed_launch ... ok
+test pointer::worker::tests::command_claim_submits_the_bare_tag_as_a_slash_command_and_never_uses_socket ... ok
+test pane_observer::tests::real_tmux_pane_observation_blocks_on_a_visible_composer ... ok
+test http::tests::auth_ring_covers_every_declared_route_and_accepts_peer_keys ... ok
+test pointer::worker::tests::newer_unpark_fact_wins_over_stale_park_decision ... ok
+test pane_observer::tests::second_observer_pass_repairs_a_vanished_os_pipe_and_keeps_growing ... ok
+test pointer::worker::tests::cadence_suppresses_repeat_without_delaying_the_body ... ok
+test pointer::worker::tests::legacy_history_counts_every_announcement_since_the_last_unpark ... ok
+test pane_observer::tests::tombstoning_an_observed_seat_detaches_marker_and_captured_bytes ... ok
+test pointer::worker::tests::one_pass_announces_at_most_once_for_a_recipient_with_multiple_rows ... ok
+test pointer::worker::tests::paneless_pull_consumer_keeps_ownership_of_its_queue_row ... ok
+test pointer::worker::tests::fresh_worker_replays_pointer_budget_and_cadence_after_restart ... ok
+test pointer::worker::tests::zero_pointer_limit_is_refused ... ok
+test pointer::worker::tests::live_pointer_event_suppresses_a_second_running_worker ... ok
+test pointer::worker::tests::socket_body_is_delivered_and_acked_without_pointer_or_retry ... ok
+test pointer::worker::tests::pointer_announces_once_per_pass_and_zero_delay_keeps_body_reader_claimable ... ok
+test pointer::worker::tests::failed_command_uses_durable_attempt_backoff ... ok
+test pointer::worker::tests::lagged_policy_subscription_reconciles_from_durable_spine ... ok
+test pointer::worker::tests::pending_pointer_fact_retries_without_resubmitting_experienced_line ... ok
+test pointer::worker::tests::unknown_or_human_typing_gate_releases_body_without_delivery ... ok
+test federation::tests::idle_worker_shutdown_leaves_no_orphan_task ... ok
+test pointer::worker::tests::third_pointer_explains_parking_row_stays_readable_and_read_unparks ... ok
+test http::tests::event_loop_survives_one_stream_error_and_processes_the_next_frame ... ok
+test delivery::tests::subscribe_live_never_replays_the_existing_spine ... ok
+test pointer::worker::tests::drain_release_increments_attempt_in_real_sqlite_and_body_is_immediately_claimable ... ok
+test federation::tests::shutdown_wins_when_wake_and_stop_are_both_ready ... ok
+test http::tests::roster_loop_survives_one_peer_error_and_processes_the_next_poll ... ok
+test http::tests::the_event_loop_resumes_live_after_a_peer_refuses_an_impossible_cursor ... ok
+
+test result: ok. 88 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+
+running 4 tests
+test a_subagent_is_refused_even_when_it_proves_a_live_session ... ok
+test the_case_table_covers_every_refusal_reason ... ok
+test every_refusal_says_why_in_words_an_operator_can_act_on ... ok
+test both_consumers_answer_every_case_identically ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test a_slow_subscriber_never_blocks_publish_and_reports_drops ... ok
+test replay_and_live_overlap_is_joined_once_by_store_sequence ... ok
+test every_subscriber_receives_the_same_event_set ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test the_event_stream_opens_with_hello_and_survives_an_unknown_kind ... ok
+test boot_publishes_complete_runtime_identity_as_restart_safe_residue ... ok
+test ping_round_trips_over_localhost_with_the_boot_key ... ok
+test the_key_is_0600_and_exists_before_the_socket_can_be_reached ... ok
+test an_unauthenticated_request_is_refused_and_told_what_to_do ... ok
+test a_second_daemon_cannot_take_a_held_port ... ok
+test the_real_store_can_be_selected_per_port_without_touching_the_others ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+
+running 1 test
+test wave_1_first_light ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 1 test
+test wave_2_first_light ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 2 tests
+test ordinal_scan_covers_clone_linked_worktrees_and_unchecked_out_heads ... ok
+test dirty_source_tree_does_not_block_stream_creation ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.46s
+
+
+running 14 tests
+test staged_key_must_not_be_clone_or_two_owners_share_one_drop ... ok
+test selecting_the_real_transport_ships_closed_until_a_seat_opts_in ... ok
+test the_composition_root_wires_every_port_it_claims ... ok
+test an_unpublished_staged_key_removes_itself ... ok
+test two_staged_keys_in_one_process_never_share_a_file ... ok
+test a_staged_key_survives_other_attempts_coming_and_going ... ok
+test selecting_the_real_liveness_adapter_reaches_the_process_table ... ok
+test a_pre_existing_lax_key_file_is_replaced_not_reused ... ok
+test a_failed_boot_cannot_brick_the_running_daemon ... ok
+test a_successful_put_writes_its_event_and_its_row_together ... ok
+test a_refused_tombstone_leaves_no_trace_in_the_spine ... ok
+test a_schema_that_changes_under_a_live_pool_stops_the_next_operation ... ok
+test every_public_store_operation_rejects_a_stale_schema ... ok
+test emitted_spawn_argv_is_the_stamp_that_opens_the_real_transport ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+
+running 31 tests
+test adapter::tests::busy_guard_wins_over_a_visible_ready_anchor ... ok
+test adapter::tests::registry_enumerates_exactly_the_five_frozen_variants ... ok
+test adapter::tests::codex_rotating_placeholder_is_not_a_readiness_anchor ... ok
+test adapter::tests::pi_status_footer_is_not_ready_while_the_spinner_is_active ... ok
+test interaction::tests::unknown_observation_blocks_injection ... ok
+test interaction::tests::injection_requires_both_tmux_and_composer_gates_clear ... ok
+test adapter::tests::omp_status_footer_is_not_ready_while_the_spinner_is_active ... ok
+test adapter::tests::concrete_observation_returns_native_id_model_cwd_and_pane ... ok
+test interaction::tests::a_clear_observation_can_return_to_unknown_and_block ... ok
+test interaction::tests::observed_composer_clear_does_not_override_tmux_mode ... ok
+test adapter::tests::bind_observation_uses_shared_admission_and_refuses_subagents ... ok
+test adapter::tests::bind_evidence_depends_on_observed_cwd_model_and_process ... ok
+test adapter::tests::every_harness_variant_classifies_its_recorded_fixture ... ok
+test models::tests::omp_parser_accepts_null_levels_and_preserves_alias_request_id ... ok
+test models::tests::omp_parser_rejects_one_bad_row_without_returning_survivors ... ok
+test models::tests::pi_and_copilot_parsers_keep_runtime_provider_and_selector_separate ... ok
+test proc::tests::an_absent_exact_pid_is_none ... ok
+test proc::tests::exact_pid_command_and_macos_parser_are_fixture_backed ... ok
+test models::tests::runtime_filter_touches_only_its_adapter_but_provider_filter_requires_all ... ok
+test models::tests::absent_empty_and_raw_null_levels_fold_but_missing_request_id_fails_by_name ... ok
+test proc::tests::linux_spacing_is_fixture_backed ... ok
+test models::tests::corpus_preserves_runtime_provider_selector_and_request_id ... ok
+test proc::tests::malformed_process_output_is_an_adapter_error ... ok
+test proc::tests::permission_denied_is_not_dead ... ok
+test spawn::tests::accept_inbound_is_refused_for_every_non_claude_harness ... ok
+test spawn::tests::accept_stamp_is_true_only_when_exact_setting_is_emitted ... ok
+test spawn::tests::executable_override_and_absent_optional_facts_are_preserved ... ok
+test spawn::tests::every_harness_builds_discrete_ruled_argv ... ok
+test models::tests::production_catalog_matches_the_committed_folded_golden ... ok
+test models::tests::every_real_adapter_returns_non_empty_models_or_an_honest_unavailable_error ... ok
+test adapter::tests::every_harness_port_operation_runs_against_each_recorded_pane ... ok
+
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 2 tests
+test a_pid_the_platform_cannot_represent_is_absent ... ok
+test own_process_has_a_stable_start_identity ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test telegram_reply_uses_only_the_persisted_outbound_binding_and_refuses_when_unbound ... ok
+test chore_run_never_advances_baseline_ack_does_and_failed_probe_stays_visible ... ok
+test all_three_shipped_loops_survive_a_transient_claim_failure ... ok
+test bg_cancel_observes_the_full_process_group_dead_before_cancelled_receipt ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.85s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test dispositions_survive_reopen_and_clear_holds_until_source_evidence_changes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+
+running 7 tests
+test undecided_descriptor_merge_writes_nothing ... ok
+test project_and_stream_reservations_are_first_writer_wins ... ok
+test descriptor_merge_is_atomic_and_retains_both_inputs_and_mismatches ... ok
+test parallel_claimers_produce_exactly_one_holder ... ok
+test spawn_owner_is_immutable_and_parent_attribution_states_missing_evidence ... ok
+test batons_roles_prime_and_dispatch_ack_are_durable_governance ... ok
+test lease_single_holder_property_survives_generated_claim_release_sequences ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.11s
+
+
+running 19 tests
+test a_zero_claim_lease_is_refused_before_work_can_be_lost ... ok
+test delivered_id_and_origin_survive_queue_reconstruction ... ok
+test acking_a_job_nobody_is_running_is_reported_not_swallowed ... ok
+test forget_delivered_releases_a_claim_on_the_real_adapter ... ok
+test an_acked_key_is_free_again_so_dedupe_is_per_burst_not_forever ... ok
+test a_failed_job_keeps_its_reason_and_frees_its_entity ... ok
+test claim_respects_the_kind_filter_and_an_empty_filter_claims_nothing ... ok
+test an_expired_inbox_claim_retries_instead_of_losing_the_unacked_message ... ok
+test one_msg_id_to_two_recipients_is_two_rows ... ok
+test fifo_within_a_serial_key_survives_interleaved_entities ... ok
+test one_entity_is_worked_by_one_worker_at_a_time ... ok
+test n_rapid_submits_collapse_to_one_row ... ok
+test concurrent_delivery_ack_and_duplicate_enqueue_never_create_a_second_row ... ok
+test an_expired_claim_fails_terminally_and_rejects_the_stale_ack ... ok
+test note_delivered_claims_once_and_survives_reconstruction ... ok
+test the_lease_sweep_does_not_reach_another_workers_kind ... ok
+test the_sqlite_queue_honours_the_same_contract_the_fake_does ... ok
+test per_recipient_bound_evicts_oldest_without_weakening_other_recipients ... ok
+test parallel_claimers_partition_the_work_with_no_double_claim ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+
+running 15 tests
+test a_half_written_process_identity_is_refused_rather_than_half_believed ... ok
+test wal_is_actually_on_which_the_migration_file_could_not_have_done ... ok
+test a_dropped_fresh_store_takes_its_wal_sidecars_with_it ... ok
+test a_store_from_the_future_is_refused_in_the_direction_that_matters ... ok
+test a_seat_round_trips_with_every_optional_fact_intact ... ok
+test the_daemon_self_migrates_a_brand_new_store_at_boot ... ok
+test bind_evidence_round_trips_and_absent_stays_absent ... ok
+test filters_narrow_and_absent_filter_fields_do_not ... ok
+test an_older_store_is_migrated_forward_rather_than_refused ... ok
+test the_spine_is_append_only_and_its_sequence_never_goes_backwards ... ok
+test re_opening_an_existing_store_is_idempotent_and_keeps_the_data ... ok
+test the_sqlite_registry_honours_the_same_contract_the_fake_does ... ok
+test an_older_store_gains_the_bind_evidence_columns_by_migrating_forward ... ok
+test the_sqlite_spine_honours_the_same_contract_the_fake_does ... ok
+test each_test_gets_its_own_database ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+
+running 3 tests
+test interrupted_put_rolls_back_both_registry_row_and_spine_event ... ok
+test absent_null_and_empty_are_three_distinct_registry_reads ... ok
+test concurrent_registry_writers_serialize_and_both_succeed ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+test a_dev_only_rule_never_permits_a_shipped_edge ... ok
+test an_unknown_rule_suffix_fails_the_parse_rather_than_becoming_a_crate_name ... ok
+test clean_metadata_passes ... ok
+test a_permission_nobody_uses_is_reported_as_drift ... ok
+test drifted_metadata_is_refused_with_the_reason_named ... ok
+test the_live_workspace_matches_the_ratified_graph ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 12 tests
+test the_harness_busy_gate_is_scriptable_and_defaults_to_not_busy ... ok
+test an_unscripted_readiness_says_what_it_observed ... ok
+test liveness_tells_recycled_from_active_and_dead ... ok
+test the_tmux_fake_scripts_a_pane_that_changes_between_polls ... ok
+test the_typing_gate_is_consulted_and_answers_honestly ... ok
+test a_reachable_transport_delivers_and_records_the_message_id ... ok
+test an_unreachable_transport_queues_rather_than_claiming_delivery ... ok
+test fake_queue_honours_the_queue_contract ... ok
+test fakes_record_what_the_code_did_not_only_what_it_returned ... ok
+test fake_queue_enforces_its_per_recipient_delivered_id_bound ... ok
+test fake_spine_honours_the_spine_contract ... ok
+test fake_registry_honours_the_registry_contract ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+test a_changed_fixture_is_reported_against_its_recorded_answer ... ok
+test sha256_matches_the_published_vectors ... ok
+test every_fixture_states_what_a_correct_implementation_must_do ... ok
+test the_corpus_includes_deliberately_broken_cases ... ok
+test the_captured_cli_fixtures_are_the_real_shapes_not_hand_written_ones ... ok
+test the_manifest_and_the_corpus_agree_both_ways ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 3 tests
+test a_current_lock_passes ... ok
+test a_stale_lock_fails_and_is_left_byte_identical ... ok
+test the_no_deps_flag_would_have_made_this_check_useless ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+
+running 4 tests
+test the_golden_mechanism_reports_a_length_change_too ... ok
+test the_golden_mechanism_fails_when_a_line_changes_and_says_which ... ok
+test no_thinking_levels_arrives_as_empty_or_absent_but_never_null ... ok
+test the_captured_catalog_matches_its_golden ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test parse::tests::malformed_cursor_is_unknown_as_a_pair ... ok
+test parse::tests::captured_empty_title_is_present_not_missing ... ok
+test parse::tests::title_keeps_the_field_separator_because_the_final_field_is_unsplit ... ok
+test tests::absent_command_preserves_empty_window_argv ... ok
+test tests::command_reaches_tmux_as_discrete_argv ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 9 tests
+test fake_tmux_honours_the_shared_contract ... ok
+test pane_tap_drains_each_raw_byte_once_and_detaches_cleanly ... ok
+test capture_proves_zero_and_more_than_the_pane_contains ... ok
+test matching_marker_adopts_restart_pipe_and_detach_clears_ownership ... ok
+test kill_refuses_an_id_not_freshly_resolved_in_the_owned_session ... ok
+test mismatched_marker_refuses_to_replace_a_foreign_pipe ... ok
+test missing_tmux_names_the_installation_fix ... ok
+test real_tmux_honours_the_shared_contract_inside_its_own_session ... ok
+test pane_in_mode_is_the_only_typing_fact_this_adapter_claims ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 10 tests
+test uds::tests::recorded_frame_is_byte_exact_and_contains_no_invented_mode ... ok
+test uds::tests::status_decision_table_distinguishes_drop_hold_and_unrelated ... ok
+test uds::tests::command_and_every_non_claude_harness_refuse_the_socket ... ok
+test uds::tests::recorded_2_1_251_registry_pair_resolves_without_probing_the_socket ... ok
+test uds::tests::losing_the_ack_channel_before_the_timer_cannot_confirm_delivery ... ok
+test uds::tests::discovery_is_pid_then_pane_suffix_then_absent ... ok
+test uds::tests::authentication_is_required_and_bound_to_record_identity ... ok
+test uds::tests::unknown_or_refused_inbound_acceptance_is_closed_before_any_socket_write ... ok
+test uds::tests::timer_win_means_only_injected_to_transport ... ok
+test uds::tests::correlated_drop_and_hold_statuses_override_the_timer ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test crates/core/src/report.rs - report::ReportService<'a,R,S,C>::new (line 87) ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.68s; merged doctests compilation took 0.27s
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test crates/harnesses/src/proc.rs - proc::ProcLiveness (line 28) ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test crates/harnesses/src/adapter.rs - adapter::HarnessRegistry (line 404) ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.47s; merged doctests compilation took 0.13s
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+pij-gate verdict
+  toolchain PASS  rustc 1.98.0 == pin
+  lock      PASS  Cargo.lock matches the manifests, and the tree
+  fmt       PASS  cargo fmt
+  clippy    PASS  cargo clippy
+  test      PASS  cargo test
+  arch      PASS  9 crates, 0 violations
+
+pij-gate: all stages green
