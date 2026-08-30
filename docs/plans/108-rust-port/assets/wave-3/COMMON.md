@@ -170,3 +170,15 @@ gate.
 5. `docs/plans/108-rust-port/assets/reports/review-round-{1,2}.md` — eleven
    findings, none refuted. **Read before writing your first test**: they name the
    mistake shapes this codebase actually makes.
+
+## Editing and fix-claims (added after wave-3 review round 2)
+
+**A scripted edit must assert its pattern matched.** A replacement that finds
+nothing returns the input unchanged and reports success, the build then stays
+green because removing nothing compiles, and a commit message written from intent
+completes the illusion. Prefer anchored edits that FAIL on a missing anchor.
+
+**A commit claiming to fix a review finding is verified by re-running the
+reviewer's probe**, never by re-reading the commit message. The receipt is the
+artifact a reviewer is most entitled to trust, which is exactly why it is the
+worst place for an unverified claim. See E-026.

@@ -419,3 +419,37 @@ AFTER `build_services` had constructed the delivery service from the original
 fakes — a fixture that looked injected and was not, so assertions ran against
 parts no test could see.
 
+## E-026 — removing nothing compiles
+
+Review round 2, `pij-experimental-fish`, and the highest-severity defect of the
+whole review: **a receipt claiming a change the code did not carry, where the
+receipt was a commit message about an ACCEPTED REVIEW FINDING.**
+
+The mechanism, which is the point:
+
+1. The edit was applied by a scripted string replacement whose pattern did not
+   match the file. `str.replace()` returns the input **unchanged** when it finds
+   nothing — no error, no diff, no signal of any kind.
+2. The build stayed green, because **removing nothing compiles**.
+3. The commit message described the INTENT rather than the RESULT, and nobody
+   read the diff back.
+
+Every instrument in the harness was green and none of them was looking at the
+thing that mattered. The reviewer caught it by re-running their own probe against
+the fix head — `supersedes` naming a ghost seat still returned 200 — rather than
+re-reading the claim.
+
+> Any scripted edit must ASSERT that its pattern matched. Any fix commit claiming
+> a review finding is verified by re-running the reviewer's probe, not by
+> re-reading the message.
+
+This is E-020's lesson arriving a third time, now in code edits rather than
+packets. The reviewer applied it to themselves in the same round: when they
+re-ran the mutation witness, they added an assertion that their own revert pattern
+had matched, explicitly so as not to reproduce this defect inside the test for it.
+
+The encoded control, not a resolution to be careful: **anchored edits that FAIL
+when the anchor is absent**, in place of blind replacement. A tool that errors on
+a missing anchor makes step 1 impossible; nothing else in the loop was ever going
+to catch it, because steps 2 and 3 are both silent by construction.
+
