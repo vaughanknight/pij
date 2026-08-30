@@ -103,6 +103,14 @@ pub struct Config {
     /// (E-028), so this only rate-limits the ANNOUNCEMENT. Configured because a
     /// default is a number nobody chose.
     pub pointer_announce_cadence_secs: u64,
+    /// Maximum pointer announcements per seat between successful inbox reads.
+    ///
+    /// Three means one initial pointer plus two reminders: three independent
+    /// chances to notice across UI churn, then no indefinite shouting. This is
+    /// seat-level because a pointer names no row, and row-level parking would
+    /// leave the oldest row at the queue head and starve newer mail. Zero is
+    /// invalid; the daemon validates it before publishing its boot key.
+    pub pointer_announce_limit: u32,
     /// Maximum live events buffered per subscriber before drops are counted.
     pub event_buffer_capacity: usize,
     /// Base cadence for federated roster polls and stream reconnects.
@@ -145,6 +153,7 @@ impl Default for Config {
             delivery_interval_secs: 5,
             pane_observer_interval_ms: 600,
             pointer_announce_cadence_secs: 90,
+            pointer_announce_limit: 3,
             event_buffer_capacity: 1_024,
             federation_poll_interval_secs: 1,
             federation_retry_max_secs: 5 * 60,

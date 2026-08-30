@@ -15,6 +15,19 @@ pub use worker::DrainWorker;
 
 /// Event emitted after the pointer line itself was submitted to the recipient.
 pub const POINTER_ANNOUNCED_EVENT_KIND: &str = "delivery.pointer-announced";
+/// Event emitted once when a seat exhausts its pointer announcement budget.
+pub const POINTER_PARKED_EVENT_KIND: &str = "delivery.pointer-parked";
+/// Event emitted when a successful inbox read resets a parked seat's budget.
+pub const POINTER_UNPARKED_EVENT_KIND: &str = "delivery.pointer-unparked";
+
+/// Injected pointer cadence and seat-level announcement budget.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PointerPolicy {
+    /// Minimum time between pointers to the same seat.
+    pub cadence: Duration,
+    /// Maximum pointers between successful inbox reads.
+    pub announcement_limit: u32,
+}
 
 /// Render the single line submitted to a pane when a message is waiting.
 ///
@@ -30,6 +43,26 @@ pub fn render_pointer(from: &SeatId, from_machine: Option<&str>) -> String {
         Some(machine) => format!("[pij from {from}@{machine}] message waiting — run: pij inbox"),
         None => format!("[pij from {from}] message waiting — run: pij inbox"),
     }
+}
+
+/// Render the final pointer that explains why future reminders will stop.
+///
+/// The announcer records that it POINTED, not that anyone will ever come. The
+/// recipient therefore needs the final line to distinguish deliberate parking
+/// from a dead daemon; the separate parked event serves operators.
+#[must_use]
+pub fn render_final_pointer(
+    from: &SeatId,
+    from_machine: Option<&str>,
+    announcements: u32,
+) -> String {
+    let sender = match from_machine {
+        Some(machine) => format!("{from}@{machine}"),
+        None => from.to_string(),
+    };
+    format!(
+        "[pij from {sender}] message waiting — final reminder; parked after {announcements} announcements — message remains queued; run: pij inbox when ready"
+    )
 }
 
 /// Render an explicitly tagged remote-control command for PTY submission.
@@ -74,7 +107,8 @@ mod tests {
     use pij_testkit::fakes::FakeTmux;
 
     use super::{
-        POINTER_ANNOUNCED_EVENT_KIND, render_command, render_pointer, retry_delay, submit_command,
+        POINTER_ANNOUNCED_EVENT_KIND, POINTER_PARKED_EVENT_KIND, POINTER_UNPARKED_EVENT_KIND,
+        render_command, render_final_pointer, render_pointer, retry_delay, submit_command,
     };
 
     #[test]
@@ -97,6 +131,20 @@ mod tests {
             "a pointer is exactly one line"
         );
         assert_eq!(POINTER_ANNOUNCED_EVENT_KIND, "delivery.pointer-announced");
+        assert_eq!(POINTER_PARKED_EVENT_KIND, "delivery.pointer-parked");
+        assert_eq!(POINTER_UNPARKED_EVENT_KIND, "delivery.pointer-unparked");
+    }
+
+    #[test]
+    fn final_pointer_explains_the_silence_to_the_recipient() {
+        assert_eq!(
+            render_final_pointer(&SeatId::from("pij-sender"), None, 3),
+            "[pij from pij-sender] message waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox when ready"
+        );
+        assert_eq!(
+            render_final_pointer(&SeatId::from("bob"), Some("desktop"), 3),
+            "[pij from bob@desktop] message waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox when ready"
+        );
     }
 
     #[test]

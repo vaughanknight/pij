@@ -14,6 +14,7 @@ use serde::Serialize;
 use tokio_stream::StreamExt;
 
 use crate::events::EventBus;
+use crate::pointer::{POINTER_PARKED_EVENT_KIND, POINTER_UNPARKED_EVENT_KIND};
 
 const OUTCOME_EVENT_KIND: &str = "delivery.outcome";
 /// The event a RECIPIENT watches for to learn it has been spoken to.
@@ -353,7 +354,12 @@ impl DeliveryService {
                     .await?;
                 messages.push(message);
             }
-            if !messages.is_empty() || !wait {
+            if !messages.is_empty() {
+                self.publish_pointer_unparked_if_parked(seat, messages.len())
+                    .await?;
+                return Ok(messages);
+            }
+            if !wait {
                 return Ok(messages);
             }
             let Some(subscription) = wake.as_mut() else {
@@ -363,6 +369,42 @@ impl DeliveryService {
                 return Ok(messages);
             }
         }
+    }
+
+    async fn publish_pointer_unparked_if_parked(
+        &self,
+        seat: &SeatId,
+        messages: usize,
+    ) -> Result<()> {
+        let history = self
+            .event_bus
+            .history(
+                EventFilter::kinds([POINTER_PARKED_EVENT_KIND, POINTER_UNPARKED_EVENT_KIND])
+                    .for_seat(seat.clone()),
+            )
+            .await?;
+        if history.last().map(|event| event.kind.as_str()) != Some(POINTER_PARKED_EVENT_KIND) {
+            return Ok(());
+        }
+        let payload = serde_json::to_string(&PointerUnparkedEvent {
+            reason: "reader-read",
+            messages,
+        })
+        .map_err(|error| PijError::Adapter {
+            adapter: "daemon/delivery".to_string(),
+            message: format!("could not encode pointer unparked event for {seat}: {error}"),
+        })?;
+        self.event_bus
+            .publish(Event {
+                seq: None,
+                v: 1,
+                at: (self.clock)()?,
+                kind: POINTER_UNPARKED_EVENT_KIND.to_string(),
+                seat: Some(seat.clone()),
+                payload,
+            })
+            .await?;
+        Ok(())
     }
 
     fn next_message_id(&self) -> String {
@@ -488,6 +530,12 @@ fn outcome_name(outcome: &DeliveryOutcome) -> &'static str {
         DeliveryOutcome::Queued => "queued",
         DeliveryOutcome::Held { .. } => "held",
     }
+}
+
+#[derive(Serialize)]
+struct PointerUnparkedEvent {
+    reason: &'static str,
+    messages: usize,
 }
 
 fn system_time_ms() -> Result<u64> {

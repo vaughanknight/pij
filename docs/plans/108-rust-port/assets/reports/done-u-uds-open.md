@@ -218,6 +218,10 @@ Source/test files:
 - `crates/cli/tests/shipped_daemon_config.rs`
 - `crates/tmux/src/lib.rs`
 - `crates/tmux/tests/adapter.rs`
+- `crates/core/src/config.rs`
+- `crates/daemon/src/events/mod.rs`
+- `crates/daemon/src/pointer/mod.rs`
+- `crates/daemon/src/pointer/worker.rs`
 
 Shared-merge file: `crates/daemon/src/lib.rs` (constructor conformance and composition ordering). No final manifest, `Cargo.lock`, architecture metadata, migration, frozen port, model, or error change.
 
@@ -337,3 +341,73 @@ pij-gate: all stages green
 ```
 
 The legacy cleanup was explicit and one-time. Existing unmarked pipes are never adopted from a filename or sink residue; that would repeat the ownership defect under E-024 rather than fix it.
+
+## Dogfood addendum — pointer parking
+
+The unstamped control seat exposed the fork's G25 in the Rust worker. It received pointers at 17:21:30, 17:28:00, and 17:30:06. `pointer_due` consulted only cadence, so a seat that never read would be reminded forever.
+
+The control seat's reason line is the contract:
+
+> The announcer records that it POINTED, not that anyone will ever come.
+
+### Policy
+
+`Config::pointer_announce_limit` defaults to 3 and rejects zero. Three means one initial pointer plus two reminders: three independent opportunities to notice across UI churn, followed by deliberate silence. The budget is seat-level because the pointer names no row. Row-level parking would leave the oldest parked row at the queue head and silently starve newer mail.
+
+The third pointer explains the silence to the recipient:
+
+```text
+[pij from pij-sender] message waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox when ready
+```
+
+The same transition publishes one durable operator-facing event:
+
+```json
+{"kind":"delivery.pointer-parked","seat":"pij-seat","payload":{"announcements":3,"reason":"announcement-limit"}}
+```
+
+The body row remains pending and immediately claimable. A successful inbox read consumes the available mail and, only when the latest policy event is parked, publishes:
+
+```json
+{"kind":"delivery.pointer-unparked","seat":"pij-seat","payload":{"reason":"reader-read","messages":1}}
+```
+
+Read is the only automatic unpark. A new msg_id does not reset the budget: otherwise a sender could mint its way past a cap the human has not satisfied. An explicit operator unpark command would be honest but does not exist and was not invented in this unit.
+
+### The counter correction
+
+**The durable queue `attempt` is not an announcement count.** It increments on every claim and release: cadence suppression, typing gates, socket refusal, and actual pointer work. The live row reached attempt 64 while the seat had received exactly three pointers. Capping on `attempt` would park a seat before it had been told three times, and possibly before it had been told once.
+
+The policy instrument is the spine's `delivery.pointer-announced` sequence, the only durable record of what the seat was actually told. New events carry `announcement: 1..3`. On its first drain, a worker cold-replays announced, parked, and unparked events before it claims work. Historical announced events without an ordinal increment in spine order. Restart therefore preserves both cadence and the exhausted budget; a crash-looping daemon cannot reset the count and shout forever.
+
+### Proof
+
+`third_pointer_explains_parking_row_stays_readable_and_read_unparks` executes the full policy:
+
+1. announces exactly three times across injected 90-second cadences;
+2. asserts the third pointer's exact explanatory bytes;
+3. runs the N+1 decision and asserts there is no fourth submit;
+4. observes exactly one `delivery.pointer-parked` event;
+5. constructs a fresh worker and proves cold replay still suppresses a fourth pointer;
+6. reads the still-live body through `DeliveryService::inbox`;
+7. observes `delivery.pointer-unparked`;
+8. queues new mail and proves the successful read reset the seat budget.
+
+Mutation — remove the cap by replacing the configured limit with `u32::MAX`:
+
+```text
+FAILED third_pointer_explains_parking_row_stays_readable_and_read_unparks
+assertion `left == right` failed: N+1 must not announce
+  left: 4
+ right: 3
+```
+
+Mutation — render an ordinary pointer on the third announcement:
+
+```text
+FAILED third_pointer_explains_parking_row_stays_readable_and_read_unparks
+left:  "submit:%park:[pij from pij-sender] message waiting — run: pij inbox"
+right: "submit:%park:[pij from pij-sender] message waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox when ready"
+```
+
+The final workspace run reported 317 passing tests across 49 suites with 3 ignored. The canonical six-stage gate then passed toolchain, lock, fmt, clippy, test, and architecture (8 crates, 0 violations).
