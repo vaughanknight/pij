@@ -344,7 +344,7 @@ The legacy cleanup was explicit and one-time. Existing unmarked pipes are never 
 
 ## Dogfood addendum — pointer parking
 
-The unstamped control seat exposed the fork's G25 in the Rust worker. It received pointers at 17:21:30, 17:28:00, and 17:30:06. `pointer_due` consulted only cadence, so a seat that never read would be reminded forever.
+The unstamped control seat exposed the fork's G25 in the Rust worker. It experienced 18 pointers from 17:21:30 through 17:53:56 (spine seq 21, 24–40). `pointer_due` consulted only cadence, so a seat that never read would be reminded forever.
 
 The control seat's reason line is the contract:
 
@@ -359,6 +359,10 @@ The third pointer explains the silence to the recipient:
 ```text
 [pij from pij-sender] message waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox when ready
 ```
+
+One deployment-only legacy window is named, not migrated: a seat already over budget when the cap first lands parks without the explanatory final pointer because its Nth announcement was emitted by the old build. The window closes after the first read/unpark and never recurs under the new producer. Existing history is not rewritten.
+
+The recipient explained why the line cannot be replaced by the operator event: “I only know it parked because I can read your sqlite — a recipient without spine access would still be at ‘went quiet’.”
 
 The same transition publishes one durable operator-facing event:
 
@@ -379,6 +383,31 @@ Read is the only automatic unpark. A new msg_id does not reset the budget: other
 **The durable queue `attempt` is not an announcement count.** It increments on every claim and release: cadence suppression, typing gates, socket refusal, and actual pointer work. The live row reached attempt 64 while the seat had received exactly three pointers. Capping on `attempt` would park a seat before it had been told three times, and possibly before it had been told once.
 
 The policy instrument is the spine's `delivery.pointer-announced` sequence, the only durable record of what the seat was actually told. New events carry `announcement: 1..3`. On its first drain, a worker cold-replays announced, parked, and unparked events before it claims work. Historical announced events without an ordinal increment in spine order. Restart therefore preserves both cadence and the exhausted budget; a crash-looping daemon cannot reset the count and shout forever.
+
+The first parked payload exposed a second count defect: it said `announcements: 3` while the seat had experienced 18. Three was the policy threshold, not the seat's count. The full history was already durable; `publish_parked` discarded the replayed total and substituted the configured limit. It now carries the actual count reconstructed from every announcement since the latest unpark, or from the beginning when no unpark exists.
+
+`legacy_history_counts_every_announcement_since_the_last_unpark` seeds 18 pre-policy announcement events without ordinals, cold-replays them, parks without issuing an unexplained nineteenth pointer, keeps the row readable, and asserts `{"announcements":18}`. Replacing the experienced count with the configured limit failed:
+
+```text
+FAILED legacy_history_counts_every_announcement_since_the_last_unpark
+announcements means what the seat experienced, not the policy limit
+left:  {"announcements":3,"reason":"announcement-limit"}
+right: {"announcements":18,"reason":"announcement-limit"}
+```
+
+### Tombstone is consent withdrawal
+
+The control seat then requested deregistration. Its descriptor was correctly tombstoned, but `PaneObserver` continued treating its pane as wanted. A hand detach was undone within seconds: the daemon recreated the pipe and marker. Only stopping the daemon ended capture.
+
+A pane tap is a consent surface, not merely a routing resource. Tombstoned seats are now excluded from the wanted set. Because tracked-but-unwanted panes flow through the existing retirement path, the next observation actively detaches the tmux pipe, clears `@pij-tap-sink`, removes the sink containing captured terminal bytes, clears interaction evidence, and never reattaches on later sweeps.
+
+`tombstoning_an_observed_seat_detaches_marker_and_captured_bytes` uses real tmux as a transition test: attach first, persist the tombstone, sweep, assert `pane_pipe=0`, marker absent, sink absent, then sweep again and prove none return. Removing the tombstone discriminator failed on the live resource:
+
+```text
+FAILED tombstoning_an_observed_seat_detaches_marker_and_captured_bytes
+left:  "1"
+right: "0"
+```
 
 ### Proof
 
@@ -410,4 +439,6 @@ left:  "submit:%park:[pij from pij-sender] message waiting — run: pij inbox"
 right: "submit:%park:[pij from pij-sender] message waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox when ready"
 ```
 
-The final workspace run reported 317 passing tests across 49 suites with 3 ignored. The canonical six-stage gate then passed toolchain, lock, fmt, clippy, test, and architecture (8 crates, 0 violations).
+The final workspace run reported 320 passing tests across 49 suites with 3 ignored. The canonical six-stage gate then passed toolchain, lock, fmt, clippy, test, and architecture (8 crates, 0 violations).
+
+The first closing gate also exposed that real-tmux fixtures from separate Rust test binaries could overlap on the machine-global tmux server: an unrelated fixture pipe appeared as a foreign owner. Both fixture families now take the same cross-process `tmux wait-for` lock and always release it during `Drop`. The full workspace and subsequent six-stage gate passed with the real tmux tests executed, not skipped.
