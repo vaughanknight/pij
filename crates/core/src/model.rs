@@ -386,6 +386,16 @@ pub enum ErrorKind {
     Auth,
     /// An envelope version this build will not act on. Never half-read.
     Skew,
+    /// A requested cursor is beyond the spine that must serve it: that history
+    /// was reset. NON-TRANSIENT and the caller's own cursor is at fault, so a
+    /// consumer must resume from the source's real position rather than retry.
+    ///
+    /// It is a KIND rather than a message because the recovery has to branch on
+    /// it: the worker keyed on the refusal's prose, so any wording change would
+    /// have silently disabled the recovery and returned the system to the exact
+    /// silence it was built to end (review F10). This project ruled in wave 3
+    /// that nothing may branch on prose, and then branched on prose.
+    CursorReset,
     /// An adapter failed at its boundary, carrying its own words in `meta`.
     Adapter,
 }

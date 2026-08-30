@@ -710,6 +710,19 @@ async fn events(State(state): State<AppState>, Query(query): Query<EventQuery>) 
             .await
         {
             Ok(subscription) => subscription,
+            // A cursor beyond the spine is the CLIENT's stale state, not our
+            // failure: 409 with a machine-readable kind, so a consumer branches on
+            // the KIND and never on our wording (review F10).
+            Err(error @ PijError::CursorBeyondSpine { .. }) => {
+                return envelope(
+                    StatusCode::CONFLICT,
+                    &Envelope::<()>::refused(
+                        "pij events",
+                        ErrorKind::CursorReset,
+                        error.to_string(),
+                    ),
+                );
+            }
             Err(error) => return internal("pij events", error),
         },
         // Absent cursor means live-only. `subscribe(None, ...)` would replay the

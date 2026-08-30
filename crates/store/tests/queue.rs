@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use pij_core::config::Config;
-use pij_core::model::{DeliveryOrigin, Job, Outcome};
+use pij_core::model::{DeliveryOrigin, Job, Outcome, SeatId};
 use pij_core::ports::{DeliveryEnqueue, Queue};
 use pij_store::SqliteQueue;
 use pij_testkit::FreshStore;
@@ -24,7 +24,7 @@ fn job(kind: &str, serial: &str, dedupe: &str) -> Job {
     }
 }
 
-async fn queue(fresh: &FreshStore) -> SqliteQueue {
+async fn crate_queue(fresh: &FreshStore) -> SqliteQueue {
     SqliteQueue::new(
         pij_store::open(&fresh.path()).await.expect("open"),
         Config::default().claim_lease_secs,
@@ -36,7 +36,7 @@ async fn queue(fresh: &FreshStore) -> SqliteQueue {
 #[tokio::test]
 async fn the_sqlite_queue_honours_the_same_contract_the_fake_does() {
     let fresh = FreshStore::new();
-    queue_contract(&queue(&fresh).await).await;
+    queue_contract(&crate_queue(&fresh).await).await;
 }
 
 #[tokio::test]
@@ -44,7 +44,7 @@ async fn n_rapid_submits_collapse_to_one_row() {
     // The rule, stated as the operator experiences it: hammer the same work ten
     // times and one unit of work exists, not ten.
     let fresh = FreshStore::new();
-    let queue = queue(&fresh).await;
+    let queue = crate_queue(&fresh).await;
 
     let mut ids = Vec::new();
     for _ in 0..10 {
@@ -72,7 +72,7 @@ async fn an_acked_key_is_free_again_so_dedupe_is_per_burst_not_forever() {
     // The other half of the rule, and the one a naive unique index gets wrong:
     // the same work CAN be scheduled again once the previous attempt finished.
     let fresh = FreshStore::new();
-    let queue = queue(&fresh).await;
+    let queue = crate_queue(&fresh).await;
 
     let first = queue
         .enqueue(job("deliver", "seat-a", "msg-1"))
@@ -109,7 +109,7 @@ async fn an_acked_key_is_free_again_so_dedupe_is_per_burst_not_forever() {
 #[tokio::test]
 async fn one_entity_is_worked_by_one_worker_at_a_time() {
     let fresh = FreshStore::new();
-    let queue = queue(&fresh).await;
+    let queue = crate_queue(&fresh).await;
 
     queue
         .enqueue(job("deliver", "seat-a", "m1"))
@@ -165,7 +165,7 @@ async fn parallel_claimers_partition_the_work_with_no_double_claim() {
     // and the union across workers equals what was enqueued. Cross-entity worker
     // scheduling is deliberately not ordered; FIFO is asserted per serial key.
     let fresh = FreshStore::new();
-    let queue = Arc::new(queue(&fresh).await);
+    let queue = Arc::new(crate_queue(&fresh).await);
 
     let expected: Vec<String> = (0..24).map(|n| format!("entity-{n}")).collect();
     for serial in &expected {
@@ -219,7 +219,7 @@ async fn acking_a_job_nobody_is_running_is_reported_not_swallowed() {
     // lost. Silently succeeding here is how that stays invisible until the job
     // runs twice.
     let fresh = FreshStore::new();
-    let queue = queue(&fresh).await;
+    let queue = crate_queue(&fresh).await;
     let id = queue
         .enqueue(job("deliver", "seat-a", "m1"))
         .await
@@ -249,7 +249,7 @@ async fn acking_a_job_nobody_is_running_is_reported_not_swallowed() {
 #[tokio::test]
 async fn a_failed_job_keeps_its_reason_and_frees_its_entity() {
     let fresh = FreshStore::new();
-    let queue = queue(&fresh).await;
+    let queue = crate_queue(&fresh).await;
     queue
         .enqueue(job("deliver", "seat-a", "m1"))
         .await
@@ -282,7 +282,7 @@ async fn a_failed_job_keeps_its_reason_and_frees_its_entity() {
 #[tokio::test]
 async fn claim_respects_the_kind_filter_and_an_empty_filter_claims_nothing() {
     let fresh = FreshStore::new();
-    let queue = queue(&fresh).await;
+    let queue = crate_queue(&fresh).await;
     queue
         .enqueue(job("deliver", "seat-a", "m1"))
         .await
@@ -309,7 +309,7 @@ async fn claim_respects_the_kind_filter_and_an_empty_filter_claims_nothing() {
 #[tokio::test]
 async fn fifo_within_a_serial_key_survives_interleaved_entities() {
     let fresh = FreshStore::new();
-    let queue = queue(&fresh).await;
+    let queue = crate_queue(&fresh).await;
 
     for (serial, dedupe) in [
         ("seat-a", "a-1"),
@@ -439,7 +439,7 @@ async fn a_zero_claim_lease_is_refused_before_work_can_be_lost() {
 #[tokio::test]
 async fn one_msg_id_to_two_recipients_is_two_rows() {
     let fresh = FreshStore::new();
-    let queue = queue(&fresh).await;
+    let queue = crate_queue(&fresh).await;
 
     let job = |seat: &str| Job {
         kind: format!("delivery:{seat}"),
@@ -647,5 +647,89 @@ async fn per_recipient_bound_evicts_oldest_without_weakening_other_recipients() 
             .await
             .expect("hot recipient must not evict another recipient"),
         DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::InjectedToTransport)
+    );
+}
+
+/// Review F12 — `note_delivered` is pinned against the REAL adapter, not only
+/// the fake.
+///
+/// The claim and compensation witnesses both run against `FakeQueue`, and the
+/// port's atomicity claim ("in ONE transaction... because a separate read and
+/// write reintroduce exactly the check-then-act race") was asserted by nobody
+/// against SQLite. That is round-1 F6's shape one layer down: the fake got the
+/// semantics, the real adapter got the semantics, and no instrument compared
+/// them.
+#[tokio::test]
+async fn note_delivered_claims_once_and_survives_reconstruction() {
+    let fresh = FreshStore::new();
+    let queue = crate_queue(&fresh).await;
+    let recipient = SeatId::from("pij-real");
+
+    assert_eq!(
+        queue
+            .note_delivered(&recipient, "m-1", DeliveryOrigin::ReaderRead)
+            .await
+            .expect("first claim"),
+        None,
+        "an unclaimed message is ours to deliver"
+    );
+    assert_eq!(
+        queue
+            .note_delivered(&recipient, "m-1", DeliveryOrigin::InjectedToTransport)
+            .await
+            .expect("second claim"),
+        Some(DeliveryOrigin::ReaderRead),
+        "a claimed message reports the ORIGINAL observation, not the new caller's guess"
+    );
+
+    // Same store, new queue object: the ledger is durable, not process state.
+    drop(queue);
+    let reopened = crate_queue(&fresh).await;
+    assert_eq!(
+        reopened
+            .note_delivered(&recipient, "m-1", DeliveryOrigin::VerifiedArrival)
+            .await
+            .expect("claim after reconstruction"),
+        Some(DeliveryOrigin::ReaderRead)
+    );
+
+    // A different recipient with the same id is a different message.
+    assert_eq!(
+        reopened
+            .note_delivered(
+                &SeatId::from("pij-other"),
+                "m-1",
+                DeliveryOrigin::ReaderRead
+            )
+            .await
+            .expect("other recipient"),
+        None
+    );
+}
+
+/// The compensation half, against SQLite: a released claim must be re-claimable,
+/// or a failed injection would suppress the retry of a message nobody received.
+#[tokio::test]
+async fn forget_delivered_releases_a_claim_on_the_real_adapter() {
+    let fresh = FreshStore::new();
+    let queue = crate_queue(&fresh).await;
+    let recipient = SeatId::from("pij-real");
+
+    queue
+        .note_delivered(&recipient, "m-2", DeliveryOrigin::InjectedToTransport)
+        .await
+        .expect("claim");
+    queue
+        .forget_delivered(&recipient, "m-2")
+        .await
+        .expect("release");
+
+    assert_eq!(
+        queue
+            .note_delivered(&recipient, "m-2", DeliveryOrigin::InjectedToTransport)
+            .await
+            .expect("re-claim"),
+        None,
+        "a released claim is claimable again: the message was never delivered"
     );
 }

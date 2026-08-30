@@ -357,8 +357,13 @@ impl FanInService {
                     // "unavailable, retrying" would be false, since the peer is up
                     // and answering — and resume live on the next attempt instead
                     // of asking again for events that cannot exist (review F7).
+                    // Branch on the KIND, never on the peer's wording. Keying on
+                    // prose meant a one-word change in a Display string would have
+                    // silently disabled this recovery and returned the fleet to
+                    // the original silence, with nothing failing (review F10).
+                    let is_reset = matches!(error, PijError::CursorBeyondSpine { .. });
                     let message = error.to_string();
-                    if message.contains("beyond this spine's newest") {
+                    if is_reset {
                         resume_live = true;
                         source.publish_status(StreamFrame::PeerState {
                             machine: source.alias.clone(),

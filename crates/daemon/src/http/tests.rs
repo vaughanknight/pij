@@ -1634,3 +1634,142 @@ async fn event_loop_survives_one_stream_error_and_processes_the_next_frame() {
     a_server.abort();
     b_server.abort();
 }
+
+/// Review F11 — the RESUME-LIVE RECOVERY, driven through the shipped worker.
+///
+/// The refusal only matters because of what the worker does next. Without this
+/// the refusal is a named retry-forever: the worker would ask again with the same
+/// impossible cursor and the peer would refuse again, indefinitely.
+///
+/// The peer refuses the first attempt with `ErrorKind::CursorReset`, exactly as
+/// the shipped `/v1/events` does, then serves a live frame. The worker must
+/// publish Reset and come back WITHOUT the stale cursor.
+#[tokio::test]
+async fn the_event_loop_resumes_live_after_a_peer_refuses_an_impossible_cursor() {
+    #[derive(Clone)]
+    struct ResettingPeer {
+        calls: Arc<AtomicUsize>,
+        queries: Arc<Mutex<Vec<Option<String>>>>,
+    }
+
+    #[derive(Deserialize)]
+    struct ResetQuery {
+        since: Option<String>,
+    }
+
+    async fn reset_then_serve(
+        State(state): State<ResettingPeer>,
+        Query(query): Query<ResetQuery>,
+    ) -> Response {
+        let call = state.calls.fetch_add(1, Ordering::SeqCst);
+        state
+            .queries
+            .lock()
+            .expect("query mutex")
+            .push(query.since.clone());
+        if call == 1 {
+            // Second attempt: the peer's history was reset since the first frame,
+            // so the cursor the worker now holds is impossible. Refuse BY KIND, as
+            // the shipped route does.
+            //
+            // It must be the SECOND call: the worker only has a cursor to be
+            // refused after it has buffered a frame, and a refusal on the very
+            // first attempt is indistinguishable from resuming live by accident —
+            // which is how the first version of this test passed its own mutation.
+            return envelope(
+                StatusCode::CONFLICT,
+                &Envelope::<()>::refused(
+                    "pij events",
+                    ErrorKind::CursorReset,
+                    "requested cursor 57 is beyond this spine's newest 0",
+                ),
+            );
+        }
+        let cursor = if call == 0 { 5 } else { 1 };
+        let frame = StreamFrame::Event {
+            machine: "laptop".to_string(),
+            cursor,
+            event: Event {
+                seq: None,
+                v: wire::EVENT_VERSION,
+                at: cursor,
+                kind: "after.reset".to_string(),
+                seat: None,
+                payload: cursor.to_string(),
+            },
+        };
+        let body = format!(
+            "{}{}\n",
+            wire::encode_hello("reset-peer").expect("hello"),
+            serde_json::to_string(&frame).expect("frame")
+        );
+        (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/x-ndjson")],
+            body,
+        )
+            .into_response()
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let queries = Arc::new(Mutex::new(Vec::new()));
+    let (b_addr, b_server) = spawn(
+        Router::new()
+            .route("/v1/events", get(reset_then_serve))
+            .with_state(ResettingPeer {
+                calls: Arc::clone(&calls),
+                queries: Arc::clone(&queries),
+            }),
+    )
+    .await;
+
+    let a_services = test_services(
+        Arc::new(FakeRegistry::new()),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    let federation = Arc::new(
+        FederationService::new(
+            "desktop".to_string(),
+            [peer_definition("laptop", b_addr)],
+            Arc::clone(&a_services.queue),
+            Arc::clone(&a_services.event_bus),
+            federation_policy(),
+        )
+        .expect("federation"),
+    );
+    let worker = Arc::clone(&federation).start();
+
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if calls.load(Ordering::SeqCst) >= 3 {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the worker must RECONNECT after a refusal, not retry it for ever");
+
+    let asked = queries.lock().expect("query mutex").clone();
+    assert!(
+        asked.len() >= 3,
+        "expected serve, refusal, and a resumed retry, saw {asked:?}"
+    );
+    assert!(
+        asked[1].is_some(),
+        "the second attempt must carry the cursor the first frame established, or \
+         this test proves nothing about resuming. Saw {:?}",
+        asked[1]
+    );
+    assert!(
+        asked[2].is_none(),
+        "after a refusal the worker must resume LIVE — asking again with the \
+         refused cursor is the retry-forever the refusal exists to end. Saw {:?}",
+        asked[2]
+    );
+
+    worker.shutdown().await.expect("shutdown");
+    b_server.abort();
+}

@@ -111,6 +111,11 @@ pub fn exit_code<T>(envelope: &Envelope<T>) -> u8 {
         Some(ErrorKind::Refused) => 2,
         Some(ErrorKind::NotFound) => 3,
         Some(ErrorKind::Auth) => 4,
+        // A reset cursor exits 5: the caller's own state is stale and the fix is
+        // to resume, which is a different action from "retry" (1) or "refused"
+        // (2). An exit code is a discriminator a script branches on, so it gets
+        // the same treatment as the kind it renders.
+        Some(ErrorKind::CursorReset) => 5,
         Some(ErrorKind::Skew | ErrorKind::Adapter) | None => 1,
     }
 }

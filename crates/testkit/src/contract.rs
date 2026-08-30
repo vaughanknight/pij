@@ -335,6 +335,45 @@ pub async fn queue_contract(queue: &dyn Queue) {
             .expect("consult delivered id"),
         DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::ReaderRead)
     );
+
+    // R4-AMEND-4, in the SHARED contract so fake and real cannot drift: the claim
+    // is atomic, it reports the ORIGINAL observation rather than the new caller's
+    // guess, and a released claim is claimable again.
+    let claimant = SeatId::from("seat-claimed");
+    assert_eq!(
+        queue
+            .note_delivered(&claimant, "claim-1", DeliveryOrigin::ReaderRead)
+            .await
+            .expect("first claim"),
+        None
+    );
+    assert_eq!(
+        queue
+            .note_delivered(&claimant, "claim-1", DeliveryOrigin::InjectedToTransport)
+            .await
+            .expect("second claim"),
+        Some(DeliveryOrigin::ReaderRead),
+        "a claimed message reports what was ORIGINALLY observed"
+    );
+    queue
+        .forget_delivered(&claimant, "claim-1")
+        .await
+        .expect("release the claim");
+    assert_eq!(
+        queue
+            .note_delivered(&claimant, "claim-1", DeliveryOrigin::ReaderRead)
+            .await
+            .expect("re-claim"),
+        None,
+        "a released claim is claimable again: that delivery never happened"
+    );
+
+    // An UNCLAIMED ack is refused by both implementations (review round-1 F6,
+    // which the contract never asserted).
+    queue
+        .ack(JobId(u64::MAX), Outcome::Done)
+        .await
+        .expect_err("acking a job nobody claimed must be refused");
 }
 
 /// A seat descriptor with the shape most contract tests want.

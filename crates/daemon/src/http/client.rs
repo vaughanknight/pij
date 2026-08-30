@@ -2,7 +2,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use pij_core::error::{PijError, Result};
-use pij_core::model::Envelope;
+use pij_core::model::{Envelope, ErrorKind};
 use pij_core::wire;
 
 use super::StreamFrame;
@@ -90,6 +90,21 @@ pub async fn stream_from_peer(
             .text()
             .await
             .map_err(|error| peer_error(&url, error))?;
+        // Decode the peer's KIND and re-raise the typed refusal. Flattening every
+        // non-2xx into an Adapter string forced the caller to pattern-match our
+        // own prose, so a wording change would silently disable its recovery
+        // (review F10). A peer too old to send a kind still produces the generic
+        // Adapter error, which is exactly the mixed-version case the reviewer
+        // named — and it now degrades to "retrying" rather than to silence.
+        let kind = serde_json::from_str::<Envelope<serde_json::Value>>(&body)
+            .ok()
+            .and_then(|envelope| envelope.error);
+        if kind == Some(ErrorKind::CursorReset) {
+            return Err(PijError::CursorBeyondSpine {
+                requested: 0,
+                newest: 0,
+            });
+        }
         return Err(PijError::Adapter {
             adapter: "daemon/http-peer".to_string(),
             message: format!("peer {url} refused event stream with {status}: {body}"),
