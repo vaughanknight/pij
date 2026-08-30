@@ -1,0 +1,65 @@
+u-sidecars live-fire transcript — 2026-08-31
+
+ENVIRONMENT
+- Shipped pij-rs producer and real daemon, state /Users/jordanknight/.pij-rs/pij.sqlite.
+- Final operator target: real Claude 2.1.251 seat pij-sidecars-live, pane %1876, cross_session_inbound_accept=true.
+- Production Telegram credentials read in place from ~/.pij/telegram.env; never moved or printed.
+
+TELEGRAM — ABORT/RESTORE DRILL
+1. Announced through legacy: "pij-rs live-fire starting: telegram will blip for ~2 minutes; reply to the NEXT message you get".
+2. Before lock: {"pid":59939,"startedAt":"2026-08-28T04:32:45.261Z"}; pid observed alive.
+3. `pij telegram stop`; lock disappeared; pid 59939 absent.
+4. Started pij-rs with PIJ_TELEGRAM_ENV and sent `pij-rs telegram bridge live-fire 2026-08-30T23:18:34Z`.
+5. Producer reported `FAILED — JSON is not a envelope (missing field ok)` although the enqueue landed. Aborted rather than retrying a possibly successful effect.
+6. Stopped pij-rs. Restarted legacy. Lock reacquired by pid 95780; `pij send pij-telegram` delivered.
+7. Jordan's fast reply `test` was not lost: jobs row 2 durably held delivery:pij-mammoth-ostrich before cursor seq 3 advanced. This attempt was not counted as the accepted round trip.
+
+TELEGRAM — ACCEPTED FULL ROUND TRIP
+1. Re-measured current world; did not reuse stale falsifier values. Legacy bridge announced the window before stop.
+2. Stopped legacy pid 95780. Lock was absent before starting pij-rs.
+3. Rust producer accepted:
+   pij sidecar: ok — {"job_id":20,"serial_key":"default"}
+   outbound body: `pij-rs telegram bridge live-fire 2026-08-30T23:39:37Z`.
+4. Jordan swipe-replied `hi` from his phone.
+5. The real Claude pane showed the injected turn verbatim:
+   `Message from @pij-telegram: [pij from pij-telegram] hi`
+6. Rust evidence, preserved in u-sidecars-spine-excerpts.jsonl:
+   - spine seq 10 telegram.binding, target pij-sidecars-live;
+   - queue row 21 delivery:pij-sidecars-live, msg_id telegram-459814436, body `hi`, state done;
+   - spine seq 11 telegram.cursor {"offset":459814437}, appended only after durable enqueue_turn succeeded.
+7. Independent reviewer scanned the legacy path and found zero matching deliveries for the reply. Legacy was stopped for the window, so it could not have received or injected `hi`.
+8. Stopped pij-rs pid 88010. Rust lock released. Restarted legacy bridge and verified:
+   - lock {"pid":93025,"startedAt":"2026-08-30T23:45:57.590Z"};
+   - pid 93025 alive and TypeScript bridge process;
+   - `pij state pij-telegram` = idle · active, pid 93025;
+   - post-restore `pij send pij-telegram` delivered.
+9. PM independently repeated the restore checks: zero pij-rs daemons, legacy descriptor present, live legacy lock.
+
+BACKGROUND — REAL COMPLETION AND INJECTED TURN
+1. Producer accepted real command `/Users/jordanknight/.cargo/bin/cargo --version` as live-bg-injected.
+2. Durable record: status done, exit_code 0.
+3. Real Claude pane received:
+   `Message from @pij-bg: background job live-bg-injected finished (exit 0)`
+   and observed output `cargo 1.98.0 (797e8a9bc 2026-08-05)`.
+
+BACKGROUND — FULL PROCESS-GROUP CANCELLATION
+1. Producer started shell-led tree live-bg-cancel:
+   `trap 'sleep 1; exit' TERM; while :; do sleep 30; done`
+2. Before cancel, /bin/ps observed:
+   pid 8499 pgid 8499 state R /bin/sh ...
+   pid 8504 pgid 8499 state R sleep 30
+3. Producer accepted bg-cancel job 6.
+4. Durable cancelled receipt was written only after observation converged:
+   status cancelled; observed_pids [8499,8504]; pgid 8499.
+5. A post-receipt /bin/ps scan returned no live, non-zombie rows for pgid 8499.
+
+CHORE — LIVE RUN/ACK ASYMMETRY
+1. Producer defined live-probe: `printf live-probe-v1`.
+2. First run state: baseline null; pending live-probe-v1; status changed.
+3. Second run, before ack: baseline still null; pending still live-probe-v1; status changed. Run did not advance baseline.
+4. Ack state: baseline live-probe-v1; pending null; status unchanged. Only ack advanced baseline.
+
+LIVE-FIRE RESULT
+- Telegram: full phone -> Rust bridge -> durable queue -> injected Claude turn round trip PASS; legacy falsifier PASS; production relay restored.
+- bg: real output injected; full process group observed dead before cancellation receipt PASS.
+- chore: live delta re-reported until ack and baseline advanced only by ack PASS.
