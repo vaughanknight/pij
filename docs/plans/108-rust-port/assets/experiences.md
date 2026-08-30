@@ -603,3 +603,31 @@ The lesson is not "be careful". It is that **the mutation is the test's own
 test**, and running it is not optional — a witness that has never been observed to
 fail is a claim, exactly like the receipts this project spends its time refusing.
 
+## E-032 — the observer that closed its own eyes
+
+Wave-6 dogfood, PM-run against two real Claude seats the daemon had spawned
+itself.
+
+The pane observer attaches a tmux pipe each pass. tmux 3.6a's manual, on this
+box: **"-o only opens a new pipe if no previous pipe exists, allowing a pipe to be
+toggled with a single key."** So a per-pass re-attach with that flag is a
+SELF-CLOSING SENSOR — attach, toggle-off, attach, toggle-off.
+
+The evidence was a file that stopped growing: `pane_pipe = 0` on both observed
+panes and a tap frozen at 2022 bytes since spawn, while capture showed keystrokes
+landing and the pane redrawing. The gate therefore never authorized, and a message
+to an accept-stamped seat sat queued rather than arriving over the socket that had
+just been proven live.
+
+> **A single-pass test passes with this bug present.** The unit under test was
+> THE ATTACH; the thing that breaks is THE SECOND ATTACH.
+
+That is E-030 in new clothes — a test that drives one attach by hand while the
+daemon runs a loop — and it is the second time this project has shipped a defect
+that only exists on the second iteration.
+
+What separated this from the unit's own live proof, which was real and which I
+believe: that run drove the transition inside its own harness, once. Dogfood made
+the DAEMON'S OWN OBSERVER attach and authorize over minutes on a pane it manages.
+**A live test proves the thing can work. Dogfood proves it keeps working.**
+
