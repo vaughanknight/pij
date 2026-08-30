@@ -1,0 +1,23 @@
+u-sidecars final gate receipt — 2026-08-31
+
+Command:
+  CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=/tmp/pij-w7-sidecars-final2 \
+  cargo run --locked -p pij-testkit --bin pij-gate
+
+The target directory was fresh and private to this worktree. The wave-7 shared CARGO_TARGET_DIR ruling had been withdrawn after it reused test artifacts compiled from another worktree's unpushed source and produced a false red.
+
+Observed verdict:
+  toolchain PASS  rustc 1.98.0 == pin
+  lock      PASS  Cargo.lock matches the manifests, and the tree
+  fmt       PASS  cargo fmt
+  clippy    PASS  cargo clippy
+  test      PASS  cargo test
+  arch      PASS  9 crates, 0 violations
+
+  pij-gate: all stages green
+
+Additional targeted proof:
+- cargo test --locked -p pij-sidecars: 11 passed, 0 failed across unit/integration/doc suites.
+- multi-record Failed/Lost witness: 20/20 exact runs passed.
+- reviewer cold gate at code-approved 73c413e8: 53 binaries, 356 passed, 0 failed.
+- PM composed gate at 523a4dc2: all six stages green, 356 passed.

@@ -1,0 +1,23 @@
+u-sidecars mutation receipt — 2026-08-31
+
+MUTATION 1: make chore run advance baseline
+Edit: after `entry.pending = Some(output.clone())`, insert `entry.baseline = Some(output.clone())`.
+Command:
+  cargo test -p pij-sidecars --test sidecars chore_run_never_advances_baseline_ack_does_and_failed_probe_stays_visible
+Observed RED:
+  assertion `left == right` failed: run must not advance the baseline
+    left: Some("alpha")
+    right: None
+  test result: FAILED. 0 passed; 1 failed; 3 filtered out
+Restored the source. Full sidecar suite then passed 4/4.
+
+MUTATION 2: skip observed process-group exit before cancellation receipt
+Edit: remove `self.await_group_exit(id, record.pgid).await?` between group signal and durable Cancelled state.
+Command:
+  cargo test -p pij-sidecars --test sidecars bg_cancel_observes_the_full_process_group_dead_before_cancelled_receipt
+Observed RED:
+  cancelled receipt must not exist before every live group member is gone
+  test result: FAILED. 0 passed; 1 failed; 3 filtered out
+Restored the source. Full sidecar suite then passed 4/4.
+
+The bg witness stress-runs three shell-led process trees. Each spawned shell is explicitly made its own process-group leader. Direct children are reaped with try_wait/waitpid semantics; process-table observation excludes state Z because a zombie row is residue, not liveness (review baseline P1/P1a, E-024).
