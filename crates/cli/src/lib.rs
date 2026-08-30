@@ -51,13 +51,17 @@ pub fn render<T: serde::Serialize>(envelope: &Envelope<T>, as_json: bool) -> Str
         );
     }
 
-    match envelope.data.as_ref() {
+    let rendered = match envelope.data.as_ref() {
         Some(data) => format!(
             "{}: ok — {}",
             envelope.command,
             serde_json::to_string(data).unwrap_or_else(|error| error.to_string())
         ),
         None => format!("{}: ok", envelope.command),
+    };
+    match envelope.meta.as_deref() {
+        Some(meta) => format!("{rendered} — {meta}"),
+        None => rendered,
     }
 }
 
@@ -170,7 +174,19 @@ pub fn daemon_config(bind_addr: &str, store_path: &Path, offline: bool) -> Confi
 mod tests {
     use pij_core::model::{Envelope, ErrorKind};
 
-    use super::exit_code;
+    use super::{exit_code, render};
+
+    #[test]
+    fn human_rendering_does_not_hide_a_success_warning() {
+        let mut envelope = Envelope::ok("pij inbox", ["message"]);
+        envelope.meta = Some("ack failed; message may be read again".to_string());
+
+        assert_eq!(
+            render(&envelope, false),
+            "pij inbox: ok — [\"message\"] — ack failed; message may be read again"
+        );
+        assert!(render(&envelope, true).contains("\"meta\":\"ack failed"));
+    }
 
     #[test]
     fn exit_code_contract_is_an_explicit_table() {

@@ -1,4 +1,4 @@
-use pij_core::model::{Event, Harness, SeatDescriptor, SeatId};
+use pij_core::model::{Event, Harness, JobId, SeatDescriptor, SeatId};
 use serde::{Deserialize, Serialize};
 
 /// Evidence submitted by a process asking to register as a seat.
@@ -126,6 +126,16 @@ pub struct SendRequest {
 // The route now calls `DeliveryService::accept`, which is the one path that
 // consults routing, tombstones and the transport, and publishes both events.
 // Found by u-extension at compose.
+
+/// Acknowledgement for the single inbox claim a client decoded.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InboxAckRequest {
+    /// Recipient named by the caller. Bearer auth attests only to the machine,
+    /// not to this seat; the route records that evidence grade on the spine.
+    pub seat: SeatId,
+    /// Queue claim returned by `GET /v1/inbox`.
+    pub job_id: JobId,
+}
 
 /// Typed roster payload. `unavailable` distinguishes a down peer from an empty
 /// peer while retained seats remain visible as a stale last-known view.

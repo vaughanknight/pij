@@ -419,6 +419,48 @@ async fn an_expired_claim_fails_terminally_and_rejects_the_stale_ack() {
 }
 
 #[tokio::test]
+async fn an_expired_inbox_claim_retries_instead_of_losing_the_unacked_message() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("valid queue policy");
+    let kind = "delivery:pij-reader";
+    let id = queue
+        .enqueue_delivery(job(kind, "pij-reader", "m-1"))
+        .await
+        .expect("enqueue delivery");
+    let DeliveryEnqueue::Queued(id) = id else {
+        panic!("new delivery must queue");
+    };
+    let first = queue
+        .claim(&[kind.to_string()], "first-http-client")
+        .await
+        .expect("first claim")
+        .expect("delivery row");
+    assert_eq!(first.0, id);
+
+    sqlx::query("UPDATE jobs SET claimed_at = unixepoch() - 301 WHERE id = ?1")
+        .bind(id.0 as i64)
+        .execute(&pool)
+        .await
+        .expect("age the interrupted claim");
+
+    let retried = queue
+        .claim(&[kind.to_string()], "replacement-http-client")
+        .await
+        .expect("claim after expiry")
+        .expect("unacknowledged delivery is retried");
+    assert_eq!(retried.0, id, "Queue::retry semantics preserve the job id");
+    assert_eq!(retried.1.attempt, 1, "claim expiry counts the retry");
+    assert_eq!(retried.1.dedupe_key, "m-1");
+
+    queue
+        .ack_delivery(retried.0, DeliveryOrigin::ReaderRead)
+        .await
+        .expect("replacement client acknowledges what it read");
+    assert_eq!(queue.live_len().await.expect("live count"), 0);
+}
+
+#[tokio::test]
 async fn a_zero_claim_lease_is_refused_before_work_can_be_lost() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");

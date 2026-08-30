@@ -9,9 +9,9 @@
 //! * **Dedupe** — a partial unique index over LIVE rows. N rapid submits collapse
 //!   to one row, and the id every caller gets back is that row's.
 //! * **Serialization** — at most one RUNNING job per `serial_key`.
-//! * **Terminal claim expiry** — age is policy, not a brake: a claim older than
-//!   the configured lease becomes FAILED on the next claim transaction. It is
-//!   never returned to pending, so a stale worker cannot race a second execution.
+//! * **Scoped claim expiry** — an expired `delivery:*` claim returns to pending
+//!   because an inbox client can die between read and acknowledgement. Other
+//!   kinds fail terminally so a stale worker cannot race a second execution.
 
 use async_trait::async_trait;
 use sqlx::{Pool, Row, Sqlite};
@@ -206,15 +206,29 @@ impl Queue for SqliteQueue {
         })?;
 
         let mut tx = self.begin_write().await?;
-        // Claim age is POLICY: removing this statement changes expired work from
-        // terminally failed to indefinitely running. Never put the same id back
-        // in pending; that would let the old worker and a new worker both act.
-        //
-        // SCOPED TO THE KINDS BEING CLAIMED (review F6). Unscoped, the pointer
-        // drain's 5-second tick decided the fate of federation claims: a row held
-        // by a slow forward was terminally failed by a worker that knows nothing
-        // about forwarding, underneath the worker still doing it. A sweep is a
-        // judgement about work of a KIND, made by a claimant of that kind.
+        // Claim age is POLICY, scoped both to the kinds this caller judges and to
+        // the work's execution shape. A delivery claim can outlive the HTTP
+        // client between GET and POST acknowledgement; return only that kind to
+        // pending with the same transition as Queue::retry. The residual window
+        // is a duplicate read if the first client read and died before acking —
+        // deliberately safer than losing the message behind false ReaderRead
+        // evidence. Federation, pointer, and every other kind stay terminal: they
+        // have no two-step reader and a stale worker could still be executing.
+        sqlx::query(
+            "UPDATE jobs \
+             SET state = 'pending', worker = NULL, claimed_at = NULL, \
+                 attempt = attempt + 1, not_before = unixepoch(), outcome = NULL \
+             WHERE state = 'running' \
+               AND claimed_at IS NOT NULL \
+               AND claimed_at <= unixepoch() - ?1 \
+               AND kind LIKE 'delivery:%' \
+               AND kind IN (SELECT value FROM json_each(?2))",
+        )
+        .bind(self.claim_lease_secs)
+        .bind(&kinds_json)
+        .execute(&mut *tx)
+        .await
+        .map_err(adapter_error)?;
         sqlx::query(
             "UPDATE jobs \
              SET state = 'failed', \
@@ -224,6 +238,7 @@ impl Queue for SqliteQueue {
              WHERE state = 'running' \
                AND claimed_at IS NOT NULL \
                AND claimed_at <= unixepoch() - ?1 \
+               AND kind NOT LIKE 'delivery:%' \
                AND kind IN (SELECT value FROM json_each(?2))",
         )
         .bind(self.claim_lease_secs)

@@ -538,7 +538,11 @@ pub enum DeliveryOrigin {
     /// A positive transport-level acknowledgement came back: Copilot RPC returns
     /// a message id, the Telegram bridge confirms.
     VerifiedArrival,
-    /// The recipient itself acknowledged — it ran `pij inbox`, or replied.
+    /// An inbox client received and decoded the message, then explicitly
+    /// acknowledged its job id. Over HTTP, bearer auth attests this only to the
+    /// machine (`local`, a configured peer alias, or `unknown-peer`), not to an
+    /// individual seat; the append-only inbox-ack audit event records that
+    /// evidence grade. It is never minted when the GET request is merely issued.
     ReaderRead,
 }
 

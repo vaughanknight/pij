@@ -7,9 +7,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use pij_core::delivery::{DeliveryRoute, QueueReason, delivery_kind, route};
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
-use pij_core::model::{DeliveryOrigin, DeliveryOutcome, Event, Job, Msg, Outcome, Receipt, SeatId};
+use pij_core::model::{
+    DeliveryOrigin, DeliveryOutcome, Event, Job, JobId, Msg, Outcome, Receipt, SeatId,
+};
 use pij_core::ports::{DeliveryEnqueue, Queue, Registry, Transport};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio_stream::StreamExt;
 
 use crate::events::EventBus;
@@ -22,6 +24,16 @@ const OUTCOME_EVENT_KIND: &str = "delivery.outcome";
 /// found that nothing published this at all, so a client could observe that a
 /// message had been delivered to it without ever being able to read it.
 const PUSHED_EVENT_KIND: &str = "message.pushed";
+
+/// One claimed inbox row. The client must acknowledge `job_id` only after it
+/// has received and decoded `message`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InboxClaim {
+    /// Queue identity used by the explicit acknowledgement step.
+    pub job_id: JobId,
+    /// Message body claimed for the recipient.
+    pub message: Msg,
+}
 
 type Clock = dyn Fn() -> Result<u64> + Send + Sync;
 
@@ -284,15 +296,22 @@ impl DeliveryService {
         Ok(receipt)
     }
 
-    /// Pull every message currently queued for `seat`.
+    /// Claim at most one message currently queued for `seat` without recording
+    /// delivery. The one-row bound is structural: every delivery for a seat uses
+    /// that seat as its serial key, and the queue permits one running claim per
+    /// serial key. The client acknowledges the returned job id in a separate
+    /// request only after receiving and decoding it.
     ///
     /// When `wait` is true, attaches to future delivery events before the first
     /// claim, eliminating the empty-claim/attach race without replaying history.
-    /// Claiming and acknowledging is delivery for a paneless pull consumer.
+    /// If a client receives a claim and dies before acknowledgement, claim expiry
+    /// retries the delivery and the client may read it again. That residual
+    /// duplicate read is deliberate: duplicate is safer than loss with a
+    /// `ReaderRead` claim for an observation nobody made.
     ///
     /// # Errors
     /// Queue failures or a corrupt/misdirected delivery payload.
-    pub async fn inbox(&self, seat: &SeatId, wait: bool) -> Result<Vec<Msg>> {
+    pub async fn claim_inbox(&self, seat: &SeatId, wait: bool) -> Result<Vec<InboxClaim>> {
         let kind = delivery_kind(seat);
         let kinds = [kind];
         let mut wake = wait.then(|| {
@@ -301,8 +320,7 @@ impl DeliveryService {
         });
 
         loop {
-            let mut messages = Vec::new();
-            while let Some((job_id, job)) = self.queue.claim(&kinds, seat.0.as_str()).await? {
+            if let Some((job_id, job)) = self.queue.claim(&kinds, seat.0.as_str()).await? {
                 let message: Msg = match serde_json::from_str(&job.payload) {
                     Ok(message) => message,
                     Err(error) => {
@@ -339,21 +357,28 @@ impl DeliveryService {
                         message: reason,
                     });
                 }
-                self.queue
-                    .ack_delivery(job_id, DeliveryOrigin::ReaderRead)
-                    .await?;
-                messages.push(message);
+                return Ok(vec![InboxClaim { job_id, message }]);
             }
-            if !messages.is_empty() || !wait {
-                return Ok(messages);
+            if !wait {
+                return Ok(Vec::new());
             }
             let Some(subscription) = wake.as_mut() else {
-                return Ok(messages);
+                return Ok(Vec::new());
             };
             if subscription.next().await.is_none() {
-                return Ok(messages);
+                return Ok(Vec::new());
             }
         }
+    }
+
+    /// Record `ReaderRead` for one job id the client explicitly acknowledged.
+    ///
+    /// # Errors
+    /// Queue failures or an id that is not a running delivery claim.
+    pub async fn acknowledge_inbox(&self, job_id: JobId) -> Result<()> {
+        self.queue
+            .ack_delivery(job_id, DeliveryOrigin::ReaderRead)
+            .await
     }
 
     fn next_message_id(&self) -> String {
@@ -605,7 +630,7 @@ mod tests {
         assert!(
             delivered
                 .service
-                .inbox(&SeatId::from("pij-delivered"), false)
+                .claim_inbox(&SeatId::from("pij-delivered"), false)
                 .await
                 .expect("empty inbox")
                 .is_empty()
@@ -629,11 +654,11 @@ mod tests {
         assert_eq!(prebind.queue.live_len(), 1);
         let inbox = prebind
             .service
-            .inbox(&SeatId::from("pij-prebind"), false)
+            .claim_inbox(&SeatId::from("pij-prebind"), false)
             .await
             .expect("prebind inbox");
         assert_eq!(inbox.len(), 1);
-        assert_eq!(inbox[0].body, "before bind");
+        assert_eq!(inbox[0].message.body, "before bind");
         assert_audit(&prebind, &SeatId::from("pij-prebind"), "queued").await;
 
         // An operator hold is a REGISTRY fact and still queues without consulting
@@ -655,7 +680,7 @@ mod tests {
         assert_eq!(
             queued
                 .service
-                .inbox(&SeatId::from("pij-hold"), false)
+                .claim_inbox(&SeatId::from("pij-hold"), false)
                 .await
                 .expect("queued inbox")
                 .len(),
@@ -687,7 +712,7 @@ mod tests {
         assert_eq!(busy.transport.calls().len(), 1, "the transport was ASKED");
         assert_eq!(
             busy.service
-                .inbox(&SeatId::from("pij-busy"), false)
+                .claim_inbox(&SeatId::from("pij-busy"), false)
                 .await
                 .expect("queued inbox")
                 .len(),
@@ -795,15 +820,17 @@ mod tests {
             1,
             "live collapse remains unchanged"
         );
-        assert_eq!(
-            fixture
-                .service
-                .inbox(&msg.to, false)
-                .await
-                .expect("recipient reads")
-                .len(),
-            1
-        );
+        let claimed = fixture
+            .service
+            .claim_inbox(&msg.to, false)
+            .await
+            .expect("recipient receives page");
+        assert_eq!(claimed.len(), 1);
+        fixture
+            .service
+            .acknowledge_inbox(claimed[0].job_id)
+            .await
+            .expect("recipient acknowledges decoded page");
 
         let duplicate = fixture
             .service
@@ -819,7 +846,7 @@ mod tests {
         assert!(
             fixture
                 .service
-                .inbox(&msg.to, false)
+                .claim_inbox(&msg.to, false)
                 .await
                 .expect("no second recipient delivery")
                 .is_empty()
@@ -873,24 +900,78 @@ mod tests {
 
         let a = fixture
             .service
-            .inbox(&SeatId::from("pij-a"), false)
+            .claim_inbox(&SeatId::from("pij-a"), false)
             .await
             .expect("a inbox");
         assert_eq!(
-            a.iter().map(|msg| msg.body.as_str()).collect::<Vec<_>>(),
+            a.iter()
+                .map(|claim| claim.message.body.as_str())
+                .collect::<Vec<_>>(),
             ["for a"]
         );
 
         let b = fixture
             .service
-            .inbox(&SeatId::from("pij-b"), false)
+            .claim_inbox(&SeatId::from("pij-b"), false)
             .await
             .expect("b remains claimable");
         assert_eq!(
-            b.iter().map(|msg| msg.body.as_str()).collect::<Vec<_>>(),
+            b.iter()
+                .map(|claim| claim.message.body.as_str())
+                .collect::<Vec<_>>(),
             ["for b"]
         );
         assert_eq!(delivery_kind(&SeatId::from("pij-a")), "delivery:pij-a");
+    }
+    #[tokio::test]
+    async fn inbox_serialization_allows_one_claim_until_it_is_acknowledged() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let seat = SeatId::from("pij-serial-reader");
+        register(
+            &fixture,
+            SeatDescriptor::new(seat.clone(), Harness::Omp, "/abs/tree"),
+        )
+        .await;
+        fixture
+            .service
+            .send("pij-from".into(), seat.clone(), "first")
+            .await
+            .expect("queue first");
+        fixture
+            .service
+            .send("pij-from".into(), seat.clone(), "second")
+            .await
+            .expect("queue second");
+
+        let first = fixture
+            .service
+            .claim_inbox(&seat, false)
+            .await
+            .expect("first claim");
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].message.body, "first");
+        assert!(
+            fixture
+                .service
+                .claim_inbox(&seat, false)
+                .await
+                .expect("second claim while first runs")
+                .is_empty(),
+            "the shared seat serial key structurally bounds GET to one claim"
+        );
+
+        fixture
+            .service
+            .acknowledge_inbox(first[0].job_id)
+            .await
+            .expect("ack first");
+        let second = fixture
+            .service
+            .claim_inbox(&seat, false)
+            .await
+            .expect("claim after ack");
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].message.body, "second");
     }
 
     #[tokio::test]
@@ -903,7 +984,7 @@ mod tests {
         .await;
         let service = Arc::clone(&fixture.service);
         let waiting =
-            tokio::spawn(async move { service.inbox(&SeatId::from("pij-wait"), true).await });
+            tokio::spawn(async move { service.claim_inbox(&SeatId::from("pij-wait"), true).await });
         tokio::task::yield_now().await;
         fixture
             .service
@@ -917,7 +998,7 @@ mod tests {
             .expect("inbox task")
             .expect("inbox result");
         assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].body, "wake up");
+        assert_eq!(messages[0].message.body, "wake up");
     }
 
     #[tokio::test]

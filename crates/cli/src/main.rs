@@ -1,6 +1,7 @@
 //! `pij-rs` — one binary, two composition roots.
 
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitCode};
 
@@ -10,7 +11,7 @@ use pij_cli::{
     default_state_dir, exit_code, parse_destination, render, render_frame, setup_refusal,
 };
 use pij_core::error::PijError;
-use pij_core::model::{Envelope, ErrorKind, Harness};
+use pij_core::model::{Envelope, ErrorKind, Harness, SeatId};
 use serde_json::Value;
 
 #[derive(Parser)]
@@ -147,6 +148,15 @@ enum Command {
         #[arg(long)]
         in_reply_to: Option<String>,
     },
+    /// Pull one bounded page for this seat and acknowledge it after decoding.
+    Inbox {
+        /// Recipient identity. Defaults to non-empty PIJ_SESSION_ID.
+        #[arg(long)]
+        seat: Option<String>,
+        /// Wait until at least one message is available.
+        #[arg(long)]
+        wait: bool,
+    },
     /// List registered seats.
     List,
     /// Follow daemon event and peer-state frames until interrupted.
@@ -223,6 +233,12 @@ async fn run(cli: Cli) -> ExitCode {
             return emit(&setup_refusal::<Value>("pij spawn", error), cli.json);
         }
     };
+    let prepared_inbox_seat = match prepare_inbox_seat(&cli.command) {
+        Ok(seat) => seat,
+        Err(error) => {
+            return emit(&setup_refusal::<Value>("pij inbox", error), cli.json);
+        }
+    };
 
     let command_name = cli.command.name();
     let client = match DaemonClient::new(&state_dir, &cli.addr) {
@@ -286,6 +302,17 @@ async fn run(cli: Cli) -> ExitCode {
             };
             emit(&client.send(&request).await, cli.json)
         }
+        Command::Inbox { wait, .. } => emit(
+            &client
+                .inbox(
+                    prepared_inbox_seat
+                        .as_ref()
+                        .expect("inbox identity was prepared"),
+                    wait,
+                )
+                .await,
+            cli.json,
+        ),
         Command::List => emit(&client.list().await, cli.json),
         Command::Tail { since } => {
             let since = match cursor_map(since) {
@@ -421,6 +448,47 @@ fn parse_absolute_path_buf(value: &str) -> Result<PathBuf, String> {
     }
 }
 
+fn prepare_inbox_seat(command: &Command) -> Result<Option<SeatId>, PijError> {
+    let Command::Inbox { seat, .. } = command else {
+        return Ok(None);
+    };
+    resolve_inbox_seat(seat.clone(), std::env::var_os("PIJ_SESSION_ID")).map(Some)
+}
+
+fn resolve_inbox_seat(
+    explicit: Option<String>,
+    ambient: Option<OsString>,
+) -> Result<SeatId, PijError> {
+    let selected = match explicit {
+        Some(seat) if !seat.trim().is_empty() => seat,
+        Some(_) => {
+            return Err(PijError::Adapter {
+                adapter: "inbox".to_string(),
+                message: "no seat: set PIJ_SESSION_ID or pass --seat".to_string(),
+            });
+        }
+        None => match ambient {
+            Some(seat) => seat.into_string().map_err(|_| PijError::Adapter {
+                adapter: "inbox".to_string(),
+                message: "PIJ_SESSION_ID is not valid UTF-8; pass --seat".to_string(),
+            })?,
+            None => {
+                return Err(PijError::Adapter {
+                    adapter: "inbox".to_string(),
+                    message: "no seat: set PIJ_SESSION_ID or pass --seat".to_string(),
+                });
+            }
+        },
+    };
+    if selected.trim().is_empty() {
+        return Err(PijError::Adapter {
+            adapter: "inbox".to_string(),
+            message: "no seat: set PIJ_SESSION_ID or pass --seat".to_string(),
+        });
+    }
+    Ok(selected.into())
+}
+
 fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijError> {
     let Command::Spawn {
         id,
@@ -528,6 +596,7 @@ impl Command {
             Command::Register { .. } => "pij register",
             Command::Send { .. } => "pij send",
             Command::Spawn { .. } => "pij spawn",
+            Command::Inbox { .. } => "pij inbox",
             Command::List => "pij list",
             Command::Tail { .. } => "pij tail",
         }
@@ -536,12 +605,15 @@ impl Command {
 
 #[cfg(test)]
 mod tests {
-    use clap::{CommandFactory, Parser};
+    use std::ffi::OsString;
 
-    use super::{Cli, Command, DaemonAction, git_dir_is_linked};
+    use clap::{CommandFactory, Parser};
+    use pij_core::model::SeatId;
+
+    use super::{Cli, Command, DaemonAction, git_dir_is_linked, resolve_inbox_seat};
 
     #[test]
-    fn clap_exposes_exactly_the_seven_ruled_verbs() {
+    fn clap_exposes_every_ruled_verb() {
         let names: Vec<_> = Cli::command()
             .get_subcommands()
             .map(|command| command.get_name().to_string())
@@ -550,8 +622,53 @@ mod tests {
         assert_eq!(
             names,
             [
-                "daemon", "ping", "register", "spawn", "send", "list", "tail"
+                "daemon", "ping", "register", "spawn", "send", "inbox", "list", "tail"
             ]
+        );
+    }
+
+    #[test]
+    fn rendered_pointer_advertises_a_verb_the_real_cli_exposes() {
+        let line = pij_daemon::pointer::render_pointer(&SeatId::from("pij-sender"), None);
+        let action = line
+            .split_once("run: ")
+            .map(|(_, action)| action)
+            .expect("pointer must carry a runnable action");
+        let mut words = action.split_whitespace();
+        assert_eq!(
+            words.next(),
+            Some("pij"),
+            "pointer must name the shipped command"
+        );
+        let verb = words.next().expect("pointer action must name a verb");
+        assert!(
+            Cli::command()
+                .get_subcommands()
+                .any(|command| command.get_name() == verb),
+            "pointer advertises `{verb}`, but Clap does not expose it"
+        );
+    }
+
+    #[test]
+    fn inbox_identity_prefers_explicit_then_ambient_and_never_guesses() {
+        assert_eq!(
+            resolve_inbox_seat(
+                Some("pij-explicit".to_string()),
+                Some(OsString::from("pij-ambient"))
+            )
+            .expect("explicit identity"),
+            SeatId::from("pij-explicit")
+        );
+        assert_eq!(
+            resolve_inbox_seat(None, Some(OsString::from("pij-ambient")))
+                .expect("ambient identity"),
+            SeatId::from("pij-ambient")
+        );
+        assert_eq!(
+            resolve_inbox_seat(None, None)
+                .expect_err("missing identity must refuse")
+                .to_string(),
+            "inbox: no seat: set PIJ_SESSION_ID or pass --seat"
         );
     }
 
