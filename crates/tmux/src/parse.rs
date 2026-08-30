@@ -2,7 +2,8 @@ use pij_core::error::{PijError, Result};
 use pij_core::model::Pane;
 
 pub(crate) const FIELD_SEPARATOR: char = '|';
-pub(crate) const LIST_FORMAT: &str = "#{pane_id}|#{session_name}|#{window_name}|#{pane_title}";
+pub(crate) const LIST_FORMAT: &str =
+    "#{pane_id}|#{session_name}|#{window_name}|#{cursor_x}|#{cursor_y}|#{pane_title}";
 
 pub(crate) fn parse_panes(output: &str) -> Result<Vec<Pane>> {
     output
@@ -25,13 +26,14 @@ pub(crate) fn parse_one_pane(output: &str, operation: &str) -> Result<Pane> {
 }
 
 fn parse_pane(line: &str, line_number: usize) -> Result<Pane> {
-    // The title is deliberately last and splitn stops after the three structural
-    // separators. Pane titles are user-controlled and may contain our separator.
+    // Historical fixtures carry the original four-field wire shape. Production
+    // now puts cursor X/Y before the title; the title remains last because it is
+    // user-controlled and may contain our separator.
     let mut fields = line.splitn(4, FIELD_SEPARATOR);
     let id = required(&mut fields, "pane id", line_number)?;
     let session = required(&mut fields, "session", line_number)?;
     let window = required(&mut fields, "window", line_number)?;
-    let Some(title) = fields.next() else {
+    let Some(remainder) = fields.next() else {
         return Err(adapter_error(format!(
             "list-panes row {line_number} has no title field — update pij-tmux for this tmux wire shape"
         )));
@@ -43,11 +45,21 @@ fn parse_pane(line: &str, line_number: usize) -> Result<Pane> {
         )));
     }
 
+    let mut cursor_and_title = remainder.splitn(3, FIELD_SEPARATOR);
+    let first = cursor_and_title.next().unwrap_or_default();
+    let second = cursor_and_title.next();
+    let third = cursor_and_title.next();
+    let (cursor, title) = match (second, third) {
+        (Some(y), Some(title)) => (first.parse::<u32>().ok().zip(y.parse::<u32>().ok()), title),
+        _ => (None, remainder),
+    };
     Ok(Pane {
         id: id.to_string(),
         session: session.to_string(),
         window: window.to_string(),
         title: title.to_string(),
+        cursor_x: cursor.map(|(x, _)| x),
+        cursor_y: cursor.map(|(_, y)| y),
     })
 }
 
@@ -88,6 +100,7 @@ mod tests {
         assert_eq!(panes[0].session, "pij-w1-fixture-c84a1");
         assert_eq!(panes[0].window, "normal");
         assert_eq!(panes[0].title, "");
+        assert_eq!((panes[0].cursor_x, panes[0].cursor_y), (None, None));
     }
 
     #[test]
@@ -96,5 +109,11 @@ mod tests {
         assert_eq!(panes.len(), 1);
         assert_eq!(panes[0].id, "%320");
         assert_eq!(panes[0].title, "human · title | nested");
+    }
+
+    #[test]
+    fn malformed_cursor_is_unknown_as_a_pair() {
+        let panes = parse_panes("%1|s|w|7|not-a-row|title").expect("structural pane row");
+        assert_eq!((panes[0].cursor_x, panes[0].cursor_y), (None, None));
     }
 }

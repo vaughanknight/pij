@@ -691,6 +691,12 @@ pub struct Pane {
     pub window: String,
     /// Pane title.
     pub title: String,
+    /// Zero-based cursor column, when tmux supplied one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor_x: Option<u32>,
+    /// Zero-based cursor row, when tmux supplied one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor_y: Option<u32>,
 }
 
 /// Whether a harness session is ready to receive a turn.

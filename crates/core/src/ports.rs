@@ -22,6 +22,7 @@
 //! async, including the ones whose implementations happen to be synchronous
 //! today, so a later adapter can become async without changing the seam.
 
+use std::path::Path;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -171,6 +172,18 @@ pub trait TmuxPort: Send + Sync {
 
     /// The last `lines` of a pane's visible output.
     async fn capture(&self, pane: &str, lines: u32) -> Result<String>;
+    /// Attach an output tap for `pane`, writing raw terminal bytes to `sink`.
+    /// The caller owns the sink path and its lifecycle.
+    async fn attach_pane_tap(&self, pane: &str, sink: &Path) -> Result<()>;
+
+    /// Drain exactly the raw bytes not returned by an earlier successful drain.
+    /// An empty vector means an attached tap emitted nothing; an absent tap is an
+    /// error so absence never masquerades as an empty observation.
+    async fn drain_pane_tap(&self, pane: &str) -> Result<Vec<u8>>;
+
+    /// Detach the output tap and release its sink. A pane already gone is the
+    /// successful terminal outcome rather than an error.
+    async fn detach_pane_tap(&self, pane: &str) -> Result<()>;
 
     /// Kill a pane.
     async fn kill(&self, pane: &str) -> Result<()>;

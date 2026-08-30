@@ -1,6 +1,7 @@
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pij_core::model::Pane;
 use pij_core::ports::TmuxPort;
@@ -17,6 +18,7 @@ struct Fixture {
     sent_keys: String,
     sent_keys_capture: String,
     new_window_name: String,
+    tap_sink: PathBuf,
 }
 
 impl TmuxContractFixture for Fixture {
@@ -39,6 +41,10 @@ impl TmuxContractFixture for Fixture {
     fn new_window_name(&self) -> &str {
         &self.new_window_name
     }
+
+    fn tap_sink(&self) -> &Path {
+        &self.tap_sink
+    }
 }
 
 #[test]
@@ -48,7 +54,10 @@ fn fake_tmux_honours_the_shared_contract() {
         session: "contract-fake".to_string(),
         window: "origin".to_string(),
         title: String::new(),
+        cursor_x: Some(0),
+        cursor_y: Some(0),
     };
+    let tap_sink = std::env::temp_dir().join("pij-rs-fake-contract-tap.raw");
     let tmux = FakeTmux::new()
         .with_pane(pane.clone())
         .script_capture("")
@@ -59,20 +68,26 @@ fn fake_tmux_honours_the_shared_contract() {
         sent_keys: "literal | payload".to_string(),
         sent_keys_capture: "literal | payload".to_string(),
         new_window_name: "contract-created".to_string(),
+        tap_sink: tap_sink.clone(),
     };
 
     block_on(tmux_contract(&tmux, &fixture));
     assert_eq!(
         tmux.calls(),
-        [
-            "list_panes",
-            "capture:%41:100",
-            "user_typing:%41",
-            "send_keys:%41:literal | payload",
-            "capture:%41:100",
-            "new_window:contract-fake:contract-created",
-            "kill:%101",
-            "list_panes",
+        vec![
+            "list_panes".to_string(),
+            "capture:%41:100".to_string(),
+            "user_typing:%41".to_string(),
+            "drain_pane_tap:%41".to_string(),
+            format!("attach_pane_tap:%41:{}", tap_sink.display()),
+            "drain_pane_tap:%41".to_string(),
+            "detach_pane_tap:%41".to_string(),
+            "drain_pane_tap:%41".to_string(),
+            "send_keys:%41:literal | payload".to_string(),
+            "capture:%41:100".to_string(),
+            "new_window:contract-fake:contract-created".to_string(),
+            "kill:%101".to_string(),
+            "list_panes".to_string(),
         ]
     );
 }
@@ -103,6 +118,7 @@ fn real_tmux_honours_the_shared_contract_inside_its_own_session() {
         sent_keys: "literal | payload".to_string(),
         sent_keys_capture: "literal | payload".to_string(),
         new_window_name: "contract-created".to_string(),
+        tap_sink: std::env::temp_dir().join(format!("{}-tap.raw", session.name)),
     };
 
     block_on(tmux_contract(&tmux, &fixture));
@@ -134,6 +150,50 @@ fn capture_proves_zero_and_more_than_the_pane_contains() {
 }
 
 #[test]
+fn pane_tap_drains_each_raw_byte_once_and_detaches_cleanly() {
+    let Some(session) = TestSession::start_or_skip("tap") else {
+        return;
+    };
+    let tmux = TmuxAdapter::for_session(&session.name);
+    let pane = block_on(tmux.list_panes())
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    let sink = std::env::temp_dir().join(format!("{}-tap.raw", session.name));
+
+    assert!(
+        block_on(tmux.drain_pane_tap(&pane.id)).is_err(),
+        "unattached is absent, not empty"
+    );
+    block_on(tmux.attach_pane_tap(&pane.id, &sink)).expect("attach tap");
+    block_on(tmux.send_keys(&pane.id, "tap-one")).expect("emit first bytes");
+    std::thread::sleep(Duration::from_millis(100));
+    let first = block_on(tmux.drain_pane_tap(&pane.id)).expect("first drain");
+    assert!(
+        String::from_utf8_lossy(&first).contains("tap-one"),
+        "{first:?}"
+    );
+    assert_eq!(
+        block_on(tmux.drain_pane_tap(&pane.id)).expect("quiet drain"),
+        Vec::<u8>::new(),
+        "bytes are returned once"
+    );
+
+    block_on(tmux.send_keys(&pane.id, "tap-two")).expect("emit second bytes");
+    std::thread::sleep(Duration::from_millis(100));
+    let second = block_on(tmux.drain_pane_tap(&pane.id)).expect("second drain");
+    assert!(
+        String::from_utf8_lossy(&second).contains("tap-two"),
+        "{second:?}"
+    );
+
+    block_on(tmux.detach_pane_tap(&pane.id)).expect("detach tap");
+    assert!(!sink.exists(), "detach owns sink cleanup");
+    assert!(block_on(tmux.drain_pane_tap(&pane.id)).is_err());
+}
+
+#[test]
 fn pane_in_mode_is_the_only_typing_fact_this_adapter_claims() {
     let Some(session) = TestSession::start_or_skip("typing") else {
         return;
@@ -144,6 +204,10 @@ fn pane_in_mode_is_the_only_typing_fact_this_adapter_claims() {
         .into_iter()
         .next()
         .expect("isolated session pane");
+    assert!(
+        pane.cursor_x.is_some() && pane.cursor_y.is_some(),
+        "real tmux must report the cursor as a measured pair: {pane:?}"
+    );
 
     assert!(!block_on(tmux.user_typing(&pane.id)).expect("plain pane mode"));
     session.run(["copy-mode", "-t", &pane.id]);

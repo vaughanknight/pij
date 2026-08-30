@@ -13,6 +13,7 @@ use pij_core::model::{
     Event, Harness, Job, JobId, Outcome, Pane, SeatDescriptor, SeatId, Seq, SystemState,
 };
 use pij_core::ports::{Queue, Registry, SeatFilter, Spine, TmuxPort};
+use std::path::Path;
 
 /// Every promise the [`Registry`] port makes, in one place.
 ///
@@ -319,6 +320,9 @@ pub trait TmuxContractFixture {
 
     /// Name for the disposable window the suite creates and kills.
     fn new_window_name(&self) -> &str;
+
+    /// Caller-owned sink used for the pane-tap lifecycle.
+    fn tap_sink(&self) -> &Path;
 }
 
 /// Every portable promise of [`TmuxPort`], over an implementation-owned fixture.
@@ -350,6 +354,28 @@ pub async fn tmux_contract(tmux: &dyn TmuxPort, fixture: &dyn TmuxContractFixtur
             .await
             .expect("user_typing must not fail"),
         "the fixture starts outside a tmux interaction mode"
+    );
+
+    assert!(
+        tmux.drain_pane_tap(&pane.id).await.is_err(),
+        "an unattached tap is absent, not an empty observation"
+    );
+    tmux.attach_pane_tap(&pane.id, fixture.tap_sink())
+        .await
+        .expect("attach_pane_tap must not fail");
+    assert!(
+        tmux.drain_pane_tap(&pane.id)
+            .await
+            .expect("an attached quiet tap must drain")
+            .is_empty(),
+        "a fresh quiet tap has no unread bytes"
+    );
+    tmux.detach_pane_tap(&pane.id)
+        .await
+        .expect("detach_pane_tap must not fail");
+    assert!(
+        tmux.drain_pane_tap(&pane.id).await.is_err(),
+        "a detached tap returns to absent"
     );
 
     tmux.send_keys(&pane.id, fixture.sent_keys())

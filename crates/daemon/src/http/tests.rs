@@ -369,6 +369,8 @@ async fn spawn_stamps_only_the_argv_that_reached_the_observed_launch() {
         session: "fleet".to_string(),
         window: "orchestrator".to_string(),
         title: String::new(),
+        cursor_x: None,
+        cursor_y: None,
     }));
     let mut services = test_services(
         registry.clone(),

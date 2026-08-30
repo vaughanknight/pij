@@ -17,6 +17,8 @@ fn as_pane(candidate: &Candidate) -> Pane {
         session: "pij".to_string(),
         window: "w".to_string(),
         title: candidate.id.clone(),
+        cursor_x: None,
+        cursor_y: None,
     }
 }
 

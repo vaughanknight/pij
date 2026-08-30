@@ -17,6 +17,7 @@
 //! workspace-wide by the arch gate (tenet 5).
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -478,6 +479,8 @@ struct TmuxState {
     panes: Vec<Pane>,
     captures: VecDeque<String>,
     typing: bool,
+    taps: BTreeMap<String, PathBuf>,
+    tap_drains: VecDeque<std::result::Result<Vec<u8>, String>>,
     recorder: Recorder,
 }
 
@@ -501,6 +504,26 @@ impl FakeTmux {
             .expect("fake tmux mutex")
             .captures
             .push_back(text.into());
+        self
+    }
+
+    /// Queue bytes returned by the next attached tap drain.
+    pub fn script_tap(self, bytes: impl Into<Vec<u8>>) -> Self {
+        self.state
+            .lock()
+            .expect("fake tmux mutex")
+            .tap_drains
+            .push_back(Ok(bytes.into()));
+        self
+    }
+
+    /// Queue one dependency failure from the next attached tap drain.
+    pub fn script_tap_error(self, message: impl Into<String>) -> Self {
+        self.state
+            .lock()
+            .expect("fake tmux mutex")
+            .tap_drains
+            .push_back(Err(message.into()));
         self
     }
 
@@ -552,6 +575,53 @@ impl TmuxPort for FakeTmux {
         Ok(state.captures.pop_front().unwrap_or_default())
     }
 
+    async fn attach_pane_tap(&self, pane: &str, sink: &Path) -> Result<()> {
+        let mut state = self.state.lock().expect("fake tmux mutex");
+        state
+            .recorder
+            .record(format!("attach_pane_tap:{pane}:{}", sink.display()));
+        if let Some(existing) = state.taps.get(pane) {
+            if existing == sink {
+                return Ok(());
+            }
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message: format!("pane {pane:?} already has a different tap sink"),
+            });
+        }
+        state.taps.insert(pane.to_string(), sink.to_path_buf());
+        Ok(())
+    }
+
+    async fn drain_pane_tap(&self, pane: &str) -> Result<Vec<u8>> {
+        let mut state = self.state.lock().expect("fake tmux mutex");
+        state.recorder.record(format!("drain_pane_tap:{pane}"));
+        if !state.taps.contains_key(pane) {
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message: format!("pane {pane:?} has no attached tap"),
+            });
+        }
+        match state.tap_drains.pop_front() {
+            Some(Ok(bytes)) => Ok(bytes),
+            Some(Err(message)) => Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message,
+            }),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    async fn detach_pane_tap(&self, pane: &str) -> Result<()> {
+        let mut state = self.state.lock().expect("fake tmux mutex");
+        state.recorder.record(format!("detach_pane_tap:{pane}"));
+        state.taps.remove(pane).ok_or_else(|| PijError::Adapter {
+            adapter: "fake-tmux".to_string(),
+            message: format!("pane {pane:?} has no attached tap"),
+        })?;
+        Ok(())
+    }
+
     async fn kill(&self, pane: &str) -> Result<()> {
         let mut state = self.state.lock().expect("fake tmux mutex");
         state.recorder.record(format!("kill:{pane}"));
@@ -582,6 +652,8 @@ impl TmuxPort for FakeTmux {
             session: session.to_string(),
             window: name.to_string(),
             title: cwd.to_string(),
+            cursor_x: Some(0),
+            cursor_y: Some(0),
         };
         state.panes.push(pane.clone());
         Ok(pane)

@@ -83,6 +83,12 @@ pub struct Config {
     pub claim_lease_secs: u64,
     /// How often the drain worker runs a pass over queued work.
     pub delivery_interval_secs: u64,
+    /// How often the daemon drains pane taps and refreshes composer evidence.
+    ///
+    /// This is independent of delivery: observation answers whether delivery is
+    /// polite, while `delivery_interval_secs` decides when queued work is tried.
+    /// The default preserves the TypeScript daemon's measured 600 ms cadence.
+    pub pane_observer_interval_ms: u64,
     /// How long before the same seat may be told AGAIN that a message is waiting.
     ///
     /// A cadence, not a retry: the body is released immediately on every pass
@@ -119,6 +125,7 @@ impl Default for Config {
             watchdog_interval_secs: 20 * 60,
             claim_lease_secs: 5 * 60,
             delivery_interval_secs: 5,
+            pane_observer_interval_ms: 600,
             pointer_announce_cadence_secs: 90,
             event_buffer_capacity: 1_024,
             machine_alias: None,
