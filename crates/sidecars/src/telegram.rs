@@ -20,6 +20,7 @@ const WORKER_ID: &str = "sidecar-telegram";
 const BINDING_KIND: &str = "telegram.binding";
 const CURSOR_KIND: &str = "telegram.cursor";
 const DELIVERY_FAILED_KIND: &str = "telegram.inbound-delivery-failed";
+const INBOUND_ENQUEUED_KIND: &str = "telegram.inbound-enqueued";
 const CURSOR_SEAT: &str = "pij-telegram-cursor";
 const REFUSAL_KIND: &str = "telegram.inbound-refused";
 
@@ -413,14 +414,32 @@ impl TelegramWorker {
             return Ok(());
         };
         let binding: Binding = serde_json::from_str(&binding.payload).map_err(codec_error)?;
+        let msg_id = format!("telegram-{}", update.update_id);
         enqueue_turn(
             &self.queue,
             "pij-telegram",
             &binding.target,
             text.clone(),
-            format!("telegram-{}", update.update_id),
+            msg_id.clone(),
         )
-        .await
+        .await?;
+        self.spine
+            .append(Event {
+                seq: None,
+                v: 1,
+                at: now_ms()?,
+                kind: INBOUND_ENQUEUED_KIND.to_string(),
+                seat: Some(binding.target),
+                payload: serde_json::json!({
+                    "update_id": update.update_id,
+                    "conversation": chat,
+                    "msg_id": msg_id,
+                    "body": text,
+                })
+                .to_string(),
+            })
+            .await?;
+        Ok(())
     }
 
     async fn persisted_offset(&self) -> Result<i64> {

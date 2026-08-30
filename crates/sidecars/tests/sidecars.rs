@@ -463,6 +463,14 @@ async fn telegram_reply_uses_only_the_persisted_outbound_binding_and_refuses_whe
         events.iter().any(|event| event.kind == "telegram.binding"),
         "outbound must persist binding before inbound can route"
     );
+    assert!(
+        events.iter().any(|event| {
+            event.kind == "telegram.inbound-enqueued"
+                && event.seat.as_ref() == Some(&SeatId::from("pij-target"))
+                && event.payload.contains("Jordan reply")
+        }),
+        "successful inbound turn must be a new, attributable spine fact"
+    );
     drop(worker);
 
     let unbound = FreshStore::new();
@@ -679,6 +687,15 @@ async fn failed_inbound_delivery_keeps_the_update_unconfirmed_and_cursor_survive
             .any(|event| event.kind == "telegram.inbound-delivery-failed")
     );
     worker.run_once(4).await.expect("retry same update");
+    assert!(
+        spine
+            .tail(None, Seq(0))
+            .await
+            .expect("events")
+            .iter()
+            .any(|event| event.kind == "telegram.inbound-enqueued"),
+        "the successful retry must persist the inbound turn before cursor advance"
+    );
     drop(worker);
 
     let queue_port: Arc<dyn Queue> = queue.clone();
