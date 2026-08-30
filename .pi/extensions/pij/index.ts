@@ -282,7 +282,7 @@ export default function (pi: ExtensionAPI): void {
 		const gitCommonDir = repositories.gitCommonDir(folder);
 		let generation: DaemonGeneration;
 		try {
-			generation = await detectDaemonGeneration(pijHome);
+			generation = await detectDaemonGeneration();
 		} catch (error) {
 			ctx.ui.setStatus(PIJ_STATUS_KEY, "daemon error");
 			ctx.ui.notify(`pij: ${error instanceof Error ? error.message : String(error)}`, "error");

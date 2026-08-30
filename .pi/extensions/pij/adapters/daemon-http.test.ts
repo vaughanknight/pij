@@ -1,11 +1,17 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PijNoDaemonError } from "../core/daemon-wire.js";
-import { type DaemonHttpDeps, detectDaemonGeneration, PijDaemonClient } from "./daemon-http.js";
+import {
+	type DaemonHttpDeps,
+	daemonGenerationPreference,
+	daemonLocation,
+	detectDaemonGeneration,
+	PijDaemonClient,
+} from "./daemon-http.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WIRE = resolve(HERE, "../../../../crates/testkit/fixtures/wire");
@@ -19,7 +25,7 @@ function root(): string {
 }
 
 function deps(fetchImpl: typeof fetch): DaemonHttpDeps {
-	return { fetch: fetchImpl, readFile, readdir, processStart: () => 20260829103052 };
+	return { fetch: fetchImpl, readFile, processStart: () => 20260829103052 };
 }
 
 function refused(): Error {
@@ -31,14 +37,40 @@ afterEach(() => {
 	for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true });
 });
 
-describe("daemon generation detection", () => {
-	it("prefers an authenticated live Rust daemon over legacy residue", async () => {
+describe("daemon generation controls", () => {
+	it("defaults to rs and accepts only the two explicit generation values", () => {
+		expect(daemonGenerationPreference({})).toBe("rs");
+		expect(daemonGenerationPreference({ PIJ_DAEMON_GENERATION: "rs" })).toBe("rs");
+		expect(daemonGenerationPreference({ PIJ_DAEMON_GENERATION: "legacy" })).toBe("legacy");
+		for (const value of ["", " rust", "ts"]) {
+			expect(() => daemonGenerationPreference({ PIJ_DAEMON_GENERATION: value })).toThrow(
+				`PIJ_DAEMON_GENERATION has malformed value ${JSON.stringify(value)}`,
+			);
+		}
+	});
+
+	it("resolves strict extension address and state controls", () => {
+		expect(daemonLocation({}, "/home/test")).toEqual({
+			addr: "127.0.0.1:7461",
+			stateDir: "/home/test/.pij-rs",
+		});
+		expect(
+			daemonLocation({ PIJ_RS_ADDR: "localhost:8123", PIJ_RS_STATE_DIR: "/tmp/pij-rs" }),
+		).toEqual({ addr: "localhost:8123", stateDir: "/tmp/pij-rs" });
+		for (const value of ["", "localhost", "localhost:0", "localhost:65536"]) {
+			expect(() => daemonLocation({ PIJ_RS_ADDR: value })).toThrow(
+				`PIJ_RS_ADDR has malformed value ${JSON.stringify(value)}`,
+			);
+		}
+		expect(() => daemonLocation({ PIJ_RS_STATE_DIR: "" })).toThrow(
+			'PIJ_RS_STATE_DIR has malformed value ""',
+		);
+	});
+
+	it("uses the authenticated Rust daemon when rs is selected", async () => {
 		const base = root();
-		const pijHome = join(base, "legacy");
 		const stateDir = join(base, "rust");
-		mkdirSync(pijHome);
 		mkdirSync(stateDir);
-		writeFileSync(join(pijHome, "pij-old-seat.json"), "{}");
 		writeFileSync(join(stateDir, "daemon.key"), "secret\n");
 		const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
 			expect(init?.headers).toEqual({ Authorization: "Bearer secret" });
@@ -46,44 +78,40 @@ describe("daemon generation detection", () => {
 		});
 
 		const generation = await detectDaemonGeneration(
-			pijHome,
 			{ addr: "127.0.0.1:7461", stateDir },
+			"rs",
 			deps(fetchMock as typeof fetch),
 		);
 
 		expect(generation.kind).toBe("rust");
 	});
 
-	it("selects legacy only after refusal plus positive file evidence", async () => {
-		const base = root();
-		const pijHome = join(base, "legacy");
-		mkdirSync(pijHome);
-		writeFileSync(join(pijHome, "pij-old-seat.json"), "{}");
+	it("selects legacy explicitly without probing Rust", async () => {
 		const fetchMock = vi.fn(async () => {
-			throw refused();
+			throw new Error("must not probe");
 		});
-
 		await expect(
 			detectDaemonGeneration(
-				pijHome,
-				{ addr: "127.0.0.1:7461", stateDir: join(base, "missing") },
+				{ addr: "127.0.0.1:7461", stateDir: "/unused" },
+				"legacy",
 				deps(fetchMock as typeof fetch),
 			),
 		).resolves.toMatchObject({ kind: "legacy" });
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
-	it("reports structured no-daemon only after refusal without legacy evidence", async () => {
+	it("fails loudly instead of falling back when selected Rust is unavailable", async () => {
 		const base = root();
 		const fetchMock = vi.fn(async () => {
 			throw refused();
 		});
 		try {
 			await detectDaemonGeneration(
-				join(base, "missing-legacy"),
 				{ addr: "127.0.0.1:7999", stateDir: join(base, "missing-rust") },
+				"rs",
 				deps(fetchMock as typeof fetch),
 			);
-			throw new Error("missing daemon was accepted");
+			throw new Error("missing selected Rust daemon was accepted");
 		} catch (error) {
 			expect(error).toBeInstanceOf(PijNoDaemonError);
 			expect(error).toMatchObject({
@@ -91,6 +119,7 @@ describe("daemon generation detection", () => {
 				addr: "127.0.0.1:7999",
 				stateDir: join(base, "missing-rust"),
 			});
+			expect(String(error)).toContain("Start pij-rs");
 		}
 	});
 });

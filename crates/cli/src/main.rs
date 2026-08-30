@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitCode};
 
@@ -25,9 +26,10 @@ struct Cli {
     #[arg(long, global = true)]
     state_dir: Option<PathBuf>,
 
-    /// Address of the daemon used by client verbs.
-    #[arg(long, global = true, default_value = "127.0.0.1:7461")]
-    addr: String,
+    /// Address of the daemon used by client verbs. Resolution is `--addr`, then
+    /// `PIJ_RS_ADDR`, then `127.0.0.1:7461`.
+    #[arg(long, global = true)]
+    addr: Option<String>,
 
     #[command(subcommand)]
     command: Command,
@@ -46,10 +48,10 @@ enum Command {
         /// Lifecycle action; absent runs the daemon in the foreground.
         #[command(subcommand)]
         action: Option<DaemonAction>,
-        /// Address to listen on. A non-loopback address exposes the daemon to
-        /// the LAN; the bearer key is then its access boundary.
-        #[arg(long, default_value = "127.0.0.1:7461")]
-        bind: String,
+        /// Address to listen on. Resolution is `--bind`, then `PIJ_RS_BIND`,
+        /// then `127.0.0.1:7461`. Non-loopback exposes the bearer-key boundary.
+        #[arg(long)]
+        bind: Option<String>,
         /// Boot with every adapter FAKE: no store, no process table, nothing
         /// outside this process. Opt-in, because a daemon that silently persists
         /// nothing is the more dangerous default.
@@ -179,7 +181,11 @@ async fn main() -> ExitCode {
 }
 
 async fn run(cli: Cli) -> ExitCode {
-    let state_dir = cli.state_dir.clone().unwrap_or_else(default_state_dir);
+    let state_dir =
+        match resolve_state_dir(cli.state_dir.clone(), std::env::var_os("PIJ_RS_STATE_DIR")) {
+            Ok(path) => path,
+            Err(message) => return emit_config_error(&cli, message),
+        };
 
     if let Command::Daemon {
         action: None,
@@ -187,7 +193,11 @@ async fn run(cli: Cli) -> ExitCode {
         offline,
     } = &cli.command
     {
-        return run_daemon(bind, state_dir, *offline).await;
+        let bind = match resolve_bind_addr(bind.as_deref(), std::env::var_os("PIJ_RS_BIND")) {
+            Ok(bind) => bind,
+            Err(message) => return emit_config_error(&cli, message),
+        };
+        return run_daemon(&bind, state_dir, *offline).await;
     }
     if let Command::Daemon {
         action: Some(DaemonAction::Bounce),
@@ -241,7 +251,11 @@ async fn run(cli: Cli) -> ExitCode {
     };
 
     let command_name = cli.command.name();
-    let client = match DaemonClient::new(&state_dir, &cli.addr) {
+    let addr = match resolve_client_addr(cli.addr.as_deref(), std::env::var_os("PIJ_RS_ADDR")) {
+        Ok(addr) => addr,
+        Err(message) => return emit_config_error(&cli, message),
+    };
+    let client = match DaemonClient::new(&state_dir, &addr) {
         Ok(client) => client,
         Err(error) => return emit(&setup_refusal::<Value>(command_name, error), cli.json),
     };
@@ -356,6 +370,119 @@ async fn run(cli: Cli) -> ExitCode {
             }
         }
     }
+}
+
+const DEFAULT_DAEMON_ADDR: &str = "127.0.0.1:7461";
+
+/// Resolve runtime controls exactly once at the binary edge. Explicit CLI flags
+/// win over their environment variables; environment wins over the default.
+fn resolve_state_dir(flag: Option<PathBuf>, env: Option<OsString>) -> Result<PathBuf, String> {
+    let (path, source) = match flag {
+        Some(path) => (path, "--state-dir"),
+        None => match env {
+            Some(value) => (PathBuf::from(value), "PIJ_RS_STATE_DIR"),
+            None => return Ok(default_state_dir()),
+        },
+    };
+    if path.as_os_str().is_empty() {
+        return Err(format!(
+            "{source} has malformed value \"\": value must not be empty"
+        ));
+    }
+    Ok(path)
+}
+
+fn resolve_client_addr(flag: Option<&str>, env: Option<OsString>) -> Result<String, String> {
+    let (value, source) = configured_string(flag, env, "--addr", "PIJ_RS_ADDR")?;
+    validate_host_port(&value, source)?;
+    Ok(value)
+}
+
+fn resolve_bind_addr(flag: Option<&str>, env: Option<OsString>) -> Result<String, String> {
+    let (value, source) = configured_string(flag, env, "--bind", "PIJ_RS_BIND")?;
+    let address = value.parse::<SocketAddr>().map_err(|_| {
+        format!("{source} has malformed value {value:?}: expected IP:port with port 1..65535")
+    })?;
+    if address.port() == 0 {
+        return Err(format!(
+            "{source} has malformed value {value:?}: expected IP:port with port 1..65535"
+        ));
+    }
+    Ok(value)
+}
+
+fn configured_string(
+    flag: Option<&str>,
+    env: Option<OsString>,
+    flag_name: &'static str,
+    env_name: &'static str,
+) -> Result<(String, &'static str), String> {
+    if let Some(value) = flag {
+        if value.trim().is_empty() {
+            return Err(format!(
+                "{flag_name} has malformed value {value:?}: value must not be empty"
+            ));
+        }
+        return Ok((value.to_string(), flag_name));
+    }
+    let Some(value) = env else {
+        return Ok((DEFAULT_DAEMON_ADDR.to_string(), "default daemon address"));
+    };
+    let rendered = value.to_string_lossy();
+    if rendered.trim().is_empty() {
+        return Err(format!(
+            "{env_name} has malformed value {rendered:?}: value must not be empty"
+        ));
+    }
+    let value = value.into_string().map_err(|value| {
+        format!(
+            "{env_name} has malformed value {:?}: value must be valid UTF-8",
+            value.to_string_lossy()
+        )
+    })?;
+    Ok((value, env_name))
+}
+
+fn validate_host_port(value: &str, source: &str) -> Result<(), String> {
+    let (host, port) = if let Some(rest) = value.strip_prefix('[') {
+        let Some((host, port)) = rest.split_once("]:") else {
+            return Err(malformed_addr(source, value, "host:port"));
+        };
+        if host.parse::<std::net::Ipv6Addr>().is_err() {
+            return Err(malformed_addr(source, value, "host:port"));
+        }
+        (host, port)
+    } else {
+        let Some((host, port)) = value.rsplit_once(':') else {
+            return Err(malformed_addr(source, value, "host:port"));
+        };
+        if host.contains(':') || host.chars().any(char::is_whitespace) {
+            return Err(malformed_addr(source, value, "host:port"));
+        }
+        (host, port)
+    };
+    let valid_port = port.parse::<u16>().is_ok_and(|port| port != 0);
+    if host.is_empty() || !valid_port {
+        return Err(malformed_addr(source, value, "host:port"));
+    }
+    Ok(())
+}
+
+fn malformed_addr(source: &str, value: &str, expected: &str) -> String {
+    format!("{source} has malformed value {value:?}: expected {expected} with port 1..65535")
+}
+
+fn emit_config_error(cli: &Cli, message: String) -> ExitCode {
+    emit(
+        &setup_refusal::<Value>(
+            cli.command.name(),
+            PijError::Adapter {
+                adapter: "configuration".to_string(),
+                message,
+            },
+        ),
+        cli.json,
+    )
 }
 
 async fn run_daemon(bind: &str, state_dir: PathBuf, offline: bool) -> ExitCode {
@@ -610,7 +737,10 @@ mod tests {
     use clap::{CommandFactory, Parser};
     use pij_core::model::SeatId;
 
-    use super::{Cli, Command, DaemonAction, git_dir_is_linked, resolve_inbox_seat};
+    use super::{
+        Cli, Command, DaemonAction, git_dir_is_linked, resolve_bind_addr, resolve_client_addr,
+        resolve_inbox_seat, resolve_state_dir,
+    };
 
     #[test]
     fn clap_exposes_every_ruled_verb() {
@@ -690,6 +820,105 @@ mod tests {
             command
                 .get_arguments()
                 .any(|argument| argument.get_id() == "addr")
+        );
+    }
+
+    #[test]
+    fn clap_leaves_runtime_defaults_unresolved() {
+        let cli = Cli::try_parse_from(["pij-rs", "ping"]).expect("ping");
+        assert!(
+            cli.addr.is_none(),
+            "a parser default would shadow PIJ_RS_ADDR"
+        );
+        assert!(cli.state_dir.is_none());
+
+        let daemon = Cli::try_parse_from(["pij-rs", "daemon"]).expect("daemon");
+        let Command::Daemon { bind, .. } = daemon.command else {
+            panic!("expected daemon");
+        };
+        assert!(bind.is_none(), "a parser default would shadow PIJ_RS_BIND");
+    }
+
+    #[test]
+    fn runtime_controls_resolve_flag_then_environment_then_default() {
+        assert_eq!(
+            resolve_client_addr(
+                Some("127.0.0.1:7001"),
+                Some(OsString::from("127.0.0.1:7002"))
+            )
+            .expect("flag address"),
+            "127.0.0.1:7001"
+        );
+        assert_eq!(
+            resolve_client_addr(None, Some(OsString::from("localhost:7002")))
+                .expect("environment address"),
+            "localhost:7002"
+        );
+        assert_eq!(
+            resolve_client_addr(None, None).expect("default address"),
+            "127.0.0.1:7461"
+        );
+
+        assert_eq!(
+            resolve_bind_addr(
+                Some("127.0.0.1:7101"),
+                Some(OsString::from("127.0.0.1:7102"))
+            )
+            .expect("flag bind"),
+            "127.0.0.1:7101"
+        );
+        assert_eq!(
+            resolve_bind_addr(None, Some(OsString::from("127.0.0.1:7102")))
+                .expect("environment bind"),
+            "127.0.0.1:7102"
+        );
+        assert_eq!(
+            resolve_bind_addr(None, None).expect("default bind"),
+            "127.0.0.1:7461"
+        );
+
+        assert_eq!(
+            resolve_state_dir(
+                Some(std::path::PathBuf::from("/flag")),
+                Some(OsString::from("/environment"))
+            )
+            .expect("flag state dir"),
+            std::path::PathBuf::from("/flag")
+        );
+        assert_eq!(
+            resolve_state_dir(None, Some(OsString::from("/environment")))
+                .expect("environment state dir"),
+            std::path::PathBuf::from("/environment")
+        );
+    }
+
+    #[test]
+    fn malformed_environment_values_name_the_variable_and_value() {
+        for (resolve, name) in [
+            (
+                resolve_client_addr as fn(Option<&str>, Option<OsString>) -> Result<String, String>,
+                "PIJ_RS_ADDR",
+            ),
+            (resolve_bind_addr, "PIJ_RS_BIND"),
+        ] {
+            let empty = resolve(None, Some(OsString::from(""))).expect_err("empty must fail");
+            assert!(empty.contains(name));
+            assert!(empty.contains("\"\""));
+        }
+
+        let invalid_addr = resolve_client_addr(None, Some(OsString::from("localhost")))
+            .expect_err("missing port must fail");
+        assert!(invalid_addr.contains("PIJ_RS_ADDR"));
+        assert!(invalid_addr.contains("\"localhost\""));
+
+        let invalid_bind = resolve_bind_addr(None, Some(OsString::from("localhost:7461")))
+            .expect_err("bind needs an IP socket address");
+        assert!(invalid_bind.contains("PIJ_RS_BIND"));
+        assert!(invalid_bind.contains("\"localhost:7461\""));
+
+        assert_eq!(
+            resolve_state_dir(None, Some(OsString::from(""))).expect_err("empty state dir"),
+            "PIJ_RS_STATE_DIR has malformed value \"\": value must not be empty"
         );
     }
 
