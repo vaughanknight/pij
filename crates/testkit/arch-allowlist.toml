@@ -94,6 +94,11 @@ internal = ["pij-core"]
 external = ["async-trait", "serde", "serde_json", "tokio"]
 why = "Claude UDS transport behind the frozen Transport port: async Unix socket IO plus serde codecs for Claude session records, peer keys, frames and negative acknowledgements."
 
+[crates.pij-sidecars]
+internal = ["pij-core", "pij-store@dev", "pij-testkit@dev"]
+external = ["async-trait@dev", "axum@dev", "reqwest", "serde", "serde_json", "tokio"]
+why = "Queue consumers over the seven frozen ports plus concrete Telegram HTTP, process-group, and shell/file adapters; store, testkit, async-trait, and axum remain dev-only proof dependencies."
+
 [crates.pij-daemon]
 # The widest row in the workspace, and deliberately so: a composition root is the
 # ONE place allowed to know every adapter. `pij-testkit` is a SHIPPED edge here,
