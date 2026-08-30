@@ -13,8 +13,8 @@ pub mod client;
 
 pub use address::{AddressError, parse_destination, render_destination};
 pub use client::{
-    DaemonClient, EventFrame, Registration, SendRequest, SpawnRequest, TailError, TailStream,
-    setup_refusal,
+    DaemonClient, FederatedRoster, Registration, SendRequest, SpawnRequest, StreamFrame, TailError,
+    TailStream, setup_refusal,
 };
 
 use std::path::{Path, PathBuf};
@@ -60,24 +60,46 @@ pub fn render<T: serde::Serialize>(envelope: &Envelope<T>, as_json: bool) -> Str
     }
 }
 
-/// Render one tail frame from the same value for either output face.
-pub fn render_frame(frame: &EventFrame, as_json: bool) -> String {
+/// Render one tagged stream frame for either output face.
+pub fn render_frame(frame: &StreamFrame, as_json: bool) -> String {
     if as_json {
         return serde_json::to_string(frame).unwrap_or_else(|error| error.to_string());
     }
-    format!(
-        "{}:{} {}{} {}",
-        frame.machine,
-        frame.cursor,
-        frame.event.kind,
-        frame
-            .event
-            .seat
-            .as_ref()
-            .map(|seat| format!(" seat={seat}"))
-            .unwrap_or_default(),
-        frame.event.payload
-    )
+    match frame {
+        StreamFrame::Event {
+            machine,
+            cursor,
+            event,
+        } => format!(
+            "{machine}:{cursor} {}{} {}",
+            event.kind,
+            event
+                .seat
+                .as_ref()
+                .map(|seat| format!(" seat={seat}"))
+                .unwrap_or_default(),
+            event.payload
+        ),
+        StreamFrame::PeerState {
+            machine,
+            state,
+            retry_in_ms,
+            dropped,
+            reason,
+        } => format!(
+            "{machine}: peer={state:?}{}{}{}",
+            retry_in_ms
+                .map(|value| format!(" retry_in_ms={value}"))
+                .unwrap_or_default(),
+            dropped
+                .map(|value| format!(" dropped={value}"))
+                .unwrap_or_default(),
+            reason
+                .as_ref()
+                .map(|value| format!(" reason={value}"))
+                .unwrap_or_default()
+        ),
+    }
 }
 
 /// Stable process exit code for a daemon envelope.

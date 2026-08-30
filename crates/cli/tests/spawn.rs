@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use pij_core::config::Config;
 use pij_core::model::{Envelope, SeatDescriptor};
-use pij_daemon::http::{HttpConfig, router_with_config};
+use pij_daemon::http::{FederatedRoster, HttpConfig, router_with_config};
 use pij_store::SqliteRegistry;
 use pij_testkit::fakes::FakeTmux;
 use pij_testkit::fresh_dir;
@@ -99,9 +99,11 @@ async fn shipped_cli_spawns_both_capability_rows_through_real_registry() {
 
     let listed = run_cli(&dir, &addr, &["list"]);
     assert!(listed.status.success());
-    let envelope: Envelope<Vec<SeatDescriptor>> =
+    let envelope: Envelope<FederatedRoster> =
         serde_json::from_slice(&listed.stdout).expect("list JSON envelope");
-    let seats = envelope.data.expect("listed seats");
+    let roster = envelope.data.expect("listed roster");
+    assert!(roster.unavailable.is_empty());
+    let seats = roster.seats;
     assert_eq!(seats.len(), 2);
     assert_eq!(seats[0].cross_session_inbound_accept, Some(false));
     assert_eq!(seats[1].cross_session_inbound_accept, Some(true));

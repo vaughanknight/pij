@@ -99,6 +99,15 @@ pub struct Config {
     pub pointer_announce_cadence_secs: u64,
     /// Maximum live events buffered per subscriber before drops are counted.
     pub event_buffer_capacity: usize,
+    /// Base cadence for federated roster polls and stream reconnects.
+    ///
+    /// This is policy: it controls when a disconnected peer is tried again, so
+    /// it is configured and injected rather than hidden in a worker constant.
+    pub federation_poll_interval_secs: u64,
+    /// Maximum federated reconnect/send retry delay.
+    ///
+    /// This is policy, not a safety brake: it changes when work is retried.
+    pub federation_retry_max_secs: u64,
     /// This machine's alias on the federated wire. `None` defaults from the
     /// hostname at boot, which lifecycle resolves — a machine that never chose a
     /// name still has to be addressable, and a constant would collide.
@@ -130,6 +139,8 @@ impl Default for Config {
             delivery_interval_secs: 5,
             pointer_announce_cadence_secs: 90,
             event_buffer_capacity: 1_024,
+            federation_poll_interval_secs: 1,
+            federation_retry_max_secs: 5 * 60,
             machine_alias: None,
             peers: Vec::new(),
         }

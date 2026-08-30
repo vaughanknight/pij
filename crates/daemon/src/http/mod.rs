@@ -8,9 +8,11 @@ mod client;
 mod exposure;
 mod types;
 
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::io;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -30,15 +32,18 @@ use pij_core::ports::{LaunchCommand, Registry, SeatFilter};
 use pij_core::wire;
 use pij_harnesses::{SpawnPlanInput, build_spawn_plan};
 use serde::Deserialize;
-use tokio_stream::StreamExt;
+use tokio_stream::{Stream, StreamExt};
 
 use crate::{BUILD, Services};
 
 use crate::federation::{FederationSendError, FederationService};
 pub use auth::AuthRing;
-pub use client::{PeerEndpoint, post_to_peer};
+pub use client::{PeerEndpoint, get_from_peer, post_to_peer, stream_from_peer};
 pub use exposure::{Exposure, boot_banner, exposure};
-pub use types::{EventFrame, Registration, SendRequest, SpawnRequest};
+pub use types::{
+    FederatedRoster, PeerStreamState, Registration, SendRequest, SpawnRequest, StreamFrame,
+    UnavailablePeer,
+};
 
 #[derive(Clone)]
 struct AppState {
@@ -602,31 +607,74 @@ struct SeatQuery {
     harness: Option<Harness>,
     folder: Option<String>,
     parent: Option<SeatId>,
+    scope: Option<String>,
 }
 
 async fn seats(State(state): State<AppState>, Query(query): Query<SeatQuery>) -> Response {
-    let listed = state
-        .services
-        .registry
-        .list(SeatFilter {
-            harness: query.harness,
-            folder: query.folder,
-            parent: query.parent,
-        })
-        .await;
-    match listed {
-        Ok(seats) => envelope(StatusCode::OK, &Envelope::ok("pij seats", seats)),
-        Err(error) => internal("pij seats", error),
+    if query.scope.as_deref().is_some_and(|scope| scope != "local") {
+        return refused("pij seats", "scope must be `local` when supplied");
     }
+    let listed = state.services.registry.list(SeatFilter::default()).await;
+    let mut local = match listed {
+        Ok(seats) => seats,
+        Err(error) => return internal("pij seats", error),
+    };
+    for seat in &mut local {
+        seat.machine = Some(state.machine_alias.clone());
+    }
+    let mut roster = if query.scope.as_deref() == Some("local") {
+        FederatedRoster {
+            seats: local,
+            unavailable: Vec::new(),
+        }
+    } else if let Some(federation) = &state.federation {
+        federation.federated_roster(local)
+    } else {
+        FederatedRoster {
+            seats: local,
+            unavailable: Vec::new(),
+        }
+    };
+    roster.seats.retain(|seat| {
+        query.harness.is_none_or(|harness| seat.harness == harness)
+            && query
+                .folder
+                .as_ref()
+                .is_none_or(|folder| &seat.folder == folder)
+            && query
+                .parent
+                .as_ref()
+                .is_none_or(|parent| seat.parent.as_ref() == Some(parent))
+    });
+    envelope(StatusCode::OK, &Envelope::ok("pij seats", roster))
 }
 
 #[derive(Default, Deserialize)]
 struct EventQuery {
-    since: Option<u64>,
+    /// URL-encoded JSON object: `{\"desktop\":12,\"laptop\":7}`.
+    since: Option<String>,
+    scope: Option<String>,
 }
 
 async fn events(State(state): State<AppState>, Query(query): Query<EventQuery>) -> Response {
-    let subscription = match query.since {
+    if query.scope.as_deref().is_some_and(|scope| scope != "local") {
+        return refused("pij events", "scope must be `local` when supplied");
+    }
+    let cursors: BTreeMap<String, u64> = match query.since {
+        Some(encoded) => match serde_json::from_str(&encoded) {
+            Ok(cursors) => cursors,
+            Err(error) => {
+                return refused(
+                    "pij events",
+                    format!(
+                        "since must be a JSON object mapping machine aliases to cursors: {error}"
+                    ),
+                );
+            }
+        },
+        None => BTreeMap::new(),
+    };
+    let local = match cursors.get(&state.machine_alias).copied() {
         Some(cursor) => match state
             .services
             .event_bus
@@ -636,15 +684,39 @@ async fn events(State(state): State<AppState>, Query(query): Query<EventQuery>) 
             Ok(subscription) => subscription,
             Err(error) => return internal("pij events", error),
         },
+        // Absent cursor means live-only. `subscribe(None, ...)` would replay the
+        // whole spine and is forbidden at an attach boundary (COMMON §6).
         None => state.services.event_bus.subscribe_live(EventFilter::all()),
     };
+    let local_alias = state.machine_alias.clone();
+    let local = local.map(move |event| StreamFrame::Event {
+        machine: local_alias.clone(),
+        cursor: event
+            .seq
+            .expect("EventBus subscriptions always assign cursors")
+            .0,
+        event,
+    });
+    // `/v1/events` is the explicit streaming exception to R4: the request
+    // handler attaches to owned worker/bus streams; peer network IO remains in
+    // the federation workers rather than running inline here.
+    let frames: Pin<Box<dyn Stream<Item = StreamFrame> + Send>> =
+        if query.scope.as_deref() != Some("local") {
+            if let Some(federation) = &state.federation {
+                Box::pin(local.merge(federation.subscribe_remote(&cursors)))
+            } else {
+                Box::pin(local)
+            }
+        } else {
+            Box::pin(local)
+        };
     let hello = match wire::encode_hello(BUILD) {
         Ok(hello) => hello,
         Err(error) => return internal("pij events", error),
     };
-    let machine = state.machine_alias;
-    let frames =
-        subscription.map(move |event| encode_frame(machine.clone(), event).map(Bytes::from));
+    let frames = frames
+        .map(encode_frame)
+        .map(|result| result.map(Bytes::from));
     let stream = tokio_stream::once(Ok::<Bytes, io::Error>(Bytes::from(hello))).chain(frames);
     (
         StatusCode::OK,
@@ -654,20 +726,10 @@ async fn events(State(state): State<AppState>, Query(query): Query<EventQuery>) 
         .into_response()
 }
 
-fn encode_frame(machine: String, event: pij_core::model::Event) -> io::Result<String> {
-    let cursor = event.seq.ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "EventBus yielded an event without its assigned stream cursor",
-        )
-    })?;
-    serde_json::to_string(&EventFrame {
-        machine,
-        cursor: cursor.0,
-        event,
-    })
-    .map(|line| format!("{line}\n"))
-    .map_err(io::Error::other)
+fn encode_frame(frame: StreamFrame) -> io::Result<String> {
+    serde_json::to_string(&frame)
+        .map(|line| format!("{line}\n"))
+        .map_err(io::Error::other)
 }
 
 fn mint_spawn_id() -> Result<String> {

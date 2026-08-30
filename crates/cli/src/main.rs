@@ -1,5 +1,6 @@
 //! `pij-rs` — one binary, two composition roots.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitCode};
 
@@ -29,6 +30,12 @@ struct Cli {
 
     #[command(subcommand)]
     command: Command,
+}
+
+#[derive(Clone, Debug)]
+struct MachineCursor {
+    machine: String,
+    cursor: u64,
 }
 
 #[derive(Subcommand)]
@@ -139,11 +146,11 @@ enum Command {
     },
     /// List registered seats.
     List,
-    /// Follow daemon event frames until interrupted.
+    /// Follow daemon event and peer-state frames until interrupted.
     Tail {
-        /// Replay after this machine-local cursor before following live events.
-        #[arg(long)]
-        since: Option<u64>,
+        /// Replay after `MACHINE=CURSOR`; repeat once per machine.
+        #[arg(long, value_parser = parse_machine_cursor)]
+        since: Vec<MachineCursor>,
     },
 }
 
@@ -229,39 +236,47 @@ async fn run(cli: Cli) -> ExitCode {
             emit(&client.send(&request).await, cli.json)
         }
         Command::List => emit(&client.list().await, cli.json),
-        Command::Tail { since } => match client.tail(since).await {
-            Err(envelope) => emit(&envelope, cli.json),
-            Ok(mut stream) => loop {
-                tokio::select! {
-                    frame = stream.next_frame() => match frame {
-                        Ok(Some(frame)) => println!("{}", render_frame(&frame, cli.json)),
-                        Ok(None) => return ExitCode::SUCCESS,
-                        Err(error) => {
-                            let envelope = Envelope::<Value>::refused(
-                                "pij tail",
-                                error.kind,
-                                error.message,
-                            );
-                            return emit(&envelope, cli.json);
-                        }
-                    },
-                    signal = tokio::signal::ctrl_c() => {
-                        return if signal.is_ok() {
-                            ExitCode::SUCCESS
-                        } else {
-                            emit(
-                                &Envelope::<Value>::refused(
-                                    "pij tail",
-                                    ErrorKind::Adapter,
-                                    "could not install the interrupt handler",
-                                ),
-                                cli.json,
-                            )
-                        };
-                    }
+        Command::Tail { since } => {
+            let since = match cursor_map(since) {
+                Ok(since) => since,
+                Err(error) => {
+                    return emit(&setup_refusal::<Value>("pij tail", error), cli.json);
                 }
-            },
-        },
+            };
+            match client.tail(&since).await {
+                Err(envelope) => emit(&envelope, cli.json),
+                Ok(mut stream) => loop {
+                    tokio::select! {
+                        frame = stream.next_frame() => match frame {
+                            Ok(Some(frame)) => println!("{}", render_frame(&frame, cli.json)),
+                            Ok(None) => return ExitCode::SUCCESS,
+                            Err(error) => {
+                                let envelope = Envelope::<Value>::refused(
+                                    "pij tail",
+                                    error.kind,
+                                    error.message,
+                                );
+                                return emit(&envelope, cli.json);
+                            }
+                        },
+                        signal = tokio::signal::ctrl_c() => {
+                            return if signal.is_ok() {
+                                ExitCode::SUCCESS
+                            } else {
+                                emit(
+                                    &Envelope::<Value>::refused(
+                                        "pij tail",
+                                        ErrorKind::Adapter,
+                                        "could not install the interrupt handler",
+                                    ),
+                                    cli.json,
+                                )
+                            };
+                        }
+                    }
+                },
+            }
+        }
     }
 }
 
@@ -295,6 +310,41 @@ async fn run_daemon(bind: &str, state_dir: PathBuf, offline: bool) -> ExitCode {
 fn emit<T: serde::Serialize>(envelope: &Envelope<T>, json: bool) -> ExitCode {
     println!("{}", render(envelope, json));
     ExitCode::from(exit_code(envelope))
+}
+
+fn parse_machine_cursor(value: &str) -> Result<MachineCursor, String> {
+    let (machine, cursor) = value
+        .split_once('=')
+        .ok_or_else(|| "cursor must be MACHINE=CURSOR".to_string())?;
+    if machine.trim().is_empty() {
+        return Err("cursor machine must be non-empty".to_string());
+    }
+    let cursor = cursor
+        .parse::<u64>()
+        .map_err(|error| format!("cursor must be an unsigned integer: {error}"))?;
+    Ok(MachineCursor {
+        machine: machine.to_string(),
+        cursor,
+    })
+}
+
+fn cursor_map(values: Vec<MachineCursor>) -> Result<BTreeMap<String, u64>, PijError> {
+    let mut cursors = BTreeMap::new();
+    for value in values {
+        if cursors
+            .insert(value.machine.clone(), value.cursor)
+            .is_some()
+        {
+            return Err(PijError::Adapter {
+                adapter: "tail".to_string(),
+                message: format!(
+                    "machine `{}` has more than one --since cursor",
+                    value.machine
+                ),
+            });
+        }
+    }
+    Ok(cursors)
 }
 
 fn parse_harness(value: &str) -> Result<Harness, String> {

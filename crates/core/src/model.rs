@@ -160,6 +160,11 @@ pub struct ProcIdentity {
 pub struct SeatDescriptor {
     /// Stable id.
     pub id: SeatId,
+    /// Machine alias in a federated VIEW. Registry rows keep this absent at rest;
+    /// the serving daemon stamps its current alias so an operator rename cannot
+    /// leave every stored seat carrying stale machine identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine: Option<String>,
     /// Harness it runs.
     pub harness: Harness,
     /// tmux pane, when it has one. `None` means paneless (external pull mode) —
@@ -283,6 +288,7 @@ impl SeatDescriptor {
     pub fn new(id: impl Into<SeatId>, harness: Harness, folder: impl Into<String>) -> Self {
         SeatDescriptor {
             id: id.into(),
+            machine: None,
             harness,
             pane: None,
             proc: None,

@@ -18,7 +18,7 @@ use pij_core::wire::{self, WireEvent};
 use pij_testkit::fakes::{FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux};
 
 use super::*;
-use crate::federation::{FederationService, WorkerStep};
+use crate::federation::{FederationPolicy, FederationService, WorkerStep};
 
 #[derive(Default)]
 struct CountingQueue {
@@ -117,6 +117,25 @@ fn config(local_key: &str, peer_keys: &[&str]) -> HttpConfig {
         local_key: local_key.to_string(),
         peer_keys: peer_keys.iter().map(ToString::to_string).collect(),
         machine_alias: "workstation".to_string(),
+    }
+}
+
+fn federation_policy() -> FederationPolicy {
+    FederationPolicy {
+        poll_interval: Duration::from_millis(10),
+        max_retry_delay: Duration::from_millis(100),
+        event_buffer_capacity: 16,
+    }
+}
+
+fn expect_event(frame: StreamFrame) -> (String, u64, Event) {
+    match frame {
+        StreamFrame::Event {
+            machine,
+            cursor,
+            event,
+        } => (machine, cursor, event),
+        StreamFrame::PeerState { .. } => panic!("expected event frame"),
     }
 }
 
@@ -602,8 +621,11 @@ async fn seats_performs_one_unfiltered_registry_list() {
         .send()
         .await
         .expect("seats");
-    let body: Envelope<Vec<SeatDescriptor>> = response.json().await.expect("seats envelope");
-    assert_eq!(body.data.expect("data").len(), 1);
+    let body: Envelope<FederatedRoster> = response.json().await.expect("seats envelope");
+    let roster = body.data.expect("data");
+    assert_eq!(roster.seats.len(), 1);
+    assert_eq!(roster.seats[0].machine.as_deref(), Some("workstation"));
+    assert!(roster.unavailable.is_empty());
     assert_eq!(registry.calls(), ["list"]);
 
     server.abort();
@@ -650,10 +672,11 @@ async fn events_are_live_by_default_and_frame_unknown_kinds_with_a_cursor() {
         .expect("unknown kind must be forwarded, not filtered")
         .expect("frame chunk")
         .expect("frame");
-    let frame: EventFrame = serde_json::from_slice(&frame).expect("event frame");
-    assert_eq!(frame.machine, "workstation");
-    assert_eq!(frame.cursor, 1);
-    assert_eq!(frame.event.kind, "future.kind");
+    let frame: StreamFrame = serde_json::from_slice(&frame).expect("event frame");
+    let (machine, cursor, event) = expect_event(frame.clone());
+    assert_eq!(machine, "workstation");
+    assert_eq!(cursor, 1);
+    assert_eq!(event.kind, "future.kind");
     let encoded = serde_json::to_value(&frame).expect("serialize frame");
     assert!(
         encoded["event"].get("seq").is_none(),
@@ -685,7 +708,8 @@ async fn explicit_since_replays_then_stays_live() {
     .expect("publish replay");
     let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
     let mut response = reqwest::Client::new()
-        .get(format!("http://{addr}/v1/events?since=0"))
+        .get(format!("http://{addr}/v1/events"))
+        .query(&[("since", r#"{"workstation":0}"#)])
         .bearer_auth("key")
         .send()
         .await
@@ -696,8 +720,8 @@ async fn explicit_since_replays_then_stays_live() {
         .await
         .expect("replay chunk")
         .expect("replay");
-    let replay: EventFrame = serde_json::from_slice(&replay).expect("replay frame");
-    assert_eq!(replay.cursor, 1);
+    let replay: StreamFrame = serde_json::from_slice(&replay).expect("replay frame");
+    assert_eq!(expect_event(replay).1, 1);
 
     bus.publish(Event {
         seq: None,
@@ -710,8 +734,8 @@ async fn explicit_since_replays_then_stays_live() {
     .await
     .expect("publish live");
     let live = response.chunk().await.expect("live chunk").expect("live");
-    let live: EventFrame = serde_json::from_slice(&live).expect("live frame");
-    assert_eq!(live.cursor, 2);
+    let live: StreamFrame = serde_json::from_slice(&live).expect("live frame");
+    assert_eq!(expect_event(live).1, 2);
 
     server.abort();
 }
@@ -946,6 +970,7 @@ async fn two_daemons_forward_remote_send_into_destination_queue_and_spine() {
             }],
             Arc::clone(&a_services.queue),
             Arc::clone(&a_services.event_bus),
+            federation_policy(),
         )
         .expect("federation"),
     );
@@ -1064,6 +1089,7 @@ async fn wrong_peer_key_is_permanent_and_never_hot_loops() {
         }],
         a_queue.clone(),
         a_bus,
+        federation_policy(),
     )
     .expect("federation");
     federation
@@ -1187,4 +1213,400 @@ async fn the_memorable_allocator_advances_past_an_occupied_name() {
         first.as_str().starts_with("pij-"),
         "allocated ids keep the product's name shape: {first}"
     );
+}
+
+async fn spawn_at(addr: SocketAddr, router: Router) -> tokio::task::JoinHandle<()> {
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .expect("bind fixed address");
+    tokio::spawn(async move {
+        axum::serve(listener, router)
+            .await
+            .expect("serve fixed address");
+    })
+}
+
+fn peer_definition(alias: &str, addr: SocketAddr) -> PeerDefinition {
+    PeerDefinition {
+        alias: alias.to_string(),
+        url: format!("http://{addr}"),
+        key: "pair-key".to_string(),
+    }
+}
+
+#[tokio::test]
+async fn roster_loop_survives_one_peer_error_and_processes_the_next_poll() {
+    let reservation = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("reserve peer address");
+    let b_addr = reservation.local_addr().expect("peer address");
+    drop(reservation);
+
+    let a_registry = Arc::new(FakeRegistry::new());
+    a_registry
+        .put(SeatDescriptor::new("alice", Harness::Omp, "/desktop"))
+        .await
+        .expect("local alice");
+    let a_services = test_services(
+        a_registry,
+        Arc::new(FakeQueue::new()),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    let federation = Arc::new(
+        FederationService::new(
+            "desktop".to_string(),
+            [peer_definition("laptop", b_addr)],
+            Arc::clone(&a_services.queue),
+            Arc::clone(&a_services.event_bus),
+            federation_policy(),
+        )
+        .expect("federation"),
+    );
+    let worker = Arc::clone(&federation).start();
+    let (a_addr, a_server) = spawn(router_with_federation(
+        a_services,
+        HttpConfig {
+            local_key: "a-local".to_string(),
+            peer_keys: vec!["pair-key".to_string()],
+            machine_alias: "desktop".to_string(),
+        },
+        federation,
+    ))
+    .await;
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            let response = reqwest::Client::new()
+                .get(format!("http://{a_addr}/v1/seats"))
+                .bearer_auth("a-local")
+                .send()
+                .await
+                .expect("degraded roster response");
+            let roster: Envelope<FederatedRoster> = response.json().await.expect("roster");
+            let roster = roster.data.expect("roster data");
+            if roster
+                .unavailable
+                .iter()
+                .any(|peer| peer.machine == "laptop" && peer.reason.contains("failed"))
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("the first failed poll becomes typed degraded state");
+
+    let b_registry = Arc::new(FakeRegistry::new());
+    b_registry
+        .put(SeatDescriptor::new("alice", Harness::Claude, "/laptop"))
+        .await
+        .expect("remote alice");
+    let b_services = test_services(
+        b_registry,
+        Arc::new(FakeQueue::new()),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    let b_server = spawn_at(
+        b_addr,
+        router_with_config(
+            b_services,
+            HttpConfig {
+                local_key: "b-local".to_string(),
+                peer_keys: vec!["pair-key".to_string()],
+                machine_alias: "laptop".to_string(),
+            },
+        ),
+    )
+    .await;
+
+    let roster = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let response = reqwest::Client::new()
+                .get(format!("http://{a_addr}/v1/seats"))
+                .bearer_auth("a-local")
+                .send()
+                .await
+                .expect("federated roster response");
+            let roster: Envelope<FederatedRoster> = response.json().await.expect("roster");
+            let roster = roster.data.expect("roster data");
+            if roster.unavailable.is_empty() && roster.seats.len() == 2 {
+                break roster;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("the NEXT poll must succeed after one transient error");
+    assert_eq!(
+        roster
+            .seats
+            .iter()
+            .map(|seat| (seat.id.as_str(), seat.machine.as_deref()))
+            .collect::<Vec<_>>(),
+        [("alice", Some("desktop")), ("alice", Some("laptop")),]
+    );
+
+    let source_only = reqwest::Client::new()
+        .get(format!("http://{a_addr}/v1/seats?scope=local"))
+        .bearer_auth("pair-key")
+        .send()
+        .await
+        .expect("source-only roster");
+    let source_only: Envelope<FederatedRoster> = source_only
+        .json()
+        .await
+        .expect("source-only roster envelope");
+    let source_only = source_only.data.expect("source-only data");
+    assert_eq!(
+        source_only.seats.len(),
+        1,
+        "source reads never reflect peer views"
+    );
+    assert_eq!(source_only.seats[0].machine.as_deref(), Some("desktop"));
+
+    b_server.abort();
+    let _ = b_server.await;
+    let stale = tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            let response = reqwest::Client::new()
+                .get(format!("http://{a_addr}/v1/seats"))
+                .bearer_auth("a-local")
+                .send()
+                .await
+                .expect("stale roster response");
+            let roster: Envelope<FederatedRoster> = response.json().await.expect("roster");
+            let roster = roster.data.expect("roster data");
+            if !roster.unavailable.is_empty() {
+                break roster;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("peer drop becomes typed unavailable state");
+    assert_eq!(
+        stale.seats.len(),
+        2,
+        "last successful remote roster is retained"
+    );
+    assert_eq!(stale.unavailable[0].machine, "laptop");
+
+    worker.shutdown().await.expect("worker shutdown");
+    a_server.abort();
+}
+
+#[tokio::test]
+async fn event_loop_survives_one_stream_error_and_processes_the_next_frame() {
+    #[derive(Clone)]
+    struct FlakyPeer {
+        calls: Arc<AtomicUsize>,
+        queries: Arc<Mutex<Vec<Option<String>>>>,
+    }
+
+    #[derive(Deserialize)]
+    struct FlakyQuery {
+        since: Option<String>,
+    }
+
+    async fn finite_stream(
+        State(state): State<FlakyPeer>,
+        Query(query): Query<FlakyQuery>,
+        headers: HeaderMap,
+    ) -> Response {
+        assert_eq!(
+            headers[axum::http::header::AUTHORIZATION],
+            "Bearer pair-key"
+        );
+        let call = state.calls.fetch_add(1, Ordering::SeqCst);
+        state.queries.lock().expect("query mutex").push(query.since);
+        let cursor = u64::try_from(call).unwrap_or(u64::MAX).saturating_add(1);
+        let frame = StreamFrame::Event {
+            machine: "laptop".to_string(),
+            cursor,
+            event: Event {
+                seq: None,
+                v: wire::EVENT_VERSION,
+                at: cursor,
+                kind: format!("future.{cursor}"),
+                seat: None,
+                payload: cursor.to_string(),
+            },
+        };
+        let body = format!(
+            "{}{}\n",
+            wire::encode_hello("flaky-peer").expect("hello"),
+            serde_json::to_string(&frame).expect("frame")
+        );
+        (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/x-ndjson")],
+            body,
+        )
+            .into_response()
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let queries = Arc::new(Mutex::new(Vec::new()));
+    let (b_addr, b_server) = spawn(
+        Router::new()
+            .route("/v1/events", get(finite_stream))
+            .with_state(FlakyPeer {
+                calls: Arc::clone(&calls),
+                queries: Arc::clone(&queries),
+            }),
+    )
+    .await;
+
+    let a_services = test_services(
+        Arc::new(FakeRegistry::new()),
+        Arc::new(FakeQueue::new()),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    let federation = Arc::new(
+        FederationService::new(
+            "desktop".to_string(),
+            [peer_definition("laptop", b_addr)],
+            Arc::clone(&a_services.queue),
+            Arc::clone(&a_services.event_bus),
+            federation_policy(),
+        )
+        .expect("federation"),
+    );
+    let (a_addr, a_server) = spawn(router_with_federation(
+        a_services.clone(),
+        HttpConfig {
+            local_key: "a-local".to_string(),
+            peer_keys: vec!["pair-key".to_string()],
+            machine_alias: "desktop".to_string(),
+        },
+        Arc::clone(&federation),
+    ))
+    .await;
+    let endpoint = PeerEndpoint {
+        base_url: format!("http://{a_addr}"),
+        bearer_key: "a-local".to_string(),
+    };
+    // Attach BEFORE starting the worker so the bounded live view cannot race
+    // past either witness frame.
+    let mut stream = stream_from_peer(&reqwest::Client::new(), &endpoint, "/v1/events", &[])
+        .await
+        .expect("open federated view");
+    let worker = Arc::clone(&federation).start();
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if matches!(
+                stream.next_frame().await.expect("first frame"),
+                Some(StreamFrame::Event {
+                    machine,
+                    cursor: 1,
+                    event,
+                }) if machine == "laptop" && event.kind == "future.1"
+            ) {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("A follows B's first event");
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if matches!(
+                stream.next_frame().await.expect("down frame"),
+                Some(StreamFrame::PeerState {
+                    machine,
+                    state: PeerStreamState::Unavailable,
+                    retry_in_ms: Some(_),
+                    ..
+                }) if machine == "laptop"
+            ) {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("the finite first stream's drop is visible in band");
+
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if matches!(
+                stream.next_frame().await.expect("reconnect frame"),
+                Some(StreamFrame::Event {
+                    machine,
+                    cursor: 2,
+                    event,
+                }) if machine == "laptop" && event.kind == "future.2"
+            ) {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("NEXT frame is processed after the transient stream failure");
+
+    {
+        let queries = queries.lock().expect("query mutex");
+        assert_eq!(queries.first(), Some(&None), "first attach is live-only");
+        let resumed: BTreeMap<String, u64> = serde_json::from_str(
+            queries
+                .get(1)
+                .and_then(Option::as_deref)
+                .expect("reconnect carries a cursor map"),
+        )
+        .expect("cursor map");
+        assert_eq!(resumed, BTreeMap::from([("laptop".to_string(), 1)]));
+    }
+    assert!(calls.load(Ordering::SeqCst) >= 2);
+    assert_eq!(
+        a_services
+            .spine
+            .tail(None, pij_core::model::Seq(0))
+            .await
+            .expect("local spine")
+            .len(),
+        0,
+        "remote events are a view and are never appended to the local spine"
+    );
+
+    let source_query = [
+        ("scope", "local".to_string()),
+        ("since", r#"{"laptop":0}"#.to_string()),
+    ];
+    let mut source_only = stream_from_peer(
+        &reqwest::Client::new(),
+        &endpoint,
+        "/v1/events",
+        &source_query,
+    )
+    .await
+    .expect("source-only stream");
+    a_services
+        .event_bus
+        .publish(Event {
+            seq: None,
+            v: wire::EVENT_VERSION,
+            at: 3,
+            kind: "future.local".to_string(),
+            seat: None,
+            payload: "local".to_string(),
+        })
+        .await
+        .expect("local event");
+    assert!(matches!(
+        source_only.next_frame().await.expect("source frame"),
+        Some(StreamFrame::Event {
+            machine,
+            cursor: 1,
+            event,
+        }) if machine == "desktop" && event.kind == "future.local"
+    ));
+
+    worker.shutdown().await.expect("worker shutdown");
+    a_server.abort();
+    b_server.abort();
 }

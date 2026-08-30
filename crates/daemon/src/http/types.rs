@@ -1,4 +1,4 @@
-use pij_core::model::{Event, Harness, SeatId};
+use pij_core::model::{Event, Harness, SeatDescriptor, SeatId};
 use serde::{Deserialize, Serialize};
 
 /// Evidence submitted by a process asking to register as a seat.
@@ -127,13 +127,65 @@ pub struct SendRequest {
 // consults routing, tombstones and the transport, and publishes both events.
 // Found by u-extension at compose.
 
-/// One resumable event frame. The cursor belongs to the stream, not `Event`.
+/// Typed roster payload. `unavailable` distinguishes a down peer from an empty
+/// peer while retained seats remain visible as a stale last-known view.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EventFrame {
-    /// Machine whose local spine assigned the cursor.
+pub struct FederatedRoster {
+    /// Local authoritative seats plus the last successful view from each peer.
+    pub seats: Vec<SeatDescriptor>,
+    /// Peers whose last roster poll failed. Their retained rows are stale.
+    pub unavailable: Vec<UnavailablePeer>,
+}
+
+/// A peer whose current roster could not be observed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnavailablePeer {
+    /// Configured machine alias.
     pub machine: String,
-    /// Position in that machine's spine.
-    pub cursor: u64,
-    /// Event body; its internal `seq` remains absent from serialization.
-    pub event: Event,
+    /// Adapter evidence from the failed authenticated request.
+    pub reason: String,
+}
+
+/// One line after the stream Hello. The tag makes source state observable
+/// without pretending it is an event with a store-assigned cursor.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum StreamFrame {
+    /// One source event. Its cursor is scoped to `machine`.
+    Event {
+        /// Machine whose local spine assigned the cursor.
+        machine: String,
+        /// Position in that machine's spine.
+        cursor: u64,
+        /// Event body; its internal `seq` remains absent from serialization.
+        event: Event,
+    },
+    /// An in-band source-state transition; never assigned a fake cursor.
+    PeerState {
+        /// Configured peer alias.
+        machine: String,
+        /// State the fan-in worker observed.
+        state: PeerStreamState,
+        /// Delay before the next reconnect, when retrying.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        retry_in_ms: Option<u64>,
+        /// Number of frames skipped for this subscriber, when lagged.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dropped: Option<u64>,
+        /// Adapter evidence, when unavailable.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
+}
+
+/// Observable state of one remote event source.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PeerStreamState {
+    /// Authenticated stream connected.
+    Connected,
+    /// Source is down and the worker will retry.
+    Unavailable,
+    /// This bounded subscriber buffer dropped frames.
+    Lagged,
 }

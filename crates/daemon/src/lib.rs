@@ -376,6 +376,11 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
             config.peers.clone(),
             Arc::clone(&services.queue),
             Arc::clone(&services.event_bus),
+            federation::FederationPolicy {
+                poll_interval: Duration::from_secs(config.federation_poll_interval_secs),
+                max_retry_delay: Duration::from_secs(config.federation_retry_max_secs),
+                event_buffer_capacity: config.event_buffer_capacity,
+            },
         )
         .map_err(|error| PijError::Adapter {
             adapter: "daemon/federation".to_string(),
