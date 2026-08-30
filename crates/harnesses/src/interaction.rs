@@ -32,7 +32,7 @@ impl InteractionGate {
     }
 
     /// Record bytes from the pane tap. Activity blocks injection until the
-    /// consumer observes Enter or an empty composer after the tap settles.
+    /// consumer positively observes that the composer has cleared.
     pub fn record_tap(&self, pane: &str) {
         self.panes
             .lock()
@@ -53,13 +53,24 @@ impl InteractionGate {
         }
     }
 
-    /// Record an Enter transition. This clears the stateful composer half; tmux
-    /// mode must still independently report clear before injection is permitted.
-    pub fn record_enter(&self, pane: &str) {
+    /// Record a positively observed transition from a non-empty composer to a
+    /// blank composer. This claims only that the composer cleared: Enter, cancel,
+    /// and explicit deletion are intentionally indistinguishable here. Tmux mode
+    /// must still independently report clear before injection is permitted.
+    pub fn record_composer_cleared(&self, pane: &str) {
         self.panes
             .lock()
             .expect("interaction gate mutex")
             .insert(pane.to_string(), ComposerState::default());
+    }
+
+    /// Forget a pane observation that can no longer be trusted. Unknown is a
+    /// conservative veto, including after a previously clear observation.
+    pub fn record_unknown(&self, pane: &str) {
+        self.panes
+            .lock()
+            .expect("interaction gate mutex")
+            .remove(pane);
     }
 
     /// True only when both independent gates report clear.
@@ -110,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_composer_state_is_not_permission_to_inject() {
+    fn unknown_observation_blocks_injection() {
         let gate = InteractionGate::new(Arc::new(FakeTmux::new()));
         assert!(
             !block_on(gate.permits_injection("%108")).expect("typing gate"),
@@ -119,11 +130,25 @@ mod tests {
     }
 
     #[test]
-    fn enter_clears_composer_history_but_not_tmux_mode() {
+    fn observed_composer_clear_does_not_override_tmux_mode() {
         let gate = InteractionGate::new(Arc::new(FakeTmux::new().with_user_typing()));
         gate.record_tap("%108");
         gate.observe_composer("%108", "draft");
-        gate.record_enter("%108");
+        gate.record_composer_cleared("%108");
         assert!(!block_on(gate.permits_injection("%108")).expect("typing gate"));
+    }
+
+    #[test]
+    fn a_clear_observation_can_return_to_unknown_and_block() {
+        let gate = InteractionGate::new(Arc::new(FakeTmux::new()));
+        gate.observe_composer("%108", "   ");
+        assert!(block_on(gate.permits_injection("%108")).expect("known clear gate"));
+
+        gate.record_unknown("%108");
+
+        assert!(
+            !block_on(gate.permits_injection("%108")).expect("unknown gate"),
+            "losing sight of a pane must revoke stale permission"
+        );
     }
 }

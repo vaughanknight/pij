@@ -2,9 +2,14 @@
 
 mod parse;
 
+use std::collections::BTreeMap;
 use std::ffi::OsString;
-use std::io;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Read, Seek, SeekFrom};
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
@@ -34,6 +39,13 @@ use crate::parse::{LIST_FORMAT, parse_one_pane, parse_panes};
 pub struct TmuxAdapter {
     binary: OsString,
     session: Option<String>,
+    taps: Arc<Mutex<BTreeMap<String, TapState>>>,
+}
+
+#[derive(Debug)]
+struct TapState {
+    path: PathBuf,
+    offset: u64,
 }
 
 impl TmuxAdapter {
@@ -42,6 +54,7 @@ impl TmuxAdapter {
         Self {
             binary: OsString::from("tmux"),
             session: None,
+            taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
@@ -50,6 +63,7 @@ impl TmuxAdapter {
         Self {
             binary: OsString::from("tmux"),
             session: Some(session.into()),
+            taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
@@ -58,6 +72,7 @@ impl TmuxAdapter {
         Self {
             binary: binary.into(),
             session: None,
+            taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
@@ -180,6 +195,144 @@ impl TmuxPort for TmuxAdapter {
         Ok(rows[rows.len() - keep..].join("\n"))
     }
 
+    async fn attach_pane_tap(&self, pane: &str, sink: &Path) -> Result<()> {
+        {
+            let taps = self.taps.lock().expect("tmux tap mutex");
+            if let Some(existing) = taps.get(pane) {
+                if existing.path == sink {
+                    return Ok(());
+                }
+                return Err(self.error(format!(
+                    "pane {pane:?} already has a tap at {:?} — detach it before changing sinks",
+                    existing.path
+                )));
+            }
+        }
+        match self
+            .stdout(
+                "display-message pane_pipe",
+                &os_args(["display-message", "-p", "-t", pane, "#{pane_pipe}"]),
+            )?
+            .trim()
+        {
+            "0" => {}
+            "1" => {
+                return Err(self.error(format!(
+                    "pane {pane:?} already has an output pipe — refusing to replace it"
+                )));
+            }
+            other => {
+                return Err(self.error(format!(
+                    "pane_pipe for {pane:?} was {other:?}, expected 0 or 1 — update pij-tmux for this tmux version"
+                )));
+            }
+        }
+
+        let sink_text = sink.to_str().ok_or_else(|| {
+            self.error(format!(
+                "tap sink {sink:?} is not valid Unicode — choose a UTF-8 state directory"
+            ))
+        })?;
+        if let Some(parent) = sink.parent() {
+            fs::create_dir_all(parent).map_err(|error| {
+                self.error(format!(
+                    "could not create tap directory {parent:?}: {error}"
+                ))
+            })?;
+        }
+        let sink_file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .mode(0o600)
+            .open(sink)
+            .map_err(|error| self.error(format!("could not create tap sink {sink:?}: {error}")))?;
+        sink_file
+            .set_permissions(fs::Permissions::from_mode(0o600))
+            .map_err(|error| {
+                self.error(format!(
+                    "could not secure tap sink {sink:?} to mode 0600: {error}"
+                ))
+            })?;
+        drop(sink_file);
+
+        let command = format!("cat >> {}", shell_quote(sink_text));
+        if let Err(error) = self.run(
+            "pipe-pane attach",
+            &os_args(["pipe-pane", "-O", "-o", "-t", pane, &command]),
+        ) {
+            let _ = fs::remove_file(sink);
+            return Err(error);
+        }
+        self.taps.lock().expect("tmux tap mutex").insert(
+            pane.to_string(),
+            TapState {
+                path: sink.to_path_buf(),
+                offset: 0,
+            },
+        );
+        Ok(())
+    }
+
+    async fn drain_pane_tap(&self, pane: &str) -> Result<Vec<u8>> {
+        let mut taps = self.taps.lock().expect("tmux tap mutex");
+        let tap = taps.get_mut(pane).ok_or_else(|| {
+            self.error(format!(
+                "pane {pane:?} has no attached tap — attach it before draining"
+            ))
+        })?;
+        let mut file = File::open(&tap.path).map_err(|error| {
+            self.error(format!("could not open tap sink {:?}: {error}", tap.path))
+        })?;
+        let length = file
+            .metadata()
+            .map_err(|error| {
+                self.error(format!(
+                    "could not inspect tap sink {:?}: {error}",
+                    tap.path
+                ))
+            })?
+            .len();
+        let offset = tap.offset.min(length);
+        file.seek(SeekFrom::Start(offset)).map_err(|error| {
+            self.error(format!("could not seek tap sink {:?}: {error}", tap.path))
+        })?;
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).map_err(|error| {
+            self.error(format!("could not drain tap sink {:?}: {error}", tap.path))
+        })?;
+        tap.offset = offset + u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+        Ok(bytes)
+    }
+
+    async fn detach_pane_tap(&self, pane: &str) -> Result<()> {
+        let path = self
+            .taps
+            .lock()
+            .expect("tmux tap mutex")
+            .get(pane)
+            .map(|tap| tap.path.clone())
+            .ok_or_else(|| self.error(format!("pane {pane:?} has no attached tap to detach")))?;
+
+        if let Err(detach_error) = self.run("pipe-pane detach", &os_args(["pipe-pane", "-t", pane]))
+        {
+            match self.list_panes().await {
+                Ok(panes) if panes.iter().any(|listed| listed.id == pane) => {
+                    return Err(detach_error);
+                }
+                Err(_) => return Err(detach_error),
+                Ok(_) => {}
+            }
+        }
+
+        self.taps.lock().expect("tmux tap mutex").remove(pane);
+        match fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(self.error(format!("could not remove tap sink {path:?}: {error}"))),
+        }
+    }
+
     async fn kill(&self, pane: &str) -> Result<()> {
         // This fresh resolution is a one-directional brake: removing it can only
         // make kill-pane happen more often. It never chooses a different target.
@@ -226,6 +379,10 @@ impl TmuxPort for TmuxAdapter {
 
 fn os_args<const N: usize>(args: [&str; N]) -> Vec<OsString> {
     args.into_iter().map(OsString::from).collect()
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
 fn new_window_args(

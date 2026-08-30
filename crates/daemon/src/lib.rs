@@ -13,6 +13,7 @@ pub mod delivery;
 pub mod events;
 pub mod federation;
 pub mod lifecycle;
+pub mod pane_observer;
 pub mod pointer;
 
 // u-orchestration's git-facts gatherer: IO belongs at the runtime root, and a
