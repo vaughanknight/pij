@@ -11,6 +11,7 @@ pub mod admission;
 pub mod auth;
 pub mod delivery;
 pub mod events;
+pub mod federation;
 pub mod lifecycle;
 
 // u-orchestration's git-facts gatherer: IO belongs at the runtime root, and a

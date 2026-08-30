@@ -5,8 +5,6 @@
 
 mod auth;
 mod client;
-#[path = "../federation/mod.rs"]
-pub mod federation;
 mod exposure;
 mod types;
 
@@ -36,6 +34,7 @@ use tokio_stream::StreamExt;
 use crate::{BUILD, Services};
 
 pub use auth::AuthRing;
+use crate::federation::{FederationSendError, FederationService};
 pub use client::{PeerEndpoint, post_to_peer};
 pub use exposure::{Exposure, boot_banner, exposure};
 pub use types::{EventFrame, Registration, SendRequest, SpawnRequest};
@@ -46,6 +45,7 @@ struct AppState {
     auth: AuthRing,
     machine_alias: String,
     spawn_lock: Arc<tokio::sync::Mutex<()>>,
+    federation: Option<Arc<FederationService>>,
 }
 
 /// HTTP configuration supplied by the daemon composition root.
@@ -128,11 +128,29 @@ pub fn router(services: Services, token: String) -> Router {
 /// Removing a configured peer key from `HttpConfig::peer_keys` revokes inbound
 /// access for that machine.
 pub fn router_with_config(services: Services, config: HttpConfig) -> Router {
+    router_with_optional_federation(services, config, None)
+}
+
+/// Build daemon routes with remote-send admission enabled.
+pub fn router_with_federation(
+    services: Services,
+    config: HttpConfig,
+    federation: Arc<FederationService>,
+) -> Router {
+    router_with_optional_federation(services, config, Some(federation))
+}
+
+fn router_with_optional_federation(
+    services: Services,
+    config: HttpConfig,
+    federation: Option<Arc<FederationService>>,
+) -> Router {
     let state = AppState {
         services,
         auth: AuthRing::new(config.local_key, config.peer_keys),
         machine_alias: config.machine_alias,
         spawn_lock: Arc::new(tokio::sync::Mutex::new(())),
+        federation,
     };
     let mut router = Router::new();
     for endpoint in Endpoint::ALL {
@@ -484,14 +502,17 @@ async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequ
 
 async fn send(State(state): State<AppState>, Json(request): Json<SendRequest>) -> Response {
     if request.to.machine.is_some() {
-        return envelope(
-            StatusCode::BAD_REQUEST,
-            &Envelope::<()>::refused(
+        let Some(federation) = state.federation.as_ref() else {
+            return refused(
                 "pij send",
-                ErrorKind::Refused,
-                "remote destinations are refused in wave 3: federation routing lands in u-federation (wave 4); forward the local form to the destination daemon",
-            ),
-        );
+                "remote destinations require configured federation peers",
+            );
+        };
+        return match federation.enqueue_remote(&request).await {
+            Ok(receipt) => envelope(StatusCode::OK, &Envelope::ok("pij send", receipt)),
+            Err(FederationSendError::Refused(reason)) => refused("pij send", reason),
+            Err(FederationSendError::Runtime(error)) => internal("pij send", error),
+        };
     }
     // ONE delivery path. This route used to enqueue a payload shape of its own
     // and synthesise a Queued receipt, which meant it consulted no routing
@@ -500,9 +521,7 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendRequest>) -
     // one round trip, each proven against itself. Found by u-extension.
     let msg = Msg {
         from: request.from,
-        // Local send. A remote origin is stamped by the federation worker when it
-        // forwards, never by the origin daemon's own request path (R7-AMEND-1).
-        from_machine: None,
+        from_machine: request.from_machine,
         to: request.to.seat,
         body: request.body,
         msg_id: request.msg_id,

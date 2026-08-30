@@ -125,6 +125,7 @@ fn exposure_banner_names_the_address_it_classifies() {
 fn send_request_uses_resolved_destination_object_and_optional_reply_id() {
     let request = SendRequest {
         from: "pij-a".into(),
+        from_machine: Some("desktop".to_string()),
         to: Destination::local("pij-b"),
         body: "answer".to_string(),
         msg_id: "m-2".to_string(),
@@ -137,6 +138,7 @@ fn send_request_uses_resolved_destination_object_and_optional_reply_id() {
         "the daemon never parses human address strings"
     );
     assert_eq!(json["in_reply_to"], "m-1");
+    assert_eq!(json["from_machine"], "desktop");
 
     let without_reply: SendRequest = serde_json::from_value(serde_json::json!({
         "from": "pij-a",
@@ -484,6 +486,7 @@ async fn send_enqueues_exactly_once_and_refuses_remote_destinations() {
     let client = reqwest::Client::new();
     let request = SendRequest {
         from: "pij-a".into(),
+        from_machine: None,
         to: Destination::local("pij-b"),
         body: "hello".to_string(),
         msg_id: "m-1".to_string(),
@@ -518,6 +521,7 @@ async fn send_enqueues_exactly_once_and_refuses_remote_destinations() {
     let queued: Msg = serde_json::from_str(&jobs[0].payload).expect("queued body");
     assert_eq!(queued.msg_id, request.msg_id);
     assert_eq!(queued.from, request.from);
+    assert_eq!(queued.from_machine, None);
     assert_eq!(queued.to, request.to.seat);
     assert_eq!(queued.body, request.body);
     // A NON-None value, because every other construction in the workspace passes
