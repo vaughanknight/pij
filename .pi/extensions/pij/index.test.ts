@@ -8,7 +8,7 @@
 // Non-vacuous: removing either publication path from index.ts fails its
 // corresponding assertion.
 
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -104,6 +104,9 @@ describe("pij index — footer status bar", () => {
 		origAnnounceTo = process.env.PIJ_ANNOUNCE_TO;
 		pijHome = mkdtempSync(join(tmpdir(), "pij-status-test-"));
 		process.env.PIJ_HOME = pijHome;
+		// This suite exercises the legacy generation. Its live discriminator is the
+		// TS daemon lock; an empty directory correctly means no daemon at all.
+		writeFileSync(join(pijHome, "daemon.lock"), "{}");
 		delete process.env.PIJ_PARENT_ID;
 		delete process.env.PIJ_PLAN_ID;
 		delete process.env.OMPCODE;

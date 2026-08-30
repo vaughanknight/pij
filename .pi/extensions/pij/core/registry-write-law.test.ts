@@ -55,6 +55,10 @@ const RAW_WRITE_ALLOWLIST = new Map<string, string>([
 		"adapters/fs-registry.ts",
 		"the adapter IMPLEMENTS write/writeAtomic; the law is applied by callers above it",
 	],
+	[
+		"adapters/rust-runtime.ts",
+		"implements an in-memory scratch RegistryPort; its writes never touch a shared descriptor",
+	],
 	["core/registry-write.ts", "this IS the law — it performs the merged write"],
 	["core/session.ts", "in-process seat owns its own descriptor lifecycle (publish + self-persist)"],
 	[

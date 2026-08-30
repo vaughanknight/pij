@@ -51,6 +51,35 @@ note = "8 real spine events from ~/.pij/pij-revolutionary-lungfish/events.ndjson
 answer = "seq is monotonic and every line is one complete JSON object \u2014 but the field names are the TS daemon's, NOT the Rust v1 event shape. A reader of this file is a MIGRATION reader (wave 3+), never the v1 decoder."
 
 [[fixture]]
+path = "wire/health-v1.json"
+sha256 = "8e28fcef47e8d8929510103154cfba78c60f56e5408a32253835c0fcafe9f2f8"
+bytes = 130
+note = "Recorded pij-rs authenticated GET /health response used by the in-process extension generation probe."
+answer = "MUST select the Rust HTTP wire: v=1 is supported and the health payload names the answering build and machine."
+
+[[fixture]]
+path = "wire/health-future.json"
+sha256 = "d34a3784f4f84cdcc92299bbcb8e645d594b7f49247df5bb4767d4479e454cbd"
+bytes = 130
+note = "A health envelope from a daemon one wire generation newer than this extension."
+answer = "MUST refuse the payload whole as PIJ_WIRE_SKEW with structured found=2 and supported=1 fields; never branch on prose."
+
+[[fixture]]
+path = "wire/register-v1.json"
+sha256 = "4eca3595039191f6ad1a5ae27e721acca8fd009c9c1659f7b2f47170187d6ee8"
+bytes = 355
+note = "Recorded pij-rs POST /v1/register success envelope carrying the authority's accepted descriptor."
+answer = "MUST read the accepted descriptor from data and preserve the complete proc identity (pid, proc_start) plus spawn_id."
+
+[[fixture]]
+path = "wire/events-v1.ndjson"
+sha256 = "c1670f670d9cd519a3774ea62a8dbced4924ca302c610e63fa19440e41841be9"
+bytes = 387
+note = "pij-rs event stream corpus: Hello, an unknown framed event, then a message.pushed turn."
+answer = "MUST require Hello first, forward the unknown event unchanged, continue reading, and inject the pushed turn for its recipient."
+
+
+[[fixture]]
 path = "malformed/rs/truncated-event.ndjson"
 sha256 = "82fcf0f44de70d0f4f65c594e4f63f30d1db3e9a726ec4d3845680f60bba80ea"
 bytes = 39

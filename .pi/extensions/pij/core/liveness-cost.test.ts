@@ -97,12 +97,15 @@ describe("liveness may fork ONCE PER SWEEP, and only from the one module allowed
 			.sort();
 	}
 
-	// ONE module may read the process table. If a second appears, either the
-	// snapshot was duplicated or someone reintroduced a per-row probe — both are
-	// the regression this file exists to catch, and neither is visible in any
-	// behavioural suite because the pure tests are handed a fake table.
-	it("only whole-table capture modules may read the process table", () => {
-		expect(processTableReaders()).toEqual(["process-snapshot.ts", "process-states.ts"]);
+	// Whole-table adapters serve repeated sweeps. daemon-http.ts is the reviewed
+	// exception: one exact-pid lstart probe per in-process host registration, never
+	// a descriptor loop or daemon tick path.
+	it("only reviewed liveness adapters may read the process table", () => {
+		expect(processTableReaders()).toEqual([
+			"daemon-http.ts",
+			"process-snapshot.ts",
+			"process-states.ts",
+		]);
 	});
 
 	it("the snapshot module exposes a WHOLE-TABLE capture, not a per-pid probe", () => {
@@ -198,17 +201,11 @@ describe("no module in the daemon tick path probes the process table PER PID", (
 	// EXACTLY this set, asserted as a list rather than a count, so a failure NAMES
 	// the file instead of only disagreeing about a number.
 	//
-	// `cli.ts` is the one legitimate per-pid probe and is listed deliberately
-	// rather than excluded by a pattern: `processStartedAtMs` (`cli.ts:1415`) reads
-	// `ps -o lstart= -p <pid>` for ONE seat during `pij revive`, to get the one
-	// non-recycled identity signal available (an absolute process start instant).
-	// It is a single call per command invocation, not a loop over the working set,
-	// and it is not on the tick. THE COST THIS FILE GUARDS IS PER-ROW FORKING IN A
-	// LOOP, not the existence of `-p` — so the honest guard names the exception and
-	// keeps the ban absolute everywhere else, rather than weakening the pattern
-	// until the real defect also slips through it.
-	it("only the CLI's one-shot revive probe may ask `ps` about a single pid", () => {
-		expect(perPidProcessProbes()).toEqual(["cli.ts"]);
+	// `cli.ts` probes once during revive. `adapters/daemon-http.ts` probes once
+	// during pi/OMP registration so its claimed `(pid, proc_start)` is byte-equal
+	// to pij-rs ProcLiveness. Neither sits in a per-descriptor or daemon-tick loop.
+	it("only reviewed one-shot boundaries may ask `ps` about a single pid", () => {
+		expect(perPidProcessProbes()).toEqual(["adapters/daemon-http.ts", "cli.ts"]);
 	});
 
 	// The scope repair, asserted directly: the recursive walk must actually reach

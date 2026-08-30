@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	deriveHarnessPijId,
 	deriveSelfId,
+	detectPiRuntime,
 	excludeSelf,
 	filterByFolder,
 	filterPrime,
@@ -28,6 +29,16 @@ function desc(id: string, folder: string): SessionDescriptor {
 const a = desc("a", "/work/proj");
 const b = desc("b", "/work/proj");
 const c = desc("c", "/work/other");
+
+describe("detectPiRuntime", () => {
+	it("recognises OMP's Bun launcher even when argv names an internal CLI file", () => {
+		expect(detectPiRuntime({ bun: true, executableNames: ["bun", "cli.js"] })).toBe("omp");
+	});
+
+	it("keeps plain Node-hosted Pi distinct", () => {
+		expect(detectPiRuntime({ bun: false, executableNames: ["node", "pi"] })).toBe("pi");
+	});
+});
 
 describe("filterByFolder", () => {
 	it("keeps only descriptors in the folder", () => {
