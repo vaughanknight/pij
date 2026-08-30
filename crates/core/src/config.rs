@@ -46,6 +46,20 @@ pub struct Adapters {
     pub liveness: AdapterChoice,
 }
 
+/// One manually bootstrapped peer daemon.
+///
+/// Definitions remain ordered until validation so duplicate aliases cannot be
+/// erased by collecting into a map before they are refused.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeerDefinition {
+    /// Unique machine alias used by qualified destinations.
+    pub alias: String,
+    /// Peer daemon base URL.
+    pub url: String,
+    /// Persistent bearer credential shared with this peer.
+    pub key: String,
+}
+
 /// Everything the composition roots need to build the world.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -81,6 +95,9 @@ pub struct Config {
     /// the local key dies with the process, a peer key survives it, and removing
     /// one from this list is how an operator revokes a machine.
     pub peer_keys: Vec<String>,
+    /// Ordered peer definitions. Federation validates aliases before building
+    /// its lookup table; keeping this as a vector preserves duplicate evidence.
+    pub peers: Vec<PeerDefinition>,
 }
 
 impl Default for Config {
@@ -94,6 +111,7 @@ impl Default for Config {
             event_buffer_capacity: 1_024,
             machine_alias: None,
             peer_keys: Vec::new(),
+            peers: Vec::new(),
         }
     }
 }

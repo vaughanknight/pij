@@ -5,6 +5,8 @@
 
 mod auth;
 mod client;
+#[path = "../federation/mod.rs"]
+pub mod federation;
 mod exposure;
 mod types;
 
