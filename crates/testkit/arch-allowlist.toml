@@ -90,9 +90,9 @@ external = ["async-trait", "serde_json"]
 why = "Per-harness adapters plus exact-pid process liveness. pij-core supplies the frozen ports, async-trait implements them, and testkit@dev supplies only the executor used by adapter tests."
 
 [crates.pij-transport]
-internal = []
-external = []
-why = "Message transports (UDS today, named pipes later) behind the Transport port. Wire quirks here; routing policy stays in core."
+internal = ["pij-core"]
+external = ["async-trait", "serde", "serde_json", "tokio"]
+why = "Claude UDS transport behind the frozen Transport port: async Unix socket IO plus serde codecs for Claude session records, peer keys, frames and negative acknowledgements."
 
 [crates.pij-daemon]
 # The widest row in the workspace, and deliberately so: a composition root is the

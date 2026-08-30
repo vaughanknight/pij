@@ -219,6 +219,41 @@ note = "A REAL OMP pane AT REST, captured 2026-08-29 from one of the PM's own wa
 answer = "Must classify as READY. Pair it with the repo's live_omp_blank_padded.txt, which shows the same chrome carrying '\u280b Working\u2026 \u27e6esc\u27e7' and must classify as BUSY. The discriminator is the spinner row, not the footer and not the prompt \u2014 both fixtures have those."
 
 [[fixture]]
+path = "uds/claude-2.1.251-session.json"
+sha256 = "8b45b273b1ccab52b4f7ecffbfc5de535c59190df73278ec5b934d7d059d78e9"
+bytes = 445
+note = "Sanitized from the session record written by an isolated Claude Code 2.1.251 probe on 2026-08-30; pid, session id, paths, tmux coordinates and name replaced while field presence and value shapes were preserved."
+answer = "Discovery accepts this record only with the identity-matching peer key; descriptor pid is tried first, then a record whose tmux value ends in the descriptor pane id."
+
+[[fixture]]
+path = "uds/4242.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.key"
+sha256 = "c732738d3aa98c5bccb94e3c6bc55de6df463d3dd953311073774b419cbb794c"
+bytes = 97
+note = "Sanitized companion peer key from the same isolated Claude Code 2.1.251 probe; the real token and key hash were replaced."
+answer = "Authentication capability exists only when procStart and pidDomain equal the resolved session record and peerToken is non-empty; absent, malformed, mismatched or ambiguous keys mean no capability."
+
+[[fixture]]
+path = "uds/user-frame.ndjson"
+sha256 = "a1d27d13c2e8db46edaa05636a660fa7fb48b8fafd111937395c08ba70968deb"
+bytes = 274
+note = "Sanitized byte-exact frame accepted and acted on by the isolated Claude Code 2.1.251 probe; sender, message id and body replaced with stable fixture values."
+answer = "Exactly one newline-terminated JSON user frame: our msg_id, daemon origin, sender name, and ordinary pij body wrapper; no invented from-mode assertion."
+
+[[fixture]]
+path = "uds/status-dropped.ndjson"
+sha256 = "9f7caad93d79e126910bd91953591d432d2c918150e96f3782788fa88736b5e6"
+bytes = 145
+note = "Documented Claude peer_message_status drop shape from GH #311, not observed in the isolated 2.1.251 daemon-origin probe."
+answer = "A dropped_msg_ids entry equal to our msg_id overrides the timer and returns Queued; unrelated ids do not. Evidence class remains documented-not-measured."
+
+[[fixture]]
+path = "uds/status-held.ndjson"
+sha256 = "603940577452a1d696a54a49d75e6a8f09550fd195d8104f5116e7bf813b3697"
+bytes = 96
+note = "Documented Claude peer_message_status held shape from GH #311, not observed on the socket in the isolated 2.1.251 daemon-origin probe even though the recipient UI visibly held the message."
+answer = "If observed, wereHeld=true with our orig_msg_id maps to Held. The live probe's missing response is a blocking protocol finding, not evidence that a held message was delivered."
+
+[[fixture]]
 path = "golden/cli/register-envelope.json"
 sha256 = "7787b2f8fe57f84e1b81d60a03860ee576ce86ed438277f1ccdf2c01dd39c257"
 bytes = 356
