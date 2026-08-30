@@ -22,8 +22,9 @@ Unit tests and fakes do not close this unit. Each consumer proves itself against
 external surface, driven through the pij-rs dev instance (never production):
 1. **telegram**: send ONE real message to Jordan's Telegram through the Rust bridge (the
    legacy config carries the credentials — read, don't move them). Body: "pij-rs telegram
-   bridge live-fire <timestamp>". His receipt on the phone is the acceptance; a swipe-reply
-   routing back as an injected turn is the stretch goal — attempt it, report honestly.
+   bridge live-fire <timestamp>". ACCEPTANCE IS THE FULL ROUND TRIP (Jordan 2026-08-31): the message lands on his phone AND
+   his reply routes back through the Rust bridge as an injected turn, with the turn's
+   arrival shown in the transcript. One-way delivery is NOT a pass.
 2. **bg**: run a REAL background command (e.g. cargo --version then a 30s sleep tree), tail
    its result arriving as an injected turn, then cancel a second one and show the observed
    process-group death BEFORE the cancelled receipt.
