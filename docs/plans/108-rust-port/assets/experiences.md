@@ -677,3 +677,42 @@ successful one-shot live test.
 > difference is a daemon that must attach, authorize, restart and recover on panes
 > it manages itself, over minutes, with nobody helping it.
 
+## E-034 — the ledger said the recipient read it; the recipient says it never saw it
+
+Wave-6 dogfood, and the witness is the SEAT ITSELF. `pij-meaningful-guineafowl`
+— the live Claude session behind the accept=false control pane — sent unsolicited
+first-person testimony about what it had and had not received.
+
+Three findings, all confirmed:
+
+* **Three pointer announcements arrived as real injected turns.** The pointer rung
+  works live, testified to by the reader rather than inferred by the sender.
+* **Zero bodies, ever.** The stamp contrast holds from the control's own side.
+* **`delivered_messages` graded `dog-2` as `reader-read` at 17:21:14, and the
+  reader never saw that body in any form.**
+
+The third is a false receipt, and I caused it: I had run
+`PIJ_SESSION_ID=pij-limited-stork pij-rs inbox` from my own shell against the dev
+daemon. The CLI claimed the row, printed it TO MY TERMINAL, and acked it. Every
+step behaved as designed, and the ledger now says a seat read something it never
+saw.
+
+> **The bearer key authenticates a MACHINE, not a seat.** Any holder of the key
+> plus a seat id can mint that seat's strongest receipt word.
+
+u-inbox's coder found this at the ack gate and refused to paper over it; the
+limitation was documented, graded in the route, and backlogged with an explicit
+trigger. What the testimony adds is that it is REACHABLE AND CONSEQUENTIAL rather
+than theoretical — demonstrated on a live seat, by an operator with legitimate
+access and good intentions, within an hour of the feature existing.
+
+The seat's own sentence is the entry:
+
+> *"That `reader-read` row over-claims; it recorded my empty prod-CLI inbox scan,
+> not a read. Report-is-not-evidence, in your own ledger."*
+
+Five waves of refusing unobserved claims, and the first one to reach production
+came from the PM's own convenience command. The vocabulary held — the row is
+honestly labelled machine-graded — but a grade is not a defence if nobody reads
+it, which is why the trigger now has a real incident attached to it.
+
