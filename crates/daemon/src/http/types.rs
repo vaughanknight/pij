@@ -1,9 +1,23 @@
-use pij_core::model::{DeliveryOutcome, Event, Receipt, SeatId};
+use pij_core::model::{Event, SeatId};
 use serde::{Deserialize, Serialize};
 
 /// Evidence submitted by a process asking to register as a seat.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Registration {
+    /// The seat this registration REPLACES, when a native session boundary
+    /// (`/new`, `/fork`) gives one OS process a new seat id.
+    ///
+    /// Without it the successor is indistinguishable from finding #19's alias:
+    /// pi keeps ONE process across `/new`, the extension deliberately assigns a
+    /// new seat id, and the collision guard refuses any different id sharing
+    /// `(pid, proc_start)` — so the first `/new` from a healthy seat would be
+    /// refused forever. Found by u-extension.
+    ///
+    /// A claim may only supersede ITSELF: the named predecessor must carry the
+    /// same `(pid, proc_start)`. That keeps the alias refusal intact, because an
+    /// impostor naming someone else's seat is exactly what #19 is about.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supersedes: Option<SeatId>,
     /// Claimed seat id.
     pub id: String,
     /// Claimed harness spelling; admission refuses unknown values rather than guessing.
@@ -55,24 +69,14 @@ pub struct SendRequest {
     pub in_reply_to: Option<String>,
 }
 
-/// The body persisted by the request path for a delivery worker.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct QueuedSend {
-    /// The accepted request.
-    pub request: SendRequest,
-    /// Acceptance time in milliseconds since the Unix epoch.
-    pub accepted_at: u64,
-}
-
-impl QueuedSend {
-    pub(crate) fn receipt(&self) -> Receipt {
-        Receipt {
-            msg_id: self.request.msg_id.clone(),
-            outcome: DeliveryOutcome::Queued,
-            at: self.accepted_at,
-        }
-    }
-}
+// `QueuedSend` is GONE. The send route persisted it under `delivery:<seat>` and
+// synthesised its own `Queued` receipt, while `DeliveryService::inbox` decoded
+// that same queue as `Msg` — a nested shape that could never decode. Each half
+// was proven against itself and the round trip was proven by nobody.
+//
+// The route now calls `DeliveryService::accept`, which is the one path that
+// consults routing, tombstones and the transport, and publishes both events.
+// Found by u-extension at compose.
 
 /// One resumable event frame. The cursor belongs to the stream, not `Event`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

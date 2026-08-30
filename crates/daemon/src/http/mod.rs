@@ -17,10 +17,11 @@ use axum::extract::{Json, Query, State};
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use pij_core::delivery::delivery_kind;
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
-use pij_core::model::{Envelope, Harness, Job, ProcIdentity, SeatDescriptor, SeatId, Seq};
+use pij_core::model::{
+    Envelope, ErrorKind, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId, Seq,
+};
 use pij_core::ports::SeatFilter;
 use pij_core::wire;
 use serde::Deserialize;
@@ -31,7 +32,7 @@ use crate::{BUILD, Services};
 pub use auth::AuthRing;
 pub use client::{PeerEndpoint, post_to_peer};
 pub use exposure::{Exposure, boot_banner, exposure};
-pub use types::{EventFrame, QueuedSend, Registration, SendRequest};
+pub use types::{EventFrame, Registration, SendRequest};
 
 #[derive(Clone)]
 struct AppState {
@@ -163,8 +164,9 @@ async fn require_bearer(
     }
     envelope(
         StatusCode::UNAUTHORIZED,
-        &Envelope::<()>::err(
+        &Envelope::<()>::refused(
             "auth",
+            ErrorKind::Auth,
             "missing or wrong bearer token — local clients read <state-dir>/daemon.key and send `Authorization: Bearer <key>`; peer machines use their manually bootstrapped configured key",
         ),
     )
@@ -224,10 +226,41 @@ async fn register(State(state): State<AppState>, Json(claim): Json<Registration>
         Err(error) => return internal("pij register", error),
     };
     let claimed_id = SeatId::from(claim.id.clone());
+
+    // A native session boundary (`/new`, `/fork`) keeps ONE process and takes a
+    // NEW seat id, so the successor looks exactly like an alias to the #19 guard.
+    // A claim may only supersede ITSELF — the named predecessor must carry the
+    // same `(pid, proc_start)` — which keeps the refusal intact for an impostor
+    // naming someone else's seat, the case #19 is actually about.
+    let predecessor = match (claim.supersedes.as_ref(), proc) {
+        (Some(previous), Some(identity)) => match seats.iter().find(|seat| &seat.id == previous) {
+            Some(seat) if seat.proc == Some(identity) => Some(seat.clone()),
+            Some(_) => {
+                return refused(
+                    "pij register",
+                    format!(
+                        "seat `{previous}` does not share this process, so it cannot be superseded by `{}` — a claim may only supersede itself",
+                        claim.id
+                    ),
+                );
+            }
+            None => None,
+        },
+        (Some(_), None) => {
+            return refused(
+                "pij register",
+                "an unbound claim cannot supersede a seat: without a process identity there is nothing that proves the successor is the same session",
+            );
+        }
+        (None, _) => None,
+    };
+
     let collision = proc.and_then(|identity| {
-        seats
-            .iter()
-            .find(|seat| seat.proc == Some(identity) && seat.id != claimed_id)
+        seats.iter().find(|seat| {
+            seat.proc == Some(identity)
+                && seat.id != claimed_id
+                && predecessor.as_ref().is_none_or(|prev| prev.id != seat.id)
+        })
     });
     let bound = proc.is_some();
     match crate::admission::from_registration(
@@ -260,6 +293,29 @@ async fn register(State(state): State<AppState>, Json(claim): Json<Registration>
     descriptor.effort = claim.effort;
     descriptor.parent = claim.parent;
     descriptor.relay = claim.relay;
+    // Tombstone the predecessor BEFORE writing the successor, and name the
+    // successor in the reason. Not a delete: queued work and history for the old
+    // id must not silently vanish, and `SeatIsGone` carrying "superseded by X" is
+    // a post-mortem a human can actually follow. Persist-before-mutate (P9), so a
+    // crash between the two leaves a dissolved predecessor rather than two live
+    // rows sharing one process.
+    if let Some(mut previous) = predecessor
+        && previous.tombstoned_at.is_none()
+    {
+        {
+            previous.tombstoned_at = Some(match system_time_ms() {
+                Ok(at) => at,
+                Err(error) => return internal("pij register", error),
+            });
+            previous.tombstone_reason = Some(format!(
+                "superseded by `{}` at a native session boundary (same process)",
+                claim.id
+            ));
+            if let Err(error) = state.services.registry.put(previous).await {
+                return internal("pij register", error);
+            }
+        }
+    }
     if let Err(error) = state.services.registry.put(descriptor.clone()).await {
         return internal("pij register", error);
     }
@@ -270,34 +326,41 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendRequest>) -
     if request.to.machine.is_some() {
         return envelope(
             StatusCode::BAD_REQUEST,
-            &Envelope::<()>::err(
+            &Envelope::<()>::refused(
                 "pij send",
+                ErrorKind::Refused,
                 "remote destinations are refused in wave 3: federation routing lands in u-federation (wave 4); forward the local form to the destination daemon",
             ),
         );
     }
-    let accepted_at = match system_time_ms() {
-        Ok(at) => at,
-        Err(error) => return internal("pij send", error),
+    // ONE delivery path. This route used to enqueue a payload shape of its own
+    // and synthesise a Queued receipt, which meant it consulted no routing
+    // policy, no tombstone and no transport, published no event, and wrote a
+    // payload the inbox reading that same queue could not decode. Two halves of
+    // one round trip, each proven against itself. Found by u-extension.
+    let msg = Msg {
+        from: request.from,
+        to: request.to.seat,
+        body: request.body,
+        msg_id: request.msg_id,
+        command: None,
     };
-    let queued = QueuedSend {
-        request,
-        accepted_at,
-    };
-    let payload = match serde_json::to_string(&queued) {
-        Ok(payload) => payload,
-        Err(error) => return internal("pij send", error),
-    };
-    let job = Job {
-        kind: delivery_kind(&queued.request.to.seat),
-        serial_key: queued.request.to.seat.0.clone(),
-        payload,
-        dedupe_key: queued.request.msg_id.clone(),
-    };
-    if let Err(error) = state.services.queue.enqueue(job).await {
-        return internal("pij send", error);
+    match state.services.delivery.accept(msg).await {
+        Ok(receipt) => envelope(StatusCode::OK, &Envelope::ok("pij send", receipt)),
+        Err(error @ PijError::SeatIsGone { .. }) => envelope(
+            StatusCode::GONE,
+            &Envelope::<()>::refused("pij send", ErrorKind::Refused, error.to_string()),
+        ),
+        Err(error @ PijError::NoRegistryEntry { .. }) => envelope(
+            StatusCode::NOT_FOUND,
+            &Envelope::<()>::refused("pij send", ErrorKind::NotFound, error.to_string()),
+        ),
+        Err(error @ PijError::SelfAddressed { .. }) => envelope(
+            StatusCode::BAD_REQUEST,
+            &Envelope::<()>::refused("pij send", ErrorKind::Refused, error.to_string()),
+        ),
+        Err(error) => internal("pij send", error),
     }
-    envelope(StatusCode::OK, &Envelope::ok("pij send", queued.receipt()))
 }
 
 #[derive(Default, Deserialize)]
@@ -389,14 +452,18 @@ fn system_time_ms() -> Result<u64> {
 fn refused(command: &str, reason: impl std::fmt::Display) -> Response {
     envelope(
         StatusCode::BAD_REQUEST,
-        &Envelope::<()>::err(command, reason.to_string()),
+        &Envelope::<()>::refused(command, ErrorKind::Refused, reason.to_string()),
     )
 }
 
 fn internal(command: &str, error: impl std::fmt::Display) -> Response {
     envelope(
         StatusCode::INTERNAL_SERVER_ERROR,
-        &Envelope::<()>::err(command, error.to_string()),
+        // An adapter failed at its boundary and its own words travel in `meta`.
+        // Every failure route now carries a discriminator: u-cli proved no honest
+        // exit-code table can be built from prose, and u-extension found this
+        // helper still emitting an envelope with no `error` at all.
+        &Envelope::<()>::refused(command, ErrorKind::Adapter, error.to_string()),
     )
 }
 

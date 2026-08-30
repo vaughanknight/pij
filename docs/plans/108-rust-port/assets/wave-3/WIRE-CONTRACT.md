@@ -164,6 +164,31 @@ The stream opens with the Hello line, then one JSON object per line:
   msg_id**, which is also what the audit event keys on, so a message and its
   answer can be joined without guessing.
 
+### Superseding a seat across `/new` and `/fork`
+
+`Registration` carries `supersedes: Option<SeatId>`.
+
+pi keeps ONE OS process across `/new` and `/fork` while the extension deliberately
+assigns a NEW seat id, so the successor is indistinguishable from finding #19's
+alias — the first `/new` from a healthy seat would have been refused **forever**.
+Found by u-extension before it wired the lifecycle.
+
+* **A claim may only supersede ITSELF.** The named predecessor must carry the same
+  `(pid, proc_start)`. Naming another seat is refused, which is exactly the case
+  #19 exists for — so the fix does not weaken the guard it works around.
+* **An unbound claim may not supersede anything**: with no process identity there
+  is nothing that proves the successor is the same session.
+* The predecessor is **TOMBSTONED, not deleted**, before the successor is written,
+  with a reason naming the successor. Queued work and history for the old id must
+  not silently vanish, and `SeatIsGone` carrying "superseded by X" is a post-mortem
+  a human can follow. Persist-before-mutate (P9): a crash between the two leaves a
+  dissolved predecessor, never two live rows sharing one process.
+
+**Rejected alternatives.** A separate authenticated `unregister` opens a window
+where the old seat is gone and the new one is not yet registered — a crash there
+loses the seat entirely. Retaining one pij id across `/new` is a behaviour
+regression, and was refused as one.
+
 ## Generation detection (u-extension)
 
 The extension must distinguish three states and **never silently degrade**:

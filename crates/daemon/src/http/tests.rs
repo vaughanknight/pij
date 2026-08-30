@@ -11,7 +11,7 @@ use pij_core::error::Result;
 use pij_core::model::{
     Destination, Envelope, Event, Job, JobId, Outcome, ProcIdentity, Receipt, SeatDescriptor,
 };
-use pij_core::ports::Queue;
+use pij_core::ports::{Queue, Registry};
 use pij_core::wire::{self, WireEvent};
 use pij_testkit::fakes::{FakeLiveness, FakeQueue, FakeRegistry, FakeSpine};
 
@@ -57,6 +57,19 @@ async fn test_services(
     services.queue = queue;
     services.spine = spine.clone();
     services.event_bus = Arc::new(crate::events::EventBus::new(spine, 16).expect("event bus"));
+    // REBUILD the delivery service from the swapped parts. It was constructed by
+    // `build_services` from the ORIGINAL fakes, so overwriting the fields above
+    // left it holding a registry, queue and bus that no assertion could see — a
+    // fixture that looks injected and is not.
+    services.delivery = Arc::new(
+        crate::delivery::DeliveryService::new(
+            Arc::clone(&services.registry),
+            Arc::clone(&services.queue),
+            Arc::clone(&services.transport),
+            Arc::clone(&services.event_bus),
+        )
+        .expect("delivery service"),
+    );
     services
 }
 
@@ -191,6 +204,7 @@ async fn registration_corroborates_process_and_refuses_shared_process_aliases() 
     let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
     let client = reqwest::Client::new();
     let registration = Registration {
+        supersedes: None,
         id: "pij-parent".to_string(),
         harness: "omp".to_string(),
         folder: "/abs/tree".to_string(),
@@ -255,6 +269,7 @@ async fn registration_refuses_uncorroborated_or_half_process_identity() {
     let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
     let client = reqwest::Client::new();
     let base = Registration {
+        supersedes: None,
         id: "pij-claim".to_string(),
         harness: "omp".to_string(),
         folder: "/abs/tree".to_string(),
@@ -307,12 +322,20 @@ async fn registration_refuses_uncorroborated_or_half_process_identity() {
 #[tokio::test]
 async fn send_enqueues_exactly_once_and_refuses_remote_destinations() {
     let queue = Arc::new(CountingQueue::default());
-    let services = test_services(
-        Arc::new(FakeRegistry::new()),
-        queue.clone(),
-        Arc::new(FakeSpine::new()),
-    )
-    .await;
+    // The recipient must EXIST now. The route used to enqueue without consulting
+    // the registry at all, so this test passed against a roster that had never
+    // heard of `pij-b` — which is precisely the gap that let a private payload
+    // shape survive: nothing on this path ever asked the delivery service
+    // anything. An unregistered recipient is a 404 here, and that is the route
+    // working.
+    let registry = Arc::new(FakeRegistry::new());
+    // Registered but UNBOUND (no process identity), so routing queues it. This
+    // test's subject is the enqueue — one row, the caller's dedupe key, and a
+    // payload the inbox can decode — so the recipient is arranged to reach that
+    // path honestly rather than by a transport that refuses.
+    let recipient = SeatDescriptor::new("pij-b", Harness::Omp, "/abs/tree");
+    registry.put(recipient).await.expect("register recipient");
+    let services = test_services(registry, queue.clone(), Arc::new(FakeSpine::new())).await;
     let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
     let client = reqwest::Client::new();
     let request = SendRequest {
@@ -344,8 +367,15 @@ async fn send_enqueues_exactly_once_and_refuses_remote_destinations() {
         pij_core::delivery::delivery_kind(&"pij-b".into())
     );
     assert_eq!(jobs[0].dedupe_key, "m-1");
-    let queued: QueuedSend = serde_json::from_str(&jobs[0].payload).expect("queued body");
-    assert_eq!(queued.request, request);
+    // Decoded as `Msg` — the SAME type `DeliveryService::inbox` decodes this
+    // queue as. The old assertion decoded the route's own private shape, so both
+    // halves of the round trip passed while the round trip itself could never
+    // work. Assert the consumer's type, never the producer's.
+    let queued: Msg = serde_json::from_str(&jobs[0].payload).expect("queued body");
+    assert_eq!(queued.msg_id, request.msg_id);
+    assert_eq!(queued.from, request.from);
+    assert_eq!(queued.to, request.to.seat);
+    assert_eq!(queued.body, request.body);
 
     let remote = SendRequest {
         to: Destination {
@@ -554,6 +584,113 @@ async fn peer_forwarding_makes_one_authenticated_request() {
             .expect("forward");
     assert_eq!(response.data.expect("data"), request);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+    server.abort();
+}
+
+/// u-extension, wave 3 — pi keeps ONE process across `/new` and `/fork` while the
+/// extension deliberately assigns a NEW seat id, so the successor is
+/// indistinguishable from finding #19's alias and the first `/new` from a healthy
+/// seat would have been refused forever.
+///
+/// Both halves are proven here, because the fix must not weaken #19: a claim that
+/// supersedes ITSELF is admitted and dissolves its predecessor with a readable
+/// reason, and a claim that names someone ELSE's seat is still refused.
+#[tokio::test]
+async fn a_native_session_boundary_supersedes_its_own_seat_but_never_another() {
+    let registry = Arc::new(FakeRegistry::new());
+    let pid = std::process::id();
+    let proc_start = 4_242;
+
+    let mut first = SeatDescriptor::new("pij-first", Harness::Omp, "/abs/tree");
+    first.proc = Some(ProcIdentity { pid, proc_start });
+    registry.put(first).await.expect("first seat");
+    let mut stranger = SeatDescriptor::new("pij-stranger", Harness::Omp, "/abs/tree");
+    stranger.proc = Some(ProcIdentity {
+        pid,
+        proc_start: proc_start + 1,
+    });
+    registry.put(stranger).await.expect("stranger seat");
+
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(CountingQueue::default()),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    // The daemon CORROBORATES the claim, so the fake process table must know the
+    // identity this test claims — otherwise the refusal under test is the
+    // liveness check, not the supersession rule.
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(ProcIdentity { pid, proc_start }));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    let url = format!("http://{addr}/v1/register");
+
+    let claim = serde_json::json!({
+        "id": "pij-second",
+        "harness": "omp",
+        "folder": "/abs/tree",
+        "pid": pid,
+        "proc_start": proc_start,
+        "supersedes": "pij-first",
+    });
+    let response = client
+        .post(&url)
+        .bearer_auth("key")
+        .json(&claim)
+        .send()
+        .await
+        .expect("supersede");
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::OK,
+        "a seat must be able to succeed itself across /new"
+    );
+
+    let seats = registry
+        .list(SeatFilter::default())
+        .await
+        .expect("roster after supersession");
+    let previous = seats
+        .iter()
+        .find(|seat| seat.id.as_str() == "pij-first")
+        .expect("the predecessor is TOMBSTONED, never deleted");
+    assert!(previous.tombstoned_at.is_some());
+    assert!(
+        previous
+            .tombstone_reason
+            .as_deref()
+            .expect("a reason")
+            .contains("pij-second"),
+        "the post-mortem must name the successor"
+    );
+    assert!(seats.iter().any(|seat| seat.id.as_str() == "pij-second"));
+
+    // ...and #19 still holds: naming another seat that does not share this
+    // process is refused, which is the case the guard exists for.
+    let impostor = serde_json::json!({
+        "id": "pij-third",
+        "harness": "omp",
+        "folder": "/abs/tree",
+        "pid": pid,
+        "proc_start": proc_start,
+        "supersedes": "pij-stranger",
+    });
+    let response = client
+        .post(&url)
+        .bearer_auth("key")
+        .json(&impostor)
+        .send()
+        .await
+        .expect("impostor");
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    assert!(
+        response
+            .text()
+            .await
+            .expect("body")
+            .contains("may only supersede itself")
+    );
 
     server.abort();
 }

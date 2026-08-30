@@ -72,6 +72,15 @@ pub struct Services {
     pub harnesses: Arc<HarnessRegistry>,
     /// Process liveness.
     pub liveness: Arc<dyn LivenessPort>,
+    /// The ONE delivery path.
+    ///
+    /// `/v1/send` used to enqueue a private payload shape of its own and
+    /// synthesise a `Queued` receipt, which meant the route consulted no routing
+    /// policy, no tombstone, no transport, and published no event — and the
+    /// payload it wrote could not be decoded by the inbox that read the same
+    /// queue. Two halves of one round trip, each tested against itself.
+    /// Found by u-extension at compose.
+    pub delivery: Arc<delivery::DeliveryService>,
     /// The event bus: publish once, fan out to every subscriber, with a durable
     /// leg on the spine so a subscriber can replay what it missed (u-events).
     ///
@@ -208,6 +217,13 @@ pub async fn build_services(config: &Config) -> Result<Services> {
 
     let orchestration = Arc::new(OrchestrationService::new());
 
+    let delivery = Arc::new(delivery::DeliveryService::new(
+        Arc::clone(&registry),
+        Arc::clone(&queue),
+        Arc::clone(&transport),
+        Arc::clone(&event_bus),
+    )?);
+
     Ok(Services {
         registry,
         spine,
@@ -218,6 +234,7 @@ pub async fn build_services(config: &Config) -> Result<Services> {
         tmux,
         harnesses,
         liveness,
+        delivery,
         offline: config.is_fully_offline(),
     })
 }

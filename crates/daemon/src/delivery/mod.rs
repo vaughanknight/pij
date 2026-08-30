@@ -15,6 +15,13 @@ use tokio_stream::StreamExt;
 use crate::events::EventBus;
 
 const OUTCOME_EVENT_KIND: &str = "delivery.outcome";
+/// The event a RECIPIENT watches for to learn it has been spoken to.
+///
+/// Distinct from `delivery.outcome`, which is what the SENDER watches to learn
+/// what happened to its message. Two audiences, two facts, two kinds: u-extension
+/// found that nothing published this at all, so a client could observe that a
+/// message had been delivered to it without ever being able to read it.
+const PUSHED_EVENT_KIND: &str = "message.pushed";
 
 type Clock = dyn Fn() -> Result<u64> + Send + Sync;
 
@@ -94,17 +101,31 @@ impl DeliveryService {
     /// Missing, self-addressed, or tombstoned seats; adapter failures; queue
     /// persistence failures; and audit-event publication failures.
     pub async fn send(&self, from: SeatId, to: SeatId, body: impl Into<String>) -> Result<Receipt> {
-        let at = (self.clock)()?;
-        let msg = Msg {
-            from: from.clone(),
-            to: to.clone(),
+        self.accept(Msg {
+            from,
+            to,
             body: body.into(),
             msg_id: self.next_message_id(),
-            // Bodies only, for now. The command producer is wave 4's; this call
-            // must not INFER a command from a leading slash, because a body may
-            // legitimately begin with one.
             command: None,
-        };
+        })
+        .await
+    }
+
+    /// Deliver a message whose id the CALLER chose.
+    ///
+    /// The wire lets a client supply `msg_id` because it is the queue's dedupe
+    /// key and the correlation handle a reply carries back as `in_reply_to` — a
+    /// caller that cannot name its own message cannot join the answer to it.
+    /// [`Self::send`] is this with a generated id.
+    ///
+    /// # Errors
+    /// Missing, self-addressed, or tombstoned seats; adapter failures; queue
+    /// persistence failures; and audit-event publication failures.
+    pub async fn accept(&self, msg: Msg) -> Result<Receipt> {
+        let at = (self.clock)()?;
+        let from = msg.from.clone();
+        let to = msg.to.clone();
+        let msg = Msg { ..msg };
         let recipient = self
             .registry
             .get(&to)
@@ -154,6 +175,17 @@ impl DeliveryService {
             outcome,
             at,
         };
+        // The RECIPIENT's event, published before the sender's audit line: a
+        // client filters the one stream by its own seat id, and u-extension found
+        // that nothing published this at all — so a seat could observe that it
+        // had been spoken to and never be able to read what was said.
+        if let Err(error) = self.publish_pushed(&msg, at).await {
+            return Err(PijError::DeliveryAuditFailed {
+                msg_id: receipt.msg_id.clone(),
+                outcome: outcome_name(&receipt.outcome).to_string(),
+                audit_error: error.to_string(),
+            });
+        }
         if let Err(error) = self.publish_outcome(&msg.to, &receipt).await {
             return Err(PijError::DeliveryAuditFailed {
                 msg_id: receipt.msg_id,
@@ -255,6 +287,31 @@ impl DeliveryService {
         Ok(())
     }
 
+    /// Publish the recipient-facing turn: `{msg_id, from, body}`, keyed to the
+    /// RECIPIENT's seat so a client filters the one stream by its own id.
+    async fn publish_pushed(&self, msg: &Msg, at: u64) -> Result<()> {
+        let payload = serde_json::to_string(&PushedEvent {
+            msg_id: &msg.msg_id,
+            from: &msg.from,
+            body: &msg.body,
+        })
+        .map_err(|error| PijError::Adapter {
+            adapter: "daemon/delivery".to_string(),
+            message: format!("could not encode pushed turn {}: {error}", msg.msg_id),
+        })?;
+        self.event_bus
+            .publish(Event {
+                seq: None,
+                v: 1,
+                at,
+                kind: PUSHED_EVENT_KIND.to_string(),
+                seat: Some(msg.to.clone()),
+                payload,
+            })
+            .await?;
+        Ok(())
+    }
+
     async fn publish_outcome(&self, seat: &SeatId, receipt: &Receipt) -> Result<()> {
         let payload = serde_json::to_string(&OutcomeEvent {
             msg_id: &receipt.msg_id,
@@ -277,6 +334,13 @@ impl DeliveryService {
             .await?;
         Ok(())
     }
+}
+
+#[derive(Serialize)]
+struct PushedEvent<'a> {
+    msg_id: &'a str,
+    from: &'a SeatId,
+    body: &'a str,
 }
 
 #[derive(Serialize)]
@@ -337,7 +401,7 @@ mod tests {
     use serde_json::Value;
     use tokio_stream::StreamExt;
 
-    use super::{DeliveryService, OUTCOME_EVENT_KIND};
+    use super::{DeliveryService, OUTCOME_EVENT_KIND, PUSHED_EVENT_KIND};
     use crate::events::EventBus;
 
     struct Fixture {
@@ -391,9 +455,18 @@ mod tests {
             .tail(Some(seat), Seq(0))
             .await
             .expect("tail audit");
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].kind, OUTCOME_EVENT_KIND);
-        let payload: Value = serde_json::from_str(&events[0].payload).expect("audit json");
+        // TWO events per send, for two audiences: the recipient's turn and the
+        // sender's verdict. The recipient's comes first, because a client that
+        // learns it was spoken to must be able to read what was said.
+        assert_eq!(events.len(), 2, "a pushed turn AND an outcome");
+
+        assert_eq!(events[0].kind, PUSHED_EVENT_KIND);
+        let pushed: Value = serde_json::from_str(&events[0].payload).expect("pushed json");
+        assert_eq!(pushed["msg_id"], "000000000000feed-0000000000000000");
+        assert_eq!(pushed["from"], "pij-from");
+
+        assert_eq!(events[1].kind, OUTCOME_EVENT_KIND);
+        let payload: Value = serde_json::from_str(&events[1].payload).expect("audit json");
         assert_eq!(payload["msg_id"], "000000000000feed-0000000000000000");
         assert_eq!(payload["outcome"]["outcome"], outcome);
         assert_eq!(payload["transport"], "fake");
