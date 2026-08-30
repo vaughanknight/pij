@@ -87,10 +87,15 @@ enum Endpoint {
     InboxAck,
     Seats,
     Events,
+    /// Producer for the three sidecar consumers. The consumers are queue-backed,
+    /// so a sidecar job must be ENQUEUED by something; without this route the
+    /// only producer would be hand-written SQL, which proves nothing about the
+    /// shipped surface.
+    Sidecar,
 }
 
 impl Endpoint {
-    const ALL: [Self; 8] = [
+    const ALL: [Self; 9] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -99,6 +104,7 @@ impl Endpoint {
         Self::InboxAck,
         Self::Seats,
         Self::Events,
+        Self::Sidecar,
     ];
 
     const fn path(self) -> &'static str {
@@ -111,12 +117,15 @@ impl Endpoint {
             Self::InboxAck => "/v1/inbox/ack",
             Self::Seats => "/v1/seats",
             Self::Events => "/v1/events",
+            Self::Sidecar => "/v1/sidecar",
         }
     }
 
     const fn method(self) -> Method {
         match self {
-            Self::Register | Self::Spawn | Self::Send | Self::InboxAck => Method::POST,
+            Self::Register | Self::Spawn | Self::Send | Self::InboxAck | Self::Sidecar => {
+                Method::POST
+            }
             Self::Health | Self::Inbox | Self::Seats | Self::Events => Method::GET,
         }
     }
@@ -171,7 +180,11 @@ fn router_with_optional_federation(
             endpoint.method(),
             if matches!(
                 endpoint,
-                Endpoint::Register | Endpoint::Spawn | Endpoint::Send | Endpoint::InboxAck
+                Endpoint::Register
+                    | Endpoint::Spawn
+                    | Endpoint::Send
+                    | Endpoint::InboxAck
+                    | Endpoint::Sidecar
             ) {
                 Method::POST
             } else {
@@ -187,6 +200,7 @@ fn router_with_optional_federation(
             Endpoint::InboxAck => router.route(endpoint.path(), post(ack_inbox)),
             Endpoint::Seats => router.route(endpoint.path(), get(seats)),
             Endpoint::Events => router.route(endpoint.path(), get(events)),
+            Endpoint::Sidecar => router.route(endpoint.path(), post(sidecar)),
         };
     }
     router
@@ -932,3 +946,52 @@ fn envelope<T: serde::Serialize>(status: StatusCode, body: &Envelope<T>) -> Resp
 
 #[cfg(test)]
 mod tests;
+
+/// One sidecar job, named by which consumer will claim it.
+///
+/// The three consumers are queue-backed, so SOMETHING must enqueue their work.
+/// Without this the only producer is hand-written SQL, which proves nothing
+/// about the shipped surface — a live-fire transcript that bypasses the product
+/// is a transcript of the test harness.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "snake_case", tag = "sidecar", content = "request")]
+pub enum SidecarRequest {
+    /// Outbound Telegram message; also binds the reply target for this seat.
+    Telegram(pij_sidecars::telegram::TelegramSend),
+    /// Background command start or cancel.
+    Bg(pij_sidecars::background::BgRequest),
+    /// Chore definition, run, or baseline acknowledgement.
+    Chore(pij_sidecars::chore::ChoreRequest),
+}
+
+/// Enqueue one sidecar job and report the id the consumer will serialize on.
+async fn sidecar(
+    State(state): State<AppState>,
+    Extension(_authenticated): Extension<auth::AuthenticatedMachine>,
+    Json(request): Json<SidecarRequest>,
+) -> Response {
+    let request_id = format!(
+        "{:016x}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos() as u64)
+    );
+    let job = match &request {
+        SidecarRequest::Telegram(send) => pij_sidecars::telegram::send_job(send),
+        SidecarRequest::Bg(bg) => pij_sidecars::background::job(bg, &request_id),
+        SidecarRequest::Chore(chore) => pij_sidecars::chore::job(chore, &request_id),
+    };
+    let job = match job {
+        Ok(job) => job,
+        Err(error) => return refused("pij sidecar", error),
+    };
+    let serial_key = job.serial_key.clone();
+    match state.services.queue.enqueue(job).await {
+        Ok(job_id) => (
+            StatusCode::ACCEPTED,
+            Json(serde_json::json!({ "serial_key": serial_key, "job_id": job_id })),
+        )
+            .into_response(),
+        Err(error) => internal("pij sidecar", error),
+    }
+}
