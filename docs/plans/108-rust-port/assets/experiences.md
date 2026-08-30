@@ -512,3 +512,59 @@ The coder declined to write the receipt. A report describing a worker whose
 pointer promises an action the same worker prevents would have been a receipt for
 a defect.
 
+## E-029 — a FIX can land in one half too
+
+Review round 2, `pij-varying-sharrow`, against the change I had just made to close
+that same reviewer's round-1 finding.
+
+Round 1 found that queue dedupe was keyed on `dedupe_key` alone while every row
+carries the CALLER's `msg_id`, so one id sent to two recipients silently dropped
+the second. I scoped the index to `(kind, dedupe_key)` in schema 7 and wrote a
+migration comment saying `kind` is `delivery:<seat>` / `federation:<machine>`.
+
+**Federation stamped every peer with one shared kind, `federation.send`.** So the
+loss survived the migration for exactly the rows the migration's own comment
+claimed to cover — `--to bob@laptop` then `--to bob@desktop` still collapsed, and
+the second caller was told `Queued` for a row bound to the first machine.
+
+> The fix, the migration comment, and my ruling all agreed with each other, and
+> none of them agreed with the PRODUCER.
+
+Found by applying the committed SQL to a scratch database and running the insert
+shape twice — not by reading. **A defect class does not stop applying to the code
+that fixes it.**
+
+Two riders, both worth keeping:
+
+* My own regression test for the sibling finding used kind `federation:laptop` — a
+  shape NO production code emitted. It proved the sweep's scope honestly and was,
+  as a fixture, describing a producer that did not exist.
+* The service-level test failed when first written, because `FakeQueue` still
+  deduped on `dedupe_key` alone. **Third time this wave a fake's semantics were
+  quietly false** — it dropped a retried body, it accepted an unclaimed retry, it
+  ignored not-before, and now this. A fake is a claim about the real adapter, and
+  an unchecked claim is exactly what this project keeps finding.
+
+## E-030 — the loop nobody ran
+
+Same review, round 1, finding F9 — an observation attached to a HIGH finding
+rather than filed alone, which is why the HIGH was believable.
+
+Both long-lived workers propagated errors through `?`, so one transient SQLite
+busy or one pane dying between the registry read and the submit ended them for the
+daemon's LIFETIME, silently. Every later remote send enqueued into a queue nobody
+drained.
+
+Why no instrument saw it: **the two-daemon end-to-end test drives
+`process_one()` by hand.** The unit under test was the STEP; the loop that runs
+the step forever was exercised only by a shutdown test. So the suite proved
+everything about the work and nothing about the worker.
+
+Composed with two siblings it was worse than the sum: `reqwest` has no default
+timeout, so "timeouts retry" was unreachable prose; a stalled POST therefore held
+its claim until the lease swept it; the sweep was unscoped, so a five-second
+pointer tick terminally failed a federation row underneath the worker still
+holding it; the return path then hit "job is not running", which under the first
+defect killed the worker. **Three findings composing into one silent, permanent,
+message-losing state**, every one invisible to a green suite.
+
