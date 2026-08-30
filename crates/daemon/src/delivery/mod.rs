@@ -154,7 +154,10 @@ impl DeliveryService {
             .registry
             .get(&to)
             .await?
-            .ok_or_else(|| PijError::NoRegistryEntry { seat: to.clone() })?;
+            .ok_or_else(|| PijError::NoRegistryEntry {
+                seat: to.clone(),
+                store: "the daemon registry".to_string(),
+            })?;
 
         // Supplying `true` asks the pure policy only about registry facts. A
         // transport check is performed only when that policy says it matters.

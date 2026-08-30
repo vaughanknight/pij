@@ -196,11 +196,17 @@ where
         state: Option<SemanticState>,
         note: Option<String>,
     ) -> Result<Seq> {
-        let mut descriptor = self
-            .registry
-            .get(seat)
-            .await?
-            .ok_or_else(|| PijError::NoRegistryEntry { seat: seat.clone() })?;
+        let mut descriptor =
+            self.registry
+                .get(seat)
+                .await?
+                .ok_or_else(|| PijError::NoRegistryEntry {
+                    seat: seat.clone(),
+                    // This layer consulted the REGISTRY PORT, not a file: it names what
+                    // it actually searched at the granularity it knows, and the
+                    // adapter names the path when the adapter is the one that looked.
+                    store: "the daemon registry".to_string(),
+                })?;
         descriptor.semantic_state = state;
         let registry_seq = self.registry.put(descriptor).await?;
         let record = StateRecord {

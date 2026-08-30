@@ -131,7 +131,10 @@ impl Registry for FakeRegistry {
         let mut state = self.state.lock().expect("fake registry mutex");
         state.recorder.record(format!("tombstone:{seat}:{reason}"));
         if !state.seats.contains_key(seat.as_str()) {
-            return Err(PijError::NoRegistryEntry { seat: seat.clone() });
+            return Err(PijError::NoRegistryEntry {
+                seat: seat.clone(),
+                store: "an in-memory fake registry".to_string(),
+            });
         }
         state.seq += 1;
         let seq = state.seq;
