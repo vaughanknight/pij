@@ -244,7 +244,20 @@ async fn register(State(state): State<AppState>, Json(claim): Json<Registration>
                     ),
                 );
             }
-            None => None,
+            // A predecessor the roster has never heard of is a REFUSAL, not a
+            // silent downgrade to a plain registration. Review found that a
+            // typo'd id was accepted and the operator learned about it later
+            // through an unrelated #19 collision refusal — an error message about
+            // the wrong thing is worse than no error at all.
+            None => {
+                return refused(
+                    "pij register",
+                    format!(
+                        "seat `{previous}` is not in the roster, so `{}` cannot supersede it",
+                        claim.id
+                    ),
+                );
+            }
         },
         (Some(_), None) => {
             return refused(

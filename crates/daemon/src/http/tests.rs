@@ -376,6 +376,14 @@ async fn send_enqueues_exactly_once_and_refuses_remote_destinations() {
     assert_eq!(queued.from, request.from);
     assert_eq!(queued.to, request.to.seat);
     assert_eq!(queued.body, request.body);
+    // A NON-None value, because every other construction in the workspace passes
+    // None: a regression that dropped the field at the Msg boundary — the exact
+    // defect F3 fixed — would otherwise pass the whole suite.
+    assert_eq!(
+        queued.in_reply_to.as_deref(),
+        Some("m-0"),
+        "the answered msg_id must survive into the durable payload"
+    );
 
     let remote = SendRequest {
         to: Destination {
@@ -665,6 +673,47 @@ async fn a_native_session_boundary_supersedes_its_own_seat_but_never_another() {
         "the post-mortem must name the successor"
     );
     assert!(seats.iter().any(|seat| seat.id.as_str() == "pij-second"));
+
+    // A predecessor that does not EXIST is refused by name. Review round 2 found
+    // this arm returning `None` — a silent downgrade to a plain registration,
+    // which the PM's round-1 commit message claimed to have fixed and had not.
+    // The claim was in the receipt; the change was not in the code.
+    let ghost = serde_json::json!({
+        "id": "pij-ghost-successor",
+        "harness": "omp",
+        "folder": "/abs/tree",
+        "pid": pid,
+        "proc_start": proc_start,
+        "supersedes": "pij-never-registered",
+    });
+    let response = client
+        .post(&url)
+        .bearer_auth("key")
+        .json(&ghost)
+        .send()
+        .await
+        .expect("ghost predecessor");
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::BAD_REQUEST,
+        "an unknown predecessor must be REFUSED, never silently ignored"
+    );
+    assert!(
+        response
+            .text()
+            .await
+            .expect("body")
+            .contains("is not in the roster")
+    );
+    assert!(
+        !registry
+            .list(SeatFilter::default())
+            .await
+            .expect("roster")
+            .iter()
+            .any(|seat| seat.id.as_str() == "pij-ghost-successor"),
+        "a refused registration must not write a seat"
+    );
 
     // ...and #19 still holds: naming another seat that does not share this
     // process is refused, which is the case the guard exists for.
