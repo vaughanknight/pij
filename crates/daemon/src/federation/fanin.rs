@@ -294,8 +294,17 @@ impl FanInService {
         mut shutdown: tokio::sync::watch::Receiver<bool>,
     ) {
         let mut delay = self.base_delay;
+        // Set when the peer refuses our cursor as impossible: the next attempt
+        // resumes LIVE from the peer's real position instead of asking again for a
+        // history that no longer exists. Without it the worker retried the same
+        // rejected `since` for ever (review F7).
+        let mut resume_live = false;
         loop {
-            let since = source.last_cursor();
+            let since = if resume_live {
+                None
+            } else {
+                source.last_cursor()
+            };
             let since_json = since.and_then(|cursor| {
                 serde_json::to_string(&BTreeMap::from([(source.alias.clone(), cursor)])).ok()
             });
@@ -308,6 +317,7 @@ impl FanInService {
             match attempt {
                 Ok(mut stream) => {
                     delay = self.base_delay;
+                    resume_live = false;
                     source.publish_status(StreamFrame::PeerState {
                         machine: source.alias.clone(),
                         state: PeerStreamState::Connected,
@@ -341,7 +351,26 @@ impl FanInService {
                         }
                     }
                 }
-                Err(error) => self.publish_unavailable(&source, delay, error.to_string()),
+                Err(error) => {
+                    // The peer named our cursor as impossible: its history was
+                    // reset. Say so as RESET rather than as a generic failure —
+                    // "unavailable, retrying" would be false, since the peer is up
+                    // and answering — and resume live on the next attempt instead
+                    // of asking again for events that cannot exist (review F7).
+                    let message = error.to_string();
+                    if message.contains("beyond this spine's newest") {
+                        resume_live = true;
+                        source.publish_status(StreamFrame::PeerState {
+                            machine: source.alias.clone(),
+                            state: PeerStreamState::Reset,
+                            retry_in_ms: None,
+                            dropped: None,
+                            reason: Some(message),
+                        });
+                    } else {
+                        self.publish_unavailable(&source, delay, message);
+                    }
+                }
             }
             let sleep_for = delay;
             delay = next_delay(delay, self.max_delay);
@@ -456,7 +485,25 @@ impl Stream for RemoteSubscription {
                 Poll::Ready(Some((machine, Ok(frame)))) => {
                     if let StreamFrame::Event { cursor, .. } = &frame {
                         let previous = self.seen.get(&machine).copied().unwrap_or(0);
-                        if *cursor <= previous {
+                        if *cursor < previous {
+                            // BACKWARDS, not duplicate: the source's history was
+                            // reset. Silently skipping here was the consumer-side
+                            // half of the same silence (review F7) — the worker
+                            // above signals Reset and this filter swallowed the
+                            // frame that proved it.
+                            self.seen.insert(machine.clone(), *cursor);
+                            self.note(&frame);
+                            return Poll::Ready(Some(StreamFrame::PeerState {
+                                machine,
+                                state: PeerStreamState::Reset,
+                                retry_in_ms: None,
+                                dropped: None,
+                                reason: Some(format!(
+                                    "source cursor went backwards ({previous} -> {cursor}): its history was reset"
+                                )),
+                            }));
+                        }
+                        if *cursor == previous {
                             continue;
                         }
                     }

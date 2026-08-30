@@ -33,6 +33,25 @@ impl CountingQueue {
 
 #[async_trait]
 impl Queue for CountingQueue {
+    async fn note_delivered(
+        &self,
+        _recipient: &SeatId,
+        _msg_id: &str,
+        _origin: DeliveryOrigin,
+    ) -> Result<Option<DeliveryOrigin>> {
+        // The counting request fixture models no ledger. Claiming would be a lie
+        // about a path it does not have; refusing keeps the fixture honest, and
+        // this route never direct-delivers in these tests.
+        Err(pij_core::error::PijError::Adapter {
+            adapter: "test/counting-queue".to_string(),
+            message: "the counting request fixture does not model delivered ids".to_string(),
+        })
+    }
+
+    async fn forget_delivered(&self, _recipient: &SeatId, _msg_id: &str) -> Result<()> {
+        Ok(())
+    }
+
     async fn enqueue(&self, job: Job) -> Result<JobId> {
         let mut jobs = self.jobs.lock().expect("queue mutex");
         jobs.push(job);

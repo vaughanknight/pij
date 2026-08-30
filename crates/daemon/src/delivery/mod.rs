@@ -208,12 +208,49 @@ impl DeliveryService {
                         }
                     }
                 } else {
-                    match self.transport.deliver(&recipient, &msg).await? {
-                        DeliveryOutcome::Queued => {
-                            self.enqueue(&msg).await?;
-                            DeliveryOutcome::Queued
+                    // CLAIM BEFORE INJECTING (R4-AMEND-4). The direct path claims
+                    // no job, so it never reached ack_delivery's ledger write —
+                    // and first-attempt-online is the COMMON case for a local
+                    // send, so the duplicate window was open on its likeliest
+                    // path: deliver, caller's HTTP dies, retry delivers again.
+                    match self
+                        .queue
+                        .note_delivered(&to, &msg.msg_id, DeliveryOrigin::InjectedToTransport)
+                        .await?
+                    {
+                        Some(origin) => {
+                            publish_to_recipient = false;
+                            DeliveryOutcome::Delivered { origin }
                         }
-                        outcome => outcome,
+                        None => match self.transport.deliver(&recipient, &msg).await {
+                            Ok(DeliveryOutcome::Queued) => {
+                                // The transport declined after we claimed. Release
+                                // the claim and queue: the message has NOT been
+                                // delivered, and a ledger entry saying otherwise
+                                // would suppress the retry of a message nobody got.
+                                self.queue.forget_delivered(&to, &msg.msg_id).await?;
+                                self.enqueue(&msg).await?;
+                                DeliveryOutcome::Queued
+                            }
+                            Ok(outcome) => outcome,
+                            Err(error) => {
+                                // COMPENSATE, then report. The inverse window is
+                                // the worse one: a claim that lands while the
+                                // delivery does not turns the retry into a
+                                // replayed Delivered for a message that never
+                                // arrived — a lost message wearing our most
+                                // confident receipt.
+                                //
+                                // RESIDUAL WINDOW, NAMED: a hard crash between the
+                                // claim and this compensation leaves the claim
+                                // standing, and the retry is suppressed. It is
+                                // bounded by the same eviction that bounds the
+                                // ledger, and it is the honest cost of claiming
+                                // before injecting rather than after.
+                                self.queue.forget_delivered(&to, &msg.msg_id).await?;
+                                return Err(error);
+                            }
+                        },
                     }
                 }
             }
@@ -902,5 +939,92 @@ mod tests {
         );
         bus.publish(event("new")).await.expect("new publish");
         assert_eq!(live.next().await.expect("future event").kind, "new");
+    }
+
+    /// Review F8 / R4-AMEND-4 — the DIRECT path claims before it injects, and a
+    /// retry after an ambiguous failure is suppressed rather than delivered twice.
+    ///
+    /// First-attempt-online is the common case for a local send, so this was the
+    /// duplicate window's likeliest path and the one my first two fixes missed.
+    ///
+    /// Mutation witness: delete the `note_delivered` claim and the second accept
+    /// delivers again — two transport deliveries where one is required.
+    #[tokio::test]
+    async fn a_direct_delivery_is_claimed_before_injection_and_a_retry_is_suppressed() {
+        let fixture = fixture(FakeTransport::reachable());
+        register(&fixture, bound("pij-online")).await;
+
+        let msg = || Msg {
+            from: "pij-from".into(),
+            to: "pij-online".into(),
+            body: "hello".to_string(),
+            msg_id: "m-direct-1".to_string(),
+            from_machine: None,
+            in_reply_to: None,
+            command: None,
+        };
+
+        let first = fixture.service.accept(msg()).await.expect("first delivery");
+        assert_eq!(
+            first.outcome,
+            DeliveryOutcome::Delivered {
+                origin: DeliveryOrigin::InjectedToTransport
+            }
+        );
+
+        let retry = fixture.service.accept(msg()).await.expect("retry");
+        assert_eq!(
+            retry.outcome,
+            DeliveryOutcome::Delivered {
+                origin: DeliveryOrigin::InjectedToTransport
+            },
+            "the retry replays the RECORDED origin rather than claiming a new delivery"
+        );
+        assert_eq!(
+            fixture.transport.delivered().len(),
+            1,
+            "the recipient must be injected ONCE: a caller retry is not a second message"
+        );
+    }
+
+    /// The prime's binding rider on R4-AMEND-4 — the FAILURE path.
+    ///
+    /// Claim-before-inject carries the inverse window and it is the worse one: a
+    /// claim that lands while the injection does not turns the next retry into a
+    /// replayed `Delivered` for a message that NEVER ARRIVED — a lost message
+    /// wearing our most confident receipt. A synchronous failure must compensate.
+    ///
+    /// Mutation witness: remove the `forget_delivered` call in the error arm and
+    /// the retry is suppressed, so the message is lost and reported delivered.
+    #[tokio::test]
+    async fn a_failed_injection_releases_its_claim_so_the_retry_still_delivers() {
+        let fixture = fixture(FakeTransport::reachable().script_deliver_error());
+        register(&fixture, bound("pij-flaky")).await;
+
+        let msg = || Msg {
+            from: "pij-from".into(),
+            to: "pij-flaky".into(),
+            body: "hello".to_string(),
+            msg_id: "m-direct-2".to_string(),
+            from_machine: None,
+            in_reply_to: None,
+            command: None,
+        };
+
+        fixture
+            .service
+            .accept(msg())
+            .await
+            .expect_err("the transport failed, and the caller is told so");
+
+        let retry = fixture.service.accept(msg()).await.expect("retry delivers");
+        assert_eq!(
+            retry.outcome,
+            DeliveryOutcome::Delivered {
+                origin: DeliveryOrigin::InjectedToTransport
+            },
+            "a claim whose delivery failed must NOT suppress the retry of a message nobody got"
+        );
+        assert_eq!(fixture.transport.delivered().len(), 1);
     }
 }

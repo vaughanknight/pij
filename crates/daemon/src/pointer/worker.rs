@@ -827,6 +827,23 @@ mod tests {
 
     #[async_trait]
     impl Queue for FailFirstDeliveryAck {
+        async fn note_delivered(
+            &self,
+            recipient: &SeatId,
+            msg_id: &str,
+            origin: DeliveryOrigin,
+        ) -> pij_core::error::Result<Option<DeliveryOrigin>> {
+            self.inner.note_delivered(recipient, msg_id, origin).await
+        }
+
+        async fn forget_delivered(
+            &self,
+            recipient: &SeatId,
+            msg_id: &str,
+        ) -> pij_core::error::Result<()> {
+            self.inner.forget_delivered(recipient, msg_id).await
+        }
+
         async fn enqueue(&self, job: Job) -> pij_core::error::Result<JobId> {
             self.inner.enqueue(job).await
         }

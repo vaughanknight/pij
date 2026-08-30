@@ -86,6 +86,31 @@ impl EventBus {
     pub async fn subscribe(&self, since: Option<Seq>, filter: EventFilter) -> Result<Subscription> {
         let receiver = self.live.subscribe();
         let since = since.unwrap_or(Seq(0));
+
+        // REFUSE a cursor beyond this spine's newest sequence, by name.
+        //
+        // Such a cursor cannot be satisfied and cannot be corrected by waiting: it
+        // describes a history this spine does not have, which happens when a
+        // daemon is reprovisioned or its store wiped while its alias survives.
+        // Silently filtering `seq <= last_seq` from a stale high cursor meant a
+        // reset peer emitted NOTHING for ever while its status read Connected —
+        // and made the backwards-cursor branch downstream unreachable, because no
+        // low frame ever left this side (review F7).
+        let newest = self
+            .spine
+            .tail(None, Seq(0))
+            .await?
+            .last()
+            .and_then(|event| event.seq)
+            .unwrap_or(Seq(0));
+
+        if since > newest {
+            return Err(PijError::CursorBeyondSpine {
+                requested: since.0,
+                newest: newest.0,
+            });
+        }
+
         let replayed = self.spine.tail(None, since).await?;
         let mut replay = VecDeque::new();
         let mut last_seq = since;
@@ -175,5 +200,48 @@ impl Stream for Subscription {
                 Poll::Pending => return Poll::Pending,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod cursor_refusal_tests {
+    use std::sync::Arc;
+
+    use pij_core::error::PijError;
+    use pij_core::model::Seq;
+    use pij_testkit::fakes::FakeSpine;
+
+    use super::{EventBus, EventFilter};
+
+    /// Review F7 — a cursor beyond this spine's newest is REFUSED BY NAME.
+    ///
+    /// It cannot be satisfied and cannot be corrected by waiting: it describes a
+    /// history this spine does not have, which is what a reprovisioned daemon
+    /// looks like from outside. Filtering it silently left a consumer waiting for
+    /// ever on a stream that read healthy, and made the downstream
+    /// backwards-cursor branch unreachable — nothing low ever left this side.
+    ///
+    /// Mutation witness: delete the `since > newest` guard and this fails, because
+    /// the subscription is handed back and streams nothing.
+    #[tokio::test]
+    async fn a_cursor_beyond_the_spine_is_refused_by_name() {
+        let bus = Arc::new(EventBus::new(Arc::new(FakeSpine::new()), 16).expect("event bus"));
+
+        let refused = bus.subscribe(Some(Seq(57)), EventFilter::all()).await;
+        match refused {
+            Err(PijError::CursorBeyondSpine { requested, newest }) => {
+                assert_eq!(requested, 57);
+                assert_eq!(newest, 0, "an empty spine's newest sequence is zero");
+            }
+            Err(other) => panic!("the refusal must NAME the impossible cursor: {other}"),
+            Ok(_) => panic!(
+                "a cursor beyond the spine must be refused, not silently filtered into silence"
+            ),
+        }
+
+        // ...and a cursor the spine CAN serve is still served.
+        bus.subscribe(Some(Seq(0)), EventFilter::all())
+            .await
+            .expect("a satisfiable cursor subscribes");
     }
 }

@@ -384,6 +384,53 @@ impl Queue for FakeQueue {
         Ok(())
     }
 
+    /// R4-AMEND-4: claim-or-report, with the same prune the real adapter applies,
+    /// so a capacity test gets the same answer from either implementation.
+    async fn note_delivered(
+        &self,
+        recipient: &SeatId,
+        msg_id: &str,
+        origin: DeliveryOrigin,
+    ) -> Result<Option<DeliveryOrigin>> {
+        let mut state = self.state.lock().expect("fake queue mutex");
+        if let Some((_, _, existing)) = state
+            .delivered
+            .iter()
+            .find(|(seat, id, _)| seat == recipient.as_str() && id == msg_id)
+        {
+            return Ok(Some(*existing));
+        }
+        state
+            .delivered
+            .push((recipient.as_str().to_string(), msg_id.to_string(), origin));
+        // Same prune the real adapter applies, oldest first, so a capacity test
+        // gets the same answer from either implementation.
+        let seat = recipient.as_str().to_string();
+        let count = state
+            .delivered
+            .iter()
+            .filter(|(other, _, _)| other == &seat)
+            .count();
+        let mut remove = count.saturating_sub(self.delivered_id_capacity);
+        state.delivered.retain(|(other, _, _)| {
+            if other == &seat && remove > 0 {
+                remove -= 1;
+                false
+            } else {
+                true
+            }
+        });
+        Ok(None)
+    }
+
+    async fn forget_delivered(&self, recipient: &SeatId, msg_id: &str) -> Result<()> {
+        let mut state = self.state.lock().expect("fake queue mutex");
+        state
+            .delivered
+            .retain(|(seat, id, _)| !(seat == recipient.as_str() && id == msg_id));
+        Ok(())
+    }
+
     async fn ack_delivery(&self, job: JobId, origin: DeliveryOrigin) -> Result<()> {
         let mut state = self.state.lock().expect("fake queue mutex");
         let Some((claimed, _worker)) = state.claimed.remove(&job.0) else {
@@ -475,6 +522,10 @@ pub struct FakeTransport {
 
 #[derive(Default)]
 struct TransportState {
+    /// Fail the NEXT deliver call, once. Models an ambiguous transport failure:
+    /// the caller learns the injection did not happen, which is the case a
+    /// claim-before-inject design must compensate for.
+    fail_next_deliver: bool,
     reachable: bool,
     outcome: Option<DeliveryOutcome>,
     delivered: Vec<Msg>,
@@ -503,6 +554,18 @@ impl FakeTransport {
     }
 
     /// Force the outcome `deliver` reports, whatever reachability says.
+    /// Fail the next `deliver` call once, then behave normally.
+    #[must_use]
+    pub fn script_deliver_error(self) -> Self {
+        self.state
+            .lock()
+            .expect("fake transport mutex")
+            .fail_next_deliver = true;
+        self
+    }
+
+    /// Script the outcome every `deliver` returns.
+    #[must_use]
     pub fn script_outcome(self, outcome: DeliveryOutcome) -> Self {
         self.state.lock().expect("fake transport mutex").outcome = Some(outcome);
         self
@@ -549,6 +612,12 @@ impl Transport for FakeTransport {
         state
             .recorder
             .record(format!("deliver:{}:{}", seat.id, msg.msg_id));
+        if std::mem::take(&mut state.fail_next_deliver) {
+            return Err(PijError::Adapter {
+                adapter: "testkit/fake-transport".to_string(),
+                message: "scripted injection failure".to_string(),
+            });
+        }
         if let Some(outcome) = state.outcome.clone() {
             return Ok(outcome);
         }

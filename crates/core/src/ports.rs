@@ -115,6 +115,37 @@ pub trait Queue: Send + Sync {
     /// transaction; a crash cannot expose only part of the delivery fact.
     async fn ack_delivery(&self, job: JobId, origin: DeliveryOrigin) -> Result<()>;
 
+    /// CLAIM the right to deliver `msg_id` to `recipient`, or learn who already did.
+    ///
+    /// **R4-AMEND-4.** Returns `None` when the claim is now ours, `Some(origin)`
+    /// when the recipient already has this message — atomically, because a
+    /// separate read and write reintroduce exactly the check-then-act race the
+    /// ledger exists to remove.
+    ///
+    /// It exists for the DIRECT delivery path, which claims no job and therefore
+    /// never reached [`Self::ack_delivery`]'s ledger write. Review found the
+    /// duplicate window open on its likeliest case — first attempt online, caller
+    /// retries after an ambiguous failure, message delivered twice.
+    ///
+    /// **Claim BEFORE injecting, and compensate if the injection fails.** The
+    /// inverse window is the worse one: a claim that lands while the delivery does
+    /// not turns the retry into a replayed `Delivered { origin }` for a message
+    /// that never arrived — a lost message wearing our most confident receipt. A
+    /// synchronous failure must call [`Self::forget_delivered`]. A hard crash
+    /// between the two is the NAMED residual window.
+    async fn note_delivered(
+        &self,
+        recipient: &SeatId,
+        msg_id: &str,
+        origin: DeliveryOrigin,
+    ) -> Result<Option<DeliveryOrigin>>;
+
+    /// Release a claim taken by [`Self::note_delivered`] whose delivery failed.
+    ///
+    /// Compensation, not deletion-as-policy: it exists so a synchronous injection
+    /// failure cannot leave the ledger claiming a delivery that never happened.
+    async fn forget_delivered(&self, recipient: &SeatId, msg_id: &str) -> Result<()>;
+
     /// Return a CLAIMED job to pending, after `delay`, counting the attempt.
     ///
     /// **R4-AMEND-1**, ratified after two wave-4 units found the same hole from

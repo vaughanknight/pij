@@ -19,7 +19,7 @@ use sqlx::{Pool, Row, Sqlite};
 use std::time::Duration;
 
 use pij_core::error::{PijError, Result};
-use pij_core::model::{DeliveryOrigin, Job, JobId, Outcome};
+use pij_core::model::{DeliveryOrigin, Job, JobId, Outcome, SeatId};
 use pij_core::ports::{DeliveryEnqueue, Queue};
 
 use crate::migrate::require_current_schema;
@@ -355,6 +355,68 @@ impl Queue for SqliteQueue {
                 ),
             });
         }
+        Ok(())
+    }
+
+    /// R4-AMEND-4: claim-or-report, in ONE transaction. See the port docs for why
+    /// the caller must compensate on a synchronous injection failure.
+    async fn note_delivered(
+        &self,
+        recipient: &SeatId,
+        msg_id: &str,
+        origin: DeliveryOrigin,
+    ) -> Result<Option<DeliveryOrigin>> {
+        require_current_schema(&self.pool).await?;
+        let mut tx = self.begin_write().await?;
+
+        let existing: Option<String> = sqlx::query_scalar(
+            "SELECT origin FROM delivered_messages WHERE recipient = ?1 AND msg_id = ?2",
+        )
+        .bind(recipient.as_str())
+        .bind(msg_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(adapter_error)?;
+        if let Some(existing) = existing {
+            tx.commit().await.map_err(adapter_error)?;
+            return Ok(Some(decode_origin(&existing)?));
+        }
+
+        sqlx::query(
+            "INSERT INTO delivered_messages (recipient, msg_id, origin) VALUES (?1, ?2, ?3)",
+        )
+        .bind(recipient.as_str())
+        .bind(msg_id)
+        .bind(encode_origin(origin))
+        .execute(&mut *tx)
+        .await
+        .map_err(adapter_error)?;
+        sqlx::query(
+            "DELETE FROM delivered_messages WHERE recipient = ?1 AND seq NOT IN (\
+                 SELECT seq FROM delivered_messages WHERE recipient = ?1 \
+                 ORDER BY seq DESC LIMIT ?2\
+             )",
+        )
+        .bind(recipient.as_str())
+        .bind(self.delivered_id_capacity)
+        .execute(&mut *tx)
+        .await
+        .map_err(adapter_error)?;
+
+        tx.commit().await.map_err(adapter_error)?;
+        Ok(None)
+    }
+
+    async fn forget_delivered(&self, recipient: &SeatId, msg_id: &str) -> Result<()> {
+        require_current_schema(&self.pool).await?;
+        let mut tx = self.begin_write().await?;
+        sqlx::query("DELETE FROM delivered_messages WHERE recipient = ?1 AND msg_id = ?2")
+            .bind(recipient.as_str())
+            .bind(msg_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+        tx.commit().await.map_err(adapter_error)?;
         Ok(())
     }
 

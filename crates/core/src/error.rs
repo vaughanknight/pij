@@ -15,6 +15,22 @@ use crate::model::SeatId;
 /// Everything this workspace refuses to do, and why.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum PijError {
+    /// A subscription asked for a cursor this spine has never reached.
+    ///
+    /// Not a transient: it describes a history that does not exist, which happens
+    /// when a daemon is reprovisioned or its store wiped while its alias
+    /// survives. Named rather than filtered, because silently returning nothing
+    /// for a cursor that can never be satisfied leaves a consumer waiting for
+    /// ever on a stream that reads healthy (review F7, wave 5).
+    #[error(
+        "requested cursor {requested} is beyond this spine's newest {newest} — its history was reset; resume from the peer's real position"
+    )]
+    CursorBeyondSpine {
+        /// What the consumer asked for.
+        requested: u64,
+        /// The newest sequence this spine actually holds.
+        newest: u64,
+    },
     /// No registry row for this seat. Recoverable: adopt or register it.
     #[error("{seat}: no registry entry — adopt the seat (`pij adopt`) or spawn it again")]
     NoRegistryEntry {
