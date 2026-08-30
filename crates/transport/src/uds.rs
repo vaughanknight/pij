@@ -415,6 +415,7 @@ mod tests {
             to: SeatId::from("pij-recipient"),
             body: "first line\nsecond line".to_string(),
             msg_id: "msg-uds-001".to_string(),
+            from_machine: None,
             in_reply_to: None,
             command: command.map(str::to_string),
         }

@@ -18,6 +18,7 @@
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
@@ -227,6 +228,8 @@ struct QueueState {
     live: Vec<(JobId, Job)>,
     claimed: HashMap<u64, (Job, String)>,
     acked: Vec<(JobId, Outcome)>,
+    retried: Vec<(JobId, Duration)>,
+    attempts: HashMap<u64, u32>,
     next_id: u64,
 }
 
@@ -244,6 +247,23 @@ impl FakeQueue {
     /// Everything acked, in order.
     pub fn acked(&self) -> Vec<(JobId, Outcome)> {
         self.state.lock().expect("fake queue mutex").acked.clone()
+    }
+
+    /// Every retry, in order, with the delay each asked for.
+    pub fn retried(&self) -> Vec<(JobId, Duration)> {
+        self.state.lock().expect("fake queue mutex").retried.clone()
+    }
+
+    /// How many times this job has been retried. The counter lives HERE and in
+    /// SQLite, and nowhere else — see `Queue::retry` (R4-AMEND-1).
+    pub fn attempts(&self, job: JobId) -> u32 {
+        self.state
+            .lock()
+            .expect("fake queue mutex")
+            .attempts
+            .get(&job.0)
+            .copied()
+            .unwrap_or(0)
     }
 }
 
@@ -291,6 +311,17 @@ impl Queue for FakeQueue {
         let mut state = self.state.lock().expect("fake queue mutex");
         state.claimed.remove(&job.0);
         state.acked.push((job, outcome));
+        Ok(())
+    }
+
+    /// R4-AMEND-1. The fake counts attempts too, because a caller that reads
+    /// `attempts()` must get the same answer from either implementation — a fake
+    /// that forgot the counter would let a one-writer test pass against nothing.
+    async fn retry(&self, job: JobId, delay: Duration) -> Result<()> {
+        let mut state = self.state.lock().expect("fake queue mutex");
+        state.claimed.remove(&job.0);
+        *state.attempts.entry(job.0).or_insert(0) += 1;
+        state.retried.push((job, delay));
         Ok(())
     }
 }
@@ -453,6 +484,15 @@ impl TmuxPort for FakeTmux {
         let mut state = self.state.lock().expect("fake tmux mutex");
         state.recorder.record("list_panes".to_string());
         Ok(state.panes.clone())
+    }
+
+    async fn submit(&self, pane: &str, text: &str) -> Result<()> {
+        let mut state = self.state.lock().expect("fake tmux mutex");
+        // Recorded DISTINCTLY from send_keys: the whole reason submit is its own
+        // verb is that "typed" and "sent" are different events, and a fake that
+        // recorded them identically would make that distinction untestable.
+        state.recorder.record(format!("submit:{pane}:{text}"));
+        Ok(())
     }
 
     async fn send_keys(&self, pane: &str, keys: &str) -> Result<()> {

@@ -44,6 +44,17 @@ impl Queue for CountingQueue {
     async fn ack(&self, _job: JobId, _outcome: Outcome) -> Result<()> {
         Ok(())
     }
+
+    /// This counter only ever observes the REQUEST path, which enqueues and
+    /// returns; nothing here claims, so nothing here can retry. Refusing rather
+    /// than silently succeeding keeps that true: if a future route learns to
+    /// retry, this test fails loudly instead of counting a no-op as a success.
+    async fn retry(&self, _job: JobId, _delay: std::time::Duration) -> Result<()> {
+        Err(pij_core::error::PijError::Adapter {
+            adapter: "test/counting-queue".to_string(),
+            message: "the request path must not retry: it never claims".to_string(),
+        })
+    }
 }
 
 async fn test_services(

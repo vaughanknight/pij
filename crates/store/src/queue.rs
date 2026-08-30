@@ -16,6 +16,8 @@
 use async_trait::async_trait;
 use sqlx::{Pool, Row, Sqlite};
 
+use std::time::Duration;
+
 use pij_core::error::{PijError, Result};
 use pij_core::model::{Job, JobId, Outcome};
 use pij_core::ports::Queue;
@@ -162,6 +164,7 @@ impl Queue for SqliteQueue {
         let row = sqlx::query(
             "SELECT id, kind, serial_key, payload, dedupe_key FROM jobs \
              WHERE state = 'pending' \
+               AND not_before <= unixepoch() \
                AND kind IN (SELECT value FROM json_each(?1)) \
                AND serial_key NOT IN (SELECT serial_key FROM jobs WHERE state = 'running') \
              ORDER BY id LIMIT 1",
@@ -205,6 +208,42 @@ impl Queue for SqliteQueue {
             return Ok(None);
         }
         Ok(Some((JobId(id as u64), job)))
+    }
+
+    /// R4-AMEND-1: pending again, counted, and not before `delay` has passed —
+    /// all in ONE transaction, because the whole point is that no crash window
+    /// exists between "this attempt failed" and "it will be tried again".
+    async fn retry(&self, job: JobId, delay: Duration) -> Result<()> {
+        require_current_schema(&self.pool).await?;
+        let seconds = i64::try_from(delay.as_secs()).unwrap_or(i64::MAX);
+
+        let mut tx = self.begin_write().await?;
+        let affected = sqlx::query(
+            "UPDATE jobs \
+             SET state = 'pending', worker = NULL, claimed_at = NULL, \
+                 attempt = attempt + 1, not_before = unixepoch() + ?2 \
+             WHERE id = ?1 AND state = 'running'",
+        )
+        .bind(job.0 as i64)
+        .bind(seconds)
+        .execute(&mut *tx)
+        .await
+        .map_err(adapter_error)?
+        .rows_affected();
+
+        tx.commit().await.map_err(adapter_error)?;
+        if affected == 0 {
+            // Same reasoning as `ack`: retrying a job nobody claimed means a
+            // worker believes it holds work the queue does not think is running,
+            // which is exactly what a lost claim leaves behind. Reported, never
+            // silently ignored — a retry that quietly does nothing is a message
+            // that stops moving and says so to no one.
+            return Err(PijError::Adapter {
+                adapter: "store/queue".to_string(),
+                message: format!("job {} is not running, so it cannot be retried", job.0),
+            });
+        }
+        Ok(())
     }
 
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {

@@ -152,6 +152,16 @@ impl TmuxPort for TmuxAdapter {
         parse_panes(&output)
     }
 
+    async fn submit(&self, pane: &str, text: &str) -> Result<()> {
+        // Two calls, deliberately: the literal text, then Enter as a NAMED key.
+        // `-l` makes tmux treat everything as literal, so an Enter cannot be
+        // smuggled inside the text — which is the property that keeps a body
+        // containing a newline from submitting itself halfway through.
+        self.run("send-keys", &os_args(["send-keys", "-t", pane, "-l", text]))?;
+        self.run("send-keys", &os_args(["send-keys", "-t", pane, "Enter"]))?;
+        Ok(())
+    }
+
     async fn send_keys(&self, pane: &str, keys: &str) -> Result<()> {
         self.run("send-keys", &os_args(["send-keys", "-t", pane, "-l", keys]))?;
         Ok(())
