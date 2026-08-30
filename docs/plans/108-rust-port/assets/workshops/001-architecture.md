@@ -331,3 +331,25 @@ fakes a retry.
 **Wave observation, banked**: every wave-4 unit touching delivery found the remaining gaps in
 the QUEUE, not the transport — waves 1-3 built around the queue and never asked it to do
 anything hard. Carry into the deferred-federation packet: budget queue work FIRST.
+
+## R3-AMEND-6 — TmuxPort gains the pane tap (2026-08-30, vicuna ruling)
+
+**ACCEPTED**: `TmuxPort` widens to carry attach/drain pane-tap plus cursor facts, with
+implementers and fakes. The disqualifying fact for every alternative: poll-to-poll diffs on a
+RENDERED capture cannot truthfully identify a keystroke or an Enter — they miss type-then-Enter
+between polls and conflate TUI redraws with human input. A politeness gate answering from a
+sensor that cannot tell is the gate's own defect wearing a coat.
+
+**Why in the port, not a concrete API beside it**: the port is where fakes live; a sensor
+outside the trait stops being injectable and every decision-table test above it becomes an
+integration test. Tmux IO belongs to the tmux crate BY CONTRACT, not by convention.
+
+**PM rulings taken without escalation, ENDORSED**:
+- `record_unknown(pane)`: clear -> unknown -> blocked is a testable transition; without it,
+  stale permission survives an inability to see.
+- The nonblank->blank transition is named for what it OBSERVES (composer cleared), never
+  claimed as an Enter — cancel and clear are indistinguishable ([[report-is-not-evidence]]
+  applied at the keystroke level).
+- The TS 60-second first-sight release is NOT ported: age cannot distinguish a parked draft
+  from a paused human; a stale nonblank stays blocked, and no threshold is invented to make a
+  rung reachable.
