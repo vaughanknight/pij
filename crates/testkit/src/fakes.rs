@@ -215,6 +215,28 @@ impl Spine for FakeSpine {
             })
             .collect())
     }
+
+    async fn latest_matching(&self, seat: &SeatId, kinds: &[&str]) -> Result<Option<Event>> {
+        if kinds.is_empty() {
+            return Err(PijError::Adapter {
+                adapter: "fake/spine".to_string(),
+                message: "latest_matching requires at least one event kind".to_string(),
+            });
+        }
+        let state = self.state.lock().expect("fake spine mutex");
+        Ok(state
+            .events
+            .iter()
+            .rev()
+            .find(|(_, event)| {
+                event.seat.as_ref() == Some(seat) && kinds.iter().any(|kind| *kind == event.kind)
+            })
+            .map(|(seq, event)| {
+                let mut event = event.clone();
+                event.seq = Some(*seq);
+                event
+            }))
+    }
 }
 
 /// The job queue, in memory — dedupe and serial keys included, because a fake

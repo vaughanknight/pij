@@ -75,6 +75,14 @@ pub trait Spine: Send + Sync {
 
     /// Events after `since`, oldest first, optionally only for one seat.
     async fn tail(&self, seat: Option<&SeatId>, since: Seq) -> Result<Vec<Event>>;
+
+    /// Latest event for one mandatory seat matching any non-empty `kinds`.
+    ///
+    /// Mandatory seat scope is the load-bearing bound: callers cannot ask an
+    /// unscoped hot-path question and filter the unbounded ledger afterward.
+    /// Implementations return at most one highest-sequence row and refuse an
+    /// empty kind set rather than silently broadening it.
+    async fn latest_matching(&self, seat: &SeatId, kinds: &[&str]) -> Result<Option<Event>>;
 }
 
 /// Result of atomically consulting destination delivery history and enqueueing.

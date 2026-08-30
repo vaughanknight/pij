@@ -376,14 +376,14 @@ impl DeliveryService {
         seat: &SeatId,
         messages: usize,
     ) -> Result<()> {
-        let history = self
+        let latest = self
             .event_bus
-            .history(
-                EventFilter::kinds([POINTER_PARKED_EVENT_KIND, POINTER_UNPARKED_EVENT_KIND])
-                    .for_seat(seat.clone()),
+            .latest_matching(
+                seat,
+                &[POINTER_PARKED_EVENT_KIND, POINTER_UNPARKED_EVENT_KIND],
             )
             .await?;
-        if history.last().map(|event| event.kind.as_str()) != Some(POINTER_PARKED_EVENT_KIND) {
+        if latest.as_ref().map(|event| event.kind.as_str()) != Some(POINTER_PARKED_EVENT_KIND) {
             return Ok(());
         }
         let payload = serde_json::to_string(&PointerUnparkedEvent {

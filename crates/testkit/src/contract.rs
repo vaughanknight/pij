@@ -223,8 +223,27 @@ pub async fn spine_contract(spine: &dyn Spine) {
     expected_first.seq = Some(first);
     assert_eq!(
         just_a,
-        vec![expected_first, expected_third],
+        vec![expected_first, expected_third.clone()],
         "a seat filter narrows without losing each returned event's durable cursor"
+    );
+    assert_eq!(
+        spine
+            .latest_matching(&seat_a, &["report", "future-kind"])
+            .await
+            .expect("latest matching"),
+        Some(expected_third),
+        "latest is mandatory-seat-scoped, kind-filtered, and returns one highest-seq fact"
+    );
+    assert!(
+        spine
+            .latest_matching(&seat_b, &["future-kind"])
+            .await
+            .expect("no matching kind")
+            .is_none()
+    );
+    assert!(
+        spine.latest_matching(&seat_a, &[]).await.is_err(),
+        "empty kinds must refuse rather than broaden the bounded query"
     );
     assert_eq!(
         spine.tail(None, third).await.expect("tail after third"),

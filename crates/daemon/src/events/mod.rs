@@ -8,7 +8,7 @@ use std::task::{Context, Poll};
 
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
-use pij_core::model::{Event, Seq};
+use pij_core::model::{Event, SeatId, Seq};
 use pij_core::ports::Spine;
 use tokio::sync::{Mutex, broadcast};
 use tokio_stream::Stream;
@@ -135,19 +135,12 @@ impl EventBus {
         })
     }
 
-    /// Return the current durable events matching `filter`, in spine order.
+    /// Return one latest durable policy fact for a mandatory seat scope.
     ///
-    /// This is a state reconstruction read, not a subscription. Pointer inbox
-    /// reads use it to publish `unparked` only when a preceding parked event is
-    /// still the latest policy fact for that seat.
-    pub async fn history(&self, filter: EventFilter) -> Result<Vec<Event>> {
-        Ok(self
-            .spine
-            .tail(None, Seq(0))
-            .await?
-            .into_iter()
-            .filter(|event| filter.matches(event))
-            .collect())
+    /// The spine port owns the bounded read; this wrapper never materializes a
+    /// history for callers that need only its tail.
+    pub async fn latest_matching(&self, seat: &SeatId, kinds: &[&str]) -> Result<Option<Event>> {
+        self.spine.latest_matching(seat, kinds).await
     }
 
     /// Attach to events published after this call without replaying the spine.
