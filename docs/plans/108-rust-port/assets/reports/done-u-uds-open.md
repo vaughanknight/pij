@@ -441,4 +441,98 @@ right: "submit:%park:[pij from pij-sender] message waiting — final reminder; p
 
 The final workspace run reported 320 passing tests across 49 suites with 3 ignored. The canonical six-stage gate then passed toolchain, lock, fmt, clippy, test, and architecture (8 crates, 0 violations).
 
-The first closing gate also exposed that real-tmux fixtures from separate Rust test binaries could overlap on the machine-global tmux server: an unrelated fixture pipe appeared as a foreign owner. Both fixture families now take the same cross-process `tmux wait-for` lock and always release it during `Drop`. The full workspace and subsequent six-stage gate passed with the real tmux tests executed, not skipped.
+The first closing gate exposed cross-binary real-tmux interference on the machine-global server. A shared `tmux wait-for` lock initially serialized project tests, but production did not participate; review replaced the lock with dedicated per-fixture tmux servers, as recorded below.
+
+## Wave 6 review round 1 — nine accepted findings
+
+All nine findings were accepted. Three ratified port amendments landed in the same clean cutover:
+
+```rust
+Spine::latest_matching(&self, seat: &SeatId, kinds: &[&str]) -> Result<Option<Event>>
+TmuxPort::pane_tap_sink(&self, pane: &str) -> Result<Option<PathBuf>>
+Queue::ack_delivery(&self, job: JobId, origin: DeliveryOrigin) -> Result<DeliveryAck>
+```
+
+The shared doctrine is: ask the WORLD what it owns; ask the AUTHORITY who read. The attestation and bounded-read amendments are two faces of one error — not asking what the read actually needs.
+
+### F2 — consent withdrawal extended across restarts
+
+The in-process tombstone fix retired only `tracked_panes()`. After a crash, a fresh process has an empty tracked set, so a tombstoned or absent seat's marked pipe could continue capturing a human terminal forever.
+
+Boot reconciliation now lists the world, asks `pane_tap_sink` for durable ownership on every non-wanted pane, and actively retires marked taps. Marker-authorized detach after restart is E-033 finally used for the case it was invented for, not a relaxation: after a crash the marker is the only ownership evidence that survives. Registry failure leaves reconciliation incomplete and retries on the next sweep.
+
+The rule is **transition-not-filter extended across restarts**. A tombstone row alone is not release; observed teardown is release. The restart test uses two observer and adapter instances, injects an unreadable first registry pass, proves marker retention, retries, and then observes pipe zero, marker absent, and captured sink deleted.
+
+Stress evidence, all reported rather than classified away:
+
+```text
+pre-fix detach: recurred at run 10/20
+  tmux command success; pane_pipe still 1
+shared-server attach: refused at run 7/20
+  production TS daemon owned the foreign pipe; correct E-033 refusal
+after effect convergence + dedicated tmux server: 20/20 from zero
+  every run exercised attach and restart detach
+```
+
+Nine early greens did not refute the race; the tenth run found it. Three runs could not distinguish one-in-two from one-in-twenty. The recurrence index is part of the proof.
+
+### Physical effect convergence — pipe EXISTENCE, tombstone ROW, detach RETURN
+
+tmux occasionally returned success before detach took effect. The immediate verification was correct to inspect and wrong only to interpret not-yet as never. Attach and detach now poll `pane_pipe` against a two-second wall-clock deadline. State is recorded only after attach converges to one; marker and sink are cleared only after detach converges to zero. Timeout names operation, pane, sink, expected and observed state, retains marker/sink, and leaves the next observer sweep able to retry.
+
+The attach mirror matters more: **a lying attach feeds zero bytes into a policy that reads zero as HUMAN NOT TYPING — the politeness gate would authorize forever on a sensor that never sensed.**
+
+The day's trilogy is: **pipe EXISTENCE, tombstone ROW, detach RETURN** — three layers, one mistake: taking the nearest available signal as evidence of the effect that matters.
+
+### F3 — durable storage for a forgeable assertion
+
+Inbox ack previously published an attestation attempt before the delivered ledger changed, attributed it to `request.seat`, and carried no committed outcome. A machine-graded key could therefore mint an audit event for any seat, including when the job id was invalid or the ledger write failed.
+
+`ack_delivery` now returns `DeliveryAck { recipient, msg_id, origin }` from the claimed job only after the transaction commits. HTTP publishes afterward, attributes `Event.seat` from `ack.recipient`, and carries the committed `reader-read` outcome. The hostile test sends a request body naming a different seat; the event remains attached to the job's recipient. An invalid job emits no attestation.
+
+This is the reader-read defect on the surface built to prove reader-reads: attestation was moved to the spine because the ledger evicts, but the relocated claim itself was never checked for truth.
+
+### F1 and F4 — deterministic real-tmux proof
+
+`drain_until_quiet` now uses a generous ten-second wall-clock deadline instead of 80 scheduler ticks. Failure reports elapsed time, observed bytes, and the actual pane-pipe state.
+
+The cross-process lock was still only polite: the production TS daemon never participated and legitimately attached pipes to fresh panes on the machine-global server. Every real fixture now owns a dedicated named tmux server and kills that server in `Drop`. Tests can neither see nor be seen by user processes; no stale lock or manual unlock instruction remains.
+
+### F5 — lossy live policy state reconciles
+
+The pointer subscriber now reads `dropped_count()`. Any lag is logged with the dropped count, in-memory policy state is discarded, and announced/parked/unparked facts are cold-replayed from the durable spine before another decision. A capacity-one test drops pre-ordinal announcements and proves replay parks at the full durable count instead of reopening the budget.
+
+### F6 — P9 persist before mutate
+
+Pointer facts now publish before `tmux.submit`. A spine failure leaves the physical pane untouched; recovery persists once and then submits once. This is the project's P9 rule: the previous order could repeatedly type an unrecorded final parking notice on every cadence.
+
+### F7 — compare before park
+
+Immediately before publishing parked, the worker reads the latest seat-scoped announced/parked/unparked fact. An unpark sequence newer than the decision wins; the stale park is abandoned and local state is reconciled. The race test publishes an unpark after the decision cursor and proves no parked event appears.
+
+### F8 — unpark placement pinned to claim
+
+The parking test claims mail and inspects the spine before acknowledgement. `delivery.pointer-unparked` must already exist while the queue has no ack. Moving unpark to the ack leg makes the test fail: a seat has been given its body at claim time even if the client dies before ledger acknowledgement.
+
+### F9 / R3-AMEND-7 — one-row question, one-row read
+
+`EventBus::history` is deleted. `Spine::latest_matching` requires a seat and non-empty kinds; mandatory scope is the load-bearing bound because an unscoped hot-path question is impossible to express. SQLite binds seat and kinds and executes `ORDER BY seq DESC LIMIT 1`.
+
+The ratified `CountingSpine` instrument seeds 1,000 unrelated events, counts exactly one `latest_matching` call, and fails any `tail` call from the inbox-unpark hot path. Restoring the full scan fails exactly:
+
+```text
+bounded unpark lookup: Adapter { adapter: "testkit/counting-spine", message: "unpark hot path performed unbounded Spine::tail" }
+```
+
+This is the cost contract. The shared spine suite separately proves mandatory seat scope, kind matching, latest sequence, and empty-kind refusal over both fake and SQLite implementations.
+
+### Final evidence and proof ceiling
+
+```text
+full workspace before the first gate: 341 passed / 49 suites / 3 ignored
+F2 dedicated-server restart stress: 20/20 from zero
+first canonical gate: no verdict — outer 3600s ceiling killed it after check compilation took 52m52s
+second warm canonical gate: all six stages green after 2869s
+```
+
+The initial timeout is an environment proof ceiling, not a substituted result: a cold stream worktree pays the whole Rust build while the composed tree is warm. The PM owns the final central canonical gate on the merged head. No narrower command is reported as that final gate.

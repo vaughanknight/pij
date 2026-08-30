@@ -10,7 +10,7 @@ use pij_core::events::EventFilter;
 use pij_core::model::{
     DeliveryOrigin, DeliveryOutcome, Event, Job, JobId, Msg, Outcome, Receipt, SeatId,
 };
-use pij_core::ports::{DeliveryEnqueue, Queue, Registry, Transport};
+use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, Transport};
 use pij_harnesses::InteractionGate;
 use serde::{Deserialize, Serialize};
 use tokio_stream::StreamExt;
@@ -390,11 +390,11 @@ impl DeliveryService {
         }
     }
 
-    /// Record `ReaderRead` for one job id the client explicitly acknowledged.
+    /// Record `ReaderRead` and return the authority-owned job identity committed.
     ///
     /// # Errors
     /// Queue failures or an id that is not a running delivery claim.
-    pub async fn acknowledge_inbox(&self, job_id: JobId) -> Result<()> {
+    pub async fn acknowledge_inbox(&self, job_id: JobId) -> Result<DeliveryAck> {
         self.queue
             .ack_delivery(job_id, DeliveryOrigin::ReaderRead)
             .await
@@ -595,12 +595,15 @@ mod tests {
     };
     use pij_core::ports::{Queue, Registry, Spine};
     use pij_harnesses::InteractionGate;
-    use pij_testkit::fakes::{FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport};
+    use pij_testkit::fakes::{
+        CountingSpine, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
+    };
     use serde_json::Value;
     use tokio_stream::StreamExt;
 
-    use super::{DeliveryService, OUTCOME_EVENT_KIND, PUSHED_EVENT_KIND};
+    use super::{DeliveryService, OUTCOME_EVENT_KIND, PUSHED_EVENT_KIND, delivery_job};
     use crate::events::EventBus;
+    use crate::pointer::{POINTER_PARKED_EVENT_KIND, POINTER_UNPARKED_EVENT_KIND};
 
     struct Fixture {
         service: Arc<DeliveryService>,
@@ -613,6 +616,86 @@ mod tests {
 
     fn fixture(transport: FakeTransport) -> Fixture {
         fixture_with_gate(transport, FakeTmux::new())
+    }
+
+    #[tokio::test]
+    async fn inbox_unpark_reads_one_bounded_latest_fact_not_the_whole_spine() {
+        let registry = Arc::new(FakeRegistry::new());
+        let recipient = SeatId::from("pij-bounded-reader");
+        registry
+            .put(SeatDescriptor::new(
+                recipient.clone(),
+                Harness::Omp,
+                "/abs/tree",
+            ))
+            .await
+            .expect("register reader");
+        let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+        let spine = Arc::new(CountingSpine::failing_on_tail());
+        let bus =
+            Arc::new(EventBus::new(Arc::clone(&spine) as Arc<dyn Spine>, 16).expect("event bus"));
+        for index in 0..1_000_u64 {
+            bus.publish(Event {
+                seq: None,
+                v: 1,
+                at: index,
+                kind: "unrelated".to_string(),
+                seat: Some(SeatId::from(format!("pij-other-{index}"))),
+                payload: String::new(),
+            })
+            .await
+            .expect("seed unrelated event");
+        }
+        bus.publish(Event {
+            seq: None,
+            v: 1,
+            at: 1_001,
+            kind: POINTER_PARKED_EVENT_KIND.to_string(),
+            seat: Some(recipient.clone()),
+            payload: serde_json::json!({"announcements":3,"reason":"announcement-limit"})
+                .to_string(),
+        })
+        .await
+        .expect("seed parked fact");
+        let msg = Msg {
+            from: SeatId::from("pij-sender"),
+            to: recipient.clone(),
+            body: "bounded read".to_string(),
+            msg_id: "bounded-read-1".to_string(),
+            from_machine: None,
+            in_reply_to: None,
+            command: None,
+        };
+        queue
+            .enqueue(delivery_job(&msg).expect("delivery job"))
+            .await
+            .expect("enqueue mail");
+        let transport = Arc::new(FakeTransport::unreachable());
+        let interaction = Arc::new(InteractionGate::new(Arc::new(FakeTmux::new())));
+        let service = DeliveryService::with_sources(
+            Arc::clone(&registry) as Arc<dyn Registry>,
+            Arc::clone(&queue) as Arc<dyn Queue>,
+            transport,
+            interaction,
+            bus,
+            1,
+            Arc::new(|| Ok(1_002)),
+        );
+
+        let claims = service
+            .claim_inbox(&recipient, false)
+            .await
+            .expect("bounded unpark lookup");
+        assert_eq!(claims.len(), 1);
+        assert_eq!(spine.latest_calls(), 1);
+        assert_eq!(spine.tail_calls(), 0);
+        assert!(
+            spine
+                .recorded_for(&recipient)
+                .iter()
+                .any(|event| event.kind == POINTER_UNPARKED_EVENT_KIND),
+            "claim, without acknowledgement, visibly unparks"
+        );
     }
 
     fn fixture_with_gate(transport: FakeTransport, tmux: FakeTmux) -> Fixture {

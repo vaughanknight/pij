@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use pij_core::error::{PijError, Result};
 use pij_core::model::{DeliveryOrigin, Job, JobId, Outcome, SeatId};
-use pij_core::ports::{DeliveryEnqueue, Queue};
+use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue};
 
 use crate::migrate::require_current_schema;
 
@@ -435,7 +435,7 @@ impl Queue for SqliteQueue {
         Ok(())
     }
 
-    async fn ack_delivery(&self, job: JobId, origin: DeliveryOrigin) -> Result<()> {
+    async fn ack_delivery(&self, job: JobId, origin: DeliveryOrigin) -> Result<DeliveryAck> {
         require_current_schema(&self.pool).await?;
 
         let mut tx = self.begin_write().await?;
@@ -493,7 +493,11 @@ impl Queue for SqliteQueue {
         .map_err(adapter_error)?;
 
         tx.commit().await.map_err(adapter_error)?;
-        Ok(())
+        Ok(DeliveryAck {
+            recipient: SeatId(claimed.serial_key),
+            msg_id: claimed.dedupe_key,
+            origin,
+        })
     }
 }
 

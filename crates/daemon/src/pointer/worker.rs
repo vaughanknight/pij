@@ -6,7 +6,7 @@ use pij_core::delivery::{DeliveryRung, delivery_kind, select_rung};
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::model::{
-    DeliveryOrigin, DeliveryOutcome, Event, Job, JobId, Msg, Outcome, SeatId, SemanticState,
+    DeliveryOrigin, DeliveryOutcome, Event, Job, JobId, Msg, Outcome, SeatId, SemanticState, Seq,
 };
 use pij_core::ports::{Queue, Registry, SeatFilter, TmuxPort, Transport};
 use pij_harnesses::InteractionGate;
@@ -30,6 +30,7 @@ struct PointerState {
     announcements: u32,
     last_announced_at: Option<u64>,
     parked: bool,
+    latest_seq: Option<Seq>,
 }
 
 struct CadenceState {
@@ -224,7 +225,7 @@ impl DrainWorker {
         match select_rung(&recipient, &msg, socket_available, false, true) {
             DeliveryRung::Socket => match self.transport.deliver(&recipient, &msg).await {
                 Ok(DeliveryOutcome::Delivered { origin }) => {
-                    self.queue.ack_delivery(job_id, origin).await
+                    self.queue.ack_delivery(job_id, origin).await.map(|_| ())
                 }
                 Ok(DeliveryOutcome::Queued | DeliveryOutcome::Held { .. }) => {
                     self.release_body(job_id).await
@@ -258,6 +259,7 @@ impl DrainWorker {
         self.queue
             .ack_delivery(job_id, DeliveryOrigin::InjectedToTransport)
             .await
+            .map(|_| ())
     }
 
     async fn announce_pointer(&self, job_id: JobId, pane: &str, msg: &Msg) -> Result<()> {
@@ -273,8 +275,14 @@ impl DrainWorker {
                 announcement,
                 final_announcement,
             } => (announcement, final_announcement),
-            PointerDecision::ParkNow { announcements } => {
-                if let Err(error) = self.publish_parked(&msg.to, at, announcements).await {
+            PointerDecision::ParkNow {
+                announcements,
+                decision_seq,
+            } => {
+                if let Err(error) = self
+                    .publish_parked(&msg.to, at, announcements, decision_seq)
+                    .await
+                {
                     self.release_body(job_id).await?;
                     return Err(error);
                 }
@@ -308,12 +316,7 @@ impl DrainWorker {
         } else {
             render_pointer(&msg.from, msg.from_machine.as_deref())
         };
-        if let Err(error) = self.tmux.submit(pane, &pointer).await {
-            self.release_body(job_id).await?;
-            return Err(error);
-        }
-
-        if let Err(error) = self
+        let announced_seq = match self
             .event_bus
             .publish(Event {
                 seq: None,
@@ -325,25 +328,64 @@ impl DrainWorker {
             })
             .await
         {
-            self.release_body(job_id).await?;
-            return Err(error);
-        }
+            Ok(seq) => seq,
+            Err(error) => {
+                self.release_body(job_id).await?;
+                return Err(error);
+            }
+        };
         {
             let mut cadence = self.cadence.lock().await;
             let state = cadence.seats.entry(msg.to.clone()).or_default();
             state.announcements = announcement;
             state.last_announced_at = Some(at);
+            state.latest_seq = Some(announced_seq);
         }
         if final_announcement
-            && let Err(error) = self.publish_parked(&msg.to, at, announcement).await
+            && let Err(error) = self
+                .publish_parked(&msg.to, at, announcement, Some(announced_seq))
+                .await
         {
+            self.release_body(job_id).await?;
+            return Err(error);
+        }
+
+        // P9: the durable decision lands before the physical pane mutation. A
+        // failed submit never re-types an unrecorded pointer on every cadence.
+        if let Err(error) = self.tmux.submit(pane, &pointer).await {
             self.release_body(job_id).await?;
             return Err(error);
         }
         self.release_body(job_id).await
     }
 
-    async fn publish_parked(&self, seat: &SeatId, at: u64, announcements: u32) -> Result<()> {
+    async fn publish_parked(
+        &self,
+        seat: &SeatId,
+        at: u64,
+        announcements: u32,
+        decision_seq: Option<Seq>,
+    ) -> Result<()> {
+        if let Some(latest) = self
+            .event_bus
+            .latest_matching(
+                seat,
+                &[
+                    POINTER_ANNOUNCED_EVENT_KIND,
+                    POINTER_PARKED_EVENT_KIND,
+                    POINTER_UNPARKED_EVENT_KIND,
+                ],
+            )
+            .await?
+            && latest.kind == POINTER_UNPARKED_EVENT_KIND
+            && latest
+                .seq
+                .is_some_and(|seq| decision_seq.is_none_or(|decided| seq > decided))
+        {
+            let mut cadence = self.cadence.lock().await;
+            apply_pointer_event(&mut cadence.seats, latest)?;
+            return Ok(());
+        }
         let payload = serde_json::to_string(&PointerParkedEvent {
             announcements,
             reason: "announcement-limit",
@@ -352,7 +394,8 @@ impl DrainWorker {
             adapter: "daemon/pointer".to_string(),
             message: format!("could not encode pointer parked event for {seat}: {error}"),
         })?;
-        self.event_bus
+        let seq = self
+            .event_bus
             .publish(Event {
                 seq: None,
                 v: 1,
@@ -366,6 +409,7 @@ impl DrainWorker {
         let state = cadence.seats.entry(seat.clone()).or_default();
         state.announcements = state.announcements.max(announcements);
         state.parked = true;
+        state.latest_seq = Some(seq);
         Ok(())
     }
 
@@ -399,6 +443,7 @@ impl DrainWorker {
         if state.announcements >= self.policy.announcement_limit {
             return PointerDecision::ParkNow {
                 announcements: state.announcements,
+                decision_seq: state.latest_seq,
             };
         }
         if state
@@ -416,33 +461,48 @@ impl DrainWorker {
 
     async fn refresh_cadence(&self) -> Result<()> {
         let mut cadence = self.cadence.lock().await;
-        if !cadence.hydrated {
-            cadence.live = Some(
-                self.event_bus
-                    .subscribe(
-                        None,
-                        EventFilter::kinds([
-                            POINTER_ANNOUNCED_EVENT_KIND,
-                            POINTER_PARKED_EVENT_KIND,
-                            POINTER_UNPARKED_EVENT_KIND,
-                        ]),
-                    )
-                    .await?,
-            );
-            cadence.hydrated = true;
-        }
         loop {
-            let next = timeout(
-                Duration::ZERO,
-                cadence.live.as_mut().expect("hydrated subscription").next(),
-            )
-            .await;
-            let Ok(Some(event)) = next else {
-                break;
-            };
-            apply_pointer_event(&mut cadence.seats, event)?;
+            if !cadence.hydrated {
+                cadence.live = Some(
+                    self.event_bus
+                        .subscribe(
+                            None,
+                            EventFilter::kinds([
+                                POINTER_ANNOUNCED_EVENT_KIND,
+                                POINTER_PARKED_EVENT_KIND,
+                                POINTER_UNPARKED_EVENT_KIND,
+                            ]),
+                        )
+                        .await?,
+                );
+                cadence.hydrated = true;
+            }
+            loop {
+                let next = timeout(
+                    Duration::ZERO,
+                    cadence.live.as_mut().expect("hydrated subscription").next(),
+                )
+                .await;
+                let Ok(Some(event)) = next else {
+                    break;
+                };
+                apply_pointer_event(&mut cadence.seats, event)?;
+            }
+            let dropped = cadence
+                .live
+                .as_ref()
+                .expect("hydrated subscription")
+                .dropped_count();
+            if dropped == 0 {
+                return Ok(());
+            }
+            eprintln!(
+                "pij-rs pointer drain: live policy subscription dropped {dropped} event(s); reconciling from durable spine"
+            );
+            cadence.seats.clear();
+            cadence.live = None;
+            cadence.hydrated = false;
         }
-        Ok(())
     }
 }
 
@@ -452,6 +512,7 @@ enum PointerDecision {
     Parked,
     ParkNow {
         announcements: u32,
+        decision_seq: Option<Seq>,
     },
     Announce {
         announcement: u32,
@@ -460,6 +521,7 @@ enum PointerDecision {
 }
 
 fn apply_pointer_event(states: &mut BTreeMap<SeatId, PointerState>, event: Event) -> Result<()> {
+    let seq = event.seq;
     let seat = event.seat.ok_or_else(|| PijError::Adapter {
         adapter: "daemon/pointer".to_string(),
         message: format!("{} event has no seat", event.kind),
@@ -489,6 +551,7 @@ fn apply_pointer_event(states: &mut BTreeMap<SeatId, PointerState>, event: Event
         POINTER_UNPARKED_EVENT_KIND => *state = PointerState::default(),
         _ => unreachable!("subscription filters pointer policy kinds"),
     }
+    state.latest_seq = seq;
     Ok(())
 }
 
@@ -754,6 +817,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pointer_fact_persists_before_the_pane_is_mutated() {
+        let fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
+        register(&fixture, seat("pij-persist-first", Some("%persist"))).await;
+        fixture.interaction.observe_composer("%persist", "");
+        enqueue(&fixture, &message("pij-persist-first", "waiting", None)).await;
+        fixture.spine.script_append_error("injected spine failure");
+
+        let error = fixture
+            .worker
+            .drain_once()
+            .await
+            .expect_err("publish fails");
+        assert!(error.to_string().contains("injected spine failure"));
+        assert!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .all(|call| !call.starts_with("submit:")),
+            "a pointer with no durable fact must never reach the pane"
+        );
+
+        fixture
+            .worker
+            .drain_once()
+            .await
+            .expect("retry after spine recovers");
+        assert_eq!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .filter(|call| call.starts_with("submit:"))
+                .count(),
+            1,
+            "recovery submits exactly once after persistence succeeds"
+        );
+    }
+
+    #[tokio::test]
     async fn legacy_history_counts_every_announcement_since_the_last_unpark() {
         let fixture = fixture_with_limit(FakeTransport::unreachable(), FakeTmux::new(), 3);
         let recipient = SeatId::from("pij-legacy-parked");
@@ -812,6 +915,144 @@ mod tests {
             fixture.queue.live_len(),
             1,
             "legacy parking keeps mail readable"
+        );
+    }
+
+    #[tokio::test]
+    async fn lagged_policy_subscription_reconciles_from_durable_spine() {
+        let registry = Arc::new(FakeRegistry::new());
+        let recipient = SeatId::from("pij-lagged-policy");
+        registry
+            .put(seat(recipient.as_str(), Some("%lagged")))
+            .await
+            .expect("register recipient");
+        let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+        let transport = Arc::new(FakeTransport::unreachable());
+        let tmux = Arc::new(FakeTmux::new());
+        let interaction = Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>));
+        interaction.observe_composer("%lagged", "");
+        let spine = Arc::new(FakeSpine::new());
+        let event_bus = Arc::new(
+            EventBus::new(Arc::clone(&spine) as Arc<dyn Spine>, 1).expect("one-event buffer"),
+        );
+        let worker = DrainWorker::new(
+            Arc::clone(&registry) as Arc<dyn Registry>,
+            Arc::clone(&queue) as Arc<dyn Queue>,
+            Arc::clone(&transport) as Arc<dyn Transport>,
+            Arc::clone(&tmux) as Arc<dyn TmuxPort>,
+            interaction,
+            Arc::clone(&event_bus),
+            PointerPolicy {
+                cadence: CADENCE,
+                announcement_limit: 3,
+            },
+        )
+        .expect("worker");
+        assert_eq!(
+            worker
+                .drain_once()
+                .await
+                .expect("hydrate live subscription"),
+            0
+        );
+        for announcement in 1..=5 {
+            event_bus
+                .publish(Event {
+                    seq: None,
+                    v: 1,
+                    at: announcement,
+                    kind: POINTER_ANNOUNCED_EVENT_KIND.to_string(),
+                    seat: Some(recipient.clone()),
+                    payload: serde_json::json!({
+                        "msg_id": format!("pre-ordinal-{announcement}"),
+                        "from": "pij-sender"
+                    })
+                    .to_string(),
+                })
+                .await
+                .expect("overflow live buffer");
+        }
+        queue
+            .enqueue(Job {
+                kind: delivery_kind(&recipient),
+                serial_key: recipient.to_string(),
+                payload: serde_json::to_string(&message(
+                    recipient.as_str(),
+                    "lagged unread body",
+                    None,
+                ))
+                .expect("message"),
+                dedupe_key: "lagged-policy-body".to_string(),
+                attempt: 0,
+            })
+            .await
+            .expect("enqueue body");
+
+        worker.drain_once().await.expect("reconcile and park");
+        assert!(
+            tmux.calls().iter().all(|call| !call.starts_with("submit:")),
+            "lossy live state must not reopen an exhausted pointer budget"
+        );
+        let parked = spine
+            .tail(Some(&recipient), Seq(0))
+            .await
+            .expect("parked event")
+            .into_iter()
+            .find(|event| event.kind == POINTER_PARKED_EVENT_KIND)
+            .expect("durable reconciliation parks");
+        assert_eq!(
+            serde_json::from_str::<Value>(&parked.payload).expect("parked payload"),
+            serde_json::json!({"announcements":5,"reason":"announcement-limit"})
+        );
+    }
+    #[tokio::test]
+    async fn newer_unpark_fact_wins_over_stale_park_decision() {
+        let fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
+        let recipient = SeatId::from("pij-read-race");
+        let decision_seq = fixture
+            .event_bus
+            .publish(Event {
+                seq: None,
+                v: 1,
+                at: 1,
+                kind: POINTER_ANNOUNCED_EVENT_KIND.to_string(),
+                seat: Some(recipient.clone()),
+                payload: serde_json::json!({
+                    "msg_id":"race",
+                    "from":"pij-sender",
+                    "announcement":3
+                })
+                .to_string(),
+            })
+            .await
+            .expect("decision fact");
+        fixture
+            .event_bus
+            .publish(Event {
+                seq: None,
+                v: 1,
+                at: 2,
+                kind: POINTER_UNPARKED_EVENT_KIND.to_string(),
+                seat: Some(recipient.clone()),
+                payload: serde_json::json!({"reason":"reader-read","messages":1}).to_string(),
+            })
+            .await
+            .expect("concurrent read");
+
+        fixture
+            .worker
+            .publish_parked(&recipient, 3, 3, Some(decision_seq))
+            .await
+            .expect("compare before park");
+        assert!(
+            fixture
+                .spine
+                .tail(Some(&recipient), Seq(0))
+                .await
+                .expect("race history")
+                .iter()
+                .all(|event| event.kind != POINTER_PARKED_EVENT_KIND),
+            "a read newer than the decision must not lose to stale parking"
         );
     }
 
@@ -914,6 +1155,21 @@ mod tests {
                 .map(|claim| claim.message.clone())
                 .collect::<Vec<_>>(),
             [msg]
+        );
+        let before_ack = fixture
+            .spine
+            .tail(Some(&SeatId::from("pij-parked")), Seq(0))
+            .await
+            .expect("unpark at claim");
+        assert!(
+            before_ack
+                .iter()
+                .any(|event| event.kind == POINTER_UNPARKED_EVENT_KIND),
+            "claiming without acking must already publish unpark"
+        );
+        assert!(
+            fixture.queue.acked().is_empty(),
+            "placement witness must inspect the interval before acknowledgement"
         );
         for claim in &read {
             delivery
@@ -1281,7 +1537,7 @@ mod tests {
             &self,
             job: JobId,
             origin: DeliveryOrigin,
-        ) -> pij_core::error::Result<()> {
+        ) -> pij_core::error::Result<pij_core::ports::DeliveryAck> {
             self.ack_calls.fetch_add(1, Ordering::SeqCst);
             self.ack_called.notify_one();
             if self.fail_first.swap(false, Ordering::SeqCst) {

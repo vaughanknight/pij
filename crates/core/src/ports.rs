@@ -22,7 +22,7 @@
 //! async, including the ones whose implementations happen to be synchronous
 //! today, so a later adapter can become async without changing the seam.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -85,6 +85,17 @@ pub trait Spine: Send + Sync {
     async fn latest_matching(&self, seat: &SeatId, kinds: &[&str]) -> Result<Option<Event>>;
 }
 
+/// Authority-owned identity and outcome committed by a delivery acknowledgement.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeliveryAck {
+    /// Recipient from the claimed job's serial key, never a request body.
+    pub recipient: SeatId,
+    /// Message identity from the claimed job's dedupe key.
+    pub msg_id: String,
+    /// Evidence actually committed to the delivered ledger.
+    pub origin: DeliveryOrigin,
+}
+
 /// Result of atomically consulting destination delivery history and enqueueing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DeliveryEnqueue {
@@ -121,7 +132,9 @@ pub trait Queue: Send + Sync {
     /// The queue owns the configured per-recipient POLICY bound, so every caller
     /// observes one retention rule. Record, prune, and acknowledgement are one
     /// transaction; a crash cannot expose only part of the delivery fact.
-    async fn ack_delivery(&self, job: JobId, origin: DeliveryOrigin) -> Result<()>;
+    /// Returns identity from the claimed job only after commit. Callers must use
+    /// it for audit attribution instead of trusting a request-body seat.
+    async fn ack_delivery(&self, job: JobId, origin: DeliveryOrigin) -> Result<DeliveryAck>;
 
     /// CLAIM the right to deliver `msg_id` to `recipient`, or learn who already did.
     ///
@@ -234,9 +247,19 @@ pub trait TmuxPort: Send + Sync {
 
     /// The last `lines` of a pane's visible output.
     async fn capture(&self, pane: &str, lines: u32) -> Result<String>;
+
     /// Attach an output tap for `pane`, writing raw terminal bytes to `sink`.
-    /// The caller owns the sink path and its lifecycle.
+    /// Return success only after the world reports the pipe live: a lying attach
+    /// feeds zero bytes into a policy that reads zero as HUMAN NOT TYPING, so the
+    /// gate would authorize forever on a sensor that never sensed. The caller
+    /// owns the sink path and its lifecycle.
     async fn attach_pane_tap(&self, pane: &str, sink: &Path) -> Result<()>;
+    /// Durable sink marker recorded on `pane`, when this project owns its pipe.
+    ///
+    /// This asks the world rather than process-local memory: after a restart the
+    /// in-process tap set is empty precisely when consent withdrawal most needs
+    /// to find and retire an orphaned capture.
+    async fn pane_tap_sink(&self, pane: &str) -> Result<Option<PathBuf>>;
 
     /// Drain exactly the raw bytes not returned by an earlier successful drain.
     /// An empty vector means an attached tap emitted nothing; an absent tap is an
@@ -244,7 +267,9 @@ pub trait TmuxPort: Send + Sync {
     async fn drain_pane_tap(&self, pane: &str) -> Result<Vec<u8>>;
 
     /// Detach the output tap and release its sink. A pane already gone is the
-    /// successful terminal outcome rather than an error.
+    /// successful terminal outcome rather than an error. Process-local ownership
+    /// or the matching durable marker authorizes retirement: this is E-033's
+    /// surviving ownership evidence after a crash, not a relaxation of it.
     async fn detach_pane_tap(&self, pane: &str) -> Result<()>;
 
     /// Kill a pane.

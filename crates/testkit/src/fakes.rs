@@ -19,6 +19,7 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -28,8 +29,8 @@ use pij_core::model::{
     Outcome, Pane, ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
 };
 use pij_core::ports::{
-    DeliveryEnqueue, HarnessPort, LaunchCommand, LivenessPort, Queue, Registry, SeatFilter, Spine,
-    TmuxPort, Transport,
+    DeliveryAck, DeliveryEnqueue, HarnessPort, LaunchCommand, LivenessPort, Queue, Registry,
+    SeatFilter, Spine, TmuxPort, Transport,
 };
 
 /// One recorded interaction, rendered as a stable string so assertions read as
@@ -239,6 +240,79 @@ impl Spine for FakeSpine {
                 event.seq = Some(*seq);
                 event
             }))
+    }
+}
+
+/// Spine cost instrument: counts bounded/latest and tail reads independently.
+///
+/// `fail_on_tail` turns an unbounded hot-path regression into a deterministic
+/// error rather than a performance comment.
+pub struct CountingSpine {
+    inner: FakeSpine,
+    latest_calls: AtomicUsize,
+    tail_calls: AtomicUsize,
+    fail_on_tail: bool,
+}
+
+impl CountingSpine {
+    /// Empty instrument that refuses every `tail` call.
+    pub fn failing_on_tail() -> Self {
+        Self {
+            inner: FakeSpine::new(),
+            latest_calls: AtomicUsize::new(0),
+            tail_calls: AtomicUsize::new(0),
+            fail_on_tail: true,
+        }
+    }
+
+    /// Number of bounded latest-fact reads.
+    pub fn latest_calls(&self) -> usize {
+        self.latest_calls.load(Ordering::Relaxed)
+    }
+
+    /// Number of unbounded tail reads attempted.
+    pub fn tail_calls(&self) -> usize {
+        self.tail_calls.load(Ordering::Relaxed)
+    }
+
+    /// Recorded events for `seat`, without exercising the measured port calls.
+    pub fn recorded_for(&self, seat: &SeatId) -> Vec<Event> {
+        self.inner
+            .state
+            .lock()
+            .expect("fake spine mutex")
+            .events
+            .iter()
+            .filter(|(_, event)| event.seat.as_ref() == Some(seat))
+            .map(|(seq, event)| {
+                let mut event = event.clone();
+                event.seq = Some(*seq);
+                event
+            })
+            .collect()
+    }
+}
+
+#[async_trait]
+impl Spine for CountingSpine {
+    async fn append(&self, event: Event) -> Result<Seq> {
+        self.inner.append(event).await
+    }
+
+    async fn tail(&self, seat: Option<&SeatId>, since: Seq) -> Result<Vec<Event>> {
+        self.tail_calls.fetch_add(1, Ordering::Relaxed);
+        if self.fail_on_tail {
+            return Err(PijError::Adapter {
+                adapter: "testkit/counting-spine".to_string(),
+                message: "unpark hot path performed unbounded Spine::tail".to_string(),
+            });
+        }
+        self.inner.tail(seat, since).await
+    }
+
+    async fn latest_matching(&self, seat: &SeatId, kinds: &[&str]) -> Result<Option<Event>> {
+        self.latest_calls.fetch_add(1, Ordering::Relaxed);
+        self.inner.latest_matching(seat, kinds).await
     }
 }
 
@@ -456,7 +530,7 @@ impl Queue for FakeQueue {
         Ok(())
     }
 
-    async fn ack_delivery(&self, job: JobId, origin: DeliveryOrigin) -> Result<()> {
+    async fn ack_delivery(&self, job: JobId, origin: DeliveryOrigin) -> Result<DeliveryAck> {
         let mut state = self.state.lock().expect("fake queue mutex");
         let Some((claimed, _worker)) = state.claimed.remove(&job.0) else {
             return Err(PijError::Adapter {
@@ -492,7 +566,11 @@ impl Queue for FakeQueue {
             }
         });
         state.acked.push((job, Outcome::Done));
-        Ok(())
+        Ok(DeliveryAck {
+            recipient: SeatId(claimed.serial_key),
+            msg_id: claimed.dedupe_key,
+            origin,
+        })
     }
 
     /// R4-AMEND-1. The fake counts attempts too, because a caller that reads
@@ -782,6 +860,12 @@ impl TmuxPort for FakeTmux {
         }
         state.taps.insert(pane.to_string(), sink.to_path_buf());
         Ok(())
+    }
+
+    async fn pane_tap_sink(&self, pane: &str) -> Result<Option<PathBuf>> {
+        let mut state = self.state.lock().expect("fake tmux mutex");
+        state.recorder.record(format!("pane_tap_sink:{pane}"));
+        Ok(state.taps.get(pane).cloned())
     }
 
     async fn drain_pane_tap(&self, pane: &str) -> Result<Vec<u8>> {

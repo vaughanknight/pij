@@ -13,7 +13,7 @@ use pij_core::model::{
     DeliveryOrigin, Destination, Envelope, Event, Harness, Job, JobId, Outcome, Pane, ProcIdentity,
     Receipt, SeatDescriptor,
 };
-use pij_core::ports::{DeliveryEnqueue, Queue, Registry, Spine};
+use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, Spine};
 use pij_core::wire::{self, WireEvent};
 use pij_testkit::fakes::{FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux};
 
@@ -76,7 +76,7 @@ impl Queue for CountingQueue {
         Ok(())
     }
 
-    async fn ack_delivery(&self, _job: JobId, _origin: DeliveryOrigin) -> Result<()> {
+    async fn ack_delivery(&self, _job: JobId, _origin: DeliveryOrigin) -> Result<DeliveryAck> {
         Err(pij_core::error::PijError::Adapter {
             adapter: "test/counting-queue".to_string(),
             message: "the request path must not delivery-ack: it never claims".to_string(),
@@ -684,7 +684,9 @@ async fn inbox_claims_without_evidence_then_ack_records_machine_graded_reader_re
     );
 
     let acknowledgement = InboxAckRequest {
-        seat: "pij-reader".into(),
+        // Deliberately forged: bearer auth is machine-grade and cannot name the
+        // seat. Attribution must come from the queue authority's claimed job.
+        seat: "pij-forged-reader".into(),
         job_id: claims[0].job_id,
     };
     let ack = client
@@ -709,6 +711,39 @@ async fn inbox_claims_without_evidence_then_ack_records_machine_graded_reader_re
     assert_eq!(audit["job_id"], claims[0].job_id.0);
     assert_eq!(audit["authenticated_machine"], "local");
     assert_eq!(audit["evidence_grade"], "machine");
+    assert_eq!(audit["outcome"], "reader-read");
+    assert!(
+        spine
+            .tail(Some(&SeatId::from("pij-forged-reader")), Seq(0))
+            .await
+            .expect("forged seat audit")
+            .iter()
+            .all(|event| event.kind != INBOX_ACK_EVENT_KIND),
+        "request body cannot forge reader attribution"
+    );
+
+    let invalid = client
+        .post(format!("http://{addr}/v1/inbox/ack"))
+        .bearer_auth("local-key")
+        .json(&InboxAckRequest {
+            seat: "pij-forged-reader".into(),
+            job_id: pij_core::model::JobId(999_999),
+        })
+        .send()
+        .await
+        .expect("invalid ack request");
+    assert_eq!(invalid.status(), reqwest::StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(
+        spine
+            .tail(Some(&SeatId::from("pij-reader")), Seq(0))
+            .await
+            .expect("audit after failed ack")
+            .iter()
+            .filter(|event| event.kind == INBOX_ACK_EVENT_KIND)
+            .count(),
+        1,
+        "failed ledger acknowledgement must not mint attestation evidence"
+    );
 
     let empty = client
         .get(format!("http://{addr}/v1/inbox"))

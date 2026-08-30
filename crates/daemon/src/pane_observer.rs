@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -52,6 +53,7 @@ pub struct PaneObserver {
     tmux: Arc<dyn TmuxPort>,
     gate: Arc<InteractionGate>,
     sink_dir: PathBuf,
+    world_reconciled: AtomicBool,
     interval: Duration,
     panes: Mutex<BTreeMap<String, PaneState>>,
 }
@@ -78,6 +80,7 @@ impl PaneObserver {
             tmux,
             gate,
             sink_dir,
+            world_reconciled: AtomicBool::new(false),
             interval,
             panes: Mutex::new(BTreeMap::new()),
         })
@@ -125,11 +128,8 @@ impl PaneObserver {
             .filter(|seat| seat.tombstoned_at.is_none())
             .filter_map(|seat| seat.pane)
             .collect();
-        let panes = match self.tmux.list_panes().await {
-            Ok(panes) => panes
-                .into_iter()
-                .filter(|pane| wanted.contains(&pane.id))
-                .collect::<Vec<_>>(),
+        let all_panes = match self.tmux.list_panes().await {
+            Ok(panes) => panes,
             Err(error) => {
                 for pane in self.tracked_panes() {
                     self.gate.record_unknown(&pane);
@@ -137,13 +137,35 @@ impl PaneObserver {
                 return Err(error);
             }
         };
+        let panes = all_panes
+            .iter()
+            .filter(|pane| wanted.contains(&pane.id))
+            .cloned()
+            .collect::<Vec<_>>();
         let live: BTreeSet<&str> = panes.iter().map(|pane| pane.id.as_str()).collect();
-        let retired: Vec<String> = self
+        let mut retired: BTreeSet<String> = self
             .tracked_panes()
             .into_iter()
             .filter(|pane| !live.contains(pane.as_str()))
             .collect();
         let mut first_error = None;
+        let reconcile_world = !self.world_reconciled.load(Ordering::Acquire);
+        if reconcile_world {
+            for pane in &all_panes {
+                if wanted.contains(&pane.id) {
+                    continue;
+                }
+                match self.tmux.pane_tap_sink(&pane.id).await {
+                    Ok(Some(_)) => {
+                        retired.insert(pane.id.clone());
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        first_error.get_or_insert(error);
+                    }
+                }
+            }
+        }
 
         for pane in &retired {
             match self.tmux.detach_pane_tap(pane).await {
@@ -210,10 +232,6 @@ impl PaneObserver {
             let blank = composer.chars().all(char::is_whitespace);
             let previous = self.knowledge(&pane.id);
             if blank && tap_active {
-                // A redraw makes the current blank inconclusive, so close the
-                // gate. Preserve prior composer knowledge independently: the next
-                // quiet blank can corroborate either a pending nonblank→blank
-                // transition or a previously known-clear composer.
                 if previous != ComposerKnowledge::Unknown {
                     self.set_knowledge(&pane.id, ComposerKnowledge::PendingClear);
                     self.gate.record_unknown(&pane.id);
@@ -229,15 +247,8 @@ impl PaneObserver {
                         | ComposerKnowledge::NonBlank
                         | ComposerKnowledge::PendingClear
                 ) {
-                    // Permission requires two observations, not one inference:
-                    // the parser positively recognized an empty composer, the
-                    // tap remained attached, and no bytes flowed between this
-                    // pass and the preceding recognized state.
                     self.gate.record_composer_cleared(&pane.id);
                 } else {
-                    // One recognized blank establishes knowledge but not
-                    // permission. An unparsed layout took the `None` branch
-                    // above, so unknown and looked-twice-and-quiet stay distinct.
                     self.gate.record_unknown(&pane.id);
                     self.set_knowledge(&pane.id, ComposerKnowledge::Blank);
                     continue;
@@ -254,7 +265,12 @@ impl PaneObserver {
 
         match first_error {
             Some(error) => Err(error),
-            None => Ok(()),
+            None => {
+                if reconcile_world {
+                    self.world_reconciled.store(true, Ordering::Release);
+                }
+                Ok(())
+            }
         }
     }
 
@@ -493,16 +509,16 @@ fn observer_error(message: impl Into<String>) -> PijError {
 mod tests {
     use pij_core::model::{Harness, SeatDescriptor, SeatId};
     use std::process::Command;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    use async_trait::async_trait;
 
     use pij_testkit::fakes::{FakeRegistry, FakeTmux};
     use pij_tmux::TmuxAdapter;
 
     use super::*;
-
     static NEXT_TMUX_SESSION: AtomicU64 = AtomicU64::new(0);
-    const REAL_TMUX_TEST_LOCK: &str = "pij-rs-real-tmux-tests";
 
     fn pane(id: &str, x: u32, y: u32) -> Pane {
         Pane {
@@ -531,6 +547,33 @@ mod tests {
             registry.put(seat).await.expect("register observed pane");
         }
         registry
+    }
+
+    struct FailFirstListRegistry {
+        inner: Arc<FakeRegistry>,
+        fail: AtomicBool,
+    }
+
+    #[async_trait]
+    impl Registry for FailFirstListRegistry {
+        async fn get(&self, seat: &SeatId) -> Result<Option<SeatDescriptor>> {
+            self.inner.get(seat).await
+        }
+
+        async fn put(&self, descriptor: SeatDescriptor) -> Result<pij_core::model::Seq> {
+            self.inner.put(descriptor).await
+        }
+
+        async fn list(&self, filter: SeatFilter) -> Result<Vec<SeatDescriptor>> {
+            if self.fail.swap(false, Ordering::SeqCst) {
+                return Err(observer_error("injected registry boot race"));
+            }
+            self.inner.list(filter).await
+        }
+
+        async fn tombstone(&self, seat: &SeatId, reason: &str) -> Result<pij_core::model::Seq> {
+            self.inner.tombstone(seat, reason).await
+        }
     }
 
     #[test]
@@ -684,6 +727,7 @@ mod tests {
 
     struct LiveTmuxSession {
         name: String,
+        server: String,
     }
 
     impl LiveTmuxSession {
@@ -703,46 +747,46 @@ mod tests {
                 .as_nanos();
             let count = NEXT_TMUX_SESSION.fetch_add(1, Ordering::Relaxed);
             let name = format!("pij-rs-observer-{}-{nonce}-{count}", std::process::id());
-            let session = Self { name };
-            let lock = Command::new("tmux")
-                .args(["wait-for", "-L", REAL_TMUX_TEST_LOCK])
-                .output()
-                .expect("tmux became unavailable before test lock");
-            assert!(lock.status.success(), "tmux test lock failed");
+            let server = format!("{name}-server");
+            let session = Self { name, server };
+            session.run([
+                "new-session",
+                "-d",
+                "-s",
+                &session.name,
+                "-x",
+                "80",
+                "-y",
+                "24",
+                "cat",
+            ]);
+            Some(session)
+        }
+
+        fn run<const N: usize>(&self, args: [&str; N]) -> std::process::Output {
             let output = Command::new("tmux")
-                .args([
-                    "new-session",
-                    "-d",
-                    "-s",
-                    &session.name,
-                    "-x",
-                    "80",
-                    "-y",
-                    "24",
-                    "cat",
-                ])
+                .args(["-L", &self.server])
+                .args(args)
                 .output()
-                .expect("tmux was found by the version probe");
+                .expect("tmux became unavailable after fixture creation");
             assert!(
                 output.status.success(),
-                "tmux new-session failed: {}",
+                "isolated tmux fixture command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
-            Some(session)
+            output
         }
     }
 
     impl Drop for LiveTmuxSession {
         fn drop(&mut self) {
-            let _ = Command::new("tmux")
-                .args(["kill-session", "-t", &self.name])
-                .status();
-            let unlock = Command::new("tmux")
-                .args(["wait-for", "-U", REAL_TMUX_TEST_LOCK])
-                .status();
+            let output = Command::new("tmux")
+                .args(["-L", &self.server, "kill-server"])
+                .output();
             assert!(
-                unlock.is_ok_and(|status| status.success()) || std::thread::panicking(),
-                "failed to unlock real tmux tests"
+                output.is_ok_and(|output| output.status.success()) || std::thread::panicking(),
+                "failed to tear down isolated tmux server {}",
+                self.server
             );
         }
     }
@@ -753,7 +797,7 @@ mod tests {
             eprintln!("SKIP real pane observer test: tmux unavailable");
             return;
         };
-        let tmux = Arc::new(TmuxAdapter::for_session(&session.name));
+        let tmux = Arc::new(TmuxAdapter::for_server(&session.server));
         let pane = tmux
             .list_panes()
             .await
@@ -792,7 +836,7 @@ mod tests {
             eprintln!("SKIP real pane observer test: tmux unavailable");
             return;
         };
-        let tmux = Arc::new(TmuxAdapter::for_session(&session.name));
+        let tmux = Arc::new(TmuxAdapter::for_server(&session.server));
         let pane = tmux
             .list_panes()
             .await
@@ -823,13 +867,7 @@ mod tests {
         // Reproduce the dogfood state: our offset record survives while tmux's
         // output pipe has vanished. The next daemon pass must repair, not trust,
         // that stale in-memory ownership claim.
-        assert!(
-            Command::new("tmux")
-                .args(["pipe-pane", "-t", &pane.id])
-                .status()
-                .expect("close OS pipe")
-                .success()
-        );
+        session.run(["pipe-pane", "-t", &pane.id]);
         observer.observe_once().await.expect("second observer pass");
         tmux.send_keys(&pane.id, "second-pass")
             .await
@@ -848,7 +886,7 @@ mod tests {
             eprintln!("SKIP real pane observer test: tmux unavailable");
             return;
         };
-        let tmux = Arc::new(TmuxAdapter::for_session(&session.name));
+        let tmux = Arc::new(TmuxAdapter::for_server(&session.server));
         let pane = tmux
             .list_panes()
             .await
@@ -883,37 +921,140 @@ mod tests {
             .observe_once()
             .await
             .expect("detach tombstoned tap");
-        let pipe = Command::new("tmux")
-            .args(["display-message", "-p", "-t", &pane.id, "#{pane_pipe}"])
-            .output()
-            .expect("read pane pipe");
+        let pipe = session.run(["display-message", "-p", "-t", &pane.id, "#{pane_pipe}"]);
         assert_eq!(String::from_utf8_lossy(&pipe.stdout).trim(), "0");
-        let marker = Command::new("tmux")
-            .args([
-                "show-options",
-                "-p",
-                "-v",
-                "-q",
-                "-t",
-                &pane.id,
-                "@pij-tap-sink",
-            ])
-            .output()
-            .expect("read ownership marker");
+        let marker = session.run([
+            "show-options",
+            "-p",
+            "-v",
+            "-q",
+            "-t",
+            &pane.id,
+            "@pij-tap-sink",
+        ]);
         assert!(marker.stdout.is_empty(), "release clears durable ownership");
         assert!(!sink.exists(), "release deletes captured terminal bytes");
 
         observer.observe_once().await.expect("post-release sweep");
-        let pipe = Command::new("tmux")
-            .args(["display-message", "-p", "-t", &pane.id, "#{pane_pipe}"])
-            .output()
-            .expect("read pane pipe after sweep");
+        let pipe = session.run(["display-message", "-p", "-t", &pane.id, "#{pane_pipe}"]);
         assert_eq!(
             String::from_utf8_lossy(&pipe.stdout).trim(),
             "0",
             "a later sweep must not reattach a released seat"
         );
         assert!(!sink.exists());
+    }
+
+    #[tokio::test]
+    async fn restarted_observer_retires_world_owned_tap_for_tombstoned_seat() {
+        let Some(session) = LiveTmuxSession::start() else {
+            eprintln!("SKIP real pane observer test: tmux unavailable");
+            return;
+        };
+        let first_tmux = Arc::new(TmuxAdapter::for_server(&session.server));
+        let pane = first_tmux
+            .list_panes()
+            .await
+            .expect("list isolated pane")
+            .into_iter()
+            .next()
+            .expect("isolated pane");
+        let registry = registry(&[pane.id.as_str()]).await;
+        let first = PaneObserver::new(
+            Arc::clone(&registry) as Arc<dyn Registry>,
+            Arc::clone(&first_tmux) as Arc<dyn TmuxPort>,
+            Arc::new(InteractionGate::new(
+                Arc::clone(&first_tmux) as Arc<dyn TmuxPort>
+            )),
+            std::env::temp_dir().join(format!("{}-restart-signals", session.name)),
+            Duration::from_millis(1),
+        )
+        .expect("first observer");
+        first
+            .observe_once()
+            .await
+            .expect("attach first-process tap");
+        let sink = first.sink_path(&pane.id);
+
+        let mut descriptor = registry
+            .get(&SeatId::from("pij-observed-0"))
+            .await
+            .expect("read seat")
+            .expect("registered seat");
+        descriptor.tombstoned_at = Some(1);
+        descriptor.tombstone_reason = Some("released before crash".to_string());
+        registry.put(descriptor).await.expect("persist tombstone");
+        drop(first);
+        drop(first_tmux);
+
+        // Fresh process memory: no tracked pane exists. Only the marker in tmux
+        // can source ownership and make consent withdrawal an active transition.
+        let restarted_tmux = Arc::new(TmuxAdapter::for_server(&session.server));
+        assert_eq!(
+            restarted_tmux
+                .pane_tap_sink(&pane.id)
+                .await
+                .expect("read durable owner"),
+            Some(sink.clone()),
+            "restart witness requires world-owned tap with no process-local state"
+        );
+        assert!(
+            registry
+                .get(&SeatId::from("pij-observed-0"))
+                .await
+                .expect("read tombstone")
+                .is_some_and(|seat| seat.tombstoned_at.is_some()),
+            "restart witness requires persisted consent withdrawal"
+        );
+        let restarting_registry = Arc::new(FailFirstListRegistry {
+            inner: Arc::clone(&registry),
+            fail: AtomicBool::new(true),
+        });
+        let restarted = PaneObserver::new(
+            Arc::clone(&restarting_registry) as Arc<dyn Registry>,
+            Arc::clone(&restarted_tmux) as Arc<dyn TmuxPort>,
+            Arc::new(InteractionGate::new(
+                Arc::clone(&restarted_tmux) as Arc<dyn TmuxPort>
+            )),
+            std::env::temp_dir().join(format!("{}-restart-signals", session.name)),
+            Duration::from_millis(1),
+        )
+        .expect("restarted observer");
+        let first_error = restarted
+            .observe_once()
+            .await
+            .expect_err("first registry read fails");
+        assert!(
+            first_error
+                .to_string()
+                .contains("injected registry boot race")
+        );
+        assert_eq!(
+            restarted_tmux
+                .pane_tap_sink(&pane.id)
+                .await
+                .expect("marker survives failed reconciliation"),
+            Some(sink.clone()),
+            "an unreadable registry must not clear ownership or mark world reconciliation complete"
+        );
+        restarted
+            .observe_once()
+            .await
+            .expect("world-sourced retirement retries");
+
+        let pipe = session.run(["display-message", "-p", "-t", &pane.id, "#{pane_pipe}"]);
+        assert_eq!(String::from_utf8_lossy(&pipe.stdout).trim(), "0");
+        let marker = session.run([
+            "show-options",
+            "-p",
+            "-v",
+            "-q",
+            "-t",
+            &pane.id,
+            "@pij-tap-sink",
+        ]);
+        assert!(marker.stdout.is_empty());
+        assert!(!sink.exists(), "restart retirement deletes captured bytes");
     }
 
     #[tokio::test(start_paused = true)]

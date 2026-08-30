@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use pij_core::model::Pane;
 use pij_core::ports::TmuxPort;
@@ -11,7 +11,6 @@ use pij_testkit::fakes::FakeTmux;
 use pij_tmux::TmuxAdapter;
 
 static SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
-const REAL_TMUX_TEST_LOCK: &str = "pij-rs-real-tmux-tests";
 
 struct Fixture {
     pane: Pane,
@@ -80,9 +79,12 @@ fn fake_tmux_honours_the_shared_contract() {
             "capture:%41:100".to_string(),
             "user_typing:%41".to_string(),
             "drain_pane_tap:%41".to_string(),
+            "pane_tap_sink:%41".to_string(),
             format!("attach_pane_tap:%41:{}", tap_sink.display()),
+            "pane_tap_sink:%41".to_string(),
             "drain_pane_tap:%41".to_string(),
             "detach_pane_tap:%41".to_string(),
+            "pane_tap_sink:%41".to_string(),
             "drain_pane_tap:%41".to_string(),
             "send_keys:%41:literal | payload".to_string(),
             "capture:%41:100".to_string(),
@@ -107,7 +109,7 @@ fn real_tmux_honours_the_shared_contract_inside_its_own_session() {
     let Some(session) = TestSession::start_or_skip("contract") else {
         return;
     };
-    let tmux = TmuxAdapter::for_session(&session.name);
+    let tmux = TmuxAdapter::for_server(&session.server);
     let pane = block_on(tmux.list_panes())
         .expect("list isolated panes")
         .into_iter()
@@ -130,7 +132,7 @@ fn capture_proves_zero_and_more_than_the_pane_contains() {
     let Some(session) = TestSession::start_or_skip("capture") else {
         return;
     };
-    let tmux = TmuxAdapter::for_session(&session.name);
+    let tmux = TmuxAdapter::for_server(&session.server);
     let pane = block_on(tmux.list_panes())
         .expect("list isolated panes")
         .into_iter()
@@ -149,11 +151,12 @@ fn capture_proves_zero_and_more_than_the_pane_contains() {
         "one line returns exactly the final available line"
     );
 }
-
-fn drain_until_quiet(tmux: &TmuxAdapter, pane: &str, needle: &str) -> Vec<u8> {
+fn drain_until_quiet(tmux: &TmuxAdapter, server: &str, pane: &str, needle: &str) -> Vec<u8> {
+    let started = Instant::now();
+    let deadline = started + Duration::from_secs(10);
     let mut observed = Vec::new();
     let mut quiet_after_match = 0;
-    for _ in 0..80 {
+    loop {
         std::thread::sleep(Duration::from_millis(25));
         let chunk = block_on(tmux.drain_pane_tap(pane)).expect("drain attached tap");
         if chunk.is_empty() && String::from_utf8_lossy(&observed).contains(needle) {
@@ -165,8 +168,29 @@ fn drain_until_quiet(tmux: &TmuxAdapter, pane: &str, needle: &str) -> Vec<u8> {
             quiet_after_match = 0;
             observed.extend_from_slice(&chunk);
         }
+        if Instant::now() >= deadline {
+            let pipe = Command::new("tmux")
+                .args([
+                    "-L",
+                    server,
+                    "display-message",
+                    "-p",
+                    "-t",
+                    pane,
+                    "#{pane_pipe}",
+                ])
+                .output()
+                .ok()
+                .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+                .unwrap_or_else(|| "unobservable".to_string());
+            panic!(
+                "tap did not settle after {:?}: observed {} bytes ({:?}), pane_pipe={pipe}",
+                started.elapsed(),
+                observed.len(),
+                String::from_utf8_lossy(&observed)
+            );
+        }
     }
-    panic!("tap did not settle after emitting {needle:?}: {observed:?}");
 }
 
 #[test]
@@ -174,7 +198,7 @@ fn pane_tap_drains_each_raw_byte_once_and_detaches_cleanly() {
     let Some(session) = TestSession::start_or_skip("tap") else {
         return;
     };
-    let tmux = TmuxAdapter::for_session(&session.name);
+    let tmux = TmuxAdapter::for_server(&session.server);
     let pane = block_on(tmux.list_panes())
         .expect("list isolated panes")
         .into_iter()
@@ -188,7 +212,7 @@ fn pane_tap_drains_each_raw_byte_once_and_detaches_cleanly() {
     );
     block_on(tmux.attach_pane_tap(&pane.id, &sink)).expect("attach tap");
     block_on(tmux.send_keys(&pane.id, "tap-one")).expect("emit first bytes");
-    let first = drain_until_quiet(&tmux, &pane.id, "tap-one");
+    let first = drain_until_quiet(&tmux, &session.server, &pane.id, "tap-one");
     assert_eq!(
         String::from_utf8_lossy(&first).matches("tap-one").count(),
         1,
@@ -201,7 +225,7 @@ fn pane_tap_drains_each_raw_byte_once_and_detaches_cleanly() {
     );
 
     block_on(tmux.send_keys(&pane.id, "tap-two")).expect("emit second bytes");
-    let second = drain_until_quiet(&tmux, &pane.id, "tap-two");
+    let second = drain_until_quiet(&tmux, &session.server, &pane.id, "tap-two");
     assert_eq!(
         String::from_utf8_lossy(&second).matches("tap-two").count(),
         1,
@@ -218,7 +242,7 @@ fn matching_marker_adopts_restart_pipe_and_detach_clears_ownership() {
     let Some(session) = TestSession::start_or_skip("tap-adopt") else {
         return;
     };
-    let first = TmuxAdapter::for_session(&session.name);
+    let first = TmuxAdapter::for_server(&session.server);
     let pane = block_on(first.list_panes())
         .expect("list isolated panes")
         .into_iter()
@@ -242,10 +266,10 @@ fn matching_marker_adopts_restart_pipe_and_detach_clears_ownership() {
 
     // A fresh adapter has no process-local tap map. The matching pane marker is
     // the durable ownership fact that lets it replace the orphan safely.
-    let restarted = TmuxAdapter::for_session(&session.name);
+    let restarted = TmuxAdapter::for_server(&session.server);
     block_on(restarted.attach_pane_tap(&pane.id, &sink)).expect("restart adoption");
     block_on(restarted.send_keys(&pane.id, "after-restart")).expect("emit after restart");
-    let bytes = drain_until_quiet(&restarted, &pane.id, "after-restart");
+    let bytes = drain_until_quiet(&restarted, &session.server, &pane.id, "after-restart");
     assert!(String::from_utf8_lossy(&bytes).contains("after-restart"));
 
     block_on(restarted.detach_pane_tap(&pane.id)).expect("detach adopted tap");
@@ -269,7 +293,7 @@ fn mismatched_marker_refuses_to_replace_a_foreign_pipe() {
     let Some(session) = TestSession::start_or_skip("tap-foreign") else {
         return;
     };
-    let first = TmuxAdapter::for_session(&session.name);
+    let first = TmuxAdapter::for_server(&session.server);
     let pane = block_on(first.list_panes())
         .expect("list isolated panes")
         .into_iter()
@@ -286,7 +310,7 @@ fn mismatched_marker_refuses_to_replace_a_foreign_pipe() {
         "/foreign/sink",
     ]);
 
-    let restarted = TmuxAdapter::for_session(&session.name);
+    let restarted = TmuxAdapter::for_server(&session.server);
     let error = block_on(restarted.attach_pane_tap(&pane.id, &sink))
         .expect_err("mismatched owner must be refused");
     assert!(
@@ -304,7 +328,7 @@ fn pane_in_mode_is_the_only_typing_fact_this_adapter_claims() {
     let Some(session) = TestSession::start_or_skip("typing") else {
         return;
     };
-    let tmux = TmuxAdapter::for_session(&session.name);
+    let tmux = TmuxAdapter::for_server(&session.server);
     let pane = block_on(tmux.list_panes())
         .expect("list isolated panes")
         .into_iter()
@@ -325,7 +349,7 @@ fn kill_refuses_an_id_not_freshly_resolved_in_the_owned_session() {
     let Some(session) = TestSession::start_or_skip("kill-brake") else {
         return;
     };
-    let tmux = TmuxAdapter::for_session(&session.name);
+    let tmux = TmuxAdapter::for_server(&session.server);
 
     let error = block_on(tmux.kill("%999999")).expect_err("unknown pane must be refused");
     assert!(error.to_string().contains("fresh list-panes"), "{error}");
@@ -340,6 +364,7 @@ fn kill_refuses_an_id_not_freshly_resolved_in_the_owned_session() {
 
 struct TestSession {
     name: String,
+    server: String,
 }
 
 impl TestSession {
@@ -365,8 +390,8 @@ impl TestSession {
             .as_nanos();
         let count = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
         let name = format!("pij-rs-{label}-{}-{nonce}-{count}", std::process::id());
-        let session = Self { name };
-        session.run(["wait-for", "-L", REAL_TMUX_TEST_LOCK]);
+        let server = format!("{name}-server");
+        let session = Self { name, server };
         session.run([
             "new-session",
             "-d",
@@ -393,6 +418,7 @@ impl TestSession {
 
     fn run<const N: usize>(&self, args: [&str; N]) -> Output {
         let output = Command::new("tmux")
+            .args(["-L", &self.server])
             .args(args)
             .output()
             .expect("tmux became unavailable after fixture creation");
@@ -407,26 +433,16 @@ impl TestSession {
 
 impl Drop for TestSession {
     fn drop(&mut self) {
-        let kill = Command::new("tmux")
-            .args(["kill-session", "-t", &self.name])
+        let output = Command::new("tmux")
+            .args(["-L", &self.server, "kill-server"])
             .output();
-        let unlock = Command::new("tmux")
-            .args(["wait-for", "-U", REAL_TMUX_TEST_LOCK])
-            .output();
-        if let Ok(output) = unlock {
-            assert!(
-                output.status.success() || std::thread::panicking(),
-                "failed to unlock real tmux tests: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-        if let Ok(output) = kill
+        if let Ok(output) = output
             && !output.status.success()
             && !std::thread::panicking()
         {
             panic!(
-                "failed to tear down isolated tmux session {}: {}",
-                self.name,
+                "failed to tear down isolated tmux server {}: {}",
+                self.server,
                 String::from_utf8_lossy(&output.stderr)
             );
         }
