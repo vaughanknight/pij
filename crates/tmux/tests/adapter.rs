@@ -213,6 +213,92 @@ fn pane_tap_drains_each_raw_byte_once_and_detaches_cleanly() {
 }
 
 #[test]
+fn matching_marker_adopts_restart_pipe_and_detach_clears_ownership() {
+    let Some(session) = TestSession::start_or_skip("tap-adopt") else {
+        return;
+    };
+    let first = TmuxAdapter::for_session(&session.name);
+    let pane = block_on(first.list_panes())
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    let sink = std::env::temp_dir().join(format!("{}-tap.raw", session.name));
+    block_on(first.attach_pane_tap(&pane.id, &sink)).expect("initial attach");
+    let marker = session.run([
+        "show-options",
+        "-p",
+        "-v",
+        "-q",
+        "-t",
+        &pane.id,
+        "@pij-tap-sink",
+    ]);
+    assert_eq!(
+        String::from_utf8_lossy(&marker.stdout).trim(),
+        sink.to_str().unwrap()
+    );
+
+    // A fresh adapter has no process-local tap map. The matching pane marker is
+    // the durable ownership fact that lets it replace the orphan safely.
+    let restarted = TmuxAdapter::for_session(&session.name);
+    block_on(restarted.attach_pane_tap(&pane.id, &sink)).expect("restart adoption");
+    block_on(restarted.send_keys(&pane.id, "after-restart")).expect("emit after restart");
+    let bytes = drain_until_quiet(&restarted, &pane.id, "after-restart");
+    assert!(String::from_utf8_lossy(&bytes).contains("after-restart"));
+
+    block_on(restarted.detach_pane_tap(&pane.id)).expect("detach adopted tap");
+    let marker = session.run([
+        "show-options",
+        "-p",
+        "-v",
+        "-q",
+        "-t",
+        &pane.id,
+        "@pij-tap-sink",
+    ]);
+    assert!(
+        marker.stdout.is_empty(),
+        "detach must clear durable ownership"
+    );
+}
+
+#[test]
+fn mismatched_marker_refuses_to_replace_a_foreign_pipe() {
+    let Some(session) = TestSession::start_or_skip("tap-foreign") else {
+        return;
+    };
+    let first = TmuxAdapter::for_session(&session.name);
+    let pane = block_on(first.list_panes())
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    let sink = std::env::temp_dir().join(format!("{}-tap.raw", session.name));
+    block_on(first.attach_pane_tap(&pane.id, &sink)).expect("initial attach");
+    session.run([
+        "set-option",
+        "-p",
+        "-t",
+        &pane.id,
+        "@pij-tap-sink",
+        "/foreign/sink",
+    ]);
+
+    let restarted = TmuxAdapter::for_session(&session.name);
+    let error = block_on(restarted.attach_pane_tap(&pane.id, &sink))
+        .expect_err("mismatched owner must be refused");
+    assert!(
+        error.to_string().contains("not owned by this sink"),
+        "{error}"
+    );
+    let pipe = session.run(["display-message", "-p", "-t", &pane.id, "#{pane_pipe}"]);
+    assert_eq!(String::from_utf8_lossy(&pipe.stdout).trim(), "1");
+
+    block_on(first.detach_pane_tap(&pane.id)).expect("clean up original tap");
+}
+
+#[test]
 fn pane_in_mode_is_the_only_typing_fact_this_adapter_claims() {
     let Some(session) = TestSession::start_or_skip("typing") else {
         return;
