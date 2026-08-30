@@ -33,8 +33,8 @@ use tokio_stream::StreamExt;
 
 use crate::{BUILD, Services};
 
-pub use auth::AuthRing;
 use crate::federation::{FederationSendError, FederationService};
+pub use auth::AuthRing;
 pub use client::{PeerEndpoint, post_to_peer};
 pub use exposure::{Exposure, boot_banner, exposure};
 pub use types::{EventFrame, Registration, SendRequest, SpawnRequest};
@@ -519,6 +519,7 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendRequest>) -
     // policy, no tombstone and no transport, published no event, and wrote a
     // payload the inbox reading that same queue could not decode. Two halves of
     // one round trip, each proven against itself. Found by u-extension.
+    let forwarded = request.from_machine.is_some();
     let msg = Msg {
         from: request.from,
         // Carried from the wire: a federation worker forwarding A's message to B
@@ -530,7 +531,12 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendRequest>) -
         in_reply_to: request.in_reply_to,
         command: None,
     };
-    match state.services.delivery.accept(msg).await {
+    let accepted = if forwarded {
+        state.services.delivery.accept_forwarded(msg).await
+    } else {
+        state.services.delivery.accept(msg).await
+    };
+    match accepted {
         Ok(receipt) => envelope(StatusCode::OK, &Envelope::ok("pij send", receipt)),
         Err(error @ PijError::SeatIsGone { .. }) => envelope(
             StatusCode::GONE,

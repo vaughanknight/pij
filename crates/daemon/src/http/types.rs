@@ -93,10 +93,6 @@ pub struct SpawnRequest {
 pub struct SendRequest {
     /// Sender identity.
     pub from: SeatId,
-    /// Sender's machine when this request was forwarded by a peer daemon.
-    /// Local clients omit it; federation stamps it before forwarding.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub from_machine: Option<String>,
     /// Already-resolved destination. `machine: None` always means this daemon.
     pub to: pij_core::model::Destination,
     /// Message body.

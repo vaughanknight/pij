@@ -7,16 +7,18 @@ use async_trait::async_trait;
 use axum::extract::{Json, State};
 use axum::http::HeaderMap;
 use axum::routing::post;
+use pij_core::config::PeerDefinition;
 use pij_core::error::Result;
 use pij_core::model::{
     Destination, Envelope, Event, Harness, Job, JobId, Outcome, Pane, ProcIdentity, Receipt,
     SeatDescriptor,
 };
-use pij_core::ports::{Queue, Registry};
+use pij_core::ports::{Queue, Registry, Spine};
 use pij_core::wire::{self, WireEvent};
 use pij_testkit::fakes::{FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux};
 
 use super::*;
+use crate::federation::{FederationService, WorkerStep};
 
 #[derive(Default)]
 struct CountingQueue {
@@ -129,7 +131,6 @@ fn send_request_uses_resolved_destination_object_and_optional_reply_id() {
         to: Destination::local("pij-b"),
         body: "answer".to_string(),
         msg_id: "m-2".to_string(),
-        from_machine: None,
         in_reply_to: Some("m-1".to_string()),
     };
     let json = serde_json::to_value(&request).expect("send request json");
@@ -467,7 +468,7 @@ async fn spawn_stamps_only_the_argv_that_reached_the_observed_launch() {
 }
 
 #[tokio::test]
-async fn send_enqueues_exactly_once_and_refuses_remote_destinations() {
+async fn send_enqueues_exactly_once_and_refuses_remote_without_federation() {
     let queue = Arc::new(CountingQueue::default());
     // The recipient must EXIST now. The route used to enqueue without consulting
     // the registry at all, so this test passed against a roster that had never
@@ -491,7 +492,6 @@ async fn send_enqueues_exactly_once_and_refuses_remote_destinations() {
         to: Destination::local("pij-b"),
         body: "hello".to_string(),
         msg_id: "m-1".to_string(),
-        from_machine: None,
         in_reply_to: Some("m-0".to_string()),
     };
 
@@ -556,7 +556,7 @@ async fn send_enqueues_exactly_once_and_refuses_remote_destinations() {
             .text()
             .await
             .expect("body")
-            .contains("u-federation (wave 4)")
+            .contains("require configured federation peers")
     );
     assert_eq!(
         queue.jobs().len(),
@@ -892,4 +892,238 @@ async fn a_native_session_boundary_supersedes_its_own_seat_but_never_another() {
     );
 
     server.abort();
+}
+
+#[tokio::test]
+async fn two_daemons_forward_remote_send_into_destination_queue_and_spine() {
+    let b_registry = Arc::new(FakeRegistry::new());
+    let mut b_recipient = SeatDescriptor::new("bob", Harness::Omp, "/b");
+    b_recipient.proc = Some(ProcIdentity {
+        pid: 42,
+        proc_start: 20260830000000,
+    });
+    b_registry
+        .put(b_recipient)
+        .await
+        .expect("register bound destination");
+    let b_queue = Arc::new(FakeQueue::new());
+    let b_spine = Arc::new(FakeSpine::new());
+    let b_services = test_services(b_registry, b_queue.clone(), b_spine.clone()).await;
+    let (b_addr, b_server) = spawn(router_with_config(
+        b_services,
+        HttpConfig {
+            local_key: "b-local".to_string(),
+            peer_keys: vec!["pair-key".to_string()],
+            machine_alias: "laptop".to_string(),
+        },
+    ))
+    .await;
+
+    let a_queue = Arc::new(FakeQueue::new());
+    let a_spine = Arc::new(FakeSpine::new());
+    let a_services = test_services(Arc::new(FakeRegistry::new()), a_queue, a_spine.clone()).await;
+    let federation = Arc::new(
+        FederationService::new(
+            "desktop".to_string(),
+            [PeerDefinition {
+                alias: "laptop".to_string(),
+                url: format!("http://{b_addr}"),
+                key: "pair-key".to_string(),
+            }],
+            Arc::clone(&a_services.queue),
+            Arc::clone(&a_services.event_bus),
+        )
+        .expect("federation"),
+    );
+    let (a_addr, a_server) = spawn(router_with_federation(
+        a_services,
+        config("a-local", &[]),
+        federation.clone(),
+    ))
+    .await;
+
+    let request = SendRequest {
+        from: "bob".into(),
+        to: Destination {
+            seat: "bob".into(),
+            machine: Some("laptop".to_string()),
+        },
+        body: "across machines".to_string(),
+        msg_id: "remote-m-1".to_string(),
+        from_machine: None,
+        in_reply_to: None,
+    };
+    let response = reqwest::Client::new()
+        .post(format!("http://{a_addr}/v1/send"))
+        .bearer_auth("a-local")
+        .json(&request)
+        .send()
+        .await
+        .expect("remote admission");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let admitted: Envelope<Receipt> = response.json().await.expect("queued receipt");
+    assert_eq!(
+        admitted.data.expect("receipt").outcome,
+        pij_core::model::DeliveryOutcome::Queued,
+        "the origin observed only its own durable queue"
+    );
+    let origin_events_before = a_spine
+        .tail(None, pij_core::model::Seq(0))
+        .await
+        .expect("origin admission event");
+    assert_eq!(origin_events_before.len(), 1);
+    assert!(
+        origin_events_before[0]
+            .payload
+            .contains("\"outcome\":\"queued\"")
+    );
+
+    assert_eq!(
+        federation.process_one().await.expect("forward"),
+        WorkerStep::Forwarded
+    );
+    let origin_events = a_spine
+        .tail(None, pij_core::model::Seq(0))
+        .await
+        .expect("origin receipt events");
+    assert_eq!(origin_events.len(), 2);
+    assert!(
+        origin_events[1].payload.contains("\"outcome\":\"queued\""),
+        "the peer's queued receipt is relayed unchanged"
+    );
+    assert!(!origin_events[1].payload.contains("injected-to-transport"));
+
+    let kinds = [pij_core::delivery::delivery_kind(&"bob".into())];
+    let (_, queued) = b_queue
+        .claim(&kinds, "assertion")
+        .await
+        .expect("destination queue")
+        .expect("message landed");
+    let message: pij_core::model::Msg =
+        serde_json::from_str(&queued.payload).expect("destination payload");
+    assert_eq!(message.body, "across machines");
+    assert_eq!(message.from_machine.as_deref(), Some("desktop"));
+
+    let events = b_spine
+        .tail(None, pij_core::model::Seq(0))
+        .await
+        .expect("destination spine");
+    assert!(events.iter().any(|event| event.kind == "message.pushed"));
+    assert!(events.iter().any(|event| event.kind == "delivery.outcome"));
+    let pushed = events
+        .iter()
+        .find(|event| event.kind == "message.pushed")
+        .expect("pushed event");
+    assert!(pushed.payload.contains("\"from_machine\":\"desktop\""));
+
+    a_server.abort();
+    b_server.abort();
+}
+
+#[tokio::test]
+async fn wrong_peer_key_is_permanent_and_never_hot_loops() {
+    let b_services = test_services(
+        Arc::new(FakeRegistry::new()),
+        Arc::new(FakeQueue::new()),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    let (b_addr, b_server) = spawn(router_with_config(
+        b_services,
+        HttpConfig {
+            local_key: "b-local".to_string(),
+            peer_keys: vec!["correct-key".to_string()],
+            machine_alias: "laptop".to_string(),
+        },
+    ))
+    .await;
+
+    let a_queue = Arc::new(FakeQueue::new());
+    let a_bus =
+        Arc::new(crate::events::EventBus::new(Arc::new(FakeSpine::new()), 16).expect("event bus"));
+    let federation = FederationService::new(
+        "desktop".to_string(),
+        [PeerDefinition {
+            alias: "laptop".to_string(),
+            url: format!("http://{b_addr}"),
+            key: "wrong-key".to_string(),
+        }],
+        a_queue.clone(),
+        a_bus,
+    )
+    .expect("federation");
+    federation
+        .enqueue_remote(&SendRequest {
+            from: "alice".into(),
+            to: Destination {
+                seat: "bob".into(),
+                machine: Some("laptop".to_string()),
+            },
+            body: "hello".to_string(),
+            msg_id: "auth-m-1".to_string(),
+            from_machine: None,
+            in_reply_to: None,
+        })
+        .await
+        .expect("enqueue");
+    assert_eq!(
+        federation.process_one().await.expect("worker"),
+        WorkerStep::Refused
+    );
+    assert!(a_queue.retried().is_empty(), "auth is not retryable");
+    let acked = a_queue.acked();
+    let [(_, Outcome::Failed { reason })] = acked.as_slice() else {
+        panic!("one terminal refusal expected");
+    };
+    assert!(reason.contains("missing or wrong bearer token"));
+
+    b_server.abort();
+}
+
+#[tokio::test]
+async fn peer_key_removal_takes_effect_when_router_restarts() {
+    let client = reqwest::Client::new();
+    let first_services = test_services(
+        Arc::new(FakeRegistry::new()),
+        Arc::new(FakeQueue::new()),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    let (first_addr, first_server) = spawn(router_with_config(
+        first_services,
+        config("local", &["revoked-key"]),
+    ))
+    .await;
+    assert_eq!(
+        client
+            .get(format!("http://{first_addr}/health"))
+            .bearer_auth("revoked-key")
+            .send()
+            .await
+            .expect("accepted before restart")
+            .status(),
+        reqwest::StatusCode::OK
+    );
+    first_server.abort();
+
+    let restarted_services = test_services(
+        Arc::new(FakeRegistry::new()),
+        Arc::new(FakeQueue::new()),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    let (restarted_addr, restarted_server) =
+        spawn(router_with_config(restarted_services, config("local", &[]))).await;
+    assert_eq!(
+        client
+            .get(format!("http://{restarted_addr}/health"))
+            .bearer_auth("revoked-key")
+            .send()
+            .await
+            .expect("refused after restart")
+            .status(),
+        reqwest::StatusCode::UNAUTHORIZED
+    );
+
+    restarted_server.abort();
 }
