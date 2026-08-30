@@ -1,6 +1,7 @@
 use pij_core::error::{PijError, Result};
-use pij_core::model::Harness;
+use pij_core::model::{Harness, SeatId};
 
+const PIJ_SESSION_ID: &str = "PIJ_SESSION_ID";
 const CLAUDE_ACCEPT_SETTINGS: &str = r#"{"crossSessionInbound":"accept"}"#;
 
 /// Facts known by the launcher and the exact command it will execute.
@@ -11,9 +12,10 @@ const CLAUDE_ACCEPT_SETTINGS: &str = r#"{"crossSessionInbound":"accept"}"#;
 pub struct SpawnPlan {
     /// Harness being launched.
     pub harness: Harness,
-    /// Executable passed to tmux.
+    /// `env`, which applies [`PIJ_SESSION_ID`] before starting the harness.
     pub executable: String,
-    /// Discrete arguments passed to the executable. No shell joins this vector.
+    /// The assigned identity, actual harness executable, and its discrete arguments.
+    /// No shell joins this vector.
     pub args: Vec<String>,
     /// Exact requested model selector, when supplied.
     pub model: Option<String>,
@@ -28,6 +30,8 @@ pub struct SpawnPlan {
 /// Inputs used to build one spawn command.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpawnPlanInput {
+    /// Seat id already assigned by the daemon under its spawn lock.
+    pub seat_id: SeatId,
     /// Harness to launch.
     pub harness: Harness,
     /// Executable override from `--bin`; the harness name is used when absent.
@@ -42,17 +46,18 @@ pub struct SpawnPlanInput {
     pub accept_inbound: bool,
 }
 
-/// Build the exact executable and argv for one spawn.
+/// Build the exact environment launcher and harness argv for one spawn.
 ///
 /// # Composition recipe
 ///
 /// `use pij_harnesses::{SpawnPlanInput, build_spawn_plan};` in the authenticated
-/// `POST /v1/spawn` handler. Build `SpawnPlanInput` from the request's harness,
+/// `POST /v1/spawn` handler. Assign the seat id under the spawn lock, then build
+/// `SpawnPlanInput` from that exact id plus the request's harness,
 /// executable/model/effort and `accept_inbound` fields. Pass the returned
 /// `plan.executable` and discrete `plan.args` as `Some(&LaunchCommand)` to
 /// `Services.tmux.new_window`. Only after that call returns a pane, write the
 /// pre-bind descriptor and copy `plan.cross_session_inbound_accept` into
-/// `Some(...)`; never derive the stamp from the request.
+/// `Some(...)`; never derive either stamp from the request.
 ///
 /// # Errors
 ///
@@ -69,7 +74,14 @@ pub fn build_spawn_plan(input: SpawnPlanInput) -> Result<SpawnPlan> {
         });
     }
 
-    let mut args = Vec::new();
+    let harness_executable = input
+        .executable
+        .clone()
+        .unwrap_or_else(|| input.harness.as_str().to_string());
+    let mut args = vec![
+        format!("{PIJ_SESSION_ID}={}", input.seat_id),
+        harness_executable,
+    ];
     match input.harness {
         Harness::Pi => {
             if let Some(model) = &input.model {
@@ -116,9 +128,7 @@ pub fn build_spawn_plan(input: SpawnPlanInput) -> Result<SpawnPlan> {
 
     Ok(SpawnPlan {
         harness: input.harness,
-        executable: input
-            .executable
-            .unwrap_or_else(|| input.harness.as_str().to_string()),
+        executable: "env".to_string(),
         args,
         model: input.model,
         provider: input.resolved_provider,
@@ -135,11 +145,12 @@ fn push_option(args: &mut Vec<String>, flag: &str, value: Option<&str>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{CLAUDE_ACCEPT_SETTINGS, SpawnPlanInput, build_spawn_plan};
-    use pij_core::model::Harness;
+    use super::{CLAUDE_ACCEPT_SETTINGS, PIJ_SESSION_ID, SpawnPlanInput, build_spawn_plan};
+    use pij_core::model::{Harness, SeatId};
 
     fn input(harness: Harness) -> SpawnPlanInput {
         SpawnPlanInput {
+            seat_id: SeatId::from("pij-assigned"),
             harness,
             executable: None,
             model: Some("provider/model".to_string()),
@@ -201,10 +212,23 @@ mod tests {
             ),
         ];
 
-        for (harness, executable, expected_args) in cases {
+        for (harness, harness_executable, expected_harness_args) in cases {
             let plan = build_spawn_plan(input(harness)).expect("build plan");
-            assert_eq!(plan.executable, executable);
-            assert_eq!(plan.args, expected_args);
+            assert_eq!(plan.executable, "env");
+            assert_eq!(
+                plan.args,
+                [
+                    vec![
+                        format!("{PIJ_SESSION_ID}=pij-assigned"),
+                        harness_executable.to_string()
+                    ],
+                    expected_harness_args
+                        .into_iter()
+                        .map(str::to_string)
+                        .collect(),
+                ]
+                .concat()
+            );
             assert!(!plan.cross_session_inbound_accept);
             assert_eq!(plan.model.as_deref(), Some("provider/model"));
             assert_eq!(plan.provider.as_deref(), Some("provider"));
@@ -217,6 +241,7 @@ mod tests {
         let without = build_spawn_plan(input(Harness::Claude)).expect("closed plan");
         assert!(!without.cross_session_inbound_accept);
         assert!(!without.args.iter().any(|arg| arg == "--settings"));
+        assert_eq!(without.args[0], "PIJ_SESSION_ID=pij-assigned");
 
         let mut accepted_input = input(Harness::Claude);
         accepted_input.accept_inbound = true;
@@ -243,6 +268,7 @@ mod tests {
     #[test]
     fn executable_override_and_absent_optional_facts_are_preserved() {
         let plan = build_spawn_plan(SpawnPlanInput {
+            seat_id: SeatId::from("pij-override"),
             harness: Harness::Claude,
             executable: Some("/opt/harnesses/claude".to_string()),
             model: None,
@@ -252,8 +278,15 @@ mod tests {
         })
         .expect("build plan");
 
-        assert_eq!(plan.executable, "/opt/harnesses/claude");
-        assert_eq!(plan.args, ["--dangerously-skip-permissions"]);
+        assert_eq!(plan.executable, "env");
+        assert_eq!(
+            plan.args,
+            [
+                "PIJ_SESSION_ID=pij-override",
+                "/opt/harnesses/claude",
+                "--dangerously-skip-permissions"
+            ]
+        );
         assert_eq!(plan.model, None);
         assert_eq!(plan.provider, None);
         assert_eq!(plan.effort, None);

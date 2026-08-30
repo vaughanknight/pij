@@ -16,9 +16,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+const INBOX_ACK_EVENT_KIND: &str = "delivery.inbox-ack";
+
 use axum::Router;
 use axum::body::{Body, Bytes};
-use axum::extract::{Json, Query, State};
+use axum::extract::{Extension, Json, Query, State};
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -34,15 +36,14 @@ use pij_harnesses::{SpawnPlanInput, build_spawn_plan};
 use serde::Deserialize;
 use tokio_stream::{Stream, StreamExt};
 
-use crate::{BUILD, Services};
-
 use crate::federation::{FederationSendError, FederationService};
+use crate::{BUILD, Services};
 pub use auth::AuthRing;
 pub use client::{PeerEndpoint, get_from_peer, post_to_peer, stream_from_peer};
 pub use exposure::{Exposure, boot_banner, exposure};
 pub use types::{
-    CursorResetDetail, FederatedRoster, PeerStreamState, Registration, SendRequest, SpawnRequest,
-    StreamFrame, UnavailablePeer,
+    CursorResetDetail, FederatedRoster, InboxAckRequest, PeerStreamState, Registration,
+    SendRequest, SpawnRequest, StreamFrame, UnavailablePeer,
 };
 
 #[derive(Clone)]
@@ -82,16 +83,20 @@ enum Endpoint {
     Register,
     Spawn,
     Send,
+    Inbox,
+    InboxAck,
     Seats,
     Events,
 }
 
 impl Endpoint {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 8] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
         Self::Send,
+        Self::Inbox,
+        Self::InboxAck,
         Self::Seats,
         Self::Events,
     ];
@@ -102,6 +107,8 @@ impl Endpoint {
             Self::Register => "/v1/register",
             Self::Spawn => "/v1/spawn",
             Self::Send => "/v1/send",
+            Self::Inbox => "/v1/inbox",
+            Self::InboxAck => "/v1/inbox/ack",
             Self::Seats => "/v1/seats",
             Self::Events => "/v1/events",
         }
@@ -109,8 +116,8 @@ impl Endpoint {
 
     const fn method(self) -> Method {
         match self {
-            Self::Register | Self::Spawn | Self::Send => Method::POST,
-            Self::Health | Self::Seats | Self::Events => Method::GET,
+            Self::Register | Self::Spawn | Self::Send | Self::InboxAck => Method::POST,
+            Self::Health | Self::Inbox | Self::Seats | Self::Events => Method::GET,
         }
     }
 }
@@ -164,7 +171,7 @@ fn router_with_optional_federation(
             endpoint.method(),
             if matches!(
                 endpoint,
-                Endpoint::Register | Endpoint::Spawn | Endpoint::Send
+                Endpoint::Register | Endpoint::Spawn | Endpoint::Send | Endpoint::InboxAck
             ) {
                 Method::POST
             } else {
@@ -176,6 +183,8 @@ fn router_with_optional_federation(
             Endpoint::Register => router.route(endpoint.path(), post(register)),
             Endpoint::Spawn => router.route(endpoint.path(), post(spawn_seat)),
             Endpoint::Send => router.route(endpoint.path(), post(send)),
+            Endpoint::Inbox => router.route(endpoint.path(), get(inbox)),
+            Endpoint::InboxAck => router.route(endpoint.path(), post(ack_inbox)),
             Endpoint::Seats => router.route(endpoint.path(), get(seats)),
             Endpoint::Events => router.route(endpoint.path(), get(events)),
         };
@@ -191,14 +200,15 @@ fn router_with_optional_federation(
 async fn require_bearer(
     State(state): State<AppState>,
     headers: HeaderMap,
-    request: axum::extract::Request,
+    mut request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
     let presented = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default();
-    if state.auth.accepts(presented) {
+    if let Some(identity) = state.auth.authenticate(presented) {
+        request.extensions_mut().insert(identity);
         return next.run(request).await;
     }
     envelope(
@@ -441,21 +451,6 @@ async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequ
         }
     };
 
-    let plan = match build_spawn_plan(SpawnPlanInput {
-        harness: request.harness,
-        executable: request.executable,
-        model: request.model,
-        resolved_provider: None,
-        effort: request.effort,
-        accept_inbound: request.accept_inbound,
-    }) {
-        Ok(plan) => plan,
-        Err(error) => return refused("pij spawn", error),
-    };
-    let command = LaunchCommand {
-        executable: plan.executable,
-        args: plan.args,
-    };
     // Keep the collision check, observed launch, and descriptor write in one
     // daemon-local critical section. Registry::put is an upsert; without this
     // lock two concurrent requests for one id could both launch before either
@@ -499,6 +494,23 @@ async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequ
             }
             Err(error) => return internal("pij spawn", error),
         },
+    };
+
+    let plan = match build_spawn_plan(SpawnPlanInput {
+        seat_id: seat_id.clone(),
+        harness: request.harness,
+        executable: request.executable,
+        model: request.model,
+        resolved_provider: None,
+        effort: request.effort,
+        accept_inbound: request.accept_inbound,
+    }) {
+        Ok(plan) => plan,
+        Err(error) => return refused("pij spawn", error),
+    };
+    let command = LaunchCommand {
+        executable: plan.executable.clone(),
+        args: plan.args.clone(),
     };
 
     let name = request
@@ -586,6 +598,7 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendRequest>) -
     };
     match accepted {
         Ok(receipt) => envelope(StatusCode::OK, &Envelope::ok("pij send", receipt)),
+
         Err(error @ PijError::SeatIsGone { .. }) => envelope(
             StatusCode::GONE,
             &Envelope::<()>::refused("pij send", ErrorKind::Refused, error.to_string()),
@@ -600,6 +613,90 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendRequest>) -
         ),
         Err(error) => internal("pij send", error),
     }
+}
+#[derive(Deserialize)]
+struct InboxQuery {
+    seat: SeatId,
+    #[serde(default)]
+    wait: bool,
+}
+
+/// Claim one inbox message without recording delivery.
+///
+/// This GET is the explicit bounded multi-write exception to R4: every delivery
+/// row for a seat shares that seat's serial key, and queue serialization permits
+/// only one running claim per serial key, so one request can mutate exactly one
+/// row from pending to running. It records no `ReaderRead`. A client that receives
+/// the claim and dies before the separate acknowledgement may read it again after
+/// claim expiry; that residual duplicate is deliberately preferred to losing a
+/// message behind false evidence.
+async fn inbox(State(state): State<AppState>, Query(query): Query<InboxQuery>) -> Response {
+    match state
+        .services
+        .delivery
+        .claim_inbox(&query.seat, query.wait)
+        .await
+    {
+        Ok(claims) => envelope(StatusCode::OK, &Envelope::ok("pij inbox", claims)),
+        Err(error) => internal("pij inbox", error),
+    }
+}
+
+#[derive(serde::Serialize)]
+struct InboxAckAudit {
+    job_id: pij_core::model::JobId,
+    authenticated_machine: &'static str,
+    evidence_grade: &'static str,
+}
+
+/// Record `ReaderRead` only for the job id a client names after decoding a GET.
+/// The bearer credential attests to a machine, not to `request.seat`. The durable
+/// spine event therefore records the machine-graded acknowledgement ATTEMPT
+/// before the ledger mutation; it stays truthful even if the job id is invalid or
+/// the ledger write fails. A successful event plus the done queue row establishes
+/// `ReaderRead`; seat-level auth is intentionally not invented here.
+async fn ack_inbox(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<auth::AuthenticatedMachine>,
+    Json(request): Json<InboxAckRequest>,
+) -> Response {
+    let payload = match serde_json::to_string(&InboxAckAudit {
+        job_id: request.job_id,
+        authenticated_machine: authenticated.0,
+        evidence_grade: "machine",
+    }) {
+        Ok(payload) => payload,
+        Err(error) => return internal("pij inbox", error),
+    };
+    let at = match system_time_ms() {
+        Ok(at) => at,
+        Err(error) => return internal("pij inbox", error),
+    };
+    if let Err(error) = state
+        .services
+        .event_bus
+        .publish(pij_core::model::Event {
+            seq: None,
+            v: wire::EVENT_VERSION,
+            at,
+            kind: INBOX_ACK_EVENT_KIND.to_string(),
+            seat: Some(request.seat),
+            payload,
+        })
+        .await
+    {
+        return internal("pij inbox", error);
+    }
+    if let Err(error) = state
+        .services
+        .delivery
+        .acknowledge_inbox(request.job_id)
+        .await
+    {
+        return internal("pij inbox", error);
+    }
+
+    envelope(StatusCode::OK, &Envelope::ok("pij inbox", request.job_id))
 }
 
 #[derive(Default, Deserialize)]

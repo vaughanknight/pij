@@ -10,6 +10,10 @@ pub struct AuthRing {
     tokens: Arc<[String]>,
 }
 
+/// Machine-granularity identity established by a bearer credential.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct AuthenticatedMachine(pub(crate) &'static str);
+
 /// Compare two secrets without leaking their common prefix length through timing.
 ///
 /// Length is not a secret here (it is fixed by how keys are minted) but the
@@ -36,16 +40,45 @@ impl AuthRing {
         }
     }
 
-    pub(crate) fn accepts(&self, authorization: &str) -> bool {
-        let Some(token) = authorization.strip_prefix("Bearer ") else {
-            return false;
-        };
+    pub(crate) fn authenticate(&self, authorization: &str) -> Option<AuthenticatedMachine> {
+        let token = authorization.strip_prefix("Bearer ")?;
         // Constant-time per candidate, and EVERY candidate is compared: no early
         // exit on the first match either, so acceptance time does not reveal a
-        // key's position in the ring. The LAN banner says these keys are the only
-        // access control, which makes the comparison itself part of the boundary.
-        self.tokens.iter().fold(false, |found, accepted| {
-            constant_time_eq(accepted, token) | found
-        })
+        // key's position in the ring. The current ring preserves no peer alias
+        // beside a key, so it honestly grades non-local credentials as
+        // `unknown-peer` rather than inventing a machine identity.
+        let mut local = false;
+        let mut peer = false;
+        for (index, accepted) in self.tokens.iter().enumerate() {
+            let matched = constant_time_eq(accepted, token);
+            local |= index == 0 && matched;
+            peer |= index != 0 && matched;
+        }
+        if local {
+            Some(AuthenticatedMachine("local"))
+        } else if peer {
+            Some(AuthenticatedMachine("unknown-peer"))
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AuthRing, AuthenticatedMachine};
+
+    #[test]
+    fn bearer_identity_is_machine_graded_without_exposing_key_material() {
+        let ring = AuthRing::new("local-secret".to_string(), ["peer-secret".to_string()]);
+        assert_eq!(
+            ring.authenticate("Bearer local-secret"),
+            Some(AuthenticatedMachine("local"))
+        );
+        assert_eq!(
+            ring.authenticate("Bearer peer-secret"),
+            Some(AuthenticatedMachine("unknown-peer"))
+        );
+        assert_eq!(ring.authenticate("Bearer wrong"), None);
     }
 }

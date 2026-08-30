@@ -5,8 +5,11 @@ use std::path::Path;
 
 use pij_core::error::{PijError, Result};
 use pij_core::model::{
-    Destination, ENVELOPE_VERSION, Envelope, ErrorKind, Harness, Receipt, SeatDescriptor, SeatId,
+    Destination, ENVELOPE_VERSION, Envelope, ErrorKind, Harness, Msg, Receipt, SeatDescriptor,
+    SeatId,
 };
+use pij_daemon::delivery::InboxClaim;
+use pij_daemon::http::InboxAckRequest;
 pub use pij_daemon::http::{FederatedRoster, SpawnRequest, StreamFrame};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -132,6 +135,60 @@ impl DaemonClient {
     /// List the local authority plus typed remote availability.
     pub async fn list(&self) -> Envelope<FederatedRoster> {
         self.get("pij list", "/v1/seats").await
+    }
+
+    /// Claim one inbox message, then acknowledge only after the complete response
+    /// was received and decoded. An acknowledgement failure returns the decoded
+    /// message with a warning because a duplicate read is safer than hiding a
+    /// body the client already received.
+    pub async fn inbox(&self, seat: &SeatId, wait: bool) -> Envelope<Vec<Msg>> {
+        let claimed: Envelope<Vec<InboxClaim>> = self
+            .execute(
+                "pij inbox",
+                self.http
+                    .get(format!("{}/v1/inbox", self.base_url))
+                    .query(&[
+                        ("seat", seat.as_str()),
+                        ("wait", if wait { "true" } else { "false" }),
+                    ]),
+            )
+            .await;
+        if !claimed.ok {
+            return retype_envelope(claimed);
+        }
+        let Some(claims) = claimed.data else {
+            return refusal(
+                "pij inbox",
+                ErrorKind::Adapter,
+                "daemon returned a successful inbox envelope without a claim",
+            );
+        };
+        if claims.len() > 1 {
+            return refusal(
+                "pij inbox",
+                ErrorKind::Adapter,
+                "daemon violated inbox serialization by returning more than one claim",
+            );
+        }
+        let messages: Vec<Msg> = claims.iter().map(|claim| claim.message.clone()).collect();
+        let Some(claim) = claims.first() else {
+            return Envelope::ok("pij inbox", messages);
+        };
+        let acknowledgement = InboxAckRequest {
+            seat: seat.clone(),
+            job_id: claim.job_id,
+        };
+        let acked: Envelope<pij_core::model::JobId> = self
+            .post("pij inbox", "/v1/inbox/ack", &acknowledgement)
+            .await;
+        let mut result = Envelope::ok("pij inbox", messages);
+        if !acked.ok {
+            result.meta = Some(format!(
+                "messages were received but acknowledgement failed; they may be read again: {}",
+                acked.meta.as_deref().unwrap_or("no reason given")
+            ));
+        }
+        result
     }
 
     /// Open the federated event stream. `since` is encoded as one URL-encoded
@@ -410,6 +467,17 @@ fn decode_response<T: DeserializeOwned>(command: &str, body: &str) -> Envelope<T
             ErrorKind::Adapter,
             format!("daemon returned the wrong payload shape: {error}"),
         ),
+    }
+}
+
+fn retype_envelope<T, U>(envelope: Envelope<T>) -> Envelope<U> {
+    Envelope {
+        ok: envelope.ok,
+        command: envelope.command,
+        v: envelope.v,
+        data: None,
+        meta: envelope.meta,
+        error: envelope.error,
     }
 }
 
