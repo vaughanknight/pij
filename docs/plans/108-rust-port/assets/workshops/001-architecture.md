@@ -407,3 +407,22 @@ path the FINDING described, not the path the DEFECT lives on. Rule: every fix na
 it executes on, and the reviewer verifies the fixed branch is REACHABLE through the shipped
 pipeline (E-027's unreachable-cursor branch is the type specimen; the peer now refuses an
 impossible cursor by name and the worker treats that refusal as Reset).
+
+## Wave-6 inbox ruling — two-step claim/ack over HTTP (2026-08-31, vicuna)
+
+**ACCEPTED**: `GET /v1/inbox` claims and records nothing; `POST /v1/inbox/ack` records
+`ReaderRead` for the ids the client actually received; an expired delivery claim RETRIES via
+the existing `Queue::retry` instead of failing terminally (the piece that makes two-step
+honest). The defect this kills: in-process inbox acked ReaderRead BEFORE returning — over
+HTTP the ack commits before axum writes a byte, so a disconnect loses the body while the
+ledger says the recipient READ it: the strongest word in the vocabulary minted with no
+observation. Residual NAMED: duplicate read (read, died pre-ack, redelivered) —
+duplicate-over-lost-with-a-lie, ruled for the third time, now doctrine.
+
+**Riders**: (1) the ack row records WHICH bearer key acked, so machine-granularity attestation
+is auditable, not silent; (2) seat-level auth is backlog with trigger "two mutually untrusting
+seats share one machine key"; req-0007 gains one sentence: the key authenticates a MACHINE —
+ReaderRead over HTTP is attestable to machine granularity only. PM's R4 page-bound carve-out
+endorsed. Rejections ratified: ack-after-response-bytes (axum cannot attest landing),
+request-issued ReaderRead (claim-without-observation), peek-without-claim (new port method +
+duplicate reads).
