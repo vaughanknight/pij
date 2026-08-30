@@ -216,6 +216,8 @@ Source/test files:
 - `crates/daemon/tests/review_regressions.rs`
 - `crates/cli/src/lib.rs`
 - `crates/cli/tests/shipped_daemon_config.rs`
+- `crates/tmux/src/lib.rs`
+- `crates/tmux/tests/adapter.rs`
 
 Shared-merge file: `crates/daemon/src/lib.rs` (constructor conformance and composition ordering). No final manifest, `Cargo.lock`, architecture metadata, migration, frozen port, model, or error change.
 
@@ -224,6 +226,114 @@ Shared-merge file: `crates/daemon/src/lib.rs` (constructor conformance and compo
 1. Claude 2.1.251 remains the current installed build measured here.
 2. `cross_session_inbound_accept` is launcher-owned evidence; registration may preserve but never invent or downgrade it.
 3. A socket write supports only `Delivered { origin: InjectedToTransport }`; model visibility was observed separately in the live proof.
-4. Unknown interaction state is a conservative veto. A redraw also vetoes until a quiet capture corroborates retained composer knowledge.
+4. Unknown interaction state is a conservative veto. Permission requires either an observed nonblank-to-blank transition or two consecutive positively recognized blank composers with a live tap and zero intervening bytes. Any redraw vetoes until another quiet pass corroborates it.
 5. UDS remains Unix-only. The pointer/inbox route owns non-socket fallback; bodies are never typed into a PTY.
 6. The documented drop/hold decoder is retained without vocabulary change because the current daemon-origin connection again returned zero bytes.
+
+## Dogfood addendum — existence was not ownership
+
+The first live proof was necessary but not sufficient. Long-running dogfood on the managed dev daemon (`127.0.0.1:17600`, state `/Users/jordanknight/.pij-rs-dev`) exposed four composed failures that every green unit test had missed:
+
+1. first-attempt `DeliveryService` bypassed the politeness gate;
+2. a clear redraw erased the observer's nonblank knowledge;
+3. the tmux `-o` flag is a toggle, so a repeated attachment can close the pipe;
+4. after restart, `pane_pipe=1` proved only that a pipe existed, not that the current daemon owned it.
+
+The fourth diagnosis was measured from incompatible clocks and write effects rather than guessed:
+
+```text
+current release process: PID 1736, started 17:14:54
+current release binary mtime: 17:14:47
+_1566.raw: 346 bytes, mtime 17:07:31
+pane_pipe: 1
+```
+
+`TmuxAdapter` truncates a sink on its first process-local attach. The sink predated the process and was not truncated, so PID 1736 had never attached. tmux still owned the prior daemon's `cat` pipe; the new adapter's map was empty. Each observer pass saw an existing unowned pipe, refused to replace it, called `InteractionGate::record_unknown`, and retried the accepted queue row indefinitely. The accepted row reached more than 90 claims without delivery.
+
+**Finding**: `pane_pipe=1` proved existence, not ownership. Process memory and tmux disagreed, and the observer trusted neither strongly enough to repair.
+
+### Persistent tap repair
+
+Commit `ea9b0893` made each 600 ms observer pass reconcile process-local tap state with `#{pane_pipe}` and removed tmux's toggling `-o` flag. If the OS pipe vanishes while this daemon still owns the sink, the next pass reattaches without truncating the file or resetting the byte offset.
+
+`second_observer_pass_repairs_a_vanished_os_pipe_and_keeps_growing` drives real tmux: pass one captures `first-pass`, the fixture removes only the OS pipe while retaining adapter state, pass two repairs it, and `second-pass` grows the same sink. Restoring attach-only-when-untracked failed:
+
+```text
+tap must grow after pass two
+```
+
+The first mutation run initially skipped because `/opt/homebrew/bin/tmux` was absent from the test PATH. The fixture was changed to skip only when tmux is genuinely unavailable and to fail with the actual `new-session` diagnostic once `tmux -V` succeeds. Under the canonical PATH it produced the intended red. During the final full gate, two real-tmux tests generated the same session name concurrently; the gate failed on `duplicate session` rather than hiding it. An atomic suffix now makes every fixture name unique, and the gate rerun passed.
+
+### Quiet-pane policy
+
+The PM's hypothesis that Claude's placeholder was parsed as content was tested with the actual private Rust function against live pane `%1566`, not a reimplementation:
+
+```text
+LIVE_COMPOSER pane="%1566" cursor=(Some(2),Some(42)) extracted=Some("")
+```
+
+Cursor clipping already excludes `Try "…"`. The parser was correct. The policy was not: a fresh idle pane produces no nonblank-to-blank transition, so the gate stayed closed indefinitely despite a recognized empty composer, healthy pipe, and repeated quiet observations.
+
+Commit `f4143529` distinguishes unknown from observed quiet. One recognized `Some("")` remains insufficient. The second consecutive recognized blank authorizes only when the tap is attached and both drains report zero intervening bytes. This is three positive facts, not silence treated as evidence: recognized layout, owned sensor, and two stable observations.
+
+Required mutations:
+
+```text
+# Permit on the first recognized blank
+FAILED two_stable_recognized_blanks_are_required_to_permit_injection
+one recognized blank must not authorize injection
+
+# Ignore tap bytes between the two blanks
+FAILED tap_bytes_between_recognized_blanks_require_another_quiet_pass
+tap bytes between blanks must keep the gate closed
+```
+
+### Quiet live stamp contrast
+
+Two real Claude 2.1.251 seats were spawned and bound through the shipped CLI against the same daemon and quiet tmux environment:
+
+```text
+pij-zoophagous-vosill  pane %1566  cross_session_inbound_accept=true
+pij-limited-stork      pane %1567  cross_session_inbound_accept=false
+```
+
+No one typed during the final contrast. After the PM explicitly closed the two known legacy orphan pipes, the running daemon attached cleanly. Both `pane_pipe` values stayed `1`, and the accepted sink grew from 22,982 to 29,025 to 31,253 bytes over 20 seconds. The accepted seat read the body of `quiet-accept-1` and replied through pij:
+
+```text
+ACK-QUIET
+```
+
+Its inbox was empty without a reader claiming the row. No pointer line appeared; a pointer never carries the body, so the model could not have followed the body's `reply ACK-QUIET` instruction without socket delivery. At the same moment the unstamped seat's mail remained queued and undelivered. Same daemon, Claude build, pane state, and quiet policy; the acceptance stamp was the differing fact.
+
+This meets the live done bar without a typing ritual: the daemon's own observer authorized an ordinary quiet pane, the accepted body reached the model, and the unstamped control stayed closed.
+
+### Durable restart ownership
+
+The PM's one-time manual closure proved the policy but is not a shipping restart story. Commit `4f3fa054` records ownership as a pane-scoped tmux option:
+
+```text
+@pij-tap-sink=<exact absolute sink path>
+```
+
+The marker is written before pipe creation. A crash between those actions leaves marker plus `pane_pipe=0`, which the next daemon can complete; the inverse order would leave another unmarked orphan. On restart:
+
+- matching marker + pipe authorizes replacement/adoption;
+- mismatched or absent marker refuses to clobber a foreign pipe;
+- detach closes the pipe and clears the marker;
+- sink residue alone never grants ownership.
+
+`matching_marker_adopts_restart_pipe_and_detach_clears_ownership` uses a fresh adapter with empty process memory to adopt the first adapter's marked real tmux pipe, captures post-restart bytes, and proves detach clears the marker. `mismatched_marker_refuses_to_replace_a_foreign_pipe` proves the foreign pipe remains live. Removing marker publication failed at the exact empty-marker assertion.
+
+Final gate after the marker and collision-safe real-tmux fixtures:
+
+```text
+toolchain PASS  rustc 1.98.0 == pin
+lock      PASS  Cargo.lock matches the manifests, and the tree
+fmt       PASS  cargo fmt
+clippy    PASS  cargo clippy
+test      PASS  cargo test
+arch      PASS  8 crates, 0 violations
+pij-gate: all stages green
+```
+
+The legacy cleanup was explicit and one-time. Existing unmarked pipes are never adopted from a filename or sink residue; that would repeat the ownership defect under E-024 rather than fix it.

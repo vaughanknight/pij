@@ -487,12 +487,15 @@ fn observer_error(message: impl Into<String>) -> PijError {
 mod tests {
     use pij_core::model::{Harness, SeatDescriptor};
     use std::process::Command;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use pij_testkit::fakes::{FakeRegistry, FakeTmux};
     use pij_tmux::TmuxAdapter;
 
     use super::*;
+
+    static NEXT_TMUX_SESSION: AtomicU64 = AtomicU64::new(0);
 
     fn pane(id: &str, x: u32, y: u32) -> Pane {
         Pane {
@@ -691,7 +694,8 @@ mod tests {
                 .duration_since(UNIX_EPOCH)
                 .expect("clock after epoch")
                 .as_nanos();
-            let name = format!("pij-rs-observer-{}-{nonce}", std::process::id());
+            let count = NEXT_TMUX_SESSION.fetch_add(1, Ordering::Relaxed);
+            let name = format!("pij-rs-observer-{}-{nonce}-{count}", std::process::id());
             let output = Command::new("tmux")
                 .args([
                     "new-session",

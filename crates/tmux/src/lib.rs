@@ -18,6 +18,8 @@ use pij_core::ports::{LaunchCommand, TmuxPort};
 
 use crate::parse::{LIST_FORMAT, parse_one_pane, parse_panes};
 
+const TAP_SINK_OPTION: &str = "@pij-tap-sink";
+
 /// The real [`TmuxPort`] implementation.
 ///
 /// A scoped adapter limits pane listings and destructive guards to one tmux
@@ -152,6 +154,38 @@ impl TmuxAdapter {
             self.session.as_deref().unwrap_or_default()
         )))
     }
+    fn tap_marker(&self, pane: &str) -> Result<Option<String>> {
+        let value = self.stdout(
+            "show-options tap owner",
+            &os_args([
+                "show-options",
+                "-p",
+                "-v",
+                "-q",
+                "-t",
+                pane,
+                TAP_SINK_OPTION,
+            ]),
+        )?;
+        let value = value.trim_end();
+        Ok((!value.is_empty()).then(|| value.to_string()))
+    }
+
+    fn set_tap_marker(&self, pane: &str, sink: &str) -> Result<()> {
+        self.run(
+            "set-options tap owner",
+            &os_args(["set-option", "-p", "-t", pane, TAP_SINK_OPTION, sink]),
+        )?;
+        Ok(())
+    }
+
+    fn clear_tap_marker(&self, pane: &str) -> Result<()> {
+        self.run(
+            "clear-options tap owner",
+            &os_args(["set-option", "-p", "-u", "-t", pane, TAP_SINK_OPTION]),
+        )?;
+        Ok(())
+    }
 }
 
 impl Default for TmuxAdapter {
@@ -209,6 +243,13 @@ impl TmuxPort for TmuxAdapter {
                 None => false,
             }
         };
+        let sink_text = sink.to_str().ok_or_else(|| {
+            self.error(format!(
+                "tap sink {sink:?} is not valid Unicode — choose a UTF-8 state directory"
+            ))
+        })?;
+        let marker = self.tap_marker(pane)?;
+        let marker_matches = marker.as_deref() == Some(sink_text);
         match self
             .stdout(
                 "display-message pane_pipe",
@@ -217,10 +258,13 @@ impl TmuxPort for TmuxAdapter {
             .trim()
         {
             "0" => {}
-            "1" if tracked => return Ok(()),
+            "1" if tracked && marker_matches => return Ok(()),
+            // A matching pane-scoped marker is durable ownership evidence from a
+            // prior daemon. Replacing that orphan is adoption, not clobbering.
+            "1" if marker_matches => {}
             "1" => {
                 return Err(self.error(format!(
-                    "pane {pane:?} already has an output pipe — refusing to replace it"
+                    "pane {pane:?} already has an output pipe not owned by this sink — refusing to replace it"
                 )));
             }
             other => {
@@ -229,11 +273,6 @@ impl TmuxPort for TmuxAdapter {
                 )));
             }
         }
-        let sink_text = sink.to_str().ok_or_else(|| {
-            self.error(format!(
-                "tap sink {sink:?} is not valid Unicode — choose a UTF-8 state directory"
-            ))
-        })?;
         if let Some(parent) = sink.parent() {
             fs::create_dir_all(parent).map_err(|error| {
                 self.error(format!(
@@ -257,15 +296,21 @@ impl TmuxPort for TmuxAdapter {
             })?;
         drop(sink_file);
 
+        // Persist ownership before creating the resource. A crash after this
+        // write but before pipe creation leaves a marker plus pane_pipe=0, which
+        // the next daemon can complete. The inverse order leaves an unmarked
+        // orphan that no future process may safely adopt.
+        self.set_tap_marker(pane, sink_text)?;
+
         let command = format!("cat >> {}", shell_quote(sink_text));
         // `-o` is intentionally absent. tmux defines it as a toggle: a repeated
-        // attach closes an existing pipe. We already measured `pane_pipe == 0`,
-        // and this call repairs an OS pipe that vanished while our offset state
-        // remained live.
+        // attach closes an existing pipe. The marker above distinguishes our
+        // restart orphan from a foreign pipe before this replacement can happen.
         if let Err(error) = self.run(
             "pipe-pane attach",
             &os_args(["pipe-pane", "-O", "-t", pane, &command]),
         ) {
+            let _ = self.clear_tap_marker(pane);
             if !tracked {
                 let _ = fs::remove_file(sink);
             }
@@ -323,15 +368,19 @@ impl TmuxPort for TmuxAdapter {
             .map(|tap| tap.path.clone())
             .ok_or_else(|| self.error(format!("pane {pane:?} has no attached tap to detach")))?;
 
-        if let Err(detach_error) = self.run("pipe-pane detach", &os_args(["pipe-pane", "-t", pane]))
+        let detach = self.run("pipe-pane detach", &os_args(["pipe-pane", "-t", pane]));
+        let pane_exists = self
+            .list_panes()
+            .await?
+            .iter()
+            .any(|listed| listed.id == pane);
+        if let Err(error) = detach
+            && pane_exists
         {
-            match self.list_panes().await {
-                Ok(panes) if panes.iter().any(|listed| listed.id == pane) => {
-                    return Err(detach_error);
-                }
-                Err(_) => return Err(detach_error),
-                Ok(_) => {}
-            }
+            return Err(error);
+        }
+        if pane_exists {
+            self.clear_tap_marker(pane)?;
         }
 
         self.taps.lock().expect("tmux tap mutex").remove(pane);
