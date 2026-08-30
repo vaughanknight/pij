@@ -987,11 +987,18 @@ async fn sidecar(
     };
     let serial_key = job.serial_key.clone();
     match state.services.queue.enqueue(job).await {
-        Ok(job_id) => (
-            StatusCode::ACCEPTED,
-            Json(serde_json::json!({ "serial_key": serial_key, "job_id": job_id })),
-        )
-            .into_response(),
+        // The v1 ENVELOPE, not a bare object: every shipped client decodes
+        // `{ok, command, data}` and `DaemonClient` refuses anything else with
+        // "JSON is not a envelope (missing field ok)". A new route that invents
+        // its own success shape is unreachable through the product even when the
+        // daemon side is correct — found by a live-fire attempt, not by a test.
+        Ok(job_id) => envelope(
+            StatusCode::OK,
+            &Envelope::ok(
+                "pij sidecar",
+                serde_json::json!({ "serial_key": serial_key, "job_id": job_id }),
+            ),
+        ),
         Err(error) => internal("pij sidecar", error),
     }
 }
