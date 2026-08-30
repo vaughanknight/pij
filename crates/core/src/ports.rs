@@ -115,6 +115,15 @@ pub trait Transport: Send + Sync {
     async fn deliver(&self, seat: &SeatDescriptor, msg: &Msg) -> Result<DeliveryOutcome>;
 }
 
+/// A process command passed to tmux as discrete arguments, never a shell string.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LaunchCommand {
+    /// Executable name or path.
+    pub executable: String,
+    /// Arguments passed to the executable without shell joining.
+    pub args: Vec<String>,
+}
+
 /// Every tmux syscall in the workspace.
 #[async_trait]
 pub trait TmuxPort: Send + Sync {
@@ -130,8 +139,15 @@ pub trait TmuxPort: Send + Sync {
     /// Kill a pane.
     async fn kill(&self, pane: &str) -> Result<()>;
 
-    /// Open a new window in `session`, returning its pane.
-    async fn new_window(&self, session: &str, name: &str, cwd: &str) -> Result<Pane>;
+    /// Open a new window in `session`, optionally launching one exact command.
+    /// `None` preserves the empty-window behaviour used by existing callers.
+    async fn new_window(
+        &self,
+        session: &str,
+        name: &str,
+        cwd: &str,
+        command: Option<&LaunchCommand>,
+    ) -> Result<Pane>;
 
     /// Is a human mid-keystroke in that pane? Injecting over a person's typing
     /// corrupts their input, so this gate is consulted before every send.

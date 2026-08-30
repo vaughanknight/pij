@@ -9,7 +9,7 @@ use std::process::{Command, Output};
 use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
 use pij_core::model::Pane;
-use pij_core::ports::TmuxPort;
+use pij_core::ports::{LaunchCommand, TmuxPort};
 
 use crate::parse::{LIST_FORMAT, parse_one_pane, parse_panes};
 
@@ -187,25 +187,15 @@ impl TmuxPort for TmuxAdapter {
         Ok(())
     }
 
-    async fn new_window(&self, session: &str, name: &str, cwd: &str) -> Result<Pane> {
+    async fn new_window(
+        &self,
+        session: &str,
+        name: &str,
+        cwd: &str,
+        command: Option<&LaunchCommand>,
+    ) -> Result<Pane> {
         self.ensure_session(session)?;
-        let target = format!("{session}:");
-        let output = self.stdout(
-            "new-window",
-            &[
-                OsString::from("new-window"),
-                OsString::from("-d"),
-                OsString::from("-P"),
-                OsString::from("-F"),
-                OsString::from(LIST_FORMAT),
-                OsString::from("-t"),
-                OsString::from(target),
-                OsString::from("-n"),
-                OsString::from(name),
-                OsString::from("-c"),
-                OsString::from(cwd),
-            ],
-        )?;
+        let output = self.stdout("new-window", &new_window_args(session, name, cwd, command))?;
         parse_one_pane(&output, "new-window")
     }
 
@@ -226,4 +216,67 @@ impl TmuxPort for TmuxAdapter {
 
 fn os_args<const N: usize>(args: [&str; N]) -> Vec<OsString> {
     args.into_iter().map(OsString::from).collect()
+}
+
+fn new_window_args(
+    session: &str,
+    name: &str,
+    cwd: &str,
+    command: Option<&LaunchCommand>,
+) -> Vec<OsString> {
+    let mut args = vec![
+        OsString::from("new-window"),
+        OsString::from("-d"),
+        OsString::from("-P"),
+        OsString::from("-F"),
+        OsString::from(LIST_FORMAT),
+        OsString::from("-t"),
+        OsString::from(format!("{session}:")),
+        OsString::from("-n"),
+        OsString::from(name),
+        OsString::from("-c"),
+        OsString::from(cwd),
+    ];
+    if let Some(command) = command {
+        args.push(OsString::from("--"));
+        args.push(OsString::from(&command.executable));
+        args.extend(command.args.iter().map(OsString::from));
+    }
+    args
+}
+
+#[cfg(test)]
+mod tests {
+    use super::new_window_args;
+    use pij_core::ports::LaunchCommand;
+
+    #[test]
+    fn command_reaches_tmux_as_discrete_argv() {
+        let command = LaunchCommand {
+            executable: "/path with spaces/claude".to_string(),
+            args: vec!["--model".to_string(), "selector; not shell".to_string()],
+        };
+        let actual = new_window_args("session", "worker", "/abs/tree", Some(&command));
+        let actual: Vec<_> = actual
+            .iter()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(
+            &actual[actual.len() - 4..],
+            [
+                "--",
+                "/path with spaces/claude",
+                "--model",
+                "selector; not shell",
+            ]
+        );
+    }
+
+    #[test]
+    fn absent_command_preserves_empty_window_argv() {
+        let actual = new_window_args("session", "worker", "/abs/tree", None);
+        assert_eq!(actual.last().expect("cwd"), "/abs/tree");
+        assert!(!actual.iter().any(|arg| arg == "--"));
+    }
 }

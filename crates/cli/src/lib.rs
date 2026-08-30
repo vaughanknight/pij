@@ -13,7 +13,8 @@ pub mod client;
 
 pub use address::{AddressError, parse_destination, render_destination};
 pub use client::{
-    DaemonClient, EventFrame, Registration, SendRequest, TailError, TailStream, setup_refusal,
+    DaemonClient, EventFrame, Registration, SendRequest, SpawnRequest, TailError, TailStream,
+    setup_refusal,
 };
 
 use std::path::{Path, PathBuf};
