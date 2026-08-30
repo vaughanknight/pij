@@ -11,6 +11,7 @@ pub mod admission;
 pub mod auth;
 pub mod delivery;
 pub mod events;
+pub mod federation;
 pub mod lifecycle;
 pub mod pointer;
 
