@@ -176,28 +176,37 @@ impl DeliveryService {
                     tombstone_reason: reason,
                 });
             }
-            DeliveryRoute::Queue(_reason) => match arrival {
-                Arrival::Local => {
-                    self.enqueue(&msg).await?;
-                    DeliveryOutcome::Queued
-                }
-                Arrival::Forwarded => match self.queue.enqueue_delivery(delivery_job(&msg)?).await?
-                {
+            // EVERY arrival consults the ledger, not just forwarded ones. Review
+            // found the fix had landed in one half (E-029, producer side): a LOCAL
+            // send retried with the same caller-chosen msg_id after an ambiguous
+            // failure re-delivered once the first copy was acked — the identical
+            // window R4-AMEND-3 closes for forwards, in the same
+            // (recipient, msg_id) namespace, with the same dedupe semantics.
+            //
+            // A duplicate is a duplicate. Where it entered from does not change
+            // whether the recipient has already been given it.
+            DeliveryRoute::Queue(_reason) => {
+                match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
                     DeliveryEnqueue::Queued(_) => DeliveryOutcome::Queued,
                     DeliveryEnqueue::AlreadyDelivered(origin) => {
                         publish_to_recipient = false;
                         DeliveryOutcome::Delivered { origin }
                     }
-                },
-            },
+                }
+            }
             DeliveryRoute::Transport => {
                 if !self.transport.can_deliver(&recipient, &msg).await? {
                     debug_assert_eq!(
                         route(&from, msg.from_machine.as_deref(), &recipient, false)?,
                         DeliveryRoute::Queue(QueueReason::Unreachable)
                     );
-                    self.enqueue(&msg).await?;
-                    DeliveryOutcome::Queued
+                    match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
+                        DeliveryEnqueue::Queued(_) => DeliveryOutcome::Queued,
+                        DeliveryEnqueue::AlreadyDelivered(origin) => {
+                            publish_to_recipient = false;
+                            DeliveryOutcome::Delivered { origin }
+                        }
+                    }
                 } else {
                     match self.transport.deliver(&recipient, &msg).await? {
                         DeliveryOutcome::Queued => {

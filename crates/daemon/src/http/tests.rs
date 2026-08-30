@@ -39,11 +39,14 @@ impl Queue for CountingQueue {
         Ok(JobId(jobs.len() as u64))
     }
 
-    async fn enqueue_delivery(&self, _job: Job) -> Result<DeliveryEnqueue> {
-        Err(pij_core::error::PijError::Adapter {
-            adapter: "test/counting-queue".to_string(),
-            message: "the counting request fixture does not model delivered ids".to_string(),
-        })
+    async fn enqueue_delivery(&self, job: Job) -> Result<DeliveryEnqueue> {
+        // Delegates to `enqueue` now that EVERY arrival consults the ledger, not
+        // only forwarded ones (review F3). This fixture counts request-path
+        // enqueues; it models no delivered ids, so it can never answer
+        // AlreadyDelivered — and saying so by delegating is honest, where
+        // refusing would make the request path 500 on its own success case.
+        let id = self.enqueue(job).await?;
+        Ok(DeliveryEnqueue::Queued(id))
     }
 
     async fn claim(&self, _kinds: &[String], _worker: &str) -> Result<Option<(JobId, Job)>> {

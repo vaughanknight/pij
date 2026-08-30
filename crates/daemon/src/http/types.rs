@@ -188,4 +188,12 @@ pub enum PeerStreamState {
     Unavailable,
     /// This bounded subscriber buffer dropped frames.
     Lagged,
+    /// The peer's cursor went BACKWARDS: its spine was reset while its alias
+    /// survived. Distinct from `Lagged` — lag is our buffer falling behind a
+    /// peer that is fine, a reset is the peer's history being gone.
+    ///
+    /// It exists because dropping a backwards cursor silently leaves every
+    /// holder of a stale high cursor receiving NOTHING for ever while the status
+    /// still reads `Connected` (review F1, wave 5).
+    Reset,
 }

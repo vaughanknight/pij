@@ -208,9 +208,22 @@ impl PaneObserver {
             }
             if blank {
                 if previous == ComposerKnowledge::NonBlank {
+                    // The ONLY thing that clears: an observed nonblank -> blank
+                    // TRANSITION. We watched something leave.
                     self.gate.record_composer_cleared(&pane.id);
                 } else {
-                    self.gate.observe_composer(&pane.id, &composer);
+                    // A blank composer on FIRST SIGHT is not evidence of anything.
+                    // It is what a quiet pane and an unparsed pane look like alike,
+                    // and permitting on it inverts the unit's whole premise —
+                    // review found the port was MORE permissive here than the TS
+                    // 60-second rule we declined to inherit for being too eager.
+                    //
+                    // One heuristic misread of an arbitrary program's dashed rules
+                    // around an empty row would otherwise flip a pane to permission
+                    // with zero transition evidence.
+                    self.set_unknown(&pane.id);
+                    self.set_knowledge(&pane.id, ComposerKnowledge::Blank);
+                    continue;
                 }
                 self.set_knowledge(&pane.id, ComposerKnowledge::Blank);
             } else {
@@ -682,15 +695,72 @@ mod tests {
         tokio::time::advance(Duration::from_millis(1)).await;
         tokio::task::yield_now().await;
 
+        // The second pane is OBSERVED after the first pane's drain error — that is
+        // the loop property. It is NOT permitted, because a first-sight blank
+        // composer is not evidence of anything (review F2): only a watched
+        // nonblank -> blank transition clears. The loop test asserts the loop kept
+        // going, not that the observation reached a particular verdict.
         assert!(
-            gate.permits_injection("%2")
+            !gate
+                .permits_injection("%2")
                 .await
                 .expect("second pane observed"),
-            "the second pane's blank composer must be processed after the first drain error"
+            "the second pane must be OBSERVED after the first drain error, and a \
+             first-sight blank must still block"
         );
         let calls = tmux.calls();
         assert!(calls.iter().any(|call| call == "drain_pane_tap:%1"));
         assert!(calls.iter().any(|call| call == "drain_pane_tap:%2"));
         loop_.shutdown().await.expect("shutdown");
+    }
+
+    /// Review F2 — a BLANK composer on first sight is not evidence of anything.
+    ///
+    /// It is what a quiet pane and an unparsed pane look like alike, so permitting
+    /// on it inverted the unit's premise: the port was MORE permissive here than
+    /// the TS 60-second rule we declined to inherit for being too eager. One
+    /// heuristic misread of an arbitrary program's dashed rules around an empty
+    /// row would flip a pane to permission with zero transition evidence.
+    ///
+    /// Mutation witness: restore the `observe_composer` call in the first-sight
+    /// branch and this test fails.
+    #[tokio::test]
+    async fn a_first_sight_blank_composer_does_not_permit_injection() {
+        let tmux = Arc::new(
+            FakeTmux::new()
+                // Cursor on the COMPOSER row (y=2), as the working decision-table
+                // fixture uses. y=1 is the rule line, and a cursor there makes
+                // rendered_composer return None — the pass then takes the
+                // unknown-layout branch and the test proves nothing.
+                .with_pane(pane("%9", 3, 2))
+                // TWO empty taps: the observer drains before and after the
+                // capture, and a fixture supplying one leaves the second drain
+                // unscripted — which sends the pass down the unknown-layout path
+                // and makes this test pass without ever reaching the branch it
+                // claims to defend. Found by running the mutation, not by reading.
+                .script_tap(Vec::new())
+                .script_tap(Vec::new())
+                .script_capture(framed("")),
+        );
+        let registry = registry(&["%9"]).await;
+        let gate = Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>));
+        let observer = PaneObserver::new(
+            Arc::clone(&registry) as Arc<dyn Registry>,
+            Arc::clone(&tmux) as Arc<dyn TmuxPort>,
+            Arc::clone(&gate),
+            PathBuf::from("/tmp/pij-observer-first-sight"),
+            Duration::from_millis(1),
+        )
+        .expect("observer");
+
+        observer.observe_once().await.expect("first observation");
+
+        assert!(
+            !gate
+                .permits_injection("%9")
+                .await
+                .expect("the pane was observed"),
+            "a blank composer we have never seen anything leave is UNKNOWN, not clear"
+        );
     }
 }

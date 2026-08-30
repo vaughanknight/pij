@@ -253,16 +253,37 @@ impl FanInService {
                     .unwrap_or_else(|| "peer refused its local roster".to_string()),
             });
         }
-        let mut roster = envelope.data.ok_or_else(|| PijError::Adapter {
+        let roster = envelope.data.ok_or_else(|| PijError::Adapter {
             adapter: "daemon/federation-roster".to_string(),
             message: format!("peer {} returned ok without roster data", source.alias),
         })?;
-        for seat in &mut roster.seats {
-            seat.machine = Some(source.alias.clone());
-        }
+        // TRUST THE PEER'S OWN STAMP, and surface a mismatch instead of hiding it.
+        //
+        // This used to overwrite every remote seat's machine with our CONFIGURED
+        // alias, while the event path REJECTS frames whose machine differs from
+        // that alias. So a config-vs-hostname mismatch produced two answers about
+        // one peer: a roster that read fine for ever, and a stream permanently
+        // unavailable — with the roster half hiding the cause (review F4).
+        let claimed: Vec<&str> = roster
+            .seats
+            .iter()
+            .filter_map(|seat| seat.machine.as_deref())
+            .filter(|machine| *machine != source.alias)
+            .collect();
+        let unavailable = if claimed.is_empty() {
+            None
+        } else {
+            Some(format!(
+                "configured peer {} returned seats stamped {} — the peer's \
+                 machine_alias and this daemon's peer alias disagree, so its \
+                 event stream will refuse every frame",
+                source.alias,
+                claimed.join(", ")
+            ))
+        };
         *source.roster.write().expect("peer roster lock") = RosterSnapshot {
             seats: roster.seats,
-            unavailable: None,
+            unavailable,
         };
         Ok(())
     }
@@ -360,10 +381,31 @@ impl FanInService {
             });
         }
         if let Some(previous) = source.last_cursor() {
-            if cursor <= previous {
+            if cursor < previous {
+                // The peer's cursor went BACKWARDS. That is not a duplicate — it
+                // is a peer whose spine was reset (reprovision, wiped state dir)
+                // while its alias survived. Dropping it silently means every
+                // holder of a stale high cursor receives NOTHING from that peer
+                // for ever while the status still reads Connected: the E-023 shape
+                // inside the code written to prevent it (review F1).
+                source.publish_status(StreamFrame::PeerState {
+                    machine: source.alias.clone(),
+                    state: PeerStreamState::Reset,
+                    retry_in_ms: None,
+                    dropped: None,
+                    reason: Some(format!(
+                        "peer cursor went backwards ({previous} -> {cursor}): its \
+                         history was reset while its alias survived"
+                    )),
+                });
+                // Fall through and ACCEPT the frame: the buffer's newest event
+                // becomes the new cursor, so the stream resumes from the peer's
+                // real position instead of waiting for it to climb back past a
+                // history that no longer exists.
+            } else if cursor == previous {
+                // A genuine duplicate: same position, already delivered.
                 return Ok(());
-            }
-            if cursor > previous.saturating_add(1) {
+            } else if cursor > previous.saturating_add(1) {
                 source.publish_status(StreamFrame::PeerState {
                     machine: source.alias.clone(),
                     state: PeerStreamState::Lagged,

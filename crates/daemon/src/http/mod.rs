@@ -8,7 +8,7 @@ mod client;
 mod exposure;
 mod types;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::io;
 use std::path::Path;
@@ -674,6 +674,34 @@ async fn events(State(state): State<AppState>, Query(query): Query<EventQuery>) 
         },
         None => BTreeMap::new(),
     };
+    // REFUSE a cursor for a machine this daemon cannot serve. Ignoring it made a
+    // consumer holding a cursor for a renamed or unconfigured machine silently
+    // lose that machine's replay, and receive a 200 that presented silence as
+    // completeness (review F5). A key we cannot honour is named, not dropped.
+    let servable: BTreeSet<&str> = std::iter::once(state.machine_alias.as_str())
+        .chain(
+            state
+                .federation
+                .iter()
+                .flat_map(|federation| federation.peer_aliases()),
+        )
+        .collect();
+    let unknown: Vec<&str> = cursors
+        .keys()
+        .map(String::as_str)
+        .filter(|machine| !servable.contains(machine))
+        .collect();
+    if !unknown.is_empty() {
+        return refused(
+            "pij events",
+            format!(
+                "since names machine(s) this daemon does not serve: {}. Known: {}",
+                unknown.join(", "),
+                servable.into_iter().collect::<Vec<_>>().join(", ")
+            ),
+        );
+    }
+
     let local = match cursors.get(&state.machine_alias).copied() {
         Some(cursor) => match state
             .services

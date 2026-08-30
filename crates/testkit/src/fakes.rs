@@ -369,7 +369,17 @@ impl Queue for FakeQueue {
 
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {
         let mut state = self.state.lock().expect("fake queue mutex");
-        state.claimed.remove(&job.0);
+        // REFUSE an unclaimed or double ack, as SqliteQueue does. This was the
+        // last loose one: `retry` and `ack_delivery` both validate the claim and
+        // `ack` did not, so the fake accepted a call the real adapter rejects and
+        // no instrument compared them (review F6). A fake is a claim about the
+        // real adapter, and this one was false in the direction that hides bugs.
+        if state.claimed.remove(&job.0).is_none() {
+            return Err(PijError::Adapter {
+                adapter: "testkit/fake-queue".to_string(),
+                message: format!("job {} is not running, so it cannot be acked", job.0),
+            });
+        }
         state.acked.push((job, outcome));
         Ok(())
     }

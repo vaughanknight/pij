@@ -175,6 +175,12 @@ pub struct FederationService {
 }
 
 impl FederationService {
+    /// Every configured peer alias, for callers that must decide whether a
+    /// machine can be served at all.
+    pub fn peer_aliases(&self) -> impl Iterator<Item = &str> {
+        self.peers.aliases()
+    }
+
     /// Validate peer definitions and build the remote-send and fan-in service.
     ///
     /// # Errors
