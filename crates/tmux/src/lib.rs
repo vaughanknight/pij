@@ -196,18 +196,19 @@ impl TmuxPort for TmuxAdapter {
     }
 
     async fn attach_pane_tap(&self, pane: &str, sink: &Path) -> Result<()> {
-        {
+        let tracked = {
             let taps = self.taps.lock().expect("tmux tap mutex");
-            if let Some(existing) = taps.get(pane) {
-                if existing.path == sink {
-                    return Ok(());
+            match taps.get(pane) {
+                Some(existing) if existing.path == sink => true,
+                Some(existing) => {
+                    return Err(self.error(format!(
+                        "pane {pane:?} already has a tap at {:?} — detach it before changing sinks",
+                        existing.path
+                    )));
                 }
-                return Err(self.error(format!(
-                    "pane {pane:?} already has a tap at {:?} — detach it before changing sinks",
-                    existing.path
-                )));
+                None => false,
             }
-        }
+        };
         match self
             .stdout(
                 "display-message pane_pipe",
@@ -216,6 +217,7 @@ impl TmuxPort for TmuxAdapter {
             .trim()
         {
             "0" => {}
+            "1" if tracked => return Ok(()),
             "1" => {
                 return Err(self.error(format!(
                     "pane {pane:?} already has an output pipe — refusing to replace it"
@@ -227,7 +229,6 @@ impl TmuxPort for TmuxAdapter {
                 )));
             }
         }
-
         let sink_text = sink.to_str().ok_or_else(|| {
             self.error(format!(
                 "tap sink {sink:?} is not valid Unicode — choose a UTF-8 state directory"
@@ -242,7 +243,7 @@ impl TmuxPort for TmuxAdapter {
         }
         let sink_file = OpenOptions::new()
             .create(true)
-            .truncate(true)
+            .truncate(!tracked)
             .write(true)
             .mode(0o600)
             .open(sink)
@@ -257,20 +258,28 @@ impl TmuxPort for TmuxAdapter {
         drop(sink_file);
 
         let command = format!("cat >> {}", shell_quote(sink_text));
+        // `-o` is intentionally absent. tmux defines it as a toggle: a repeated
+        // attach closes an existing pipe. We already measured `pane_pipe == 0`,
+        // and this call repairs an OS pipe that vanished while our offset state
+        // remained live.
         if let Err(error) = self.run(
             "pipe-pane attach",
-            &os_args(["pipe-pane", "-O", "-o", "-t", pane, &command]),
+            &os_args(["pipe-pane", "-O", "-t", pane, &command]),
         ) {
-            let _ = fs::remove_file(sink);
+            if !tracked {
+                let _ = fs::remove_file(sink);
+            }
             return Err(error);
         }
-        self.taps.lock().expect("tmux tap mutex").insert(
-            pane.to_string(),
-            TapState {
-                path: sink.to_path_buf(),
-                offset: 0,
-            },
-        );
+        if !tracked {
+            self.taps.lock().expect("tmux tap mutex").insert(
+                pane.to_string(),
+                TapState {
+                    path: sink.to_path_buf(),
+                    offset: 0,
+                },
+            );
+        }
         Ok(())
     }
 

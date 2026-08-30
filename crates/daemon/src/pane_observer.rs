@@ -152,22 +152,22 @@ impl PaneObserver {
         }
 
         for pane in panes {
-            if !self.is_tracked(&pane.id) {
-                let sink = self.sink_path(&pane.id);
-                match self.tmux.attach_pane_tap(&pane.id, &sink).await {
-                    Ok(()) => {
-                        self.panes.lock().expect("pane observer mutex").insert(
-                            pane.id.clone(),
-                            PaneState {
-                                knowledge: ComposerKnowledge::Unknown,
-                            },
-                        );
-                    }
-                    Err(error) => {
-                        self.gate.record_unknown(&pane.id);
-                        first_error.get_or_insert(error);
-                        continue;
-                    }
+            let tracked = self.is_tracked(&pane.id);
+            let sink = self.sink_path(&pane.id);
+            match self.tmux.attach_pane_tap(&pane.id, &sink).await {
+                Ok(()) if !tracked => {
+                    self.panes.lock().expect("pane observer mutex").insert(
+                        pane.id.clone(),
+                        PaneState {
+                            knowledge: ComposerKnowledge::Unknown,
+                        },
+                    );
+                }
+                Ok(()) => {}
+                Err(error) => {
+                    self.gate.record_unknown(&pane.id);
+                    first_error.get_or_insert(error);
+                    continue;
                 }
             }
 
@@ -694,7 +694,7 @@ mod tests {
                 .expect("clock after epoch")
                 .as_nanos();
             let name = format!("pij-rs-observer-{}-{nonce}", std::process::id());
-            let status = Command::new("tmux")
+            let output = Command::new("tmux")
                 .args([
                     "new-session",
                     "-d",
@@ -706,9 +706,14 @@ mod tests {
                     "24",
                     "cat",
                 ])
-                .status()
-                .ok()?;
-            status.success().then_some(Self { name })
+                .output()
+                .expect("tmux was found by the version probe");
+            assert!(
+                output.status.success(),
+                "tmux new-session failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            Some(Self { name })
         }
     }
 
@@ -756,6 +761,62 @@ mod tests {
             !gate.permits_injection(&pane.id).await.expect("typing gate"),
             "visible real-pane composer must block injection"
         );
+        observer.detach_all().await.expect("detach real tap");
+    }
+
+    #[tokio::test]
+    async fn second_observer_pass_repairs_a_vanished_os_pipe_and_keeps_growing() {
+        let Some(session) = LiveTmuxSession::start() else {
+            eprintln!("SKIP real pane observer test: tmux unavailable");
+            return;
+        };
+        let tmux = Arc::new(TmuxAdapter::for_session(&session.name));
+        let pane = tmux
+            .list_panes()
+            .await
+            .expect("list isolated pane")
+            .into_iter()
+            .next()
+            .expect("isolated pane");
+        let registry = registry(&[pane.id.as_str()]).await;
+        let gate = Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>));
+        let observer = PaneObserver::new(
+            Arc::clone(&registry) as Arc<dyn Registry>,
+            Arc::clone(&tmux) as Arc<dyn TmuxPort>,
+            gate,
+            std::env::temp_dir().join(format!("{}-signals", session.name)),
+            Duration::from_millis(1),
+        )
+        .expect("observer");
+
+        observer.observe_once().await.expect("first observer pass");
+        tmux.send_keys(&pane.id, "first-pass")
+            .await
+            .expect("first output");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let sink = observer.sink_path(&pane.id);
+        let first = std::fs::read(&sink).expect("first tap bytes");
+        assert!(String::from_utf8_lossy(&first).contains("first-pass"));
+
+        // Reproduce the dogfood state: our offset record survives while tmux's
+        // output pipe has vanished. The next daemon pass must repair, not trust,
+        // that stale in-memory ownership claim.
+        assert!(
+            Command::new("tmux")
+                .args(["pipe-pane", "-t", &pane.id])
+                .status()
+                .expect("close OS pipe")
+                .success()
+        );
+        observer.observe_once().await.expect("second observer pass");
+        tmux.send_keys(&pane.id, "second-pass")
+            .await
+            .expect("second output");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let second = std::fs::read(&sink).expect("second tap bytes");
+        assert!(second.len() > first.len(), "tap must grow after pass two");
+        assert!(String::from_utf8_lossy(&second).contains("second-pass"));
+
         observer.detach_all().await.expect("detach real tap");
     }
 
