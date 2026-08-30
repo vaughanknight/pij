@@ -112,6 +112,14 @@ Yours: the paths your unit packet names, and nothing else.
 * `crates/core/src/model.rs`, `error.rs` — additive only, declared at the ack,
   allocated by the PM to one unit per wave.
 * `crates/testkit/src/fakes.rs` — a missing capability is a contract gap: ask.
+
+  **But a ratified port signature change carries its IMPLEMENTERS and CALLERS with
+  it**, including `crates/testkit/src/{fakes,contract}.rs`: a port with a new
+  signature and a fake still on the old one does not compile, so there is no
+  version of such an amendment that stops at the trait. That is mechanical
+  conformance. New BEHAVIOUR in a fake is still stop-and-ask — and anything a fake
+  newly RECORDS must be read by an assertion that would fail without it, or it is
+  a fixture that looks like evidence. (u-spawn, wave 4.)
 * `crates/daemon/src/lib.rs` — **you do not wire yourself in.** See § 4.
 * `crates/store/migrations/**` — schema is at **5**. A migration is stop-and-ask.
 * Everything under `docs/plans/108-rust-port/` except your own report.
