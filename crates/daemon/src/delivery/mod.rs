@@ -124,6 +124,34 @@ impl DeliveryService {
     /// Missing, self-addressed, or tombstoned seats; adapter failures; queue
     /// persistence failures; and audit-event publication failures.
     pub async fn accept(&self, msg: Msg) -> Result<Receipt> {
+        self.arrive(msg, Arrival::Local).await
+    }
+
+    /// Accept a message FORWARDED from another machine.
+    ///
+    /// Same admission as [`Self::accept`] — the recipient must exist, must not be
+    /// tombstoned, and self-addressing is still refused — but the message is
+    /// ALWAYS ENQUEUED rather than routed to a transport.
+    ///
+    /// That is the at-least-once ruling made real: a duplicate forward after an
+    /// ambiguous network failure collapses onto the live row through the ordinary
+    /// `msg_id` dedupe, which only works if the row exists. Direct delivery has no
+    /// durable record to collapse onto, so a retry would deliver twice.
+    ///
+    /// A separate ENTRY POINT rather than a flag on `accept`, and not an enqueue
+    /// helper exposed to the route: u-federation observed that an HTTP-side
+    /// enqueue would recreate the wave-3 bypass defect exactly — a second business
+    /// path that skips the registry, the tombstone check and the routing policy
+    /// while looking like delivery.
+    ///
+    /// # Errors
+    /// Missing, self-addressed, or tombstoned seats; queue persistence failures;
+    /// and audit-event publication failures.
+    pub async fn accept_forwarded(&self, msg: Msg) -> Result<Receipt> {
+        self.arrive(msg, Arrival::Forwarded).await
+    }
+
+    async fn arrive(&self, msg: Msg, arrival: Arrival) -> Result<Receipt> {
         let at = (self.clock)()?;
         let from = msg.from.clone();
         let to = msg.to.clone();
@@ -135,7 +163,18 @@ impl DeliveryService {
 
         // Supplying `true` asks the pure policy only about registry facts. A
         // transport check is performed only when that policy says it matters.
-        let selected = route(&from, &recipient, true)?;
+        //
+        // A FORWARDED message never reaches the transport: it is enqueued so a
+        // duplicate forward collapses onto the live row. Tombstones still dominate
+        // — a dead seat is never given an immortal queue row, wherever the message
+        // came from.
+        let selected = match arrival {
+            Arrival::Local => route(&from, &recipient, true)?,
+            Arrival::Forwarded => match route(&from, &recipient, true)? {
+                DeliveryRoute::Tombstoned { reason } => DeliveryRoute::Tombstoned { reason },
+                _ => DeliveryRoute::Queue(QueueReason::Unreachable),
+            },
+        };
         let outcome = match selected {
             DeliveryRoute::Tombstoned { reason } => {
                 return Err(PijError::SeatIsGone {
@@ -359,6 +398,17 @@ struct OutcomeEvent<'a> {
     msg_id: &'a str,
     outcome: &'a DeliveryOutcome,
     transport: &'a str,
+}
+
+/// Where a message came from, which decides whether it may reach a transport.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Arrival {
+    /// A client on this machine. Routed normally.
+    Local,
+    /// Forwarded by a peer daemon. ALWAYS queued, so a duplicate forward after an
+    /// ambiguous network failure collapses onto the live row instead of being
+    /// delivered twice.
+    Forwarded,
 }
 
 /// The audit word for an outcome — and for a delivery, the ORIGIN travels with
