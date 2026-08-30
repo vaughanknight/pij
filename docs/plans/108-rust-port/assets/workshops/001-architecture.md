@@ -426,3 +426,22 @@ ReaderRead over HTTP is attestable to machine granularity only. PM's R4 page-bou
 endorsed. Rejections ratified: ack-after-response-bytes (axum cannot attest landing),
 request-issued ReaderRead (claim-without-observation), peek-without-claim (new port method +
 duplicate reads).
+
+## R3-AMEND-7 — Spine::latest_matching (2026-08-31, vicuna ruling)
+
+**ACCEPTED**: `latest_matching(&SeatId, kinds: &[&str]) -> Result<Option<Event>>`, kinds
+non-empty, seat scope MANDATORY, highest-seq match or None; `EventBus::history` DELETED in the
+same change — clean cutover, no parallel API. The defect it removes: the ENTIRE unbounded
+spine scanned into a Vec on EVERY successful inbox claim to answer a one-row question,
+discarding a seat predicate the store already accepts — the cost of reading your mail grew
+with the total history of the machine.
+
+**Doctrine pairing (banked)**: this is the attestation ruling's bounded-ledger trap arriving
+from the opposite direction — there, durable audit was headed onto a structure that EVICTS;
+here, a one-row question was answered by scanning a structure that GROWS. One root cause both
+times: not asking what the read actually needs.
+
+**The instrument is the ratified part**: a CountingSpine testkit double that records
+latest_matching calls and FAILS on tail from this path — one bounded call, zero scans,
+asserted at the service boundary; SQL LIMIT 1 proven separately against real SQLite. A cost
+claim without an instrument is a comment; this is a defended contract.
