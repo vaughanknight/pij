@@ -33,18 +33,45 @@ pij-gate: all stages green
 ```
 
 Test count corroborated independently rather than taken from the receipt:
-`cargo test --locked --workspace` → **49 test binaries, 342 passed, 0 failed**.
-This matches the PM's and prime's reported 342.
+
+```
+cd /Users/jordanknight/pi-hacking/pij-worktrees/s108-review-sidecars   # detached @ 6987332e
+CARGO_TARGET_DIR=/tmp/pij-review-w7-target CARGO_INCREMENTAL=0 \
+  env -u UPDATE_GOLDENS cargo test --locked --workspace | grep '^test result:'
+```
+
+→ **49 test binaries, 342 passed, 0 failed.** Not truncated. This matches the
+PM's and prime's reported 342, independently arrived at.
 
 Observed toolchain: `rustc 1.98.0 (88d9e12ae 2026-08-18)`, `cargo 1.98.0
 (797e8a9bc 2026-08-05)`. Disk on `/`: 173Gi available.
 
-**A red I caused in my own instrument, disclosed.** My first green-base run piped
-the gate through `tail -12`, which discarded every per-binary `test result:` line
-and left the log reporting `0 passed`. The gate verdict was intact; the count was
-not. I re-ran to recover it. A truncating probe that keeps the verdict and drops
-the evidence is the same shape as the defects this plan keeps finding, and it is
-worth recording that it happened to the reviewer.
+### A red I caused in my own instrument, and the habit it earns
+
+My first green-base run piped the gate through `tail -12`. The six-stage verdict
+survived the pipe; every per-binary `test result:` line did not, so the log
+reported `0 passed` under `all stages green`. I re-ran to recover the count.
+
+The PM named the shape better than I did, and it is the reason this is a habit
+and not an anecdote:
+
+> The conclusion is cheap to carry and the evidence is easy to drop, so the
+> artefact that reaches the reader is the half that cannot be checked.
+
+A verdict line is one row and survives every pipe, tail, summary and paraphrase.
+The 49 rows that justify it are the first thing any of those removes. So the
+default direction of every reporting step is toward a claim with its support
+stripped — and the result still looks like a report, because the half that is
+missing is the half nobody can see is missing.
+
+Three reviewers and a PM each caught themselves at this within one day — a null
+result reported as a positive, a contaminated red nearly reported as a defect,
+and this. Same shape, three costumes, which makes it structural rather than
+personal.
+
+**The habit, applied to this file and to every number in my verdict: report the
+number AND the command that produced it, and if the output was truncated, say
+where it was cut.** An unsourced count is an opinion about a measurement.
 
 ## 3. The base was RED before this, and the diagnosis is kept for the instrument
 
