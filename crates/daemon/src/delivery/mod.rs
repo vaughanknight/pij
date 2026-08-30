@@ -106,6 +106,7 @@ impl DeliveryService {
             to,
             body: body.into(),
             msg_id: self.next_message_id(),
+            from_machine: None,
             in_reply_to: None,
             command: None,
         })

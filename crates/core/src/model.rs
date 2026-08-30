@@ -461,6 +461,16 @@ pub struct Msg {
     pub body: String,
     /// Stable id, so a route can be traced end to end. Every delivery logs it.
     pub msg_id: String,
+    /// The machine the sender is on, when it is not this one.
+    ///
+    /// **R7-AMEND-1.** `None` means local, symmetric with `Destination.machine`.
+    ///
+    /// u-federation found that a forwarded message arrived with no way to answer
+    /// it: `from` is a bare `SeatId`, so an ordinary reply routed locally — and if
+    /// both machines held a seat with the same name, the receiving daemon's own
+    /// self-address refusal fired on a message from a stranger.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_machine: Option<String>,
     /// The message this one ANSWERS, when it is a reply.
     ///
     /// Durable, because correlation that lives only in a client's memory is not

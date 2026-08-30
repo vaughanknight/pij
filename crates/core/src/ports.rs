@@ -22,6 +22,8 @@
 //! async, including the ones whose implementations happen to be synchronous
 //! today, so a later adapter can become async without changing the seam.
 
+use std::time::Duration;
+
 use async_trait::async_trait;
 
 use crate::error::Result;
@@ -88,6 +90,26 @@ pub trait Queue: Send + Sync {
 
     /// Record how a claimed job ended, freeing its serial key.
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()>;
+
+    /// Return a CLAIMED job to pending, after `delay`, counting the attempt.
+    ///
+    /// **R4-AMEND-1**, ratified after two wave-4 units found the same hole from
+    /// opposite ends: remote send needed a failed forward to stay queued, and the
+    /// pointer rung needed an announced claim to be re-announceable. Neither could
+    /// be built, because `claim` and `ack` are the only transitions and `ack` is
+    /// TERMINAL — ack-then-enqueue has a crash window that LOSES the body, and
+    /// enqueue-then-ack collapses onto the still-live row it is trying to replace.
+    ///
+    /// **Atomic, and the ONE writer of `attempt`.** The return to pending and the
+    /// increment happen in a single transaction, in the one place that owns queue
+    /// state. The fork split attempt counting between its daemon and its consumers
+    /// and that split IS the root cause of its still-open G25, where `attempt`
+    /// never moved, `parked` was unreachable, and pointers re-announced every 90
+    /// seconds for ever. A second writer here recreates that bug exactly.
+    ///
+    /// `delay` is a not-before time, so a caller expresses backoff by passing it
+    /// rather than by sleeping and hoping nothing else claims the row meanwhile.
+    async fn retry(&self, job: JobId, delay: Duration) -> Result<()>;
 }
 
 /// A way to get a message to a seat.
@@ -130,7 +152,21 @@ pub trait TmuxPort: Send + Sync {
     /// All panes tmux currently reports.
     async fn list_panes(&self) -> Result<Vec<Pane>>;
 
-    /// Type `keys` into a pane.
+    /// SUBMIT `text` to a pane as a turn: type it AND send it.
+    ///
+    /// **R3-AMEND-5**, a SEPARATE verb rather than a flag on [`Self::send_keys`],
+    /// ruled deliberately: type-without-sending must stay expressible on its own,
+    /// because the composer guard and the human-typing politeness rule both depend
+    /// on that distinction being real in the seam. A boolean is a distinction that
+    /// can be forgotten at a call site; a verb is not.
+    ///
+    /// u-pointer found the gap: `send_keys` is literal-only (`tmux send-keys -l`),
+    /// so nothing in the tree could submit a turn — and both the pty rung and the
+    /// pointer line need a message SENT, not text parked in a composer where the
+    /// next keystroke merges with it.
+    async fn submit(&self, pane: &str, text: &str) -> Result<()>;
+
+    /// Type `keys` into a pane, literally. Does NOT send: see [`Self::submit`].
     async fn send_keys(&self, pane: &str, keys: &str) -> Result<()>;
 
     /// The last `lines` of a pane's visible output.

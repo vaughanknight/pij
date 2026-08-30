@@ -498,6 +498,9 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendRequest>) -
     // one round trip, each proven against itself. Found by u-extension.
     let msg = Msg {
         from: request.from,
+        // Local send. A remote origin is stamped by the federation worker when it
+        // forwards, never by the origin daemon's own request path (R7-AMEND-1).
+        from_machine: None,
         to: request.to.seat,
         body: request.body,
         msg_id: request.msg_id,
