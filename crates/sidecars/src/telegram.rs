@@ -18,6 +18,9 @@ use crate::common::{LoopHandle, Processed, enqueue_turn, now_ms, start_resilient
 pub const TELEGRAM_SEND_KIND: &str = "sidecar:telegram:send";
 const WORKER_ID: &str = "sidecar-telegram";
 const BINDING_KIND: &str = "telegram.binding";
+const CURSOR_KIND: &str = "telegram.cursor";
+const DELIVERY_FAILED_KIND: &str = "telegram.inbound-delivery-failed";
+const CURSOR_SEAT: &str = "pij-telegram-cursor";
 const REFUSAL_KIND: &str = "telegram.inbound-refused";
 
 /// Validated Telegram credentials loaded from the legacy file.
@@ -219,7 +222,6 @@ pub struct TelegramWorker {
     spine: Arc<dyn Spine>,
     client: reqwest::Client,
     config: TelegramConfig,
-    next_update: tokio::sync::Mutex<i64>,
     _lock: BridgeLock,
 }
 
@@ -236,7 +238,6 @@ impl TelegramWorker {
             spine,
             client: reqwest::Client::new(),
             config,
-            next_update: tokio::sync::Mutex::new(0),
             _lock: BridgeLock::acquire(lock_path)?,
         })
     }
@@ -261,10 +262,21 @@ impl TelegramWorker {
                 break;
             };
             match self.process_send(&job).await {
-                Ok(()) => self.queue.ack(id, Outcome::Done).await?,
-                Err(error) => {
-                    self.queue.retry(id, Duration::ZERO).await?;
+                SendOutcome::Done => self.queue.ack(id, Outcome::Done).await?,
+                SendOutcome::Retry(error) => {
+                    self.queue.retry(id, Duration::from_millis(100)).await?;
                     return Err(error);
+                }
+                SendOutcome::Terminal(error) => {
+                    self.queue
+                        .ack(
+                            id,
+                            Outcome::Failed {
+                                reason: error.to_string(),
+                            },
+                        )
+                        .await?;
+                    eprintln!("pij-rs telegram: {error}");
                 }
             }
             count += 1;
@@ -273,48 +285,67 @@ impl TelegramWorker {
         Ok(Processed { count })
     }
 
-    async fn process_send(&self, job: &Job) -> Result<()> {
-        let request: TelegramSend =
-            serde_json::from_str(&job.payload).map_err(|error| PijError::Adapter {
-                adapter: "sidecars/telegram".to_string(),
-                message: format!("job payload is not a Telegram send: {error}"),
-            })?;
-        let chat_id = request.chat_id.as_deref().unwrap_or(&self.config.chat_id);
-        let response = self
-            .client
-            .post(format!(
-                "{}/bot{}/sendMessage",
-                self.config.api_root, self.config.token
-            ))
-            .json(&serde_json::json!({"chat_id": chat_id, "text": request.body}))
-            .send()
-            .await
-            .map_err(http_error)?;
-        if !response.status().is_success() {
-            return Err(PijError::Adapter {
-                adapter: "sidecars/telegram".to_string(),
-                message: format!("sendMessage returned HTTP {}", response.status()),
-            });
+    async fn process_send(&self, job: &Job) -> SendOutcome {
+        let result = async {
+            let request: TelegramSend =
+                serde_json::from_str(&job.payload).map_err(|error| PijError::Adapter {
+                    adapter: "sidecars/telegram".to_string(),
+                    message: format!("job payload is not a Telegram send: {error}"),
+                })?;
+            let chat_id = request.chat_id.as_deref().unwrap_or(&self.config.chat_id);
+            let response = self
+                .client
+                .post(format!(
+                    "{}/bot{}/sendMessage",
+                    self.config.api_root, self.config.token
+                ))
+                .json(&serde_json::json!({"chat_id": chat_id, "text": request.body}))
+                .send()
+                .await
+                .map_err(http_error)?;
+            if !response.status().is_success() {
+                return Err(PijError::Adapter {
+                    adapter: "sidecars/telegram".to_string(),
+                    message: format!("sendMessage returned HTTP {}", response.status()),
+                });
+            }
+            Ok::<_, PijError>((chat_id.to_string(), request))
         }
-        self.spine
-            .append(Event {
-                seq: None,
-                v: 1,
-                at: now_ms()?,
-                kind: BINDING_KIND.to_string(),
-                seat: Some(conversation_seat(chat_id)),
-                payload: serde_json::to_string(&Binding {
-                    target: request.from,
-                    outbound_msg_id: request.msg_id,
-                })
-                .map_err(codec_error)?,
-            })
-            .await?;
-        Ok(())
+        .await;
+        let (chat_id, request) = match result {
+            Ok(value) => value,
+            Err(error) => return SendOutcome::Retry(error),
+        };
+        let binding = Event {
+            seq: None,
+            v: 1,
+            at: match now_ms() {
+                Ok(at) => at,
+                Err(error) => return SendOutcome::Terminal(error),
+            },
+            kind: BINDING_KIND.to_string(),
+            seat: Some(conversation_seat(&chat_id)),
+            payload: match serde_json::to_string(&Binding {
+                target: request.from,
+                outbound_msg_id: request.msg_id,
+            }) {
+                Ok(payload) => payload,
+                Err(error) => return SendOutcome::Terminal(codec_error(error)),
+            },
+        };
+        match self.spine.append(binding).await {
+            Ok(_) => SendOutcome::Done,
+            Err(error) => SendOutcome::Terminal(PijError::Adapter {
+                adapter: "sidecars/telegram".to_string(),
+                message: format!(
+                    "sendMessage succeeded but binding persistence failed; refusing duplicate retry: {error}"
+                ),
+            }),
+        }
     }
 
     async fn poll_inbound(&self) -> Result<()> {
-        let offset = *self.next_update.lock().await;
+        let offset = self.persisted_offset().await?;
         let response = self
             .client
             .get(format!(
@@ -339,36 +370,83 @@ impl TelegramWorker {
             });
         }
         for update in updates.result {
-            *self.next_update.lock().await = update.update_id + 1;
-            let Some(message) = update.message else {
-                continue;
-            };
-            if !self.config.allowed_user_ids.contains(&message.from.id) {
-                continue;
+            if let Err(error) = self.handle_update(&update).await {
+                let conversation = update
+                    .message
+                    .as_ref()
+                    .map(|message| message.chat.id.to_string());
+                let _ = self.spine.append(Event {
+                    seq: None,
+                    v: 1,
+                    at: now_ms()?,
+                    kind: DELIVERY_FAILED_KIND.to_string(),
+                    seat: conversation.as_deref().map(conversation_seat),
+                    payload: serde_json::json!({"update_id": update.update_id, "conversation": conversation, "reason": error.to_string()}).to_string(),
+                }).await;
+                return Err(error);
             }
-            let chat = message.chat.id.to_string();
-            let Some(text) = message.text else { continue };
-            let binding = self
-                .spine
-                .latest_matching(&conversation_seat(&chat), &[BINDING_KIND])
-                .await?;
-            let Some(binding) = binding else {
-                self.spine.append(Event { seq: None, v: 1, at: now_ms()?, kind: REFUSAL_KIND.to_string(), seat: Some(conversation_seat(&chat)), payload: serde_json::json!({"conversation": chat, "reason": "no persisted outbound binding"}).to_string() }).await?;
-                eprintln!(
-                    "pij-rs telegram: refused inbound conversation {chat}: no persisted outbound binding"
-                );
-                continue;
-            };
-            let binding: Binding = serde_json::from_str(&binding.payload).map_err(codec_error)?;
-            enqueue_turn(
-                &self.queue,
-                "pij-telegram",
-                &binding.target,
-                text,
-                format!("telegram-{}", update.update_id),
-            )
-            .await?;
+            self.record_offset(update.update_id + 1).await?;
         }
+        Ok(())
+    }
+
+    async fn handle_update(&self, update: &Update) -> Result<()> {
+        let Some(message) = update.message.as_ref() else {
+            return Ok(());
+        };
+        if !self.config.allowed_user_ids.contains(&message.from.id) {
+            return Ok(());
+        }
+        let chat = message.chat.id.to_string();
+        let Some(text) = message.text.as_ref() else {
+            return Ok(());
+        };
+        let binding = self
+            .spine
+            .latest_matching(&conversation_seat(&chat), &[BINDING_KIND])
+            .await?;
+        let Some(binding) = binding else {
+            self.spine.append(Event { seq: None, v: 1, at: now_ms()?, kind: REFUSAL_KIND.to_string(), seat: Some(conversation_seat(&chat)), payload: serde_json::json!({"conversation": chat, "reason": "no persisted outbound binding"}).to_string() }).await?;
+            eprintln!(
+                "pij-rs telegram: refused inbound conversation {chat}: no persisted outbound binding"
+            );
+            return Ok(());
+        };
+        let binding: Binding = serde_json::from_str(&binding.payload).map_err(codec_error)?;
+        enqueue_turn(
+            &self.queue,
+            "pij-telegram",
+            &binding.target,
+            text.clone(),
+            format!("telegram-{}", update.update_id),
+        )
+        .await
+    }
+
+    async fn persisted_offset(&self) -> Result<i64> {
+        let event = self
+            .spine
+            .latest_matching(&SeatId::from(CURSOR_SEAT), &[CURSOR_KIND])
+            .await?;
+        match event {
+            Some(event) => Ok(serde_json::from_str::<Cursor>(&event.payload)
+                .map_err(codec_error)?
+                .offset),
+            None => Ok(0),
+        }
+    }
+
+    async fn record_offset(&self, offset: i64) -> Result<()> {
+        self.spine
+            .append(Event {
+                seq: None,
+                v: 1,
+                at: now_ms()?,
+                kind: CURSOR_KIND.to_string(),
+                seat: Some(SeatId::from(CURSOR_SEAT)),
+                payload: serde_json::to_string(&Cursor { offset }).map_err(codec_error)?,
+            })
+            .await?;
         Ok(())
     }
 }
@@ -381,6 +459,17 @@ fn conversation_seat(chat_id: &str) -> SeatId {
 struct Binding {
     target: SeatId,
     outbound_msg_id: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Cursor {
+    offset: i64,
+}
+
+enum SendOutcome {
+    Done,
+    Retry(PijError),
+    Terminal(PijError),
 }
 
 #[derive(Deserialize)]

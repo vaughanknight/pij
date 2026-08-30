@@ -1,6 +1,7 @@
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::process::Command;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -498,4 +499,423 @@ async fn telegram_reply_uses_only_the_persisted_outbound_binding_and_refuses_whe
         "unbound inbound must not guess a target"
     );
     server.abort();
+}
+
+struct RefuseFirstDelivery {
+    inner: Arc<dyn Queue>,
+    refuse: AtomicBool,
+}
+
+#[async_trait]
+impl Queue for RefuseFirstDelivery {
+    async fn enqueue(&self, job: Job) -> Result<JobId> {
+        self.inner.enqueue(job).await
+    }
+    async fn enqueue_delivery(&self, job: Job) -> Result<DeliveryEnqueue> {
+        if self.refuse.swap(false, Ordering::SeqCst) {
+            return Err(PijError::Adapter {
+                adapter: "test/refuse".to_string(),
+                message: "injected turn-enqueue failure".to_string(),
+            });
+        }
+        self.inner.enqueue_delivery(job).await
+    }
+    async fn claim(&self, kinds: &[String], worker: &str) -> Result<Option<(JobId, Job)>> {
+        self.inner.claim(kinds, worker).await
+    }
+    async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {
+        self.inner.ack(job, outcome).await
+    }
+    async fn ack_delivery(&self, job: JobId, origin: DeliveryOrigin) -> Result<DeliveryAck> {
+        self.inner.ack_delivery(job, origin).await
+    }
+    async fn note_delivered(
+        &self,
+        recipient: &SeatId,
+        msg_id: &str,
+        origin: DeliveryOrigin,
+    ) -> Result<Option<DeliveryOrigin>> {
+        self.inner.note_delivered(recipient, msg_id, origin).await
+    }
+    async fn forget_delivered(&self, recipient: &SeatId, msg_id: &str) -> Result<()> {
+        self.inner.forget_delivered(recipient, msg_id).await
+    }
+    async fn retry(&self, job: JobId, delay: Duration) -> Result<()> {
+        self.inner.retry(job, delay).await
+    }
+}
+
+struct FailBindingSpine {
+    inner: Arc<dyn Spine>,
+    fail: AtomicBool,
+}
+
+#[async_trait]
+impl Spine for FailBindingSpine {
+    async fn append(&self, event: pij_core::model::Event) -> Result<Seq> {
+        if event.kind == "telegram.binding" && self.fail.swap(false, Ordering::SeqCst) {
+            return Err(PijError::Adapter {
+                adapter: "test/spine".to_string(),
+                message: "injected binding failure".to_string(),
+            });
+        }
+        self.inner.append(event).await
+    }
+    async fn tail(&self, seat: Option<&SeatId>, since: Seq) -> Result<Vec<pij_core::model::Event>> {
+        self.inner.tail(seat, since).await
+    }
+    async fn latest_matching(
+        &self,
+        seat: &SeatId,
+        kinds: &[&str],
+    ) -> Result<Option<pij_core::model::Event>> {
+        self.inner.latest_matching(seat, kinds).await
+    }
+}
+
+#[derive(Default)]
+struct TelegramApiState {
+    offsets: Mutex<Vec<String>>,
+    sends: AtomicUsize,
+}
+
+async fn recorded_send(
+    axum::extract::State(state): axum::extract::State<Arc<TelegramApiState>>,
+) -> Json<serde_json::Value> {
+    state.sends.fetch_add(1, Ordering::SeqCst);
+    Json(serde_json::json!({"ok": true, "result": {"message_id": 41}}))
+}
+
+async fn retained_update(
+    axum::extract::State(state): axum::extract::State<Arc<TelegramApiState>>,
+    uri: axum::http::Uri,
+) -> Json<serde_json::Value> {
+    let offset = uri
+        .query()
+        .and_then(|query| {
+            query
+                .split('&')
+                .find_map(|pair| pair.strip_prefix("offset="))
+        })
+        .unwrap_or("0")
+        .to_string();
+    state
+        .offsets
+        .lock()
+        .expect("offset mutex")
+        .push(offset.clone());
+    let result = if offset.parse::<i64>().unwrap_or_default() <= 77 {
+        serde_json::json!([{"update_id":77,"message":{"from":{"id":7},"chat":{"id":42},"text":"retained reply"}}])
+    } else {
+        serde_json::json!([])
+    };
+    Json(serde_json::json!({"ok": true, "result": result}))
+}
+
+async fn telegram_fixture(state: Arc<TelegramApiState>) -> (String, tokio::task::JoinHandle<()>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind fixture");
+    let addr = listener.local_addr().expect("fixture addr");
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new()
+                .route("/botTOKEN/sendMessage", post(recorded_send))
+                .route("/botTOKEN/getUpdates", get(retained_update))
+                .with_state(state),
+        )
+        .await
+        .expect("serve fixture")
+    });
+    (format!("http://{addr}"), server)
+}
+
+#[tokio::test]
+async fn failed_inbound_delivery_keeps_the_update_unconfirmed_and_cursor_survives_restart() {
+    let api = Arc::new(TelegramApiState::default());
+    let (api_root, server) = telegram_fixture(Arc::clone(&api)).await;
+    let fresh = FreshStore::new();
+    let queue = sqlite_queue(&fresh).await;
+    let inner: Arc<dyn Queue> = queue.clone();
+    let refusing: Arc<dyn Queue> = Arc::new(RefuseFirstDelivery {
+        inner,
+        refuse: AtomicBool::new(true),
+    });
+    let spine = Arc::new(FakeSpine::new());
+    let spine_port: Arc<dyn Spine> = spine.clone();
+    let config = TelegramConfig {
+        token: "TOKEN".to_string(),
+        allowed_user_ids: vec![7],
+        chat_id: "42".to_string(),
+        api_root,
+    };
+    let lock = temp_path(&fresh, "cursor.lock");
+    let worker =
+        TelegramWorker::new(refusing, spine_port, config.clone(), lock.clone()).expect("worker");
+    queue
+        .enqueue(
+            telegram::send_job(&TelegramSend {
+                from: SeatId::from("pij-target"),
+                body: "outbound".to_string(),
+                msg_id: "bind".to_string(),
+                chat_id: None,
+            })
+            .expect("job"),
+        )
+        .await
+        .expect("enqueue");
+    let first = worker
+        .run_once(4)
+        .await
+        .expect_err("first inbound enqueue must fail");
+    assert!(first.to_string().contains("injected turn-enqueue failure"));
+    assert!(
+        spine
+            .tail(None, Seq(0))
+            .await
+            .expect("events")
+            .iter()
+            .any(|event| event.kind == "telegram.inbound-delivery-failed")
+    );
+    worker.run_once(4).await.expect("retry same update");
+    drop(worker);
+
+    let queue_port: Arc<dyn Queue> = queue.clone();
+    let spine_port: Arc<dyn Spine> = spine.clone();
+    let restarted = TelegramWorker::new(queue_port, spine_port, config, lock).expect("restart");
+    restarted.run_once(4).await.expect("restart poll");
+    assert_eq!(
+        *api.offsets.lock().expect("offsets"),
+        ["0", "0", "78"],
+        "failed delivery must not confirm update; durable cursor must survive restart"
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn successful_send_with_failed_binding_is_terminal_and_never_posts_twice() {
+    let api = Arc::new(TelegramApiState::default());
+    let (api_root, server) = telegram_fixture(Arc::clone(&api)).await;
+    let fresh = FreshStore::new();
+    let queue = sqlite_queue(&fresh).await;
+    let queue_port: Arc<dyn Queue> = queue.clone();
+    let inner_spine: Arc<dyn Spine> = Arc::new(FakeSpine::new());
+    let spine: Arc<dyn Spine> = Arc::new(FailBindingSpine {
+        inner: inner_spine,
+        fail: AtomicBool::new(true),
+    });
+    let worker = TelegramWorker::new(
+        queue_port,
+        spine,
+        TelegramConfig {
+            token: "TOKEN".to_string(),
+            allowed_user_ids: vec![],
+            chat_id: "42".to_string(),
+            api_root,
+        },
+        temp_path(&fresh, "binding-fail.lock"),
+    )
+    .expect("worker");
+    queue
+        .enqueue(
+            telegram::send_job(&TelegramSend {
+                from: SeatId::from("pij-target"),
+                body: "once".to_string(),
+                msg_id: "send-once".to_string(),
+                chat_id: None,
+            })
+            .expect("job"),
+        )
+        .await
+        .expect("enqueue");
+    worker
+        .run_once(5)
+        .await
+        .expect("terminal binding failure is handled");
+    worker.run_once(5).await.expect("no retry");
+    assert_eq!(
+        api.sends.load(Ordering::SeqCst),
+        1,
+        "a successful external send must never be retried after binding persistence fails"
+    );
+    assert_eq!(queue.live_len().await.expect("live rows"), 0);
+    server.abort();
+}
+
+#[tokio::test]
+async fn background_reports_failed_and_lost_without_starving_other_completions() {
+    let fresh = FreshStore::new();
+    let queue = sqlite_queue(&fresh).await;
+    let queue_port: Arc<dyn Queue> = queue.clone();
+    let state_dir = temp_path(&fresh, "bg-review");
+    let worker = BgWorker::new(queue_port, state_dir.clone()).expect("worker");
+    let target = SeatId::from("pij-test");
+
+    for (id, command) in [
+        ("boom", "printf partial; exit 3"),
+        ("healthy", "sleep 0.2; printf healthy"),
+    ] {
+        queue
+            .enqueue(
+                background::job(
+                    &BgRequest::Start {
+                        id: id.to_string(),
+                        title: id.to_string(),
+                        command: command.to_string(),
+                        target: target.clone(),
+                    },
+                    &format!("start-{id}"),
+                )
+                .expect("job"),
+            )
+            .await
+            .expect("enqueue");
+    }
+    worker.run_once(8).await.expect("starts");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    worker.run_once(8).await.expect("observe exits");
+    let failed = worker.load("boom").expect("failed record");
+    assert_eq!(failed.status, BgStatus::Failed);
+    assert_eq!(failed.exit_code, Some(3));
+    assert_eq!(
+        worker.load("healthy").expect("healthy record").status,
+        BgStatus::Done
+    );
+
+    let orphan = BgRequest::Start {
+        id: "orphan".to_string(),
+        title: "orphan".to_string(),
+        command: "sleep 30".to_string(),
+        target: target.clone(),
+    };
+    queue
+        .enqueue(background::job(&orphan, "start-orphan").expect("job"))
+        .await
+        .expect("enqueue");
+    worker.run_once(8).await.expect("start orphan");
+    let record = worker.load("orphan").expect("orphan record");
+    Command::new("/bin/kill")
+        .args(["-KILL", &format!("-{}", record.pgid)])
+        .status()
+        .expect("kill orphan group");
+    worker
+        .await_group_exit("orphan", record.pgid)
+        .await
+        .expect("reap orphan leader");
+    drop(worker);
+
+    let queue_port: Arc<dyn Queue> = queue.clone();
+    let restarted = BgWorker::new(queue_port, state_dir).expect("restarted worker");
+    restarted.run_once(8).await.expect("observe orphan");
+    assert_eq!(
+        restarted.load("orphan").expect("orphan record").status,
+        BgStatus::Lost
+    );
+
+    queue
+        .enqueue(
+            background::job(
+                &BgRequest::Start {
+                    id: "foreign".to_string(),
+                    title: "foreign".to_string(),
+                    command: "sleep 30".to_string(),
+                    target: target.clone(),
+                },
+                "start-foreign",
+            )
+            .expect("job"),
+        )
+        .await
+        .expect("enqueue");
+    restarted
+        .run_once(8)
+        .await
+        .expect("start foreign-owned witness");
+    let mut foreign = restarted.load("foreign").expect("foreign record");
+    foreign.owner_id = "another-boot".to_string();
+    std::fs::write(
+        temp_path(&fresh, "bg-review").join("foreign.json"),
+        serde_json::to_vec(&foreign).expect("encode"),
+    )
+    .expect("write foreign record");
+    queue
+        .enqueue(
+            background::job(
+                &BgRequest::Cancel {
+                    id: "foreign".to_string(),
+                    target: target.clone(),
+                },
+                "cancel-foreign",
+            )
+            .expect("job"),
+        )
+        .await
+        .expect("enqueue");
+    let error = restarted
+        .run_once(8)
+        .await
+        .expect_err("foreign ownership must refuse signal");
+    assert!(error.to_string().contains("is not this boot"));
+    assert!(
+        !group_pids(foreign.pgid)
+            .expect("foreign group still observed")
+            .is_empty(),
+        "ownership brake must spare the process group"
+    );
+    Command::new("/bin/kill")
+        .args(["-KILL", &format!("-{}", foreign.pgid)])
+        .status()
+        .expect("cleanup foreign group");
+    restarted
+        .await_group_exit("foreign", foreign.pgid)
+        .await
+        .expect("cleanup reap");
+}
+
+#[tokio::test]
+async fn duplicate_background_start_cannot_wedge_an_innocent_job() {
+    let fresh = FreshStore::new();
+    let queue = sqlite_queue(&fresh).await;
+    let queue_port: Arc<dyn Queue> = queue.clone();
+    let worker = BgWorker::new(queue_port, temp_path(&fresh, "bg-duplicate")).expect("worker");
+    let target = SeatId::from("pij-test");
+    let request = |id: &str| BgRequest::Start {
+        id: id.to_string(),
+        title: id.to_string(),
+        command: "sleep 30".to_string(),
+        target: target.clone(),
+    };
+    queue
+        .enqueue(background::job(&request("j1"), "j1-first").expect("job"))
+        .await
+        .expect("enqueue");
+    worker.run_once(8).await.expect("start j1");
+    queue
+        .enqueue(background::job(&request("j1"), "j1-client-retry").expect("job"))
+        .await
+        .expect("enqueue duplicate");
+    queue
+        .enqueue(background::job(&request("j2"), "j2-innocent").expect("job"))
+        .await
+        .expect("enqueue innocent");
+    let error = worker
+        .run_once(8)
+        .await
+        .expect_err("duplicate remains an explicit refusal");
+    assert!(error.to_string().contains("already exists"));
+    let j2 = worker
+        .load("j2")
+        .expect("innocent job must start despite duplicate retry");
+    assert_eq!(j2.status, BgStatus::Running);
+    for record in [worker.load("j1").expect("j1"), j2] {
+        Command::new("/bin/kill")
+            .args(["-KILL", &format!("-{}", record.pgid)])
+            .status()
+            .expect("cleanup group");
+        worker
+            .await_group_exit(&record.id, record.pgid)
+            .await
+            .expect("cleanup reap");
+    }
 }
