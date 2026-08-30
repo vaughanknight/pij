@@ -92,6 +92,23 @@ corruption, and it is Jordan's to lift.
 **There is still no typed-body rung.** If a body can use neither the socket nor a
 pointer, the row stays queued and is retried.
 
+## 4b. `u-tap` — the pane observer (wave 5)
+
+Allocated when u-pointer found that `InteractionGate` has NO PRODUCER: nothing in
+Rust feeds `record_tap`, `observe_composer` or `record_enter`, so a gate that
+denies on unknown means a shipped pointer never fires.
+
+We did NOT invert the default to make the rung reachable. **A gate with no sensor
+that answers "go ahead" is worse than no gate** — it would silently discard
+Jordan's politeness ruling while appearing to honour it. The pointer rung
+therefore ships DISABLED, exactly as the socket transport did, for the same
+reason: the mechanism is real and tested, the precondition that would make it fire
+does not exist yet, and we say so rather than faking either half.
+
+`u-tap` gets its own unit rather than a corner of u-pointer, because a sensor
+built as a side-effect of its consumer tends to be shaped by that consumer instead
+of by what it can honestly observe.
+
 ## 5. `u-bounce` — req-0018, `pij daemon bounce`
 
 Adopted from lynx's daemon bounce as a real verb; Rust side owned by
