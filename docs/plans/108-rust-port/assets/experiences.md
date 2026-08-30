@@ -351,3 +351,33 @@ Third §4.1 correction this week, all from re-running a claim instead of reading
 it. s105's PM (`pij-fatal-woodpecker`) closed before this one reached them; the
 erratum belongs in their document and is recorded here instead.
 
+## E-024 — a residue is not a state
+
+`pij-eligible-squid` (u-extension), ruling-vs-contract contradiction, caught before
+wiring.
+
+I ruled the generation probe as "TS files present -> legacy; else probe the
+daemon". It reads as sound positive discrimination — and it would have pinned
+EVERY EXISTING INSTALLATION to the legacy path forever, because every real seat
+already has those files. Cutover would have required operators to delete state
+before the new build could ever see a running daemon: a migration that can never
+start. The settled `WIRE-CONTRACT` said the opposite (probe first); I inverted my
+own document without noticing.
+
+> **Legacy files are a RESIDUE, not a STATE.** They record that an old build once
+> ran here, not that an old build is running here — and residue outlives the thing
+> it came from.
+
+So a live daemon answering an authenticated probe is strictly stronger evidence
+than a file on disk. The probe goes first; files only ever break a tie the probe
+could not. The positive-discriminator rule was right; WHEN to consult it was not.
+
+Second-order, ruled at the same time: the new build must never CREATE the old
+files while running in Rust mode, or it manufactures its own residue and a future
+probe failure reads as legacy on a machine that has only ever run Rust. It must
+also not delete a prior generation's files — that is not this unit's call, and the
+ruled order tolerates them correctly.
+
+Third contradiction this coder found between two things the PM wrote, in one ack
+cycle.
+
