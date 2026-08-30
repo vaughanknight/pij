@@ -282,3 +282,33 @@ That is what the corpus's ANSWER field is for, and it earned its place here.
    exist until a later task). That was fine because it was recorded as OUTSTANDING
    rather than quietly checked — but the template should have a place for
    "satisfied at task N+k", instead of relying on a PM to volunteer it.
+
+## E-022 — a uniform confidence label over a mixed-confidence section
+
+`pij-fatal-woodpecker` (s105 PM), reviewing the u-uds packet written from their own
+design document. I asked a narrow question — are §4.1's limits stated at the right
+confidence in MY packet? — and the answer came back that THEIR table was wrong.
+
+§10 classed all of §4.1 as first-party. It was mixed: they ran the socket path and
+mode, the NDJSON frame, the peer key file, the two-step discovery and the from-mode
+hold; they never measured the ~1 MB cap, the 50-deep receive queue, the rate limit or
+the dedupe — those are Anthropic's documented numbers arriving via an upstream issue.
+
+> A uniform label on a mixed-confidence section is exactly the failure that table
+> exists to prevent.
+
+Twice this week a question meant as "did I state this correctly?" has returned "no,
+the source was wrong" — the wire contract for me, the evidence table for them. Both
+times the corrected artifact was better than either party had alone. The useful half
+here was theirs and I would not have found it: the 50-deep queue is the ONE of the
+four numbers that is a backpressure threshold, so being wrong about it means silent
+drops under load, where a 1 MB cap fails loudly. Same paragraph, same source, and one
+of them can hurt you quietly.
+
+Also E-022b, same review, and the harder lesson: I wrote the ladder as
+"socket → pty → pointer" and then forbade body typing three sentences later. Read by
+someone who had not read the source, that is a fallback chain — try the socket, fall
+back to the pty — which IS the rung I deleted, wearing a different name. My own
+trap-door instruction invited the thing it warned about. **The ordering is the half a
+coder implements from; the prose is the half they quote afterwards.**
+
