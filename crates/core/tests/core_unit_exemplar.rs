@@ -146,6 +146,10 @@ fn the_default_config_is_offline() {
         config.claim_lease_secs > 0,
         "claim expiry is configured, never embedded in queue logic"
     );
+    assert_eq!(
+        config.delivered_id_capacity, 1_024,
+        "the per-recipient delivered-id bound is a chosen config policy"
+    );
     assert!(
         config.event_buffer_capacity > 0,
         "the live stream is bounded but not disabled"

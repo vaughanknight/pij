@@ -8,7 +8,7 @@ use pij_core::delivery::{DeliveryRoute, QueueReason, delivery_kind, route};
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::model::{DeliveryOrigin, DeliveryOutcome, Event, Job, Msg, Outcome, Receipt, SeatId};
-use pij_core::ports::{Queue, Registry, Transport};
+use pij_core::ports::{DeliveryEnqueue, Queue, Registry, Transport};
 use serde::Serialize;
 use tokio_stream::StreamExt;
 
@@ -33,13 +33,13 @@ type Clock = dyn Fn() -> Result<u64> + Send + Sync;
 ///
 /// # Composition recipe
 ///
-/// No `AdapterChoice::Real` refusal is replaced by this service. In
-/// `crates/daemon/src/lib.rs`, add `use crate::delivery::DeliveryService`, add
-/// `pub delivery: Arc<DeliveryService>` to `Services`, then construct it after
-/// `event_bus` with
-/// `let delivery = Arc::new(DeliveryService::new(Arc::clone(&registry),
-/// Arc::clone(&queue), Arc::clone(&transport), Arc::clone(&event_bus))?);` and
-/// include the field in `Services`.
+/// Add `delivered_id_capacity: usize` to [`pij_core::config::Config`]. Import
+/// `pij_store::SqliteQueue`; construct the real queue as
+/// `SqliteQueue::new(pool, config.claim_lease_secs,
+/// config.delivered_id_capacity)?` and the fake as
+/// `FakeQueue::new(config.delivered_id_capacity)?`. `DeliveryService` and
+/// `DrainWorker` keep receiving the composed `Arc<dyn Queue>` unchanged. No new
+/// task starts, so the daemon's shutdown contract is unchanged.
 pub struct DeliveryService {
     registry: Arc<dyn Registry>,
     queue: Arc<dyn Queue>,
@@ -130,19 +130,14 @@ impl DeliveryService {
     /// Accept a message FORWARDED from another machine.
     ///
     /// Same admission as [`Self::accept`] — the recipient must exist, must not be
-    /// tombstoned, and self-addressing is still refused — but the message is
-    /// ALWAYS ENQUEUED rather than routed to a transport.
+    /// tombstoned, and self-addressing is still refused — but a new message is
+    /// always enqueued rather than routed directly to a transport. A duplicate
+    /// collapses onto its live row while pending or running. After delivery, the
+    /// destination's bounded durable ledger suppresses it and replays the exact
+    /// recorded [`DeliveryOrigin`] in the receipt.
     ///
-    /// That is the at-least-once ruling made real: a duplicate forward after an
-    /// ambiguous network failure collapses onto the live row through the ordinary
-    /// `msg_id` dedupe, which only works if the row exists. Direct delivery has no
-    /// durable record to collapse onto, so a retry would deliver twice.
-    ///
-    /// A separate ENTRY POINT rather than a flag on `accept`, and not an enqueue
-    /// helper exposed to the route: u-federation observed that an HTTP-side
-    /// enqueue would recreate the wave-3 bypass defect exactly — a second business
-    /// path that skips the registry, the tombstone check and the routing policy
-    /// while looking like delivery.
+    /// A separate entry point keeps registry, tombstone, and routing admission in
+    /// one business path; HTTP never gains a bypass enqueue helper.
     ///
     /// # Errors
     /// Missing, self-addressed, or tombstoned seats; queue persistence failures;
@@ -163,11 +158,7 @@ impl DeliveryService {
 
         // Supplying `true` asks the pure policy only about registry facts. A
         // transport check is performed only when that policy says it matters.
-        //
-        // A FORWARDED message never reaches the transport: it is enqueued so a
-        // duplicate forward collapses onto the live row. Tombstones still dominate
-        // — a dead seat is never given an immortal queue row, wherever the message
-        // came from.
+        // Forwarded messages never reach the transport, but tombstones dominate.
         let selected = match arrival {
             Arrival::Local => route(&from, msg.from_machine.as_deref(), &recipient, true)?,
             Arrival::Forwarded => {
@@ -177,6 +168,7 @@ impl DeliveryService {
                 }
             }
         };
+        let mut publish_to_recipient = true;
         let outcome = match selected {
             DeliveryRoute::Tombstoned { reason } => {
                 return Err(PijError::SeatIsGone {
@@ -184,16 +176,22 @@ impl DeliveryService {
                     tombstone_reason: reason,
                 });
             }
-            DeliveryRoute::Queue(_reason) => {
-                self.enqueue(&msg).await?;
-                DeliveryOutcome::Queued
-            }
+            DeliveryRoute::Queue(_reason) => match arrival {
+                Arrival::Local => {
+                    self.enqueue(&msg).await?;
+                    DeliveryOutcome::Queued
+                }
+                Arrival::Forwarded => match self.queue.enqueue_delivery(delivery_job(&msg)?).await?
+                {
+                    DeliveryEnqueue::Queued(_) => DeliveryOutcome::Queued,
+                    DeliveryEnqueue::AlreadyDelivered(origin) => {
+                        publish_to_recipient = false;
+                        DeliveryOutcome::Delivered { origin }
+                    }
+                },
+            },
             DeliveryRoute::Transport => {
                 if !self.transport.can_deliver(&recipient, &msg).await? {
-                    // The transport declined. WHY it declined is the recipient's
-                    // state: a working seat is Busy, anything else is Unreachable.
-                    // The operator sees the same two words as before; the decision
-                    // simply now belongs to the transport that knows its medium.
                     debug_assert_eq!(
                         route(&from, msg.from_machine.as_deref(), &recipient, false)?,
                         DeliveryRoute::Queue(QueueReason::Unreachable)
@@ -217,11 +215,10 @@ impl DeliveryService {
             outcome,
             at,
         };
-        // The RECIPIENT's event, published before the sender's audit line: a
-        // client filters the one stream by its own seat id, and u-extension found
-        // that nothing published this at all — so a seat could observe that it
-        // had been spoken to and never be able to read what was said.
-        if let Err(error) = self.publish_pushed(&msg, at).await {
+        // A suppressed duplicate already published its recipient-facing turn on
+        // first admission. Publishing it again would tell the recipient twice
+        // about a message the durable ledger correctly delivers only once.
+        if publish_to_recipient && let Err(error) = self.publish_pushed(&msg, at).await {
             return Err(PijError::DeliveryAuditFailed {
                 msg_id: receipt.msg_id.clone(),
                 outcome: outcome_name(&receipt.outcome).to_string(),
@@ -293,7 +290,9 @@ impl DeliveryService {
                         message: reason,
                     });
                 }
-                self.queue.ack(job_id, Outcome::Done).await?;
+                self.queue
+                    .ack_delivery(job_id, DeliveryOrigin::ReaderRead)
+                    .await?;
                 messages.push(message);
             }
             if !messages.is_empty() || !wait {
@@ -314,19 +313,7 @@ impl DeliveryService {
     }
 
     async fn enqueue(&self, msg: &Msg) -> Result<()> {
-        let payload = serde_json::to_string(msg).map_err(|error| PijError::Adapter {
-            adapter: "daemon/delivery".to_string(),
-            message: format!("could not encode message {}: {error}", msg.msg_id),
-        })?;
-        self.queue
-            .enqueue(Job {
-                kind: delivery_kind(&msg.to),
-                serial_key: msg.to.0.clone(),
-                payload,
-                dedupe_key: msg.msg_id.clone(),
-                attempt: 0,
-            })
-            .await?;
+        self.queue.enqueue(delivery_job(msg)?).await?;
         Ok(())
     }
 
@@ -381,6 +368,20 @@ impl DeliveryService {
     }
 }
 
+fn delivery_job(msg: &Msg) -> Result<Job> {
+    let payload = serde_json::to_string(msg).map_err(|error| PijError::Adapter {
+        adapter: "daemon/delivery".to_string(),
+        message: format!("could not encode message {}: {error}", msg.msg_id),
+    })?;
+    Ok(Job {
+        kind: delivery_kind(&msg.to),
+        serial_key: msg.to.0.clone(),
+        payload,
+        dedupe_key: msg.msg_id.clone(),
+        attempt: 0,
+    })
+}
+
 #[derive(Serialize)]
 struct PushedEvent<'a> {
     msg_id: &'a str,
@@ -407,9 +408,8 @@ struct OutcomeEvent<'a> {
 enum Arrival {
     /// A client on this machine. Routed normally.
     Local,
-    /// Forwarded by a peer daemon. ALWAYS queued, so a duplicate forward after an
-    /// ambiguous network failure collapses onto the live row instead of being
-    /// delivered twice.
+    /// Forwarded by a peer daemon. New messages queue; live duplicates collapse,
+    /// and delivered duplicates replay the destination's durable observation.
     Forwarded,
 }
 
@@ -448,7 +448,6 @@ fn system_time_ms() -> Result<u64> {
 
 #[cfg(test)]
 mod tests {
-    use pij_core::model::DeliveryOrigin;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -456,8 +455,8 @@ mod tests {
     use pij_core::error::PijError;
     use pij_core::events::EventFilter;
     use pij_core::model::{
-        DeliveryOutcome, Event, Harness, ProcIdentity, SeatDescriptor, SeatId, SemanticState, Seq,
-        SystemState,
+        DeliveryOrigin, DeliveryOutcome, Event, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId,
+        SemanticState, Seq, SystemState,
     };
     use pij_core::ports::{Queue, Registry, Spine};
     use pij_testkit::fakes::{FakeQueue, FakeRegistry, FakeSpine, FakeTransport};
@@ -477,7 +476,7 @@ mod tests {
 
     fn fixture(transport: FakeTransport) -> Fixture {
         let registry = Arc::new(FakeRegistry::new());
-        let queue = Arc::new(FakeQueue::new());
+        let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
         let spine = Arc::new(FakeSpine::new());
         let transport = Arc::new(transport);
         let bus =
@@ -710,6 +709,92 @@ mod tests {
                 .await
                 .expect("dead audit tail")
                 .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn forwarded_duplicate_after_reader_ack_replays_origin_without_second_turn() {
+        let fixture = fixture(FakeTransport::reachable());
+        register(&fixture, bound("pij-destination")).await;
+        let msg = Msg {
+            from: SeatId::from("pij-origin"),
+            to: SeatId::from("pij-destination"),
+            body: "once".to_string(),
+            msg_id: "m-forwarded".to_string(),
+            from_machine: Some("laptop".to_string()),
+            in_reply_to: None,
+            command: None,
+        };
+
+        let first = fixture
+            .service
+            .accept_forwarded(msg.clone())
+            .await
+            .expect("first forward");
+        assert_eq!(first.outcome, DeliveryOutcome::Queued);
+        assert_eq!(
+            fixture
+                .service
+                .accept_forwarded(msg.clone())
+                .await
+                .expect("live duplicate")
+                .outcome,
+            DeliveryOutcome::Queued
+        );
+        assert_eq!(
+            fixture.queue.live_len(),
+            1,
+            "live collapse remains unchanged"
+        );
+        assert_eq!(
+            fixture
+                .service
+                .inbox(&msg.to, false)
+                .await
+                .expect("recipient reads")
+                .len(),
+            1
+        );
+
+        let duplicate = fixture
+            .service
+            .accept_forwarded(msg.clone())
+            .await
+            .expect("post-ack duplicate is a successful prior-delivery receipt");
+        assert_eq!(
+            duplicate.outcome,
+            DeliveryOutcome::Delivered {
+                origin: DeliveryOrigin::ReaderRead
+            }
+        );
+        assert!(
+            fixture
+                .service
+                .inbox(&msg.to, false)
+                .await
+                .expect("no second recipient delivery")
+                .is_empty()
+        );
+        let events = fixture
+            .spine
+            .tail(Some(&msg.to), Seq(0))
+            .await
+            .expect("destination events");
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.kind == PUSHED_EVENT_KIND)
+                .count(),
+            2,
+            "the live duplicate retains existing admission events, but the suppressed post-ack retry adds none"
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.kind == OUTCOME_EVENT_KIND)
+                .count(),
+            3,
+            "every sender attempt retains an outcome audit"
         );
     }
 

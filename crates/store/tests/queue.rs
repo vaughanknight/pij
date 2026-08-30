@@ -7,11 +7,12 @@
 use std::sync::Arc;
 
 use pij_core::config::Config;
-use pij_core::model::{Job, Outcome};
-use pij_core::ports::Queue;
+use pij_core::model::{DeliveryOrigin, Job, Outcome};
+use pij_core::ports::{DeliveryEnqueue, Queue};
 use pij_store::SqliteQueue;
 use pij_testkit::FreshStore;
 use pij_testkit::contract::queue_contract;
+use tokio::sync::Barrier;
 
 fn job(kind: &str, serial: &str, dedupe: &str) -> Job {
     Job {
@@ -27,8 +28,9 @@ async fn queue(fresh: &FreshStore) -> SqliteQueue {
     SqliteQueue::new(
         pij_store::open(&fresh.path()).await.expect("open"),
         Config::default().claim_lease_secs,
+        Config::default().delivered_id_capacity,
     )
-    .expect("valid default claim lease")
+    .expect("valid default queue policy")
 }
 
 #[tokio::test]
@@ -354,7 +356,7 @@ async fn fifo_within_a_serial_key_survives_interleaved_entities() {
 async fn an_expired_claim_fails_terminally_and_rejects_the_stale_ack() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let queue = SqliteQueue::new(pool.clone(), 300).expect("valid lease");
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("valid queue policy");
 
     let expired = queue
         .enqueue(job("deliver", "seat-a", "a-1"))
@@ -420,7 +422,8 @@ async fn an_expired_claim_fails_terminally_and_rejects_the_stale_ack() {
 async fn a_zero_claim_lease_is_refused_before_work_can_be_lost() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    assert!(SqliteQueue::new(pool, 0).is_err());
+    assert!(SqliteQueue::new(pool.clone(), 0, 1_024).is_err());
+    assert!(SqliteQueue::new(pool, 300, 0).is_err());
 }
 
 /// Review F5 — dedupe is per DESTINATION, not global.
@@ -475,7 +478,7 @@ async fn one_msg_id_to_two_recipients_is_two_rows() {
 async fn the_lease_sweep_does_not_reach_another_workers_kind() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let queue = SqliteQueue::new(pool.clone(), 1).expect("one-second lease");
+    let queue = SqliteQueue::new(pool.clone(), 1, 1_024).expect("one-second lease");
 
     let federation = queue
         .enqueue(Job {
@@ -515,4 +518,134 @@ async fn the_lease_sweep_does_not_reach_another_workers_kind() {
         .retry(federation, std::time::Duration::from_secs(1))
         .await
         .expect("the holder must still own its claim after another kind's sweep");
+}
+
+fn delivered_job(recipient: &str, msg_id: &str) -> Job {
+    job(&format!("delivery:{recipient}"), recipient, msg_id)
+}
+
+async fn deliver(queue: &SqliteQueue, recipient: &str, msg_id: &str, origin: DeliveryOrigin) {
+    let queued = queue
+        .enqueue_delivery(delivered_job(recipient, msg_id))
+        .await
+        .expect("enqueue delivery");
+    let DeliveryEnqueue::Queued(id) = queued else {
+        panic!("new message {msg_id} must queue");
+    };
+    let claimed = queue
+        .claim(&[format!("delivery:{recipient}")], "delivery-worker")
+        .await
+        .expect("claim delivery")
+        .expect("delivery row");
+    assert_eq!(claimed.0, id);
+    queue.ack_delivery(id, origin).await.expect("ack delivery");
+}
+
+#[tokio::test]
+async fn delivered_id_and_origin_survive_queue_reconstruction() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let queue = SqliteQueue::new(pool.clone(), 300, 2).expect("queue");
+    deliver(
+        &queue,
+        "pij-recipient",
+        "m-durable",
+        DeliveryOrigin::VerifiedArrival,
+    )
+    .await;
+
+    let restarted = SqliteQueue::new(pool, 300, 2).expect("restarted queue");
+    assert_eq!(
+        restarted
+            .enqueue_delivery(delivered_job("pij-recipient", "m-durable"))
+            .await
+            .expect("consult durable ledger"),
+        DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::VerifiedArrival)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn concurrent_delivery_ack_and_duplicate_enqueue_never_create_a_second_row() {
+    let fresh = FreshStore::new();
+    let queue = Arc::new(
+        SqliteQueue::new(pij_store::open(&fresh.path()).await.expect("open"), 300, 16)
+            .expect("queue"),
+    );
+    let first = queue
+        .enqueue_delivery(delivered_job("pij-race", "m-race"))
+        .await
+        .expect("enqueue first");
+    let DeliveryEnqueue::Queued(first) = first else {
+        panic!("first delivery must queue");
+    };
+    queue
+        .claim(&["delivery:pij-race".to_string()], "worker")
+        .await
+        .expect("claim")
+        .expect("running delivery");
+
+    let barrier = Arc::new(Barrier::new(3));
+    let ack = {
+        let queue = Arc::clone(&queue);
+        let barrier = Arc::clone(&barrier);
+        tokio::spawn(async move {
+            barrier.wait().await;
+            queue.ack_delivery(first, DeliveryOrigin::ReaderRead).await
+        })
+    };
+    let duplicate = {
+        let queue = Arc::clone(&queue);
+        let barrier = Arc::clone(&barrier);
+        tokio::spawn(async move {
+            barrier.wait().await;
+            queue
+                .enqueue_delivery(delivered_job("pij-race", "m-race"))
+                .await
+        })
+    };
+    barrier.wait().await;
+    ack.await.expect("ack task").expect("ack");
+    let duplicate = duplicate
+        .await
+        .expect("duplicate task")
+        .expect("duplicate result");
+    assert!(
+        duplicate == DeliveryEnqueue::Queued(first)
+            || duplicate == DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::ReaderRead),
+        "the race may observe the live row or its delivered record, never a fresh row: {duplicate:?}"
+    );
+    assert_eq!(queue.live_len().await.expect("live count"), 0);
+}
+
+#[tokio::test]
+async fn per_recipient_bound_evicts_oldest_without_weakening_other_recipients() {
+    let fresh = FreshStore::new();
+    let queue = SqliteQueue::new(pij_store::open(&fresh.path()).await.expect("open"), 300, 2)
+        .expect("queue");
+    deliver(&queue, "pij-a", "a-1", DeliveryOrigin::ReaderRead).await;
+    deliver(&queue, "pij-b", "b-1", DeliveryOrigin::InjectedToTransport).await;
+    deliver(&queue, "pij-a", "a-2", DeliveryOrigin::ReaderRead).await;
+    deliver(&queue, "pij-a", "a-3", DeliveryOrigin::ReaderRead).await;
+
+    assert!(matches!(
+        queue
+            .enqueue_delivery(delivered_job("pij-a", "a-1"))
+            .await
+            .expect("oldest id was forgotten"),
+        DeliveryEnqueue::Queued(_)
+    ));
+    assert_eq!(
+        queue
+            .enqueue_delivery(delivered_job("pij-a", "a-2"))
+            .await
+            .expect("newer a id remains"),
+        DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::ReaderRead)
+    );
+    assert_eq!(
+        queue
+            .enqueue_delivery(delivered_job("pij-b", "b-1"))
+            .await
+            .expect("hot recipient must not evict another recipient"),
+        DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::InjectedToTransport)
+    );
 }

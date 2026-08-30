@@ -28,8 +28,8 @@ use async_trait::async_trait;
 
 use crate::error::Result;
 use crate::model::{
-    BindHealth, DeliveryOutcome, Event, Harness, Job, JobId, ModelRow, Msg, Outcome, Pane,
-    ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
+    BindHealth, DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, ModelRow, Msg,
+    Outcome, Pane, ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
 };
 
 /// How to narrow a registry listing. Absent fields mean "do not filter",
@@ -76,12 +76,28 @@ pub trait Spine: Send + Sync {
     async fn tail(&self, seat: Option<&SeatId>, since: Seq) -> Result<Vec<Event>>;
 }
 
+/// Result of atomically consulting destination delivery history and enqueueing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeliveryEnqueue {
+    /// A live queue row now owns the message, whether newly inserted or collapsed.
+    Queued(JobId),
+    /// This destination already delivered the message with the recorded evidence.
+    AlreadyDelivered(DeliveryOrigin),
+}
+
 /// The job queue every delivery and sidecar rides on (R4).
 #[async_trait]
 pub trait Queue: Send + Sync {
     /// Enqueue, collapsing onto any LIVE job with the same `dedupe_key` — N
     /// rapid submits become one row, and the returned id is that row's.
     async fn enqueue(&self, job: Job) -> Result<JobId>;
+
+    /// Enqueue one destination delivery unless its durable delivered-id record exists.
+    ///
+    /// The delivered check and live-row insert are one write transaction. Splitting
+    /// them lets an acknowledgement commit between a stale check and the insert,
+    /// freeing the live key and admitting the same message twice (R4-AMEND-3).
+    async fn enqueue_delivery(&self, job: Job) -> Result<DeliveryEnqueue>;
 
     /// Claim the next runnable job of any of `kinds` for `worker`. At most one
     /// job per `serial_key` is claimed at a time, so two workers never act on
@@ -90,6 +106,13 @@ pub trait Queue: Send + Sync {
 
     /// Record how a claimed job ended, freeing its serial key.
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()>;
+
+    /// Atomically acknowledge delivery, record its evidence, and enforce retention.
+    ///
+    /// The queue owns the configured per-recipient POLICY bound, so every caller
+    /// observes one retention rule. Record, prune, and acknowledgement are one
+    /// transaction; a crash cannot expose only part of the delivery fact.
+    async fn ack_delivery(&self, job: JobId, origin: DeliveryOrigin) -> Result<()>;
 
     /// Return a CLAIMED job to pending, after `delay`, counting the attempt.
     ///

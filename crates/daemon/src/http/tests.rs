@@ -10,10 +10,10 @@ use axum::routing::post;
 use pij_core::config::PeerDefinition;
 use pij_core::error::Result;
 use pij_core::model::{
-    Destination, Envelope, Event, Harness, Job, JobId, Outcome, Pane, ProcIdentity, Receipt,
-    SeatDescriptor,
+    DeliveryOrigin, Destination, Envelope, Event, Harness, Job, JobId, Outcome, Pane, ProcIdentity,
+    Receipt, SeatDescriptor,
 };
-use pij_core::ports::{Queue, Registry, Spine};
+use pij_core::ports::{DeliveryEnqueue, Queue, Registry, Spine};
 use pij_core::wire::{self, WireEvent};
 use pij_testkit::fakes::{FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux};
 
@@ -39,12 +39,26 @@ impl Queue for CountingQueue {
         Ok(JobId(jobs.len() as u64))
     }
 
+    async fn enqueue_delivery(&self, _job: Job) -> Result<DeliveryEnqueue> {
+        Err(pij_core::error::PijError::Adapter {
+            adapter: "test/counting-queue".to_string(),
+            message: "the counting request fixture does not model delivered ids".to_string(),
+        })
+    }
+
     async fn claim(&self, _kinds: &[String], _worker: &str) -> Result<Option<(JobId, Job)>> {
         Ok(None)
     }
 
     async fn ack(&self, _job: JobId, _outcome: Outcome) -> Result<()> {
         Ok(())
+    }
+
+    async fn ack_delivery(&self, _job: JobId, _origin: DeliveryOrigin) -> Result<()> {
+        Err(pij_core::error::PijError::Adapter {
+            adapter: "test/counting-queue".to_string(),
+            message: "the request path must not delivery-ack: it never claims".to_string(),
+        })
     }
 
     /// This counter only ever observes the REQUEST path, which enqueues and
@@ -157,7 +171,7 @@ fn send_request_uses_resolved_destination_object_and_optional_reply_id() {
 async fn auth_ring_covers_every_declared_route_and_accepts_peer_keys() {
     let services = test_services(
         Arc::new(FakeRegistry::new()),
-        Arc::new(FakeQueue::new()),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
         Arc::new(FakeSpine::new()),
     )
     .await;
@@ -212,7 +226,7 @@ async fn registration_corroborates_process_and_refuses_shared_process_aliases() 
     let registry = Arc::new(FakeRegistry::new());
     let mut services = test_services(
         registry.clone(),
-        Arc::new(FakeQueue::new()),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
         Arc::new(FakeSpine::new()),
     )
     .await;
@@ -304,7 +318,7 @@ async fn registration_refuses_uncorroborated_or_half_process_identity() {
     let registry = Arc::new(FakeRegistry::new());
     let services = test_services(
         registry.clone(),
-        Arc::new(FakeQueue::new()),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
         Arc::new(FakeSpine::new()),
     )
     .await;
@@ -372,7 +386,7 @@ async fn spawn_stamps_only_the_argv_that_reached_the_observed_launch() {
     }));
     let mut services = test_services(
         registry.clone(),
-        Arc::new(FakeQueue::new()),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
         Arc::new(FakeSpine::new()),
     )
     .await;
@@ -576,7 +590,7 @@ async fn seats_performs_one_unfiltered_registry_list() {
     )));
     let services = test_services(
         registry.clone(),
-        Arc::new(FakeQueue::new()),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
         Arc::new(FakeSpine::new()),
     )
     .await;
@@ -600,7 +614,7 @@ async fn events_are_live_by_default_and_frame_unknown_kinds_with_a_cursor() {
     let spine = Arc::new(FakeSpine::new());
     let services = test_services(
         Arc::new(FakeRegistry::new()),
-        Arc::new(FakeQueue::new()),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
         spine,
     )
     .await;
@@ -654,7 +668,7 @@ async fn explicit_since_replays_then_stays_live() {
     let spine = Arc::new(FakeSpine::new());
     let services = test_services(
         Arc::new(FakeRegistry::new()),
-        Arc::new(FakeQueue::new()),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
         spine,
     )
     .await;
@@ -906,7 +920,7 @@ async fn two_daemons_forward_remote_send_into_destination_queue_and_spine() {
         .put(b_recipient)
         .await
         .expect("register bound destination");
-    let b_queue = Arc::new(FakeQueue::new());
+    let b_queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
     let b_spine = Arc::new(FakeSpine::new());
     let b_services = test_services(b_registry, b_queue.clone(), b_spine.clone()).await;
     let (b_addr, b_server) = spawn(router_with_config(
@@ -919,7 +933,7 @@ async fn two_daemons_forward_remote_send_into_destination_queue_and_spine() {
     ))
     .await;
 
-    let a_queue = Arc::new(FakeQueue::new());
+    let a_queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
     let a_spine = Arc::new(FakeSpine::new());
     let a_services = test_services(Arc::new(FakeRegistry::new()), a_queue, a_spine.clone()).await;
     let federation = Arc::new(
@@ -1024,7 +1038,7 @@ async fn two_daemons_forward_remote_send_into_destination_queue_and_spine() {
 async fn wrong_peer_key_is_permanent_and_never_hot_loops() {
     let b_services = test_services(
         Arc::new(FakeRegistry::new()),
-        Arc::new(FakeQueue::new()),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
         Arc::new(FakeSpine::new()),
     )
     .await;
@@ -1038,7 +1052,7 @@ async fn wrong_peer_key_is_permanent_and_never_hot_loops() {
     ))
     .await;
 
-    let a_queue = Arc::new(FakeQueue::new());
+    let a_queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
     let a_bus =
         Arc::new(crate::events::EventBus::new(Arc::new(FakeSpine::new()), 16).expect("event bus"));
     let federation = FederationService::new(
@@ -1085,7 +1099,7 @@ async fn peer_key_removal_takes_effect_when_router_restarts() {
     let client = reqwest::Client::new();
     let first_services = test_services(
         Arc::new(FakeRegistry::new()),
-        Arc::new(FakeQueue::new()),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
         Arc::new(FakeSpine::new()),
     )
     .await;
@@ -1108,7 +1122,7 @@ async fn peer_key_removal_takes_effect_when_router_restarts() {
 
     let restarted_services = test_services(
         Arc::new(FakeRegistry::new()),
-        Arc::new(FakeQueue::new()),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
         Arc::new(FakeSpine::new()),
     )
     .await;
