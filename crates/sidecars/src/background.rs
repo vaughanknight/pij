@@ -175,9 +175,7 @@ impl BgWorker {
             match result {
                 Ok(()) => self.queue.ack(queue_id, Outcome::Done).await?,
                 Err(error) => {
-                    self.queue
-                        .retry(queue_id, Duration::from_millis(100))
-                        .await?;
+                    self.queue.retry(queue_id, Duration::from_secs(1)).await?;
                     if first_error.is_none() {
                         first_error = Some(error);
                     }

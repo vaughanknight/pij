@@ -872,3 +872,50 @@ async fn background_reports_failed_and_lost_without_starving_other_completions()
         .await
         .expect("cleanup reap");
 }
+
+#[tokio::test]
+async fn duplicate_background_start_cannot_wedge_an_innocent_job() {
+    let fresh = FreshStore::new();
+    let queue = sqlite_queue(&fresh).await;
+    let queue_port: Arc<dyn Queue> = queue.clone();
+    let worker = BgWorker::new(queue_port, temp_path(&fresh, "bg-duplicate")).expect("worker");
+    let target = SeatId::from("pij-test");
+    let request = |id: &str| BgRequest::Start {
+        id: id.to_string(),
+        title: id.to_string(),
+        command: "sleep 30".to_string(),
+        target: target.clone(),
+    };
+    queue
+        .enqueue(background::job(&request("j1"), "j1-first").expect("job"))
+        .await
+        .expect("enqueue");
+    worker.run_once(8).await.expect("start j1");
+    queue
+        .enqueue(background::job(&request("j1"), "j1-client-retry").expect("job"))
+        .await
+        .expect("enqueue duplicate");
+    queue
+        .enqueue(background::job(&request("j2"), "j2-innocent").expect("job"))
+        .await
+        .expect("enqueue innocent");
+    let error = worker
+        .run_once(8)
+        .await
+        .expect_err("duplicate remains an explicit refusal");
+    assert!(error.to_string().contains("already exists"));
+    let j2 = worker
+        .load("j2")
+        .expect("innocent job must start despite duplicate retry");
+    assert_eq!(j2.status, BgStatus::Running);
+    for record in [worker.load("j1").expect("j1"), j2] {
+        Command::new("/bin/kill")
+            .args(["-KILL", &format!("-{}", record.pgid)])
+            .status()
+            .expect("cleanup group");
+        worker
+            .await_group_exit(&record.id, record.pgid)
+            .await
+            .expect("cleanup reap");
+    }
+}
