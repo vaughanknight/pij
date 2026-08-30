@@ -255,3 +255,28 @@ Convergent on 9 majors; our three declared divergences all judged PRINCIPLED.
   our hardened arch gate (required 'why', runtime workspace resolution, --locked metadata).
 - **Standing item**: promote the architecture map from plan-108 assets to a repo front door
   before the plan closes.
+
+## R3-AMEND-4 — new_window carries an optional command (2026-08-30, vicuna ruling)
+
+**ACCEPTED**: `TmuxPort::new_window(session, name, cwd)` widens to carry an OPTIONAL command —
+executable + discrete argv, no shell string. `None` preserves today's empty-window behaviour.
+Still seven ports; additive in meaning.
+
+**The load-bearing reason** (beyond "tmux takes the command at window creation, so no ordering
+under the old signature can launch inside a window"): the descriptor stamp must derive from THE
+ACTUAL ARGV EMITTED, not the request that asked for it — `cross_session_inbound_accept:
+Some(true)` only if the accept pair really went on the command line. Assembling argv where the
+launch seam cannot see it makes the stamp an assumption, the exact defect the field prevents.
+
+**Rejected alternatives, ratified as rejections**: launch-then-adopt (window exists before its
+process; seat registered against a pane that may never get one); shell string (quoting as
+attack+bug surface in a launcher carrying user-supplied model ids/paths); ninth crate
+(contradicts the ratified eight).
+
+**PM rulings in the same ack, endorsed**: plan builder lives pure in pij-harnesses; POST
+/v1/spawn stores only AFTER an observed launch (store-first = false live row; store-after-
+unobserved = delivered-without-observation in costume); from-mode STRUCK from the unit (no
+destination field exists and the UDS ruling forbids inventing one).
+
+**Precedent note**: second seam change accepted at an ACK with zero implementations built
+against the new shape ([[seam-change-window]] holding twice in one plan).
