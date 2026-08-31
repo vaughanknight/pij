@@ -170,3 +170,28 @@ Both were cheap because they arrived while the design was still free to change. 
 the falsifier down **before** the result exists — a falsifier recalled afterwards is
 just an opinion about what would have convinced you.
 
+### A sixth habit — when a red will not reproduce, MUTATE rather than repeat
+
+Wave 7 filed an unexplained red in the packet's priority-1 test: a background
+cancel failing roughly one run in seven, never on demand. Two rounds later the
+same reviewer disabled the escalation with a one-word mutation and the failure
+came back **on demand, with the original signature** — same timeout, same
+surviving pids named.
+
+> **Repetition told us 1-in-7. The mutation told us why.**
+
+Repetition can only distinguish *rare* from *never*. It cannot distinguish *rare*
+from *conditional*, and it cannot tell you the mechanism at all. Removing the
+suspected fix and asking whether the failure has the SAME SHAPE does both: if it
+matches, the witness defends that defect rather than an adjacent one, and the
+mechanism is named by construction.
+
+This also pins a witness's scope. A mutation that reproduces the original
+signature proves the test is watching the thing it was written for; a mutation
+that produces a *different* failure proves the opposite, and is worth knowing
+before the verdict.
+
+Corollary from the same wave: a stress sample and a mutation answer different
+questions, and the stress sample is the weaker one. Prefer the mutation first, and
+use repetition to bound the frequency once you already know the cause.
+
