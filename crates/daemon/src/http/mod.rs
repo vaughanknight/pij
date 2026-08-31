@@ -47,7 +47,7 @@ pub use types::{
 };
 
 #[derive(Clone)]
-struct AppState {
+pub(crate) struct AppState {
     services: Services,
     auth: AuthRing,
     machine_alias: String,
@@ -379,6 +379,10 @@ async fn register(State(state): State<AppState>, Json(claim): Json<Registration>
     }
     descriptor.parent = claim.parent;
     descriptor.relay = claim.relay;
+    // A registration describes the current process incarnation but carries no
+    // freshly allocated Copilot UI-server port. Never inherit a dead launch's
+    // endpoint intent merely because the stable seat id is reused.
+    descriptor.rpc_port_intent = None;
     // Tombstone the predecessor BEFORE writing the successor, and name the
     // successor in the reason. Not a delete: queued work and history for the old
     // id must not silently vanish, and `SeatIsGone` carrying "superseded by X" is
@@ -397,6 +401,7 @@ async fn register(State(state): State<AppState>, Json(claim): Json<Registration>
                 "superseded by `{}` at a native session boundary (same process)",
                 claim.id
             ));
+            previous.rpc_port_intent = None;
             if let Err(error) = state.services.registry.put(previous).await {
                 return internal("pij register", error);
             }
@@ -426,36 +431,91 @@ async fn allocate_memorable_id(registry: &dyn Registry, seed: &str) -> Result<Op
     Ok(None)
 }
 
+/// Ask the kernel for a loopback port for one Copilot launch, excluding the
+/// tombstoned incarnation's old value. Dropping the listener before Copilot
+/// binds is an acknowledged TOCTOU: the resulting descriptor records argv
+/// intent, never listener possession.
+async fn allocate_copilot_rpc_port(excluded: Option<u16>) -> Result<u16> {
+    let bind = || async {
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .await
+            .map_err(|error| PijError::Adapter {
+                adapter: "spawn".to_string(),
+                message: format!("could not allocate a loopback port for Copilot RPC: {error}"),
+            })?;
+        let port = listener
+            .local_addr()
+            .map_err(|error| PijError::Adapter {
+                adapter: "spawn".to_string(),
+                message: format!("could not read the allocated Copilot RPC port: {error}"),
+            })?
+            .port();
+        Ok::<_, PijError>((listener, port))
+    };
+    let (listener, port) = bind().await?;
+    if Some(port) != excluded {
+        return Ok(port);
+    }
+    // Hold the excluded port while asking the kernel again, making inequality
+    // structural rather than probabilistic.
+    let _excluded_listener = listener;
+    let (_replacement_listener, replacement) = bind().await?;
+    Ok(replacement)
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct ExistingSeatPolicy {
+    pub(crate) allow_absent: bool,
+}
+
 async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequest>) -> Response {
+    launch_seat(
+        &state,
+        request,
+        ExistingSeatPolicy { allow_absent: true },
+        "pij spawn",
+    )
+    .await
+}
+
+/// Launch one seat under the spawn lock. Spawn and revive routes share this
+/// transition so allocation, argv-derived stamps, rollback, and persistence
+/// have exactly one owner.
+pub(crate) async fn launch_seat(
+    state: &AppState,
+    request: SpawnRequest,
+    existing_policy: ExistingSeatPolicy,
+    command_name: &'static str,
+) -> Response {
     if let Some(id) = request.id.as_ref()
         && id.as_str().trim().is_empty()
     {
-        return refused("pij spawn", "--id must be non-empty when supplied");
+        return refused(command_name, "--id must be non-empty when supplied");
     }
     if !Path::new(&request.cwd).is_absolute() {
         return refused(
-            "pij spawn",
+            command_name,
             "--cwd must be absolute so the descriptor cannot depend on daemon cwd",
         );
     }
 
     let session = match request.session.as_deref() {
         Some(session) if !session.trim().is_empty() => session.to_string(),
-        Some(_) => return refused("pij spawn", "--session must be non-empty"),
+        Some(_) => return refused(command_name, "--session must be non-empty"),
         None => {
             let Some(caller_pane) = request.caller_pane.as_deref() else {
                 return refused(
-                    "pij spawn",
+                    command_name,
                     "no caller pane was supplied — pass --session <tmux> explicitly",
                 );
             };
             let panes = match state.services.tmux.list_panes().await {
                 Ok(panes) => panes,
-                Err(error) => return internal("pij spawn", error),
+                Err(error) => return internal(command_name, error),
             };
             let Some(pane) = panes.iter().find(|pane| pane.id == caller_pane) else {
                 return refused(
-                    "pij spawn",
+                    command_name,
                     format!(
                         "caller pane `{caller_pane}` did not resolve to a tmux session — pass --session <tmux> explicitly"
                     ),
@@ -465,51 +525,60 @@ async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequ
         }
     };
 
-    // Keep the collision check, observed launch, and descriptor write in one
+    // Keep classification, observed launch, and descriptor write in one
     // daemon-local critical section. Registry::put is an upsert; without this
-    // lock two concurrent requests for one id could both launch before either
-    // row existed, then silently overwrite one another.
-    // Minted BEFORE the lock: it is this launch's identity and it also seeds the
-    // memorable allocation below, so the name a spawn gets is a function of the
-    // spawn rather than of the clock or the roster's shape.
+    // lock two requests could both launch before either row existed.
     let spawn_id = match mint_spawn_id() {
         Ok(spawn_id) => spawn_id,
-        Err(error) => return internal("pij spawn", error),
+        Err(error) => return internal(command_name, error),
     };
-
     let _spawn_guard = state.spawn_lock.lock().await;
-    let seat_id = match request.id.clone() {
-        // An explicit id is taken as given, and a collision REFUSES: spawn never
-        // overwrites a roster row.
+    let (seat_id, prior_rpc_port_intent, reviving) = match request.id.clone() {
         Some(id) => match state.services.registry.get(&id).await {
-            Ok(Some(_)) => {
-                return refused(
-                    "pij spawn",
+            Ok(Some(existing)) if existing.tombstoned_at.is_none() => {
+                let reason = if existing_policy.allow_absent {
                     format!(
-                        "seat `{id}` already exists — choose another --id; spawn never overwrites a roster row"
-                    ),
-                );
+                        "seat `{id}` already exists and is live — spawn never overwrites a live roster row"
+                    )
+                } else {
+                    format!("seat `{id}` is live, so it cannot be revived")
+                };
+                return refused(command_name, reason);
             }
-            Ok(None) => id,
-            Err(error) => return internal("pij spawn", error),
-        },
-        // No id: ALLOCATE a memorable one. The generator yields candidates in a
-        // deterministic collision-free order, so occupancy is the only reason to
-        // advance — the reservation loop is the queue-side half u-names
-        // deliberately did not own, held under the same lock as the launch so two
-        // concurrent spawns cannot pick one name.
-        None => match allocate_memorable_id(&*state.services.registry, &spawn_id).await {
-            Ok(Some(id)) => id,
+            Ok(Some(existing)) => (id, existing.rpc_port_intent, true),
+            Ok(None) if existing_policy.allow_absent => (id, None, false),
             Ok(None) => {
                 return refused(
-                    "pij spawn",
-                    "every memorable name is taken — pass an explicit --id",
+                    command_name,
+                    format!("seat `{id}` does not exist, so it cannot be revived"),
                 );
             }
-            Err(error) => return internal("pij spawn", error),
+            Err(error) => return internal(command_name, error),
         },
+        None if existing_policy.allow_absent => {
+            match allocate_memorable_id(&*state.services.registry, &spawn_id).await {
+                Ok(Some(id)) => (id, None, false),
+                Ok(None) => {
+                    return refused(
+                        command_name,
+                        "every memorable name is taken — pass an explicit --id",
+                    );
+                }
+                Err(error) => return internal(command_name, error),
+            }
+        }
+        None => return refused(command_name, "revive requires an existing seat id"),
     };
 
+    let copilot_rpc_port_intent = if request.harness == Harness::Copilot {
+        let excluded_port = reviving.then_some(prior_rpc_port_intent).flatten();
+        match allocate_copilot_rpc_port(excluded_port).await {
+            Ok(port) => Some(port),
+            Err(error) => return internal(command_name, error),
+        }
+    } else {
+        None
+    };
     let plan = match build_spawn_plan(SpawnPlanInput {
         seat_id: seat_id.clone(),
         harness: request.harness,
@@ -518,20 +587,19 @@ async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequ
         resolved_provider: None,
         effort: request.effort,
         accept_inbound: request.accept_inbound,
+        copilot_rpc_port_intent,
     }) {
         Ok(plan) => plan,
-        Err(error) => return refused("pij spawn", error),
+        Err(error) => return refused(command_name, error),
     };
     let command = LaunchCommand {
         executable: plan.executable.clone(),
         args: plan.args.clone(),
     };
-
     let name = request
         .name
         .filter(|name| !name.trim().is_empty())
         .unwrap_or_else(|| seat_id.as_str().to_string());
-
     let pane = match state
         .services
         .tmux
@@ -539,13 +607,16 @@ async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequ
         .await
     {
         Ok(pane) => pane,
-        Err(error) => return internal("pij spawn", error),
+        Err(error) => return internal(command_name, error),
     };
 
+    // Carry seat and launch intent into the fresh row; never carry possession.
+    // `proc` remains absent until the new incarnation registers.
     let mut descriptor = SeatDescriptor::new(seat_id, plan.harness, request.cwd);
     descriptor.pane = Some(pane.id.clone());
     descriptor.parent = request.parent;
     descriptor.cross_session_inbound_accept = Some(plan.cross_session_inbound_accept);
+    descriptor.rpc_port_intent = plan.rpc_port_intent;
     descriptor.spawn_id = Some(spawn_id);
     descriptor.model = plan.model;
     descriptor.provider = plan.provider;
@@ -563,7 +634,7 @@ async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequ
             ),
         };
         return internal(
-            "pij spawn",
+            command_name,
             PijError::Adapter {
                 adapter: "spawn".to_string(),
                 message,
@@ -571,7 +642,7 @@ async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequ
         );
     }
 
-    envelope(StatusCode::OK, &Envelope::ok("pij spawn", descriptor))
+    envelope(StatusCode::OK, &Envelope::ok(command_name, descriptor))
 }
 
 async fn send(State(state): State<AppState>, Json(request): Json<SendRequest>) -> Response {

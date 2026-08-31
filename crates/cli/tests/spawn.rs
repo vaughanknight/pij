@@ -3,10 +3,11 @@ use std::sync::Arc;
 
 use pij_core::config::{AdapterChoice, Adapters, Config};
 use pij_core::model::{
-    DeliveryOrigin, DeliveryOutcome, Envelope, Msg, ProcIdentity, Receipt, SeatDescriptor, SeatId,
-    Seq,
+    DeliveryOrigin, DeliveryOutcome, Envelope, Harness, Msg, ProcIdentity, Receipt, SeatDescriptor,
+    SeatId, Seq,
 };
-use pij_daemon::http::{FederatedRoster, HttpConfig, router_with_config};
+use pij_core::ports::Registry;
+use pij_daemon::http::{HttpConfig, router_with_config};
 use pij_store::SqliteRegistry;
 use pij_testkit::fakes::{FakeLiveness, FakeTmux, FakeTransport};
 use pij_testkit::fresh_dir;
@@ -40,7 +41,7 @@ where
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn shipped_cli_spawns_both_capability_rows_through_real_registry() {
+async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_intent() {
     let dir = fresh_dir("pij-spawn-e2e");
     std::fs::write(dir.join("daemon.key"), "spawn-test-key").expect("write client key");
     let pool = pij_store::open(
@@ -52,14 +53,27 @@ async fn shipped_cli_spawns_both_capability_rows_through_real_registry() {
     .expect("open real store");
     let registry = Arc::new(SqliteRegistry::new(pool));
     let tmux = Arc::new(FakeTmux::new());
+    let first_identity = ProcIdentity {
+        pid: 4242,
+        proc_start: 20260830112233,
+    };
+    let successor_identity = ProcIdentity {
+        pid: 4343,
+        proc_start: 20260830112234,
+    };
     let mut services = pij_daemon::build_services(
         &Config::default(),
         std::path::Path::new("/tmp/pij-test-pane-signals"),
     )
     .await
     .expect("build services");
-    services.registry = registry;
+    services.registry = registry.clone();
     services.tmux = tmux.clone();
+    services.liveness = Arc::new(
+        FakeLiveness::new()
+            .with_proc(first_identity)
+            .with_proc(successor_identity),
+    );
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -82,15 +96,15 @@ async fn shipped_cli_spawns_both_capability_rows_through_real_registry() {
     });
     let addr = addr.to_string();
 
-    for (id, accepted) in [("pij-e2e-closed", false), ("pij-e2e-open", true)] {
+    let spawn = |id: &str, harness: &str, accept_inbound: bool| {
         let mut args = vec![
             "spawn",
             "--id",
             id,
             "--harness",
-            "claude",
+            harness,
             "--bin",
-            "/path with spaces/claude",
+            "/path with spaces/agent",
             "--model",
             "provider/model",
             "--effort",
@@ -100,7 +114,7 @@ async fn shipped_cli_spawns_both_capability_rows_through_real_registry() {
             "--session",
             "fleet",
         ];
-        if accepted {
+        if accept_inbound {
             args.push("--accept-inbound");
         }
         let output = run_cli(&dir, &addr, &args);
@@ -111,27 +125,176 @@ async fn shipped_cli_spawns_both_capability_rows_through_real_registry() {
         );
         let envelope: Envelope<SeatDescriptor> =
             serde_json::from_slice(&output.stdout).expect("spawn JSON envelope");
-        let descriptor = envelope.data.expect("spawn descriptor");
-        assert_eq!(descriptor.id.as_str(), id);
-        assert_eq!(descriptor.proc, None);
-        assert_eq!(descriptor.cross_session_inbound_accept, Some(accepted));
-    }
+        envelope.data.expect("spawn descriptor")
+    };
 
-    let listed = run_cli(&dir, &addr, &["list"]);
-    assert!(listed.status.success());
-    let envelope: Envelope<FederatedRoster> =
-        serde_json::from_slice(&listed.stdout).expect("list JSON envelope");
-    let roster = envelope.data.expect("listed roster");
-    assert!(roster.unavailable.is_empty());
-    let seats = roster.seats;
-    assert_eq!(seats.len(), 2);
-    assert_eq!(seats[0].cross_session_inbound_accept, Some(false));
-    assert_eq!(seats[1].cross_session_inbound_accept, Some(true));
+    let closed = spawn("pij-e2e-closed", "claude", false);
+    let accepted = spawn("pij-e2e-open", "claude", true);
+    assert_eq!(closed.cross_session_inbound_accept, Some(false));
+    assert_eq!(accepted.cross_session_inbound_accept, Some(true));
+    assert_eq!(closed.rpc_port_intent, None);
+    assert_eq!(accepted.rpc_port_intent, None);
 
+    let first = spawn("pij-e2e-rpc", "copilot", false);
+    assert_eq!(first.proc, None, "spawn writes a pre-bind row");
+    let old_port = first
+        .rpc_port_intent
+        .expect("Copilot spawn stamps argv intent");
     let calls = tmux.calls();
-    assert_eq!(calls.len(), 2);
-    assert!(!calls[0].contains("crossSessionInbound"));
+    assert_eq!(calls.len(), 3);
+    assert!(!calls[0].contains("--ui-server"));
     assert!(calls[1].contains(r#"{\"crossSessionInbound\":\"accept\"}"#));
+    assert!(calls[2].contains(&format!("\"--ui-server\", \"--port\", \"{old_port}\"")));
+
+    let live_collision = run_cli(
+        &dir,
+        &addr,
+        &[
+            "spawn",
+            "--id",
+            "pij-e2e-rpc",
+            "--harness",
+            "copilot",
+            "--cwd",
+            "/abs/tree",
+            "--session",
+            "fleet",
+        ],
+    );
+    assert!(
+        !live_collision.status.success(),
+        "a live id must still refuse"
+    );
+    assert_eq!(tmux.calls().len(), 3, "live collision launches nothing");
+
+    registry
+        .tombstone(&first.id, "test transition")
+        .await
+        .expect("tombstone first incarnation");
+    assert_eq!(
+        registry
+            .get(&first.id)
+            .await
+            .expect("read tombstone")
+            .expect("post-mortem row")
+            .rpc_port_intent,
+        None,
+        "tombstone clearing is an observed act"
+    );
+    let recycled = std::net::TcpListener::bind(("127.0.0.1", old_port))
+        .expect("old intent port is free for the recycled-owner witness");
+    let revived = spawn("pij-e2e-rpc", "copilot", false);
+    let fresh_port = revived.rpc_port_intent.expect("revive stamps fresh intent");
+    assert_ne!(fresh_port, old_port, "revive must replace the old value");
+    drop(recycled);
+    assert_eq!(
+        registry
+            .get(&revived.id)
+            .await
+            .expect("later registry pass")
+            .expect("revived row")
+            .rpc_port_intent,
+        Some(fresh_port),
+        "nothing re-stamps the old value on a later pass"
+    );
+
+    let register_same = || {
+        run_cli(
+            &dir,
+            &addr,
+            &[
+                "register",
+                "pij-e2e-rpc",
+                "--harness",
+                "copilot",
+                "--folder",
+                "/abs/tree",
+                "--pane",
+                "%42",
+                "--pid",
+                "4242",
+                "--proc-start",
+                "20260830112233",
+            ],
+        )
+    };
+    for pass in 1..=2 {
+        let registered = register_same();
+        assert!(
+            registered.status.success(),
+            "registration pass {pass}: {}",
+            String::from_utf8_lossy(&registered.stderr)
+        );
+        let envelope: Envelope<SeatDescriptor> =
+            serde_json::from_slice(&registered.stdout).expect("registration envelope");
+        assert_eq!(
+            envelope
+                .data
+                .expect("registered descriptor")
+                .rpc_port_intent,
+            None,
+            "registration without a fresh allocation must not inherit port intent"
+        );
+    }
+    assert_eq!(
+        registry
+            .get(&revived.id)
+            .await
+            .expect("read after repeated registration")
+            .expect("registered row")
+            .rpc_port_intent,
+        None,
+        "a later registration pass must not resurrect the stale port"
+    );
+
+    let mut predecessor = SeatDescriptor::new("pij-e2e-predecessor", Harness::Copilot, "/abs/tree");
+    predecessor.proc = Some(successor_identity);
+    predecessor.rpc_port_intent = Some(60_001);
+    registry
+        .put(predecessor.clone())
+        .await
+        .expect("seed predecessor");
+    let superseded = run_cli(
+        &dir,
+        &addr,
+        &[
+            "register",
+            "pij-e2e-successor",
+            "--supersedes",
+            "pij-e2e-predecessor",
+            "--harness",
+            "copilot",
+            "--folder",
+            "/abs/tree",
+            "--pane",
+            "%43",
+            "--pid",
+            "4343",
+            "--proc-start",
+            "20260830112234",
+        ],
+    );
+    assert!(
+        superseded.status.success(),
+        "supersedes registration: {}",
+        String::from_utf8_lossy(&superseded.stderr)
+    );
+    let retired = registry
+        .get(&predecessor.id)
+        .await
+        .expect("read predecessor")
+        .expect("predecessor post-mortem");
+    assert!(retired.tombstoned_at.is_some());
+    assert_eq!(retired.rpc_port_intent, None);
+    assert_eq!(
+        registry
+            .get(&SeatId::from("pij-e2e-successor"))
+            .await
+            .expect("read successor")
+            .expect("successor row")
+            .rpc_port_intent,
+        None
+    );
 
     server.abort();
     drop(dir);

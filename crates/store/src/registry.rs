@@ -137,6 +137,10 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
             .try_get::<Option<i64>, _>("cross_session_inbound_accept")
             .map_err(adapter_error)?
             .map(|flag| flag != 0),
+        rpc_port_intent: row
+            .try_get::<Option<i64>, _>("rpc_port_intent")
+            .map_err(adapter_error)?
+            .map(|port| port as u16),
     })
 }
 
@@ -191,9 +195,9 @@ impl Registry for SqliteRegistry {
         sqlx::query(
             "INSERT INTO seats (id, harness, pane, pid, proc_start, folder, state, \
              semantic_state, role, parent, relay, tombstoned_at, tombstone_reason, seq, \
-             spawn_id, model, provider, effort, cross_session_inbound_accept) \
+             spawn_id, model, provider, effort, cross_session_inbound_accept, rpc_port_intent) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
-             ?17, ?18, ?19) \
+             ?17, ?18, ?19, ?20) \
              ON CONFLICT(id) DO UPDATE SET \
              harness=excluded.harness, pane=excluded.pane, pid=excluded.pid, \
              proc_start=excluded.proc_start, folder=excluded.folder, state=excluded.state, \
@@ -203,7 +207,8 @@ impl Registry for SqliteRegistry {
              tombstone_reason=excluded.tombstone_reason, seq=excluded.seq, \
              spawn_id=excluded.spawn_id, model=excluded.model, \
              provider=excluded.provider, effort=excluded.effort, \
-             cross_session_inbound_accept=excluded.cross_session_inbound_accept",
+             cross_session_inbound_accept=excluded.cross_session_inbound_accept, \
+             rpc_port_intent=excluded.rpc_port_intent",
         )
         .bind(descriptor.id.as_str())
         .bind(descriptor.harness.as_str())
@@ -224,6 +229,7 @@ impl Registry for SqliteRegistry {
         .bind(descriptor.provider.as_deref())
         .bind(descriptor.effort.as_deref())
         .bind(descriptor.cross_session_inbound_accept.map(i64::from))
+        .bind(descriptor.rpc_port_intent.map(i64::from))
         .execute(&mut *tx)
         .await
         .map_err(adapter_error)?;
@@ -269,7 +275,8 @@ impl Registry for SqliteRegistry {
         .map_err(adapter_error)?;
 
         let affected = sqlx::query(
-            "UPDATE seats SET tombstoned_at = ?2, tombstone_reason = ?3, seq = ?4 WHERE id = ?1",
+            "UPDATE seats SET tombstoned_at = ?2, tombstone_reason = ?3, \
+             rpc_port_intent = NULL, seq = ?4 WHERE id = ?1",
         )
         .bind(seat.as_str())
         .bind(seq)

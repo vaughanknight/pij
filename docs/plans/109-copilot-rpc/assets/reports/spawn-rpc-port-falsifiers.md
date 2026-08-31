@@ -57,3 +57,19 @@ Write a port-stamped descriptor, tombstone it, then observe both the tombstone a
 A new descriptor and a non-Copilot spawn both carry `rpc_port_intent: None`; legacy rows gain a nullable column through schema migration 9. No helper in this unit interprets the field as deliverability. Unit 2 owns the read-time live-process requirement.
 
 **Red mutation:** make the constructor or non-Copilot spawn invent a port. The absence assertions must fail.
+
+## Demonstrated red arms
+
+All commands ran with `env -u CARGO_TARGET_DIR CARGO_INCREMENTAL=0` from the unit worktree.
+
+| Falsifier | Deliberate mutation | Command | Observed red |
+|---|---|---|---|
+| F1 | SpawnPlan returned `rpc_port_intent: None` while argv still emitted the flags | `cargo test --locked -p pij-harnesses copilot_rpc_stamp_is_derived_only_from_the_exact_emitted_argv` | `left: None`, `right: Some(47781)` |
+| F2 | Copilot allocation disabled only when `reviving` | `cargo test --locked -p pij-cli --test spawn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_intent` | panic at `revive stamps fresh intent` |
+| F3 | Same-id registration omitted its explicit clear | same shipped CLI transition test | `left: Some(52597)`, `right: None` |
+| F4 | Supersedes branch omitted the predecessor clear | same shipped CLI transition test | `left: Some(60001)`, `right: None` |
+| F5 | Removed only `rpc_port_intent=excluded.rpc_port_intent` from SQLite upsert | `cargo test --locked -p pij-store --test store_integration rpc_port_intent_updates_to_a_different_value_and_tombstone_clears_it` | old `Some(47781)` remained instead of `Some(51948)` |
+| F6 | Removed only `rpc_port_intent = NULL` from SQLite tombstone | same real-store test | tombstone retained `Some(51948)` instead of `None` |
+| F7 | Constructor invented `Some(1)` | same real-store test | closed-default assertion saw `Some(1)` instead of `None` |
+
+Instrument correction: the first F1 command included `-- --exact` without the module-qualified test name and ran zero tests. It was discarded; the unfiltered-name command above ran one test and produced the recorded red.

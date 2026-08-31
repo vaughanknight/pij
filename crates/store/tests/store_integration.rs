@@ -180,9 +180,49 @@ async fn a_seat_round_trips_with_every_optional_fact_intact() {
     seat.role = Some("pm".to_string());
     seat.parent = Some(SeatId::from("pij-prime"));
     seat.relay = true;
+    seat.rpc_port_intent = Some(47_781);
 
     registry.put(seat.clone()).await.expect("put");
     assert_eq!(registry.get(&seat.id).await.expect("get"), Some(seat));
+}
+
+#[tokio::test]
+async fn rpc_port_intent_updates_to_a_different_value_and_tombstone_clears_it() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let registry = SqliteRegistry::new(pool);
+    let mut seat = SeatDescriptor::new("pij-rpc-upsert", Harness::Copilot, "/abs/tree");
+    assert_eq!(seat.rpc_port_intent, None, "absence is the closed default");
+
+    seat.rpc_port_intent = Some(47_781);
+    registry.put(seat.clone()).await.expect("insert port A");
+    seat.rpc_port_intent = Some(51_948);
+    registry.put(seat.clone()).await.expect("update to port B");
+    assert_eq!(
+        registry
+            .get(&seat.id)
+            .await
+            .expect("read updated descriptor")
+            .expect("descriptor")
+            .rpc_port_intent,
+        Some(51_948),
+        "a real SQLite upsert must replace the old incarnation's port intent"
+    );
+
+    registry
+        .tombstone(&seat.id, "process exited")
+        .await
+        .expect("tombstone");
+    let tombstoned = registry
+        .get(&seat.id)
+        .await
+        .expect("read tombstone")
+        .expect("descriptor remains as post-mortem");
+    assert!(tombstoned.tombstoned_at.is_some());
+    assert_eq!(
+        tombstoned.rpc_port_intent, None,
+        "tombstone clearing is observed from registry truth"
+    );
 }
 
 #[tokio::test]

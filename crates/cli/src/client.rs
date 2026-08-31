@@ -18,6 +18,9 @@ use serde_json::Value;
 /// A registration claim. The daemon verifies it before storing anything.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Registration {
+    /// Existing same-process seat replaced at a native session boundary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supersedes: Option<SeatId>,
     /// Requested seat id.
     pub id: SeatId,
     /// Host harness.
@@ -515,6 +518,7 @@ mod tests {
     #[test]
     fn registration_requires_pid_and_start_time_together() {
         let mut registration = Registration {
+            supersedes: None,
             id: "seat".into(),
             harness: Harness::Omp,
             folder: "/tmp".to_string(),

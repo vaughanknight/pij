@@ -258,6 +258,7 @@ async fn emitted_spawn_argv_is_the_stamp_that_opens_the_real_transport() {
             resolved_provider: None,
             effort: None,
             accept_inbound,
+            copilot_rpc_port_intent: None,
         })
         .expect("Claude spawn plan")
     };

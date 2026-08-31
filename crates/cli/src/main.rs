@@ -62,6 +62,9 @@ enum Command {
     Ping,
     /// Register one seat claim for daemon verification.
     Register {
+        /// Existing same-process seat replaced by this registration.
+        #[arg(long)]
+        supersedes: Option<String>,
         /// Requested seat id.
         id: String,
         /// Host harness.
@@ -384,6 +387,7 @@ async fn run(cli: Cli) -> ExitCode {
         Command::Ping => emit(&client.ping().await, cli.json),
         Command::Sidecar { action } => emit(&client.sidecar(&action.request()).await, cli.json),
         Command::Register {
+            supersedes,
             id,
             harness,
             folder,
@@ -398,6 +402,7 @@ async fn run(cli: Cli) -> ExitCode {
             relay,
         } => {
             let registration = Registration {
+                supersedes: supersedes.map(Into::into),
                 id: id.into(),
                 harness,
                 folder,
