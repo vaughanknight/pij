@@ -314,9 +314,11 @@ Content-Length: 102
 After `ENTER_RPC_IMMEDIATE` completed, pressing Enter submitted the original draft intact.
 
 Exact session ordering for both modes:
+Durable source: [`u-copilot-verify-enter-discriminator-events.jsonl`](./u-copilot-verify-enter-discriminator-events.jsonl), SHA-256 `68a543a9cf7105d6f29cc7bfc3401e7b3ef64a9ed2516c4e5cb77dc64e3f2574`.
+
 
 ```console
-$ jq -ce 'select(.timestamp >= "2026-08-31T02:06:00.000Z") | select((.type == "user.message" or .type == "assistant.message") and ((.data.content | contains("ENTER_RPC_")) or (.data.content | startswith("ENTER_PROBE_")))) | {timestamp,type,content:.data.content,delivery:(.data.delivery // null)}' /Users/jordanknight/.copilot/session-state/eb0821f7-3e87-422a-8421-8300a5b34115/events.jsonl
+$ jq -ce 'select(.timestamp >= "2026-08-31T02:06:00.000Z") | select((.type == "user.message" or .type == "assistant.message") and ((.data.content | contains("ENTER_RPC_")) or (.data.content | startswith("ENTER_PROBE_")))) | {timestamp,type,content:.data.content,delivery:(.data.delivery // null)}' docs/plans/109-copilot-rpc/assets/reports/u-copilot-verify-enter-discriminator-events.jsonl
 {"timestamp":"2026-08-31T02:06:08.800Z","type":"user.message","content":"Reply exactly ENTER_RPC_ENQUEUE and do not use tools.","delivery":"idle"}
 {"timestamp":"2026-08-31T02:06:11.286Z","type":"assistant.message","content":"ENTER_RPC_ENQUEUE","delivery":null}
 {"timestamp":"2026-08-31T02:06:27.343Z","type":"user.message","content":"ENTER_PROBE_ENQUEUE_eb0821f7","delivery":"idle"}
