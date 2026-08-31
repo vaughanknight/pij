@@ -37,6 +37,7 @@ rs already gates injection on human interaction (InteractionGate, fed by PaneObs
 - pij's own injected payload never acquires a hold and never clears an active human hold.
 - The injection verdict at the send boundary derives from a capture taken AT the send boundary.
 - The live composer parser is extracted to pij-harnesses behind one shared signature so the observer tick and the fresh send-boundary path use ONE parser; 'no region' becomes an explicit Unrecognized that defers.
+- Every veto is bounded: deferral is conservative, never permanent — the over-hold cannot re-enter through the unrecognizability door (amendment 2, PM escalation 2026-08-31).
 
 <a id="non-goals"></a>
 
@@ -60,6 +61,7 @@ rs already gates injection on human interaction (InteractionGate, fed by PaneObs
 | ac-1114 | Fresh boundary: with a stale-clear observer state and a human typing NOW, the send path holds — the verdict came from a capture at send time. | [ ] unchecked | — | — | — | — |
 | ac-1115 | Layout parsing EXTRACTED to pij-harnesses with behaviour pinned: characterisation tests over live-recorded captures prove the extracted parser byte-equal to the pre-move rendered_composer on every fixture, plus the one NEW behaviour red-first: an unrecognised layout yields an explicit Unrecognized verdict that DEFERS (was a silent None). Labeled honestly: pin + one witness, not a greenfield build. | [ ] unchecked | — | — | — | — |
 | ac-1116 | Paneless seat is never gated (existing behaviour pinned by a regression test that survives this change). | [ ] unchecked | — | — | — | — |
+| ac-1117 | NO UNBOUNDED VETO: with no interaction observation (content change, tap byte, or mode flag) younger than the idle window, ANY veto — recognized-idle, Unrecognized, or tap-latched — decays within interaction_idle_ms to the tmux pane_in_mode verdict alone. Witnessed red-first: on the pre-amendment tree an Unrecognized pane is vetoed forever. | [ ] unchecked | — | — | — | — |
 
 <a id="phases"></a>
 
@@ -75,7 +77,7 @@ rs already gates injection on human interaction (InteractionGate, fed by PaneObs
 
 ## Risks & Assumptions
 
-RISK 1 — over-hold regression: the TS gate was emergency-bypassed fleet-wide (72b5dd61) because holds outlived their cause; idle expiry is the mitigation and ac-1 is its witness — the witness must be proven RED on the pre-fix tree first (a green-from-birth regression test is a claim, not a witness). RISK 2 — self-echo certification too loose: certifying by resemblance instead of progress lets a human's paste of similar text be eaten; mirror TS's progress rule. RISK 3 — fresh capture cost: one extra capture-pane per send is acceptable; per-tick captures already happen. ASSUMPTION — TmuxPort can serve a composer capture at send time (PaneObserver already captures; if the port needs a new method, that is part of u-observer's fence).
+RISK 1 — over-hold regression: the TS gate was emergency-bypassed fleet-wide (72b5dd61) because holds outlived their cause; idle expiry is the mitigation and ac-1 is its witness — the witness must be proven RED on the pre-fix tree first (a green-from-birth regression test is a claim, not a witness). RISK 2 — self-echo certification too loose: certifying by resemblance instead of progress lets a human's paste of similar text be eaten; mirror TS's progress rule. RISK 3 — fresh capture cost: one extra capture-pane per send is acceptable; per-tick captures already happen. ASSUMPTION — TmuxPort can serve a composer capture at send time (PaneObserver already captures; if the port needs a new method, that is part of u-observer's fence). RISK 5 (found by PM at wave 1, inherited not introduced, but ENTRENCHED if unfixed since the fresh verdict becomes the authorising one): Unrecognized had no expiry path, and live Copilot v1.0.82 renders no prompt marker so an entire harness class parses Unrecognized in BOTH the TS and Rust parsers — an unbounded hold shipped inside the anti-over-hold plan. Retired by ac-1117 (universal veto bound) + Copilot recognition rebuilt from a live v1.0.82 fixture.
 
 <a id="open-questions"></a>
 

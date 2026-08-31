@@ -29,7 +29,8 @@
     "A hold self-expires after a bounded idle window (default 60s of unchanged composer content) \u2014 a parked draft delays delivery, never blocks it.",
     "pij's own injected payload never acquires a hold and never clears an active human hold.",
     "The injection verdict at the send boundary derives from a capture taken AT the send boundary.",
-    "The live composer parser is extracted to pij-harnesses behind one shared signature so the observer tick and the fresh send-boundary path use ONE parser; 'no region' becomes an explicit Unrecognized that defers."
+    "The live composer parser is extracted to pij-harnesses behind one shared signature so the observer tick and the fresh send-boundary path use ONE parser; 'no region' becomes an explicit Unrecognized that defers.",
+    "Every veto is bounded: deferral is conservative, never permanent \u2014 the over-hold cannot re-enter through the unrecognizability door (amendment 2, PM escalation 2026-08-31)."
    ]
   },
   {
@@ -80,6 +81,12 @@
      "claim": "Paneless seat is never gated (existing behaviour pinned by a regression test that survives this change).",
      "receipt": "",
      "state": "unchecked"
+    },
+    {
+     "id": "ac-1117",
+     "claim": "NO UNBOUNDED VETO: with no interaction observation (content change, tap byte, or mode flag) younger than the idle window, ANY veto \u2014 recognized-idle, Unrecognized, or tap-latched \u2014 decays within interaction_idle_ms to the tmux pane_in_mode verdict alone. Witnessed red-first: on the pre-amendment tree an Unrecognized pane is vetoed forever.",
+     "receipt": "",
+     "state": "unchecked"
     }
    ]
   },
@@ -120,7 +127,7 @@
   },
   {
    "name": "risks_assumptions",
-   "value": "RISK 1 \u2014 over-hold regression: the TS gate was emergency-bypassed fleet-wide (72b5dd61) because holds outlived their cause; idle expiry is the mitigation and ac-1 is its witness \u2014 the witness must be proven RED on the pre-fix tree first (a green-from-birth regression test is a claim, not a witness). RISK 2 \u2014 self-echo certification too loose: certifying by resemblance instead of progress lets a human's paste of similar text be eaten; mirror TS's progress rule. RISK 3 \u2014 fresh capture cost: one extra capture-pane per send is acceptable; per-tick captures already happen. ASSUMPTION \u2014 TmuxPort can serve a composer capture at send time (PaneObserver already captures; if the port needs a new method, that is part of u-observer's fence)."
+   "value": "RISK 1 \u2014 over-hold regression: the TS gate was emergency-bypassed fleet-wide (72b5dd61) because holds outlived their cause; idle expiry is the mitigation and ac-1 is its witness \u2014 the witness must be proven RED on the pre-fix tree first (a green-from-birth regression test is a claim, not a witness). RISK 2 \u2014 self-echo certification too loose: certifying by resemblance instead of progress lets a human's paste of similar text be eaten; mirror TS's progress rule. RISK 3 \u2014 fresh capture cost: one extra capture-pane per send is acceptable; per-tick captures already happen. ASSUMPTION \u2014 TmuxPort can serve a composer capture at send time (PaneObserver already captures; if the port needs a new method, that is part of u-observer's fence). RISK 5 (found by PM at wave 1, inherited not introduced, but ENTRENCHED if unfixed since the fresh verdict becomes the authorising one): Unrecognized had no expiry path, and live Copilot v1.0.82 renders no prompt marker so an entire harness class parses Unrecognized in BOTH the TS and Rust parsers \u2014 an unbounded hold shipped inside the anti-over-hold plan. Retired by ac-1117 (universal veto bound) + Copilot recognition rebuilt from a live v1.0.82 fixture."
   },
   {
    "name": "open_questions",
