@@ -4,7 +4,6 @@ import {
 	mkdtempSync,
 	readFileSync,
 	realpathSync,
-	rmSync,
 	statSync,
 	writeFileSync,
 } from "node:fs";
@@ -13,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { removeTemporaryTree } from "../../../../../harness/test-utils.js";
 import { FsChoreStore } from "../../adapters/chore-store.js";
 import { FsRegistry } from "../../adapters/fs-registry.js";
 import { type ChoreVerbDeps, dispatchChore } from "./cli-verbs.js";
@@ -76,7 +76,7 @@ afterEach(() => {
 	} else {
 		process.env.PIJ_HOME = previousPijHome;
 	}
-	rmSync(root, { recursive: true, force: true });
+	removeTemporaryTree(root);
 });
 
 function deps(seatId = "seat-a"): ChoreVerbDeps {

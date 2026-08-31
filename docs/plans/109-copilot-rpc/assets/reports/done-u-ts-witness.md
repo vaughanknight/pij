@@ -25,20 +25,33 @@ No unruled product behavior was blessed. No finding required a product-code chan
 
 ## Environmental fixes
 
-- `skills/flow-pair/test/cli-learning.test.ts`: removed the assertion that subprocess stderr is exactly empty. Exit status, exact stdout payload, candidate creation, and cross-cluster absence remain asserted. npm configuration warnings no longer masquerade as product failures.
-- `skills/flow-pair/test/observe.test.ts`: all three git-fixture teardowns use Node's native recursive-removal retry contract (`maxRetries: 3`, `retryDelay: 100`) for transient `ENOTEMPTY` races.
+- `skills/flow-pair/test/cli-learning.test.ts`: strips only measured `npm warn ` lines, then asserts the remaining success-path stderr payload is empty. The original “nothing of ours on stderr” contract survives while known npm configuration noise is ignored. Exit status, exact stdout payload, candidate creation, and cross-cluster absence remain asserted.
+- `harness/test-utils.ts` now owns one `removeTemporaryTree` call site with Node's native recursive-removal contract (`maxRetries: 3`, `retryDelay: 100`). All five ruled teardown sites use it: three in `observe.test.ts`, plus `.pi/extensions/pij/adapters/git-repository.test.ts` and `.pi/extensions/pij/core/chores/drive.test.ts`. The PM explicitly extended the fence to the latter two and rejected a repo-wide sweep of the other unretried sites.
+- Centralizing the options makes our decision—not five repeated literals—the tested surface and prevents the next teardown from copying a different retry shape.
+
+## Review round 1
+
+- Reviewer report `review-ts-witness-round-1.md` at review commit `3caaf5d8` refused T1: deleting the exact-empty assertion also deleted all success-path stderr payload checking. The ruled strip-known-benign-lines then assert-empty allowlist closes T1 without reintroducing environmental-noise coupling.
+- T2 was raised for a ruling rather than as a blocker. PM `pij-revolutionary-lungfish` ruled both currently-red teardown sites in scope and identified the original enumeration gap as PM-owned contamination, not coder fence drift.
+- T1 negative-arm mutation: appended `warning: candidate index rebuilt`—containing neither `ERR!` nor `Error:`—to the captured success-path stderr, ran the entire `cli-learning.test.ts` file unfiltered, and observed exactly **1 failed / 2 passed** at the strip-then-empty assertion with the injected text printed as the received value. The mutation was restored before further verification.
+- T2 injection tests use a contract fake for Node's configured removal interface. A transient `ENOTEMPTY` twice recovers on attempt 3, proving our call supplies a sufficient `maxRetries`; persistent `ENOTEMPTY` exhausts 4 attempts and is still thrown, proving the helper does not swallow. This proves **our configured contract**, not Node's internal retry implementation.
+- T2 is a one-directional safety interlock: removing the retry can only make teardown fail sooner and never removes more. The persistent arm distinguishes this brake from `catch {}` swallowing. Residual: if Node changes `rmSync` retry semantics, the contract fake still passes; no workspace instrument spans that standard-library boundary.
 
 ## Verification
 
 - Controlled pre-edit probe: `PIJ_DAEMON_GENERATION=legacy npx vitest run .pi/extensions/pij/index.test.ts` — **11/11 passed**, proving the ten reds came from generation selection rather than assertion drift.
-- Final focused run: `npx vitest run .pi/extensions/pij/index.test.ts .pi/extensions/pij/adapters/daemon-http.test.ts .pi/extensions/pij/adapters/rust-runtime.test.ts skills/flow-pair/test/cli-learning.test.ts skills/flow-pair/test/observe.test.ts` — **5 files, 42 tests passed**.
-- `just typecheck` — **passed**.
-- Changed-file Biome check — **passed** after import organization.
-- Final full `harness checks` was invoked unfiltered with its own exit code. Local paths, typecheck, smoke, package audit, and snapshots passed. The gate remained red only outside this unit: repository-wide generated-fixture lint drift (also failing windows-compat) and two known-population `ENOTEMPTY` teardowns in `git-repository.test.ts` and `core/chores/drive.test.ts`. This unit's `observe.test.ts` teardown passed in the full run.
+- Initial dual-generation focused run: `index.test.ts`, `daemon-http.test.ts`, `rust-runtime.test.ts`, `cli-learning.test.ts`, and `observe.test.ts` — **5 files, 42 tests passed**.
+- Final review-fix run, unfiltered and redirected with the invocation's own exit code: `index.test.ts`, `cli-learning.test.ts`, `observe.test.ts`, `git-repository.test.ts`, `core/chores/drive.test.ts`, and `harness/test-utils.test.ts` — **6 files, 74 tests passed**.
+- `just typecheck` — **passed**. Changed-file Biome check — **passed**.
+- Final full `harness checks` was invoked unfiltered with its own exit code. Local paths, typecheck, smoke, package audit, and snapshots passed; every T1/T2 file passed in the full test stage. The branch-level gate remained red only on separate release-lineage work already owned elsewhere: repository-wide generated-fixture lint drift (also failing windows-compat) and `npm-resolution-policy.integration.test.ts`.
 
 ## Files
 
 - `.pi/extensions/pij/index.test.ts`
 - `skills/flow-pair/test/cli-learning.test.ts`
 - `skills/flow-pair/test/observe.test.ts`
+- `.pi/extensions/pij/adapters/git-repository.test.ts`
+- `.pi/extensions/pij/core/chores/drive.test.ts`
+- `harness/test-utils.ts`
+- `harness/test-utils.test.ts`
 - `docs/plans/109-copilot-rpc/assets/reports/done-u-ts-witness.md`
