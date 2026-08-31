@@ -11,6 +11,9 @@ use std::time::{Duration, Instant};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
+use nix::errno::Errno;
+use nix::sys::signal::{Signal, kill, killpg};
+use nix::unistd::Pid;
 use pij_core::error::{PijError, Result};
 use pij_core::model::{Job, Outcome, SeatId};
 use pij_core::ports::Queue;
@@ -131,7 +134,7 @@ impl BgWorker {
             queue,
             state_dir,
             children: Mutex::new(BTreeMap::new()),
-            cancel_deadline: Duration::from_secs(5),
+            cancel_deadline: Duration::from_secs(15),
             owner_id: format!(
                 "{pid}-{}-{}",
                 now_ms()?,
@@ -281,7 +284,7 @@ impl BgWorker {
             });
         }
         let observed = group_pids(record.pgid)?;
-        signal_group(record.pgid)?;
+        signal_group(record.pgid, Signal::SIGTERM, true)?;
         self.await_group_exit(id, record.pgid).await?;
         record.status = BgStatus::Cancelled;
         record.observed_pids = observed;
@@ -302,14 +305,38 @@ impl BgWorker {
 
     /// Await observed group death. A successful kill command alone never satisfies cancellation.
     pub async fn await_group_exit(&self, id: &str, pgid: u32) -> Result<()> {
-        let deadline = Instant::now() + self.cancel_deadline;
+        let started = Instant::now();
+        let grace = started + self.cancel_deadline.min(Duration::from_secs(2));
+        let deadline = started + self.cancel_deadline;
+        let mut escalated = false;
         loop {
             let _ = self.reap(id)?;
+            // One-directional fast path: ESRCH proves absence. Every other
+            // answer proves nothing (EPERM includes zombie-only groups), so it
+            // falls through to the zombie-excluding process-table observation.
+            if group_absent_fast(pgid)? {
+                return Ok(());
+            }
             let survivors = group_pids(pgid)?;
             if survivors.is_empty() {
                 return Ok(());
             }
-            if Instant::now() >= deadline {
+            let now = Instant::now();
+            if !escalated && now >= grace {
+                // EPERM/ESRCH can mean only defunct residue remains. Do not fail
+                // the escalation itself; the next observed scan decides.
+                signal_group(pgid, Signal::SIGKILL, true)?;
+                signal_survivors(&survivors)?;
+                escalated = true;
+                continue;
+            }
+            if escalated {
+                // macOS may report EPERM for a group whose leader is defunct.
+                // Every pid here was observed live in the owned group after the
+                // group escalation, so finish the same cancellation individually.
+                signal_survivors(&survivors)?;
+            }
+            if now >= deadline {
                 return Err(PijError::Adapter {
                     adapter: "sidecars/bg".to_string(),
                     message: format!(
@@ -317,7 +344,7 @@ impl BgWorker {
                     ),
                 });
             }
-            tokio::time::sleep(Duration::from_millis(20)).await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
 
@@ -456,22 +483,55 @@ fn process_group_of(pid: u32) -> Result<u32> {
         })
 }
 
-fn signal_group(pgid: u32) -> Result<()> {
-    let status = Command::new("/bin/kill")
-        .args(["-TERM", &format!("-{pgid}")])
-        .status()
-        .map_err(|error| PijError::Adapter {
+fn process_group_id(pgid: u32) -> Result<Pid> {
+    let raw = i32::try_from(pgid).map_err(|error| PijError::Adapter {
+        adapter: "sidecars/bg".to_string(),
+        message: format!("process group {pgid} does not fit the platform pid type: {error}"),
+    })?;
+    Ok(Pid::from_raw(raw))
+}
+
+fn probe_group_errno(pgid: u32) -> Result<Option<Errno>> {
+    Ok(killpg(process_group_id(pgid)?, None).err())
+}
+
+fn signal_group(pgid: u32, signal: Signal, tolerate_no_target: bool) -> Result<()> {
+    match killpg(process_group_id(pgid)?, Some(signal)) {
+        Ok(()) => Ok(()),
+        Err(Errno::ESRCH | Errno::EPERM) if tolerate_no_target => Ok(()),
+        Err(errno) => Err(PijError::Adapter {
             adapter: "sidecars/bg".to_string(),
-            message: format!("could not execute /bin/kill for process group {pgid}: {error}"),
-        })?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(PijError::Adapter {
-            adapter: "sidecars/bg".to_string(),
-            message: format!("/bin/kill refused process group {pgid} with {status}"),
-        })
+            message: format!(
+                "killpg({pgid}, {signal:?}) failed with errno {}: {errno}",
+                errno as i32
+            ),
+        }),
     }
+}
+
+fn signal_survivors(survivors: &[u32]) -> Result<()> {
+    for survivor in survivors {
+        let pid = process_group_id(*survivor)?;
+        match kill(pid, Some(Signal::SIGKILL)) {
+            Ok(()) | Err(Errno::ESRCH | Errno::EPERM) => {}
+            Err(errno) => {
+                return Err(PijError::Adapter {
+                    adapter: "sidecars/bg".to_string(),
+                    message: format!(
+                        "kill({}, SIGKILL) failed with errno {}: {errno}",
+                        survivor, errno as i32
+                    ),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn group_absent_fast(pgid: u32) -> Result<bool> {
+    // One-directional brake: ESRCH proves absence. Success and every other
+    // errno—including EPERM for zombie-only groups—prove nothing.
+    Ok(matches!(probe_group_errno(pgid)?, Some(Errno::ESRCH)))
 }
 
 /// Observe every live (non-zombie) pid currently belonging to `pgid`.
@@ -528,5 +588,65 @@ fn codec_error(error: serde_json::Error) -> PijError {
     PijError::Adapter {
         adapter: "sidecars/bg".to_string(),
         message: error.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::os::unix::process::CommandExt;
+    use std::process::Command;
+    use std::time::{Duration, Instant};
+
+    use nix::sys::signal::Signal;
+
+    use super::{group_absent_fast, group_pids, probe_group_errno, signal_group};
+
+    #[test]
+    fn dead_group_errno_proves_absence() {
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "exit 0"]).process_group(0);
+        let mut child = command.spawn().expect("spawn group leader");
+        let pgid = child.id();
+        child.wait().expect("reap child");
+        assert_eq!(
+            probe_group_errno(pgid)
+                .expect("probe")
+                .map(|errno| errno as i32),
+            Some(3)
+        );
+        assert!(group_absent_fast(pgid).expect("absence brake"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn zombie_only_eperm_proves_nothing_and_kill_escalation_is_tolerated() {
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "exit 7"]).process_group(0);
+        let mut child = command.spawn().expect("spawn group leader");
+        let pgid = child.id();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !group_pids(pgid).expect("observe group").is_empty() {
+            assert!(
+                Instant::now() < deadline,
+                "child never reached zombie-only state"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(
+            probe_group_errno(pgid)
+                .expect("probe")
+                .map(|errno| errno as i32),
+            Some(1)
+        );
+        assert!(!group_absent_fast(pgid).expect("one-directional brake"));
+        signal_group(pgid, Signal::SIGKILL, true).expect("EPERM is tolerated before observation");
+        let status = child.wait().expect("reap zombie");
+        assert_eq!(status.code(), Some(7));
+        assert_eq!(
+            probe_group_errno(pgid)
+                .expect("probe after reap")
+                .map(|errno| errno as i32),
+            Some(3)
+        );
     }
 }
