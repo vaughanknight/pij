@@ -252,3 +252,35 @@ warn-don't-block surface means the warning is the only signal you get, and it sc
 **Reviewer**: `pij-melodic-dragon`, omp, `github-copilot/claude-opus-4.7-1m`, effort xhigh —
 cross-model from the coders (gpt-5.6-sol) AND from the PM who composed ph-1112 (Claude Opus 5),
 so the composition is reviewed by something independent of its author as well as of the units.
+
+## Sharpening for req-0003's owner
+
+**F-1128 — the terminal-absence notice cannot discriminate a true death from a false one.**
+Four notices reached this PM during the plan. Checked each against the panes rather than acting
+on any:
+- `s1788166845282-83558`, `s1788166853280-89488` — **FALSE**: panes alive, pids alive, both seats
+  actively working and messaging me.
+- `s1788171113642-35934` — **TRUE**: the no-model reviewer I had deliberately killed (F-1127).
+- `s1788171170517-77592` — arrived while the live reviewer was demonstrably working.
+
+The notices are **identical in form**. Nothing in the text distinguishes the seat I killed on
+purpose from the two that were mid-task. So the notice carries no information on its own: the
+operator must go and look at the pane every single time, which means the signal's only correct
+use is as a prompt to check — never as a fact to act on. A prime that re-spawns on it ends with
+two seats on one worktree (the hazard req-0003 already names), and a prime that learns to ignore
+it will one day ignore a true one. Both failure modes come from the same root: **a true positive
+and a false positive are byte-identical.**
+
+That is a stronger claim than "sometimes wrong", and it is the one worth fixing against: the fix
+must make the two cases DISTINGUISHABLE in the notice (e.g. requested-vs-unrequested teardown,
+or a pane-liveness assertion carried in the message), not merely make false ones rarer.
+
+**F-1129 — every omp seat this plan spawned reached `DEGRADED · never bound`, and PM→seat
+delivery was BLOCKED for all three.** u-gate, u-observer, and now the reviewer
+(`pij-melodic-dragon`: "never bound — spawned 5min ago and still 'pending'"). Seat→PM `pij send`
+worked every time; PM→seat never did. Three for three is no longer an anecdote about two coders
+(F-1114/F-1116) — on this machine today, a daemon-spawned omp seat is **reliably** unreachable by
+name, and the entire plan was run by delivering instructions through `tmux send-keys` after
+capturing each pane to confirm an empty composer. Worth noting what that means for THIS plan
+specifically: the anti-step-on gate we just built is the thing that would make that fallback
+safe, and it is not yet deployed on the surface being used to deliver its own instructions.
