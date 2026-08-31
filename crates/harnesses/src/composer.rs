@@ -14,6 +14,9 @@ pub fn composer_region(capture: &str, cursor_x: u32, cursor_y: u32) -> ComposerR
 
 fn rendered_composer(capture: &str, cursor_x: u32, cursor_y: u32) -> Option<String> {
     let lines: Vec<&str> = capture.lines().collect();
+    if let Some((row, first_column, payload)) = copilot_v1_composer(&lines) {
+        return clip_payload(payload, row, first_column, cursor_x, cursor_y);
+    }
 
     for (row, line) in lines.iter().enumerate().rev() {
         let trimmed = line.trim();
@@ -77,6 +80,43 @@ fn rendered_composer(capture: &str, cursor_x: u32, cursor_y: u32) -> Option<Stri
         .position(|line| is_copilot_footer(line))
         .map_or(lines.len(), |offset| prompt.0 + 1 + offset);
     clip_multiline(&lines[prompt.0..composer_end], prompt.0, cursor_x, cursor_y)
+}
+
+fn copilot_v1_composer<'a>(lines: &'a [&'a str]) -> Option<(usize, usize, &'a str)> {
+    for (top_row, window) in lines.windows(3).enumerate().rev() {
+        if !is_copilot_box_rule(window[0], '╻', '▄')
+            || !is_copilot_box_rule(window[2], '╹', '▀')
+            || !lines[top_row + 3..]
+                .iter()
+                .take(2)
+                .any(|line| is_copilot_footer(line))
+        {
+            continue;
+        }
+
+        let line = window[1];
+        let trimmed = line.trim_start();
+        let Some(after_border) = trimmed.strip_prefix('┃') else {
+            continue;
+        };
+        let leading = line.chars().count() - trimmed.chars().count();
+        let (payload, padding) = after_border.chars().next().map_or((after_border, 0), |ch| {
+            if ch.is_whitespace() {
+                (&after_border[ch.len_utf8()..], 1)
+            } else {
+                (after_border, 0)
+            }
+        });
+        return Some((top_row + 1, leading + 1 + padding, payload));
+    }
+    None
+}
+
+fn is_copilot_box_rule(line: &str, corner: char, fill: char) -> bool {
+    let Some(rule) = line.trim().strip_prefix(corner) else {
+        return false;
+    };
+    rule.chars().count() >= 8 && rule.chars().all(|ch| ch == fill)
 }
 
 fn clip_multiline(
@@ -151,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn live_recorded_layouts_match_pre_move_parser_byte_for_byte() {
+    fn unchanged_live_recorded_layouts_match_pre_move_parser_byte_for_byte() {
         let fixtures = [
             (
                 "OMP recorded 2026-08-31 from pane %1985",
@@ -167,13 +207,6 @@ mod tests {
                 42,
                 ComposerRegion::Recognized(String::new()),
             ),
-            (
-                "Copilot recorded 2026-08-31 from pane %1962",
-                include_str!("../tests/fixtures/2026-08-31-copilot-pane-1962.txt"),
-                2,
-                42,
-                ComposerRegion::Unrecognized,
-            ),
         ];
         for (provenance, capture, cursor_x, cursor_y, expected) in fixtures {
             assert_eq!(
@@ -182,6 +215,31 @@ mod tests {
                 "{provenance}"
             );
         }
+    }
+
+    #[test]
+    fn live_copilot_v1_box_is_recognized_without_prompt_marker() {
+        let capture = include_str!("../tests/fixtures/2026-08-31-copilot-v1.0.82-pane-1962.txt");
+        assert_eq!(
+            composer_region(&adapter_capture(capture), 2, 42),
+            ComposerRegion::Recognized(String::new()),
+            "Copilot v1.0.82 recorded 2026-08-31 from pane %1962"
+        );
+    }
+
+    #[test]
+    fn copilot_v1_box_clips_typed_text_at_the_cursor() {
+        let capture = [
+            "╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄",
+            "┃ hello suggestion",
+            "╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+            "v1.0.82 · / commands · context",
+        ]
+        .join("\n");
+        assert_eq!(
+            composer_region(&capture, 7, 1),
+            ComposerRegion::Recognized("hello".to_string())
+        );
     }
 
     #[test]
