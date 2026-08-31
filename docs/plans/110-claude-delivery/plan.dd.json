@@ -1,0 +1,158 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Claude Code direct delivery over the messaging socket",
+        "slug": "claude-delivery",
+        "ordinal": 110,
+        "status": "in-progress",
+        "complexity": "CS-3",
+        "summary": "Deliver to Claude Code seats over Claude's own messaging socket with Held actually observable, concurrency refused rather than resolved, and one row per seat.",
+        "mode": "Simple",
+        "plan_version": "1.0.0",
+        "created": "2026-08-31",
+        "confidence": "0.85",
+        "complexity_breakdown": "S=2 I=3 D=1 N=1 F=2 T=3"
+      }
+    },
+    {
+      "name": "summary",
+      "value": "req-0002. The shipped Rust UDS transport cannot observe Held for two independent reasons (an unroutable reply address, and a status matcher keyed to a wire shape the CLI never emits), so a message parked behind a human's approval dialog is reported Delivered. Status frames carry no correlation id anywhere in their lifecycle, which forces positional correlation and therefore one message in flight per connection. Separately, registration adopts a pre-bind row by seat id alone, so a daemon-spawned seat strands a phantom row and loses the rpc_port stamped on it. Two units fix these; the evidence base is first-party and measured (scratch/woodpecker-poc/FINDINGS.md)."
+    },
+    {
+      "name": "goals",
+      "value": [
+        "Held and Denied are observable on the live wire, not inferred from silence.",
+        "A timeout is never upgraded to Delivered — the honest-receipt vocabulary holds.",
+        "Concurrency is refused at the transport, never guessed at.",
+        "One seat, one row, with the stamped rpc_port surviving onto the row consumers read."
+      ]
+    },
+    {
+      "name": "non_goals",
+      "value": [
+        "Copilot RPC — plan 109, closed.",
+        "Improving the tmux send-keys path; it is being replaced, not repaired.",
+        "Flipping the crossSessionInbound consent default — that is Jordan's ruling, not this plan's.",
+        "Verb parity, and anything on the prime-governance branch."
+      ]
+    },
+    {
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "ac-1101",
+          "claim": "Held is observable end to end against a live Claude CLI, proven by a test witnessed RED on the pre-fix tree.",
+          "state": "unchecked",
+          "receipt": "crates/transport/tests/live_held_observation.rs run against a non-accepting recipient"
+        },
+        {
+          "id": "ac-1102",
+          "claim": "Reverting from= to the unroutable literal makes the hold receipt vanish, and reverting the status matcher to the bare type makes Held unreachable — each mutation fails its own guard.",
+          "state": "unchecked",
+          "receipt": "two mutation arms, each witnessed red"
+        },
+        {
+          "id": "ac-1103",
+          "claim": "Two messages in flight on one connection are REFUSED, not correlated by guesswork.",
+          "state": "unchecked",
+          "receipt": "two-in-flight mutation test"
+        },
+        {
+          "id": "ac-1104",
+          "claim": "A registration that is not preceded by a fresh allocation adopts its pre-bind row: one row on the pane, spawn_id matched, rpc_port_intent preserved.",
+          "state": "unchecked",
+          "receipt": "witness built from the launched environment, never from the spawn response"
+        },
+        {
+          "id": "ac-1105",
+          "claim": "Live round trip on the real fleet, both arms, three observers: bypass-marked delivered with no dialog and byte-exact above 1022 bytes against an --accept-inbound seat; unmarked message observed Held before any human click against a non-accepting seat.",
+          "state": "unchecked",
+          "receipt": "sender status line + recipient transcript records + operator screen; any click recorded as an INPUT"
+        },
+        {
+          "id": "ac-1106",
+          "claim": "Full gate green on the composed, rebased tree, unfiltered, with cargo's own exit code, then cross-model review.",
+          "state": "unchecked",
+          "receipt": "gate transcript on the composed head"
+        }
+      ]
+    },
+    {
+      "name": "phases",
+      "value": [
+        {
+          "id": "ph-1101",
+          "title": "u-uds — honest UDS transport",
+          "brief": "Bind a reply listener in the recipient's socket namespace and advertise a routable from=; accept the real status shape; refuse concurrency. Observation test FIRST, witnessed red.",
+          "state": "unchecked",
+          "objective": "Make Held and Denied observable and honest without regressing the receipt vocabulary.",
+          "delivers": [
+            "Routable reply address so the CLI can deliver peer_message_status",
+            "Status decoder keyed to type==control / action==peer_message_status",
+            "One message in flight per connection, refused rather than resolved",
+            "Fixtures replaced with captured wire lines rather than invented ones"
+          ]
+        },
+        {
+          "id": "ph-1102",
+          "title": "u-adopt — registration adopts the spawned identity",
+          "brief": "Adopt the pre-bind row on spawn_id (+pane) when the id lookup misses, and stop clearing the rpc_port_intent that the same registration stamped.",
+          "state": "unchecked",
+          "objective": "One seat, one row, port surviving onto the row consumers read.",
+          "delivers": [
+            "spawn_id-keyed adoption fallback in the register route",
+            "rpc_port_intent preserved on the binding registration",
+            "Witness built from the launched environment"
+          ]
+        },
+        {
+          "id": "ph-1103",
+          "title": "Compose and prove",
+          "brief": "Merge u-adopt first, then u-uds; re-run the full gate on the composed rebased tree; live round trip on both recipient configurations; cross-model review before the PR.",
+          "state": "unchecked",
+          "objective": "Prove the fix and the declared head agree.",
+          "delivers": [
+            "Composed rebased head with an unfiltered gate transcript",
+            "Live two-arm integration proof with three observers",
+            "Cross-model review that re-derives the arms by execution"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "risks_assumptions",
+      "value": "r1 A third independent reason Held stays unreachable — retired by making the FIRST commit a live observation test, before any refactor. r2 Building on the fork's spec where it diverges from the installed build — retired by verifying each borrowed claim against Claude CLI 2.1.251; four of six of that spec's Copilot claims diverged when tested, and its status-frame shape is already known wrong. r3 Silently resolving concurrency instead of refusing it — retired by the two-in-flight mutation. r4 An acceptance test written against the spawn response rather than the launched environment — retired by the discriminating arm that re-registers with no fresh allocation. r5 Regressing toward the fork's `acked` — retired by a test that silence is never upgraded past InjectedToTransport. ASSUMPTION, measured not assumed: a reply listener bound inside the recipient's socket namespace is accepted as a routable reply address; verified live 2026-08-31, held receipt returned in 72ms."
+    },
+    {
+      "name": "open_questions",
+      "value": [
+        {
+          "id": "oq-1101",
+          "question": "Should crossSessionInbound=accept default ON for daemon-spawned Claude seats? It is implemented and opt-in, defaults false, so the UDS transport is off for every seat on the fleet today.",
+          "state": "unchecked",
+          "owner": "Jordan via o-prime",
+          "note": "Consent is an act, not a default flipped on the operator's behalf. Neither arm is being built until this is ruled."
+        },
+        {
+          "id": "oq-1102",
+          "question": "Claude writes its socket and peer key BEFORE its session record, so pid-direct discovery has a startup window where a live, authenticable socket reads as undiscoverable. Does the transport need to tolerate that window, or does the caller retry?",
+          "state": "unchecked",
+          "owner": "pm",
+          "note": "Observed 2026-08-31 while standing up a throwaway recipient: /tmp/cc-socks/<pid>.sock and <pid>.<hash>.key both present, <pid>.json absent for >60s."
+        },
+        {
+          "id": "oq-1103",
+          "question": "Can a sparse status stream (not all messages held) ever be aligned by an observable not yet found?",
+          "state": "unchecked",
+          "owner": "pm",
+          "note": "Disclosed unprobed in req-0002. The one-in-flight conclusion does not depend on closing it."
+        }
+      ]
+    }
+  ]
+}
