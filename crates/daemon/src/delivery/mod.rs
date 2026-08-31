@@ -558,6 +558,7 @@ fn outcome_name(outcome: &DeliveryOutcome) -> &'static str {
         } => "delivered:reader-read",
         DeliveryOutcome::Queued => "queued",
         DeliveryOutcome::Held { .. } => "held",
+        DeliveryOutcome::Refused { .. } => "refused",
     }
 }
 

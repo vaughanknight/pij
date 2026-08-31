@@ -22,6 +22,12 @@ use super::{
     PointerPolicy, render_final_pointer, render_pointer, retry_delay, submit_command,
 };
 
+/// How many times a held delivery is re-offered before the job is parked.
+///
+/// A held message is waiting on a PERSON, not on a resource. Retrying forever
+/// re-prompts someone who has already declined to answer.
+const HELD_ATTEMPT_LIMIT: u32 = 4;
+
 const WORKER_ID: &str = "pointer-drain";
 type Clock = dyn Fn() -> Result<u64> + Send + Sync;
 
@@ -243,9 +249,23 @@ impl DrainWorker {
                 Ok(DeliveryOutcome::Delivered { origin }) => {
                     self.queue.ack_delivery(job_id, origin).await.map(|_| ())
                 }
-                Ok(DeliveryOutcome::Queued | DeliveryOutcome::Held { .. }) => {
-                    self.release_body(job_id).await
+                Ok(DeliveryOutcome::Queued) => self.release_body(job_id).await,
+                // HELD IS NOT QUEUED. `release_body` is `retry(job, Duration::ZERO)`
+                // — an immediate re-delivery — and every re-delivery of a held
+                // message raises a FRESH APPROVAL DIALOG at the human who has not
+                // answered the last one. Until plan 110 made Held reachable this
+                // line had never executed, so the hazard shipped dormant; the
+                // consent default that makes it live and this backoff are one
+                // decision, and land together (o-prime, oq-1101).
+                Ok(DeliveryOutcome::Held { reason }) => {
+                    self.backoff_held(job_id, job.attempt, &msg, &reason).await
                 }
+                // TERMINAL. The recipient answered no, and a refusal is given
+                // once: releasing the body would retry, and every retry raises
+                // the same approval dialog at the human who just declined it.
+                // The job is DONE with outcome refused — not failed, because
+                // nothing malfunctioned, and not delivered, because it was not.
+                Ok(DeliveryOutcome::Refused { .. }) => self.queue.ack(job_id, Outcome::Done).await,
                 Err(error) => {
                     self.release_body(job_id).await?;
                     Err(error)
@@ -466,6 +486,35 @@ impl DrainWorker {
         self.queue.retry(job_id, retry_delay(attempt)).await
     }
 
+    /// Back off a held delivery, and stop asking after [`HELD_ATTEMPT_LIMIT`].
+    ///
+    /// A held message is waiting on a PERSON. Exponential backoff replaces a
+    /// dialog storm with a few spaced asks, and the limit exists because a human
+    /// who has ignored the prompt this many times is answering by not answering:
+    /// the honest end state is a parked job a human can find, not an unbounded
+    /// retry nobody remembers starting.
+    async fn backoff_held(
+        &self,
+        job_id: JobId,
+        attempt: u32,
+        msg: &Msg,
+        reason: &str,
+    ) -> Result<()> {
+        if attempt + 1 >= HELD_ATTEMPT_LIMIT {
+            return self
+                .fail_claim(
+                    job_id,
+                    format!(
+                        "delivery to {} stayed held after {HELD_ATTEMPT_LIMIT} attempts ({reason}); \
+                         not retried — the recipient has not approved it",
+                        msg.to
+                    ),
+                )
+                .await;
+        }
+        self.queue.retry(job_id, retry_delay(attempt)).await
+    }
+
     async fn fail_claim(&self, job_id: JobId, reason: String) -> Result<()> {
         self.queue.ack(job_id, Outcome::Failed { reason }).await
     }
@@ -647,8 +696,8 @@ mod tests {
     use pij_core::config::Config;
     use pij_core::delivery::delivery_kind;
     use pij_core::model::{
-        DeliveryOrigin, Event, Harness, Job, JobId, Msg, Outcome, ProcIdentity, SeatDescriptor,
-        SeatId, Seq,
+        DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, ProcIdentity,
+        SeatDescriptor, SeatId, Seq,
     };
     use pij_core::ports::{DeliveryEnqueue, Queue, Registry, Spine, TmuxPort, Transport};
     use pij_harnesses::InteractionGate;
@@ -1695,5 +1744,94 @@ mod tests {
             ["pij-first", "pij-next"]
         );
         loop_.shutdown().await.expect("shutdown drain loop");
+    }
+
+    /// A held message is waiting on a PERSON. `release_body` is
+    /// `retry(job, Duration::ZERO)` — re-delivering at once, and every
+    /// re-delivery raises a fresh approval dialog. Until plan 110 made `Held`
+    /// reachable this had never executed, so mutate the backoff back to
+    /// `release_body` and this test must fail.
+    #[tokio::test]
+    async fn a_held_delivery_backs_off_instead_of_re_prompting_the_human_at_once() {
+        let fixture = fixture(
+            FakeTransport::reachable().script_outcome(DeliveryOutcome::Held {
+                reason: "recipient approval pending".to_string(),
+            }),
+            FakeTmux::new(),
+        );
+        register(&fixture, seat("pij-held", Some("%9"))).await;
+        fixture.interaction.observe_composer("%9", "   ");
+        enqueue(&fixture, &message("pij-held", "waiting on a human", None)).await;
+
+        assert_eq!(fixture.worker.drain_once().await.expect("drain"), 1);
+        let retried = fixture.queue.retried();
+        assert_eq!(
+            retried.len(),
+            1,
+            "a held delivery must be retried, not acked"
+        );
+        assert_ne!(
+            retried[0].1,
+            Duration::ZERO,
+            "an immediate retry is a dialog storm aimed at the operator"
+        );
+        assert!(
+            fixture.queue.acked().is_empty(),
+            "held is not terminal — the human may still approve it"
+        );
+    }
+
+    /// Someone who has ignored the prompt this many times is answering by not
+    /// answering. Park it where a human can find it rather than asking forever.
+    #[tokio::test]
+    async fn a_persistently_held_delivery_parks_instead_of_asking_forever() {
+        let fixture = fixture(
+            FakeTransport::reachable().script_outcome(DeliveryOutcome::Held {
+                reason: "recipient approval pending".to_string(),
+            }),
+            FakeTmux::new(),
+        );
+        register(&fixture, seat("pij-held", Some("%9"))).await;
+        fixture.interaction.observe_composer("%9", "   ");
+        enqueue(&fixture, &message("pij-held", "waiting on a human", None)).await;
+
+        for _ in 0..super::HELD_ATTEMPT_LIMIT + 1 {
+            let _ = fixture.worker.drain_once().await.expect("drain");
+            fixture.queue.advance(Duration::from_secs(6 * 60));
+        }
+        let acked = fixture.queue.acked();
+        let parked = match acked.as_slice() {
+            [(_, Outcome::Failed { reason })] => reason.clone(),
+            other => panic!("a permanently held delivery must park, got {other:?}"),
+        };
+        assert!(
+            parked.contains("stayed held"),
+            "the park reason must say why a human can act on it, got {parked}"
+        );
+    }
+
+    /// A refusal is an answer, and it is given once. Retrying re-prompts someone
+    /// who already declined.
+    #[tokio::test]
+    async fn a_refusal_is_terminal_and_is_never_retried() {
+        let fixture = fixture(
+            FakeTransport::reachable().script_outcome(DeliveryOutcome::Refused {
+                reason: "the recipient declined the message".to_string(),
+            }),
+            FakeTmux::new(),
+        );
+        register(&fixture, seat("pij-refused", Some("%9"))).await;
+        fixture.interaction.observe_composer("%9", "   ");
+        enqueue(&fixture, &message("pij-refused", "they said no", None)).await;
+
+        assert_eq!(fixture.worker.drain_once().await.expect("drain"), 1);
+        assert!(
+            fixture.queue.retried().is_empty(),
+            "a refusal must never be retried"
+        );
+        assert!(
+            matches!(fixture.queue.acked().as_slice(), [(_, Outcome::Done)]),
+            "refused is DONE — nothing malfunctioned, and it was not delivered"
+        );
     }
 }

@@ -1,0 +1,128 @@
+{
+	"dd": {
+		"schema": "pij-team/packet"
+	},
+	"sections": [
+		{
+			"name": "meta",
+			"value": {
+				"title": "PM packet — Claude Code direct delivery (plan 110)",
+				"role": "pm",
+				"seat": "pij-fatal-woodpecker",
+				"plan": "docs/plans/110-claude-delivery/",
+				"from": "pij-dominant-vicuna (o-prime)",
+				"updated": "2026-08-31"
+			}
+		},
+		{
+			"name": "mission",
+			"value": "Ship req-0002: direct delivery to Claude Code seats over the messaging socket, with Held actually observable. You are PM. You measured this yourself today — your FINDINGS.md is the evidence base and the impl-guide is built on it."
+		},
+		{
+			"name": "instructions",
+			"value": [
+				{
+					"id": "i1",
+					"text": "READ FIRST, in order: the impl-guide docs/plans/110-claude-delivery/impl-guide.dd.md (four defects, binding invariant, units, acceptance); req-0002 verbatim at /Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/prd/base-prd.dd.md; your own scratch/woodpecker-poc/FINDINGS.md."
+				},
+				{
+					"id": "i2",
+					"text": "Load BOTH the pij skill and the builder skill and act from those contracts, not from CLI help."
+				},
+				{
+					"id": "i3",
+					"text": "Work in this worktree on branch s110/claude-delivery. KEEP IT SIMPLE — the operator's standing instruction is do not over-engineer: two units, no new abstractions, no framework. If the work seems to want a third unit, ask me first."
+				},
+				{
+					"id": "i4",
+					"text": "You may code u-uds yourself if spawning a coder costs more context than it saves — your call, state it in your first report. At most one coder plus one reviewer; each seat gets its own tmux window (a coder+reviewer pair may share one window as a vertical split), and every spawned seat loads the pij AND builder skills."
+				},
+				{
+					"id": "i5",
+					"text": "Report at both edges of every unit with `pij report now`. Questions come to me inline via `pij send pij-dominant-vicuna` — NEVER a modal question dialog in your pane: a modal in an unwatched pane is a process stopped with nothing anywhere saying so."
+				},
+				{
+					"id": "i6",
+					"text": "Raise any seam or contract objection AT THE ACK, before implementations accumulate — the window is widest when nothing is built."
+				}
+			]
+		},
+		{
+			"name": "working_with",
+			"value": [
+				{
+					"id": "w1",
+					"text": "Prime: pij-dominant-vicuna (o-prime). Rules seam changes, reviews before Jordan merges, relays anything needing Jordan."
+				},
+				{
+					"id": "w2",
+					"text": "Model defaults: /Users/jordanknight/pi-hacking/pij/.harness/government-port/settings.dd.json (coder omp gpt-5.6-sol-fast-1m high; reviewer cross-model). Discover exact selectors with `pij models --harness omp`, never from memory."
+				}
+			]
+		},
+		{
+			"name": "scope",
+			"value": {
+				"worktree": "/Users/jordanknight/pi-hacking/pij-worktrees/s110-claude-delivery",
+				"branch": "s110/claude-delivery",
+				"fence": "IN: crates/transport/src/uds.rs + its tests; the daemon register path and seat descriptor (B-1 identity adoption); the Claude spawn path for --settings crossSessionInbound=accept; crates/daemon/src/delivery/** only where the transport contract forces it (name those lines in the receipt). OUT: Copilot RPC (plan 109, closed); the tmux send-keys path (it dies — do not improve it); verb parity; the prime-governance branch (the prime writes that).",
+				"forbidden_note": "Never write .the-flow-state.json, the-flow.json, the-flow.md, or anything in the prime-governance worktree."
+			}
+		},
+		{
+			"name": "done_bar",
+			"value": [
+				{
+					"id": "d1",
+					"text": "Held is OBSERVABLE on the live wire, proven by a test witnessed RED before it went green — not by a status line the test constructed itself (uds.rs:729 is the anti-pattern)."
+				},
+				{
+					"id": "d2",
+					"text": "Concurrency is REFUSED, not resolved — proven by a two-in-flight mutation."
+				},
+				{
+					"id": "d3",
+					"text": "One seat, one row — proven FROM THE LAUNCHED ENVIRONMENT, discriminating arm being a registration not preceded by a fresh allocation."
+				},
+				{
+					"id": "d4",
+					"text": "A live round trip on the real fleet, both arms, three observers: bypass-marked delivered with no dialog and byte-exact above 1022 bytes; unmarked message OBSERVED held before any human click, with any operator click recorded as an INPUT."
+				},
+				{
+					"id": "d5",
+					"text": "Full gate green on the composed, REBASED tree, unfiltered, with cargo's own exit code; then cross-model review; then the PR — I review before Jordan merges."
+				}
+			]
+		},
+		{
+			"name": "refs",
+			"value": [
+				{
+					"id": "r1",
+					"path": "docs/plans/110-claude-delivery/impl-guide.dd.md",
+					"note": "the implementation guide — units, acceptance, risks"
+				},
+				{
+					"id": "r2",
+					"path": "/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/prd/base-prd.dd.md",
+					"note": "req-0002 verbatim; its note is design input, read it whole"
+				},
+				{
+					"id": "r3",
+					"path": "/Users/jordanknight/pi-hacking/pij/scratch/woodpecker-poc/FINDINGS.md",
+					"note": "your own measured evidence base (+ frommode_poc.py blind v1, frommode_poc2.py fixed instrument)"
+				},
+				{
+					"id": "r4",
+					"path": "crates/transport/src/uds.rs",
+					"note": "the subject: from= at ~:250, classify_status, Status::Held at ~:322, its constructed-status test at ~:729"
+				},
+				{
+					"id": "r5",
+					"path": "https://github.com/vaughanknight/pij (v0.2.0, issue #311)",
+					"note": "prior art — VERIFY BEFORE BUILDING; 4 of 6 of its Copilot claims diverged when tested"
+				}
+			]
+		}
+	]
+}
