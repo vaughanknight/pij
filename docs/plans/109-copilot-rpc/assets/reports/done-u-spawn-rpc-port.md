@@ -1,7 +1,7 @@
 # u-spawn-rpc-port — delivery receipt
 
 **Branch:** `s109/u-spawn-rpc-port`  
-**Mechanism commits:** `3cbd2820` (initial), `70f13700` (round-1 fixes), `95d86a91` (narrowed-refusal contract test)  
+**Mechanism commits:** `3cbd2820` (initial), `70f13700` (round-1 fixes), `95d86a91` (narrowed-refusal test), `0181eedc` (production correlator)  
 **Scope:** descriptor amendment and spawn/revive lifecycle only. No Copilot transport code landed. The TypeScript runtime is untouched.
 
 ## Migration story — load-bearing
@@ -15,12 +15,13 @@
 - `build_spawn_plan` emits the two flags only for Copilot and derives the descriptor stamp back from the exact argv. Port zero and a port supplied to another harness refuse.
 - `POST /v1/spawn` keeps live-id refusal unchanged. A tombstoned id is now the shipped revive transition: it gets a fresh allocation, launches a fresh pre-bind descriptor with `proc: None`, and overwrites the old row.
 - Registration preserves the fresh port only while binding a pre-bind descriptor whose non-empty `spawn_id` exactly matches the claim. Register-again without that match clears it; M7 (never match) and M6 (always match) prove both opposing arms.
+- The same route-minted `spawn_id` is threaded into `SpawnPlanInput`, emitted as `PIJ_SPAWN_ID=<spawn_id>` beside `PIJ_SESSION_ID` for **every harness**, and stamped on the descriptor. No second id is minted for argv.
 - The same-process `supersedes` branch clears the predecessor's port before persisting its tombstone. Descriptor reconciliation likewise updates the verified survivor's port and clears the retired alias.
 - `SqliteRegistry::tombstone` clears the column in the same SQL act that writes terminal truth. **There is currently no shipped production caller of `Registry::tombstone`; this test proves the adapter branch, not a reachable teardown flow.** Reachable terminal handling is the registration supersedes branch and spawn-over-tombstone transition above.
 - Before spawn-over-tombstone replaces the live row, `seat.revive-postmortem` durably preserves the displaced reason, role, semantic state, and tombstone timestamp in the spine. The publisher re-reads registry truth at publication time, so moving it after overwrite fails rather than relocating an empty claim.
 - The allocator excludes intents stamped on every live registry seat and explicitly excludes the displaced row's old value. Unrelated tombstoned rows do not reserve their old ports. Unit 2 still owns endpoint/session identity verification after connect.
 - Schema 9 constrains the column to NULL or `1..=65535`, and the read path rejects corrupt values rather than narrowing `i64` into a forged present `u16`. INSERT, bind, and `ON CONFLICT DO UPDATE SET` all carry the column. The dedicated real-SQLite witness changes A to B before reading because the shared registry contract writes equal values and cannot detect a frozen upsert column (F0-8).
-- `launch_seat(&AppState, SpawnRequest, ExistingSeatPolicy, command_name)` is the single private launch transition for the separately-owned `/v1/revive` surface. Allocation, argv-derived stamping, fresh pre-bind construction, rollback, and persistence remain here; the route must call it with `ExistingSeatPolicy { allow_absent: false }` and must never stamp independently.
+- `launch_seat(&AppState, SpawnRequest, ExistingSeatPolicy, command_name)` is the single private launch transition for the separately-owned `/v1/revive` surface. Allocation, argv-derived stamping, fresh pre-bind construction, rollback, and persistence remain here; the route calls it with `ExistingSeatPolicy { allow_absent: false }` and never stamps independently. Spawn and revive retain command-specific live-id refusals.
 - `pij-rs register --supersedes <id>` now exposes the already-shipped daemon branch so its transition can be driven through the shipped CLI.
 
 ## Intent versus possession
@@ -45,7 +46,7 @@ The absence model is therefore four-way:
 3. Tombstone and observe the field absent.
 4. Bind A with an unrelated listener, spawn the tombstoned id, observe different port B.
 5. Read the descriptor again and observe B, proving no later pass re-stamped A; read the real spine and observe the displaced reason, role, and semantic state.
-6. Register with the matching fresh `spawn_id`; observe B preserved while `proc` becomes present.
+6. Parse `PIJ_SESSION_ID` and `PIJ_SPAWN_ID` from fake tmux's recorded discrete launch argv, construct registration only from that launched-process environment, and observe B preserved while `proc` becomes present.
 7. Register again without a matching `spawn_id`; observe `None`, repeat the pass, and prove neither A nor B reappears.
 8. Drive `pij-rs register --supersedes`; observe predecessor and successor ports absent.
 9. Drive real descriptor reconciliation; observe the verified survivor port updated and the alias cleared.
@@ -64,18 +65,32 @@ The critical opposing mutations both fired:
 
 Instrument errors are disclosed in the falsifier file: a zero-test `--exact` filter, a non-object-safe first allocator seam, and a moved-value first M8 mutation were all discarded before evidence was recorded.
 
+F13 closes **capability asymmetry**: the prior fixture obtained `spawn_id` from the response, a capability production lacked. The corrected arm reads only emitted argv. Removing the environment variable (M9/baseline) and emitting a present-but-wrong value (M10) both clear `Some(61004)` and go red, proving identity rather than presence.
+
 ## Verification
 
 All Rust commands explicitly unset `CARGO_TARGET_DIR`, set `CARGO_INCREMENTAL=0`, and used this worktree's default `target/`.
 
-- `cargo test --locked -p pij-cli --test spawn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_intent` — 1 passed against a real registry and real spine.
+- `cargo test --locked -p pij-harnesses spawn::tests` — 6 passed; every harness argv carries the same correlator contract.
+- `cargo test --locked -p pij-cli --test spawn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_intent` — 1 passed against a real registry and real spine, with first-bind input parsed only from recorded launch argv.
+- `cargo test --locked -p pij-daemon http::tests::spawn_stamps_only_the_argv_that_reached_the_observed_launch` — 1 passed, including command-specific collision wording.
 - `cargo test --locked -p pij-store --test store_integration rpc_port_intent` — 3 passed, covering changed-value upsert, schema constraint, corrupt-read refusal, and tombstone clear.
 - `cargo test --locked -p pij-store --test orchestration descriptor_merge_is_atomic_and_retains_both_inputs_and_mismatches` — 1 passed.
-- `PATH="$HOME/.cargo/bin:$PATH" cargo run --locked -p pij-testkit --bin pij-gate` at `95d86a91` — all six stages green: toolchain 1.98.0, lock, fmt, clippy, test, architecture (9 crates, 0 violations).
+- `PATH="$HOME/.cargo/bin:$PATH" cargo run --locked -p pij-testkit --bin pij-gate` at `0181eedc` — all six stages green: toolchain 1.98.0, lock, fmt, clippy, test, architecture (9 crates, 0 violations).
 
 Instrument correction: the first gate invocation resolved Cargo to `/opt/homebrew/bin/cargo` and correctly failed only the toolchain stage (`rustc 1.95.0` versus pin `1.98.0`); lock, fmt, clippy, test, and architecture were already green. The required PATH from the reviewer packet selected the rustup toolchain and the complete rerun passed.
 
 `harness checks` remains unavailable in this linked worktree as disclosed by the plan-108 reviewer packet: it returned 8 failures. The visible sensor details were `local-paths` exit 127, `typecheck` exit 2, `lint` exit 127, and `test` exit 127; the command output truncated the remaining details. This is a known proof-surface limitation, not presented as a green gate. The Rust `pij-gate` above is the ruled worktree gate and passed in full.
+
+## Correlator transmission audit
+
+| launcher/boundary | transmission observed |
+|---|---|
+| Rust spawn plan | `crates/harnesses/src/spawn.rs:113` emits `PIJ_SPAWN_ID` from the route-minted `SpawnPlanInput.spawn_id` for every harness. |
+| TS Rust bridge | `.pi/extensions/pij/adapters/rust-runtime.ts:245` forwards `process.env.PIJ_SPAWN_ID` as registration `spawn_id` when present. |
+| TS launcher | `.pi/extensions/pij/core/spawn.ts:196` exports its own `input.spawnId`; this launcher does not emit Copilot `--ui-server`. |
+
+The Rust and TypeScript literals were compared directly and match byte-for-byte. No automated instrument currently crosses the Rust-launcher → TypeScript-bridge seam; this manual audit is a disclosed proof gap, not presented as a deterministic gate.
 
 ## Composer-owned derived files
 
