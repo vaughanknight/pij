@@ -47,32 +47,32 @@
         {
           "id": "ac-1101",
           "claim": "Held is observable end to end against a live Claude CLI, proven by a test witnessed RED on the pre-fix tree.",
-          "state": "unchecked",
-          "receipt": "crates/transport/tests/live_held_observation.rs run against a non-accepting recipient"
+          "state": "checked",
+          "receipt": "crates/transport/tests/live_held_observation.rs::an_unmarked_message_is_observed_held_on_the_live_wire. WITNESSED RED at 5f41cda5 (Delivered{InjectedToTransport}, 153.9ms, FAILED) before any transport change; GREEN at 0be4bc19 (Held, 62.9-73.6ms). Re-run: PIJ_LIVE_CLAUDE_PID=<non-accepting pid> cargo test -p pij-transport --test live_held_observation -- --ignored."
         },
         {
           "id": "ac-1102",
           "claim": "Reverting from= to the unroutable literal makes the hold receipt vanish, and reverting the status matcher to the bare type makes Held unreachable — each mutation fails its own guard.",
-          "state": "unchecked",
-          "receipt": "two mutation arms, each witnessed red"
+          "state": "checked",
+          "receipt": "Mutations re-executed independently by the reviewer, counts matching mine: M1 from= -> \"uds:pij-daemon\" = 4 FAILED; M2 classify_status bare type only = 5 FAILED; M3 worker Held -> release_body = 2 FAILED; M4 drop proc.is_none() = 1 FAILED (bound-row arm); M5 drop pane = 1 FAILED; M7 disable the adoption fallback = 1 FAILED. Plus, post-review: shared reply address = 1 FAILED (concurrent_deliveries), M6 = 1 FAILED (port-inheritance arm). NOT COUNTED: the_control_shape_is_what_the_live_cli_actually_emits stays GREEN under M2 — it pins the fixture, it does not guard the decoder."
         },
         {
           "id": "ac-1103",
           "claim": "Two messages in flight on one connection are REFUSED, not correlated by guesswork.",
-          "state": "unchecked",
-          "receipt": "two-in-flight mutation test"
+          "state": "checked",
+          "receipt": "crates/transport/src/uds.rs::exactly_one_message_is_ever_in_flight_on_one_connection asserts the WIRE (auth + exactly ONE frame, from= routable and in the recipient's namespace), and concurrent_deliveries_do_not_share_a_reply_address drives TWO REAL deliveries and fails when the reply path is mutated to a single shared address. Concurrency is refused by construction: a private reply address per delivery."
         },
         {
           "id": "ac-1104",
           "claim": "A registration that BINDS A FRESHLY SPAWNED INCARNATION adopts its pre-bind row: matched on spawn_id AND pane AND the row being unbound, leaving one row on the pane with its stamped rpc_port_intent preserved.",
-          "state": "unchecked",
-          "receipt": "witness built from the launched environment, never from the spawn response"
+          "state": "checked",
+          "receipt": "crates/daemon/src/http/tests.rs::spawned_registration_adopts_prebind_row_and_preserves_port, built from the FakeTmux launch argv and list_panes, never the spawn response. Pre-fix red re-derived by the reviewer (M7). Adoption requires spawn_id AND pane AND the row being unbound: registration_cannot_adopt_a_spawn_match_that_is_already_bound fails under M4."
         },
         {
           "id": "ac-1105",
           "claim": "THE DISCRIMINATING ARM: a registration NOT preceded by a fresh allocation — an ordinary re-registration of an existing seat — does NOT adopt and does NOT inherit an rpc_port it was never stamped. A spawn_id+pane match against an ALREADY BOUND row must not adopt it either.",
-          "state": "unchecked",
-          "receipt": "re-registration arm plus a bound-row arm, both witnessed red before green"
+          "state": "checked",
+          "receipt": "crates/daemon/src/http/tests.rs::reregistration_prefers_exact_id_over_spawn_match_without_fresh_allocation, registration_cannot_adopt_a_spawn_match_from_another_pane (M5), and registration_does_not_inherit_a_port_stamped_for_another_incarnation — the last added after the reviewer showed the port-inheritance half was VACUOUS (its M6 left the whole daemon http suite green because the row's port was already None). M6 now fails exactly that test."
         },
         {
           "id": "ac-1106",
@@ -83,8 +83,8 @@
         {
           "id": "ac-1107",
           "claim": "Full gate green on the composed, rebased tree, unfiltered, with cargo's own exit code, then cross-model review.",
-          "state": "unchecked",
-          "receipt": "gate transcript on the composed head"
+          "state": "checked",
+          "receipt": "pij-gate at 0be4bc19: toolchain PASS (rustc 1.98.0 == pin), lock, fmt, clippy, test, arch — exit code 0, run as `~/.cargo/bin/cargo run -p pij-testkit --bin pij-gate` because a bare cargo here is homebrew 1.95 and ignores the pin silently. Independently re-run by the reviewer and by the o-prime on this head. Cross-model review (GLM 5.3 Flash) complete: five findings fixed, four escalated as oq-1104..1107."
         }
       ]
     },
@@ -163,28 +163,28 @@
           "state": "unchecked",
           "owner": "o-prime / Jordan",
           "question": "Held and Refused are DRIFT-ONLY reachable today: every live Claude session record carries crossSessionInbound=null, can_deliver refuses before any write, and an accepting seat never holds. Should the PR say so, and should the descriptor consume the CLI record's own consent flag?",
-          "note": "Reviewer F3 + mirror gap, verified live: zero accepting seats on the fleet. A hand-started seat whose operator DID launch with accept is never served, because the register path never reads the consent flag that is sitting on disk. Adjacent to oq-1101."
+          "note": "Reviewer F3 + mirror gap, verified live: zero accepting seats on the fleet. A hand-started seat whose operator DID launch with accept is never served, because the register path never reads the consent flag that is sitting on disk. Adjacent to oq-1101. O-PRIME: stays open COUPLED to oq-1101 — one consent decision with three dependents now: the default, the held backoff, and this mirror gap."
         },
         {
           "id": "oq-1105",
           "state": "unchecked",
           "owner": "o-prime",
           "question": "The direct send path claims note_delivered(InjectedToTransport) BEFORE transport.deliver and compensates only Queued/Err, so a Held or Refused leaves the ledger saying DELIVERED for a message that was denied. Intended, or store the outcome with the claim?",
-          "note": "Reviewer F6. Both directions prevent the worse outcome, but the ledger and the receipt stream disagree and an auditor sees delivered for a refused message."
+          "note": "Reviewer F6. Both directions prevent the worse outcome, but the ledger and the receipt stream disagree and an auditor sees delivered for a refused message. O-PRIME RULING: follow-up, NOT in-branch, and NOT the naive fix — compensating note_delivered on Refused would make a refused message look re-deliverable and re-prompt the human. The honest fix is a TERMINAL WORD IN THE LEDGER VOCABULARY, the same add-the-word lesson one layer down."
         },
         {
           "id": "oq-1106",
           "state": "unchecked",
           "owner": "o-prime",
           "question": "A human slower than HOLD_GRACE still yields Held; the job then backs off and re-delivers, re-prompting someone who may have already denied, and the park reason says 'has not approved' rather than 'answered no'. Fix direction: keep the reply inbox alive across the job lifecycle and let the worker cancel the retry on a denial.",
-          "note": "Reviewer addendum. This is a transport->worker contract change, so it is a seam change and not patched in this branch."
+          "note": "Reviewer addendum. This is a transport->worker contract change, so it is a seam change and not patched in this branch. O-PRIME RULING: direction approved, follow-up coupled to consent-ON. Include the park-reason wording: it says 'the recipient has not approved it' when the truth may be 'answered no' — a report must not misname its state."
         },
         {
           "id": "oq-1107",
           "state": "unchecked",
           "owner": "o-prime",
           "question": "PRE-EXISTING, and plan 110's tests now enshrine it: a bound row re-registering has rpc_port_intent CLEARED, while the allocator treats live rows' intents as the RESERVED set — so spawn(port) -> register -> re-register frees a port a live Copilot is listening on.",
-          "note": "Reviewer, found while re-deriving. Not introduced here, but it contradicts the u-adopt goal 'the stamped rpc_port surviving onto the row consumers read', which holds only until the seat's next registration."
+          "note": "Reviewer, found while re-deriving. Not introduced here, but it contradicts the u-adopt goal 'the stamped rpc_port surviving onto the row consumers read', which holds only until the seat's next registration. O-PRIME: minting PRD req-0008 'registration idempotence' — a re-register must never destroy live state (port intents, consent stamps). The tests in this branch that enshrine the current behaviour are named there, so whoever fixes it knows which greens to expect to flip."
         }
       ]
     }
