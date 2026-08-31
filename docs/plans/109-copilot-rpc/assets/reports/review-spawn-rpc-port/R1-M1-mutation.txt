@@ -1,0 +1,39 @@
+   Compiling utf8parse v0.2.2
+   Compiling anstyle-query v1.1.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling colorchoice v1.0.5
+   Compiling anstyle v1.0.14
+   Compiling strsim v0.11.1
+   Compiling clap_lex v1.1.0
+   Compiling clap_derive v4.6.4
+   Compiling pij-store v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-head/crates/store)
+   Compiling anstyle-parse v1.0.0
+   Compiling anstream v1.0.0
+   Compiling clap_builder v4.6.6
+   Compiling clap v4.6.6
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-head/crates/daemon)
+   Compiling pij-cli v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-head/crates/cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.41s
+     Running tests/spawn.rs (target/debug/deps/spawn-9b36fcba9fcf3cd2)
+
+running 2 tests
+test shipped_cli_registers_sends_reads_acks_and_does_not_read_twice ... ok
+test shipped_spawn_revive_and_registration_transitions_replace_rpc_port_intent ... FAILED
+
+failures:
+
+---- shipped_spawn_revive_and_registration_transitions_replace_rpc_port_intent stdout ----
+
+thread 'shipped_spawn_revive_and_registration_transitions_replace_rpc_port_intent' (431421102) panicked at crates/cli/tests/spawn.rs:230:9:
+assertion `left == right` failed: registration without a fresh allocation must not inherit port intent
+  left: Some(53963)
+ right: None
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    shipped_spawn_revive_and_registration_transitions_replace_rpc_port_intent
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.00s
+
+error: test failed, to rerun pass `-p pij-cli --test spawn`

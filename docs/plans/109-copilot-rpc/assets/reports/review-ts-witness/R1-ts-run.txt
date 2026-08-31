@@ -1,0 +1,18 @@
+npm warn Unknown project config "min-release-age". This will stop working in the next major version of npm.
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts
+
+(node:67613) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ .pi/extensions/pij/index.test.ts (13 tests) 293ms
+ ✓ skills/flow-pair/test/cli-learning.test.ts (3 tests) 1139ms
+     ✓ learn: stdout = exactly 'learning: learn-0001' and writes implement-code candidate  479ms
+     ✓ learn --json: stdout includes candidatePath and cluster  338ms
+     ✓ learn invalid cluster exits 2 and writes no candidate  322ms
+ ✓ skills/flow-pair/test/observe.test.ts (17 tests) 2874ms
+
+ Test Files  3 passed (3)
+      Tests  33 passed (33)
+   Start at  13:58:23
+   Duration  2.99s (transform 321ms, setup 0ms, import 479ms, tests 4.31s, environment 0ms)
+

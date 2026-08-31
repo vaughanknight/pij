@@ -1,0 +1,60 @@
+npm warn Unknown project config "min-release-age". This will stop working in the next major version of npm.
+(node:70576) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts
+
+ ❯ harness/test-utils.test.ts (2 tests | 2 failed) 4ms
+     × configures native removal to recover after two injected ENOTEMPTY attempts 3ms
+     × does not swallow persistent ENOTEMPTY after the configured bound 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  harness/test-utils.test.ts > removeTemporaryTree > configures native removal to recover after two injected ENOTEMPTY attempts
+AssertionError: expected [Function] to not throw an error but 'Error: injected directory repopulation' was thrown
+
+- Expected:
+undefined
+
++ Received:
+"Error: injected directory repopulation"
+
+ ❯ harness/test-utils.test.ts:35:85
+     33|   const injected = injectedNativeRemoval(2);
+     34|
+     35|   expect(() => removeTemporaryTree("/tmp/injected-transient", injected…
+       |                                                                                     ^
+     36|   expect(injected.attempts()).toBe(3);
+     37|   expect(injected.options()).toMatchObject({
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  harness/test-utils.test.ts > removeTemporaryTree > does not swallow persistent ENOTEMPTY after the configured bound
+AssertionError: expected 1 to be 4 // Object.is equality
+
+- Expected
++ Received
+
+- 4
++ 1
+
+ ❯ harness/test-utils.test.ts:51:31
+     49|    expect.objectContaining({ code: "ENOTEMPTY" }),
+     50|   );
+     51|   expect(injected.attempts()).toBe(4);
+       |                               ^
+     52|  });
+     53| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+   Start at  14:20:39
+   Duration  94ms (transform 13ms, setup 0ms, import 21ms, tests 4ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/harness/test-utils.test.ts,title=harness/test-utils.test.ts > removeTemporaryTree > configures native removal to recover after two injected ENOTEMPTY attempts,line=35,column=85::AssertionError: expected [Function] to not throw an error but 'Error: injected directory repopulation' was thrown%0A%0A- Expected:%0Aundefined%0A%0A+ Received:%0A"Error: injected directory repopulation"%0A%0A ❯ harness/test-utils.test.ts:35:85%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/harness/test-utils.test.ts,title=harness/test-utils.test.ts > removeTemporaryTree > does not swallow persistent ENOTEMPTY after the configured bound,line=51,column=31::AssertionError: expected 1 to be 4 // Object.is equality%0A%0A- Expected%0A+ Received%0A%0A- 4%0A+ 1%0A%0A ❯ harness/test-utils.test.ts:51:31%0A%0A

@@ -1,0 +1,13 @@
+npm warn Unknown project config "min-release-age". This will stop working in the next major version of npm.
+(node:5989) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts
+
+ ✓ .pi/extensions/pij/index.test.ts (11 tests) 252ms
+
+ Test Files  1 passed (1)
+      Tests  11 passed (11)
+   Start at  13:59:35
+   Duration  691ms (transform 226ms, setup 0ms, import 361ms, tests 252ms, environment 0ms)
+

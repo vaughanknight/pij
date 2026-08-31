@@ -1,0 +1,255 @@
+npm warn Unknown project config "min-release-age". This will stop working in the next major version of npm.
+(node:4923) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts
+
+ ❯ .pi/extensions/pij/index.test.ts (11 tests | 10 failed) 338ms
+     × publishes the pij id to the status bar on session_start 56ms
+     ✓ publishes the pij id through OMP's default session_name segment 39ms
+     × reuses on reload, mints on new, and preserves an existing opaque id with prime metadata 26ms
+     × passes the exact shutdown reason: replacement dissolves, quit stays observable 27ms
+     × registers Pi with its structural parent and freshly resolved repository identity 20ms
+     × stamps the explicit spawn plan id from PIJ_PLAN_ID 27ms
+     × blocks ask_user_question only for a structurally managed Pi peer and still captures it 27ms
+     × does not block ask_user_question for an un-managed Pi session 21ms
+     × allocates a memorable SDK/test fallback when Pi exposes no native session id 26ms
+     × marks a retained unread message only after onInbound injects it, then reload skips it 29ms
+     × records and marks receipt history without injecting or replaying it 40ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 10 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/index.test.ts > pij index — footer status bar > publishes the pij id to the status bar on session_start
+AssertionError: expected 'pij-late-butterfly · rs-v1' to match /^pij-[a-z]+(-[a-z]+)*$/
+
+- Expected:
+/^pij-[a-z]+(-[a-z]+)*$/
+
++ Received:
+"pij-late-butterfly · rs-v1"
+
+ ❯ .pi/extensions/pij/index.test.ts:150:28
+    148|   const pijStatus = statuses.find((s) => s.key === "pij");
+    149|   expect(pijStatus).toBeDefined();
+    150|   expect(pijStatus?.value).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
+       |                            ^
+    151|
+    152|   // Best-effort cleanup of any FS watcher opened by session_start.
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/10]⎯
+
+ FAIL  .pi/extensions/pij/index.test.ts > pij index — footer status bar > reuses on reload, mints on new, and preserves an existing opaque id with prime metadata
+AssertionError: expected 'pij-late-butterfly · rs-v1' to match /^pij-[a-z]+(-[a-z]+)*$/
+
+- Expected:
+/^pij-[a-z]+(-[a-z]+)*$/
+
++ Received:
+"pij-late-butterfly · rs-v1"
+
+ ❯ .pi/extensions/pij/index.test.ts:180:17
+    178|   await handlers.get("session_start")?.({ type: "session_start", reaso…
+    179|   const first = statuses.at(-1)?.value;
+    180|   expect(first).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
+       |                 ^
+    181|
+    182|   await handlers.get("session_start")?.({ type: "session_start", reaso…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/10]⎯
+
+ FAIL  .pi/extensions/pij/index.test.ts > pij index — footer status bar > passes the exact shutdown reason: replacement dissolves, quit stays observable
+AssertionError: expected null to match object { lifecycle: 'dissolved' }
+
+- Expected:
+{
+  "lifecycle": "dissolved",
+}
+
++ Received:
+null
+
+ ❯ .pi/extensions/pij/index.test.ts:218:44
+    216|   const id = statuses.at(-1)?.value as string;
+    217|   await handlers.get("session_shutdown")?.({ type: "session_shutdown",…
+    218|   expect(new FsRegistry(pijHome).read(id)).toMatchObject({ lifecycle: …
+       |                                            ^
+    219|
+    220|   await handlers.get("session_start")?.({ type: "session_start", reaso…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/10]⎯
+
+ FAIL  .pi/extensions/pij/index.test.ts > pij index — footer status bar > registers Pi with its structural parent and freshly resolved repository identity
+AssertionError: expected null to match object { …(2) }
+
+- Expected:
+{
+  "gitCommonDir": "/repo/.git",
+  "parentId": "pij-structural-parent",
+}
+
++ Received:
+null
+
+ ❯ .pi/extensions/pij/index.test.ts:240:54
+    238|   const id = statuses.at(-1)?.value;
+    239|   expect(gitCommonDir).toHaveBeenCalledWith(process.cwd());
+    240|   expect(new FsRegistry(pijHome).read(id as string)).toMatchObject({
+       |                                                      ^
+    241|    parentId: "pij-structural-parent",
+    242|    gitCommonDir: "/repo/.git",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/10]⎯
+
+ FAIL  .pi/extensions/pij/index.test.ts > pij index — footer status bar > stamps the explicit spawn plan id from PIJ_PLAN_ID
+AssertionError: expected undefined to be '073-pij-first-class-ui' // Object.is equality
+
+- Expected:
+"073-pij-first-class-ui"
+
++ Received:
+undefined
+
+ ❯ .pi/extensions/pij/index.test.ts:256:62
+    254|
+    255|   const id = statuses.at(-1)?.value;
+    256|   expect(new FsRegistry(pijHome).read(id as string)?.planId).toBe("073…
+       |                                                              ^
+    257|   await handlers.get("session_shutdown")?.({}, ctx);
+    258|  });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/10]⎯
+
+ FAIL  .pi/extensions/pij/index.test.ts > pij index — footer status bar > blocks ask_user_question only for a structurally managed Pi peer and still captures it
+AssertionError: expected [] to match object [ { data: { …(3) } } ]
+
+- Expected
++ Received
+
+- [
+-   {
+-     "data": {
+-       "input": {},
+-       "toolCallId": "modal-call",
+-       "toolName": "ask_user_question",
+-     },
+-   },
+- ]
++ []
+
+ ❯ .pi/extensions/pij/index.test.ts:280:77
+    278|   });
+    279|   const id = statuses.at(-1)?.value;
+    280|   expect(new FsEventLog(pijHome, id as string).read({ type: "tool_call…
+       |                                                                             ^
+    281|    { data: { toolCallId: "modal-call", toolName: "ask_user_question", …
+    282|   ]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/10]⎯
+
+ FAIL  .pi/extensions/pij/index.test.ts > pij index — footer status bar > does not block ask_user_question for an un-managed Pi session
+AssertionError: expected { block: true, …(1) } to be undefined
+
+- Expected:
+undefined
+
++ Received:
+{
+  "block": true,
+  "reason": "The ask_user_question tool is forbidden by pij invariant #9. Ask inline through the active delivery channel using pij_send, persist the pending decision, and block only dependent work.",
+}
+
+ ❯ .pi/extensions/pij/index.test.ts:298:5
+    296|     ctx,
+    297|    ),
+    298|   ).toBeUndefined();
+       |     ^
+    299|
+    300|   await handlers.get("session_shutdown")?.({}, ctx);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/10]⎯
+
+ FAIL  .pi/extensions/pij/index.test.ts > pij index — footer status bar > allocates a memorable SDK/test fallback when Pi exposes no native session id
+AssertionError: expected 'pij-late-butterfly · rs-v1' to match /^pij-[a-z]+(-[a-z]+)*$/
+
+- Expected:
+/^pij-[a-z]+(-[a-z]+)*$/
+
++ Received:
+"pij-late-butterfly · rs-v1"
+
+ ❯ .pi/extensions/pij/index.test.ts:310:14
+    308|   await handlers.get("session_start")?.({ type: "session_start", reaso…
+    309|   const id = statuses.at(-1)?.value;
+    310|   expect(id).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
+       |              ^
+    311|   expect(new FsRegistry(pijHome).read(id as string)).toMatchObject({ i…
+    312|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/10]⎯
+
+ FAIL  .pi/extensions/pij/index.test.ts > pij index — footer status bar > marks a retained unread message only after onInbound injects it, then reload skips it
+AssertionError: expected [] to deeply equal [ false ]
+
+- Expected
++ Received
+
+- [
+-   false,
+- ]
++ []
+
+ ❯ .pi/extensions/pij/index.test.ts:335:36
+    333|   await handlers.get("session_start")?.({ type: "session_start", reaso…
+    334|
+    335|   expect(markerStateDuringInbound).toEqual([false]);
+       |                                    ^
+    336|   expect(existsSync(message)).toBe(true);
+    337|   expect(existsSync(marker)).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/10]⎯
+
+ FAIL  .pi/extensions/pij/index.test.ts > pij index — footer status bar > records and marks receipt history without injecting or replaying it
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ .pi/extensions/pij/index.test.ts:370:30
+    368|
+    369|   expect(sentUserMessages.some((text) => text.includes(body))).toBe(fa…
+    370|   expect(existsSync(marker)).toBe(true);
+       |                              ^
+    371|   expect(new FsEventLog(pijHome, id).read({ type: "receipt" })).toHave…
+    372|   expect(
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/10]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  10 failed | 1 passed (11)
+   Start at  13:59:34
+   Duration  783ms (transform 235ms, setup 0ms, import 371ms, tests 338ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/.pi/extensions/pij/index.test.ts,title=.pi/extensions/pij/index.test.ts > pij index — footer status bar > publishes the pij id to the status bar on session_start,line=150,column=28::AssertionError: expected 'pij-late-butterfly · rs-v1' to match /^pij-[a-z]+(-[a-z]+)*$/%0A%0A- Expected:%0A/^pij-[a-z]+(-[a-z]+)*$/%0A%0A+ Received:%0A"pij-late-butterfly · rs-v1"%0A%0A ❯ .pi/extensions/pij/index.test.ts:150:28%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/.pi/extensions/pij/index.test.ts,title=.pi/extensions/pij/index.test.ts > pij index — footer status bar > reuses on reload%2C mints on new%2C and preserves an existing opaque id with prime metadata,line=180,column=17::AssertionError: expected 'pij-late-butterfly · rs-v1' to match /^pij-[a-z]+(-[a-z]+)*$/%0A%0A- Expected:%0A/^pij-[a-z]+(-[a-z]+)*$/%0A%0A+ Received:%0A"pij-late-butterfly · rs-v1"%0A%0A ❯ .pi/extensions/pij/index.test.ts:180:17%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/.pi/extensions/pij/index.test.ts,title=.pi/extensions/pij/index.test.ts > pij index — footer status bar > passes the exact shutdown reason%3A replacement dissolves%2C quit stays observable,line=218,column=44::AssertionError: expected null to match object { lifecycle: 'dissolved' }%0A%0A- Expected:%0A{%0A  "lifecycle": "dissolved",%0A}%0A%0A+ Received:%0Anull%0A%0A ❯ .pi/extensions/pij/index.test.ts:218:44%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/.pi/extensions/pij/index.test.ts,title=.pi/extensions/pij/index.test.ts > pij index — footer status bar > registers Pi with its structural parent and freshly resolved repository identity,line=240,column=54::AssertionError: expected null to match object { …(2) }%0A%0A- Expected:%0A{%0A  "gitCommonDir": "/repo/.git",%0A  "parentId": "pij-structural-parent",%0A}%0A%0A+ Received:%0Anull%0A%0A ❯ .pi/extensions/pij/index.test.ts:240:54%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/.pi/extensions/pij/index.test.ts,title=.pi/extensions/pij/index.test.ts > pij index — footer status bar > stamps the explicit spawn plan id from PIJ_PLAN_ID,line=256,column=62::AssertionError: expected undefined to be '073-pij-first-class-ui' // Object.is equality%0A%0A- Expected:%0A"073-pij-first-class-ui"%0A%0A+ Received:%0Aundefined%0A%0A ❯ .pi/extensions/pij/index.test.ts:256:62%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/.pi/extensions/pij/index.test.ts,title=.pi/extensions/pij/index.test.ts > pij index — footer status bar > blocks ask_user_question only for a structurally managed Pi peer and still captures it,line=280,column=77::AssertionError: expected [] to match object [ { data: { …(3) } } ]%0A%0A- Expected%0A+ Received%0A%0A- [%0A-   {%0A-     "data": {%0A-       "input": {},%0A-       "toolCallId": "modal-call",%0A-       "toolName": "ask_user_question",%0A-     },%0A-   },%0A- ]%0A+ []%0A%0A ❯ .pi/extensions/pij/index.test.ts:280:77%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/.pi/extensions/pij/index.test.ts,title=.pi/extensions/pij/index.test.ts > pij index — footer status bar > does not block ask_user_question for an un-managed Pi session,line=298,column=5::AssertionError: expected { block: true, …(1) } to be undefined%0A%0A- Expected:%0Aundefined%0A%0A+ Received:%0A{%0A  "block": true,%0A  "reason": "The ask_user_question tool is forbidden by pij invariant #9. Ask inline through the active delivery channel using pij_send, persist the pending decision, and block only dependent work.",%0A}%0A%0A ❯ .pi/extensions/pij/index.test.ts:298:5%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/.pi/extensions/pij/index.test.ts,title=.pi/extensions/pij/index.test.ts > pij index — footer status bar > allocates a memorable SDK/test fallback when Pi exposes no native session id,line=310,column=14::AssertionError: expected 'pij-late-butterfly · rs-v1' to match /^pij-[a-z]+(-[a-z]+)*$/%0A%0A- Expected:%0A/^pij-[a-z]+(-[a-z]+)*$/%0A%0A+ Received:%0A"pij-late-butterfly · rs-v1"%0A%0A ❯ .pi/extensions/pij/index.test.ts:310:14%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/.pi/extensions/pij/index.test.ts,title=.pi/extensions/pij/index.test.ts > pij index — footer status bar > marks a retained unread message only after onInbound injects it%2C then reload skips it,line=335,column=36::AssertionError: expected [] to deeply equal [ false ]%0A%0A- Expected%0A+ Received%0A%0A- [%0A-   false,%0A- ]%0A+ []%0A%0A ❯ .pi/extensions/pij/index.test.ts:335:36%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/.pi/extensions/pij/index.test.ts,title=.pi/extensions/pij/index.test.ts > pij index — footer status bar > records and marks receipt history without injecting or replaying it,line=370,column=30::AssertionError: expected false to be true // Object.is equality%0A%0A- Expected%0A+ Received%0A%0A- true%0A+ false%0A%0A ❯ .pi/extensions/pij/index.test.ts:370:30%0A%0A

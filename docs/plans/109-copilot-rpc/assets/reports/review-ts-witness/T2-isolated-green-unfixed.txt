@@ -1,0 +1,44 @@
+npm warn Unknown project config "min-release-age". This will stop working in the next major version of npm.
+(node:20085) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts
+
+ ✓ .pi/extensions/pij/adapters/git-repository.test.ts (3 tests) 214ms
+ ✓ .pi/extensions/pij/core/chores/drive.test.ts (36 tests) 64614ms
+     ✓ prints family help through the pre-registry intercept  625ms
+     ✓ frames record-looking full stdout and probe stderr so they cannot forge records  1517ms
+     ✓ reports the exact sampled values, re-reports them, then becomes quiet only after ack  3122ms
+     ✓ bounds sampled stdout visibly without changing the comparison fingerprint  785ms
+     ✓ keeps a returned delta visible as a flap until ack  3038ms
+     ✓ resolves an adopted seat from its pane and rejects an unknown explicit seat id  1921ms
+     ✓ keeps repo and fleet roster authoring available without a resolved seat  1529ms
+     ✓ normalizes repo-local absolute paths, runs repo probes from another worktree and a subdirectory, and writes formatted JSON  1806ms
+     ✓ validates add/update probe/full paths by resolved worktree containment  4801ms
+     ✓ accepts static multi-argument commands and refuses unknown executables by default  1531ms
+     ✓ refuses 'quoted variable' across add/update and probe/full without roster mutation  2079ms
+     ✓ refuses 'braced variable' across add/update and probe/full without roster mutation  2124ms
+     ✓ refuses 'tilde expansion' across add/update and probe/full without roster mutation  1957ms
+     ✓ refuses 'later variable expansion' across add/update and probe/full without roster mutation  1962ms
+     ✓ refuses 'inline interpreter payload' across add/update and probe/full without roster mutation  2073ms
+     ✓ refuses 'command substitution' across add/update and probe/full without roster mutation  1782ms
+     ✓ refuses 'backtick substitution' across add/update and probe/full without roster mutation  1836ms
+     ✓ refuses 'unterminated quote' across add/update and probe/full without roster mutation  1878ms
+     ✓ allows only exact safe runner flags before the repo script path  5598ms
+     ✓ still warns fleet-roster authors about absolute paths  499ms
+     ✓ warns when a shared chore invokes a pij verb refused to PA seats  459ms
+     ✓ updates a chore in place and preserves its creator attribution  1561ms
+     ✓ ignores unknown roster and state fields while list, run, and ack keep working  2628ms
+     ✓ reports direct roster probe edits as re-instrumentation, not world movement  2732ms
+     ✓ reports path-referenced script edits as probe changes, not value changes  3336ms
+     ✓ accepts free-text values that begin with dashes  824ms
+     ✓ keeps a repo chore baseline independent for two seats  2034ms
+     ✓ runs the full command on the third and sixth separate invocations only  3541ms
+     ✓ runs a configured full command on every delta even without a periodic cadence  2161ms
+     ✓ remove then re-add starts from a clean first observation  2756ms
+
+ Test Files  2 passed (2)
+      Tests  39 passed (39)
+   Start at  14:03:23
+   Duration  64.79s (transform 115ms, setup 0ms, import 143ms, tests 64.83s, environment 0ms)
+

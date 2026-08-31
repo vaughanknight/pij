@@ -1,0 +1,50 @@
+npm warn Unknown project config "min-release-age". This will stop working in the next major version of npm.
+(node:79937) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts
+
+ ❯ .pi/extensions/pij/index.test.ts (13 tests | 1 failed) 288ms
+     ✓ publishes the pij id to the status bar on session_start 22ms
+     × marks the selected default Rust generation in Pi's status segment 21ms
+     ✓ publishes the selected default Rust id through OMP's session_name segment 10ms
+     ✓ publishes the pij id through OMP's default session_name segment 16ms
+     ✓ reuses on reload, mints on new, and preserves an existing opaque id with prime metadata 57ms
+     ✓ passes the exact shutdown reason: replacement dissolves, quit stays observable 30ms
+     ✓ registers Pi with its structural parent and freshly resolved repository identity 6ms
+     ✓ stamps the explicit spawn plan id from PIJ_PLAN_ID 15ms
+     ✓ blocks ask_user_question only for a structurally managed Pi peer and still captures it 16ms
+     ✓ does not block ask_user_question for an un-managed Pi session 19ms
+     ✓ allocates a memorable SDK/test fallback when Pi exposes no native session id 14ms
+     ✓ marks a retained unread message only after onInbound injects it, then reload skips it 28ms
+     ✓ records and marks receipt history without injecting or replaying it 32ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/index.test.ts > pij index — footer status bar > marks the selected default Rust generation in Pi's status segment
+AssertionError: expected 'pij-stingy-weasel' to match /^pij-[a-z]+(-[a-z]+)* · rs-v1$/
+
+- Expected:
+/^pij-[a-z]+(-[a-z]+)* · rs-v1$/
+
++ Received:
+"pij-stingy-weasel"
+
+ ❯ .pi/extensions/pij/index.test.ts:215:66
+    213|   await handlers.get("session_start")?.({ type: "session_start", reaso…
+    214|
+    215|   expect(statuses.find((status) => status.key === "pij")?.value).toMat…
+       |                                                                  ^
+    216|    /^pij-[a-z]+(-[a-z]+)* · rs-v1$/,
+    217|   );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 12 passed (13)
+   Start at  13:58:46
+   Duration  699ms (transform 223ms, setup 0ms, import 345ms, tests 288ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/.pi/extensions/pij/index.test.ts,title=.pi/extensions/pij/index.test.ts > pij index — footer status bar > marks the selected default Rust generation in Pi's status segment,line=215,column=66::AssertionError: expected 'pij-stingy-weasel' to match /^pij-[a-z]+(-[a-z]+)* · rs-v1$/%0A%0A- Expected:%0A/^pij-[a-z]+(-[a-z]+)* · rs-v1$/%0A%0A+ Received:%0A"pij-stingy-weasel"%0A%0A ❯ .pi/extensions/pij/index.test.ts:215:66%0A%0A

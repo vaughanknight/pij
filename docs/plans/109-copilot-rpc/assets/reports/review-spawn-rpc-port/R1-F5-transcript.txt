@@ -1,0 +1,18 @@
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-head/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.28s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-d50519e9dfad8219)
+
+running 1 test
+PROBE_F5 red_arm_before_revive_reason = Some("crashed mid-review; unread mail left for a revive")
+PROBE_F5 red_arm_before_revive_role   = Some("reviewer")
+PROBE_F5 red_arm_before_semantic      = Some(Blocked)
+PROBE_F5 revive_status                = 200 OK
+PROBE_F5 after_revive_reason          = None
+PROBE_F5 after_revive_tombstoned_at   = None
+PROBE_F5 after_revive_role            = None
+PROBE_F5 after_revive_semantic        = None
+PROBE_F5 after_revive_parent          = Some(SeatId("pij-governor"))
+test http::tests::reviewer_probe_f5_does_revive_by_spawn_destroy_the_post_mortem ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 89 filtered out; finished in 0.01s
+

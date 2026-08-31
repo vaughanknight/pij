@@ -1,0 +1,29 @@
+   Compiling ring v0.17.14
+   Compiling pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-head/crates/harnesses)
+   Compiling rustls v0.23.43
+   Compiling rustls-webpki v0.103.15
+   Compiling sqlx-core v0.8.6
+   Compiling tokio-rustls v0.26.4
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.12.28
+   Compiling pij-sidecars v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-head/crates/sidecars)
+   Compiling sqlx-sqlite v0.8.6
+   Compiling sqlx-macros-core v0.8.6
+   Compiling sqlx-macros v0.8.6
+   Compiling sqlx v0.8.6
+   Compiling pij-store v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-head/crates/store)
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-head/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.88s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-d50519e9dfad8219)
+
+running 1 test
+PROBE_RF31 env_from_launch  PIJ_SESSION_ID=Some("pij-probe-arm1") PIJ_SPAWN_ID=Some("s-3abce79395784899099f8363f6e726a5")
+PROBE_RF31 row_spawn_id     = Some("s-3abce79395784899099f8363f6e726a5")
+PROBE_RF31 identity_match   = true
+PROBE_RF31 ARM1 at_spawn    = Some(59475)
+PROBE_RF31 ARM1 after_bind  = Some(59475)
+PROBE_RF31 ARM1 persisted   = Some(59475)
+test http::tests::reviewer_probe_rf31_arm1_shipped_launcher_end_to_end ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 88 filtered out; finished in 0.01s
+

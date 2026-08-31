@@ -1,0 +1,16 @@
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-head/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.20s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-d50519e9dfad8219)
+
+running 1 test
+PROBE_V seeded_stale_port      = Some(61001)
+PROBE_V reregister_status      = 200 OK
+PROBE_V after_reregister_port  = None
+PROBE_V first_spawn_status     = 200 OK
+PROBE_V live_collision_status  = 400 Bad Request
+PROBE_V live_collision_body    = {"ok":false,"command":"pij spawn","v":1,"meta":"seat `pij-probe-live` already exists and is live — spawn never overwrites a live roster row","error":"refused"}
+PROBE_V launches_before/after  = 1/1
+test http::tests::reviewer_probe_v_r01_path_and_live_id_refusal ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 90 filtered out; finished in 0.01s
+

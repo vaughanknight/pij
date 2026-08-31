@@ -1,0 +1,229 @@
+
+// ---------------------------------------------------------------------------
+// REVIEWER PROBE F1 (plan 109 unit 1) — TEMPORARY, reverted after the run.
+// Question: does a Copilot seat KEEP its launch port intent through the very
+// registration that BINDS the launch spawn just made?
+// Discriminates by CONTENT — every arm prints a value, never an absence:
+//   correct -> after_first_bind == Some(<the port spawn emitted>)
+//   defect  -> after_first_bind == None, and the seat is a pointer seat for life
+// Red arm: `never_spawned` proves the probe can print the other answer.
+// ---------------------------------------------------------------------------
+#[tokio::test]
+async fn reviewer_probe_f1_does_the_binding_registration_destroy_launch_intent() {
+    let identity = ProcIdentity {
+        pid: 5151,
+        proc_start: 20260831031000,
+    };
+    let other = ProcIdentity {
+        pid: 5252,
+        proc_start: 20260831031001,
+    };
+    let registry = Arc::new(FakeRegistry::new());
+    let tmux = Arc::new(FakeTmux::new().with_pane(Pane {
+        id: "%caller".to_string(),
+        session: "fleet".to_string(),
+        window: "orchestrator".to_string(),
+        title: String::new(),
+        cursor_x: None,
+        cursor_y: None,
+    }));
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.tmux = tmux.clone();
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(identity).with_proc(other));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+
+    // 1. Spawn a Copilot seat. This is the ONLY moment the port is allocated;
+    //    no runtime command can turn a Copilot endpoint on later.
+    let spawned = client
+        .post(format!("http://{addr}/v1/spawn"))
+        .bearer_auth("key")
+        .json(&SpawnRequest {
+            id: Some("pij-probe-copilot".into()),
+            harness: Harness::Copilot,
+            executable: None,
+            model: None,
+            effort: None,
+            cwd: "/abs/tree".to_string(),
+            session: Some("fleet".to_string()),
+            caller_pane: None,
+            name: None,
+            parent: None,
+            accept_inbound: false,
+        })
+        .send()
+        .await
+        .expect("spawn request");
+    assert_eq!(spawned.status(), reqwest::StatusCode::OK);
+    let spawned: Envelope<SeatDescriptor> = spawned.json().await.expect("spawn envelope");
+    let spawned = spawned.data.expect("descriptor");
+    let at_spawn = spawned.rpc_port_intent;
+    let proc_at_spawn = spawned.proc;
+
+    // 2. The seat's OWN first registration — the one that binds the launch spawn
+    //    just made. `proc` is None until this happens, so this call is not
+    //    optional: it is how every spawned seat acquires a process identity.
+    let bound = client
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&Registration {
+            supersedes: None,
+            id: "pij-probe-copilot".to_string(),
+            harness: "copilot".to_string(),
+            folder: "/abs/tree".to_string(),
+            pane: Some("%42".to_string()),
+            pid: Some(identity.pid),
+            proc_start: Some(identity.proc_start),
+            spawn_id: None,
+            model: None,
+            provider: None,
+            effort: None,
+            parent: None,
+            relay: false,
+        })
+        .send()
+        .await
+        .expect("binding registration");
+    assert_eq!(bound.status(), reqwest::StatusCode::OK);
+    let bound: Envelope<SeatDescriptor> = bound.json().await.expect("register envelope");
+    let bound = bound.data.expect("descriptor");
+    let after_first_bind = bound.rpc_port_intent;
+    let proc_after_bind = bound.proc;
+
+    // 3. Read it back from the REGISTRY, not from the response body.
+    let persisted = registry
+        .get(&SeatId::from("pij-probe-copilot"))
+        .await
+        .expect("registry read")
+        .expect("row")
+        .rpc_port_intent;
+
+    // 4. RED ARM — a seat that was never spawned prints None, proving the probe
+    //    reports the field rather than a constant.
+    let fresh = client
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&Registration {
+            supersedes: None,
+            id: "pij-probe-never-spawned".to_string(),
+            harness: "copilot".to_string(),
+            folder: "/abs/tree".to_string(),
+            pane: Some("%43".to_string()),
+            pid: Some(other.pid),
+            proc_start: Some(other.proc_start),
+            spawn_id: None,
+            model: None,
+            provider: None,
+            effort: None,
+            parent: None,
+            relay: false,
+        })
+        .send()
+        .await
+        .expect("fresh register");
+    let fresh_status = fresh.status();
+    let fresh: Envelope<SeatDescriptor> = fresh.json().await.expect("fresh envelope");
+    let never_spawned = fresh.data.expect("fresh descriptor").rpc_port_intent;
+
+    println!("PROBE_F1 at_spawn            = {at_spawn:?}   proc={proc_at_spawn:?}");
+    println!("PROBE_F1 after_first_bind    = {after_first_bind:?}   proc={proc_after_bind:?}");
+    println!("PROBE_F1 persisted_in_store  = {persisted:?}");
+    println!("PROBE_F1 red_arm_status      = {fresh_status}");
+    println!("PROBE_F1 red_arm_never_spawn = {never_spawned:?}");
+
+    server.abort();
+}
+
+// ---------------------------------------------------------------------------
+// REVIEWER PROBE F5 — TEMPORARY, reverted after the run.
+// `spawn` used to refuse EVERY existing id ("spawn never overwrites a roster
+// row"). It now refuses only LIVE ids and relaunches over a tombstoned one.
+// Question: what happens to the post-mortem that the tombstone exists to keep?
+// Discriminates by CONTENT — both worlds print a value:
+//   preserved -> after_revive_reason == Some("<why it died>")
+//   destroyed -> None, and the row's whole reason for surviving is gone
+// Red arm: reason read BEFORE the revive, proving the probe can see one.
+// ---------------------------------------------------------------------------
+#[tokio::test]
+async fn reviewer_probe_f5_does_revive_by_spawn_destroy_the_post_mortem() {
+    let registry = Arc::new(FakeRegistry::new());
+    let tmux = Arc::new(FakeTmux::new().with_pane(Pane {
+        id: "%caller".to_string(),
+        session: "fleet".to_string(),
+        window: "orchestrator".to_string(),
+        title: String::new(),
+        cursor_x: None,
+        cursor_y: None,
+    }));
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.tmux = tmux.clone();
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+
+    let launch = |id: &'static str| {
+        let client = client.clone();
+        async move {
+            client
+                .post(format!("http://{addr}/v1/spawn"))
+                .bearer_auth("key")
+                .json(&SpawnRequest {
+                    id: Some(id.into()),
+                    harness: Harness::Copilot,
+                    executable: None,
+                    model: None,
+                    effort: None,
+                    cwd: "/abs/tree".to_string(),
+                    session: Some("fleet".to_string()),
+                    caller_pane: None,
+                    name: None,
+                    parent: Some("pij-governor".into()),
+                    accept_inbound: false,
+                })
+                .send()
+                .await
+                .expect("spawn request")
+        }
+    };
+
+    let first = launch("pij-probe-postmortem").await;
+    assert_eq!(first.status(), reqwest::StatusCode::OK);
+
+    // Give the row the state a real seat accumulates, then retire it with a
+    // reason a human would need afterwards.
+    let id = SeatId::from("pij-probe-postmortem");
+    let mut seat = registry.get(&id).await.expect("get").expect("row");
+    seat.role = Some("reviewer".to_string());
+    seat.semantic_state = Some(pij_core::model::SemanticState::Blocked);
+    registry.put(seat).await.expect("seed role and state");
+    registry
+        .tombstone(&id, "crashed mid-review; unread mail left for a revive")
+        .await
+        .expect("tombstone");
+
+    let before = registry.get(&id).await.expect("get").expect("row");
+    println!("PROBE_F5 red_arm_before_revive_reason = {:?}", before.tombstone_reason);
+    println!("PROBE_F5 red_arm_before_revive_role   = {:?}", before.role);
+    println!("PROBE_F5 red_arm_before_semantic      = {:?}", before.semantic_state);
+
+    let revived = launch("pij-probe-postmortem").await;
+    let revived_status = revived.status();
+    let after = registry.get(&id).await.expect("get").expect("row");
+    println!("PROBE_F5 revive_status                = {revived_status}");
+    println!("PROBE_F5 after_revive_reason          = {:?}", after.tombstone_reason);
+    println!("PROBE_F5 after_revive_tombstoned_at   = {:?}", after.tombstoned_at);
+    println!("PROBE_F5 after_revive_role            = {:?}", after.role);
+    println!("PROBE_F5 after_revive_semantic        = {:?}", after.semantic_state);
+    println!("PROBE_F5 after_revive_parent          = {:?}", after.parent);
+
+    server.abort();
+}

@@ -1,0 +1,26 @@
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-head/crates/daemon)
+   Compiling pij-cli v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-head/crates/cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.45s
+     Running tests/spawn.rs (target/debug/deps/spawn-9b36fcba9fcf3cd2)
+
+running 2 tests
+test shipped_cli_registers_sends_reads_acks_and_does_not_read_twice ... ok
+test shipped_spawn_revive_and_registration_transitions_replace_rpc_port_intent ... FAILED
+
+failures:
+
+---- shipped_spawn_revive_and_registration_transitions_replace_rpc_port_intent stdout ----
+
+thread 'shipped_spawn_revive_and_registration_transitions_replace_rpc_port_intent' (432938411) panicked at crates/cli/tests/spawn.rs:357:9:
+assertion `left == right` failed: registration without the matching launch id must clear port intent
+  left: Some(61004)
+ right: None
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    shipped_spawn_revive_and_registration_transitions_replace_rpc_port_intent
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.97s
+
+error: test failed, to rerun pass `-p pij-cli --test spawn`

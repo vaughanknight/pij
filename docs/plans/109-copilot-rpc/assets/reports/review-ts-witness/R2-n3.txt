@@ -1,0 +1,39 @@
+npm warn Unknown project config "min-release-age". This will stop working in the next major version of npm.
+(node:62270) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts
+
+ ❯ skills/flow-pair/test/cli-learning.test.ts (3 tests | 1 failed) 1031ms
+     × learn: stdout = exactly 'learning: learn-0001' and writes implement-code candidate 367ms
+     ✓ learn --json: stdout includes candidatePath and cluster  334ms
+     ✓ learn invalid cluster exits 2 and writes no candidate  330ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  skills/flow-pair/test/cli-learning.test.ts > flow-pair learn — CLI subprocess (T007) > learn: stdout = exactly 'learning: learn-0001' and writes implement-code candidate
+AssertionError: expected 'warning: candidate index rebuilt' to be '' // Object.is equality
+
+- Expected
++ Received
+
++ warning: candidate index rebuilt
+
+ ❯ skills/flow-pair/test/cli-learning.test.ts:111:21
+    109|    .join("")
+    110|    .trim();
+    111|   expect(cliStderr).toBe("");
+       |                     ^
+    112|   expect(candidateMdFiles(promptLabRoot, "implement-code")).toEqual(["…
+    113|   expect(candidateMdFiles(promptLabRoot, "fix-code")).toEqual([]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 passed (3)
+   Start at  14:20:22
+   Duration  1.14s (transform 33ms, setup 0ms, import 42ms, tests 1.03s, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/skills/flow-pair/test/cli-learning.test.ts,title=skills/flow-pair/test/cli-learning.test.ts > flow-pair learn — CLI subprocess (T007) > learn%3A stdout = exactly 'learning%3A learn-0001' and writes implement-code candidate,line=111,column=21::AssertionError: expected 'warning: candidate index rebuilt' to be '' // Object.is equality%0A%0A- Expected%0A+ Received%0A%0A+ warning: candidate index rebuilt%0A%0A ❯ skills/flow-pair/test/cli-learning.test.ts:111:21%0A%0A

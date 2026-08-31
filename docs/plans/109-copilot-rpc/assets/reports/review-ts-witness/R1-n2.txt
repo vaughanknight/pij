@@ -1,0 +1,50 @@
+npm warn Unknown project config "min-release-age". This will stop working in the next major version of npm.
+(node:89597) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts
+
+ ❯ .pi/extensions/pij/index.test.ts (13 tests | 1 failed) 274ms
+     ✓ publishes the pij id to the status bar on session_start 22ms
+     ✓ marks the selected default Rust generation in Pi's status segment 23ms
+     × publishes the selected default Rust id through OMP's session_name segment 10ms
+     ✓ publishes the pij id through OMP's default session_name segment 15ms
+     ✓ reuses on reload, mints on new, and preserves an existing opaque id with prime metadata 51ms
+     ✓ passes the exact shutdown reason: replacement dissolves, quit stays observable 27ms
+     ✓ registers Pi with its structural parent and freshly resolved repository identity 7ms
+     ✓ stamps the explicit spawn plan id from PIJ_PLAN_ID 14ms
+     ✓ blocks ask_user_question only for a structurally managed Pi peer and still captures it 17ms
+     ✓ does not block ask_user_question for an un-managed Pi session 15ms
+     ✓ allocates a memorable SDK/test fallback when Pi exposes no native session id 15ms
+     ✓ marks a retained unread message only after onInbound injects it, then reload skips it 29ms
+     ✓ records and marks receipt history without injecting or replaying it 28ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/index.test.ts > pij index — footer status bar > publishes the selected default Rust id through OMP's session_name segment
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ .pi/extensions/pij/index.test.ts:232:59
+    230|
+    231|   expect(sessionNames.at(-1)).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
+    232|   expect(statuses.some((status) => status.key === "pij")).toBe(false);
+       |                                                           ^
+    233|   await handlers.get("session_shutdown")?.({}, ctx);
+    234|  });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 12 passed (13)
+   Start at  13:59:05
+   Duration  707ms (transform 229ms, setup 0ms, import 361ms, tests 274ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/.pi/extensions/pij/index.test.ts,title=.pi/extensions/pij/index.test.ts > pij index — footer status bar > publishes the selected default Rust id through OMP's session_name segment,line=232,column=59::AssertionError: expected true to be false // Object.is equality%0A%0A- Expected%0A+ Received%0A%0A- false%0A+ true%0A%0A ❯ .pi/extensions/pij/index.test.ts:232:59%0A%0A
