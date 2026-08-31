@@ -58,6 +58,12 @@
   intended. Discover available models at runtime rather than hardcoding a
   provider or model id.
 
+## Pij peer harness default
+
+- Default new pij peers to **OMP** unless Jordan explicitly specifies another
+  harness. Model/provider/effort instructions still override the default; always
+  discover the exact selector at runtime and canary it before use.
+
 ## Is that check a POLICY or a BRAKE? (ask what REMOVING it does)
 
 A check that reads a timestamp, a threshold, or any other input is one of two
