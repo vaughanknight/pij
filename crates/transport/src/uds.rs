@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -344,6 +345,15 @@ fn xml_attribute(value: &str) -> String {
 struct ReplyInbox {
     path: PathBuf,
     listener: UnixListener,
+    /// A hold seen on this address, REMEMBERED ACROSS CANCELLATION.
+    ///
+    /// `select!` cancels the losing arm, so while this was a local of
+    /// `wait_for_status` a delivery-connection hangup after a hold restarted the
+    /// wait with the hold forgotten and an expired deadline — reporting Queued,
+    /// which retries at zero delay and raises a second dialog at a human who is
+    /// still looking at the first. Not observed on 2.1.250/2.1.251 (the CLI
+    /// closes in the safe order) and unguarded until the reviewer named it.
+    seen_hold: Mutex<bool>,
 }
 
 impl ReplyInbox {
@@ -358,7 +368,11 @@ impl ReplyInbox {
         ));
         let _ = fs::remove_file(&path);
         let listener = UnixListener::bind(&path).ok()?;
-        Some(Self { path, listener })
+        Some(Self {
+            path,
+            listener,
+            seen_hold: Mutex::new(false),
+        })
     }
 
     fn origin(&self) -> String {
@@ -373,7 +387,11 @@ impl ReplyInbox {
         deadline: Instant,
         hold_grace: Duration,
     ) -> Option<Status> {
-        let mut pending = None;
+        let mut pending = if *self.seen_hold.lock().expect("reply inbox mutex") {
+            Some(Status::Held)
+        } else {
+            None
+        };
         loop {
             // A HOLD EARNS ITS OWN, LONGER WINDOW. The base deadline is sized for
             // the machine-side verdict (holds measured at 70-74 ms against a
@@ -434,7 +452,10 @@ impl ReplyInbox {
                 Err(_) | Ok(Ok(0)) | Ok(Err(_)) => return None,
                 Ok(Ok(_)) => match classify_status(&line, msg_id) {
                     Status::Unrelated | Status::Malformed => {}
-                    Status::Held => *pending = Some(Status::Held),
+                    Status::Held => {
+                        *pending = Some(Status::Held);
+                        *self.seen_hold.lock().expect("reply inbox mutex") = true;
+                    }
                     terminal => return Some(terminal),
                 },
             }
@@ -497,6 +518,8 @@ async fn send_frame(
                 .wait_for_status(&msg.msg_id, deadline, hold_grace)
                 .await
                 .or(Some(Status::Dropped)),
+            // NOTE: `wait_for_status` re-seeds itself from `seen_hold`, so a
+            // hangup after a hold resumes as Held rather than restarting empty.
         },
     };
 
@@ -614,6 +637,7 @@ fn classify_status(line: &str, msg_id: &str) -> Status {
 mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::Duration;
 
@@ -1188,6 +1212,146 @@ mod tests {
                 reason: "the recipient declined the message".to_string()
             },
             "a hold that becomes a denial must be reported as the denial"
+        );
+    }
+
+    /// R2 — THE HOLD-GRACE EXTENSION NEEDS ITS OWN WITNESS. The hold-then-denial
+    /// test's denial lands INSIDE the base deadline, so mutating the grace away
+    /// left it green: the extension was unguarded. Here the denial arrives AFTER
+    /// the base deadline and can only be seen because a hold extends the window.
+    /// Mutate `until` back to `deadline` and this fails while everything else
+    /// stays green.
+    #[tokio::test]
+    async fn a_denial_after_the_base_deadline_is_still_heard() {
+        let dir = TestDir::new();
+        let socket = dir.0.join("listener.sock");
+        let listener = UnixListener::bind(&socket).expect("bind fixture socket");
+        write_record(&dir.0, 4242, "%99", &socket);
+        let transport = transport(&dir.0)
+            .with_ack_wait(Duration::from_millis(60))
+            .with_hold_grace(Duration::from_millis(600));
+        let held = fixture("status-held.ndjson");
+        let denied = fixture("status-denied.ndjson");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept transport");
+            let mut reader = BufReader::new(stream);
+            let mut auth = String::new();
+            reader.read_line(&mut auth).await.expect("read auth");
+            let mut frame = String::new();
+            reader.read_line(&mut frame).await.expect("read frame");
+            let parsed: Value = serde_json::from_str(frame.trim()).expect("frame is json");
+            let advertised = parsed
+                .get("from")
+                .and_then(Value::as_str)
+                .expect("reply address")
+                .strip_prefix("uds:")
+                .expect("uds address")
+                .to_string();
+            // The hold arrives promptly, on its own connection, which then closes —
+            // exactly what the live CLI does.
+            let mut first = UnixStream::connect(&advertised)
+                .await
+                .expect("hold channel");
+            first.write_all(held.as_bytes()).await.expect("write held");
+            drop(first);
+            // The human answers AFTER the base ack deadline has passed.
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            let mut second = UnixStream::connect(&advertised)
+                .await
+                .expect("the reply address must still exist after the base deadline");
+            second
+                .write_all(denied.as_bytes())
+                .await
+                .expect("write denied");
+            drop(second);
+        });
+
+        let target = seat(4242, Some("%99"), Harness::Claude);
+        let outcome = transport
+            .deliver(&target, &message(None))
+            .await
+            .expect("delivery result");
+        let _ = tokio::time::timeout(Duration::from_millis(1200), server).await;
+        assert_eq!(
+            outcome,
+            DeliveryOutcome::Refused {
+                reason: "the recipient declined the message".to_string()
+            },
+            "a hold must extend the window past the base deadline, or the human's answer is lost"
+        );
+    }
+
+    /// R1 — A HANGUP AFTER A HOLD MUST NOT FORGET THE HOLD. `select!` cancels the
+    /// losing arm, so while the seen-hold flag was a local of `wait_for_status` a
+    /// delivery-connection hangup restarted the wait empty and reported Queued —
+    /// which retries at zero delay and raises a SECOND dialog at a human still
+    /// looking at the first. Mutate `seen_hold` back to a fresh `None` and this
+    /// fails.
+    #[tokio::test]
+    async fn a_hangup_after_a_hold_does_not_discard_the_hold() {
+        let dir = TestDir::new();
+        let socket = dir.0.join("listener.sock");
+        let listener = UnixListener::bind(&socket).expect("bind fixture socket");
+        write_record(&dir.0, 4242, "%99", &socket);
+        let transport = transport(&dir.0)
+            .with_ack_wait(Duration::from_millis(80))
+            .with_hold_grace(Duration::from_millis(600));
+        let held = fixture("status-held.ndjson");
+        let denied = fixture("status-denied.ndjson");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept transport");
+            let mut reader = BufReader::new(stream);
+            let mut auth = String::new();
+            reader.read_line(&mut auth).await.expect("read auth");
+            let mut frame = String::new();
+            reader.read_line(&mut frame).await.expect("read frame");
+            let parsed: Value = serde_json::from_str(frame.trim()).expect("frame is json");
+            let advertised = parsed
+                .get("from")
+                .and_then(Value::as_str)
+                .expect("reply address")
+                .strip_prefix("uds:")
+                .expect("uds address")
+                .to_string();
+
+            let mut hold_channel = UnixStream::connect(&advertised)
+                .await
+                .expect("hold channel");
+            hold_channel
+                .write_all(held.as_bytes())
+                .await
+                .expect("write held");
+            drop(hold_channel);
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            // NOW HANG UP THE DELIVERY CONNECTION, while the hold is outstanding.
+            // This is the ordering the live CLI happens not to use; a build that
+            // did would have silently lost every hold.
+            drop(reader);
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            let mut verdict = UnixStream::connect(&advertised)
+                .await
+                .expect("the reply address must outlive the delivery connection");
+            verdict
+                .write_all(denied.as_bytes())
+                .await
+                .expect("write denied");
+            drop(verdict);
+        });
+
+        let target = seat(4242, Some("%99"), Harness::Claude);
+        let outcome = transport
+            .deliver(&target, &message(None))
+            .await
+            .expect("delivery result");
+        let _ = tokio::time::timeout(Duration::from_millis(1200), server).await;
+        assert_eq!(
+            outcome,
+            DeliveryOutcome::Refused {
+                reason: "the recipient declined the message".to_string()
+            },
+            "a hangup must not discard a hold already seen, or the human is asked twice"
         );
     }
 
