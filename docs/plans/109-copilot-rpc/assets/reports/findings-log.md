@@ -302,3 +302,32 @@ instrument answers a different question.**
 The contract's own gap predates this unit and belongs to whoever owns
 `registry_contract`. What binds unit 1 is that it **cannot rely on it**.
 
+## D-1 — DEFERRED (frozen, trigger named) — a negative asserted by a timeout passes BECAUSE the timeout elapsed
+
+Not unit-1 work and **not to be done now**. Recorded here because it is a **defect
+class**, and the class is the fourth member of *coincidence by construction*.
+
+Three tests assert that a forbidden event does **not** happen, by waiting 20ms and
+requiring `timeout(...).is_err()`:
+
+```
+crates/daemon/src/delivery/mod.rs:1222
+crates/transport/src/uds.rs:566
+crates/daemon/tests/review_regressions.rs:301
+```
+
+> **They pass because the timeout elapsed.** A loaded CI runner that merely *delays* the
+> forbidden event produces the same green — so the assertion cannot distinguish *"this
+> never happens"* from *"this did not happen within 20ms on this machine today."*
+
+Same shape as the others in this family: the fixture cannot **produce** the case where
+the two states differ, so no quantity of green separates them. And the failure direction
+is the dangerous one — **green over a live regression**, not a false alarm.
+
+The idiomatic fix is already in-tree at five sites (`start_paused = true`,
+e.g. `lifecycle.rs:246`): with a paused clock, "nothing happened" stops being a wall-clock
+claim about a loaded machine.
+
+**Trigger:** first CI flake on any of the three, or post-release cleanup — whichever
+comes first. **Owner:** unassigned until the trigger fires.
+
