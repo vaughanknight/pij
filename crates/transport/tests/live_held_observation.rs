@@ -20,7 +20,9 @@
 use std::env;
 use std::time::{Duration, Instant};
 
-use pij_core::model::{DeliveryOutcome, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId};
+use pij_core::model::{
+    DeliveryOrigin, DeliveryOutcome, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId,
+};
 use pij_core::ports::Transport;
 use pij_transport::UdsTransport;
 
@@ -97,4 +99,60 @@ async fn an_unmarked_message_is_observed_held_on_the_live_wire() {
              This is the r1 failure: Held is still unreachable."
         ),
     }
+}
+
+/// The DELIVERED arm of the round trip, against a seat launched WITH
+/// `--settings '{"crossSessionInbound":"accept"}'`. An accepting recipient never
+/// holds, which is exactly why the two arms cannot share one seat.
+///
+/// The body is deliberately over 1022 bytes — the macOS pty chunk size (BSD
+/// TTYHOG-2) at which the send-keys path delivers ONLY THE TAIL while its submit
+/// oracle, which matches that surviving tail, reports confirmed. That data-loss
+/// bug is the reason this transport exists.
+///
+/// ```text
+/// PIJ_LIVE_ACCEPTING_PID=<pid> cargo test -p pij-transport --test live_held_observation \
+///   -- --ignored --nocapture accepting
+/// ```
+#[tokio::test]
+#[ignore = "needs a live ACCEPTING Claude session; set PIJ_LIVE_ACCEPTING_PID"]
+async fn a_long_body_reaches_an_accepting_seat_without_a_dialog() {
+    let Some(pid) = env::var("PIJ_LIVE_ACCEPTING_PID")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u32>().ok())
+    else {
+        panic!("set PIJ_LIVE_ACCEPTING_PID to a session spawned with crossSessionInbound=accept");
+    };
+    let transport = UdsTransport::new().expect("HOME must name the account owning ~/.claude");
+    let seat = seat(pid);
+
+    // 40 numbered lines, each carrying the sentinel, so a truncation to the last
+    // pty chunk is visible as MISSING LINE NUMBERS rather than as a shorter blob.
+    let sentinel = format!("WOODPECKER-LONG-{}", std::process::id());
+    let body: String = (1..=40)
+        .map(|n| format!("{sentinel} line {n:02} of 40 — byte-exactness probe for plan 110.\n"))
+        .collect();
+    assert!(
+        body.len() > 1022,
+        "the probe must exceed the 1022-byte pty chunk to mean anything; got {}",
+        body.len()
+    );
+
+    let sent = Instant::now();
+    let outcome = transport
+        .deliver(&seat, &message(&body))
+        .await
+        .expect("deliver");
+    println!(
+        "sentinel {sentinel}: {} bytes, outcome after {:?}: {outcome:?}",
+        body.len(),
+        sent.elapsed()
+    );
+    assert_eq!(
+        outcome,
+        DeliveryOutcome::Delivered {
+            origin: DeliveryOrigin::InjectedToTransport
+        },
+        "an accepting recipient must not hold, and silence must not be upgraded past injection"
+    );
 }

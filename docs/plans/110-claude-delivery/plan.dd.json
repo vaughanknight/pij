@@ -142,14 +142,14 @@
           "question": "Should crossSessionInbound=accept default ON for daemon-spawned Claude seats? It is implemented and opt-in, defaults false, so the UDS transport is off for every seat on the fleet today.",
           "state": "unchecked",
           "owner": "Jordan via o-prime",
-          "note": "Consent is an act, not a default flipped on the operator's behalf. Neither arm is being built until this is ruled."
+          "note": "Consent is an act, not a default flipped on the operator's behalf. Neither arm is being built until this is ruled. COUPLED (o-prime): the consent default may not flip ON before the held-delivery backoff lands, because Held's only consumer was an immediate retry — a dialog storm at the operator — dormant only while the transport is off. Both halves ship together or not at all. The backoff has now landed."
         },
         {
           "id": "oq-1102",
-          "question": "Claude writes its socket and peer key BEFORE its session record, so pid-direct discovery has a startup window where a live, authenticable socket reads as undiscoverable. Does the transport need to tolerate that window, or does the caller retry?",
-          "state": "unchecked",
+          "question": "RESOLVED — NOT A DEFECT. Originally filed as 'Claude writes socket and key before the session record, so discovery has a startup window'. That generalised ONE abnormal seat into a timing law and was wrong.",
+          "state": "na",
           "owner": "pm",
-          "note": "Observed 2026-08-31 while standing up a throwaway recipient: /tmp/cc-socks/<pid>.sock and <pid>.<hash>.key both present, <pid>.json absent for >60s."
+          "note": "Four controlled runs 2026-08-31. (A) cwd = an already-trusted worktree, --dangerously-skip-permissions: record, key and socket ALL present within 5s — no startup window exists. (B) cwd /tmp, no bypass flag and (C) cwd /tmp, WITH bypass flag: key and socket present, record ABSENT — both sitting on the FOLDER-TRUST prompt, captured verbatim from the pane. Bypass-permissions does not skip folder trust. The true fact: a session PARKED AT THE PRE-SESSION TRUST GATE publishes a live authenticable socket and has not written a session record. So discovery must NOT be changed: treating socket+key as proof would deliver into a process that has not started a session and may never, because it is waiting on a human at a modal. The record's absence is the honest not-ready signal and is already doing its job. o-prime's earlier ruling to move the fix into discovery is WITHDRAWN. Instrument failures behind the original error, recorded because they will bite someone else: a blank tmux capture read as 'still booting' when the pane was on a modal, and `pgrep -P <pane_pid>` returning an MCP child instead of the claude process. FUTURE DIAGNOSTIC, not built: socket present + record absent for >N seconds = a human is blocked at a modal on that seat, which is invisible to pij while looking spawn-successful."
         },
         {
           "id": "oq-1103",
