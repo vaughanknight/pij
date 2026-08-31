@@ -1,1 +1,7 @@
-{"id":"pij-ghost","dataDir":"/Users/USER/.pij/pij-ghost","state":"working","pid":1,"capabilitySchema":2}
+{
+	"id": "pij-ghost",
+	"dataDir": "/Users/USER/.pij/pij-ghost",
+	"state": "working",
+	"pid": 1,
+	"capabilitySchema": 2
+}

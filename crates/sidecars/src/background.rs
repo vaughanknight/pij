@@ -602,6 +602,10 @@ fn codec_error(error: serde_json::Error) -> PijError {
 mod tests {
     use std::os::unix::process::{CommandExt, ExitStatusExt};
     use std::process::Command;
+    // Used ONLY by the macos-gated zombie test below, so on Linux this import is
+    // dead and `-D warnings` fails the job. Invisible locally twice over: macOS
+    // uses it, and clippy's cache suppresses re-emission on a warm target.
+    #[cfg(target_os = "macos")]
     use std::time::{Duration, Instant};
 
     use nix::sys::signal::Signal;
