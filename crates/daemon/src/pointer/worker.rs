@@ -214,7 +214,10 @@ impl DrainWorker {
             return self.release_or_backoff(job_id, &job, &msg).await;
         }
 
-        let permits = match self.interaction.permits_injection(pane).await {
+        // Fresh capture at the boundary, same reasoning as first-attempt delivery:
+        // a queued retry is a real injection, so it is authorized by an observation
+        // taken now rather than by the last observer tick.
+        let permits = match self.interaction.permits_injection_fresh(pane).await {
             Ok(permits) => permits,
             Err(error) => {
                 self.release_or_backoff(job_id, &job, &msg).await?;
@@ -674,13 +677,31 @@ mod tests {
         interaction: Arc<InteractionGate>,
         spine: Arc<FakeSpine>,
         event_bus: Arc<EventBus>,
+        arrange_composers: bool,
     }
 
     fn fixture(transport: FakeTransport, tmux: FakeTmux) -> Fixture {
         fixture_with_limit(transport, tmux, 3)
     }
 
+    /// A fixture whose panes are NOT arranged, so the send-boundary gate sees an
+    /// unlisted pane and vetoes. Kept separate because "the gate has no evidence"
+    /// is a real state with its own test, and arranging it away silently would
+    /// delete that coverage rather than update it.
+    fn fixture_unarranged(transport: FakeTransport, tmux: FakeTmux) -> Fixture {
+        fixture_inner(transport, tmux, 3, false)
+    }
+
     fn fixture_with_limit(transport: FakeTransport, tmux: FakeTmux, pointer_limit: u32) -> Fixture {
+        fixture_inner(transport, tmux, pointer_limit, true)
+    }
+
+    fn fixture_inner(
+        transport: FakeTransport,
+        tmux: FakeTmux,
+        pointer_limit: u32,
+        arrange_composers: bool,
+    ) -> Fixture {
         let registry = Arc::new(FakeRegistry::new());
         let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
         let transport = Arc::new(transport);
@@ -712,6 +733,7 @@ mod tests {
             interaction,
             spine,
             event_bus,
+            arrange_composers,
         }
     }
 
@@ -752,6 +774,16 @@ mod tests {
     }
 
     async fn register(fixture: &Fixture, descriptor: SeatDescriptor) {
+        // The send-boundary gate captures the pane it is about to inject into, so
+        // a registered seat presents a recognizable, blank composer by default:
+        // politeness is the precondition of these tests, not their subject.
+        // `fixture_unarranged` opts out, for the tests where an absent
+        // observation IS the subject.
+        if fixture.arrange_composers
+            && let Some(pane) = descriptor.pane.as_deref()
+        {
+            fixture.tmux.arrange_clear_composer(pane);
+        }
         fixture.registry.put(descriptor).await.expect("register");
     }
 
@@ -769,7 +801,12 @@ mod tests {
         assert_eq!(fixture.worker.drain_once().await.expect("drain"), 1);
         assert_eq!(
             fixture.tmux.calls(),
-            ["user_typing:%7", "submit:%7:/compact"]
+            [
+                "list_panes",
+                "capture:%7:4294967295",
+                "user_typing:%7",
+                "submit:%7:/compact"
+            ]
         );
         assert!(
             fixture.transport.calls().is_empty(),
@@ -793,6 +830,8 @@ mod tests {
         assert_eq!(
             fixture.tmux.calls(),
             [
+                "list_panes",
+                "capture:%8:4294967295",
                 "user_typing:%8",
                 "submit:%8:[pij from pij-sender] message waiting — run: pij inbox"
             ]
@@ -999,7 +1038,9 @@ mod tests {
             .expect("register recipient");
         let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
         let transport = Arc::new(FakeTransport::unreachable());
-        let tmux = Arc::new(FakeTmux::new());
+        // Arranged: this test is about pointer-budget reconciliation, so the
+        // send-boundary gate must permit rather than veto for an unrelated reason.
+        let tmux = Arc::new(FakeTmux::new().with_clear_composer("%lagged"));
         let interaction = Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>));
         interaction.observe_composer("%lagged", "");
         let spine = Arc::new(FakeSpine::new());
@@ -1409,7 +1450,7 @@ mod tests {
             ("unknown", FakeTmux::new(), false),
             ("human", FakeTmux::new().with_user_typing(), true),
         ] {
-            let fixture = fixture(FakeTransport::reachable(), tmux);
+            let fixture = fixture_unarranged(FakeTransport::reachable(), tmux);
             register(&fixture, seat("pij-gated", Some("%9"))).await;
             if observe {
                 fixture.interaction.observe_composer("%9", "");
@@ -1458,12 +1499,17 @@ mod tests {
             fixture.queue.acked().as_slice(),
             [(_, Outcome::Done)]
         ));
-        assert_eq!(fixture.tmux.calls(), ["user_typing:%10"]);
+        assert_eq!(
+            fixture.tmux.calls(),
+            ["list_panes", "capture:%10:4294967295", "user_typing:%10"]
+        );
     }
 
     #[tokio::test]
     async fn failed_command_uses_durable_attempt_backoff() {
-        let fixture = fixture(FakeTransport::reachable(), FakeTmux::new());
+        // Unarranged: the backoff under test is the one a VETOED command takes,
+        // so the gate must have no composer evidence to permit on.
+        let fixture = fixture_unarranged(FakeTransport::reachable(), FakeTmux::new());
         register(&fixture, seat("pij-command-wait", Some("%14"))).await;
         let msg = message("pij-command-wait", "", Some("compact"));
         let id = enqueue(&fixture, &msg).await;

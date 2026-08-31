@@ -300,7 +300,10 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
     };
     // One politeness gate, shared by direct delivery, queued retries, and the
     // pane observer that supplies its composer evidence.
-    let interaction = Arc::new(InteractionGate::new(Arc::clone(&tmux)));
+    let interaction = Arc::new(InteractionGate::with_idle_window(
+        Arc::clone(&tmux),
+        Duration::from_millis(config.interaction_idle_ms),
+    ));
     // WIRED, wave 2 (u-harness). The refusal this replaces is gone.
     let harnesses = Arc::new(match config.adapters.harness {
         AdapterChoice::Fake => HarnessRegistry::new([

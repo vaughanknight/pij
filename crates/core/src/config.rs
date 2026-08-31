@@ -97,6 +97,14 @@ pub struct Config {
     /// polite, while `delivery_interval_secs` decides when queued work is tried.
     /// The default preserves the TypeScript daemon's measured 600 ms cadence.
     pub pane_observer_interval_ms: u64,
+    /// How long a veto may outlive the observation that justified it.
+    ///
+    /// Bounds EVERY interaction veto (recognized-idle composer, Unrecognized
+    /// layout, tap latch), not just a parked draft: past this window with no
+    /// fresh observation the gate falls back to the tmux mode flag alone.
+    /// A deferral that never expires is the over-hold this gate exists to
+    /// prevent, so the bound is configured rather than compiled in.
+    pub interaction_idle_ms: u64,
     /// How long before the same seat may be told AGAIN that a message is waiting.
     ///
     /// A cadence, not a retry: the body is released immediately on every pass
@@ -152,6 +160,7 @@ impl Default for Config {
             delivered_id_capacity: 1_024,
             delivery_interval_secs: 5,
             pane_observer_interval_ms: 600,
+            interaction_idle_ms: 60_000,
             pointer_announce_cadence_secs: 90,
             pointer_announce_limit: 3,
             event_buffer_capacity: 1_024,
