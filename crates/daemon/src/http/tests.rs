@@ -557,6 +557,89 @@ async fn reregistration_prefers_exact_id_over_spawn_match_without_fresh_allocati
     server.abort();
 }
 
+/// THE FOURTH ARM. spawn_id + pane alone is not enough: the matched row must also
+/// be UNBOUND. Without `proc.is_none()` a registration could adopt a row whose
+/// process is ALREADY ALIVE — one live seat quietly taking over another's identity
+/// on a reused pane, which is worse than the two-row defect this unit fixes
+/// because it looks correct from both ends separately.
+///
+/// Mutate the `seat.proc.is_none()` clause out of the fallback in `http/mod.rs`
+/// and this test must fail.
+#[tokio::test]
+async fn registration_cannot_adopt_a_spawn_match_that_is_already_bound() {
+    let squatter = ProcIdentity {
+        pid: 45,
+        proc_start: 20260831090003,
+    };
+    let incumbent = ProcIdentity {
+        pid: 46,
+        proc_start: 20260831090004,
+    };
+    let mut live = SeatDescriptor::new("pij-already-bound", Harness::Copilot, "/abs/tree");
+    live.pane = Some("%46".to_string());
+    live.spawn_id = Some("spawn-bound".to_string());
+    live.rpc_port_intent = Some(47_782);
+    // The row is BOUND: its process is alive and it is nobody's pre-bind row.
+    live.proc = Some(incumbent);
+    let registry = Arc::new(FakeRegistry::new().with_seat(live));
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(squatter));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&Registration {
+            supersedes: None,
+            id: "pij-runtime-squatter".to_string(),
+            harness: "copilot".to_string(),
+            folder: "/abs/tree".to_string(),
+            pane: Some("%46".to_string()),
+            pid: Some(squatter.pid),
+            proc_start: Some(squatter.proc_start),
+            spawn_id: Some("spawn-bound".to_string()),
+            model: None,
+            provider: None,
+            effort: None,
+            parent: None,
+            relay: false,
+        })
+        .send()
+        .await
+        .expect("registration against a bound row");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let accepted: Envelope<SeatDescriptor> = response.json().await.expect("descriptor envelope");
+    let accepted = accepted.data.expect("descriptor");
+    assert_eq!(
+        accepted.id.as_str(),
+        "pij-runtime-squatter",
+        "a bound row must never be adopted — the registration gets its own row"
+    );
+    assert_eq!(
+        accepted.rpc_port_intent, None,
+        "and it must not inherit a port stamped for somebody else's incarnation"
+    );
+
+    let seats = registry.list(SeatFilter::default()).await.expect("roster");
+    let incumbent_row = seats
+        .iter()
+        .find(|seat| seat.id.as_str() == "pij-already-bound")
+        .expect("the incumbent row must survive untouched");
+    assert_eq!(
+        incumbent_row.proc,
+        Some(incumbent),
+        "the live seat must still own its own process"
+    );
+    assert_eq!(incumbent_row.rpc_port_intent, Some(47_782));
+
+    server.abort();
+}
+
 #[tokio::test]
 async fn registration_cannot_adopt_a_spawn_match_from_another_pane() {
     let identity = ProcIdentity {
