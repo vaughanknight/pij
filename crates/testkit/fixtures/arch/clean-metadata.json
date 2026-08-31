@@ -161,6 +161,10 @@
       "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/sidecars#pij-sidecars@0.1.0",
       "dependencies": [
         {
+          "name": "nix",
+          "kind": null
+        },
+        {
           "name": "pij-core",
           "kind": null
         },
