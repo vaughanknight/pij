@@ -85,3 +85,45 @@ politeness gate this very plan is about.
 **Why this matters to plan 111 specifically**: the work was NOT lost, but for five minutes both
 coders were building from the packet alone against a superseded ordering, and I believed they
 had my rulings. Nothing in the PM's view distinguished "delivered" from "queued forever".
+
+## Cross-check findings from u-observer (TS vs Rust; Rust deliberately unaltered)
+
+**F-1117 — HAZARD, escalated to the o-prime: `Unrecognized` has no expiry, and a whole harness
+class may be unrecognizable.** Current Copilot v1.0.82 panes carry no prompt marker, so both
+parsers return `Unrecognized`; the TS comment claiming every live Copilot capture has a prompt
+marker is stale. Composed with our contract: `Unrecognized` DEFERS, and idle expiry applies
+**only** to a *recognized* non-blank composer whose content is unchanged — so an unrecognized
+pane is vetoed **forever**, with no escape hatch. That is plan 111's own goal 1 ("a parked
+draft delays delivery, never blocks it") failing through a different door: the 72b5dd61
+over-hold arriving as unrecognizability rather than as a parked draft.
+
+Bounded honestly: today's tick path already maps `Unrecognized → record_unknown → veto`, so
+this is **inherited, not introduced**. What plan 111 changes is that the fresh verdict becomes
+the one *authorising* an injection, promoting an inherited cheap-precheck veto to the decisive
+one. **Not claimed**: that copilot seats are gated on the live fleet today — unverified, and
+not to be asserted until looked at. The sufficient claim is narrower: plan 111 must not
+*entrench* an unbounded hold, and as contracted it does. Recommended (o-prime's ruling, not
+the PM's): bounded deferral degrading to today's `user_typing`-only behaviour; a live
+v1.0.82 copilot fixture; and probably a seventh AC, because **nothing currently turns red if
+`Unrecognized` holds forever** — which is exactly how it passed both of us into a frozen contract.
+
+**F-1118 — `is_plain_rule` box-character set diverges from TS.** Rust excludes 20 box chars;
+TS `BOX_DRAWING` additionally excludes heavy vertical and double-line corners, so those borders
+can classify differently between the two implementations. Recorded, unaltered.
+
+**F-1119 — a live OMP capture contains a tool-output bottom border ABOVE the real composer.**
+Pre-move Rust returns unknown (the caret row misses that false OMP region); TS would classify
+the empty border region as `Recognized`-blank — i.e. "composer is clear", releasing the gate on
+a pane whose real composer is elsewhere. **Rust is the safer of the two here; the bug is TS's.**
+Referred to the o-prime as a possible TS-side row.
+
+## Receipt discipline
+
+**F-1120 — a compile error is not a red-first witness.** u-gate's Part A (5c31e8df) delivered
+correct code and both mutation proofs, but presented ac-1111's pre-fix red as
+`error[E0599]: no associated function named with_clock`. That proves the test could not RUN,
+not that the pre-fix tree lacked the behaviour. Red-from-cannot-build is no better a witness
+than green-from-birth. Sent back to stage clock injection as a behaviour-neutral refactor
+first, run the witness on that tree for a genuine assertion failure, then implement expiry —
+or say plainly that the ordering is impossible and record Mutation A as the substitute with
+its limitation named. Code accepted; receipt corrected.
