@@ -162,8 +162,39 @@ to test unfalsifiable.
 - `a_paneless_seat_is_never_gated_and_never_captured` (ac-1116 pin) — asserts the ABSENCE of
   tmux calls, not merely a delivered receipt.
 
-**F-1123 — `pij-gate` prints a FAIL stage and still EXITS 0.** Observed on this tree: the
-verdict block read `fmt FAIL … pij-gate: 1 stage(s) failed — fmt. The task is not done.` and the
-process exited with code 0. Any consumer keying on the exit status — CI, a script, an agent
-running it unattended — reads that run as a pass. Caught here only because the human-readable
-verdict was being read directly. Out of this plan's fence; reported upward rather than fixed.
+**F-1123 — RETRACTED AND RELOCATED: `pij-gate`'s exit code is HONEST. My measurement was not.**
+
+Originally filed as "pij-gate prints a FAIL stage and still exits 0", with the fleet-wide
+implication that every exit-code-keyed gate receipt was suspect. **That claim was wrong, and the
+error was mine.** My invocation was:
+
+```
+CARGO_TARGET_DIR=... ~/.cargo/bin/cargo run -p pij-testkit --bin pij-gate 2>&1 | tail -12
+```
+
+A pipeline's exit status is the LAST command's — `tail` — which succeeds regardless of what the
+gate did. The "exited with code 0" I read came from the wrapper reporting the *pipeline*.
+
+Proven both ways on this tree, with a planted fmt violation:
+```
+cargo run -p pij-testkit --bin pij-gate > /tmp/gate-direct.txt 2>&1   -> DIRECT_EXIT=1
+cargo run -p pij-testkit --bin pij-gate 2>&1 | tail -3               -> PIPED_EXIT=0
+```
+Identical verdict block, opposite exit codes. The o-prime reached the same result independently
+from a throwaway worktree off main, and separately observed the same laundering in its OWN
+background-command wrapper (a trailing `echo` succeeding masked the gate's 1).
+
+**The real defect, one layer up:** any pipe, trailing command, shell function, or task wrapper
+between the gate and the read launders the exit code into whatever ran LAST. Nothing warns you.
+The verdict block and the exit status disagree, and the block is the honest one.
+
+**Durable rule:** read `$?` IMMEDIATELY after the BARE gate command, or key on the verdict block.
+Never take an exit code through a pipeline.
+
+**Why this one stings, recorded rather than quietly fixed:** I filed a fleet-wide integrity claim
+against a tool on the strength of an instrument I had not checked could tell the two states
+apart — the exact error this plan spent its whole length catching in others (a compile error
+read as a witness; a `queued` receipt read as delivery). The correction cost one command. The
+claim, left standing, would have cast doubt on every green receipt on the fleet. An instrument
+that cannot distinguish the states it is used to compare manufactures the very lie it reports.
+
