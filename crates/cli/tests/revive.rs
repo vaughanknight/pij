@@ -23,6 +23,22 @@ fn run_cli(state_dir: &std::path::Path, addr: &str, args: &[&str]) -> std::proce
         .expect("run shipped CLI")
 }
 
+fn launched_environment(call: &str) -> Vec<String> {
+    let (_, args) = call
+        .split_once(":env:")
+        .expect("fake tmux must record the env launcher and argv");
+    serde_json::from_str(args).expect("recorded discrete argv must remain parseable")
+}
+
+fn required_environment_value(args: &[String], name: &str) -> String {
+    let prefix = format!("{name}=");
+    args.iter()
+        .find_map(|arg| arg.strip_prefix(&prefix))
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| panic!("launched process was not given {name}"))
+}
+
 async fn serve(
     key: &str,
     registry: Arc<SqliteRegistry>,
@@ -236,13 +252,18 @@ async fn shipped_revive_derives_identity_and_launches_one_prebind_incarnation() 
     assert!(calls[0].contains("copilot"));
     assert!(calls[0].contains("--ui-server"));
     assert!(calls[0].contains("--port"));
+    let launched_args = launched_environment(&calls[0]);
+    let launched_seat_id = required_environment_value(&launched_args, "PIJ_SESSION_ID");
+    let launched_spawn_id = required_environment_value(&launched_args, "PIJ_SPAWN_ID");
+    assert_eq!(launched_seat_id, persisted.id.as_str());
+    assert_eq!(launched_spawn_id, fresh_spawn_id);
 
     let first_bind = run_cli(
         &dir,
         &addr.to_string(),
         &[
             "register",
-            "pij-returning-seat",
+            &launched_seat_id,
             "--harness",
             "copilot",
             "--folder",
@@ -254,7 +275,7 @@ async fn shipped_revive_derives_identity_and_launches_one_prebind_incarnation() 
             "--proc-start",
             "20260831030200",
             "--spawn-id",
-            &fresh_spawn_id,
+            &launched_spawn_id,
         ],
     );
     assert!(
