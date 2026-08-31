@@ -5,7 +5,7 @@
 All three sidecars ship as queue consumers over the seven existing ports. No port or core-config field was added.
 
 - **Telegram**: legacy credential-file reader; single-consumer lock; outbound binding persisted by conversation; allowlist-first inbound routing; durable cursor advanced only after the reply is durably enqueued; delivery-failure spine signal; restart-safe replay; terminal handling after external-send/binding failure; cross-generation lock compatibility.
-- **bg**: detached shell as its own process-group leader; real output delivery; full-group cancellation; direct-child reap plus zombie-excluding grandchild observation; cancelled receipt only after observed death; distinct Done/Failed/Lost/Cancelled outcomes; boot-local ownership and own-group brakes; duplicate retries cannot starve unrelated work.
+- **bg**: detached shell as its own process-group leader; real output delivery; TERM→grace→KILL full-group cancellation; one-directional ESRCH fast path plus zombie-excluding observation; cancelled receipt only after observed death; distinct Done/Failed/Lost/Cancelled outcomes; boot-local ownership and own-group brakes; duplicate retries cannot starve unrelated work.
 - **chore**: durable named probes; run re-reports pending deltas without advancing baseline; only ack promotes pending to baseline; failed probes remain visible as NOT-PROBEABLE.
 
 Public composition API: `pij_sidecars::Sidecars::new(queue, spine, state_dir, telegram_env)?.start()`. The composed daemon owns `SidecarHandles` and joins shutdown with its other workers. The shipped producer is `POST /v1/sidecar` plus the six `pij-rs sidecar` actions.
@@ -19,14 +19,18 @@ Public composition API: `pij_sidecars::Sidecars::new(queue, spine, state_dir, te
 - Pending-vs-lost discriminator + multi-record witness: `73c413e8`
 - Inbound spine evidence: `db45515c`
 - Symmetric Telegram lock schema: `4f8fc844`
-- Reviewer: **CODE APPROVE** at `73c413e8`; `review-sidecars-round-3.md`.
-- PM composed/gated sidecars at `523a4dc2`; the later inbound-evidence and lock-schema commits are on `s108/w7-sidecars` for final composition.
+- Loaded-machine cancellation convergence: `83f6d041`
+- Numeric errno signalling: `0f252a86`
+- Pre-SIGKILL `getpgid` ownership brake: `2979c670`
+- Positive survivor-kill witness + pinned Telegram egress: `e73f96bd`
+- Reviewer: **CODE APPROVE** through round 8; composed `--locked` gate green and errno/getpgid brakes verified. Final verdict targets `a64c8773`.
+- PM terminal composition: `a64c8773`, all six gate stages green; F10 and M7 positive witness verified by content.
 
 ## Deterministic proof
 
 Receipt: [`u-sidecars-gate.txt`](./u-sidecars-gate.txt).
 
-Final private cold target `/tmp/pij-w7-sidecars-final2`:
+Final private cold target `/tmp/pij-w7-sidecars-final5`:
 
 ```text
 toolchain PASS  rustc 1.98.0 == pin
@@ -77,6 +81,7 @@ The original pre-registered claim remained useful; its numbers did not. Reviewer
 - Real `cargo --version` command completed with exit 0 and output `cargo 1.98.0 (797e8a9bc 2026-08-05)`.
 - Real Claude pane received the `pij-bg` completion as an injected turn.
 - Cancellation tree: shell leader pid/pgid 8499 plus child pid 8504. The durable receipt records `observed_pids:[8499,8504]`, status `cancelled`; a post-receipt process scan found no live/non-zombie member of pgid 8499.
+- A later cold gate exposed a real 5-second TERM-only timeout under load. `83f6d041` replaces 20ms full-table scans with a one-directional ESRCH fast path, 100ms zombie-excluding observation, and SIGKILL escalation after a 2-second grace. The timeout still names real survivors. Full-workspace stress: 20/20 after the fix.
 
 ### chore — run/ack asymmetry
 
@@ -87,11 +92,9 @@ The original pre-registered claim remained useful; its numbers did not. Reviewer
 
 ## Review findings closed
 
-F1 nonzero reported finished; F2 restart orphan reported finished; F3 offset-before-delivery loss; F4 in-memory cursor; F5/F9 stuck retry starvation; F6 unowned pgid signal; F8 duplicate Telegram send after binding failure; F12 bare producer response. The Failed/Lost repair discriminates rather than suppresses: owned-but-not-yet-exited remains Running; persisted observed nonzero becomes Failed; a planted stale-owner/dead-group record remains reachable as Lost.
+F1 nonzero reported finished; F2 restart orphan reported finished; F3 offset-before-delivery loss; F4 in-memory cursor; F5/F9 stuck retry starvation; F6 unowned pgid signal; F8 duplicate Telegram send after binding failure; F10 unconstrained credential egress; F12 bare producer response; loaded-machine TERM-only cancellation timeout; prose-based signal policy; scan-to-SIGKILL PID ownership window. The Failed/Lost repair discriminates rather than suppresses: owned-but-not-yet-exited remains Running; persisted observed nonzero becomes Failed; a planted stale-owner/dead-group record remains reachable as Lost.
 
-The destructive pgid guards are **brakes**, not policies: removing either allows signalling strictly more groups; neither selects a different target.
-
-Open, non-holding ruling: F10 permits an authenticated caller to override Telegram `chat_id`. Reviewer recommended refusing any id other than the configured chat; PM escalated this credential-egress scope to the prime.
+The destructive guards are **brakes**, not policies: ESRCH alone proves absence; EPERM/success fall through zombie-excluding observation; boot ownership, own-pgid, and immediate `getpgid` mismatch/error checks only spare targets. Removing a guard allows signalling strictly more processes, never a different target. The per-PID fallback has both witnesses: an out-of-group pid is spared, while a matching live survivor exits by signal 9. Telegram egress is pinned to the configured operator chat; an override names requested/configured values and reaches the bot API zero times.
 
 ## Cross-generation Telegram lock
 
@@ -112,7 +115,7 @@ Legacy's reclaim-on-unparseable is a **policy**, not a brake: removing it makes 
 - Derived, separate typed commit: both architecture metadata fixtures (`7a8e392c`).
 - Composer-owned: `Cargo.lock`, daemon dependency/wiring, CLI/HTTP producer and its end-to-end instrument.
 
-Dependencies declared by `pij-sidecars`: `pij-core`, `reqwest`, `serde`, `serde_json`, `tokio`; dev-only `async-trait`, `axum`, `pij-store`, `pij-testkit`.
+Dependencies declared by `pij-sidecars`: `pij-core`, `nix` 0.30 with only `process` + `signal`, `reqwest`, `serde`, `serde_json`, `tokio`; dev-only `async-trait`, `axum`, `pij-store`, `pij-testkit`.
 
 ## Assumptions and disclosures
 
@@ -121,6 +124,7 @@ Dependencies declared by `pij-sidecars`: `pij-core`, `reqwest`, `serde`, `serde_
 3. Telegram reply binding is the persisted fact from the latest successful outbound for that conversation; unbound inbound is loudly refused, never inferred.
 4. A zombie process-table row is residue, not liveness. Direct child status comes from `try_wait`; grandchildren are observed excluding state `Z`.
 5. A boot-local ownership mismatch and the daemon's own pgid veto cancellation. These one-directional brakes prefer an undeleted job over signalling an unowned process group.
-6. `harness boot` remained red before work because the unrelated TypeScript typecheck omitted diagnostics; the packet's Rust `pij-gate` is green.
-7. The mandated shared Cargo target produced a false red by serving another worktree's unpushed artifacts. Final gates used private cold targets after the PM withdrew that mandate.
-8. The live Claude seat later self-adopted under a different legacy id, exposing a pre-existing asserted-vs-derived identity mismatch. Rust delivery to its registered descriptor still arrived; this unit did not modify identity policy.
+6. Process-group absence branches on numeric errno, never command prose: ESRCH=3 alone converges; EPERM=1 proves nothing; SIGKILL tolerates both before observed scans decide. Per-PID fallback rechecks current group ownership immediately before signalling.
+7. `harness boot` remained red before work because the unrelated TypeScript typecheck omitted diagnostics; the packet's Rust `pij-gate` is green.
+8. The mandated shared Cargo target produced a false red by serving another worktree's unpushed artifacts. Final gates used private cold targets after the PM withdrew that mandate.
+9. The live Claude seat later self-adopted under a different legacy id, exposing a pre-existing asserted-vs-derived identity mismatch. Rust delivery to its registered descriptor still arrived; this unit did not modify identity policy.
