@@ -600,7 +600,7 @@ fn codec_error(error: serde_json::Error) -> PijError {
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::process::CommandExt;
+    use std::os::unix::process::{CommandExt, ExitStatusExt};
     use std::process::Command;
     use std::time::{Duration, Instant};
 
@@ -638,6 +638,21 @@ mod tests {
         );
         signal_group(pgid, Signal::SIGKILL, false).expect("cleanup group");
         child.wait().expect("reap cleanup child");
+    }
+
+    #[test]
+    fn survivor_recheck_kills_a_live_pid_in_the_owned_group() {
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "sleep 30"]).process_group(0);
+        let mut child = command.spawn().expect("spawn owned survivor");
+        let pgid = child.id();
+        signal_survivors(pgid, &[pgid]).expect("matching owned group permits kill");
+        let status = child.wait().expect("reap killed survivor");
+        assert_eq!(
+            status.signal(),
+            Some(9),
+            "the witness must activate SIGKILL, not only exercise the veto"
+        );
     }
 
     #[cfg(target_os = "macos")]

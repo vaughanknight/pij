@@ -1006,3 +1006,49 @@ async fn direct_child_failure_survives_a_lingering_grandchild() {
     assert_eq!(terminal.status, BgStatus::Failed);
     assert_eq!(terminal.exit_code, Some(3));
 }
+
+#[tokio::test]
+async fn telegram_refuses_egress_outside_the_configured_operator_chat() {
+    let api = Arc::new(TelegramApiState::default());
+    let (api_root, server) = telegram_fixture(Arc::clone(&api)).await;
+    let fresh = FreshStore::new();
+    let queue = sqlite_queue(&fresh).await;
+    let queue_port: Arc<dyn Queue> = queue.clone();
+    let spine_port: Arc<dyn Spine> = Arc::new(FakeSpine::new());
+    let worker = TelegramWorker::new(
+        queue_port,
+        spine_port,
+        TelegramConfig {
+            token: "TOKEN".to_string(),
+            allowed_user_ids: Vec::new(),
+            chat_id: "operator-42".to_string(),
+            api_root,
+        },
+        temp_path(&fresh, "egress.lock"),
+    )
+    .expect("worker");
+    queue
+        .enqueue(
+            telegram::send_job(&TelegramSend {
+                from: SeatId::from("pij-test"),
+                body: "must not leave".to_string(),
+                msg_id: "wrong-chat".to_string(),
+                chat_id: Some("stranger-99".to_string()),
+            })
+            .expect("job"),
+        )
+        .await
+        .expect("enqueue");
+    assert_eq!(worker.run_once(4).await.expect("terminal refusal").count, 1);
+    assert_eq!(
+        api.sends.load(Ordering::SeqCst),
+        0,
+        "wrong-chat request must never reach the bot API"
+    );
+    assert_eq!(
+        queue.live_len().await.expect("live rows"),
+        0,
+        "refusal is terminal, not an immortal retry"
+    );
+    server.abort();
+}
