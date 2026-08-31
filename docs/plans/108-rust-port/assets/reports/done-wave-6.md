@@ -119,7 +119,55 @@ item in the wave.
 The pair banked as doctrine: **ask the WORLD what it owns; ask the AUTHORITY who
 read.**
 
-## Outstanding
+## Verdict — APPROVE at 593a3e9d, four rounds, fifteen findings
 
-- [ ] coder's single pass over nine findings + three amendments
-- [ ] review round 2 to APPROVE
+Round 1 nine, round 2 three, round 3 three, round 4 zero. **None refuted.** The
+reviewer scoped its verdict explicitly to the wave-6 surface — u-inbox,
+u-uds-open, u-bounce, and the three ratified amendments — because wave 7 composed
+into the same head after its round 3, and a verdict whose edges nobody can locate
+is worth less than a narrow one.
+
+Two of round 3's findings were **fixes landed in one half** (E-031, twice in one
+wave), and the third was a loop nobody ran.
+
+### The blocking finding, and why it needed two proofs
+
+Round 2 found the marker-only detach path comparing no identity: it followed
+whatever string the unauthenticated `@pij-tap-sink` pane option held and unlinked
+that path. Proven live with a decoy pane owned by nobody — **the daemon deleted a
+file it never created, on a pane it never tapped.** Security finding, not a
+correctness one.
+
+The PM fixed the OBSERVER and declared it closed. Round 3 probed **one layer
+down** and found the adapter primitive still open: same idea, different caller.
+`git grep tap_root` at every pushed commit proved the fix existed only in an
+unpushed tree while a coder's gate compiled it out of a shared build cache —
+which is how the wave also learned that **a location-keyed shared cache is a
+channel where one coder's unpushed future fails another coder's gate** (E-037's
+fast fix, withdrawn; sccache named as the real one).
+
+Closed at both layers, each with its own witness, and the mutation fails **on the
+FILE, not on a boolean**.
+
+### The proof standard this wave established
+
+- **Both halves, same procedure, discarded runs disclosed**: DELETED before,
+  SURVIVES after — a destructive defect proven by the destruction failing to
+  happen. Two intermediate runs were thrown out for instrument contamination and
+  named in the receipt anyway, because *a test whose instrument state is not
+  pinned reports the environment, not the change*.
+- **Stress-run anything whose subject is a physical effect**, and report the
+  recurrence index. `tmux` reported a successful detach while the pipe was still
+  up: recurred at run 10 of 20, invisible in nine consecutive greens.
+- **Report your own red.** The reviewer reproduced a gate failure on correct code
+  and characterised it (5/5 isolated, 3/3 at 8-way) rather than re-running until
+  green.
+
+### The day's trilogy, and its coda
+
+**Pipe EXISTENCE. Tombstone ROW. Detach RETURN.** Three layers, one mistake:
+taking the nearest available signal as evidence of the thing actually cared
+about. The coda is the PM's: a clean sweep across 71 foreign panes reported as
+proof of discrimination, when **none of them carried a marker and the
+discriminator never ran** — a null result published as a positive, retracted, and
+mirrored by the prime, who had upgraded it.
