@@ -557,6 +557,71 @@ async fn reregistration_prefers_exact_id_over_spawn_match_without_fresh_allocati
     server.abort();
 }
 
+/// THE PORT-INHERITANCE ARM. Found missing by the reviewer: mutating
+/// `binds_spawned_incarnation` to always-true left the ENTIRE daemon http suite
+/// green, because the only re-registration arm used a row whose
+/// `rpc_port_intent` was already `None` — the refusal was exercised vacuously.
+///
+/// This is the case where the gate actually decides: an exact-id match onto a row
+/// that CARRIES a port stamped for incarnation S1, claimed by a registration whose
+/// spawn_id is S2. The port was reserved for a different incarnation and must not
+/// travel to this one — the allocator treats live rows' intents as the reserved
+/// set, so inheriting one hands out a port another process may be listening on.
+#[tokio::test]
+async fn registration_does_not_inherit_a_port_stamped_for_another_incarnation() {
+    let identity = ProcIdentity {
+        pid: 47,
+        proc_start: 20260831090005,
+    };
+    let mut stamped = SeatDescriptor::new("pij-ported", Harness::Copilot, "/abs/tree");
+    stamped.pane = Some("%47".to_string());
+    stamped.spawn_id = Some("spawn-old".to_string());
+    // A port reserved for the OLD incarnation.
+    stamped.rpc_port_intent = Some(47_790);
+    let registry = Arc::new(FakeRegistry::new().with_seat(stamped));
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(identity));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&Registration {
+            supersedes: None,
+            // Exact id match, so the spawn_id fallback never runs.
+            id: "pij-ported".to_string(),
+            harness: "copilot".to_string(),
+            folder: "/abs/tree".to_string(),
+            pane: Some("%47".to_string()),
+            pid: Some(identity.pid),
+            proc_start: Some(identity.proc_start),
+            // A DIFFERENT incarnation than the one the port was stamped for.
+            spawn_id: Some("spawn-new".to_string()),
+            model: None,
+            provider: None,
+            effort: None,
+            parent: None,
+            relay: false,
+        })
+        .send()
+        .await
+        .expect("registration with a mismatched spawn id");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let accepted: Envelope<SeatDescriptor> = response.json().await.expect("descriptor envelope");
+    let accepted = accepted.data.expect("descriptor");
+    assert_eq!(
+        accepted.rpc_port_intent, None,
+        "a port reserved for incarnation spawn-old must not travel to spawn-new"
+    );
+
+    server.abort();
+}
+
 /// THE FOURTH ARM. spawn_id + pane alone is not enough: the matched row must also
 /// be UNBOUND. Without `proc.is_none()` a registration could adopt a row whose
 /// process is ALREADY ALIVE — one live seat quietly taking over another's identity

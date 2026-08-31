@@ -17,6 +17,12 @@ use tokio::time::{Instant, timeout, timeout_at};
 const NAME: &str = "claude-uds";
 const ACK_WAIT: Duration = Duration::from_millis(150);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+/// How long to keep listening for a TERMINAL answer once a hold has been seen.
+///
+/// Only a held delivery ever waits this long, and a held delivery is already
+/// waiting on a person. Denials were measured 1.7-2.2 s after their hold; a human
+/// slower than this still yields `Held`, which is honest at that instant.
+const HOLD_GRACE: Duration = Duration::from_secs(5);
 /// Prefix for the per-delivery reply socket. The name is arbitrary — measured
 /// 2026-08-31: the CLI routes a hold receipt to ANY name inside its own socket
 /// namespace, not only `<pid>.sock` — which is what lets every delivery own a
@@ -54,6 +60,7 @@ static REPLY_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub struct UdsTransport {
     sessions_dir: PathBuf,
     ack_wait: Duration,
+    hold_grace: Duration,
     connect_timeout: Duration,
 }
 
@@ -82,6 +89,7 @@ impl UdsTransport {
         Self {
             sessions_dir,
             ack_wait: ACK_WAIT,
+            hold_grace: HOLD_GRACE,
             connect_timeout: CONNECT_TIMEOUT,
         }
     }
@@ -96,6 +104,14 @@ impl UdsTransport {
     #[must_use]
     pub fn with_ack_wait(mut self, ack_wait: Duration) -> Self {
         self.ack_wait = ack_wait;
+        self
+    }
+
+    /// Shorten the post-hold window. Tests use this so a case with no terminal
+    /// answer does not spend [`HOLD_GRACE`] proving it.
+    #[must_use]
+    pub fn with_hold_grace(mut self, hold_grace: Duration) -> Self {
+        self.hold_grace = hold_grace;
         self
     }
 
@@ -187,6 +203,7 @@ impl Transport for UdsTransport {
             msg,
             self.connect_timeout,
             self.ack_wait,
+            self.hold_grace,
             &inbox,
         )
         .await
@@ -350,11 +367,51 @@ impl ReplyInbox {
 
     /// Read status lines until the deadline. One message is in flight on this
     /// address, so the first status line that classifies IS this message's.
-    async fn wait_for_status(&self, msg_id: &str, deadline: Instant) -> Option<Status> {
-        let (stream, _) = timeout_at(deadline, self.listener.accept())
-            .await
-            .ok()?
-            .ok()?;
+    async fn wait_for_status(
+        &self,
+        msg_id: &str,
+        deadline: Instant,
+        hold_grace: Duration,
+    ) -> Option<Status> {
+        let mut pending = None;
+        loop {
+            // A HOLD EARNS ITS OWN, LONGER WINDOW. The base deadline is sized for
+            // the machine-side verdict (holds measured at 70-74 ms against a
+            // 150 ms budget), and every delivery pays it, so it cannot simply be
+            // raised. But once a hold is seen the message is already waiting on a
+            // PERSON, latency stops mattering, and the terminal answer is worth
+            // waiting for — measured at 1.7-2.2 s after the hold. (Reviewer F5.)
+            let until = if pending.is_some() {
+                deadline.max(Instant::now() + hold_grace)
+            } else {
+                deadline
+            };
+            let Ok(Ok((stream, _))) = timeout_at(until, self.listener.accept()).await else {
+                return pending;
+            };
+            if let Some(status) = self
+                .read_one_connection(stream, msg_id, deadline, hold_grace, &mut pending)
+                .await
+            {
+                return Some(status);
+            }
+        }
+    }
+
+    /// EACH STATUS ARRIVES ON ITS OWN CONNECTION. Measured: the CLI sent `held`,
+    /// closed, and delivered `denied` on a SECOND connection 1.7 s later. An inbox
+    /// that accepted once saw the hold, read EOF, and reported Held for a message
+    /// the human had refused — the identical defect as returning at the first
+    /// status, moved one layer down, and invisible to a fake server that answers
+    /// on a single connection.
+    async fn read_one_connection(
+        &self,
+        stream: UnixStream,
+        msg_id: &str,
+        deadline: Instant,
+        hold_grace: Duration,
+        pending: &mut Option<Status>,
+    ) -> Option<Status> {
         let mut reader = BufReader::new(stream);
         let mut line = String::new();
         // HELD IS NOT TERMINAL, and returning on it loses the answer. Measured on
@@ -366,14 +423,18 @@ impl ReplyInbox {
         //
         // A human slower than the deadline still yields Held, which is honest: at
         // that instant it IS held. Backoff-and-park owns what happens next.
-        let mut pending = None;
         loop {
             line.clear();
-            match timeout_at(deadline, reader.read_line(&mut line)).await {
-                Err(_) | Ok(Ok(0)) | Ok(Err(_)) => return pending,
+            let until = if pending.is_some() {
+                deadline.max(Instant::now() + hold_grace)
+            } else {
+                deadline
+            };
+            match timeout_at(until, reader.read_line(&mut line)).await {
+                Err(_) | Ok(Ok(0)) | Ok(Err(_)) => return None,
                 Ok(Ok(_)) => match classify_status(&line, msg_id) {
                     Status::Unrelated | Status::Malformed => {}
-                    Status::Held => pending = Some(Status::Held),
+                    Status::Held => *pending = Some(Status::Held),
                     terminal => return Some(terminal),
                 },
             }
@@ -393,6 +454,7 @@ async fn send_frame(
     msg: &Msg,
     connect_timeout: Duration,
     ack_wait: Duration,
+    hold_grace: Duration,
     inbox: &ReplyInbox,
 ) -> Result<DeliveryOutcome> {
     let Ok(Ok(mut stream)) =
@@ -422,10 +484,19 @@ async fn send_frame(
     // connection. Both are read anyway — the connection still reports a hangup,
     // which must never be mistaken for delivery.
     let status = tokio::select! {
-        status = inbox.wait_for_status(&msg.msg_id, deadline) => status,
+        status = inbox.wait_for_status(&msg.msg_id, deadline, hold_grace) => status,
         outcome = same_connection_outcome(stream, msg, deadline) => match outcome {
             SameConnection::Status(status) => Some(status),
-            SameConnection::Hangup => return Ok(DeliveryOutcome::Queued),
+            // A HANGUP MUST NOT PREEMPT A RECEIPT STILL IN FLIGHT. The recipient
+            // closing the delivery connection says nothing about the hold receipt
+            // it is about to open a SEPARATE connection to send (~70 ms). Deciding
+            // Queued here would drop that receipt and re-deliver a held message —
+            // raising a second dialog at the human. Wait for the reply address;
+            // only its silence means Queued. (Reviewer F4.)
+            SameConnection::Hangup => inbox
+                .wait_for_status(&msg.msg_id, deadline, hold_grace)
+                .await
+                .or(Some(Status::Dropped)),
             SameConnection::Quiet => None,
         },
     };
@@ -462,7 +533,11 @@ async fn same_connection_outcome(
     loop {
         line.clear();
         match timeout_at(deadline, reader.read_line(&mut line)).await {
-            Err(_) => return SameConnection::Quiet,
+            // The delivery connection has nothing to say. It must NOT get a vote:
+            // both arms run to the same deadline, so returning here would race the
+            // reply inbox and a real Held would be lost to a coin flip. Yield
+            // forever instead and let the inbox decide.
+            Err(_) => std::future::pending().await,
             Ok(Ok(0)) | Ok(Err(_)) => return SameConnection::Hangup,
             Ok(Ok(_)) => match classify_status(&line, &msg.msg_id) {
                 Status::Unrelated | Status::Malformed => {}
@@ -630,6 +705,7 @@ mod tests {
     fn transport(dir: &Path) -> UdsTransport {
         let mut transport = UdsTransport::from_sessions_dir(dir.to_path_buf());
         transport.ack_wait = Duration::from_millis(30);
+        transport.hold_grace = Duration::from_millis(120);
         transport.connect_timeout = Duration::from_millis(200);
         transport
     }
@@ -1065,7 +1141,9 @@ mod tests {
         let socket = dir.0.join("listener.sock");
         let listener = UnixListener::bind(&socket).expect("bind fixture socket");
         write_record(&dir.0, 4242, "%99", &socket);
-        let transport = transport(&dir.0).with_ack_wait(Duration::from_millis(600));
+        let transport = transport(&dir.0)
+            .with_ack_wait(Duration::from_millis(600))
+            .with_hold_grace(Duration::from_millis(400));
         let held = fixture("status-held.ndjson");
         let denied = fixture("status-denied.ndjson");
 
@@ -1150,12 +1228,61 @@ mod tests {
 
     /// Two deliveries at once must NOT share a reply address, or the first status
     /// to arrive would be attributed to whichever message asked first.
+    /// TWO REAL DELIVERIES, not two calls to `bind`. The earlier version of this
+    /// test bound an inbox twice and compared the paths — which would stay green
+    /// against a regression that shared ONE inbox across deliveries, i.e. exactly
+    /// the cross-attribution hazard the name claims to prevent (message A's denial
+    /// attributed to B). Found by the reviewer; the name was writing a cheque the
+    /// body did not cash.
     #[tokio::test]
     async fn concurrent_deliveries_do_not_share_a_reply_address() {
         let dir = TestDir::new();
-        let first = ReplyInbox::bind(&dir.0.join("listener.sock")).expect("first inbox");
-        let second = ReplyInbox::bind(&dir.0.join("listener.sock")).expect("second inbox");
-        assert_ne!(first.origin(), second.origin());
+        let socket = dir.0.join("listener.sock");
+        let listener = UnixListener::bind(&socket).expect("bind fixture socket");
+        write_record(&dir.0, 4242, "%99", &socket);
+        let transport = transport(&dir.0);
+
+        let server = tokio::spawn(async move {
+            let mut advertised = Vec::new();
+            for _ in 0..2 {
+                let (stream, _) = listener.accept().await.expect("accept transport");
+                let mut reader = BufReader::new(stream);
+                let mut auth = String::new();
+                reader.read_line(&mut auth).await.expect("read auth");
+                let mut frame = String::new();
+                reader.read_line(&mut frame).await.expect("read frame");
+                let parsed: Value = serde_json::from_str(frame.trim()).expect("frame is json");
+                advertised.push(
+                    parsed
+                        .get("from")
+                        .and_then(Value::as_str)
+                        .expect("reply address")
+                        .to_string(),
+                );
+            }
+            advertised
+        });
+
+        let target = seat(4242, Some("%99"), Harness::Claude);
+        let one = message(None);
+        let two = message(None);
+        let (first, second) = tokio::join!(
+            transport.deliver(&target, &one),
+            transport.deliver(&target, &two),
+        );
+        first.expect("first delivery");
+        second.expect("second delivery");
+
+        let advertised = tokio::time::timeout(Duration::from_millis(800), server)
+            .await
+            .expect("both deliveries must reach the fixture socket")
+            .expect("fixture server");
+        assert_eq!(advertised.len(), 2);
+        assert_ne!(
+            advertised[0], advertised[1],
+            "two deliveries in flight must not share a reply address, or the first status \
+             to arrive is attributed to whichever asked first"
+        );
     }
 
     #[tokio::test]
