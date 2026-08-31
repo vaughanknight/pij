@@ -44,7 +44,7 @@ pub use client::{PeerEndpoint, get_from_peer, post_to_peer, stream_from_peer};
 pub use exposure::{Exposure, boot_banner, exposure};
 pub use types::{
     CursorResetDetail, FederatedRoster, InboxAckRequest, PeerStreamState, Registration,
-    SendRequest, SpawnRequest, StreamFrame, UnavailablePeer,
+    ReviveRequest, SendRequest, SpawnRequest, StreamFrame, UnavailablePeer,
 };
 
 #[derive(Clone)]
@@ -83,6 +83,7 @@ enum Endpoint {
     Health,
     Register,
     Spawn,
+    Revive,
     Send,
     Inbox,
     InboxAck,
@@ -96,10 +97,11 @@ enum Endpoint {
 }
 
 impl Endpoint {
-    const ALL: [Self; 9] = [
+    const ALL: [Self; 10] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
+        Self::Revive,
         Self::Send,
         Self::Inbox,
         Self::InboxAck,
@@ -113,6 +115,7 @@ impl Endpoint {
             Self::Health => "/health",
             Self::Register => "/v1/register",
             Self::Spawn => "/v1/spawn",
+            Self::Revive => "/v1/revive",
             Self::Send => "/v1/send",
             Self::Inbox => "/v1/inbox",
             Self::InboxAck => "/v1/inbox/ack",
@@ -124,9 +127,12 @@ impl Endpoint {
 
     const fn method(self) -> Method {
         match self {
-            Self::Register | Self::Spawn | Self::Send | Self::InboxAck | Self::Sidecar => {
-                Method::POST
-            }
+            Self::Register
+            | Self::Spawn
+            | Self::Revive
+            | Self::Send
+            | Self::InboxAck
+            | Self::Sidecar => Method::POST,
             Self::Health | Self::Inbox | Self::Seats | Self::Events => Method::GET,
         }
     }
@@ -183,6 +189,7 @@ fn router_with_optional_federation(
                 endpoint,
                 Endpoint::Register
                     | Endpoint::Spawn
+                    | Endpoint::Revive
                     | Endpoint::Send
                     | Endpoint::InboxAck
                     | Endpoint::Sidecar
@@ -196,6 +203,7 @@ fn router_with_optional_federation(
             Endpoint::Health => router.route(endpoint.path(), get(health)),
             Endpoint::Register => router.route(endpoint.path(), post(register)),
             Endpoint::Spawn => router.route(endpoint.path(), post(spawn_seat)),
+            Endpoint::Revive => router.route(endpoint.path(), post(revive_seat)),
             Endpoint::Send => router.route(endpoint.path(), post(send)),
             Endpoint::Inbox => router.route(endpoint.path(), get(inbox)),
             Endpoint::InboxAck => router.route(endpoint.path(), post(ack_inbox)),
@@ -494,6 +502,68 @@ async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequ
         request,
         ExistingSeatPolicy { allow_absent: true },
         "pij spawn",
+    )
+    .await
+}
+
+/// Relaunch one tombstoned id through the spawn transition.
+///
+/// Harness, folder, model, effort, parent, and inbound configuration are durable
+/// seat identity or launch intent, so they cross the incarnation boundary. The
+/// old process identity and RPC-port intent describe resources held by one
+/// incarnation; neither is copied. Allocation and stamping stay exclusively in
+/// [`launch_seat`].
+async fn revive_seat(
+    State(state): State<AppState>,
+    Json(request): Json<ReviveRequest>,
+) -> Response {
+    let prior = match state.services.registry.get(&request.id).await {
+        Ok(Some(prior)) if prior.tombstoned_at.is_some() => prior,
+        Ok(Some(_)) => {
+            return refused(
+                "pij revive",
+                format!(
+                    "seat `{}` is live — revive only accepts tombstoned ids",
+                    request.id
+                ),
+            );
+        }
+        Ok(None) => {
+            return envelope(
+                StatusCode::NOT_FOUND,
+                &Envelope::<SeatDescriptor>::refused(
+                    "pij revive",
+                    ErrorKind::NotFound,
+                    format!(
+                        "seat `{}` does not exist — revive requires an existing tombstoned id",
+                        request.id
+                    ),
+                ),
+            );
+        }
+        Err(error) => return internal("pij revive", error),
+    };
+
+    let spawn_request = SpawnRequest {
+        id: Some(prior.id),
+        harness: prior.harness,
+        executable: None,
+        model: prior.model,
+        effort: prior.effort,
+        cwd: prior.folder,
+        session: request.session,
+        caller_pane: request.caller_pane,
+        name: request.name,
+        parent: prior.parent,
+        accept_inbound: prior.cross_session_inbound_accept == Some(true),
+    };
+    launch_seat(
+        &state,
+        spawn_request,
+        ExistingSeatPolicy {
+            allow_absent: false,
+        },
+        "pij revive",
     )
     .await
 }

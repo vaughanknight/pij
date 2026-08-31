@@ -94,6 +94,26 @@ pub struct SpawnRequest {
     pub accept_inbound: bool,
 }
 
+/// Request accepted by `POST /v1/revive`.
+///
+/// Only placement crosses the wire. The daemon derives durable seat identity
+/// and launch intent from the tombstoned descriptor; process identity and the
+/// prior incarnation's resource stamps must never be carried forward.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReviveRequest {
+    /// Existing tombstoned seat id to relaunch.
+    pub id: SeatId,
+    /// Explicit target tmux session, when supplied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    /// Calling pane used to resolve the target session when `session` is absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caller_pane: Option<String>,
+    /// Requested tmux window name; the seat id is used when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
 /// Request accepted by `POST /v1/send`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SendRequest {

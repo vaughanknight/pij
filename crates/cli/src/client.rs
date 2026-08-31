@@ -10,7 +10,7 @@ use pij_core::model::{
 };
 use pij_daemon::delivery::InboxClaim;
 use pij_daemon::http::InboxAckRequest;
-pub use pij_daemon::http::{FederatedRoster, SpawnRequest, StreamFrame};
+pub use pij_daemon::http::{FederatedRoster, ReviveRequest, SpawnRequest, StreamFrame};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -128,6 +128,11 @@ impl DaemonClient {
     /// Ask the daemon to launch and record one pre-bind seat.
     pub async fn spawn(&self, request: &SpawnRequest) -> Envelope<SeatDescriptor> {
         self.post("pij spawn", "/v1/spawn", request).await
+    }
+
+    /// Relaunch one tombstoned seat through the daemon's revive transition.
+    pub async fn revive(&self, request: &ReviveRequest) -> Envelope<SeatDescriptor> {
+        self.post("pij revive", "/v1/revive", request).await
     }
 
     /// Durably enqueue one message.

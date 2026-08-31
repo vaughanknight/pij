@@ -8,7 +8,7 @@ use std::process::{Command as ProcessCommand, ExitCode};
 
 use clap::{Parser, Subcommand};
 use pij_cli::{
-    DaemonClient, Registration, SendRequest, SpawnRequest, bounce, daemon_config,
+    DaemonClient, Registration, ReviveRequest, SendRequest, SpawnRequest, bounce, daemon_config,
     default_state_dir, exit_code, parse_destination, render, render_frame, setup_refusal,
 };
 use pij_core::error::PijError;
@@ -134,6 +134,17 @@ enum Command {
         /// Configure Claude to accept cross-session inbound messages.
         #[arg(long)]
         accept_inbound: bool,
+    },
+    /// Relaunch one tombstoned seat with its prior identity and launch intent.
+    Revive {
+        /// Existing tombstoned seat id.
+        id: String,
+        /// Target tmux session; defaults from the caller pane.
+        #[arg(long)]
+        session: Option<String>,
+        /// Tmux window name; defaults to the seat id.
+        #[arg(long)]
+        name: Option<String>,
     },
     /// Durably enqueue one message.
     Send {
@@ -365,6 +376,12 @@ async fn run(cli: Cli) -> ExitCode {
             return emit(&setup_refusal::<Value>("pij spawn", error), cli.json);
         }
     };
+    let prepared_revive = match prepare_revive_request(&cli.command) {
+        Ok(request) => request,
+        Err(error) => {
+            return emit(&setup_refusal::<Value>("pij revive", error), cli.json);
+        }
+    };
     let prepared_inbox_seat = match prepare_inbox_seat(&cli.command) {
         Ok(seat) => seat,
         Err(error) => {
@@ -422,6 +439,16 @@ async fn run(cli: Cli) -> ExitCode {
         Command::Spawn { .. } => emit(
             &client
                 .spawn(prepared_spawn.as_ref().expect("spawn request was prepared"))
+                .await,
+            cli.json,
+        ),
+        Command::Revive { .. } => emit(
+            &client
+                .revive(
+                    prepared_revive
+                        .as_ref()
+                        .expect("revive request was prepared"),
+                )
                 .await,
             cli.json,
         ),
@@ -811,6 +838,32 @@ fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijE
     }))
 }
 
+fn prepare_revive_request(command: &Command) -> Result<Option<ReviveRequest>, PijError> {
+    let Command::Revive { id, session, name } = command else {
+        return Ok(None);
+    };
+    let caller_pane = if session.is_none() {
+        Some(
+            std::env::var("TMUX_PANE")
+                .ok()
+                .filter(|pane| !pane.trim().is_empty())
+                .ok_or_else(|| PijError::Adapter {
+                    adapter: "revive".to_string(),
+                    message: "TMUX_PANE is unavailable — pass --session <tmux> explicitly"
+                        .to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+    Ok(Some(ReviveRequest {
+        id: id.clone().into(),
+        session: session.clone(),
+        caller_pane,
+        name: name.clone(),
+    }))
+}
+
 fn is_linked_worktree(cwd: &Path) -> Result<bool, PijError> {
     let output = ProcessCommand::new("git")
         .args(["rev-parse", "--git-dir"])
@@ -850,6 +903,7 @@ impl Command {
             Command::Register { .. } => "pij register",
             Command::Send { .. } => "pij send",
             Command::Spawn { .. } => "pij spawn",
+            Command::Revive { .. } => "pij revive",
             Command::Inbox { .. } => "pij inbox",
             Command::List => "pij list",
             Command::Tail { .. } => "pij tail",
@@ -865,8 +919,8 @@ mod tests {
     use pij_core::model::SeatId;
 
     use super::{
-        Cli, Command, DaemonAction, git_dir_is_linked, resolve_bind_addr, resolve_client_addr,
-        resolve_inbox_seat, resolve_state_dir,
+        Cli, Command, DaemonAction, git_dir_is_linked, prepare_revive_request, resolve_bind_addr,
+        resolve_client_addr, resolve_inbox_seat, resolve_state_dir,
     };
 
     #[test]
@@ -879,7 +933,8 @@ mod tests {
         assert_eq!(
             names,
             [
-                "daemon", "ping", "register", "spawn", "send", "inbox", "sidecar", "list", "tail"
+                "daemon", "ping", "register", "spawn", "revive", "send", "inbox", "sidecar",
+                "list", "tail"
             ]
         );
     }
@@ -1103,6 +1158,28 @@ mod tests {
             id.is_none(),
             "the CLI must not invent an id: the daemon holds the roster and the lock"
         );
+    }
+
+    #[test]
+    fn revive_carries_only_identity_and_placement() {
+        let parsed = Cli::try_parse_from([
+            "pij-rs",
+            "revive",
+            "pij-old-seat",
+            "--session",
+            "fleet",
+            "--name",
+            "returning-seat",
+        ])
+        .expect("narrow revive command");
+        let request = prepare_revive_request(&parsed.command)
+            .expect("valid placement")
+            .expect("revive request");
+
+        assert_eq!(request.id, SeatId::from("pij-old-seat"));
+        assert_eq!(request.session.as_deref(), Some("fleet"));
+        assert_eq!(request.caller_pane, None);
+        assert_eq!(request.name.as_deref(), Some("returning-seat"));
     }
 
     #[test]
