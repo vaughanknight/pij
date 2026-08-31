@@ -2,6 +2,7 @@
 //! and interaction-safety quirks. Drift belongs here, once per harness.
 
 mod adapter;
+mod composer;
 mod interaction;
 mod models;
 mod spawn;
@@ -12,6 +13,7 @@ pub use adapter::{
     BindObservation, ClaudeHarness, CodexHarness, CopilotHarness, HarnessRegistry,
     ObservedBindFacts, OmpHarness, PiHarness,
 };
+pub use composer::{ComposerRegion, composer_region};
 pub use interaction::InteractionGate;
 pub use models::ModelCatalog;
 pub use spawn::{SpawnPlan, SpawnPlanInput, build_spawn_plan};
