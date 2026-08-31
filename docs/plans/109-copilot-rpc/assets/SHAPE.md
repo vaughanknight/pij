@@ -75,3 +75,85 @@ acted.
 - Derived files (`Cargo.lock`, arch fixtures) are **composer-owned**, regenerated in
   their own typed commits.
 - Receipts are files, committed and pushed **before** the done message.
+
+---
+
+# AMENDMENT 1 — units 1 and 2 reshaped on unit 0's GRADED verdict
+
+Evidence: `assets/reports/findings-log.md` (F0-1 … F0-5) and
+`assets/reports/review-verify-round-2.md`. Every binding below rests on a **graded**
+finding — reproduced or refuted by the reviewer, never on a self-report.
+
+## The seam change: a long-lived per-seat connection (F0-1)
+
+The assigned `--session-id` was correct all along; `session.send` failed because **the
+session must be LIVE ON THE CONNECTION**. A one-shot `session.resume` whose socket
+closed did not work; a held resumed connection did, and once resumed the registration
+is **process-global** — a separate one-shot send succeeded while the resume was held
+elsewhere.
+
+So unit 2 owns a **long-lived RPC connection per seat**, not a per-message connect.
+**Connection lifetime becomes daemon-owned**, with reconnect, ownership and shutdown
+attached. `can_deliver` = wrong harness, or a command, or `rpc_port.is_none()` → false.
+
+### Binding acceptance for unit 1 (revive)
+
+**A held connection is itself a recycled identifier.** Re-stamping `rpc_port` is NOT
+sufficient: the old connection must be **closed as an ACT**, or the daemon holds a live
+socket to whatever now owns the old port while the descriptor truthfully advertises the
+new one.
+
+Tested as a **transition, not a filter**: revive, assert the old connection is CLOSED,
+then assert **nothing re-establishes it**. *Asserting only that the new port is stamped
+passes on a build that leaves the old socket open forever.*
+
+## The gate: a CONSENT guard (F0-2, justification refuted, rule upheld)
+
+Hard precondition inside `can_deliver`, honoured **on the RPC path itself** — a fast
+path around the gate disables it without deleting it, and the code still reads as
+guarded. Owned sensor, **two stable blank observations**.
+
+Founded on **consent**: both modes run a turn in a live human session while a draft is
+pending. **Not** on data loss — the buffer survives, and the earlier claim that it did
+not was refuted. `"socket is transport, tmux is politeness"` does not hold here: a
+Copilot RPC frame cannot corrupt a buffer, but it **can seize a turn from a human
+mid-sentence**, which a Claude UDS frame cannot.
+
+## Ordering: we make it or it does not exist (F0-3)
+
+**One in flight per seat; the next sent only after the previous is OBSERVED complete
+(observed, not acked).** Verbatim, ratified.
+
+The mitigation is **serialize-and-await**. It is explicitly **not** "establish a turn
+first" — with busy held fixed, batched frames still reversed.
+
+## Framing: bytes, and a defect you cannot see (F0-5)
+
+`Content-Length` from **encoded bytes**, never code units.
+
+Acceptance is a **discriminating** test, per config-echo doctrine — *our client being
+bytes-native by construction is not the proof*: a body whose byte length differs from
+its UTF-16 length (em-dash) must round-trip, **plus** a deliberate wrong-length probe
+witnessing that the defect is otherwise indistinguishable from a hung seat.
+
+The client needs its own response deadline, because **the transport's own silence is
+one of its failure modes** — and a timeout has three causes (malformed frame,
+enqueued-but-slow, dead seat) which at-least-once retry treats identically, correctly
+for one and wrongly for another.
+
+## Three absences, three outcomes — never collapsed
+
+- **No `rpc_port` field** — never launched with `--ui-server`; cannot acquire it while
+  alive. **PERMANENT.** Pointer rung for the seat's whole life; retrying is pointless.
+- **No listener on the stamped port** — refused: seat died, port recycled.
+  **TRANSIENT-OR-STALE.** Queue and retry — and a *successful* connect to a port the
+  seat no longer owns is a defect, not a success.
+- **No session at a live endpoint** — connect fine, framing fine, "Session not found".
+  **A DEFECT, not a routing outcome.** Falling silently to the pointer rung here would
+  have hidden exactly the bug unit 0 found.
+
+## Readiness (F0-4)
+
+`getForeground` equality is **not** sufficient readiness and is **not** a busy gate.
+**Never cache a pre-resume positive** — it caches a false positive.
+

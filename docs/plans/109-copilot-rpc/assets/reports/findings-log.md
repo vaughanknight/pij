@@ -3,6 +3,22 @@
 Recorded as they land, not at close. A finding written down after the fact is a
 recollection.
 
+## Grading convention (standing, ruled after F0-2)
+
+Every entry carries a grade, and **an ungraded entry is labelled UNGRADED until a
+reviewer has passed it.**
+
+- **UNGRADED** — a coder self-report. It may be true; nothing has checked it.
+- **GRADED** — a reviewer reproduced or refuted it independently.
+- **REFUTED** — checked and false. Corrected **in place**, never rewritten.
+
+The rule exists because F0-2 was written here as fact from a self-report, propagated
+into a binding, the prime's memory, an upstream document's in-place retraction and a
+fork-facing hazard note — **and was false.** Units 1 and 2 were being held on the
+reviewer's verdict for exactly that reason. **The hold applies to the RECORD, not just
+the dispatch queue.**
+
+
 ## F0-1 — the discoverable session id was not a sendable session id
 
 **Found in unit 0's first hour, against the installed binary, before any transport
@@ -48,7 +64,7 @@ error**. Nobody had pointed those claims at the installed build. The first perso
 do so found the addressing model divergent in the first hour — and did not reconcile
 it toward the document.
 
-## F0-1, resolved — the id is not the problem; the CONNECTION is
+## F0-1 — GRADED — the id is not the problem; the CONNECTION is
 
 The isolated seat was launched with an **assigned** `--session-id` (a UUID the coder
 chose, which is why the zeroed shape was not a sentinel). `session.send` to that
@@ -76,7 +92,7 @@ one layer out, and tested as a transition: revive, assert the old connection is
 CLOSED, then assert nothing re-establishes it. *Asserting only that the new port is
 stamped would pass on a build that leaves the old socket open forever.*
 
-## F0-2 — CORRECTED — RPC runs a turn in a live human session mid-compose
+## F0-2 — REFUTED then RE-FOUNDED — RPC runs a turn in a live human session mid-compose
 
 > **RETRACTED AS ORIGINALLY WRITTEN.** This entry first said `mode:"enqueue"`
 > DESTROYS a human's unsent composer text. **That is false.** The reviewer rebuilt
@@ -133,7 +149,7 @@ reviewer had graded it**, and while the PM was telling the prime that units 1 an
 were being held precisely so a coder's self-report could not drive the reshape. The
 hold was right. **The findings log bypassed it.**
 
-## F0-3 — no ordering guarantee within a burst
+## F0-3 — GRADED (verdict upheld, mechanism corrected) — no ordering guarantee within a burst
 
 Two `mode:"enqueue"` sends written in order on ONE persistent connection **executed in
 reverse**. Proven from session JSONL timestamps, not from the acks — both acked, and
@@ -148,14 +164,15 @@ across RPC sends and encode none. Ordering we need is ordering **we** make — o
 flight per seat, the next sent only after the previous is **observed** complete
 (observed, not acked).
 
-**MECHANISM CORRECTED.** The receipt said frames "race before busy state is
-established". The reviewer held busy FIXED and re-ran the batched write: both frames
+**MECHANISM CORRECTED — the phrase "races before busy state is established" is
+STRUCK**, so nobody builds the mitigation it invites. The receipt said frames "race
+before busy state is established". The reviewer held busy FIXED and re-ran the batched write: both frames
 came back `delivery=queued` — busy WAS established and correctly detected — **and they
 still reversed.** So it is concurrent handling of pipelined frames, independent of busy
 state. This matters because the original mechanism invites the mitigation *"establish a
 turn first, then send"*, **which does not work.** The mitigation is serialize-and-await.
 
-## F0-5 — Content-Length is a BYTE count; a framing defect is invisible on the wire
+## F0-5 — GRADED (reviewer-originated) — Content-Length is a BYTE count; a framing defect is invisible on the wire
 
 New, from review. Framing is mandatory and the declared length is authoritative, but a
 client framing defect presents as **either silence or an uncorrelatable error** — never
@@ -183,7 +200,7 @@ transport cannot tell them apart. At-least-once retry is right for the second an
 
 
 
-## F0-4 — the readiness call is a false positive, and is not a busy gate
+## F0-4 — GRADED — the readiness call is a false positive, and is not a busy gate
 
 Before any `resume`, `getForeground` returned the exact assigned UUID with workspace
 and capabilities while `session.send` for that UUID failed. **Equality is not
