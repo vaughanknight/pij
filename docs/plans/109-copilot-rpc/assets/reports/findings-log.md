@@ -255,3 +255,50 @@ reviewer's committed reproductions, not its own.
 A retraction resting on a path that exists on one machine is a retraction that decays
 back into the claim it replaced.
 
+## F0-8 — GRADED (reviewer-originated, pre-code) — the registry contract cannot see an upsert defect
+
+**Mechanism named by mutation, not repetition.** Three single-column mutations of the
+`ON CONFLICT DO UPDATE SET` list, each applied alone, each reverted, full suite each
+time:
+
+```
+removed cross_session_inbound_accept = excluded…  -> GREEN
+removed pane = excluded.pane                      -> GREEN
+removed tombstoned_at = excluded.tombstoned_at    -> RED
+```
+
+The update path **is** exercised. The gap is that **every update in the contract writes
+the same value over the same value** — put a descriptor, put the identical descriptor,
+put it again. For any column whose value does not *change* between two writes, a missing
+`excluded.<col>` and a present one produce **byte-identical rows**.
+
+The only two columns it catches are the tombstone pair, and only because an intervening
+`tombstone()` changes them **out of band**.
+
+> **The two behaviours coincide by construction.** It reads as full round-trip coverage
+> and is real for 2 columns out of 17 — the config-echo shape, in a contract test.
+
+### Direct consequence for unit 1
+
+A coder following the precedent inherits a contract that **cannot see the defect**.
+`rpc_port` in the INSERT list and the binds but missing from `DO UPDATE SET` is **green
+on this suite and green at every stage of the gate**, while frozen at the stale value
+for ever after a re-registration — *the exact defect this unit exists to prevent,
+shipped green through a full gate.*
+
+### Binding
+
+The witness writes one seat **twice with a DIFFERENT `rpc_port`** and reads back through
+`Registry::get` against a **real `SqliteRegistry`**. Not a fake: `FakeRegistry` stores
+descriptors in a map and **cannot express this defect at all**, so a fake-backed test is
+guaranteed green in both worlds — *a probe whose negative arm cannot occur, sitting in
+the FIXTURE rather than in the assertion.*
+
+Also required: the column in **both** lists, a schema bump with migration (a column
+without the bump passes `require_current_schema` on a store that lacks it), and the
+receipt must not cite the green suite as evidence for the update path — **that
+instrument answers a different question.**
+
+The contract's own gap predates this unit and belongs to whoever owns
+`registry_contract`. What binds unit 1 is that it **cannot rely on it**.
+
