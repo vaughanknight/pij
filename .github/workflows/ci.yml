@@ -70,3 +70,36 @@ jobs:
           cache: npm
       - run: npm ci --min-release-age=null
       - run: npm run windows:check
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Installs exactly what rust-toolchain.toml pins, including rustfmt and
+      # clippy, so local and CI toolchains cannot drift.
+      - name: Install pinned Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: toolchain matches the pin
+        run: |
+          rustc --version
+          test "$(rustc --version | cut -d' ' -f2)" = "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)"
+
+      # Run the cheap lockfile check before compilation. Plain cargo test may
+      # update a stale Cargo.lock and hide a later --locked release failure.
+      - name: lockfile is current
+        run: cargo metadata --locked --format-version 1
+
+      - name: fmt
+        run: cargo fmt --all --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: test
+        run: cargo test --workspace
