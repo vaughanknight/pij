@@ -73,14 +73,14 @@
         {
           "id": "ac-1115",
           "claim": "Layout parsing EXTRACTED to pij-harnesses with behaviour pinned: characterisation tests over live-recorded captures prove the extracted parser byte-equal to the pre-move rendered_composer on every fixture, plus the one NEW behaviour red-first: an unrecognised layout yields an explicit Unrecognized verdict that DEFERS (was a silent None). Labeled honestly: pin + one witness, not a greenfield build.",
-          "receipt": "",
-          "state": "unchecked"
+          "receipt": "cargo test -p pij-harnesses --lib composer @ 759ae36d (merged tree, 12 passed). Extraction PIN: composer::tests::unchanged_live_recorded_layouts_match_pre_move_parser_byte_for_byte over three LIVE-recorded fixtures with provenance (crates/harnesses/tests/fixtures/2026-08-31-omp-pane-1985.txt, -claude-pane-1973.txt, -copilot-v1.0.82-pane-1962.txt — real panes on this machine, dated and harness-labelled). PM-verified one-parser: rendered_composer and its helpers are GONE from pane_observer.rs (grep count 0). NEW-behaviour witnesses, both seen RED first: garbage_layout_is_unrecognized (was Recognized(\"\"), now Unrecognized — an empty Recognized reads as 'composer clear' and RELEASES the gate) and live_copilot_v1_box_is_recognized_without_prompt_marker (was Unrecognized, now Recognized). HONEST LABEL: the byte-equality tests are a PIN, green from birth by design; only the two witnesses above are red-first.",
+          "state": "checked"
         },
         {
           "id": "ac-1116",
           "claim": "Paneless seat is never gated (existing behaviour pinned by a regression test that survives this change).",
-          "receipt": "",
-          "state": "unchecked"
+          "receipt": "cargo test -p pij-daemon delivery::tests::a_paneless_seat_is_never_gated_and_never_captured @ 759ae36d (merged tree, green). PINNED not built — pre-existing behaviour that had to survive composition. Asserts the ABSENCE of tmux calls (fixture.tmux.calls().is_empty()), not merely a Delivered receipt: a paneless pull consumer has no composer, so the gate must not list, capture, or probe.",
+          "state": "checked"
         },
         {
           "id": "ac-1117",
