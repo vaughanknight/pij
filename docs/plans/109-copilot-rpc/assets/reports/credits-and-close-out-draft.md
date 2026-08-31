@@ -118,3 +118,27 @@ build: **allocated == env id**. One command, two values, and the claim is settle
 the direction the evidence points — which is how every other finding on this plan was
 closed.
 
+## The discriminating pair, both directions, in production
+
+Identical spawn command, two builds, values read **from the launched process's
+environment** rather than from the API response:
+
+| | allocated | `PIJ_SESSION_ID` in the launched env | `PIJ_SPAWN_ID` |
+|---|---|---|---|
+| **OLD** | `pij-free-flute` | `pij-enchanting-aardvark` | **absent entirely** |
+| **NEW** (`67f8a19e`) | `pij-irregular-apocalypse` | `pij-irregular-apocalypse` | `s-6a54b59c…` — **byte-for-byte the spawn response's `spawn_id`** |
+
+**The fix reaches production.** Same minted values threaded end to end, and the check
+was made where a real seat reads them — *not* where the fixture could have supplied
+them.
+
+That last distinction is the plan in miniature. The witness that green-lit the first
+three heads compared against a value it had taken from the spawn response; **this
+comparison is against the launched environment**, which is the only place the claim
+was ever about. Capability asymmetry, closed by the same discipline that named it:
+**what does a real caller actually know.**
+
+And both arms exist. A green with no red beside it would have proved that the new
+build works, not that the old one was broken — the old build's divergence is what
+makes the new build's equality mean something.
+
