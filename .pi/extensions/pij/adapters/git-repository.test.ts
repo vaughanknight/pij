@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { removeTemporaryTree } from "../../../../harness/test-utils.js";
 
 import { GitRepositoryAdapter } from "./git-repository.js";
 
@@ -29,7 +30,9 @@ function initRepository(path: string): void {
 }
 
 afterEach(() => {
-	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+	for (const root of roots.splice(0)) {
+		removeTemporaryTree(root);
+	}
 });
 
 describe("GitRepositoryAdapter", () => {

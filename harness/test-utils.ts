@@ -2,6 +2,7 @@
 // duplicated across ≥2 test files.
 
 import { createHash } from "node:crypto";
+import { type RmOptions, rmSync } from "node:fs";
 
 export interface AppendCall<T = unknown> {
 	customType: string;
@@ -18,6 +19,19 @@ export function makeRecorder<T = unknown>() {
 
 export function lastCustomType(calls: AppendCall[]): string | undefined {
 	return calls.at(-1)?.customType;
+}
+
+export type RemoveTemporaryTree = (path: string, options: RmOptions) => void;
+
+const TEMPORARY_TREE_REMOVE_OPTIONS = {
+	recursive: true,
+	force: true,
+	maxRetries: 3,
+	retryDelay: 100,
+} satisfies RmOptions;
+
+export function removeTemporaryTree(path: string, remove: RemoveTemporaryTree = rmSync): void {
+	remove(path, TEMPORARY_TREE_REMOVE_OPTIONS);
 }
 
 // ─── FakeIterationRunner (Plan 008 T022) ─────────────────────────────
