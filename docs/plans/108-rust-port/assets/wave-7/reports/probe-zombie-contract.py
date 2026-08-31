@@ -21,6 +21,7 @@ process is alive.
     python3 probe-zombie-contract.py
 """
 
+import errno
 import os
 import subprocess
 import time
@@ -39,13 +40,18 @@ def table_rows(pgid):
 
 
 def killpg_probe(pgid):
+    """Report the NUMBER, not the name.
+
+    The whole point of moving off stderr text is that errno is a field: ESRCH=3
+    and EPERM=1 cannot be reworded by a vendor, a locale, or another `kill`
+    implementation. A probe that reports only the symbolic name reproduces, in
+    its own output, the ambiguity the code is being moved away from.
+    """
     try:
         os.killpg(pgid, 0)
-        return "0 (exists)"
-    except ProcessLookupError:
-        return "ESRCH (none)"
-    except PermissionError:
-        return "EPERM (?)"
+        return "0/ok"
+    except OSError as error:
+        return f"{errno.errorcode.get(error.errno, '?')}={error.errno}"
 
 
 def getpgid_probe(pid):
@@ -113,9 +119,11 @@ CONTRACT — read every row before changing liveness code
 
   ps state= excluding 'Z'   the only cheap probe meaning "a process capable of
                             work is still there". `group_pids` uses this.
-  killpg(pgid, 0)           THREE outcomes. ESRCH proves absence; 0 and EPERM
-                            prove NOTHING. Use it one-directionally, as a fast
-                            path to CONVERGE, never to conclude "still alive".
+  killpg(pgid, 0)           THREE outcomes, and branch on the NUMBER: ESRCH=3
+                            proves absence; 0 and EPERM=1 prove NOTHING. Use it
+                            one-directionally as a fast path to CONVERGE, never
+                            to conclude "still alive". Never branch on the
+                            stderr sentence — errno is a field, prose is not.
   getpgid(pid)              raises ESRCH for a zombie while ps still shows the
                             row. Two probes, same process, opposite answers —
                             never mix probe families in one decision.
