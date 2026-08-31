@@ -8,19 +8,26 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { FsChannel, pollPrimaryWatchOpts } from "./adapters/channel.js";
+import { type DaemonGeneration, detectDaemonGeneration } from "./adapters/daemon-http.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
 import type { CommandControl } from "./adapters/pi-runtime.js";
 import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
 import { NodeProcess } from "./adapters/process.js";
+import { RustRuntimeSession } from "./adapters/rust-runtime.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { FsWatchdogStore } from "./adapters/watchdog-store.js";
 import { resolvePijHome } from "./core/agents/paths.js";
 import { type CliDeps, dispatch } from "./core/cli.js";
 import { ALLOWED_COMMANDS } from "./core/commands.js";
-import { deriveSelfId, isSubagentChild, memorableIdentitySeed } from "./core/discovery.js";
+import {
+	deriveSelfId,
+	detectPiRuntime,
+	isSubagentChild,
+	memorableIdentitySeed,
+} from "./core/discovery.js";
 import { guardInvariantNineModal } from "./core/invariant-guard.js";
 import { loadModels } from "./core/models/registry.js";
 import { PijSession } from "./core/session.js";
@@ -102,6 +109,16 @@ export default function (pi: ExtensionAPI): void {
 			if (message.length > 0 === (command !== undefined)) {
 				throw new Error("pij_send needs exactly one of `message` or `command`.");
 			}
+			if (rustRuntime) {
+				if (command !== undefined) {
+					throw new Error("pij-rs does not expose remote-control commands in the v1 send request");
+				}
+				const messageId = await rustRuntime.send(params.to, message);
+				return {
+					content: [{ type: "text", text: `queued ${messageId} -> ${params.to}` }],
+					details: {},
+				};
+			}
 			const deps: CliDeps = {
 				registry: new FsRegistry(pijHome),
 				eventLogFor: (id) => new FsEventLog(pijHome, id),
@@ -129,7 +146,8 @@ export default function (pi: ExtensionAPI): void {
 	});
 
 	// Per-session handles, (re)assigned on every session_start (all reasons).
-	let session: PijSession | undefined;
+	let session: PijSession | RustRuntimeSession | undefined;
+	let rustRuntime: RustRuntimeSession | undefined;
 	let registry: FsRegistry | undefined;
 	let eventLog: FsEventLog | undefined;
 	let self = "";
@@ -251,6 +269,64 @@ export default function (pi: ExtensionAPI): void {
 		} catch {
 			piSessionId = undefined; // stale/unavailable session manager
 		}
+		const runtimeBin = detectPiRuntime({
+			ompCode: process.env.OMPCODE,
+			bun: "bun" in process.versions,
+			executableNames: [process.execPath, process.argv[0], process.argv[1]]
+				.filter((value): value is string => value !== undefined)
+				.map((value) => basename(value)),
+		});
+		const envRole = process.env.PIJ_ROLE;
+		role = envRole === "parent" || envRole === "worker" ? envRole : undefined;
+		const folder = process.cwd();
+		const gitCommonDir = repositories.gitCommonDir(folder);
+		let generation: DaemonGeneration;
+		try {
+			generation = await detectDaemonGeneration();
+		} catch (error) {
+			ctx.ui.setStatus(PIJ_STATUS_KEY, "daemon error");
+			ctx.ui.notify(`pij: ${error instanceof Error ? error.message : String(error)}`, "error");
+			throw error;
+		}
+		if (generation.kind === "rust") {
+			disposeWatch?.();
+			disposeWatch = undefined;
+			registry = undefined;
+			eventLog = undefined;
+			if (!rustRuntime) {
+				rustRuntime = new RustRuntimeSession(generation.client, new TmuxAdapter(), loadModels());
+			} else {
+				rustRuntime.setClient(generation.client);
+			}
+			rustRuntime.setPi(new PiRuntimeAdapter(pi, ctx, () => commandControl));
+			const boot = await rustRuntime.boot({
+				role,
+				folder,
+				dataDir: "",
+				eventsPath: "",
+				harness: "pi",
+				harnessSessionId: piSessionId,
+				piSessionId,
+				runtimeBin,
+				paneId: process.env.TMUX_PANE,
+				...(process.env.PIJ_PARENT_ID !== undefined ? { parentId: process.env.PIJ_PARENT_ID } : {}),
+				...(gitCommonDir !== null ? { gitCommonDir } : {}),
+				...(process.env.PIJ_PLAN_ID !== undefined ? { planId: process.env.PIJ_PLAN_ID } : {}),
+				resetRuntimeState: event.reason !== "reload",
+				reason: event.reason,
+			});
+			session = rustRuntime;
+			self = boot.id;
+			role = boot.role === "parent" || boot.role === "worker" ? boot.role : undefined;
+			if (runtimeBin === "omp") await pi.setSessionName(self);
+			else ctx.ui.setStatus(PIJ_STATUS_KEY, `${self} · rs-v1`);
+			ctx.ui.notify(
+				`pij: detected Rust daemon v1 at ${generation.location.addr}; registered ${self}`,
+				"info",
+			);
+			return;
+		}
+		rustRuntime = undefined;
 		registry = new FsRegistry(pijHome);
 		let durableDescriptor: SessionDescriptor | undefined;
 		let reservationOwnerToken: string | undefined;
@@ -288,19 +364,13 @@ export default function (pi: ExtensionAPI): void {
 		// OMP's default status line includes the session_name segment but renders
 		// extension statuses on a separate row. Mirror the pij identity into that
 		// native segment so the peer id remains visible in the actual bar.
-		const hostExecutable = basename(process.execPath || process.argv[0] || "");
-		const runtimeBin = process.env.OMPCODE === "1" || hostExecutable === "omp" ? "omp" : "pi";
 		if (runtimeBin === "omp") {
 			await pi.setSessionName(self);
 		} else {
 			ctx.ui.setStatus(PIJ_STATUS_KEY, self);
 		}
-		const envRole = process.env.PIJ_ROLE;
-		role = envRole === "parent" || envRole === "worker" ? envRole : undefined;
 		const dataDir = join(pijHome, self);
 		const eventsPath = join(dataDir, "events.ndjson");
-		const folder = process.cwd();
-		const gitCommonDir = repositories.gitCommonDir(folder);
 		// /new and /fork mint a fresh id => drop the prior session's descriptor so it
 		// does not linger as a duplicate live peer (same pid, stale id). /reload keeps
 		// the same id, so this is a no-op there.
@@ -312,7 +382,7 @@ export default function (pi: ExtensionAPI): void {
 		// watchFactory) and drains via the 500ms poll — no silent FSEvents drop
 		// under load, and prod == what the boot tests exercise (plan 057 thread-1).
 		const channel = new FsChannel(pijHome, pollPrimaryWatchOpts());
-		session = new PijSession({
+		const legacySession = new PijSession({
 			registry,
 			eventLog,
 			delivery: channel,
@@ -323,8 +393,9 @@ export default function (pi: ExtensionAPI): void {
 			expectations: new FsSpawnExpectationStore(pijHome),
 			models: loadModels(),
 		});
+		session = legacySession;
 
-		const boot = session.boot({
+		const boot = legacySession.boot({
 			id: self,
 			role,
 			folder,
@@ -373,7 +444,7 @@ export default function (pi: ExtensionAPI): void {
 		// a pi session's inbox — `pi.sendUserMessage` is the one immovable seam. The
 		// daemon never injects into pi (it `observe`s pi inboxes for the TUI and
 		// consumes only tmux harnesses' inboxes), so there is no double-processing.
-		const receiver = session;
+		const receiver = legacySession;
 		disposeWatch = channel.watch(
 			self,
 			(dm) => {
@@ -398,7 +469,10 @@ export default function (pi: ExtensionAPI): void {
 	// to exactly one coordinator capture. There is no pi `usage` event.
 	pi.on("tool_call", (event) => {
 		session?.capture("tool_call", event);
-		return guardInvariantNineModal(registry?.read(self), event.toolName);
+		return guardInvariantNineModal(
+			registry?.read(self) ?? rustRuntime?.readSelf() ?? null,
+			event.toolName,
+		);
 	});
 	pi.on("tool_result", (event) => session?.capture("tool_result", event));
 	pi.on("message_end", (event) => session?.capture("message", event));
@@ -423,7 +497,7 @@ export default function (pi: ExtensionAPI): void {
 	pi.registerCommand("pij", {
 		description: "pij peer messaging — self id, role, live peers, captured events",
 		handler: async (_args: string, ctx: ExtensionCommandContext): Promise<void> => {
-			if (!registry || !eventLog || !self) {
+			if (!self || (!rustRuntime && (!registry || !eventLog))) {
 				ctx.ui.notify("pij: not booted yet", "info");
 				return;
 			}
@@ -440,10 +514,12 @@ export default function (pi: ExtensionAPI): void {
 				},
 			};
 			const applied = session?.applyPendingControl() ?? [];
-			const peers = registry.list().filter((d) => d.id !== self).length;
+			const peers = rustRuntime
+				? rustRuntime.peerCount()
+				: (registry?.list().filter((d) => d.id !== self).length ?? 0);
 			const appliedNote = applied.length > 0 ? ` · applied ${applied.join("+")}` : "";
 			ctx.ui.notify(
-				`pij: ${self} · role=${role ?? "peer"} · peers ${peers} · events ${eventLog.count()}${appliedNote}`,
+				`pij: ${self} · role=${role ?? "peer"} · peers ${peers} · events ${rustRuntime?.eventCount() ?? eventLog?.count() ?? 0}${appliedNote}`,
 				"info",
 			);
 		},

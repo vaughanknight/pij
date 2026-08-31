@@ -4,10 +4,11 @@
 // T003: P9 ordering invariant — 4 tests
 
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { removeTemporaryTree } from "../../../harness/test-utils.js";
 import { nodeObserveDeps, Observe, type ObserveDeps } from "../lib/observe.js";
 
 // ─── Fixture helpers ──────────────────────────────────────────────────────────
@@ -119,7 +120,7 @@ describe("Observe — basic diff artifacts (T001)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		removeTemporaryTree(tmpRoot);
 	});
 
 	it("returns {ok:true} with a real git fixture", () => {
@@ -202,7 +203,7 @@ describe("Observe — flow-state guard AC-13 (T002)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		removeTemporaryTree(tmpRoot);
 	});
 
 	/** Create git repo, write forbidden file at filename (supports nested paths), optionally untracked. */
@@ -303,7 +304,7 @@ describe("Observe — P9 ordering invariant (T003)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		removeTemporaryTree(tmpRoot);
 	});
 
 	it("P9: appendFileSync(events.jsonl) before any writeFileSync(diffs/)", () => {

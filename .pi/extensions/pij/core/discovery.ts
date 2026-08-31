@@ -48,6 +48,13 @@ function sessionSlug(piSessionId: string | undefined): string | null {
 	}
 	return (h >>> 0).toString(36);
 }
+export function detectPiRuntime(input: {
+	readonly ompCode?: string;
+	readonly bun: boolean;
+	readonly executableNames: readonly string[];
+}): "pi" | "omp" {
+	return input.ompCode === "1" || input.bun || input.executableNames.includes("omp") ? "omp" : "pi";
+}
 
 /** True when this pi process was spawned as a SUBAGENT CHILD by pi-subagents.
  *  Such children run `pi --mode json -p "<task>"`, so pij MUST NOT activate:

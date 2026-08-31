@@ -1,0 +1,180 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Phase 1: Foundations — workspace, ports, drift enforcement, exemplars",
+        "slug": "phase-1",
+        "status": "draft",
+        "summary": "The mold, decomposed into ordered tasks; each cites its ruling (workshop 001) and AC."
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Execute in order; each task's gate must be green before the next starts. Rulings R1-R6 (assets/workshops/001-architecture.md) bind every task; ACs are the contract (plan.dd.md)."
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "tk-48f2",
+          "title": "Toolchain pin + repo hygiene: rust-toolchain.toml (stable, rustfmt+clippy), root Cargo.toml workspace with pocs/ exclude, .gitignore for target/. First commit, nothing else in it.",
+          "state": "checked",
+          "note": "R6a,R6c",
+          "done": "#done_when/tk-48f2"
+        },
+        {
+          "id": "tk-5f1d",
+          "title": "Workspace skeleton: 8 member crates (core,store,tmux,harnesses,transport,daemon,cli->one binary,testkit) compiling empty at hello-world depth; cargo build --workspace green.",
+          "state": "checked",
+          "note": "R2 / ac-0001,ac-0002",
+          "done": "#done_when/tk-5f1d"
+        },
+        {
+          "id": "tk-3a93",
+          "title": "Drift gate: arch-allowlist committed with per-row rationale + the test that walks the dep graph; NEGATIVE PROOF recorded (add tokio to core, red, revert; transcript to assets/reports/).",
+          "state": "checked",
+          "note": "R2 / ac-0003",
+          "done": "#done_when/tk-3a93"
+        },
+        {
+          "id": "tk-ddf1",
+          "title": "Ports + fakes: the six frozen traits in core/src/ports.rs ('a seventh port is stop-and-ask' comment) + a shipped, deterministic, scriptable fake per port in testkit; fake-as-default config; port contract exemplar test.",
+          "state": "checked",
+          "note": "R3 / ac-0006",
+          "done": "#done_when/tk-ddf1"
+        },
+        {
+          "id": "tk-d4c3",
+          "title": "Store skeleton: SQLite via sqlx, migration 0001 (WAL+user_version), boot self-migration, stale-schema refusal (skew rule both directions), FreshStore-per-test primitive; store integration exemplar.",
+          "state": "checked",
+          "note": "R1 / ac-0004-analog,ac-0006",
+          "done": "#done_when/tk-d4c3"
+        },
+        {
+          "id": "tk-f8ff",
+          "title": "Queue primitive: enqueue/claim/ack, dedupe partial-unique over live jobs, per-entity serial keys; contention test with set-equality; mutation-check the dedupe.",
+          "state": "checked",
+          "note": "R4",
+          "done": "#done_when/tk-f8ff"
+        },
+        {
+          "id": "tk-d162",
+          "title": "Hello-depth binary: pij-rs with two composition roots; daemon serves /health + NDJSON events (Hello line, Unknown variant) on localhost with per-boot 0600 bearer key written before bind; pij-rs ping healthy; first-light transcript captured.",
+          "state": "checked",
+          "note": "R1,R4 / ac-0005",
+          "done": "#done_when/tk-d162"
+        },
+        {
+          "id": "tk-717f",
+          "title": "Fixture corpus + exemplars: capture real pij CLI invocations + daemon wire traffic INCLUDING malformed cases into testkit-addressable paths; core unit exemplar (zero doubles); one CLI golden diffed against the TS binary.",
+          "state": "checked",
+          "note": "R6b / ac-0006",
+          "done": "#done_when/tk-717f"
+        },
+        {
+          "id": "tk-388a",
+          "title": "Spike lane + shared components: pocs/<name> template ([workspace]+.gitignore+out/), spike gate-posture sentence in README; wire.rs stub; discovery/admission component with shared case table.",
+          "state": "checked",
+          "note": "R6c,R6d,R6f",
+          "done": "#done_when/tk-388a"
+        },
+        {
+          "id": "tk-81b3",
+          "title": "Gate + docs: one command running fmt --check, clippy -D warnings, cargo test --workspace, allowlist — all green; README quick-start + architecture doc; fences doc naming shared-merge files.",
+          "state": "checked",
+          "note": "R6e / ac-0007,ac-0008",
+          "done": "#done_when/tk-81b3"
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {
+        "tk-48f2": [
+          {
+            "id": "dw-a803",
+            "assertion": "rustc --version == pinned channel exactly (gate stage-1 assert, fail loud); pocs/ excluded in root manifest",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-5f1d": [
+          {
+            "id": "dw-c43d",
+            "assertion": "cargo build --workspace green; 8 member crates present; core has no tokio/sqlx/HTTP deps",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-3a93": [
+          {
+            "id": "dw-1be7",
+            "assertion": "allowlist test green AND negative proof recorded (forbidden dep -> red -> revert, transcript in assets/reports/)",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-ddf1": [
+          {
+            "id": "dw-34f8",
+            "assertion": "SEVEN frozen port traits in ports.rs (R3 as amended) each with a shipped deterministic fake; port contract exemplar green",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-d4c3": [
+          {
+            "id": "dw-feee",
+            "assertion": "boot self-migration proven; stale-schema refusal proven BOTH skew directions; FreshStore-per-test primitive used by the store exemplar",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-f8ff": [
+          {
+            "id": "dw-1ddd",
+            "assertion": "dedupe collapses N rapid submits to one row (set-equality contention test); manual mutation evidence on the dedupe predicate",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-d162": [
+          {
+            "id": "dw-bba7",
+            "assertion": "pij-rs ping healthy over localhost HTTP + bearer key; NDJSON stream carries Hello + survives an unknown event kind; first-light transcript captured",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-717f": [
+          {
+            "id": "dw-70b8",
+            "assertion": "fixture corpus addressable by name, includes malformed cases; golden MECHANISM proven against captured TS `pij models --json` fixture (Q4 ruling)",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-388a": [
+          {
+            "id": "dw-8f8d",
+            "assertion": "pocs/ template builds standalone; spike gate-posture sentence present; wire.rs stub + admission component with shared case table in gate",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-81b3": [
+          {
+            "id": "dw-7b12",
+            "assertion": "one-command gate all green; quick-start at crates/README.md; arch doc at assets/architecture.md (Q3 relocation); fences doc names shared-merge files",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ]
+      }
+    }
+  ]
+}

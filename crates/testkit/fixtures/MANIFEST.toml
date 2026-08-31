@@ -1,0 +1,304 @@
+# The addressable fixture corpus (workshop 001 R6b).
+#
+# Real captured pij traffic, malformed cases INCLUDED, with a known answer for
+# each — so a packet can cite a fixture by path and a reviewer can check the
+# claim without re-capturing anything.
+#
+# Rule: a fixture is only useful with its EXPECTATION. `answer` is what a correct
+# implementation must DO with the bytes — not a description of them.
+#
+# TWO FAMILIES, and the split is load-bearing:
+#
+#   malformed/rs/  the Rust v1 wire shape {v, at, kind, seat, payload}. The
+#                  decoder in pij-core/src/wire.rs is judged against these.
+#   malformed/ts/  the LIVE TypeScript daemon's shape {seq, timestamp, type,
+#                  data}. Captured, not invented — and NOT what v1 speaks. These
+#                  belong to the migration/parity reader of wave 3+.
+#
+# The split exists because the first draft of the wire tests read TS captures
+# with the v1 decoder and failed: the two schemas genuinely differ, and pretending
+# otherwise would have meant bending one of them to hide it.
+
+version = 1
+
+
+[[fixture]]
+path = "cli/models.json"
+sha256 = "a01aa1cec6a96cd4d3553ab0ca6624ea319925f4d65ff95a31ce72859cd3e468"
+bytes = 3182
+note = "pij models --json, 2026-08-28, one row per provider plus rows covering every observed `levels` encoding. The live catalog is TIME-VARYING (599 rows at 05:05, 125 at 05:15 as the openrouter list shrank 479->5), so a byte-golden against the live binary would flap; the golden runs against these committed bytes."
+answer = "10 rows, 8 providers. TWO encodings of 'no thinking levels' appear in real output \u2014 \"levels\": [] and the key ABSENT (claude rows) \u2014 and NEITHER is the null services.dd.json assumed. u-models must fold both to one fact and must not invent a third."
+
+[[fixture]]
+path = "cli/list.json"
+sha256 = "18ec5f2ad30583e4be37c2e28ceda0499e7a2fc3baca3d29ba878120da886242"
+bytes = 7261
+note = "pij list --json, 2026-08-28, one seat per liveness class (active, stale, dead) plus a seat carrying a terminal record."
+answer = "liveness is active|stale|dead; terminal.disposition reads 'unrequested-by-pij', which is an OBSERVATION of absence, never a cause of death."
+
+[[fixture]]
+path = "cli/whoami.json"
+sha256 = "1aebf71f48dcffa1fbd8b8d94720554d5e3b7768d9f44bb9954e7566ddd21eca"
+bytes = 1475
+note = "pij whoami --json from the PM seat, 2026-08-28."
+answer = "carries folder, dataDir, and the per-verb capability map; a reader must not assume folder == cwd."
+
+[[fixture]]
+path = "wire/events.ndjson"
+sha256 = "4b4ced47a3ddf26f22e0bfbc51c742e5afa841825562b6341195567051562fed"
+bytes = 1766
+note = "8 real spine events from ~/.pij/pij-revolutionary-lungfish/events.ndjson, one per (type, data.type) pair. TS SHAPE: {seq,timestamp,type,data}."
+answer = "seq is monotonic and every line is one complete JSON object \u2014 but the field names are the TS daemon's, NOT the Rust v1 event shape. A reader of this file is a MIGRATION reader (wave 3+), never the v1 decoder."
+
+[[fixture]]
+path = "wire/health-v1.json"
+sha256 = "8e28fcef47e8d8929510103154cfba78c60f56e5408a32253835c0fcafe9f2f8"
+bytes = 130
+note = "Recorded pij-rs authenticated GET /health response used by the in-process extension generation probe."
+answer = "MUST select the Rust HTTP wire: v=1 is supported and the health payload names the answering build and machine."
+
+[[fixture]]
+path = "wire/health-future.json"
+sha256 = "d34a3784f4f84cdcc92299bbcb8e645d594b7f49247df5bb4767d4479e454cbd"
+bytes = 130
+note = "A health envelope from a daemon one wire generation newer than this extension."
+answer = "MUST refuse the payload whole as PIJ_WIRE_SKEW with structured found=2 and supported=1 fields; never branch on prose."
+
+[[fixture]]
+path = "wire/register-v1.json"
+sha256 = "4eca3595039191f6ad1a5ae27e721acca8fd009c9c1659f7b2f47170187d6ee8"
+bytes = 355
+note = "Recorded pij-rs POST /v1/register success envelope carrying the authority's accepted descriptor."
+answer = "MUST read the accepted descriptor from data and preserve the complete proc identity (pid, proc_start) plus spawn_id."
+
+[[fixture]]
+path = "wire/events-v1.ndjson"
+sha256 = "c1670f670d9cd519a3774ea62a8dbced4924ca302c610e63fa19440e41841be9"
+bytes = 387
+note = "pij-rs event stream corpus: Hello, an unknown framed event, then a message.pushed turn."
+answer = "MUST require Hello first, forward the unknown event unchanged, continue reading, and inject the pushed turn for its recipient."
+
+
+[[fixture]]
+path = "malformed/rs/truncated-event.ndjson"
+sha256 = "82fcf0f44de70d0f4f65c594e4f63f30d1db3e9a726ec4d3845680f60bba80ea"
+bytes = 39
+note = "A Rust-v1 event line cut mid-object \u2014 the shape a crashed writer leaves."
+answer = "MUST fail to parse as NotJson, and the failure MUST name the line number."
+
+[[fixture]]
+path = "malformed/rs/unknown-event-kind.ndjson"
+sha256 = "f21b9158ac9d8a85ca58f5923ac2d3b13d03d716e9b07e0cca58a338f1d79b2a"
+bytes = 183
+note = "A Rust-v1 event whose kind this build has never heard of, followed by a known one."
+answer = "MUST decode as WireEvent::Unknown keeping the raw bytes, and MUST NOT abort the stream: the known line still arrives. An event is a fact that happened whether or not this build knows the word for it."
+
+[[fixture]]
+path = "malformed/rs/not-json.ndjson"
+sha256 = "b66cdc925e6c68310c5215bbc6041956c742a017958daaca651db75d968a7fac"
+bytes = 104
+note = "A stray human-readable warning printed into a machine stream \u2014 the class that bricked a pi boot ('Warning: Set a purpose first.')."
+answer = "The bad line is reported with its number; every other line still decodes. One bad line must never cost the reader the rest of the stream."
+
+[[fixture]]
+path = "malformed/rs/no-kind.ndjson"
+sha256 = "e342a0f160bdb4f1b67b3464b86a22add41bfd1b5b178e93dd6ed8837056b972"
+bytes = 54
+note = "A Rust-v1 event object with no `kind` field."
+answer = "MUST be WrongShape, NOT Unknown: 'I do not recognise this kind' and 'this is not an event' are different facts with different recoveries."
+
+[[fixture]]
+path = "malformed/rs/empty.ndjson"
+sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+bytes = 0
+note = "Zero bytes."
+answer = "An empty stream is EMPTY, not an error."
+
+[[fixture]]
+path = "malformed/rs/future-envelope.json"
+sha256 = "ef29c521ed87b10adf2e40a1dd33872e4fb9086fdf00913c5ec2399bf50c9b14"
+bytes = 113
+note = "An envelope with v=99."
+answer = "MUST be refused whole, before the payload is typed. Note the deliberate ASYMMETRY with unknown events: an envelope is a contract this build must satisfy, so a future one is refused; an event is a fact, so a future one is kept."
+
+[[fixture]]
+path = "malformed/ts/truncated-event.ndjson"
+sha256 = "8775b9c173f5d83662d687a8f9d128d46503d7bc8a5feacbc8b5648fd5eea9ae"
+bytes = 87
+note = "TS-shaped event line cut mid-object."
+answer = "For the wave-3+ migration reader only. Same rule as its rs/ sibling: fail, naming the line."
+
+[[fixture]]
+path = "malformed/ts/unknown-event-kind.ndjson"
+sha256 = "f061b0f8e9456879e162b863ff2589a193641b6abedb154b3cc557b43149ae70"
+bytes = 198
+note = "TS-shaped stream carrying an unknown `type`, followed by a known one."
+answer = "For the migration reader: forward the unknown, keep reading. The v1 decoder is NOT expected to read TS field names."
+
+[[fixture]]
+path = "malformed/ts/not-json.ndjson"
+sha256 = "3895474b6d1080352db59f11be39ddb080389238c95489e80a1d894b98d10ee4"
+bytes = 124
+note = "TS-shaped stream with a stray human line first."
+answer = "For the migration reader: report line 1, still deliver line 2."
+
+[[fixture]]
+path = "malformed/ts/empty.ndjson"
+sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+bytes = 0
+note = "Zero bytes."
+answer = "An empty stream is EMPTY, not an error \u2014 true for both readers."
+
+[[fixture]]
+path = "malformed/ts/models-missing-request-id.json"
+sha256 = "b67fd5207e73fbd14d44f41a586c8dc826fdd74c39a5f3c48a1872f45d5a1167"
+bytes = 184
+note = "A model row with no requestModelId."
+answer = "Whole-inventory failure: one malformed row invalidates the catalog rather than silently yielding a model nobody can request (s106 semantics)."
+
+[[fixture]]
+path = "malformed/ts/models-levels-empty-list.json"
+sha256 = "93aa2a309613c16472451c7057589f2d93fbccb3201f5e96cb993ea8b11d4f29"
+bytes = 212
+note = "A model row with `levels: []`."
+answer = "MUST fold to the same 'no levels' fact as an absent key \u2014 see cli/models.json; it must NOT be read as 'levels exist and none work'."
+
+[[fixture]]
+path = "malformed/ts/whoami-missing-folder.json"
+sha256 = "d7bc0e9e82aa647fa9127439d1aab8e627ba112cda73b6dcf38f88c7a471b47a"
+bytes = 105
+note = "A whoami envelope with no folder."
+answer = "MUST fail: absent is not the empty string, and a seat with no folder would resolve relative paths against the wrong tree."
+
+[[fixture]]
+path = "golden/models-summary.tsv"
+sha256 = "e04ebadc2af3c7a9ad04fe96aa189866f500436e10559134841c5ed0cfb647ae"
+bytes = 733
+note = "The byte-golden of the production catalog fold (runtime, provider, selector, requestModelId, normalized thinking levels) computed from cli/models.json."
+answer = "Must match production ModelRow output exactly: raw absent, null, and [] all become <none>; non-empty levels preserve order. The separate corpus assertion retains the raw absent-vs-empty evidence."
+
+[[fixture]]
+path = "tmux/list-panes-empty-title.txt"
+sha256 = "133ee2c107822a841285093589f7c61b9e238a389f0cda5d9d3a91c8c80a1fbd"
+bytes = 34
+note = "Captured from entropy-named detached session pij-w1-fixture-c84a1 with allow-rename disabled; pipe-delimited list-panes fields and an explicitly empty pane title."
+answer = "Exactly one Pane: id %320, session pij-w1-fixture-c84a1, window normal, and title present as the empty string. Empty is not absent."
+
+[[fixture]]
+path = "tmux/list-panes-hostile-title.txt"
+sha256 = "113f30efcc4dec510c968509f3ca6ac9e06765f38916693d1aa394f69278b723"
+bytes = 57
+note = "Same isolated capture after setting the user-controlled pane title to `human · title | nested`, including the list-panes field separator."
+answer = "Exactly one Pane whose complete title is `human · title | nested`; splitting stops after the three structural separators so the title's pipe is data, not a fifth field."
+
+[[fixture]]
+path = "harnesses/claude-ready.txt"
+sha256 = "43b17308b5175ac6bbc4ee3085d69e012335d9d1cd5742d2be18838057f09506"
+bytes = 120
+note = "Captured Claude narrow-pane readiness shape copied from the live-capture TS regression corpus; no synthetic environment or session-id line is appended."
+answer = "Claude is Ready from the persistent bypass-permissions footer; cwd and Opus 4.8 remain pane-observed facts, while native session id must come from caller transcript discovery."
+
+[[fixture]]
+path = "harnesses/copilot-ready.txt"
+sha256 = "d15a4c76b79ded5fe8557143acd1abeab2e7471b434e01679447ed5519b105d2"
+bytes = 482
+note = "Captured Copilot composer and status-footer shape copied from the live-capture TS regression corpus; no synthetic environment or session-id line is appended."
+answer = "Copilot is Ready only when the stable '? help' and 'tab next tab' footer is present; model is GPT-5.5, while native session id must come from caller planned-session evidence."
+
+[[fixture]]
+path = "harnesses/codex-rotated-placeholder-ready.txt"
+sha256 = "0afc30bc9542d84ed9dde8f93e03e332604d628ba581bc397d1e917f8edd4453"
+bytes = 139
+note = "Live Codex v0.142.3 shape from the TS readiness incident: the placeholder rotated away from Use /skills while the model/effort/cwd footer persisted; no synthetic session-id line is appended."
+answer = "Ready from the persistent middot-plus-cwd footer. The rotating 'Find and fix' placeholder contributes no readiness evidence; native id comes from caller rollout discovery."
+
+[[fixture]]
+path = "harnesses/codex-placeholder-only.txt"
+sha256 = "74a06baa204c606f3eef3a2fda2884e380656db21ed21837efa309ac7712c037"
+bytes = 454
+note = "Captured Codex boot banner with one rotating Use /skills placeholder but no interactive composer footer."
+answer = "NotYet, retaining the observed placeholder in diagnostics. Treating the placeholder as Ready reproduces the codex never-bind incident."
+
+[[fixture]]
+path = "harnesses/omp-working.txt"
+sha256 = "e4c9d1ad69ef4bea6cd8e38267a88f3a9cddd98a1168911c3ba3c969bd441699"
+bytes = 471
+note = "Exact working-spinner/header/composer excerpt from .pi/extensions/pij/core/daemon/__fixtures__/pane-signals/live_omp_blank_padded.txt; no synthetic cwd or session-id line is appended."
+answer = "Omp is Busy because the spinner row carries the esc interaction marker even though the persistent header and padded composer are visible."
+
+[[fixture]]
+path = "harnesses/pi-pane-ready.txt"
+sha256 = "484254392e095ddc2a53215e0228c56b20f4cc182a76d28995b7689667f9c8fb"
+bytes = 1620
+note = "A REAL upstream-pi pane at rest: captured 2026-08-29 from a throwaway seat the PM spawned, let settle, captured and closed \u2014 no live fleet seat was touched. Home path replaced with /Users/USER. RE-CAPTURED after the first attempt committed 16 blank lines: the pane is taller than its content, so a naive tail() grabs the empty rows BELOW the prompt. u-harness caught the contradiction between the manifest's answer and the bytes."
+answer = "The readiness anchor is the prompt row plus the status footer (context/model/branch), NOT the absence of a spinner \u2014 a pane can be quiet mid-turn. Compare with pi-pane-working.txt, which carries the SAME footer: the footer alone therefore cannot mean ready. Blank rows follow the footer in a real capture, so an anchor matcher that reads the last line finds nothing."
+
+[[fixture]]
+path = "harnesses/pi-pane-working.txt"
+sha256 = "0a990c53f27ee1b46c5b355e369058e3fc8e984ad78b869e5858bcb05945654f"
+bytes = 1466
+note = "A REAL upstream-pi pane MID-TURN, captured 2026-08-29 from the PM's own seat while it was running a command."
+answer = "Must classify as busy/working, never Ready. The discriminator is the spinner row with its label; the status footer is present in BOTH this fixture and the ready one, which is exactly why the footer alone cannot mean ready."
+
+[[fixture]]
+path = "harnesses/omp-pane-ready.txt"
+sha256 = "aa0d5b6f031b9c06831f6b7558c83a73b336cc859520f91e197c63a6ff92b982"
+bytes = 898
+note = "A REAL OMP pane AT REST, captured 2026-08-29 from one of the PM's own wave-2 coder seats after it finished its unit \u2014 capture only, the seat was neither driven nor disturbed. Home paths replaced with /Users/USER. Non-blank content asserted before writing."
+answer = "Must classify as READY. Pair it with the repo's live_omp_blank_padded.txt, which shows the same chrome carrying '\u280b Working\u2026 \u27e6esc\u27e7' and must classify as BUSY. The discriminator is the spinner row, not the footer and not the prompt \u2014 both fixtures have those."
+
+[[fixture]]
+path = "uds/claude-2.1.251-session.json"
+sha256 = "8b45b273b1ccab52b4f7ecffbfc5de535c59190df73278ec5b934d7d059d78e9"
+bytes = 445
+note = "Sanitized from the session record written by an isolated Claude Code 2.1.251 probe on 2026-08-30; pid, session id, paths, tmux coordinates and name replaced while field presence and value shapes were preserved."
+answer = "Discovery accepts this record only with the identity-matching peer key; descriptor pid is tried first, then a record whose tmux value ends in the descriptor pane id."
+
+[[fixture]]
+path = "uds/4242.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.key"
+sha256 = "c732738d3aa98c5bccb94e3c6bc55de6df463d3dd953311073774b419cbb794c"
+bytes = 97
+note = "Sanitized companion peer key from the same isolated Claude Code 2.1.251 probe; the real token and key hash were replaced."
+answer = "Authentication capability exists only when procStart and pidDomain equal the resolved session record and peerToken is non-empty; absent, malformed, mismatched or ambiguous keys mean no capability."
+
+[[fixture]]
+path = "uds/user-frame.ndjson"
+sha256 = "a1d27d13c2e8db46edaa05636a660fa7fb48b8fafd111937395c08ba70968deb"
+bytes = 274
+note = "Sanitized byte-exact frame accepted and acted on by the isolated Claude Code 2.1.251 probe; sender, message id and body replaced with stable fixture values."
+answer = "Exactly one newline-terminated JSON user frame: our msg_id, daemon origin, sender name, and ordinary pij body wrapper; no invented from-mode assertion."
+
+[[fixture]]
+path = "uds/status-dropped.ndjson"
+sha256 = "9f7caad93d79e126910bd91953591d432d2c918150e96f3782788fa88736b5e6"
+bytes = 145
+note = "Documented Claude peer_message_status drop shape from GH #311, not observed in the isolated 2.1.251 daemon-origin probe."
+answer = "A dropped_msg_ids entry equal to our msg_id overrides the timer and returns Queued; unrelated ids do not. Evidence class remains documented-not-measured."
+
+[[fixture]]
+path = "uds/status-held.ndjson"
+sha256 = "603940577452a1d696a54a49d75e6a8f09550fd195d8104f5116e7bf813b3697"
+bytes = 96
+note = "Documented Claude peer_message_status held shape from GH #311, not observed on the socket in the isolated 2.1.251 daemon-origin probe even though the recipient UI visibly held the message."
+answer = "If observed, wereHeld=true with our orig_msg_id maps to Held. The live probe's missing response is a blocking protocol finding, not evidence that a held message was delivered."
+
+[[fixture]]
+path = "golden/cli/register-envelope.json"
+sha256 = "7787b2f8fe57f84e1b81d60a03860ee576ce86ed438277f1ccdf2c01dd39c257"
+bytes = 356
+note = "Computed pij register success envelope rendered by u-cli from the accepted SeatDescriptor; editorial text is deliberately absent."
+answer = "Must match render(Envelope::ok(\"pij register\", descriptor), true) byte-for-byte, including absent optional fields staying absent and error staying absent on success."
+
+[[fixture]]
+path = "golden/cli/send-envelope.json"
+sha256 = "d939a4afc02772b9bceb3e9d8782c6c1103eed70f148b9adb7959b0c47d5a3f9"
+bytes = 117
+note = "Computed pij send success envelope rendered by u-cli from a durable queued Receipt."
+answer = "Must preserve msg_id, the tagged queued outcome, and at exactly; the CLI must not upgrade queued into delivered."
+
+[[fixture]]
+path = "golden/cli/list-envelope.json"
+sha256 = "c0c9901f03abf9d4cbb75497791db26fe7f464a67d40fc5a258c4e836c17d02d"
+bytes = 521
+note = "Computed pij list success envelope rendered by u-cli from two daemon-owned SeatDescriptors."
+answer = "Must preserve registry order and absent fields, including a paneless relay; the CLI relays descriptors rather than recomputing liveness or state."

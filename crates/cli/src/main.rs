@@ -1,0 +1,1192 @@
+//! `pij-rs` — one binary, two composition roots.
+
+use std::collections::BTreeMap;
+use std::ffi::OsString;
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::process::{Command as ProcessCommand, ExitCode};
+
+use clap::{Parser, Subcommand};
+use pij_cli::{
+    DaemonClient, Registration, ReviveRequest, SendRequest, SpawnRequest, bounce, daemon_config,
+    default_state_dir, exit_code, parse_destination, render, render_frame, setup_refusal,
+};
+use pij_core::error::PijError;
+use pij_core::model::{Envelope, ErrorKind, Harness, SeatId};
+use serde_json::{Value, json};
+
+#[derive(Parser)]
+#[command(name = "pij-rs", version, about = "pij, in Rust")]
+struct Cli {
+    /// Emit JSON from the same value used for human output.
+    #[arg(long, global = true)]
+    json: bool,
+
+    /// Where the daemon keeps its per-boot key.
+    #[arg(long, global = true)]
+    state_dir: Option<PathBuf>,
+
+    /// Address of the daemon used by client verbs. Resolution is `--addr`, then
+    /// `PIJ_RS_ADDR`, then `127.0.0.1:7461`.
+    #[arg(long, global = true)]
+    addr: Option<String>,
+
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Clone, Debug)]
+struct MachineCursor {
+    machine: String,
+    cursor: u64,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Run or replace the daemon.
+    Daemon {
+        /// Lifecycle action; absent runs the daemon in the foreground.
+        #[command(subcommand)]
+        action: Option<DaemonAction>,
+        /// Address to listen on. Resolution is `--bind`, then `PIJ_RS_BIND`,
+        /// then `127.0.0.1:7461`. Non-loopback exposes the bearer-key boundary.
+        #[arg(long)]
+        bind: Option<String>,
+        /// Boot with every adapter FAKE: no store, no process table, nothing
+        /// outside this process. Opt-in, because a daemon that silently persists
+        /// nothing is the more dangerous default.
+        #[arg(long)]
+        offline: bool,
+    },
+    /// Ask a running daemon whether it is healthy.
+    Ping,
+    /// Register one seat claim for daemon verification.
+    Register {
+        /// Existing same-process seat replaced by this registration.
+        #[arg(long)]
+        supersedes: Option<String>,
+        /// Requested seat id.
+        id: String,
+        /// Host harness.
+        #[arg(long, value_parser = parse_harness)]
+        harness: Harness,
+        /// Absolute working folder.
+        #[arg(long, value_parser = parse_absolute_path)]
+        folder: String,
+        /// Tmux pane, when one exists.
+        #[arg(long)]
+        pane: Option<String>,
+        /// Process id; must be paired with --proc-start.
+        #[arg(long, requires = "proc_start")]
+        pid: Option<u32>,
+        /// Packed process start stamp; must be paired with --pid.
+        #[arg(long, requires = "pid")]
+        proc_start: Option<u64>,
+        /// Spawn correlation id.
+        #[arg(long)]
+        spawn_id: Option<String>,
+        /// Requested model selector.
+        #[arg(long)]
+        model: Option<String>,
+        /// Model provider.
+        #[arg(long)]
+        provider: Option<String>,
+        /// Requested reasoning effort.
+        #[arg(long)]
+        effort: Option<String>,
+        /// Governing seat.
+        #[arg(long)]
+        parent: Option<String>,
+        /// Delivery uses a relay.
+        #[arg(long)]
+        relay: bool,
+    },
+    /// Launch one pre-bind seat through the daemon.
+    Spawn {
+        /// Seat id. OMIT IT and the daemon allocates a memorable one
+        /// (`pij-<adjective>-<noun>`).
+        #[arg(long)]
+        id: Option<String>,
+        /// Harness to launch.
+        #[arg(long, value_parser = parse_harness)]
+        harness: Harness,
+        /// Executable override.
+        #[arg(long)]
+        bin: Option<String>,
+        /// Exact model selector.
+        #[arg(long)]
+        model: Option<String>,
+        /// Exact reasoning effort.
+        #[arg(long)]
+        effort: Option<String>,
+        /// Absolute working directory; defaults to the caller's directory.
+        #[arg(long, value_parser = parse_absolute_path_buf)]
+        cwd: Option<PathBuf>,
+        /// Target tmux session; defaults from the caller pane.
+        #[arg(long)]
+        session: Option<String>,
+        /// Tmux window name; defaults to the seat id.
+        #[arg(long)]
+        name: Option<String>,
+        /// Governing seat.
+        #[arg(long)]
+        parent: Option<String>,
+        /// Configure Claude to accept cross-session inbound messages.
+        #[arg(long)]
+        accept_inbound: bool,
+    },
+    /// Relaunch one tombstoned seat with its prior identity and launch intent.
+    Revive {
+        /// Existing tombstoned seat id.
+        id: String,
+        /// Target tmux session; defaults from the caller pane.
+        #[arg(long)]
+        session: Option<String>,
+        /// Tmux window name; defaults to the seat id.
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Durably enqueue one message.
+    Send {
+        /// Sending seat.
+        #[arg(long)]
+        from: String,
+        /// `<seat>` or `<seat>@<machine>`; use `@@` for a literal seat `@`.
+        #[arg(long, value_parser = parse_destination)]
+        to: pij_core::model::Destination,
+        /// Literal message body.
+        #[arg(long)]
+        body: String,
+        /// Caller-supplied correlation id.
+        #[arg(long)]
+        msg_id: String,
+        /// Message id being answered.
+        #[arg(long)]
+        in_reply_to: Option<String>,
+    },
+    /// Pull one bounded page for this seat and acknowledge it after decoding.
+    Inbox {
+        /// Recipient identity. Defaults to non-empty PIJ_SESSION_ID.
+        #[arg(long)]
+        seat: Option<String>,
+        /// Wait until at least one message is available.
+        #[arg(long)]
+        wait: bool,
+    },
+    /// Enqueue one sidecar job: telegram send, background command, or chore.
+    ///
+    /// The consumers are queue-backed, so this is the shipped PRODUCER. Live-fire
+    /// proof that enqueues rows by hand proves the harness, not the product.
+    Sidecar {
+        /// Which consumer claims the job.
+        #[command(subcommand)]
+        action: SidecarAction,
+    },
+    /// List registered seats.
+    List,
+    /// Follow daemon event and peer-state frames until interrupted.
+    Tail {
+        /// Replay after `MACHINE=CURSOR`; repeat once per machine.
+        #[arg(long, value_parser = parse_machine_cursor)]
+        since: Vec<MachineCursor>,
+    },
+}
+
+#[derive(Clone, Debug, Subcommand)]
+enum SidecarAction {
+    /// Send one outbound Telegram message and bind this seat as the reply target.
+    Telegram {
+        /// Sending seat, which the inbound reply will route back to.
+        #[arg(long)]
+        from: String,
+        /// Message text.
+        #[arg(long)]
+        body: String,
+        /// Caller-supplied correlation id.
+        #[arg(long)]
+        msg_id: String,
+        /// Conversation override; absent uses the credential file's chat id.
+        #[arg(long)]
+        chat_id: Option<String>,
+    },
+    /// Start one background command under its own process group.
+    BgStart {
+        /// Stable job name.
+        #[arg(long)]
+        id: String,
+        /// Human title.
+        #[arg(long)]
+        title: String,
+        /// Command interpreted by `/bin/sh -c`.
+        #[arg(long)]
+        command: String,
+        /// Seat receiving the completion turn.
+        #[arg(long)]
+        target: String,
+    },
+    /// Cancel one running background command.
+    BgCancel {
+        /// Stable job name.
+        #[arg(long)]
+        id: String,
+        /// Seat receiving the cancellation turn.
+        #[arg(long)]
+        target: String,
+    },
+    /// Define one chore probe.
+    ChoreAdd {
+        /// Chore name.
+        #[arg(long)]
+        name: String,
+        /// Shell probe.
+        #[arg(long)]
+        probe: String,
+        /// Seat receiving reports.
+        #[arg(long)]
+        target: String,
+    },
+    /// Run every defined probe and report the delta.
+    ChoreRun {
+        /// Seat receiving the report.
+        #[arg(long)]
+        target: String,
+    },
+    /// Advance one pending baseline.
+    ChoreAck {
+        /// Chore name.
+        #[arg(long)]
+        name: String,
+        /// Seat receiving confirmation.
+        #[arg(long)]
+        target: String,
+    },
+}
+
+impl SidecarAction {
+    /// Render the wire request the daemon's `/v1/sidecar` route decodes.
+    fn request(self) -> Value {
+        match self {
+            Self::Telegram {
+                from,
+                body,
+                msg_id,
+                chat_id,
+            } => {
+                json!({"sidecar": "telegram", "request": {"from": from, "body": body, "msg_id": msg_id, "chat_id": chat_id}})
+            }
+            Self::BgStart {
+                id,
+                title,
+                command,
+                target,
+            } => {
+                json!({"sidecar": "bg", "request": {"action": "start", "id": id, "title": title, "command": command, "target": target}})
+            }
+            Self::BgCancel { id, target } => {
+                json!({"sidecar": "bg", "request": {"action": "cancel", "id": id, "target": target}})
+            }
+            Self::ChoreAdd {
+                name,
+                probe,
+                target,
+            } => {
+                json!({"sidecar": "chore", "request": {"action": "add", "name": name, "probe": probe, "target": target}})
+            }
+            Self::ChoreRun { target } => {
+                json!({"sidecar": "chore", "request": {"action": "run", "target": target}})
+            }
+            Self::ChoreAck { name, target } => {
+                json!({"sidecar": "chore", "request": {"action": "ack", "name": name, "target": target}})
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Subcommand)]
+enum DaemonAction {
+    /// Rebuild, drain, restart, verify health, and print the running version.
+    Bounce,
+}
+
+#[tokio::main]
+async fn main() -> ExitCode {
+    run(Cli::parse()).await
+}
+
+async fn run(cli: Cli) -> ExitCode {
+    let state_dir =
+        match resolve_state_dir(cli.state_dir.clone(), std::env::var_os("PIJ_RS_STATE_DIR")) {
+            Ok(path) => path,
+            Err(message) => return emit_config_error(&cli, message),
+        };
+
+    if let Command::Daemon {
+        action: None,
+        bind,
+        offline,
+    } = &cli.command
+    {
+        let bind = match resolve_bind_addr(bind.as_deref(), std::env::var_os("PIJ_RS_BIND")) {
+            Ok(bind) => bind,
+            Err(message) => return emit_config_error(&cli, message),
+        };
+        return run_daemon(&bind, state_dir, *offline).await;
+    }
+    if let Command::Daemon {
+        action: Some(DaemonAction::Bounce),
+        ..
+    } = &cli.command
+    {
+        let cwd = match std::env::current_dir() {
+            Ok(cwd) => cwd,
+            Err(error) => {
+                return emit(
+                    &setup_refusal::<Value>(
+                        "pij daemon bounce",
+                        PijError::Adapter {
+                            adapter: "pij daemon bounce".to_string(),
+                            message: format!("could not read the current directory: {error}"),
+                        },
+                    ),
+                    cli.json,
+                );
+            }
+        };
+        let repo = match bounce::reproducible_repo(&cwd) {
+            Ok(repo) => repo,
+            Err(error) => {
+                return emit(
+                    &setup_refusal::<Value>("pij daemon bounce", error),
+                    cli.json,
+                );
+            }
+        };
+        return match bounce::run(&repo, &state_dir).await {
+            Ok(report) => emit(&Envelope::ok("pij daemon bounce", report), cli.json),
+            Err(error) => emit(
+                &setup_refusal::<Value>("pij daemon bounce", error),
+                cli.json,
+            ),
+        };
+    }
+
+    let prepared_spawn = match prepare_spawn_request(&cli.command) {
+        Ok(request) => request,
+        Err(error) => {
+            return emit(&setup_refusal::<Value>("pij spawn", error), cli.json);
+        }
+    };
+    let prepared_revive = match prepare_revive_request(&cli.command) {
+        Ok(request) => request,
+        Err(error) => {
+            return emit(&setup_refusal::<Value>("pij revive", error), cli.json);
+        }
+    };
+    let prepared_inbox_seat = match prepare_inbox_seat(&cli.command) {
+        Ok(seat) => seat,
+        Err(error) => {
+            return emit(&setup_refusal::<Value>("pij inbox", error), cli.json);
+        }
+    };
+
+    let command_name = cli.command.name();
+    let addr = match resolve_client_addr(cli.addr.as_deref(), std::env::var_os("PIJ_RS_ADDR")) {
+        Ok(addr) => addr,
+        Err(message) => return emit_config_error(&cli, message),
+    };
+    let client = match DaemonClient::new(&state_dir, &addr) {
+        Ok(client) => client,
+        Err(error) => return emit(&setup_refusal::<Value>(command_name, error), cli.json),
+    };
+
+    match cli.command {
+        Command::Daemon { .. } => unreachable!("daemon returned before client construction"),
+        Command::Ping => emit(&client.ping().await, cli.json),
+        Command::Sidecar { action } => emit(&client.sidecar(&action.request()).await, cli.json),
+        Command::Register {
+            supersedes,
+            id,
+            harness,
+            folder,
+            pane,
+            pid,
+            proc_start,
+            spawn_id,
+            model,
+            provider,
+            effort,
+            parent,
+            relay,
+        } => {
+            let registration = Registration {
+                supersedes: supersedes.map(Into::into),
+                id: id.into(),
+                harness,
+                folder,
+                pane,
+                pid,
+                proc_start,
+                spawn_id,
+                model,
+                provider,
+                effort,
+                parent: parent.map(Into::into),
+                relay,
+            };
+            debug_assert!(registration.validate().is_ok());
+            emit(&client.register(&registration).await, cli.json)
+        }
+        Command::Spawn { .. } => emit(
+            &client
+                .spawn(prepared_spawn.as_ref().expect("spawn request was prepared"))
+                .await,
+            cli.json,
+        ),
+        Command::Revive { .. } => emit(
+            &client
+                .revive(
+                    prepared_revive
+                        .as_ref()
+                        .expect("revive request was prepared"),
+                )
+                .await,
+            cli.json,
+        ),
+        Command::Send {
+            from,
+            to,
+            body,
+            msg_id,
+            in_reply_to,
+        } => {
+            let request = SendRequest {
+                from: from.into(),
+                to,
+                body,
+                msg_id,
+                in_reply_to,
+            };
+            emit(&client.send(&request).await, cli.json)
+        }
+        Command::Inbox { wait, .. } => emit(
+            &client
+                .inbox(
+                    prepared_inbox_seat
+                        .as_ref()
+                        .expect("inbox identity was prepared"),
+                    wait,
+                )
+                .await,
+            cli.json,
+        ),
+        Command::List => emit(&client.list().await, cli.json),
+        Command::Tail { since } => {
+            let since = match cursor_map(since) {
+                Ok(since) => since,
+                Err(error) => {
+                    return emit(&setup_refusal::<Value>("pij tail", error), cli.json);
+                }
+            };
+            match client.tail(&since).await {
+                Err(envelope) => emit(&envelope, cli.json),
+                Ok(mut stream) => loop {
+                    tokio::select! {
+                        frame = stream.next_frame() => match frame {
+                            Ok(Some(frame)) => println!("{}", render_frame(&frame, cli.json)),
+                            Ok(None) => return ExitCode::SUCCESS,
+                            Err(error) => {
+                                let envelope = Envelope::<Value>::refused(
+                                    "pij tail",
+                                    error.kind,
+                                    error.message,
+                                );
+                                return emit(&envelope, cli.json);
+                            }
+                        },
+                        signal = tokio::signal::ctrl_c() => {
+                            return if signal.is_ok() {
+                                ExitCode::SUCCESS
+                            } else {
+                                emit(
+                                    &Envelope::<Value>::refused(
+                                        "pij tail",
+                                        ErrorKind::Adapter,
+                                        "could not install the interrupt handler",
+                                    ),
+                                    cli.json,
+                                )
+                            };
+                        }
+                    }
+                },
+            }
+        }
+    }
+}
+
+const DEFAULT_DAEMON_ADDR: &str = "127.0.0.1:7461";
+
+/// Resolve runtime controls exactly once at the binary edge. Explicit CLI flags
+/// win over their environment variables; environment wins over the default.
+fn resolve_state_dir(flag: Option<PathBuf>, env: Option<OsString>) -> Result<PathBuf, String> {
+    let (path, source) = match flag {
+        Some(path) => (path, "--state-dir"),
+        None => match env {
+            Some(value) => (PathBuf::from(value), "PIJ_RS_STATE_DIR"),
+            None => return Ok(default_state_dir()),
+        },
+    };
+    let rendered = path.as_os_str().to_string_lossy();
+    if rendered.trim().is_empty() {
+        return Err(format!(
+            "{source} has malformed value {rendered:?}: value must not be empty"
+        ));
+    }
+    Ok(path)
+}
+
+fn resolve_client_addr(flag: Option<&str>, env: Option<OsString>) -> Result<String, String> {
+    let (value, source) = configured_string(flag, env, "--addr", "PIJ_RS_ADDR")?;
+    validate_host_port(&value, source)?;
+    Ok(value)
+}
+
+fn resolve_bind_addr(flag: Option<&str>, env: Option<OsString>) -> Result<String, String> {
+    let (value, source) = configured_string(flag, env, "--bind", "PIJ_RS_BIND")?;
+    let address = value.parse::<SocketAddr>().map_err(|_| {
+        format!("{source} has malformed value {value:?}: expected IP:port with port 1..65535")
+    })?;
+    if address.port() == 0 {
+        return Err(format!(
+            "{source} has malformed value {value:?}: expected IP:port with port 1..65535"
+        ));
+    }
+    Ok(value)
+}
+
+fn configured_string(
+    flag: Option<&str>,
+    env: Option<OsString>,
+    flag_name: &'static str,
+    env_name: &'static str,
+) -> Result<(String, &'static str), String> {
+    if let Some(value) = flag {
+        if value.trim().is_empty() {
+            return Err(format!(
+                "{flag_name} has malformed value {value:?}: value must not be empty"
+            ));
+        }
+        return Ok((value.to_string(), flag_name));
+    }
+    let Some(value) = env else {
+        return Ok((DEFAULT_DAEMON_ADDR.to_string(), "default daemon address"));
+    };
+    let rendered = value.to_string_lossy();
+    if rendered.trim().is_empty() {
+        return Err(format!(
+            "{env_name} has malformed value {rendered:?}: value must not be empty"
+        ));
+    }
+    let value = value.into_string().map_err(|value| {
+        format!(
+            "{env_name} has malformed value {:?}: value must be valid UTF-8",
+            value.to_string_lossy()
+        )
+    })?;
+    Ok((value, env_name))
+}
+
+fn validate_host_port(value: &str, source: &str) -> Result<(), String> {
+    let (host, port) = if let Some(rest) = value.strip_prefix('[') {
+        let Some((host, port)) = rest.split_once("]:") else {
+            return Err(malformed_addr(source, value, "host:port"));
+        };
+        if host.parse::<std::net::Ipv6Addr>().is_err() {
+            return Err(malformed_addr(source, value, "host:port"));
+        }
+        (host, port)
+    } else {
+        let Some((host, port)) = value.rsplit_once(':') else {
+            return Err(malformed_addr(source, value, "host:port"));
+        };
+        if host.contains(':') || host.chars().any(char::is_whitespace) {
+            return Err(malformed_addr(source, value, "host:port"));
+        }
+        (host, port)
+    };
+    let valid_port = port.parse::<u16>().is_ok_and(|port| port != 0);
+    if host.is_empty() || !valid_port {
+        return Err(malformed_addr(source, value, "host:port"));
+    }
+    Ok(())
+}
+
+fn malformed_addr(source: &str, value: &str, expected: &str) -> String {
+    format!("{source} has malformed value {value:?}: expected {expected} with port 1..65535")
+}
+
+fn emit_config_error(cli: &Cli, message: String) -> ExitCode {
+    emit(
+        &setup_refusal::<Value>(
+            cli.command.name(),
+            PijError::Adapter {
+                adapter: "configuration".to_string(),
+                message,
+            },
+        ),
+        cli.json,
+    )
+}
+
+async fn run_daemon(bind: &str, state_dir: PathBuf, offline: bool) -> ExitCode {
+    let config = daemon_config(bind, &state_dir.join("pij.sqlite"), offline);
+    match pij_daemon::boot(&config, state_dir).await {
+        Ok(daemon) => {
+            println!(
+                "pij-rs daemon: listening on {} · key {} (0600) · offline={}",
+                daemon.addr,
+                daemon.key.path.display(),
+                config.is_fully_offline()
+            );
+            let _ = tokio::signal::ctrl_c().await;
+            println!("pij-rs daemon: shutting down");
+            match daemon.shutdown().await {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("pij-rs: {error}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        Err(error) => {
+            eprintln!("pij-rs: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn emit<T: serde::Serialize>(envelope: &Envelope<T>, json: bool) -> ExitCode {
+    println!("{}", render(envelope, json));
+    ExitCode::from(exit_code(envelope))
+}
+
+fn parse_machine_cursor(value: &str) -> Result<MachineCursor, String> {
+    let (machine, cursor) = value
+        .split_once('=')
+        .ok_or_else(|| "cursor must be MACHINE=CURSOR".to_string())?;
+    if machine.trim().is_empty() {
+        return Err("cursor machine must be non-empty".to_string());
+    }
+    let cursor = cursor
+        .parse::<u64>()
+        .map_err(|error| format!("cursor must be an unsigned integer: {error}"))?;
+    Ok(MachineCursor {
+        machine: machine.to_string(),
+        cursor,
+    })
+}
+
+fn cursor_map(values: Vec<MachineCursor>) -> Result<BTreeMap<String, u64>, PijError> {
+    let mut cursors = BTreeMap::new();
+    for value in values {
+        if cursors
+            .insert(value.machine.clone(), value.cursor)
+            .is_some()
+        {
+            return Err(PijError::Adapter {
+                adapter: "tail".to_string(),
+                message: format!(
+                    "machine `{}` has more than one --since cursor",
+                    value.machine
+                ),
+            });
+        }
+    }
+    Ok(cursors)
+}
+
+fn parse_harness(value: &str) -> Result<Harness, String> {
+    Harness::parse(value).ok_or_else(|| {
+        format!("unknown harness '{value}'; expected claude, copilot, codex, pi, or omp")
+    })
+}
+
+fn parse_absolute_path(value: &str) -> Result<String, String> {
+    if std::path::Path::new(value).is_absolute() {
+        Ok(value.to_string())
+    } else {
+        Err("folder must be an absolute path".to_string())
+    }
+}
+
+fn parse_absolute_path_buf(value: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(value);
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Err("cwd must be an absolute path".to_string())
+    }
+}
+
+fn prepare_inbox_seat(command: &Command) -> Result<Option<SeatId>, PijError> {
+    let Command::Inbox { seat, .. } = command else {
+        return Ok(None);
+    };
+    resolve_inbox_seat(seat.clone(), std::env::var_os("PIJ_SESSION_ID")).map(Some)
+}
+
+fn resolve_inbox_seat(
+    explicit: Option<String>,
+    ambient: Option<OsString>,
+) -> Result<SeatId, PijError> {
+    let selected = match explicit {
+        Some(seat) if !seat.trim().is_empty() => seat,
+        Some(_) => {
+            return Err(PijError::Adapter {
+                adapter: "inbox".to_string(),
+                message: "no seat: set PIJ_SESSION_ID or pass --seat".to_string(),
+            });
+        }
+        None => match ambient {
+            Some(seat) => seat.into_string().map_err(|_| PijError::Adapter {
+                adapter: "inbox".to_string(),
+                message: "PIJ_SESSION_ID is not valid UTF-8; pass --seat".to_string(),
+            })?,
+            None => {
+                return Err(PijError::Adapter {
+                    adapter: "inbox".to_string(),
+                    message: "no seat: set PIJ_SESSION_ID or pass --seat".to_string(),
+                });
+            }
+        },
+    };
+    if selected.trim().is_empty() {
+        return Err(PijError::Adapter {
+            adapter: "inbox".to_string(),
+            message: "no seat: set PIJ_SESSION_ID or pass --seat".to_string(),
+        });
+    }
+    Ok(selected.into())
+}
+
+fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijError> {
+    let Command::Spawn {
+        id,
+        harness,
+        bin,
+        model,
+        effort,
+        cwd,
+        session,
+        name,
+        parent,
+        accept_inbound,
+    } = command
+    else {
+        return Ok(None);
+    };
+    let cwd = match cwd {
+        Some(cwd) => cwd.clone(),
+        None => std::env::current_dir().map_err(|error| PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: format!("could not read the caller directory: {error}"),
+        })?,
+    };
+    if matches!(harness, Harness::Pi | Harness::Omp) && is_linked_worktree(&cwd)? {
+        return Err(PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: format!(
+                "refusing {harness} spawn from linked worktree {}: global and project extension links collide and the peer dies before registration — spawn from the main checkout and cd afterwards",
+                cwd.display()
+            ),
+        });
+    }
+    let caller_pane = if session.is_none() {
+        Some(
+            std::env::var("TMUX_PANE")
+                .ok()
+                .filter(|pane| !pane.trim().is_empty())
+                .ok_or_else(|| PijError::Adapter {
+                    adapter: "spawn".to_string(),
+                    message: "TMUX_PANE is unavailable — pass --session <tmux> explicitly"
+                        .to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+    let cwd = cwd
+        .into_os_string()
+        .into_string()
+        .map_err(|_| PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: "cwd is not valid UTF-8 and cannot be stored in a descriptor".to_string(),
+        })?;
+
+    Ok(Some(SpawnRequest {
+        id: id.clone().map(Into::into),
+        harness: *harness,
+        executable: bin.clone(),
+        model: model.clone(),
+        effort: effort.clone(),
+        cwd,
+        session: session.clone(),
+        caller_pane,
+        name: name.clone(),
+        parent: parent.clone().map(Into::into),
+        accept_inbound: *accept_inbound,
+    }))
+}
+
+fn prepare_revive_request(command: &Command) -> Result<Option<ReviveRequest>, PijError> {
+    let Command::Revive { id, session, name } = command else {
+        return Ok(None);
+    };
+    let caller_pane = if session.is_none() {
+        Some(
+            std::env::var("TMUX_PANE")
+                .ok()
+                .filter(|pane| !pane.trim().is_empty())
+                .ok_or_else(|| PijError::Adapter {
+                    adapter: "revive".to_string(),
+                    message: "TMUX_PANE is unavailable — pass --session <tmux> explicitly"
+                        .to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+    Ok(Some(ReviveRequest {
+        id: id.clone().into(),
+        session: session.clone(),
+        caller_pane,
+        name: name.clone(),
+    }))
+}
+
+fn is_linked_worktree(cwd: &Path) -> Result<bool, PijError> {
+    let output = ProcessCommand::new("git")
+        .args(["rev-parse", "--git-dir"])
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: format!("could not inspect git worktree state: {error}"),
+        })?;
+    if !output.status.success() {
+        return Ok(false);
+    }
+    let raw = String::from_utf8(output.stdout).map_err(|error| PijError::Adapter {
+        adapter: "spawn".to_string(),
+        message: format!("git returned a non-UTF-8 git-dir: {error}"),
+    })?;
+    Ok(git_dir_is_linked(cwd, raw.trim()))
+}
+
+fn git_dir_is_linked(cwd: &Path, git_dir: &str) -> bool {
+    let path = PathBuf::from(git_dir);
+    let path = if path.is_absolute() {
+        path
+    } else {
+        cwd.join(path)
+    };
+    path.components()
+        .any(|part| part.as_os_str() == "worktrees")
+}
+
+impl Command {
+    fn name(&self) -> &'static str {
+        match self {
+            Command::Daemon { .. } => "pij daemon",
+            Command::Ping => "pij ping",
+            Command::Sidecar { .. } => "pij sidecar",
+            Command::Register { .. } => "pij register",
+            Command::Send { .. } => "pij send",
+            Command::Spawn { .. } => "pij spawn",
+            Command::Revive { .. } => "pij revive",
+            Command::Inbox { .. } => "pij inbox",
+            Command::List => "pij list",
+            Command::Tail { .. } => "pij tail",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsString;
+
+    use clap::{CommandFactory, Parser};
+    use pij_core::model::SeatId;
+
+    use super::{
+        Cli, Command, DaemonAction, git_dir_is_linked, prepare_revive_request, resolve_bind_addr,
+        resolve_client_addr, resolve_inbox_seat, resolve_state_dir,
+    };
+
+    #[test]
+    fn clap_exposes_every_ruled_verb() {
+        let names: Vec<_> = Cli::command()
+            .get_subcommands()
+            .map(|command| command.get_name().to_string())
+            .collect();
+
+        assert_eq!(
+            names,
+            [
+                "daemon", "ping", "register", "spawn", "revive", "send", "inbox", "sidecar",
+                "list", "tail"
+            ]
+        );
+    }
+
+    #[test]
+    fn rendered_pointer_advertises_a_verb_the_real_cli_exposes() {
+        let line = pij_daemon::pointer::render_pointer(&SeatId::from("pij-sender"), None);
+        let action = line
+            .split_once("run: ")
+            .map(|(_, action)| action)
+            .expect("pointer must carry a runnable action");
+        let mut words = action.split_whitespace();
+        assert_eq!(
+            words.next(),
+            Some("pij"),
+            "pointer must name the shipped command"
+        );
+        let verb = words.next().expect("pointer action must name a verb");
+        assert!(
+            Cli::command()
+                .get_subcommands()
+                .any(|command| command.get_name() == verb),
+            "pointer advertises `{verb}`, but Clap does not expose it"
+        );
+    }
+
+    #[test]
+    fn inbox_identity_prefers_explicit_then_ambient_and_never_guesses() {
+        assert_eq!(
+            resolve_inbox_seat(
+                Some("pij-explicit".to_string()),
+                Some(OsString::from("pij-ambient"))
+            )
+            .expect("explicit identity"),
+            SeatId::from("pij-explicit")
+        );
+        assert_eq!(
+            resolve_inbox_seat(None, Some(OsString::from("pij-ambient")))
+                .expect("ambient identity"),
+            SeatId::from("pij-ambient")
+        );
+        assert_eq!(
+            resolve_inbox_seat(None, None)
+                .expect_err("missing identity must refuse")
+                .to_string(),
+            "inbox: no seat: set PIJ_SESSION_ID or pass --seat"
+        );
+    }
+
+    #[test]
+    fn editorial_help_is_shape_checked_not_frozen() {
+        let command = Cli::command();
+        assert_eq!(command.get_name(), "pij-rs");
+        assert!(
+            command
+                .get_arguments()
+                .any(|argument| argument.get_id() == "json")
+        );
+        assert!(
+            command
+                .get_arguments()
+                .any(|argument| argument.get_id() == "state_dir")
+        );
+        assert!(
+            command
+                .get_arguments()
+                .any(|argument| argument.get_id() == "addr")
+        );
+    }
+
+    #[test]
+    fn clap_leaves_runtime_defaults_unresolved() {
+        let cli = Cli::try_parse_from(["pij-rs", "ping"]).expect("ping");
+        assert!(
+            cli.addr.is_none(),
+            "a parser default would shadow PIJ_RS_ADDR"
+        );
+        assert!(cli.state_dir.is_none());
+
+        let daemon = Cli::try_parse_from(["pij-rs", "daemon"]).expect("daemon");
+        let Command::Daemon { bind, .. } = daemon.command else {
+            panic!("expected daemon");
+        };
+        assert!(bind.is_none(), "a parser default would shadow PIJ_RS_BIND");
+    }
+
+    #[test]
+    fn runtime_controls_resolve_flag_then_environment_then_default() {
+        assert_eq!(
+            resolve_client_addr(
+                Some("127.0.0.1:7001"),
+                Some(OsString::from("127.0.0.1:7002"))
+            )
+            .expect("flag address"),
+            "127.0.0.1:7001"
+        );
+        assert_eq!(
+            resolve_client_addr(None, Some(OsString::from("localhost:7002")))
+                .expect("environment address"),
+            "localhost:7002"
+        );
+        assert_eq!(
+            resolve_client_addr(None, None).expect("default address"),
+            "127.0.0.1:7461"
+        );
+
+        assert_eq!(
+            resolve_bind_addr(
+                Some("127.0.0.1:7101"),
+                Some(OsString::from("127.0.0.1:7102"))
+            )
+            .expect("flag bind"),
+            "127.0.0.1:7101"
+        );
+        assert_eq!(
+            resolve_bind_addr(None, Some(OsString::from("127.0.0.1:7102")))
+                .expect("environment bind"),
+            "127.0.0.1:7102"
+        );
+        assert_eq!(
+            resolve_bind_addr(None, None).expect("default bind"),
+            "127.0.0.1:7461"
+        );
+
+        assert_eq!(
+            resolve_state_dir(
+                Some(std::path::PathBuf::from("/flag")),
+                Some(OsString::from("/environment"))
+            )
+            .expect("flag state dir"),
+            std::path::PathBuf::from("/flag")
+        );
+        assert_eq!(
+            resolve_state_dir(None, Some(OsString::from("/environment")))
+                .expect("environment state dir"),
+            std::path::PathBuf::from("/environment")
+        );
+    }
+
+    #[test]
+    fn malformed_environment_values_name_the_variable_and_value() {
+        for (resolve, name) in [
+            (
+                resolve_client_addr as fn(Option<&str>, Option<OsString>) -> Result<String, String>,
+                "PIJ_RS_ADDR",
+            ),
+            (resolve_bind_addr, "PIJ_RS_BIND"),
+        ] {
+            let empty = resolve(None, Some(OsString::from(""))).expect_err("empty must fail");
+            assert!(empty.contains(name));
+            assert!(empty.contains("\"\""));
+        }
+
+        let invalid_addr = resolve_client_addr(None, Some(OsString::from("localhost")))
+            .expect_err("missing port must fail");
+        assert!(invalid_addr.contains("PIJ_RS_ADDR"));
+        assert!(invalid_addr.contains("\"localhost\""));
+
+        let invalid_bind = resolve_bind_addr(None, Some(OsString::from("localhost:7461")))
+            .expect_err("bind needs an IP socket address");
+        assert!(invalid_bind.contains("PIJ_RS_BIND"));
+        assert!(invalid_bind.contains("\"localhost:7461\""));
+
+        for value in ["", "  "] {
+            assert_eq!(
+                resolve_state_dir(None, Some(OsString::from(value)))
+                    .expect_err("empty or whitespace state dir"),
+                format!("PIJ_RS_STATE_DIR has malformed value {value:?}: value must not be empty")
+            );
+        }
+    }
+
+    #[test]
+    fn daemon_bounce_is_real_while_bare_daemon_still_runs_foreground() {
+        let bounced = Cli::try_parse_from(["pij-rs", "daemon", "bounce"]).expect("bounce");
+        assert!(matches!(
+            bounced.command,
+            Command::Daemon {
+                action: Some(DaemonAction::Bounce),
+                ..
+            }
+        ));
+
+        let foreground = Cli::try_parse_from(["pij-rs", "daemon"]).expect("foreground");
+        assert!(matches!(
+            foreground.command,
+            Command::Daemon { action: None, .. }
+        ));
+    }
+
+    #[test]
+    fn register_requires_a_complete_process_identity() {
+        let parsed = Cli::try_parse_from([
+            "pij-rs",
+            "register",
+            "seat",
+            "--harness",
+            "omp",
+            "--folder",
+            "/tmp",
+            "--pid",
+            "42",
+        ]);
+
+        assert!(parsed.is_err());
+    }
+
+    /// FLIPPED when u-names was wired into `/v1/spawn` (review F4): omitting
+    /// `--id` is now how you ASK for a memorable name, not an error. The
+    /// assertion flips rather than being deleted, as the refusal tests did in
+    /// waves 1 and 3 — deleting it would quietly drop the guarantee that the
+    /// argument is optional while the diff looked like tidying.
+    #[test]
+    fn spawn_without_an_id_parses_and_leaves_allocation_to_the_daemon() {
+        let parsed = Cli::try_parse_from(["pij-rs", "spawn", "--harness", "claude"])
+            .expect("omitting --id is how a caller asks for a memorable name");
+        let Command::Spawn { id, .. } = parsed.command else {
+            panic!("expected the spawn command");
+        };
+        assert!(
+            id.is_none(),
+            "the CLI must not invent an id: the daemon holds the roster and the lock"
+        );
+    }
+
+    #[test]
+    fn revive_carries_only_identity_and_placement() {
+        let parsed = Cli::try_parse_from([
+            "pij-rs",
+            "revive",
+            "pij-old-seat",
+            "--session",
+            "fleet",
+            "--name",
+            "returning-seat",
+        ])
+        .expect("narrow revive command");
+        let request = prepare_revive_request(&parsed.command)
+            .expect("valid placement")
+            .expect("revive request");
+
+        assert_eq!(request.id, SeatId::from("pij-old-seat"));
+        assert_eq!(request.session.as_deref(), Some("fleet"));
+        assert_eq!(request.caller_pane, None);
+        assert_eq!(request.name.as_deref(), Some("returning-seat"));
+    }
+
+    #[test]
+    fn linked_worktree_detection_names_the_git_dir_shape() {
+        let cwd = std::path::Path::new("/repo/linked");
+        assert!(git_dir_is_linked(cwd, "/repo/main/.git/worktrees/linked"));
+        assert!(!git_dir_is_linked(cwd, "/repo/main/.git"));
+        assert!(!git_dir_is_linked(cwd, ".git"));
+    }
+}

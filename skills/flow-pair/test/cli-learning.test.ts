@@ -103,7 +103,12 @@ describe("flow-pair learn — CLI subprocess (T007)", () => {
 
 		expect(r.status).toBe(0);
 		expect(r.stdout.trim()).toBe("learning: learn-0001");
-		expect(r.stderr).toBe("");
+		const cliStderr = r.stderr
+			.split("\n")
+			.filter((line) => !line.startsWith("npm warn "))
+			.join("")
+			.trim();
+		expect(cliStderr).toBe("");
 		expect(candidateMdFiles(promptLabRoot, "implement-code")).toEqual(["learn-0001.md"]);
 		expect(candidateMdFiles(promptLabRoot, "fix-code")).toEqual([]);
 	});

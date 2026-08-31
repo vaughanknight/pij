@@ -1,0 +1,193 @@
+{
+  "dd": {
+    "schema": "prd/requirements"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "pij Rust port \u2014 base PRD (requirements register)",
+        "status": "LIVING \u2014 iterating with Jordan",
+        "updated": "2026-08-28",
+        "source": "Started 2026-08-28 per Jordan ('start a PRD spine, much like flowspace3'); fs3 docs/plans/prd/base-prd.dd.json is the pattern; CI rows pinched from fs3 workflows per Jordan (native agents, no Intel Mac).",
+        "register_discipline": "Lynx's earned rules (fs3 register in practice, 2026-08-28): (1) one row per PROVABLE CAPABILITY, never per feature-noun \u2014 rows that can carry a receipt get closed, vague ones accrete annotations forever. (2) completed_evidence is prose unless a consumer RE-EXECUTES it \u2014 at least one reviewer/gate must re-run the evidence (AC receipts + probe-flip done bars are the working form); reviewers are told to disbelieve the field. (3) SPLIT a row the moment two different seats need to own the halves (ownership is the boundary); ANNOTATE when evidence changes but the owner doesn't. (4) A row's wording never claims more than its evidence \u2014 when they diverge, fix the CODE to match the promise, never the promise to match the code."
+      }
+    },
+    {
+      "name": "requirements",
+      "value": [
+        {
+          "id": "req-0001",
+          "num": 1,
+          "title": "Rust implementation",
+          "requirement": "pij ships as a single Rust binary (pij-rs during coexistence): CLI and daemon are two composition roots in one executable; Command::Daemon short-circuits into the daemon so CLI and daemon version together.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "plan 108 in flight (workshop 001 R2)"
+        },
+        {
+          "id": "req-0002",
+          "num": 2,
+          "title": "Full verb parity with the TS CLI",
+          "requirement": "Every production pij verb reaches parity, proven by byte-goldens for computed payloads against the TS binary on the same store \u2014 not by eyeball.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "golden mechanism lands in plan 108 (Q4 ruling); verb surface = wave 3"
+        },
+        {
+          "id": "req-0003",
+          "num": 3,
+          "title": "SQLite store with self-migration",
+          "requirement": "All state in SQLite via sqlx: embedded checksummed migrations, daemon self-migrates at boot, stale-schema refused loudly both skew directions (newer binary migrates forward; older binary refuses).",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "workshop 001 R1"
+        },
+        {
+          "id": "req-0004",
+          "num": 4,
+          "title": "Queue-first daemon",
+          "requirement": "Handlers do one cheap DB statement; all real work is enqueued with dedupe (partial-unique over live jobs) and per-entity serial claims.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "workshop 001 R4"
+        },
+        {
+          "id": "req-0005",
+          "num": 5,
+          "title": "Ports + shipped fakes, offline-first",
+          "requirement": "Seven frozen port traits (Registry, Spine, Queue, Transport, TmuxPort, HarnessPort, LivenessPort) with deterministic fakes in testkit; the whole system runs offline end-to-end with fakes as default config.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "R3 as amended"
+        },
+        {
+          "id": "req-0006",
+          "num": 6,
+          "title": "Mechanical architecture drift gate",
+          "requirement": "Crate-dependency allowlist with per-row rationale, enforced by a test, negative-proven; every new edge is a reviewed one-row diff.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "plan 108 tk-3a93"
+        },
+        {
+          "id": "req-0007",
+          "num": 7,
+          "title": "CLI-daemon over local-only HTTP",
+          "requirement": "Envelope {ok,command,v,data,meta}, per-boot 0600 bearer key written before bind, NDJSON event stream with Hello line and Unknown variant \u2014 portable across macOS/Linux/Windows with no socket platform splits. AUTH (fs3 #43 pattern, source-verified auth.rs 2026-08-28): one 256-bit key minted per daemon boot, 64 lowercase hex, written 0600-before-bytes via same-dir tempfile + atomic rename, published BEFORE the listener binds (race designed out); Authorization: Bearer on EVERY route, /health included (whole-router middleware, no exemption list); raw HTTP client private behind the authenticated wrapper so the type system refuses bypass; 401 envelope carries key_file detail + next_action naming the exact path and the self-heal; key path+format are FROZEN CONTRACT (CLI, doctor, tests, restart-verify all consume it). Config-dir trap from fs3's one real incident: if the daemon serves the default port under a non-default config root, refuse or mirror the key to the ambient location \u2014 the key file's LOCATION is part of the credential.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "fs3 req-0017 pattern auth per lynx source-grounded answer + crates/daemon/src/auth.rs (read whole; tests encode the contract) | AMEND vicuna 2026-08-31: the bearer key authenticates a MACHINE, not a seat \u2014 ReaderRead over HTTP is attestable to machine granularity only; ack rows record the acking key for audit. Seat-level auth = backlog, trigger: two mutually untrusting seats share one machine key."
+        },
+        {
+          "id": "req-0008",
+          "num": 8,
+          "title": "Honest delivery receipts",
+          "requirement": "send/inbox with queued|delivered|held receipts that mean what they say; pre-bind messages queue instead of vanishing; every route logs message id + outcome.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "R5 items 1,8; TS defect ledger"
+        },
+        {
+          "id": "req-0009",
+          "num": 9,
+          "title": "Liveness by (pid, proc_start)",
+          "requirement": "No liveness verdict from a bare pid; recycled pids detected structurally; revive distinguishes registry-missing from native-artifact-missing and resolves artifacts at the correct per-harness path.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "R5 items 5,6 + wrong-path reframe (lynx 2026-08-28)"
+        },
+        {
+          "id": "req-0010",
+          "num": 10,
+          "title": "Supervision that consults declared state",
+          "requirement": "Watchdog eligibility respects semanticState (waiting/hold/blocked/question are not stalls); thresholds configurable; every computed signal has a consumer.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "R5 item 9"
+        },
+        {
+          "id": "req-0011",
+          "num": 11,
+          "title": "Cross-platform CI on native runners",
+          "requirement": "CI and release build on native agents: ubuntu-latest (x86_64), ubuntu-24.04-arm (aarch64), macos-14 (aarch64-apple-darwin), windows-latest (x86_64-pc-windows-msvc). NO Intel Mac (x86_64-apple-darwin excluded, Jordan 2026-08-28, matching fs3's 2026-08-26 ruling). Pinched from fs3 release.yml: pinned toolchain, --locked builds, per-target smoke-run of the built binary, fast test tier on each target.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "Jordan 2026-08-28; fs3 .github/workflows/{ci,release,release-please}.yml are the template"
+        },
+        {
+          "id": "req-0012",
+          "num": 12,
+          "title": "Attribution hooks the write sink",
+          "requirement": "Agent attribution is recorded where bytes land, not at the tool surface \u2014 EVAL-batch writes and any future modality leave a trace.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "lynx finding: turtle's ~60 EVAL-written files invisible to git-ai"
+        },
+        {
+          "id": "req-0013",
+          "num": 13,
+          "title": "Daemon lifecycle better than fs3's",
+          "requirement": "Single-instance guard day 1; a real supervise/restart/upgrade story is designed (not a tmux pane + memory file); C6 restart affordances built in.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "fs3's own admitted weak spot"
+        },
+        {
+          "id": "req-0014",
+          "num": 14,
+          "title": "Coexistence and cutover behind parity",
+          "requirement": "TS and Rust run side-by-side against the same store during migration; the TS CLI retires only after a soak behind the parity harness; cutover is its own plan. Cutover asymmetry (Jordan 2026-08-28): claude/copilot/codex seats survive the daemon swap live (outside-bound, subprocess CLI only \u2014 no restart); pi/OMP seats carry the in-process extension and change over version-gated behind a logged compat shim, never flag-day.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "design: docs/plans/prd/cutover-design.md"
+        },
+        {
+          "id": "req-0015",
+          "num": 15,
+          "title": "Reusable eventing system",
+          "requirement": "One in-process pub/sub event primitive serves every near-real-time consumer \u2014 inbound message routing, file-watch notices, bg command completion, watchdog nudges, seat state changes \u2014 typed Event enum with an Unknown variant, durable tail via the spine (replayable), live tail via the NDJSON stream. New event kinds are additive, never a version bump; no consumer polls.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "Jordan 2026-08-28: 'reusable eventing, not just message routing \u2014 file watches, backgrounds, etc.'"
+        },
+        {
+          "id": "req-0016",
+          "num": 16,
+          "title": "pi and OMP extension updated and proven in both hosts",
+          "requirement": "The in-process pij extension speaks the pij-rs wire (envelope v + Hello detection, one build spans the cutover window) and is PROVEN live in both hosts: the same extension build boots in plain pi AND in OMP, registers with bind evidence, receives a pushed turn, and replies \u2014 one committed transcript per host.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "Jordan 2026-08-28. Owning unit u-extension (wave 3); cutover-design phase 5 consumes it."
+        },
+        {
+          "id": "req-0017",
+          "num": 17,
+          "title": "Cross-machine federation: a daemon per machine, LAN-only, key-trust, @machine addressing",
+          "requirement": "pij works across machines on the local LAN: every machine runs its own daemon with its own local database; daemons route seat traffic to each other over the existing HTTP surface. Trust is the bearer key (LAN-only deployment; no TLS of our own). Seat addresses gain a machine part \u2014 <seat>@<machine-alias>, alias from daemon config defaulting to hostname; an unqualified name always means local, so single-machine usage is unchanged. v1 scope: messaging, registry visibility, and spine events across machines; remote spawn works the normal way once a daemon runs there (a prime spawns as per now via the remote daemon) \u2014 daemon bootstrap on a new machine is manual, no remote provisioning.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "Jordan 2026-08-30, iterated one-question-at-a-time: federation over hub (ruled), LAN+key trust (ruled), seat@machine shape (ruled), manual first-daemon + normal prime spawn thereafter (ruled). Lands in wave 3 with u-daemon-http/u-cli: bind_addr, key exchange, and address parsing must account for this now, not retrofit."
+        },
+        {
+          "id": "req-0018",
+          "num": 18,
+          "title": "Daemon auto-rebuild-and-restart on merge to main (adopt lynx mechanism)",
+          "requirement": "pij adopts flowspace3 daemon build-and-restart so the live daemon restarts automatically when work merges to main: build, health-check, restart sequenced without dropping in-flight deliveries, with a guard against restarting mid-delivery. Applies to the TS daemon immediately (tsx off source, no hot-reload, restarts are manual and forgettable today) and carries into the Rust daemon post-cutover.",
+          "state": "checked",
+          "completed_evidence": "Landed wave 6, u-bounce, composed at a748c0d7 (gate six stages green). `pij daemon bounce`: corroboration re-run immediately before signalling (TOCTOU closed); signal_and_wait treats pid reuse as exit, comparing BOTH pid and proc-start so a recycled pid cannot kill an unrelated process; runtime record staged create_new+rename+fsync, written after bind and before key publish. Refuses a dirty tree or a divergent branch BY DESIGN - proven live when it refused to deploy from the plan's own stream branch. Receipt: docs/plans/108-rust-port/assets/reports/done-u-bounce.md; review: capybara APPROVE at 593a3e9d, four rounds, fifteen findings, none refuted.",
+          "note": "Jordan 2026-08-30: adopt lynx bounce, auto-restart on merge to main. Lynx mechanism (source-grounded reply 2026-08-30): symlink-into-target/release makes build=deploy; bounce = pull-ff-only, build, C-c, relaunch, poll /health for the auth 401 liveness tell; NO-DROP lives in the DAEMON not the script (shutdown finishes in-flight only, never dequeues post-signal; queue rows durable) \u2014 restart safe by construction so the trigger can be dumb (o-prime merge loop, no watcher). Adopt-fresh advice taken as CONTRACT: (a) a real verb from day one \u2014 pij daemon bounce: refuse-if-HEAD!=origin/main, build, drain-restart, health-verify, version-print; (b) bind/reserve port BEFORE any mutating boot step (their row-80: losing racer ran 108s of mutating boot pre-refusal); (c) announce to active seats pre-bounce. TS interim: just bounce-daemon recipe + prime ritual now; Rust: owned by u-daemon-lifecycle (wave 4 scope add)."
+        },
+        {
+          "id": "req-0019",
+          "num": 19,
+          "title": "Cutover controls: extension switches pi/OMP to pij-rs, env-var forceback, daemon addr via CLI and env",
+          "requirement": "pi and OMP cut over to the Rust daemon THROUGH the extension. Three controls are mandatory: (1) an env var forces a seat back to the legacy TS daemon (per-seat escape hatch, no rebuild); (2) the daemon address/port is settable via BOTH the pij CLI flag and an env var, so dev instances run beside production; (3) the state dir likewise (already PIJ_RS_STATE_DIR). Extension resolves in order: explicit env override, then default new daemon.",
+          "state": "checked",
+          "completed_evidence": "Landed wave 7, u-cutover-controls, composed at a748c0d7 (gate six stages green, 363 passed). Three controls: PIJ_DAEMON_GENERATION=legacy per-seat forceback (returns legacy before any probe); PIJ_RS_ADDR/_STATE_DIR/_BIND with CLI > env > default, an explicit flag equal to the default still beating a live env (flags became Option<T> because a parser-supplied default is not a user's choice); NO SILENT FALLBACK - rs selected and unreachable fails loudly naming addr, state dir and the control that unsticks the seat, on Node AND Bun (the Bun ConnectionRefused shape was unreachable and is now asserted). Malformed and whitespace-only values refused by name with the value quoted, both sides. Four host/generation transcripts, each carrying an AUTHORITY OBSERVATION - no leg counts on host behaviour alone, because a host swallows a dead extension and exits 0 with the expected reply. Cross-generation lock contract ratified and implemented: the Telegram lock is written in a schema both generations parse, and an unrecognised lock is refused rather than reclaimed, because a reader that cannot parse reads ABSENT and absent-is-reclaimable means steal with both sides believing they acquired cleanly. Receipt: docs/plans/108-rust-port/assets/wave-7/reports/done-u-cutover-controls.md; review: crane APPROVE at 90e49524, three rounds, four findings, each closed by a probe run against an EXTRACTED COMMIT rather than the coder's working tree.",
+          "note": "Jordan 2026-08-31 verbatim: \"yes cut over omp and pi to the new version in the extension please. allow env var to force back to old one. remember we must be able to also set daemon port via pij cli or env vars... just incase we wanna run dev ones.\" Same ruling shipped ALL sidecars (telegram, bg, chore) in the Rust generation \u2014 u-sidecars unblocked. | AMEND vicuna 2026-08-31 (live incident during sidecars live-fire): CROSS-GENERATION LOCK CONTRACT ruled a cutover requirement \u2014 any single-consumer resource shared across generations (telegram getUpdates lock first instance) uses ONE lock schema both generations parse (superset on evolution), with a cross-parse test in both codebases; a reader that cannot parse reads absent, and absent-is-reclaimable means silent steal with both sides believing clean acquisition."
+        }
+      ]
+    }
+  ]
+}

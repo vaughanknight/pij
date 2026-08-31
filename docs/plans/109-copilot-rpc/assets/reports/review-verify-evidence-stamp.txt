@@ -1,0 +1,4 @@
+PREREG_AT_UTC=2026-08-31T00:53:09Z
+8afb291054969b47137c20e3eb9c112d9ce27b0a84bf9d8eb5a46d05434a0c13  falsifiers-preregistered.md
+
+Artifact for finding F1:

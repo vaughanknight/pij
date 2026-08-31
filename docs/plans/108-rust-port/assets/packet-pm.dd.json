@@ -1,0 +1,149 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "PM packet \u2014 rust-port wave 0 (the mold)",
+        "role": "pm",
+        "plan": "docs/plans/108-rust-port/plan.dd.json",
+        "seat": "<filled at spawn>",
+        "updated": "2026-08-28"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "Deliver plan 108 phase 1 \u2014 the pij Rust mold \u2014 on branch s108/rust-port in worktree /Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port. This is wave 0 of the pij CLI+daemon Rust port; fs3 plan 001 (fs3-foundations) is the pattern. You build the workspace the whole port is poured into: 8 ratified crates, six frozen ports with shipped fakes, the arch-allowlist drift gate (negative-tested), SQLite/sqlx store skeleton with boot self-migration, queue primitive, hello-depth daemon+cli single binary (pij-rs ping over localhost HTTP + per-boot bearer key), exemplar tests at every tier, rust-toolchain.toml pin, pocs/ spike lane, fixture corpus seeded with real captured pij CLI/wire traffic INCLUDING malformed cases. Small enough to solo-PM per the impl-guide fan_out note: wave 0 is one team; you code it yourself, then call the cross-model reviewer."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        {
+          "id": "i1",
+          "text": "Read IN ORDER before any code: docs/plans/108-rust-port/plan.dd.md (the ACs are the contract) -> docs/plans/108-rust-port/services.dd.md (SETTLED interfaces + waves) -> docs/plans/108-rust-port/assets/workshops/001-architecture.md (rulings R1-R6 bind you) -> .agents-skills-port/pij-team/TENETS.md -> docs/plans/108-rust-port/assets/s001-mining-notes.md (the traps, pre-paid)."
+        },
+        {
+          "id": "i2",
+          "text": "Ack with a NUMBERED plan before any code; the prime rules the ack by number."
+        },
+        {
+          "id": "i3",
+          "text": "Rust layout mirrors fs3: crates/ at repo root of THIS WORKTREE (the TS code stays untouched at its paths \u2014 the two coexist; touch nothing outside crates/, pocs/, rust-toolchain.toml, root Cargo.toml, .gitignore additions, docs/plans/108-rust-port/**)."
+        },
+        {
+          "id": "i4",
+          "text": "Wave-0 additions R6a-f are IN scope: toolchain pin first commit; testkit + fixture corpus BEFORE features; pocs/ template with [workspace]+.gitignore+out/ and root-manifest exclude; shared wire.rs-class module stub; fences doc naming shared-merge files; one discovery/admission component with a shared case table."
+        },
+        {
+          "id": "i5",
+          "text": "Done per unit = gate green (fmt --check, clippy -D warnings, cargo test --workspace, allowlist) + prove-in-tree evidence + mutation-check on every fix-test; done reports carry observed rustc/cargo versions and Avail disk."
+        },
+        {
+          "id": "i6",
+          "text": "CARGO_INCREMENTAL=0; own CARGO_TARGET_DIR if you spawn coders; absolute paths in everything."
+        },
+        {
+          "id": "i7",
+          "text": "Report at both edges of every unit (pij report now); questions to the prime pij-dominant-vicuna via pij send \u2014 product calls are the prime's, human calls are Jordan's; never ask sideways."
+        },
+        {
+          "id": "i8",
+          "text": "Dogfood flowspace3: search before grep (this worktree is indexed); report misses as friction. Log every friction to docs/plans/108-rust-port/assets/experiences.md the moment it bites (pij repo keeps its OWN log \u2014 never write into flowspace3's tree)."
+        }
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        {
+          "id": "w1",
+          "text": "Prime = pij-dominant-vicuna (pane %255): rules your ack by number, receives done reports, owns merges; relays anything needing Jordan. Never ask sideways."
+        },
+        {
+          "id": "w2",
+          "text": "Reviewer: cross-model (github-copilot/gpt-5.6-sol, high) spawned AFTER composition; read-only; findings fixed or refuted with evidence."
+        },
+        {
+          "id": "w3",
+          "text": "Coders: none by default \u2014 solo-pm wave. If you argue a fan-out, propose the unit split in your ack; the prime rules it."
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port",
+        "branch": "s108/rust-port",
+        "fence": "crates/** pocs/** rust-toolchain.toml Cargo.toml Cargo.lock .gitignore docs/plans/108-rust-port/**",
+        "forbidden_note": "READ-ONLY: all TS sources, .pi/, .harness/**, .agents-skills-port/**, and flowspace3's tree (prior art, never write). FORBIDDEN: the-flow.json/.md and .the-flow-state.json (engine-owned), .harness/government/**, any path outside this worktree. Push only to origin s108/rust-port; NO PR anywhere without the prime's fresh go (Jordan 2026-08-28: no PRs onto foreign repos; pij PRs need explicit authorization)."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        {
+          "id": "d1",
+          "text": "All 8 plan ACs checked with receipts (ac-0001..ac-0008), states updated via ddocs set, never hand-edited .dd.md."
+        },
+        {
+          "id": "d2",
+          "text": "Negative proof recorded for the drift gate (forbidden dep added, gate red, reverted \u2014 transcript in assets/reports/)."
+        },
+        {
+          "id": "d3",
+          "text": "pij-rs ping first-light transcript captured to docs/plans/108-rust-port/assets/reports/first-light.md."
+        },
+        {
+          "id": "d4",
+          "text": "Cross-model review APPROVE (or findings refuted with evidence) on the composed tree."
+        },
+        {
+          "id": "d5",
+          "text": "Branch pushed to origin s108/rust-port; NO PR; prime notified with head SHA + gate output + observed toolchain versions."
+        }
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        {
+          "id": "r0",
+          "path": "docs/plans/108-rust-port/plan.dd.md",
+          "note": ""
+        },
+        {
+          "id": "r1",
+          "path": "docs/plans/108-rust-port/services.dd.md",
+          "note": ""
+        },
+        {
+          "id": "r2",
+          "path": "docs/plans/108-rust-port/assets/workshops/001-architecture.md",
+          "note": ""
+        },
+        {
+          "id": "r3",
+          "path": "docs/plans/108-rust-port/assets/s001-mining-notes.md",
+          "note": ""
+        },
+        {
+          "id": "r4",
+          "path": ".agents-skills-port/pij-team/TENETS.md",
+          "note": ""
+        },
+        {
+          "id": "r5",
+          "path": "/Users/jordanknight/substrate/flowspace/flowspace3/scratch/rust-port-handover/PACKET.md",
+          "note": "\u00a71-\u00a74"
+        },
+        {
+          "id": "r6",
+          "path": "/Users/jordanknight/substrate/flowspace/flowspace3/Cargo.toml + crates/",
+          "note": "READ-ONLY exemplar"
+        }
+      ]
+    }
+  ]
+}

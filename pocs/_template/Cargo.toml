@@ -1,0 +1,17 @@
+# A spike stands alone: its own bare `[workspace]` keeps it OUT of the pij
+# workspace, so it can take any dependency it likes without that dependency
+# arriving in the shipped crate graph or the architecture allow-list.
+#
+# The root manifest also lists `exclude = ["pocs"]`. Both halves are needed: the
+# exclude stops `cargo build --workspace` from compiling spikes, and this empty
+# `[workspace]` stops cargo from walking UP and adopting this crate into the
+# parent workspace.
+[workspace]
+
+[package]
+name = "poc-template"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]

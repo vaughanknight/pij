@@ -1,0 +1,6 @@
+# A spike's output is evidence, not source: it is captured, cited, and copied to
+# the plan's assets/reports/ when it supports a decision — never committed
+# wholesale, because then the interesting file is buried in noise.
+out/
+target/
+Cargo.lock
