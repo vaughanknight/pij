@@ -64,18 +64,24 @@
         },
         {
           "id": "ac-1104",
-          "claim": "A registration that is not preceded by a fresh allocation adopts its pre-bind row: one row on the pane, spawn_id matched, rpc_port_intent preserved.",
+          "claim": "A registration that BINDS A FRESHLY SPAWNED INCARNATION adopts its pre-bind row: matched on spawn_id AND pane AND the row being unbound, leaving one row on the pane with its stamped rpc_port_intent preserved.",
           "state": "unchecked",
           "receipt": "witness built from the launched environment, never from the spawn response"
         },
         {
           "id": "ac-1105",
+          "claim": "THE DISCRIMINATING ARM: a registration NOT preceded by a fresh allocation — an ordinary re-registration of an existing seat — does NOT adopt and does NOT inherit an rpc_port it was never stamped. A spawn_id+pane match against an ALREADY BOUND row must not adopt it either.",
+          "state": "unchecked",
+          "receipt": "re-registration arm plus a bound-row arm, both witnessed red before green"
+        },
+        {
+          "id": "ac-1106",
           "claim": "Live round trip on the real fleet, both arms, three observers: bypass-marked delivered with no dialog and byte-exact above 1022 bytes against an --accept-inbound seat; unmarked message observed Held before any human click against a non-accepting seat.",
           "state": "unchecked",
           "receipt": "sender status line + recipient transcript records + operator screen; any click recorded as an INPUT"
         },
         {
-          "id": "ac-1106",
+          "id": "ac-1107",
           "claim": "Full gate green on the composed, rebased tree, unfiltered, with cargo's own exit code, then cross-model review.",
           "state": "unchecked",
           "receipt": "gate transcript on the composed head"

@@ -411,8 +411,8 @@ async fn send_frame(
         Some(Status::Held) => DeliveryOutcome::Held {
             reason: "recipient approval pending".to_string(),
         },
-        Some(Status::Denied) => DeliveryOutcome::Held {
-            reason: "recipient declined the message".to_string(),
+        Some(Status::Denied) => DeliveryOutcome::Refused {
+            reason: "the recipient declined the message".to_string(),
         },
         // Silence is never upgraded. The frame reached the socket; nothing in
         // this path can observe a turn, and nothing here may claim one.
@@ -798,6 +798,15 @@ mod tests {
             classify_status(&fixture("status-denied.ndjson"), "msg-uds-001"),
             Status::Denied
         );
+        // A denial asked about ANY message id gives the same answer, for the same
+        // reason a hold does: the channel correlates, not the payload.
+        assert_eq!(
+            classify_status(
+                &fixture("status-denied.ndjson"),
+                "a-completely-different-id"
+            ),
+            Status::Denied
+        );
         // The recorded frames carry NO id tying them to our message, so the
         // decoder must NOT consult one: asking about a different message id has
         // to give the same answer, because the channel — not the payload — is
@@ -961,7 +970,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_denial_is_reported_as_refused_delivery_not_as_success() {
+    async fn a_denial_is_terminal_refusal_not_a_pending_hold() {
         assert_eq!(
             socket_case(
                 Some(&fixture("status-denied.ndjson")),
@@ -970,8 +979,8 @@ mod tests {
             )
             .await
             .outcome,
-            DeliveryOutcome::Held {
-                reason: "recipient declined the message".to_string()
+            DeliveryOutcome::Refused {
+                reason: "the recipient declined the message".to_string()
             }
         );
     }

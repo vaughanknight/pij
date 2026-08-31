@@ -598,9 +598,24 @@ pub enum DeliveryOutcome {
     },
     /// Durably queued; will be delivered when the seat can receive.
     Queued,
-    /// Withheld pending an approval step.
+    /// Withheld pending an approval step. PENDING, not final — a held message may
+    /// still become delivered, or refused.
     Held {
         /// Why it is being held.
+        reason: String,
+    },
+    /// The recipient REFUSED it. Terminal: the message will not be delivered and
+    /// must never be retried.
+    ///
+    /// Added in plan 110 rather than spelling a denial as `Held`. Claude's socket
+    /// reports `status:"denied"` when the recipient operator declines an inbound
+    /// message — "it was not delivered to their Claude session", in the CLI's own
+    /// words. Calling that `Held` would be the least-wrong SPELLING of a wrong
+    /// CLAIM: `Held` means pending, so anything that retries on it re-prompts a
+    /// human who has already said no. A refusal is an answer, and it is given
+    /// once.
+    Refused {
+        /// Why it was refused, in the refusing layer's own words.
         reason: String,
     },
 }

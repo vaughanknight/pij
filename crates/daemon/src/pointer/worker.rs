@@ -246,6 +246,12 @@ impl DrainWorker {
                 Ok(DeliveryOutcome::Queued | DeliveryOutcome::Held { .. }) => {
                     self.release_body(job_id).await
                 }
+                // TERMINAL. The recipient answered no, and a refusal is given
+                // once: releasing the body would retry, and every retry raises
+                // the same approval dialog at the human who just declined it.
+                // The job is DONE with outcome refused — not failed, because
+                // nothing malfunctioned, and not delivered, because it was not.
+                Ok(DeliveryOutcome::Refused { .. }) => self.queue.ack(job_id, Outcome::Done).await,
                 Err(error) => {
                     self.release_body(job_id).await?;
                     Err(error)
