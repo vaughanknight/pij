@@ -43,3 +43,45 @@ that turns no test red if the real extraction never lands. Instead: u-gate split
 (idle expiry + self-echo now, carrying ac-1111/1112/1113 and both mutation proofs), and
 u-observer lands the real extracted `composer_region` as its first push, which releases the
 blocked third. Wave 1 stays parallel in its valuable half.
+
+## Control-plane failure hit live during wave 1 (2026-08-31)
+
+**F-1116 — daemon-bound delivery to both omp coders was BLOCKED for ~5 minutes without me
+knowing, while every surface said the seats were fine.** The composite, in the order it
+presented:
+
+1. Both `pij send` rulings receipted **`queued (unbound): peer is still binding`**. I read that
+   as "will deliver at bind" and moved on. It was the honest signal and I under-read it.
+2. The daemon's spawn-id descriptors never bound (`failure: bind-timeout`), so the queued
+   messages had no route. **Neither ruling was ever delivered.**
+3. Two **false death notices** arrived — `s1788166845282-83558`, `s1788166853280-89488`,
+   "has exited; terminal absence: live observation" — for seats whose panes were alive
+   (`pane_dead 0`), whose pids were alive, and which were actively working and messaging me.
+   This is PRD req-0003's false-death-notice hazard, reproduced twice, six seconds apart.
+   **I did not re-spawn.** Re-spawning on that notice is how a prime ends with two seats on
+   one worktree.
+4. `pij state` showed both seats **`DEGRADED · never bound`** while they were demonstrably
+   working — because each seat had self-adopted under its OWN name (pij-extensive-echidna,
+   pij-scrawny-crawdad) while the daemon watched the orphaned spawn-id descriptor. Same
+   pre-bind/registration window as req-0002 B-1 and req-0003, seen from a third end.
+5. **Direction matters and no surface said so**: coder→PM `pij send` worked throughout (both
+   ACKs and u-gate's "the ruling did not inject here" arrived fine). PM→coder was blocked.
+   A half-open channel reads as a working channel from the end that is transmitting.
+
+**What finally proved it**: re-sending, which receipted
+`BLOCKED: peer never bound … Nothing will deliver this`. The earlier `queued` and the later
+`BLOCKED` are the same underlying state, described twice with opposite operational meaning.
+
+**Recovery trap**: `pij revive <id> --print` — documented as "touches no tmux pane, spawns
+nothing, writes no descriptor … --print never needs it: it mutates nothing" — **refused
+anyway** with `E-ARG: session still has a live prior attachment; close it before reviving`.
+The refusal fires before the dry run, so the one command that is safe to run on a live seat
+is unavailable exactly when the seat is live-but-orphaned, which is the case it exists for.
+`--attach %pane` refused identically. Same trap-door shape req-0003 already names for
+`pij adopt`. **Delivered the rulings by `tmux send-keys` instead**, after capturing both panes
+to confirm the composers were empty (bare `❯`) — the pointer rung's own fallback, and the
+politeness gate this very plan is about.
+
+**Why this matters to plan 111 specifically**: the work was NOT lost, but for five minutes both
+coders were building from the packet alone against a superseded ordering, and I believed they
+had my rulings. Nothing in the PM's view distinguished "delivered" from "queued forever".
