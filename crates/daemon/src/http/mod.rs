@@ -556,12 +556,14 @@ pub(crate) async fn launch_seat(
     let (seat_id, displaced) = match request.id.clone() {
         Some(id) => match state.services.registry.get(&id).await {
             Ok(Some(existing)) if existing.tombstoned_at.is_none() => {
-                return refused(
-                    command_name,
+                let reason = if existing_policy.allow_absent {
                     format!(
-                        "seat `{id}` exists and is not tombstoned — only a tombstoned row may be revived"
-                    ),
-                );
+                        "seat `{id}` already exists and is not tombstoned — choose another --id or tombstone it before respawning"
+                    )
+                } else {
+                    format!("seat `{id}` is live, so it cannot be revived")
+                };
+                return refused(command_name, reason);
             }
             Ok(Some(existing)) => (id, Some(existing)),
             Ok(None) if existing_policy.allow_absent => (id, None),
@@ -613,6 +615,7 @@ pub(crate) async fn launch_seat(
     };
     let plan = match build_spawn_plan(SpawnPlanInput {
         seat_id: seat_id.clone(),
+        spawn_id: spawn_id.clone(),
         harness: request.harness,
         executable: request.executable,
         model: request.model,

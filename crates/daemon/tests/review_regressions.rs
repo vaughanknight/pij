@@ -252,6 +252,7 @@ async fn emitted_spawn_argv_is_the_stamp_that_opens_the_real_transport() {
             // The seat id the launcher assigned: spawn emits it as
             // PIJ_SESSION_ID so `pij inbox` can resolve who it is.
             seat_id: SeatId::from("pij-stamped"),
+            spawn_id: "spawn-stamped".to_string(),
             harness: Harness::Claude,
             executable: None,
             model: None,

@@ -100,6 +100,24 @@ Script the allocator's first kernel candidate to equal another live seat's stamp
 
 **Red baseline:** the current allocator consults only the one revived descriptor and accepts the live seat's stamped candidate; the shipped path must expose that collision.
 
+## F13 — shipped launcher carries the bind correlator
+
+**Path:** shipped `pij-rs spawn` → `build_spawn_plan` → `TmuxPort::new_window` argv environment → registration built only from environment handed to that process → `POST /v1/register` → persisted descriptor.
+
+The witness must extract `PIJ_SPAWN_ID` from the exact argv observed by fake tmux, never from the spawn response or descriptor, and use only that launched-process capability for the first registration. The matching bind must preserve the fresh port; a later registration with no matching environment correlator must clear it and no later read may restore it.
+
+**Red baseline:** the current shipped argv has `PIJ_SESSION_ID` but no `PIJ_SPAWN_ID`; environment-derived registration therefore carries no correlator and clears the port. A test-supplied response value is forbidden because it proves a capability production lacks.
+
+**Mutations:** M9 removes only `PIJ_SPAWN_ID=<spawn_id>` from launch argv; the environment-derived first bind must clear the port. M10 keeps the variable present but emits a different id; the same arm must also clear the port. M9 red with M10 green would prove presence rather than identity.
+
+## F14 — collision refusal names the command the caller ran
+
+**Path:** shipped `POST /v1/spawn` collision on a non-tombstoned id → response envelope.
+
+A spawn collision must explain respawn eligibility without telling the caller it attempted `revive`; the separately-owned revive route keeps revive-specific wording.
+
+**Red baseline:** the consolidated response says `only a tombstoned row may be revived` to a plain spawn caller and must fail the command-specific text assertion.
+
 ## Demonstrated red arms
 
 All commands ran with `env -u CARGO_TARGET_DIR CARGO_INCREMENTAL=0` from the unit worktree.
@@ -122,5 +140,8 @@ All commands ran with `env -u CARGO_TARGET_DIR CARGO_INCREMENTAL=0` from the uni
 | F11 baseline | Revive emitted no post-mortem event | shipped CLI transition test | no `seat.revive-postmortem` event existed |
 | F11/M8 | Moved post-mortem publication after descriptor overwrite | shipped CLI transition test | revive failed because registry truth was live and the post-mortem was already gone |
 | F12 | Passed only the revived row's old port to the scripted allocator | shipped CLI transition test | allocator returned another live seat's stamped `61001` instead of free `61003` |
+| F13 | Shipped argv omitted `PIJ_SPAWN_ID`; registration used only parsed launch environment | shipped CLI transition test | first bind cleared fresh `Some(61004)` to `None` |
+| F13/M10 | Kept `PIJ_SPAWN_ID` present but emitted `wrong-launch` instead of the stamped id | shipped CLI transition test | environment-derived registration mismatched and cleared fresh `Some(61004)` to `None` |
+| F14 | Consolidated spawn collision used revive-specific wording | `cargo test --locked -p pij-daemon http::tests::spawn_stamps_only_the_argv_that_reached_the_observed_launch` | command-specific collision text assertion failed |
 
 Instrument corrections: the first F1 command included `-- --exact` without the module-qualified test name and ran zero tests; it was discarded. The first F12 attempt used a non-object-safe async trait and failed compilation before exercising allocation; it was discarded. The first M8 move borrowed a moved `SeatId` and likewise failed compilation; after making that mutation executable, the behavioral red above was recorded.

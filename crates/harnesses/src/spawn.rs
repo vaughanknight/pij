@@ -2,6 +2,7 @@ use pij_core::error::{PijError, Result};
 use pij_core::model::{Harness, SeatId};
 
 const PIJ_SESSION_ID: &str = "PIJ_SESSION_ID";
+const PIJ_SPAWN_ID: &str = "PIJ_SPAWN_ID";
 const CLAUDE_ACCEPT_SETTINGS: &str = r#"{"crossSessionInbound":"accept"}"#;
 
 /// Facts known by the launcher and the exact command it will execute.
@@ -35,6 +36,8 @@ pub struct SpawnPlan {
 pub struct SpawnPlanInput {
     /// Seat id already assigned by the daemon under its spawn lock.
     pub seat_id: SeatId,
+    /// Correlator minted for this exact launch and carried into registration.
+    pub spawn_id: String,
     /// Harness to launch.
     pub harness: Harness,
     /// Executable override from `--bin`; the harness name is used when absent.
@@ -57,9 +60,9 @@ pub struct SpawnPlanInput {
 ///
 /// `use pij_harnesses::{SpawnPlanInput, build_spawn_plan};` in the authenticated
 /// `POST /v1/spawn` handler. Assign the seat id under the spawn lock, then build
-/// `SpawnPlanInput` from that exact id plus the request's harness,
-/// executable/model/effort, `accept_inbound`, and any Rust-allocated Copilot
-/// port. Pass the returned `plan.executable` and discrete `plan.args` as
+/// `SpawnPlanInput` from that exact id and launch correlator plus the request's
+/// harness, executable/model/effort, `accept_inbound`, and any Rust-allocated
+/// Copilot port. Pass the returned `plan.executable` and discrete `plan.args` as
 /// `Some(&LaunchCommand)` to `Services.tmux.new_window`. Only after that call
 /// returns a pane, write the pre-bind descriptor and copy both argv-derived
 /// stamps from the plan; never derive a stamp from the request.
@@ -69,6 +72,13 @@ pub struct SpawnPlanInput {
 /// Refuses `accept_inbound` for non-Claude harnesses because those runtimes do
 /// not establish the capability represented by the descriptor stamp.
 pub fn build_spawn_plan(input: SpawnPlanInput) -> Result<SpawnPlan> {
+    if input.spawn_id.trim().is_empty() {
+        return Err(PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: "spawn id must be non-empty so the first bind can correlate its launch"
+                .to_string(),
+        });
+    }
     if input.accept_inbound && input.harness != Harness::Claude {
         return Err(PijError::Adapter {
             adapter: "spawn".to_string(),
@@ -100,6 +110,7 @@ pub fn build_spawn_plan(input: SpawnPlanInput) -> Result<SpawnPlan> {
         .unwrap_or_else(|| input.harness.as_str().to_string());
     let mut args = vec![
         format!("{PIJ_SESSION_ID}={}", input.seat_id),
+        format!("{PIJ_SPAWN_ID}={}", input.spawn_id),
         harness_executable,
     ];
     match input.harness {
@@ -179,12 +190,15 @@ fn push_option(args: &mut Vec<String>, flag: &str, value: Option<&str>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{CLAUDE_ACCEPT_SETTINGS, PIJ_SESSION_ID, SpawnPlanInput, build_spawn_plan};
+    use super::{
+        CLAUDE_ACCEPT_SETTINGS, PIJ_SESSION_ID, PIJ_SPAWN_ID, SpawnPlanInput, build_spawn_plan,
+    };
     use pij_core::model::{Harness, SeatId};
 
     fn input(harness: Harness) -> SpawnPlanInput {
         SpawnPlanInput {
             seat_id: SeatId::from("pij-assigned"),
+            spawn_id: "spawn-assigned".to_string(),
             harness,
             executable: None,
             model: Some("provider/model".to_string()),
@@ -255,6 +269,7 @@ mod tests {
                 [
                     vec![
                         format!("{PIJ_SESSION_ID}=pij-assigned"),
+                        format!("{PIJ_SPAWN_ID}=spawn-assigned"),
                         harness_executable.to_string()
                     ],
                     expected_harness_args
@@ -344,6 +359,7 @@ mod tests {
     fn executable_override_and_absent_optional_facts_are_preserved() {
         let plan = build_spawn_plan(SpawnPlanInput {
             seat_id: SeatId::from("pij-override"),
+            spawn_id: "spawn-override".to_string(),
             harness: Harness::Claude,
             executable: Some("/opt/harnesses/claude".to_string()),
             model: None,
@@ -359,6 +375,7 @@ mod tests {
             plan.args,
             [
                 "PIJ_SESSION_ID=pij-override",
+                "PIJ_SPAWN_ID=spawn-override",
                 "/opt/harnesses/claude",
                 "--dangerously-skip-permissions"
             ]

@@ -45,6 +45,12 @@ where
         .output()
         .expect("run shipped CLI")
 }
+
+fn launch_env(call: &str, key: &str) -> Option<String> {
+    let marker = format!("\"{key}=");
+    let value = call.split_once(&marker)?.1.split('"').next()?;
+    (!value.is_empty()).then(|| value.to_string())
+}
 struct ScriptedRpcPorts {
     candidates: Mutex<VecDeque<u16>>,
     seen_unavailable: Mutex<Vec<BTreeSet<u16>>>,
@@ -316,8 +322,9 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
         run_cli(&dir, &addr, &args)
     };
 
-    let fresh_spawn_id = revived.spawn_id.as_deref().expect("revive launch id");
-    let first_bind = register_same(Some(fresh_spawn_id));
+    let revive_launch = tmux.calls().last().cloned().expect("revive launch call");
+    let launched_spawn_id = launch_env(&revive_launch, "PIJ_SPAWN_ID");
+    let first_bind = register_same(launched_spawn_id.as_deref());
     assert!(
         first_bind.status.success(),
         "matching first registration: {}",
@@ -332,6 +339,10 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
             .rpc_port_intent,
         Some(fresh_port),
         "the revived seat's matching first bind must preserve its fresh port intent"
+    );
+    assert!(
+        launched_spawn_id.is_some(),
+        "the shipped launcher must hand the correlator to the process that binds"
     );
 
     for pass in 1..=2 {
