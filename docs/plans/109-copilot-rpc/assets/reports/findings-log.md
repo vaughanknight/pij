@@ -76,38 +76,62 @@ one layer out, and tested as a transition: revive, assert the old connection is
 CLOSED, then assert nothing re-establishes it. *Asserting only that the new port is
 stamped would pass on a build that leaves the old socket open forever.*
 
-## F0-2 — `mode:"enqueue"` DESTROYS a human's unsent composer text
+## F0-2 — CORRECTED — RPC runs a turn in a live human session mid-compose
 
-Sentinel typed into the TUI composer and deliberately **not** submitted, visible.
-`session.send` with `mode:"enqueue"` acked immediately with a server-created
-messageId; the TUI entered `Working`, ran the RPC prompt, answered — and returned to a
-**blank composer**. The sentinel was gone.
+> **RETRACTED AS ORIGINALLY WRITTEN.** This entry first said `mode:"enqueue"`
+> DESTROYS a human's unsent composer text. **That is false.** The reviewer rebuilt
+> the rig exactly, reproduced the same "after" observation, and then ran the step
+> nobody had run — **pressed Enter.** Both sentinels submitted **intact and in
+> order**, both modes, reproduced twice.
+>
+> Left in place rather than rewritten, because a corrected claim that shows its
+> history is worth more than a clean one.
 
-`mode:"immediate"` behaves the same way. **There is no polite mode.**
+### Why two instruments agreed and both were wrong
 
-Recovery search: no match anywhere under `~/.copilot`, nothing in the session
-`events.jsonl`. The only surviving copy was in the external PTY capture the probe
-harness happened to be recording. Stated as a **boundary** — no Copilot-owned
-persistence found — rather than as absolute unrecoverability.
+- **The PTY capture showed a blank composer.** That is the **placeholder**, which the
+  TUI renders *over* a populated buffer.
+- **The `jq` search of `~/.copilot` returned exit 4.** An **unsent draft is in-memory
+  TUI state** and is absent from session state **whether preserved or destroyed** —
+  its negative was guaranteed before it ran.
 
-**This is not a politeness defect. It destroys the words a person was still writing,
-with no record anywhere that they existed.**
+Two instruments answering a *different question from the one asked*, agreeing with
+each other, and **the agreement read as corroboration.** The bounding in the receipt
+("no Copilot-owned persistence found") was locally honest and doing globally
+misleading work: it bounded a loss that never occurred.
 
-### Binding for unit 2
+### What is true, and it is still enough
 
-The composer gate is a **HARD PRECONDITION** of Copilot RPC delivery, not a politeness
-layer above it. Honoured on the RPC path itself — *placing a fast path around the gate
-disables it without deleting it, and the code still reads as guarded.* Quiet-pane
-shape applies: recognised layout, owned sensor, **two stable blank observations**. A
-single look is not enough when being wrong deletes someone's sentence.
+**A model turn RAN in a live human session while a draft was pending — both modes,
+every test.** That is **unconsented interruption**, E55's class, confirmed
+first-party.
 
-**"Socket is transport, tmux is politeness" DOES NOT HOLD HERE.** True for Claude UDS —
-a socket frame cannot corrupt a composer. False for Copilot RPC. Anyone carrying that
-phrase into unit 2 will under-rate the gate exactly where it matters most.
+### The binding stands; its justification changes
 
-It also closes a standing operator question: the 2026-08-27 typing-gate ruling carried
-an open item to confirm queue-vs-splice before ever relaxing the gate. **The gate is a
-data-loss guard, not etiquette.**
+The composer gate remains a **HARD PRECONDITION** of Copilot RPC delivery, honoured on
+the RPC path itself, with the two-stable-blank-observations shape. **Founded on
+CONSENT, not data loss.**
+
+> **A correct rule resting on a false reason is weaker than the same rule resting on a
+> true one, because the reason is what gets re-examined.** Anyone reproducing the Enter
+> result would find the old justification false and might conclude the gate can be
+> relaxed.
+
+Consequently: the 2026-08-27 typing-gate operator question is **REOPENED** — it was
+closed on this false premise. "There is no polite mode" is **half true**: both modes
+interrupt without consent (true); neither destroys the buffer (false).
+
+The `"socket is transport, tmux is politeness"` exception also stands on the corrected
+ground — a Copilot RPC frame cannot corrupt a buffer, but it *can* seize a turn from a
+human mid-sentence, which a Claude UDS frame cannot.
+
+### The composer's failure, recorded
+
+This premise was propagated into a binding, this log, the prime's memory, an upstream
+document's in-place retraction, and a fork-facing hazard report — **all before the
+reviewer had graded it**, and while the PM was telling the prime that units 1 and 2
+were being held precisely so a coder's self-report could not drive the reshape. The
+hold was right. **The findings log bypassed it.**
 
 ## F0-3 — no ordering guarantee within a burst
 
@@ -119,9 +143,45 @@ The busy-then-enqueue discriminator lands on **dispatch race, not queue LIFO**: 
 model turn is established, enqueue defers correctly; back-to-back frames can race
 before busy state exists.
 
-**Binding for unit 2:** assume no ordering across RPC sends and encode none. Ordering
-we need is ordering **we** make — one in flight per seat, the next sent only after the
-previous is **observed** complete (observed, not acked).
+**Binding for unit 2 (UNCHANGED, and reviewer-endorsed verbatim):** assume no ordering
+across RPC sends and encode none. Ordering we need is ordering **we** make — one in
+flight per seat, the next sent only after the previous is **observed** complete
+(observed, not acked).
+
+**MECHANISM CORRECTED.** The receipt said frames "race before busy state is
+established". The reviewer held busy FIXED and re-ran the batched write: both frames
+came back `delivery=queued` — busy WAS established and correctly detected — **and they
+still reversed.** So it is concurrent handling of pipelined frames, independent of busy
+state. This matters because the original mechanism invites the mitigation *"establish a
+turn first, then send"*, **which does not work.** The mitigation is serialize-and-await.
+
+## F0-5 — Content-Length is a BYTE count; a framing defect is invisible on the wire
+
+New, from review. Framing is mandatory and the declared length is authoritative, but a
+client framing defect presents as **either silence or an uncorrelatable error** — never
+as "your frame was malformed":
+
+```
+bare JSON / newline-delimited  -> SILENCE
+Content-Length under-declared  -> -32700 with "id":null   (uncorrelatable)
+Content-Length over-declared   -> SILENT HANG, server awaits bytes never sent
+```
+
+The realistic form, observed: TypeScript `.length` is **UTF-16 code units**; pij bodies
+routinely carry em-dashes and emoji. A body measuring 108 by `.length` and 113 bytes
+declared at 108 returns `-32700`; declared at 113 it succeeds.
+
+**Binding for unit 2:** `Buffer.byteLength(body,'utf8')`, never `body.length`; a
+contract test with a **non-ASCII** body, because an ASCII-only fixture cannot fail this
+— the two lengths coincide by construction; and the client needs its own response
+deadline, because **the transport's own silence is one of its failure modes**.
+
+It also sharpens the ambiguous-window rule: a timeout now has **three** causes —
+malformed frame (nothing ever enqueued), enqueued-but-slow, and dead seat — and the
+transport cannot tell them apart. At-least-once retry is right for the second and
+**wrong for the first**, which retries a frame that can never parse.
+
+
 
 ## F0-4 — the readiness call is a false positive, and is not a busy gate
 
