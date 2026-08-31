@@ -539,6 +539,7 @@ mod tests {
 
     use super::{
         ClaudeHarness, CodexHarness, CopilotHarness, HarnessRegistry, OmpHarness, PiHarness,
+        expand_home,
     };
 
     const CLAUDE: &str = include_str!("../../testkit/fixtures/harnesses/claude-ready.txt");
@@ -611,10 +612,18 @@ mod tests {
             }
         }
     }
-    const CWD: &str = "/Users/jordanknight/pi-hacking/pij";
+    // AMBIENT-ENV GREEN-THAT-LIES, caught by CI's first Linux run: the copilot
+    // footer fixture says `~/pi-hacking/pij`, and `expand_home` expands it against
+    // the HOST's $HOME. Hard-coding this author's path made the comparison agree on
+    // every machine the test had ever run on — because every machine was that one.
+    // Derive it the same way the code under test does, so both sides agree on any
+    // host. The mismatch arm stays covered by `bind_evidence_depends_on...`.
+    fn cwd() -> String {
+        expand_home("~/pi-hacking/pij")
+    }
 
     fn descriptor(kind: Harness, model: &str) -> SeatDescriptor {
-        let mut descriptor = SeatDescriptor::new("pij-harness-fixture", kind, CWD);
+        let mut descriptor = SeatDescriptor::new("pij-harness-fixture", kind, cwd());
         descriptor.pane = Some("%108".to_string());
         descriptor.proc = Some(ProcIdentity {
             pid: 10_108,
@@ -775,7 +784,7 @@ mod tests {
             Some("df4f1111-2222-4333-8444-555555555555")
         );
         assert_eq!(observation.facts.model.as_deref(), Some("GPT-5.5"));
-        assert_eq!(observation.facts.cwd.as_deref(), Some(CWD));
+        assert_eq!(observation.facts.cwd.as_deref(), Some(cwd().as_str()));
         assert_eq!(observation.facts.pane.as_deref(), Some("%108"));
     }
 
