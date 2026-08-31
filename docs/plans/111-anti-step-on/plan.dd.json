@@ -1,145 +1,145 @@
 {
- "dd": {
-  "schema": "builder/plan"
- },
- "sections": [
-  {
-   "name": "meta",
-   "value": {
-    "title": "Anti-step-on: typing gate with idle expiry, self-echo exemption, fresh send-boundary capture",
-    "slug": "anti-step-on",
-    "ordinal": 111,
-    "plan_version": "1",
-    "mode": "Simple",
-    "status": "ready",
-    "created": "2026-08-31",
-    "complexity": "CS-3",
-    "complexity_breakdown": "CS3: two bounded units against an existing live mechanism; the risk is behavioral (over-hold vs step-on), not structural.",
-    "confidence": "high \u2014 TS reference implementation exists with an operator contract test suite; rs baseline verified live in 3 consumption paths.",
-    "summary": "Close the four verified gaps between pij-rs's live InteractionGate and the TS pane-signals reference (plan 058): idle expiry, self-echo exemption, fresh capture at the send boundary, layout-aware composer recognition. PRD req-0004."
-   }
+  "dd": {
+    "schema": "builder/plan"
   },
-  {
-   "name": "summary",
-   "value": "rs already gates injection on human interaction (InteractionGate, fed by PaneObserver, consulted at first-attempt delivery, drain retries, pointer worker). But: a walked-away draft holds a pane FOREVER (no idle expiry \u2014 the exact over-hold that forced TS's 2026-07-25 fleet-wide emergency bypass, commit 72b5dd61); pij's own injected bytes can acquire a hold against itself (no self-echo exemption); the verdict is an observer-tick stale read, not a fresh capture at the moment of injection; and the live layout parser (OMP box row, plain-rule pair, copilot footer, caret clip, prompt strip \u2014 pane_observer.rs:389-513) is buried in the daemon where the fresh send-boundary path cannot reach it, with 'no region' collapsing into None instead of an explicit Unrecognized verdict. This plan fixes exactly those, nothing else. AMENDED 2026-08-31 at the PM ack: the original wording claimed composer detection was 'a whitespace heuristic, blind to layouts' \u2014 false on tree; the fourth gap is an EXTRACTION, not a build."
-  },
-  {
-   "name": "goals",
-   "value": [
-    "A hold self-expires after a bounded idle window (default 60s of unchanged composer content) \u2014 a parked draft delays delivery, never blocks it.",
-    "pij's own injected payload never acquires a hold and never clears an active human hold.",
-    "The injection verdict at the send boundary derives from a capture taken AT the send boundary.",
-    "The live composer parser is extracted to pij-harnesses behind one shared signature so the observer tick and the fresh send-boundary path use ONE parser; 'no region' becomes an explicit Unrecognized that defers.",
-    "Every veto is bounded: deferral is conservative, never permanent \u2014 the over-hold cannot re-enter through the unrecognizability door (amendment 2, PM escalation 2026-08-31)."
-   ]
-  },
-  {
-   "name": "non_goals",
-   "value": [
-    "No busy-density signal (TS has it, UI-only, never gated delivery \u2014 out of scope).",
-    "No caret/byte-stream fallback tracker port (rs's tap-active veto already covers the unrecognised-layout case conservatively).",
-    "No change to paneless/pull-consumer behaviour (never gated \u2014 pinned by regression test, not rebuilt).",
-    "No new env tunables beyond one daemon-config field for the idle window; constants otherwise mirror TS (pane-signals.ts:3-7).",
-    "NOT a rewrite of InteractionGate consumers \u2014 the three call sites keep their shape."
-   ]
-  },
-  {
-   "name": "acceptance_criteria",
-   "value": [
+  "sections": [
     {
-     "id": "ac-1111",
-     "claim": "Parked draft: composer non-blank and UNCHANGED for longer than the idle window \u2192 delivery proceeds (hold expired).",
-     "receipt": "",
-     "state": "unchecked"
+      "name": "meta",
+      "value": {
+        "title": "Anti-step-on: typing gate with idle expiry, self-echo exemption, fresh send-boundary capture",
+        "slug": "anti-step-on",
+        "ordinal": 111,
+        "plan_version": "1",
+        "mode": "Simple",
+        "status": "ready",
+        "created": "2026-08-31",
+        "complexity": "CS-3",
+        "complexity_breakdown": "CS3: two bounded units against an existing live mechanism; the risk is behavioral (over-hold vs step-on), not structural.",
+        "confidence": "high — TS reference implementation exists with an operator contract test suite; rs baseline verified live in 3 consumption paths.",
+        "summary": "Close the four verified gaps between pij-rs's live InteractionGate and the TS pane-signals reference (plan 058): idle expiry, self-echo exemption, fresh capture at the send boundary, layout-aware composer recognition. PRD req-0004."
+      }
     },
     {
-     "id": "ac-1112",
-     "claim": "Active typing: composer content changed within the idle window \u2192 delivery held and queued durably; nothing injected.",
-     "receipt": "",
-     "state": "unchecked"
+      "name": "summary",
+      "value": "rs already gates injection on human interaction (InteractionGate, fed by PaneObserver, consulted at first-attempt delivery, drain retries, pointer worker). But: a walked-away draft holds a pane FOREVER (no idle expiry — the exact over-hold that forced TS's 2026-07-25 fleet-wide emergency bypass, commit 72b5dd61); pij's own injected bytes can acquire a hold against itself (no self-echo exemption); the verdict is an observer-tick stale read, not a fresh capture at the moment of injection; and the live layout parser (OMP box row, plain-rule pair, copilot footer, caret clip, prompt strip — pane_observer.rs:389-513) is buried in the daemon where the fresh send-boundary path cannot reach it, with 'no region' collapsing into None instead of an explicit Unrecognized verdict. This plan fixes exactly those, nothing else. AMENDED 2026-08-31 at the PM ack: the original wording claimed composer detection was 'a whitespace heuristic, blind to layouts' — false on tree; the fourth gap is an EXTRACTION, not a build."
     },
     {
-     "id": "ac-1113",
-     "claim": "Self-echo: a payload recorded via record_self_injection never acquires a hold when it appears in the composer, and an ACTIVE human hold is never cleared by any echo.",
-     "receipt": "",
-     "state": "unchecked"
+      "name": "goals",
+      "value": [
+        "A hold self-expires after a bounded idle window (default 60s of unchanged composer content) — a parked draft delays delivery, never blocks it.",
+        "pij's own injected payload never acquires a hold and never clears an active human hold.",
+        "The injection verdict at the send boundary derives from a capture taken AT the send boundary.",
+        "The live composer parser is extracted to pij-harnesses behind one shared signature so the observer tick and the fresh send-boundary path use ONE parser; 'no region' becomes an explicit Unrecognized that defers.",
+        "Every veto is bounded: deferral is conservative, never permanent — the over-hold cannot re-enter through the unrecognizability door (amendment 2, PM escalation 2026-08-31)."
+      ]
     },
     {
-     "id": "ac-1114",
-     "claim": "Fresh boundary: with a stale-clear observer state and a human typing NOW, the send path holds \u2014 the verdict came from a capture at send time.",
-     "receipt": "",
-     "state": "unchecked"
+      "name": "non_goals",
+      "value": [
+        "No busy-density signal (TS has it, UI-only, never gated delivery — out of scope).",
+        "No caret/byte-stream fallback tracker port (rs's tap-active veto already covers the unrecognised-layout case conservatively).",
+        "No change to paneless/pull-consumer behaviour (never gated — pinned by regression test, not rebuilt).",
+        "No new env tunables beyond one daemon-config field for the idle window; constants otherwise mirror TS (pane-signals.ts:3-7).",
+        "NOT a rewrite of InteractionGate consumers — the three call sites keep their shape."
+      ]
     },
     {
-     "id": "ac-1115",
-     "claim": "Layout parsing EXTRACTED to pij-harnesses with behaviour pinned: characterisation tests over live-recorded captures prove the extracted parser byte-equal to the pre-move rendered_composer on every fixture, plus the one NEW behaviour red-first: an unrecognised layout yields an explicit Unrecognized verdict that DEFERS (was a silent None). Labeled honestly: pin + one witness, not a greenfield build.",
-     "receipt": "",
-     "state": "unchecked"
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "ac-1111",
+          "claim": "Parked draft: composer non-blank and UNCHANGED for longer than the idle window → delivery proceeds (hold expired).",
+          "receipt": "cargo test -p pij-harnesses interaction::tests::parked_draft_holds_at_most_the_idle_window_then_sends @ 4a0a0e93 (green). RED-FIRST LIMITATION, named not laundered: the chronological pre-fix run was a COMPILE error (rejected as a witness). The assertion-level red was RECONSTRUCTED on a clock-enabled/expiry-disabled tree, not observed before the fix — a reconstruction can be shaped to fail, so it is weaker than a chronological witness. Independent corroboration: Mutation A (idle expiry removed) fails this same test on assertion `parked draft expired`.",
+          "state": "checked"
+        },
+        {
+          "id": "ac-1112",
+          "claim": "Active typing: composer content changed within the idle window → delivery held and queued durably; nothing injected.",
+          "receipt": "cargo test -p pij-harnesses interaction::tests::{typing_through_restart_is_not_rebaselined_away, injection_requires_both_tmux_and_composer_gates_clear} @ 4a0a0e93 (green).",
+          "state": "checked"
+        },
+        {
+          "id": "ac-1113",
+          "claim": "Self-echo: a payload recorded via record_self_injection never acquires a hold when it appears in the composer, and an ACTIVE human hold is never cleared by any echo.",
+          "receipt": "cargo test -p pij-harnesses interaction::tests::{self_echo_never_acquires_a_hold, self_echo_never_destroys_an_active_human_hold, self_echo_match_is_exact_not_a_substring, self_echo_exemption_is_one_shot, expired_self_echo_exemption_does_not_hide_human_input} @ 4a0a0e93 (green). Mutation B: loosening normalized equality to substring fails self_echo_match_is_exact_not_a_substring on capture \"[pij from boss] status please and my reply\".",
+          "state": "checked"
+        },
+        {
+          "id": "ac-1114",
+          "claim": "Fresh boundary: with a stale-clear observer state and a human typing NOW, the send path holds — the verdict came from a capture at send time.",
+          "receipt": "cargo test -p pij-harnesses interaction::tests::{fresh_boundary_replaces_a_stale_clear_composer_observation, fresh_boundary_unrecognized_layout_defers, fresh_boundary_preserves_and_vetoes_on_tick_derived_tap_state, fresh_boundary_recognized_blank_without_tap_permits} @ 4a0a0e93 (green). O4 honoured and PROVEN, not promised: interaction.rs:445 and :499 assert drain_pane_tap is never called on the fresh path; list_panes + capture at the boundary asserted at :443.",
+          "state": "checked"
+        },
+        {
+          "id": "ac-1115",
+          "claim": "Layout parsing EXTRACTED to pij-harnesses with behaviour pinned: characterisation tests over live-recorded captures prove the extracted parser byte-equal to the pre-move rendered_composer on every fixture, plus the one NEW behaviour red-first: an unrecognised layout yields an explicit Unrecognized verdict that DEFERS (was a silent None). Labeled honestly: pin + one witness, not a greenfield build.",
+          "receipt": "",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-1116",
+          "claim": "Paneless seat is never gated (existing behaviour pinned by a regression test that survives this change).",
+          "receipt": "",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-1117",
+          "claim": "NO UNBOUNDED VETO: with no interaction observation (content change, tap byte, or mode flag) younger than the idle window, ANY veto — recognized-idle, Unrecognized, or tap-latched — decays within interaction_idle_ms to the tmux pane_in_mode verdict alone. Witnessed red-first: on the pre-amendment tree an Unrecognized pane is vetoed forever.",
+          "receipt": "cargo test -p pij-harnesses interaction::tests::{unrecognized_veto_expires_to_the_tmux_mode_verdict, tap_latch_expires_after_the_idle_window, repeated_unknown_observations_do_not_refresh_interaction_age, initial_uncertainty_expires_to_tmux_mode_alone, active_tmux_mode_remains_the_fallback_veto, parked_draft_holds_at_most_the_idle_window_then_sends} @ 4a0a0e93 (green). GENUINE chronological red-first: unrecognized_veto_expires_to_the_tmux_mode_verdict observed failing on its assertion before implementation. PM-verified: record_unknown uses uncertainty_since.get_or_insert(now) (interaction.rs:199) so repeated unknowns cannot refresh the age and keep a veto alive forever.",
+          "state": "checked"
+        }
+      ]
     },
     {
-     "id": "ac-1116",
-     "claim": "Paneless seat is never gated (existing behaviour pinned by a regression test that survives this change).",
-     "receipt": "",
-     "state": "unchecked"
+      "name": "phases",
+      "value": [
+        {
+          "id": "ph-1111",
+          "title": "Gate semantics + observer recognition (parallel units)",
+          "state": "unchecked",
+          "objective": "u-gate and u-coder build in parallel against the frozen interface in the impl-guide.",
+          "brief": "u-gate: idle expiry + self-echo exemption + injectable clock in InteractionGate. u-observer: layout-aware composer region parsing + the fresh-capture path.",
+          "delivers": [
+            "Both units green on their own test suites; interface contract test proves the seam."
+          ]
+        },
+        {
+          "id": "ph-1112",
+          "title": "Composition + integration proof",
+          "state": "unchecked",
+          "objective": "Wire permits_injection_fresh into the three consumers; prove ac-1 and ac-4 end-to-end at the DeliveryService level.",
+          "brief": "PM-owned. delivery/mod.rs first-attempt path, drain retries, pointer worker.",
+          "delivers": [
+            "Integration tests green; existing receipt-honesty decision table still green."
+          ]
+        },
+        {
+          "id": "ph-1113",
+          "title": "Cross-model review + PR",
+          "state": "unchecked",
+          "objective": "Cross-model reviewer over the diff with the TS contract tests as the checklist; PR to main.",
+          "brief": "Reviewer verdict persisted by hand (flow-pair review verb is a stub).",
+          "delivers": [
+            "PR open with receipts for all six ACs in the description."
+          ]
+        }
+      ]
     },
     {
-     "id": "ac-1117",
-     "claim": "NO UNBOUNDED VETO: with no interaction observation (content change, tap byte, or mode flag) younger than the idle window, ANY veto \u2014 recognized-idle, Unrecognized, or tap-latched \u2014 decays within interaction_idle_ms to the tmux pane_in_mode verdict alone. Witnessed red-first: on the pre-amendment tree an Unrecognized pane is vetoed forever.",
-     "receipt": "",
-     "state": "unchecked"
+      "name": "risks_assumptions",
+      "value": "RISK 1 — over-hold regression: the TS gate was emergency-bypassed fleet-wide (72b5dd61) because holds outlived their cause; idle expiry is the mitigation and ac-1 is its witness — the witness must be proven RED on the pre-fix tree first (a green-from-birth regression test is a claim, not a witness). RISK 2 — self-echo certification too loose: certifying by resemblance instead of progress lets a human's paste of similar text be eaten; mirror TS's progress rule. RISK 3 — fresh capture cost: one extra capture-pane per send is acceptable; per-tick captures already happen. ASSUMPTION — TmuxPort can serve a composer capture at send time (PaneObserver already captures; if the port needs a new method, that is part of u-observer's fence). RISK 5 (found by PM at wave 1, inherited not introduced, but ENTRENCHED if unfixed since the fresh verdict becomes the authorising one): Unrecognized had no expiry path, and live Copilot v1.0.82 renders no prompt marker so an entire harness class parses Unrecognized in BOTH the TS and Rust parsers — an unbounded hold shipped inside the anti-over-hold plan. Retired by ac-1117 (universal veto bound) + Copilot recognition rebuilt from a live v1.0.82 fixture."
+    },
+    {
+      "name": "open_questions",
+      "value": [
+        {
+          "id": "oq-1111",
+          "question": "Should the idle window be per-harness (copilot's slower composer) or one global default?",
+          "note": "Start global 60s like TS; split only on observed need.",
+          "owner": "pm",
+          "state": "unchecked"
+        }
+      ]
     }
-   ]
-  },
-  {
-   "name": "phases",
-   "value": [
-    {
-     "id": "ph-1111",
-     "title": "Gate semantics + observer recognition (parallel units)",
-     "state": "unchecked",
-     "objective": "u-gate and u-coder build in parallel against the frozen interface in the impl-guide.",
-     "brief": "u-gate: idle expiry + self-echo exemption + injectable clock in InteractionGate. u-observer: layout-aware composer region parsing + the fresh-capture path.",
-     "delivers": [
-      "Both units green on their own test suites; interface contract test proves the seam."
-     ]
-    },
-    {
-     "id": "ph-1112",
-     "title": "Composition + integration proof",
-     "state": "unchecked",
-     "objective": "Wire permits_injection_fresh into the three consumers; prove ac-1 and ac-4 end-to-end at the DeliveryService level.",
-     "brief": "PM-owned. delivery/mod.rs first-attempt path, drain retries, pointer worker.",
-     "delivers": [
-      "Integration tests green; existing receipt-honesty decision table still green."
-     ]
-    },
-    {
-     "id": "ph-1113",
-     "title": "Cross-model review + PR",
-     "state": "unchecked",
-     "objective": "Cross-model reviewer over the diff with the TS contract tests as the checklist; PR to main.",
-     "brief": "Reviewer verdict persisted by hand (flow-pair review verb is a stub).",
-     "delivers": [
-      "PR open with receipts for all six ACs in the description."
-     ]
-    }
-   ]
-  },
-  {
-   "name": "risks_assumptions",
-   "value": "RISK 1 \u2014 over-hold regression: the TS gate was emergency-bypassed fleet-wide (72b5dd61) because holds outlived their cause; idle expiry is the mitigation and ac-1 is its witness \u2014 the witness must be proven RED on the pre-fix tree first (a green-from-birth regression test is a claim, not a witness). RISK 2 \u2014 self-echo certification too loose: certifying by resemblance instead of progress lets a human's paste of similar text be eaten; mirror TS's progress rule. RISK 3 \u2014 fresh capture cost: one extra capture-pane per send is acceptable; per-tick captures already happen. ASSUMPTION \u2014 TmuxPort can serve a composer capture at send time (PaneObserver already captures; if the port needs a new method, that is part of u-observer's fence). RISK 5 (found by PM at wave 1, inherited not introduced, but ENTRENCHED if unfixed since the fresh verdict becomes the authorising one): Unrecognized had no expiry path, and live Copilot v1.0.82 renders no prompt marker so an entire harness class parses Unrecognized in BOTH the TS and Rust parsers \u2014 an unbounded hold shipped inside the anti-over-hold plan. Retired by ac-1117 (universal veto bound) + Copilot recognition rebuilt from a live v1.0.82 fixture."
-  },
-  {
-   "name": "open_questions",
-   "value": [
-    {
-     "id": "oq-1111",
-     "question": "Should the idle window be per-harness (copilot's slower composer) or one global default?",
-     "note": "Start global 60s like TS; split only on observed need.",
-     "owner": "pm",
-     "state": "unchecked"
-    }
-   ]
-  }
- ]
+  ]
 }
