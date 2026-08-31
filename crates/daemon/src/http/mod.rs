@@ -27,9 +27,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
-use pij_core::model::{
-    Envelope, ErrorKind, Event, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId, Seq,
-};
+use pij_core::model::{Envelope, ErrorKind, Event, Harness, Msg, SeatDescriptor, SeatId, Seq};
 use pij_core::names::memorable_pij_id_candidates;
 use pij_core::ports::{LaunchCommand, Registry, SeatFilter};
 use pij_core::wire;
@@ -38,6 +36,7 @@ use serde::Deserialize;
 use tokio_stream::{Stream, StreamExt};
 
 use crate::federation::{FederationSendError, FederationService};
+use crate::registration::{RegistrationError, RegistrationService};
 use crate::{BUILD, Services};
 pub use auth::AuthRing;
 pub use client::{PeerEndpoint, get_from_peer, post_to_peer, stream_from_peer};
@@ -268,179 +267,15 @@ async fn health(State(state): State<AppState>) -> Response {
 }
 
 async fn register(State(state): State<AppState>, Json(claim): Json<Registration>) -> Response {
-    let proc = match (claim.pid, claim.proc_start) {
-        (Some(pid), Some(proc_start)) => {
-            let observed = match state.services.liveness.proc_start(pid).await {
-                Ok(observed) => observed,
-                Err(error) => return internal("pij register", error),
-            };
-            if observed != Some(proc_start) {
-                return refused(
-                    "pij register",
-                    format!(
-                        "the payload is a claim, but the daemon observed process {pid} start as {observed:?}, not {proc_start}"
-                    ),
-                );
-            }
-            Some(ProcIdentity { pid, proc_start })
-        }
-        (None, None) => None,
-        _ => {
-            return refused(
-                "pij register",
-                "pid and proc_start must travel together or not at all",
-            );
-        }
-    };
-
-    let seats = match state.services.registry.list(SeatFilter::default()).await {
-        Ok(seats) => seats,
-        Err(error) => return internal("pij register", error),
-    };
-    let claimed_id = SeatId::from(claim.id.clone());
-
-    // A native session boundary (`/new`, `/fork`) keeps ONE process and takes a
-    // NEW seat id, so the successor looks exactly like an alias to the #19 guard.
-    // A claim may only supersede ITSELF — the named predecessor must carry the
-    // same `(pid, proc_start)` — which keeps the refusal intact for an impostor
-    // naming someone else's seat, the case #19 is actually about.
-    let predecessor = match (claim.supersedes.as_ref(), proc) {
-        (Some(previous), Some(identity)) => match seats.iter().find(|seat| &seat.id == previous) {
-            Some(seat) if seat.proc == Some(identity) => Some(seat.clone()),
-            Some(_) => {
-                return refused(
-                    "pij register",
-                    format!(
-                        "seat `{previous}` does not share this process, so it cannot be superseded by `{}` — a claim may only supersede itself",
-                        claim.id
-                    ),
-                );
-            }
-            // A predecessor the roster has never heard of is a REFUSAL, not a
-            // silent downgrade to a plain registration. Review found that a
-            // typo'd id was accepted and the operator learned about it later
-            // through an unrelated #19 collision refusal — an error message about
-            // the wrong thing is worse than no error at all.
-            None => {
-                return refused(
-                    "pij register",
-                    format!(
-                        "seat `{previous}` is not in the roster, so `{}` cannot supersede it",
-                        claim.id
-                    ),
-                );
-            }
-        },
-        (Some(_), None) => {
-            return refused(
-                "pij register",
-                "an unbound claim cannot supersede a seat: without a process identity there is nothing that proves the successor is the same session",
-            );
-        }
-        (None, _) => None,
-    };
-
-    let collision = proc.and_then(|identity| {
-        seats.iter().find(|seat| {
-            seat.proc == Some(identity)
-                && seat.id != claimed_id
-                && predecessor.as_ref().is_none_or(|prev| prev.id != seat.id)
-        })
-    });
-    let bound = proc.is_some();
-    match crate::admission::from_registration(
-        &claim.id,
-        Some(&claim.harness),
-        Some(&claim.folder),
-        bound,
-        collision.map(|seat| seat.id.as_str()),
-    ) {
-        pij_core::admission::Admission::Admit => {}
-        pij_core::admission::Admission::Refuse(reason) => {
-            return refused("pij register", reason);
-        }
+    let registration = RegistrationService::new(
+        Arc::clone(&state.services.registry),
+        Arc::clone(&state.services.liveness),
+    );
+    match registration.register(claim).await {
+        Ok(descriptor) => envelope(StatusCode::OK, &Envelope::ok("pij register", descriptor)),
+        Err(RegistrationError::Refused(reason)) => refused("pij register", reason),
+        Err(RegistrationError::Runtime(error)) => internal("pij register", error),
     }
-    let Some(harness) = Harness::parse(&claim.harness) else {
-        return refused("pij register", "unrecognised harness after admission");
-    };
-    let mut descriptor = seats
-        .iter()
-        .find(|seat| seat.id == claimed_id)
-        .or_else(|| {
-            let spawn_id = claim
-                .spawn_id
-                .as_deref()
-                .filter(|spawn_id| !spawn_id.is_empty())?;
-            let pane = claim.pane.as_deref()?;
-            seats.iter().find(|seat| {
-                seat.proc.is_none()
-                    && seat.spawn_id.as_deref() == Some(spawn_id)
-                    && seat.pane.as_deref() == Some(pane)
-            })
-        })
-        .cloned()
-        .unwrap_or_else(|| SeatDescriptor::new(claimed_id, harness, claim.folder.clone()));
-    let binds_spawned_incarnation = descriptor.proc.is_none()
-        && descriptor
-            .spawn_id
-            .as_deref()
-            .zip(claim.spawn_id.as_deref())
-            .is_some_and(|(launched, claimed)| !launched.is_empty() && launched == claimed);
-    descriptor.harness = harness;
-    descriptor.folder = claim.folder;
-    descriptor.pane = claim.pane;
-    descriptor.proc = proc;
-    // A launcher observation is stronger than the process describing its own
-    // argv later. Registration fills absent facts; it never downgrades a stamp.
-    if descriptor.spawn_id.is_none() {
-        descriptor.spawn_id = claim.spawn_id;
-    }
-    if descriptor.model.is_none() {
-        descriptor.model = claim.model;
-    }
-    if descriptor.provider.is_none() {
-        descriptor.provider = claim.provider;
-    }
-    if descriptor.effort.is_none() {
-        descriptor.effort = claim.effort;
-    }
-    descriptor.parent = claim.parent;
-    descriptor.relay = claim.relay;
-    // The pre-bind row's matching launch id proves this registration is binding
-    // the incarnation for which the fresh port intent was stamped. Preserve it
-    // for that transition only. Every unmatched or already-bound registration
-    // carries no fresh allocation and must clear rather than inherit.
-    if !binds_spawned_incarnation {
-        descriptor.rpc_port_intent = None;
-    }
-    // Tombstone the predecessor BEFORE writing the successor, and name the
-    // successor in the reason. Not a delete: queued work and history for the old
-    // id must not silently vanish, and `SeatIsGone` carrying "superseded by X" is
-    // a post-mortem a human can actually follow. Persist-before-mutate (P9), so a
-    // crash between the two leaves a dissolved predecessor rather than two live
-    // rows sharing one process.
-    if let Some(mut previous) = predecessor
-        && previous.tombstoned_at.is_none()
-    {
-        {
-            previous.tombstoned_at = Some(match system_time_ms() {
-                Ok(at) => at,
-                Err(error) => return internal("pij register", error),
-            });
-            previous.tombstone_reason = Some(format!(
-                "superseded by `{}` at a native session boundary (same process)",
-                claim.id
-            ));
-            previous.rpc_port_intent = None;
-            if let Err(error) = state.services.registry.put(previous).await {
-                return internal("pij register", error);
-            }
-        }
-    }
-    if let Err(error) = state.services.registry.put(descriptor.clone()).await {
-        return internal("pij register", error);
-    }
-    envelope(StatusCode::OK, &Envelope::ok("pij register", descriptor))
 }
 
 /// The first memorable name this roster does not already hold.

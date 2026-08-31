@@ -117,10 +117,11 @@ impl UdsTransport {
     }
 
     fn discover(&self, seat: &SeatDescriptor) -> Option<Endpoint> {
-        let pid = seat.proc?.pid;
-        let direct = self.sessions_dir.join(format!("{pid}.json"));
-        if let Some(endpoint) = self.endpoint_from_path(&direct) {
-            return Some(endpoint);
+        if let Some(pid) = seat.proc.map(|proc| proc.pid) {
+            let direct = self.sessions_dir.join(format!("{pid}.json"));
+            if let Some(endpoint) = self.endpoint_from_path(&direct) {
+                return Some(endpoint);
+            }
         }
         let pane = seat.pane.as_deref()?;
         let suffix = format!(".{pane}");
@@ -749,6 +750,14 @@ mod tests {
                 .await
                 .expect("pid lookup")
         );
+        let mut unbound = seat(9000, Some("%99"), Harness::Claude);
+        unbound.proc = None;
+        assert!(
+            transport
+                .can_deliver(&unbound, &body)
+                .await
+                .expect("proc-null pane fallback")
+        );
         assert!(
             transport
                 .can_deliver(&seat(9000, Some("%99"), Harness::Claude), &body)
@@ -849,12 +858,20 @@ mod tests {
         let socket = dir.0.join("recorded.sock");
         write_record(&dir.0, 4242, "%99", &socket);
         let transport = transport(&dir.0);
-        let target = seat(4242, Some("%99"), Harness::Claude);
+        let mut target = seat(4242, Some("%99"), Harness::Claude);
         assert!(
             transport
                 .can_deliver(&target, &message(None))
                 .await
                 .unwrap()
+        );
+        target.proc = None;
+        assert!(
+            transport
+                .can_deliver(&target, &message(None))
+                .await
+                .unwrap(),
+            "pane lookup must still require the record's matching peer key"
         );
 
         let duplicate = dir

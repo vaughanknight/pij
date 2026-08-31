@@ -9,12 +9,14 @@
 
 pub mod admission;
 pub mod auth;
+mod claude_bind;
 pub mod delivery;
 pub mod events;
 pub mod federation;
 pub mod lifecycle;
 pub mod pane_observer;
 pub mod pointer;
+mod registration;
 
 // u-orchestration's git-facts gatherer: IO belongs at the runtime root, and a
 // ninth crate would have been a graph change for one module.
@@ -190,6 +192,7 @@ pub struct Daemon {
     /// see and nothing can stop.
     federation_worker: federation::FederationWorker,
     drain_loop: lifecycle::TickLoop,
+    claude_bind_loop: lifecycle::TickLoop,
     /// Owned so no tap outlives the daemon that attached it: `shutdown` joins an
     /// in-flight observation and DETACHES every pane. A tap left open is a
     /// `pipe-pane` writing into a sink nobody drains.
@@ -210,7 +213,7 @@ impl Daemon {
         // shutdown future sends its stop before awaiting its join, so no slow
         // HTTP drain can leave queue workers claiming new rows in the meantime.
         let _ = self.shutdown.send(());
-        let (served, drained, observed, forwarded, ()) = tokio::join!(
+        let (served, drained, bound, observed, forwarded, ()) = tokio::join!(
             async {
                 self.joined.await.map_err(|error| PijError::Adapter {
                     adapter: "daemon".to_string(),
@@ -218,12 +221,14 @@ impl Daemon {
                 })
             },
             self.drain_loop.shutdown(),
+            self.claude_bind_loop.shutdown(),
             self.pane_observer.shutdown(),
             self.federation_worker.shutdown(),
             self.sidecars.shutdown(),
         );
         served?;
         drained?;
+        bound?;
         observed?;
         forwarded
     }
@@ -394,6 +399,21 @@ fn start_resilient_delivery_drain(
     })
 }
 
+fn start_resilient_claude_binder(
+    binder: Arc<claude_bind::ClaudeBinder>,
+    interval: lifecycle::TickInterval,
+) -> lifecycle::TickLoop {
+    lifecycle::TickLoop::start_validated(interval, move || {
+        let binder = Arc::clone(&binder);
+        async move {
+            if let Err(error) = binder.bind_once().await {
+                eprintln!("pij-rs claude binder: {error}");
+            }
+            Ok(())
+        }
+    })
+}
+
 fn write_runtime_record(state_dir: &Path, runtime: &DaemonRuntime) -> Result<PathBuf> {
     use std::io::Write;
 
@@ -523,6 +543,10 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         pane_signal_dir,
         Duration::from_millis(config.pane_observer_interval_ms),
     )?);
+    let claude_binder = Arc::new(claude_bind::ClaudeBinder::new(
+        Arc::clone(&services.registry),
+        Arc::clone(&services.liveness),
+    ));
 
     let drain = Arc::new(pointer::DrainWorker::new(
         Arc::clone(&services.registry),
@@ -617,6 +641,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
 
     let pane_observer = pane_observer.start();
     let federation_worker = Arc::clone(&federation).start();
+    let claude_bind_loop = start_resilient_claude_binder(claude_binder, delivery_interval);
     let drain_loop = start_resilient_delivery_drain(drain, delivery_interval);
     // Infallible by construction: every refusal happened in step 8b.
     let sidecars = sidecars.start()?;
@@ -646,6 +671,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         joined,
         federation_worker,
         drain_loop,
+        claude_bind_loop,
         pane_observer,
         sidecars,
     })

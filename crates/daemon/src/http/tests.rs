@@ -770,6 +770,100 @@ async fn registration_cannot_adopt_a_spawn_match_from_another_pane() {
 }
 
 #[tokio::test]
+async fn re_registration_preserves_live_resource_and_consent_stamps() {
+    let copilot_proc = ProcIdentity {
+        pid: 43,
+        proc_start: 20260831103043,
+    };
+    let claude_proc = ProcIdentity {
+        pid: 44,
+        proc_start: 20260831103044,
+    };
+    let registry = Arc::new(FakeRegistry::new());
+    let mut copilot = SeatDescriptor::new("pij-copilot", Harness::Copilot, "/abs/tree");
+    copilot.pane = Some("%43".to_string());
+    copilot.proc = Some(copilot_proc);
+    copilot.spawn_id = Some("spawn-copilot".to_string());
+    copilot.rpc_port_intent = Some(47_781);
+    registry.put(copilot).await.unwrap();
+    let mut claude = SeatDescriptor::new("pij-claude", Harness::Claude, "/abs/tree");
+    claude.pane = Some("%44".to_string());
+    claude.proc = Some(claude_proc);
+    claude.spawn_id = Some("spawn-claude".to_string());
+    claude.cross_session_inbound_accept = Some(true);
+    registry.put(claude).await.unwrap();
+
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.liveness = Arc::new(
+        FakeLiveness::new()
+            .with_proc(copilot_proc)
+            .with_proc(claude_proc),
+    );
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+
+    for (id, harness, pane, identity, spawn_id) in [
+        (
+            "pij-copilot",
+            "copilot",
+            "%43",
+            copilot_proc,
+            "spawn-copilot",
+        ),
+        ("pij-claude", "claude", "%44", claude_proc, "spawn-claude"),
+    ] {
+        let response = client
+            .post(format!("http://{addr}/v1/register"))
+            .bearer_auth("key")
+            .json(&Registration {
+                supersedes: None,
+                id: id.to_string(),
+                harness: harness.to_string(),
+                folder: "/abs/tree".to_string(),
+                pane: Some(pane.to_string()),
+                pid: Some(identity.pid),
+                proc_start: Some(identity.proc_start),
+                spawn_id: Some(spawn_id.to_string()),
+                model: None,
+                provider: None,
+                effort: None,
+                parent: None,
+                relay: false,
+            })
+            .send()
+            .await
+            .expect("repeat registration");
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+    }
+
+    assert_eq!(
+        registry
+            .get(&"pij-copilot".into())
+            .await
+            .unwrap()
+            .unwrap()
+            .rpc_port_intent,
+        Some(47_781)
+    );
+    assert_eq!(
+        registry
+            .get(&"pij-claude".into())
+            .await
+            .unwrap()
+            .unwrap()
+            .cross_session_inbound_accept,
+        Some(true)
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
 async fn registration_refuses_uncorroborated_or_half_process_identity() {
     let registry = Arc::new(FakeRegistry::new());
     let services = test_services(
