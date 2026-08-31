@@ -229,3 +229,26 @@ than failure COUNTS is what exposed it.
 
 **Conclusion for the PR**: harness checks has two red sensors; both are red on main; neither is
 ours. The PR states that with the evidence rather than claiming a green it does not have.
+
+## Reviewer dispatch (ph-1113)
+
+**F-1127 — a model id copied from the wrong runtime row spawns a seat with NO MODEL, and only
+the pane footer says so.** I selected `github-copilot/claude-opus-4.7-1m-internal` from
+`pij models` for an **omp** spawn. That id exists — but on the **pi/copilot** rows, not the omp
+rows; omp's equivalent is `github-copilot/claude-opus-4.7-1m`. `pij spawn` warned
+"unknown model … spawn continues; confirm the id is correct" (warn-don't-block, by design) and
+the seat booted with footer `⬢ no-model`. It would have reviewed the plan with no model
+configured, and its output would have looked like a review.
+
+Caught only because the spawn help says to verify the effective model at the pane footer and I
+did. Killed and respawned; footer now reads `⬢ Opus 4.7 (1M) · xhigh`, confirmed before any
+work was dispatched.
+
+The reusable shape: `pij models` is a table keyed by RUNTIME, and an id read without its runtime
+column is a plausible-looking value from the wrong grouping. Filter by the runtime you are
+actually spawning (`pij models | grep ' omp '`), and always confirm at the footer — a
+warn-don't-block surface means the warning is the only signal you get, and it scrolls past.
+
+**Reviewer**: `pij-melodic-dragon`, omp, `github-copilot/claude-opus-4.7-1m`, effort xhigh —
+cross-model from the coders (gpt-5.6-sol) AND from the PM who composed ph-1112 (Claude Opus 5),
+so the composition is reviewed by something independent of its author as well as of the units.
