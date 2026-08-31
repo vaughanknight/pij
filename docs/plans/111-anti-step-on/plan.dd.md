@@ -27,7 +27,7 @@
 
 ## Summary
 
-rs already gates injection on human interaction (InteractionGate, fed by PaneObserver, consulted at first-attempt delivery, drain retries, pointer worker). But: a walked-away draft holds a pane FOREVER (no idle expiry — the exact over-hold that forced TS's 2026-07-25 fleet-wide emergency bypass, commit 72b5dd61); pij's own injected bytes can acquire a hold against itself (no self-echo exemption); the verdict is an observer-tick stale read, not a fresh capture at the moment of injection; and composer detection is a whitespace heuristic, blind to OMP/claude/copilot composer layouts. This plan fixes exactly those four, nothing else.
+rs already gates injection on human interaction (InteractionGate, fed by PaneObserver, consulted at first-attempt delivery, drain retries, pointer worker). But: a walked-away draft holds a pane FOREVER (no idle expiry — the exact over-hold that forced TS's 2026-07-25 fleet-wide emergency bypass, commit 72b5dd61); pij's own injected bytes can acquire a hold against itself (no self-echo exemption); the verdict is an observer-tick stale read, not a fresh capture at the moment of injection; and the live layout parser (OMP box row, plain-rule pair, copilot footer, caret clip, prompt strip — pane_observer.rs:389-513) is buried in the daemon where the fresh send-boundary path cannot reach it, with 'no region' collapsing into None instead of an explicit Unrecognized verdict. This plan fixes exactly those, nothing else. AMENDED 2026-08-31 at the PM ack: the original wording claimed composer detection was 'a whitespace heuristic, blind to layouts' — false on tree; the fourth gap is an EXTRACTION, not a build.
 
 <a id="goals"></a>
 
@@ -36,7 +36,7 @@ rs already gates injection on human interaction (InteractionGate, fed by PaneObs
 - A hold self-expires after a bounded idle window (default 60s of unchanged composer content) — a parked draft delays delivery, never blocks it.
 - pij's own injected payload never acquires a hold and never clears an active human hold.
 - The injection verdict at the send boundary derives from a capture taken AT the send boundary.
-- Composer recognition understands the real layouts (OMP box, plain-rule+prompt, Copilot footer); an unrecognised layout DEFERS (conservative veto).
+- The live composer parser is extracted to pij-harnesses behind one shared signature so the observer tick and the fresh send-boundary path use ONE parser; 'no region' becomes an explicit Unrecognized that defers.
 
 <a id="non-goals"></a>
 
@@ -58,7 +58,7 @@ rs already gates injection on human interaction (InteractionGate, fed by PaneObs
 | ac-1112 | Active typing: composer content changed within the idle window → delivery held and queued durably; nothing injected. | [ ] unchecked | — | — | — | — |
 | ac-1113 | Self-echo: a payload recorded via record_self_injection never acquires a hold when it appears in the composer, and an ACTIVE human hold is never cleared by any echo. | [ ] unchecked | — | — | — | — |
 | ac-1114 | Fresh boundary: with a stale-clear observer state and a human typing NOW, the send path holds — the verdict came from a capture at send time. | [ ] unchecked | — | — | — | — |
-| ac-1115 | Unrecognised composer layout defers (veto), and each recognised layout (OMP box, plain-rule+prompt, Copilot footer) yields the correct composer region. | [ ] unchecked | — | — | — | — |
+| ac-1115 | Layout parsing EXTRACTED to pij-harnesses with behaviour pinned: characterisation tests over live-recorded captures prove the extracted parser byte-equal to the pre-move rendered_composer on every fixture, plus the one NEW behaviour red-first: an unrecognised layout yields an explicit Unrecognized verdict that DEFERS (was a silent None). Labeled honestly: pin + one witness, not a greenfield build. | [ ] unchecked | — | — | — | — |
 | ac-1116 | Paneless seat is never gated (existing behaviour pinned by a regression test that survives this change). | [ ] unchecked | — | — | — | — |
 
 <a id="phases"></a>
