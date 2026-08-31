@@ -3,7 +3,6 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -232,10 +231,26 @@ impl Drop for BridgeLock {
 }
 
 fn process_exists(pid: u32) -> bool {
-    Command::new("/bin/kill")
-        .args(["-0", &pid.to_string()])
-        .status()
-        .is_ok_and(|status| status.success())
+    // ERRNO, NOT A SHELLED-OUT EXIT CODE. `/bin/kill -0 <pid>` answered correctly on
+    // macOS and wrongly on the Linux runner for an out-of-range pid, which is how
+    // CI's first Linux run found this: the probe's answer depended on which `kill`
+    // implementation was on the box.
+    //
+    // A pid that does not fit `pid_t` CANNOT NAME A PROCESS, so it is absent by
+    // construction — and refusing it here also keeps a u32::MAX from ever reaching
+    // a signal call, where `-1` means EVERY PROCESS.
+    //
+    // Directional, like the background runner's group probe: ESRCH PROVES absence;
+    // EPERM proves the opposite (it exists and is not ours); anything else is not
+    // absence and must not be read as one.
+    let Ok(raw) = i32::try_from(pid) else {
+        return false;
+    };
+    match nix::sys::signal::kill(nix::unistd::Pid::from_raw(raw), None) {
+        Ok(()) => true,
+        Err(nix::errno::Errno::ESRCH) => false,
+        Err(_) => true,
+    }
 }
 
 /// The concrete Telegram queue consumer.
