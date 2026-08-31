@@ -202,3 +202,8 @@ __pycache__/
 /target/
 pocs/*/target/
 pocs/*/out/
+
+# Governance lives on the standing `prime-governance` branch (see GOVERNANCE.md),
+# never on main. Ignored so a hand-written file cannot silently resurrect the tree.
+.harness/government/
+/government/

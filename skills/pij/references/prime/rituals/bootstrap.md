@@ -7,9 +7,10 @@
 
 Use this only when the store is SILENT for this repo — no current prime in
 unscoped `pij list --prime --json`, no project in `pij project list`. Absence of
-a `.harness/government/` directory is corroboration, never the trigger: store-native
-governance is the ruled default ([`store-native.md`](./store-native.md)), so a
-fully-governed repo legitimately has none. It is the day-zero
+a `.harness/government/` directory is **not a signal at all**: store-native
+governance is the ruled default ([`store-native.md`](./store-native.md)), and a
+prose tree may live off main on a governance branch (see § 3), so a
+fully-governed repo legitimately shows none on main. It is the day-zero
 ritual; role operation belongs in the orient files and protocol. Preconditions:
 a git repo, tmux, `pij`, the ambient `harness` CLI, one session for the
 `o-prime` window (pi/omp self-registers at boot; Claude/Copilot/Codex uses
@@ -57,7 +58,12 @@ Inspect the repo; do not copy the worked example's answers.
 
 ## 3. Scaffold the government
 
-Create `.harness/government/` in durable, committable repo space:
+Create a `.harness/government/` tree in durable, committable repo space. **Keep
+it off main on a standing `prime-governance` branch with a permanent worktree**,
+so product history and governance history do not interleave; in
+`AI-Substrate/pij` that worktree is
+`/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government`
+(branch `prime-governance`). Every path below is relative to that root:
 
 - Instantiate [`../templates/spine.md`](../templates/spine.md): thesis, stamp,
   writer id, roster, fence slots, allocation ledger, sequencing watch, rulings.
@@ -69,7 +75,7 @@ Create `.harness/government/` in durable, committable repo space:
 ```bash
 harness flow create prime-flow --slug <project>-portfolio \
   --schema <skill-root>/references/prime/prime-flow.schema.json \
-  --path .harness/government/prime-flow.json --agent o-prime --bare
+  --path <government-root>/prime-flow.json --agent o-prime --bare
 ```
 
 Record pre-existing workshops as prime-flow inputs at creation. Add successors
@@ -81,7 +87,7 @@ concurrent truth, `nav.now` only the seat's attention.
 - Levers 0/1 stay authoritative in this skill: point at
   [`../orient-oprime.md`](../orient-oprime.md) and
   [`../orient-global.md`](../orient-global.md); never fork them into the repo.
-- Generate `.harness/government/orient-local.md` from
+- Generate `<government-root>/orient-local.md` from
   [`../templates/orient-local.md`](../templates/orient-local.md): project
   one-liner, doctrine, harness commands, repo mechanics, mandatory reads,
   current portfolio. The run that omitted the real product pillar produced a
@@ -98,7 +104,8 @@ pattern from live registry rows.
 
 **Do not follow a summary of the recipe — follow the recipe.** It is maintained against live
 defects and changes daily:
-**`.harness/government/briefs/pa-standup-recipe.md`** in the `pij` repo (`AI-Substrate/pij`).
+**`/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/briefs/pa-standup-recipe.md`**
+in the `pij` repo (`AI-Substrate/pij`), on its `prime-governance` branch — not main.
 Only the parts a bootstrapping prime cannot discover are restated here:
 
 1. **Cheap tier is the design intent** — the fleet runs `gemini-3.6-flash` copilot seats.

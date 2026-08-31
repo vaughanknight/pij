@@ -399,7 +399,7 @@ preamble|human preamble
 planning|guided `/builder`
 validation|/validate-v2
 wait gate|WAITING_FOR_BUILD_CONFIG
-construction|worktree
+construction|stream worktree, branch, approved base
 delegation|/pij pair
 landing|/builder 8 ship
 EOF
