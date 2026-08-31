@@ -112,7 +112,7 @@ fn classify(pid: u32, output: CommandOutput) -> Result<Option<u64>> {
                 message: format!("ps failed for pid {pid} after returning a process row"),
             });
         }
-        return parse_lstart(row).map(Some);
+        return parse_process_start(row).map(Some);
     }
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -135,7 +135,11 @@ fn means_no_process(stderr: &str) -> bool {
         || stderr.contains("process id list syntax error")
 }
 
-fn parse_lstart(row: &str) -> Result<u64> {
+/// Parse Claude's C-locale `procStart` using the same identity encoding as [`ProcLiveness`].
+///
+/// # Errors
+/// Returns an adapter error when the row is not `Www Mmm DD HH:MM:SS YYYY`.
+pub fn parse_process_start(row: &str) -> Result<u64> {
     let mut fields = row.split_whitespace();
     let weekday = fields.next();
     let month = fields.next().and_then(parse_month);
@@ -166,6 +170,102 @@ fn parse_lstart(row: &str) -> Result<u64> {
         + u64::from(hour) * 10_000
         + u64::from(minute) * 100
         + u64::from(second))
+}
+
+/// Read the host's current UTC offset in minutes from the platform clock.
+///
+/// Spawn binding uses this only for a fresh process, so the current offset is
+/// the offset at process start; no historical timezone lookup is required.
+///
+/// # Errors
+/// Returns an adapter error when `date +%z` fails or emits an invalid offset.
+pub fn local_utc_offset_minutes() -> Result<i32> {
+    let output = Command::new("date")
+        .arg("+%z")
+        .env("LC_ALL", "C")
+        .output()
+        .map_err(|error| PijError::Adapter {
+            adapter: ADAPTER.to_string(),
+            message: format!("could not read local UTC offset: {error}"),
+        })?;
+    if !output.status.success() {
+        return Err(PijError::Adapter {
+            adapter: ADAPTER.to_string(),
+            message: "date +%z failed while reading local UTC offset".to_string(),
+        });
+    }
+    let value = std::str::from_utf8(&output.stdout)
+        .map_err(|error| PijError::Adapter {
+            adapter: ADAPTER.to_string(),
+            message: format!("local UTC offset was not UTF-8: {error}"),
+        })?
+        .trim();
+    parse_utc_offset(value).ok_or_else(|| PijError::Adapter {
+        adapter: ADAPTER.to_string(),
+        message: format!("invalid date +%z offset {value:?}; expected +HHMM or -HHMM"),
+    })
+}
+
+/// Compare Claude's UTC `procStart` row with the local-wall-time identity from [`ProcLiveness`].
+///
+/// # Errors
+/// Returns an adapter error when either timestamp is malformed.
+pub fn process_start_matches_utc_record(
+    record_utc: &str,
+    observed_local: u64,
+    utc_offset_minutes: i32,
+) -> Result<bool> {
+    let record = parse_process_start(record_utc)?;
+    let record_seconds = packed_naive_seconds(record)?;
+    let observed_seconds = packed_naive_seconds(observed_local)?;
+    Ok(observed_seconds - record_seconds == i64::from(utc_offset_minutes) * 60)
+}
+
+fn parse_utc_offset(value: &str) -> Option<i32> {
+    if value.len() != 5 {
+        return None;
+    }
+    let sign = match value.as_bytes()[0] {
+        b'+' => 1,
+        b'-' => -1,
+        _ => return None,
+    };
+    let hour = value[1..3].parse::<i32>().ok()?;
+    let minute = value[3..5].parse::<i32>().ok()?;
+    (hour <= 23 && minute <= 59).then_some(sign * (hour * 60 + minute))
+}
+
+fn packed_naive_seconds(value: u64) -> Result<i64> {
+    let year = u32::try_from(value / 10_000_000_000).unwrap_or(u32::MAX);
+    let month = u32::try_from(value / 100_000_000 % 100).unwrap_or(u32::MAX);
+    let day = u32::try_from(value / 1_000_000 % 100).unwrap_or(u32::MAX);
+    let hour = u32::try_from(value / 10_000 % 100).unwrap_or(u32::MAX);
+    let minute = u32::try_from(value / 100 % 100).unwrap_or(u32::MAX);
+    let second = u32::try_from(value % 100).unwrap_or(u32::MAX);
+    if !(1970..=9999).contains(&year)
+        || month == 0
+        || month > 12
+        || day == 0
+        || day > days_in_month(year, month)
+        || hour > 23
+        || minute > 59
+        || second > 59
+    {
+        return Err(parse_error(&value.to_string()));
+    }
+
+    let years = i64::from(year - 1970);
+    let mut days = years * 365 + leap_days_before(year) - leap_days_before(1970);
+    for prior_month in 1..month {
+        days += i64::from(days_in_month(year, prior_month));
+    }
+    days += i64::from(day - 1);
+    Ok(days * 86_400 + i64::from(hour) * 3_600 + i64::from(minute) * 60 + i64::from(second))
+}
+
+const fn leap_days_before(year: u32) -> i64 {
+    let prior = year - 1;
+    (prior / 4 - prior / 100 + prior / 400) as i64
 }
 
 fn parse_month(value: &str) -> Option<u32> {
@@ -227,7 +327,7 @@ mod tests {
     use pij_core::ports::LivenessPort;
     use pij_testkit::block_on;
 
-    use super::{CommandOutput, CommandRunner, ProcLiveness};
+    use super::{CommandOutput, CommandRunner, ProcLiveness, process_start_matches_utc_record};
 
     struct ScriptedRunner {
         expected_pid: u32,
@@ -302,6 +402,18 @@ mod tests {
         assert_eq!(
             block_on(adapter.proc_start(7272)).expect("absence is observable"),
             None
+        );
+    }
+
+    #[test]
+    fn utc_record_matches_the_same_local_start_and_rejects_recycled_pid_time() {
+        assert!(
+            process_start_matches_utc_record("Mon Aug 31 10:02:54 2026", 20_260_831_200_254, 600,)
+                .unwrap()
+        );
+        assert!(
+            !process_start_matches_utc_record("Mon Aug 31 10:02:53 2026", 20_260_831_200_254, 600,)
+                .unwrap()
         );
     }
 

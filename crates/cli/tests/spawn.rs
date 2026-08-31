@@ -359,8 +359,8 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
                 .data
                 .expect("registered descriptor")
                 .rpc_port_intent,
-            None,
-            "registration without the matching launch id must clear port intent"
+            Some(fresh_port),
+            "the same live process must keep its listener intent on re-registration"
         );
     }
     assert_eq!(
@@ -370,8 +370,8 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
             .expect("read after repeated registration")
             .expect("registered row")
             .rpc_port_intent,
-        None,
-        "a later registration pass must not resurrect the stale port"
+        Some(fresh_port),
+        "re-registering the same live process must not free its active port"
     );
 
     let mut predecessor = SeatDescriptor::new("pij-e2e-predecessor", Harness::Copilot, "/abs/tree");
