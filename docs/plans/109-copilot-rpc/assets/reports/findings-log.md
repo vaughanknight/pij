@@ -331,3 +331,57 @@ claim about a loaded machine.
 **Trigger:** first CI flake on any of the three, or post-release cleanup — whichever
 comes first. **Owner:** unassigned until the trigger fires.
 
+## F9 — GRADED — CAPABILITY ASYMMETRY: the fixture can produce a case production cannot reach
+
+> **The only launcher that stamps a port is the one that does not transmit the
+> correlator, and the only launcher that transmits the correlator never stamps a port.**
+
+The F1 fix keys on a launch id the registering process must echo back. `build_spawn_plan`
+emits `PIJ_SESSION_ID` and nothing else; `PIJ_SPAWN_ID` appears **zero times** across
+`crates/`. The TypeScript bridge forwards the field *only when the env var exists*, and
+the TS launcher that does export it **never emits `--ui-server`**.
+
+Observed on shipped routes, both arms:
+
+```
+arm1  SHIPPED-LAUNCH   at_spawn Some(58224)  ->  after_bind None
+arm2  TEST-SUPPLIED    at_spawn Some(58225)  ->  after_bind Some(58225)
+```
+
+**Arm 2 is the acceptance test's world. Arm 1 is production's.** The fix is correct and
+unreachable: every Copilot seat still loses its port at bind, and absence-model rows 1
+and 2 stay collapsed **in the fleet** while separated **in the test**.
+
+### Why this is a NEW class, not the previous one
+
+- **Coincidence by construction** — *the fixture cannot produce a case where the two
+  states differ.* (The registration always followed a fresh spawn; the contract wrote
+  equal values over equal values; the reported count was the configured limit.)
+- **Capability asymmetry** — *the fixture can produce a case production cannot reach.*
+  The witness reads the launch id out of the spawn response and hands it back on the
+  command line. A real seat is handed `PIJ_SESSION_ID` and nothing else.
+
+Same root — **the fixture's capabilities are not the shipped path's capabilities** — and
+the same consequence: **a green test about a code path no seat will ever take.** The
+first class is caught by asking *what can this fixture produce*; the second by asking
+**what does a real caller actually know**.
+
+### Ruled
+
+Emit `PIJ_SPAWN_ID` in the spawn argv beside `PIJ_SESSION_ID` — one line, and the bridge
+already forwards it. Chosen over inferring from `descriptor.proc.is_none()` because **a
+correlator should be explicit and carried, not inferred from a signal that means several
+things at once.**
+
+**And every witness gains an arm that supplies ONLY what a launched process could know** —
+a registration constructed from the recorded launched environment, and nothing else.
+That arm, and only that arm, would have caught this.
+
+### Second-order proof that the standard is working
+
+The revive unit's own witness was **green** and its author checked it against F9
+unprompted, found it read `spawn_id` from the persisted descriptor and passed
+`--spawn-id` by hand, and **withdrew its own receipt** — *"the fixture has a capability
+the shipped launcher did not provide; my prior green therefore does not prove fleet
+first-bind preservation."*
+
