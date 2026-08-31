@@ -1,0 +1,11 @@
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-head/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.35s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-d50519e9dfad8219)
+
+running 1 test
+PROBE_F9 arm1 SHIPPED-LAUNCH  at_spawn=Some(58224) -> after_bind=None  (no spawn_id: the argv never told the process one)
+PROBE_F9 arm2 TEST-SUPPLIED   at_spawn=Some(58225) -> after_bind=Some(58225)  (spawn_id=s-db8c0682bcb133d5bca7999d23da9c87 handed in by the caller)
+test http::tests::reviewer_probe_f9_correlator_transmission_at_fixed_head ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 88 filtered out; finished in 0.01s
+

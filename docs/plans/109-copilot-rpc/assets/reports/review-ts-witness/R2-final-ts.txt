@@ -1,0 +1,57 @@
+npm warn Unknown project config "min-release-age". This will stop working in the next major version of npm.
+(node:82360) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts
+
+ ✓ harness/test-utils.test.ts (2 tests) 3ms
+ ✓ .pi/extensions/pij/adapters/git-repository.test.ts (3 tests) 992ms
+     ✓ resolves one canonical common directory for a main checkout and linked worktree  491ms
+     ✓ distinguishes unrelated repositories and returns null outside git  500ms
+ ✓ .pi/extensions/pij/index.test.ts (13 tests) 600ms
+ ✓ skills/flow-pair/test/cli-learning.test.ts (3 tests) 1531ms
+     ✓ learn: stdout = exactly 'learning: learn-0001' and writes implement-code candidate  465ms
+     ✓ learn --json: stdout includes candidatePath and cluster  562ms
+     ✓ learn invalid cluster exits 2 and writes no candidate  503ms
+ ✓ skills/flow-pair/test/observe.test.ts (17 tests) 4579ms
+     ✓ returns {ok:true} with a real git fixture  529ms
+     ✓ writes diff-0001.patch (non-empty)  452ms
+     ✓ writes diff-0001.stat.txt (non-empty)  346ms
+     ✓ writes diff-0001.changed-files.json with required fields  323ms
+ ✓ .pi/extensions/pij/core/chores/drive.test.ts (36 tests) 68673ms
+     ✓ prints family help through the pre-registry intercept  908ms
+     ✓ frames record-looking full stdout and probe stderr so they cannot forge records  2232ms
+     ✓ reports the exact sampled values, re-reports them, then becomes quiet only after ack  3156ms
+     ✓ bounds sampled stdout visibly without changing the comparison fingerprint  760ms
+     ✓ keeps a returned delta visible as a flap until ack  3129ms
+     ✓ resolves an adopted seat from its pane and rejects an unknown explicit seat id  1896ms
+     ✓ keeps repo and fleet roster authoring available without a resolved seat  1437ms
+     ✓ normalizes repo-local absolute paths, runs repo probes from another worktree and a subdirectory, and writes formatted JSON  1701ms
+     ✓ validates add/update probe/full paths by resolved worktree containment  5322ms
+     ✓ accepts static multi-argument commands and refuses unknown executables by default  1562ms
+     ✓ refuses 'quoted variable' across add/update and probe/full without roster mutation  1979ms
+     ✓ refuses 'braced variable' across add/update and probe/full without roster mutation  1929ms
+     ✓ refuses 'tilde expansion' across add/update and probe/full without roster mutation  2048ms
+     ✓ refuses 'later variable expansion' across add/update and probe/full without roster mutation  1956ms
+     ✓ refuses 'inline interpreter payload' across add/update and probe/full without roster mutation  1917ms
+     ✓ refuses 'command substitution' across add/update and probe/full without roster mutation  1956ms
+     ✓ refuses 'backtick substitution' across add/update and probe/full without roster mutation  2247ms
+     ✓ refuses 'unterminated quote' across add/update and probe/full without roster mutation  1913ms
+     ✓ allows only exact safe runner flags before the repo script path  6170ms
+     ✓ still warns fleet-roster authors about absolute paths  400ms
+     ✓ warns when a shared chore invokes a pij verb refused to PA seats  393ms
+     ✓ updates a chore in place and preserves its creator attribution  1630ms
+     ✓ ignores unknown roster and state fields while list, run, and ack keep working  2906ms
+     ✓ reports direct roster probe edits as re-instrumentation, not world movement  3068ms
+     ✓ reports path-referenced script edits as probe changes, not value changes  3525ms
+     ✓ accepts free-text values that begin with dashes  1364ms
+     ✓ keeps a repo chore baseline independent for two seats  2005ms
+     ✓ runs the full command on the third and sixth separate invocations only  3569ms
+     ✓ runs a configured full command on every delta even without a periodic cadence  1996ms
+     ✓ remove then re-add starts from a clean first observation  2733ms
+
+ Test Files  6 passed (6)
+      Tests  74 passed (74)
+   Start at  14:21:02
+   Duration  68.92s (transform 944ms, setup 0ms, import 1.29s, tests 76.38s, environment 0ms)
+

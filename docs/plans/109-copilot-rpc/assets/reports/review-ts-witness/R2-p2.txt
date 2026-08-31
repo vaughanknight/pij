@@ -1,0 +1,32 @@
+npm warn Unknown project config "min-release-age". This will stop working in the next major version of npm.
+(node:76505) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts
+
+ ❯ harness/test-utils.test.ts (2 tests | 1 failed) 3ms
+     ✓ configures native removal to recover after two injected ENOTEMPTY attempts 1ms
+     × does not swallow persistent ENOTEMPTY after the configured bound 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  harness/test-utils.test.ts > removeTemporaryTree > does not swallow persistent ENOTEMPTY after the configured bound
+AssertionError: expected function to throw an error, but it didn't
+ ❯ harness/test-utils.test.ts:48:82
+     46|   const injected = injectedNativeRemoval(Number.POSITIVE_INFINITY);
+     47|
+     48|   expect(() => removeTemporaryTree("/tmp/injected-persistent", injecte…
+       |                                                                                  ^
+     49|    expect.objectContaining({ code: "ENOTEMPTY" }),
+     50|   );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  14:20:51
+   Duration  93ms (transform 13ms, setup 0ms, import 21ms, tests 3ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-ts/harness/test-utils.test.ts,title=harness/test-utils.test.ts > removeTemporaryTree > does not swallow persistent ENOTEMPTY after the configured bound,line=48,column=82::AssertionError: expected function to throw an error, but it didn't%0A ❯ harness/test-utils.test.ts:48:82%0A%0A

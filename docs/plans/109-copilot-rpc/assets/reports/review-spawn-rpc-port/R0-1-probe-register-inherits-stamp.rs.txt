@@ -1,0 +1,128 @@
+// ---------------------------------------------------------------------------
+// REVIEWER PROBE (plan 109 unit 1) — TEMPORARY, reverted after the run.
+// Question: on the SHIPPED routes, does a re-registration inherit a spawn-time
+// capability stamp from the previous incarnation of the same seat id?
+// Discriminates by CONTENT: every arm prints a value, never an absence.
+//   inherited -> Some(true) survives a register the claim never mentioned
+//   reset     -> None
+//   never set -> None   (the RED ARM: proves the probe can print the other answer)
+// ---------------------------------------------------------------------------
+#[tokio::test]
+async fn reviewer_probe_does_register_inherit_the_spawn_stamp() {
+    let identity = ProcIdentity {
+        pid: 4242,
+        proc_start: 20260831022500,
+    };
+    // A SECOND process for the red arm. My first attempt reused `identity` and
+    // the fresh registration was refused as a subagent alias, so the red arm
+    // never measured anything — disclosed in the report.
+    let other = ProcIdentity {
+        pid: 4343,
+        proc_start: 20260831022501,
+    };
+    let registry = Arc::new(FakeRegistry::new());
+    let tmux = Arc::new(FakeTmux::new().with_pane(Pane {
+        id: "%caller".to_string(),
+        session: "fleet".to_string(),
+        window: "orchestrator".to_string(),
+        title: String::new(),
+        cursor_x: None,
+        cursor_y: None,
+    }));
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.tmux = tmux.clone();
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(identity).with_proc(other));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+
+    // 1. Spawn a Claude seat WITH the capability. This is the only route that
+    //    can set the stamp at all.
+    let spawned = client
+        .post(format!("http://{addr}/v1/spawn"))
+        .bearer_auth("key")
+        .json(&SpawnRequest {
+            id: Some("pij-probe-open".into()),
+            harness: Harness::Claude,
+            executable: None,
+            model: None,
+            effort: None,
+            cwd: "/abs/tree".to_string(),
+            session: Some("fleet".to_string()),
+            caller_pane: None,
+            name: None,
+            parent: None,
+            accept_inbound: true,
+        })
+        .send()
+        .await
+        .expect("spawn request");
+    assert_eq!(spawned.status(), reqwest::StatusCode::OK);
+    let spawned: Envelope<SeatDescriptor> = spawned.json().await.expect("spawn envelope");
+    let at_spawn = spawned.data.expect("descriptor").cross_session_inbound_accept;
+
+    // 2. The SAME seat id re-registers — a new incarnation of the process, which
+    //    is what a restart-in-place looks like on this surface. The claim says
+    //    nothing about the capability.
+    let claim = Registration {
+        supersedes: None,
+        id: "pij-probe-open".to_string(),
+        harness: "claude".to_string(),
+        folder: "/abs/tree".to_string(),
+        pane: Some("%42".to_string()),
+        pid: Some(identity.pid),
+        proc_start: Some(identity.proc_start),
+        spawn_id: None,
+        model: None,
+        provider: None,
+        effort: None,
+        parent: None,
+        relay: false,
+    };
+    let reregistered = client
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&claim)
+        .send()
+        .await
+        .expect("register request");
+    assert_eq!(reregistered.status(), reqwest::StatusCode::OK);
+    let reregistered: Envelope<SeatDescriptor> =
+        reregistered.json().await.expect("register envelope");
+    let after_register = reregistered
+        .data
+        .expect("descriptor")
+        .cross_session_inbound_accept;
+
+    // 3. RED ARM — a seat id that was never spawned. If the probe printed
+    //    Some(true) here too it would be measuring nothing.
+    let fresh = client
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&Registration {
+            id: "pij-probe-never-spawned".to_string(),
+            pid: Some(other.pid),
+            proc_start: Some(other.proc_start),
+            ..claim.clone()
+        })
+        .send()
+        .await
+        .expect("fresh register");
+    let fresh_status = fresh.status();
+    let fresh: Envelope<SeatDescriptor> = fresh.json().await.expect("fresh envelope");
+    let never_spawned = fresh
+        .data
+        .expect("fresh descriptor")
+        .cross_session_inbound_accept;
+
+    println!("PROBE at_spawn          = {at_spawn:?}");
+    println!("PROBE after_register    = {after_register:?}");
+    println!("PROBE red_arm_status    = {fresh_status}");
+    println!("PROBE red_arm_never_set = {never_spawned:?}");
+
+    server.abort();
+}

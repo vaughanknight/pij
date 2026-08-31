@@ -1,0 +1,37 @@
+   Compiling ring v0.17.14
+   Compiling rustls v0.23.43
+   Compiling rustls-webpki v0.103.15
+   Compiling tokio-rustls v0.26.4
+   Compiling sqlx-core v0.8.6
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.12.28
+   Compiling pij-sidecars v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-head/crates/sidecars)
+   Compiling sqlx-sqlite v0.8.6
+   Compiling sqlx-macros-core v0.8.6
+   Compiling sqlx-macros v0.8.6
+   Compiling sqlx v0.8.6
+   Compiling pij-store v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-head/crates/store)
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/s109-rev-head/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.07s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-d50519e9dfad8219)
+
+running 2 tests
+PROBE_F5 red_arm_before_revive_reason = Some("crashed mid-review; unread mail left for a revive")
+PROBE_F5 red_arm_before_revive_role   = Some("reviewer")
+PROBE_F5 red_arm_before_semantic      = Some(Blocked)
+PROBE_F1 at_spawn            = Some(55135)   proc=None
+PROBE_F1 after_first_bind    = None   proc=Some(ProcIdentity { pid: 5151, proc_start: 20260831031000 })
+PROBE_F1 persisted_in_store  = None
+PROBE_F1 red_arm_status      = 200 OK
+PROBE_F1 red_arm_never_spawn = None
+test http::tests::reviewer_probe_f1_does_the_binding_registration_destroy_launch_intent ... ok
+PROBE_F5 revive_status                = 200 OK
+PROBE_F5 after_revive_reason          = None
+PROBE_F5 after_revive_tombstoned_at   = None
+PROBE_F5 after_revive_role            = None
+PROBE_F5 after_revive_semantic        = None
+PROBE_F5 after_revive_parent          = Some(SeatId("pij-governor"))
+test http::tests::reviewer_probe_f5_does_revive_by_spawn_destroy_the_post_mortem ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 88 filtered out; finished in 0.01s
+
