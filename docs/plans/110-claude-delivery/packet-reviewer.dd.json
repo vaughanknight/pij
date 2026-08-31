@@ -1,0 +1,68 @@
+{
+  "dd": { "schema": "pij-team/packet" },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Reviewer packet — plan 110, Claude Code direct delivery",
+        "role": "reviewer",
+        "plan": "docs/plans/110-claude-delivery/",
+        "seat": "(assigned at spawn)",
+        "updated": "2026-08-31",
+        "from": "pij-fatal-woodpecker (pm)"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "Review the composed s110/claude-delivery branch against req-0002. RE-DERIVE THE ACCEPTANCE ARMS BY EXECUTION — do not read my claims and agree with them. Every number in my reports is checkable; check the ones that would change a decision."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        { "id": "i1", "text": "PRIORITY ORDER, from the impl-guide, highest first: (1) is Held ACTUALLY observable on the wire, or still unreachable for a THIRD reason nobody has named; (2) is concurrency REFUSED rather than resolved; (3) is every guard witnessed red before its green; (4) does the honest-receipt vocabulary still refuse to call a timeout Delivered; (5) one row per seat, proven from the launched environment." },
+        { "id": "i2", "text": "RUN THE MUTATIONS YOURSELF. Mine: revert `build_peer_frame(msg, &inbox.origin())` to the literal \"uds:pij-daemon\" (expect 4 failures); revert classify_status's is_status to the bare type only (expect 5); replace the Held arm in pointer/worker.rs with release_body (expect 2). A mutation report you did not execute is a claim." },
+        { "id": "i3", "text": "THE TEST I TOLD YOU NOT TO TRUST: `the_control_shape_is_what_the_live_cli_actually_emits` stays GREEN under mutation 2. It pins the fixture, it does not guard the decoder. Check whether any OTHER test in this branch has the same shape — reads as a guard, catches nothing. That is the highest-value thing you can find." },
+        { "id": "i4", "text": "CHECK MY EVIDENCE CLASSES. The held and delivered arms are LIVE against real Claude sessions. The refused arm is FAKE-SERVER ONLY — no live refusal was ever observed end to end. If you find me claiming otherwise anywhere, that is a finding. The fixtures in crates/testkit/fixtures/uds/ claim to be RECORDINGS; status-dropped.ndjson is explicitly NOT one." },
+        { "id": "i5", "text": "The gate must be run as `~/.cargo/bin/cargo run -p pij-testkit --bin pij-gate`. A bare cargo here is not the rustup shim and silently runs rustc 1.95.0 against a 1.98.0 pin. If you report a gate result from the wrong compiler, that is a green that lies." },
+        { "id": "i6", "text": "Load BOTH the pij skill and the builder skill. Report findings to pij-fatal-woodpecker via `pij send` — never a modal in your pane." },
+        { "id": "i7", "text": "Adversarial prompt, and I mean it: I am the PM, I authored the evidence base, AND I wrote most of this code. That is a concentration of authorship with no independent check in it — you are the check. Two of my findings today were wrong and were caught by other people (an inverted acceptance criterion caught by the coder; a startup-window finding I had to retract after the prime ruled on it). Assume there is a third." }
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        { "id": "w1", "text": "PM: pij-fatal-woodpecker (author of u-uds and of the PoC the plan is built on)." },
+        { "id": "w2", "text": "Coder: pij-familiar-nigel (u-adopt). Its unit is the daemon register path." },
+        { "id": "w3", "text": "Prime: pij-dominant-vicuna reviews after me and before Jordan merges." }
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "(assigned at spawn — a read-only review worktree off the composed branch)",
+        "branch": "s110/claude-delivery (composed)",
+        "fence": "READ AND EXECUTE ONLY. Do not fix what you find — report it. A reviewer who edits the branch destroys the independence that makes the review worth running.",
+        "forbidden_note": "Never write .the-flow-state.json, the-flow.json, the-flow.md, or anything in the prime-governance worktree."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        { "id": "d1", "text": "Every acceptance criterion in plan.dd.md either re-derived by execution or explicitly marked NOT re-derived, with the reason." },
+        { "id": "d2", "text": "The three mutation families run by you, with your own observed pass/fail counts." },
+        { "id": "d3", "text": "A verdict on the concentration-of-authorship risk in i7: name what you checked independently and what you had to take on trust." },
+        { "id": "d4", "text": "Findings ranked by whether they degrade a CONTROL (a guard that does not guard, a receipt that overclaims) above findings that merely obscure information." }
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        { "id": "r1", "path": "/Users/jordanknight/pi-hacking/pij-worktrees/s110-claude-delivery/docs/plans/110-claude-delivery/plan.dd.md", "note": "acceptance criteria and the open questions, including the two closed ones" },
+        { "id": "r2", "path": "/Users/jordanknight/pi-hacking/pij-worktrees/s110-claude-delivery/docs/plans/110-claude-delivery/impl-guide.dd.md", "note": "the four defects and the binding one-in-flight invariant" },
+        { "id": "r3", "path": "/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/prd/base-prd.dd.md", "note": "req-0002 verbatim" },
+        { "id": "r4", "path": "/Users/jordanknight/pi-hacking/pij/scratch/woodpecker-poc/FINDINGS.md", "note": "the measured evidence base plus the plan-110 addendum: the retraction, both instrument confessions, and the test I marked as not-a-guard" },
+        { "id": "r5", "path": "https://github.com/vaughanknight/pij", "note": "prior art, issue #311 — VERIFY BEFORE TRUSTING: its documented status-frame shape never appeared once across five measured arms, and 4 of 6 of its Copilot claims diverged in plan 109" }
+      ]
+    }
+  ]
+}
