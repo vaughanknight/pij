@@ -1307,6 +1307,15 @@ describe("parseAdoptArgs (T023)", () => {
 		});
 	});
 
+	it("teaches pi/omp seats that adopt is unnecessary", () => {
+		expect(parseAdoptArgs(["%72", "--harness", "pi"])).toEqual({
+			ok: false,
+			code: "E-ARG",
+			message:
+				"pi/omp seats self-register at boot; you are already reachable — run `pij whoami` to confirm, never adopt",
+		});
+	});
+
 	it("rejects missing --session-id/--parent values instead of consuming the next flag", () => {
 		expect(parseAdoptArgs(["%7", "--harness", "claude", "--session-id", "--json"])).toMatchObject({
 			ok: false,

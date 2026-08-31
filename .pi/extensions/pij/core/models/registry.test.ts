@@ -3,15 +3,19 @@
 // Pi-first: parseModelsJson covers the live ~/.pi/agent/models.json shape.
 // Copilot seeded from pi's github-copilot provider section.
 // Claude alias list + codex snapshot are honest best-effort/unverified.
-
 import { describe, expect, it } from "vitest";
+
 import {
 	claudeAliases,
 	codexConfigModels,
 	codexSnapshot,
 	copilotSeedFromPi,
 	copilotSnapshot,
+	loadOmpModels,
+	modelsForFilter,
+	modelsForRuntime,
 	parseModelsJson,
+	parseOmpModelsJson,
 } from "./registry.js";
 
 // Minimal pi JSON fixture covering all structural variations.
@@ -40,7 +44,7 @@ const PI_JSON = {
 };
 
 const GPT56_LEVELS = ["none", "low", "medium", "high", "xhigh", "max"];
-const GPT56_IDS = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"];
+const GPT56_IDS = ["gpt-5.6-sol", "gpt-5.6-sol-fast", "gpt-5.6-terra", "gpt-5.6-luna"];
 const PI_GPT56_JSON = {
 	providers: {
 		"github-copilot": {
@@ -51,6 +55,11 @@ const PI_GPT56_JSON = {
 					thinkingLevelMap: { xhigh: "xhigh", max: "max" },
 				},
 				{ id: "gpt-5.6-terra", reasoning: true, thinkingLevelMap: { high: "high" } },
+				{
+					id: "gpt-5.6-sol-fast",
+					reasoning: true,
+					thinkingLevelMap: { high: "high" },
+				},
 				{
 					id: "gpt-5.6-preview",
 					reasoning: true,
@@ -161,10 +170,12 @@ describe("copilotSeedFromPi", () => {
 		expect(ids).toContain("mai-code-1-flash-internal");
 		expect(ids).toContain("gpt-5.5"); // from modelOverrides
 	});
-
-	it("labels them as copilot provider", () => {
+	it("separates the Copilot runtime from its upstream provider", () => {
 		const entries = copilotSeedFromPi(PI_JSON);
-		for (const e of entries) expect(e.provider).toBe("copilot");
+		for (const entry of entries) {
+			expect(entry.provider).toBe("github-copilot");
+			expect(entry.runtime).toBe("copilot");
+		}
 	});
 
 	it("returns empty array when github-copilot section is absent", () => {
@@ -177,7 +188,8 @@ describe("copilotSeedFromPi", () => {
 		for (const id of GPT56_IDS) {
 			expect(entries.find((entry) => entry.id === id)).toMatchObject({
 				id,
-				provider: "copilot",
+				provider: "github-copilot",
+				runtime: "copilot",
 				verified: true,
 				reasoning: true,
 				levels: GPT56_LEVELS,
@@ -241,18 +253,254 @@ describe("codexSnapshot", () => {
 });
 
 describe("copilotSnapshot", () => {
-	it("advertises the gpt-5.6 trio as unverified copilot aliases", () => {
+	it("advertises the measured gpt-5.6 family as Copilot CLI ids", () => {
 		const snap = copilotSnapshot();
-		const ids = snap.map((e) => e.id);
-		for (const id of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
-			expect(ids).toContain(id);
+		const ids = snap.map((entry) => entry.id);
+		for (const id of GPT56_IDS) expect(ids).toContain(id);
+		expect(ids.some((id) => id.endsWith("-1m"))).toBe(false);
+		for (const entry of snap) {
+			expect(entry).toMatchObject({
+				provider: "github-copilot",
+				runtime: "copilot",
+				selector: entry.id,
+				contextWindow: 1_050_000,
+				reasoning: true,
+				levels: GPT56_LEVELS,
+			});
 		}
-		for (const e of snap) {
-			expect(e.provider).toBe("copilot");
-			expect(e.verified).toBe(false); // best-effort until canaried
-			expect(e.reasoning).toBe(true);
-			expect(e.levels).toEqual(GPT56_LEVELS);
+	});
+});
+
+const OMP_BASE_CONTEXTS = {
+	luna: 328_000,
+	sol: 400_000,
+	"sol-fast": 400_000,
+	terra: 400_000,
+} as const;
+
+const OMP_GPT56_JSON = {
+	models: Object.entries(OMP_BASE_CONTEXTS).flatMap(([family, contextWindow]) => {
+		const id = `gpt-5.6-${family}`;
+		return [
+			{
+				provider: "github-copilot",
+				id,
+				selector: `github-copilot/${id}`,
+				name: id,
+				contextWindow,
+				maxTokens: 128_000,
+				reasoning: false,
+			},
+			{
+				provider: "github-copilot",
+				id: `${id}-1m`,
+				selector: `github-copilot/${id}-1m`,
+				name: `${id} (1M)`,
+				contextWindow: 1_050_000,
+				maxTokens: 128_000,
+				reasoning: false,
+			},
+		];
+	}),
+};
+
+describe("parseOmpModelsJson", () => {
+	it("preserves all base and -1m selectors with distinct measured contexts", () => {
+		const entries = parseOmpModelsJson(OMP_GPT56_JSON);
+		expect(entries).toHaveLength(8);
+		for (const [family, baseContext] of Object.entries(OMP_BASE_CONTEXTS)) {
+			const id = `gpt-5.6-${family}`;
+			expect(entries.find((entry) => entry.id === id)).toMatchObject({
+				selector: `github-copilot/${id}`,
+				requestModelId: id,
+				provider: "github-copilot",
+				runtime: "omp",
+				contextWindow: baseContext,
+				levels: GPT56_LEVELS,
+			});
+			expect(entries.find((entry) => entry.id === `${id}-1m`)).toMatchObject({
+				selector: `github-copilot/${id}-1m`,
+				requestModelId: id,
+				contextWindow: 1_050_000,
+				levels: GPT56_LEVELS,
+			});
 		}
+	});
+
+	it("reads effort names from OMP's live thinking array shape", () => {
+		const entries = parseOmpModelsJson({
+			models: [
+				{
+					provider: "openrouter",
+					id: "reasoning-model",
+					selector: "openrouter/reasoning-model",
+					name: "Reasoning Model",
+					thinking: ["off", "low", "medium", "high", "xhigh"],
+				},
+			],
+		});
+		expect(entries).toHaveLength(1);
+		expect(entries[0]?.levels).toEqual(["off", "low", "medium", "high", "xhigh"]);
+		expect(entries[0]?.reasoning).toBe(true);
+	});
+
+	it("accepts live thinking:null rows alongside reasoning rows", () => {
+		const entries = parseOmpModelsJson({
+			models: [
+				{
+					provider: "openrouter",
+					id: "non-reasoning-model",
+					selector: "openrouter/non-reasoning-model",
+					name: "Non-reasoning Model",
+					reasoning: false,
+					thinking: null,
+				},
+				{
+					provider: "openrouter",
+					id: "reasoning-model",
+					selector: "openrouter/reasoning-model",
+					name: "Reasoning Model",
+					reasoning: true,
+					thinking: ["low", "high"],
+				},
+			],
+		});
+		expect(entries).toHaveLength(2);
+		expect(entries[0]).toMatchObject({
+			id: "non-reasoning-model",
+			reasoning: false,
+			levels: [],
+		});
+		expect(entries[1]).toMatchObject({
+			id: "reasoning-model",
+			reasoning: true,
+			levels: ["low", "high"],
+		});
+	});
+
+	it.each([
+		["low", 1],
+		["low", ""],
+		[" low"],
+	])("rejects the whole inventory for malformed thinking arrays %#", (thinking) => {
+		expect(
+			parseOmpModelsJson({
+				models: [
+					OMP_GPT56_JSON.models[0],
+					{
+						provider: "openrouter",
+						id: "malformed-thinking",
+						selector: "openrouter/malformed-thinking",
+						thinking,
+					},
+				],
+			}),
+		).toEqual([]);
+	});
+
+	it("does not let stale overrides collapse base rows onto their -1m contexts", () => {
+		const collapsed = {
+			models: OMP_GPT56_JSON.models.map((model) => ({ ...model, contextWindow: 1_050_000 })),
+		};
+		const entries = parseOmpModelsJson(collapsed);
+		for (const [family, baseContext] of Object.entries(OMP_BASE_CONTEXTS)) {
+			expect(entries.find((entry) => entry.id === `gpt-5.6-${family}`)?.contextWindow).toBe(
+				baseContext,
+			);
+			expect(entries.find((entry) => entry.id === `gpt-5.6-${family}-1m`)?.contextWindow).toBe(
+				1_050_000,
+			);
+		}
+	});
+
+	it("rejects success-shaped empty and malformed inventories", () => {
+		expect(parseOmpModelsJson({ models: [] })).toEqual([]);
+		expect(parseOmpModelsJson({ models: "not-an-array" })).toEqual([]);
+	});
+
+	it("rejects the whole inventory when any row is malformed", () => {
+		expect(
+			parseOmpModelsJson({
+				models: [
+					OMP_GPT56_JSON.models[0],
+					{
+						provider: "openrouter",
+						id: "missing-exact-selector",
+						name: "Malformed",
+					},
+				],
+			}),
+		).toEqual([]);
+	});
+});
+
+describe("loadOmpModels", () => {
+	it("uses the supported bounded no-refresh command and returns parsed entries", () => {
+		const calls: Array<{
+			command: string;
+			args: readonly string[];
+			options: { readonly timeout: number };
+		}> = [];
+		const result = loadOmpModels((command, args, options) => {
+			calls.push({ command, args, options });
+			return { status: 0, stdout: JSON.stringify(OMP_GPT56_JSON), stderr: "" };
+		});
+		expect(calls).toEqual([
+			{
+				command: "omp",
+				args: ["models", "--json", "--no-extensions"],
+				options: { timeout: expect.any(Number) },
+			},
+		]);
+		expect(calls[0]?.options.timeout).toBeGreaterThan(0);
+		expect(result).toMatchObject({ ok: true, models: expect.any(Array) });
+	});
+
+	it.each([
+		{ status: 127, stdout: "", stderr: "not found" },
+		{ status: 0, stdout: "not-json", stderr: "" },
+		{ status: 0, stdout: '{"models":[]}', stderr: "" },
+	])("fails honestly for an unavailable or incomplete inventory", (commandResult) => {
+		const result = loadOmpModels(() => commandResult);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error).toMatch(/OMP model inventory/i);
+	});
+
+	it("reports a bounded runner timeout through unavailable inventory", () => {
+		let timeout = 0;
+		const result = loadOmpModels((_command, _args, options) => {
+			timeout = options.timeout;
+			return { status: null, stdout: "", stderr: "spawnSync omp ETIMEDOUT" };
+		});
+		expect(timeout).toBeGreaterThan(0);
+		expect(result).toEqual({
+			ok: false,
+			error: "OMP model inventory unavailable (spawnSync omp ETIMEDOUT)",
+		});
+	});
+});
+
+describe("modelsForRuntime", () => {
+	it("selects runtime rows without conflating their shared provider", () => {
+		const all = [...copilotSnapshot(), ...parseOmpModelsJson(OMP_GPT56_JSON)];
+		expect(modelsForRuntime(all, "copilot").every((entry) => entry.runtime === "copilot")).toBe(
+			true,
+		);
+		expect(modelsForRuntime(all, "omp").every((entry) => entry.runtime === "omp")).toBe(true);
+	});
+
+	it("uses runtime semantics only for known runtimes and provider equality otherwise", () => {
+		const all = [
+			...parseModelsJson(PI_JSON),
+			...copilotSeedFromPi(PI_JSON),
+			...parseOmpModelsJson(OMP_GPT56_JSON),
+		];
+		expect(modelsForFilter(all, "openrouter")).toHaveLength(1);
+		expect(modelsForFilter(all, "sakana")).toHaveLength(2);
+		const githubCopilot = modelsForFilter(all, "github-copilot");
+		expect(githubCopilot.length).toBeGreaterThan(0);
+		expect(githubCopilot.every((entry) => entry.provider === "github-copilot")).toBe(true);
+		expect(modelsForFilter(all, "copilot")).toHaveLength(copilotSeedFromPi(PI_JSON).length);
 	});
 });
 

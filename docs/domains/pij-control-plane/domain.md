@@ -4,10 +4,11 @@
 
 A machine-wide **control plane** that spawns, addresses, messages, deterministically
 binds, verifies, and tails coding-agent sessions across heterogeneous harnesses
-(pi today, Claude Code now over tmux, Copilot later) under a **single durable identity** and a file-backed **switchboard daemon**. It extends `pij-messaging` from
-"two live pi sessions" to "any harness pij can drive", without disturbing the one
-immovable seam — `pi.sendUserMessage` stays in-process (owned by `pij-messaging`'s
-thin receiver). Plan 019.
+(Pi, OMP, Claude Code, Copilot CLI, and Codex) under a **single durable identity**
+and a file-backed **switchboard daemon**. It extends `pij-messaging` from "two live
+pi sessions" to "any harness pij can drive", without disturbing the one immovable
+seam — `pi.sendUserMessage` stays in-process (owned by `pij-messaging`'s thin
+receiver). Plan 019.
 
 ## Source Locations
 
@@ -22,7 +23,7 @@ thin receiver). Plan 019.
 | `.pi/extensions/pij/core/harness/codex.ts` | Codex transport (Plan 022): global date-nested rollout layout, trailing-UUID id (`codexSessionIdFromPath`), recursive `listCodexRollouts`, `session_meta.cwd` confirm (`codexCwdFromMeta`), `summarizeCodexEvent` tail. |
 | `.pi/extensions/pij/core/harness/transcript.ts` | `transcriptLayout(harness)` selector (Plan 022): harness-selected `dir`/`list`/`sessionIdOf` so the daemon's discovery bind works for claude (flat, cwd-scoped, stem) AND codex (deep, global, UUID) from one code path; claude byte-unchanged. |
 | `.pi/extensions/pij/core/harness/pi.ts` | Pi transport: observe-only routing (delivery owned by the thin receiver). |
-| `.pi/extensions/pij/core/models/registry.ts` | Shared model registry: pure Pi/Copilot/Codex/Claude source parsers and snapshots plus the single impure `loadModels()` composition root. Owns `ModelEntry.reasoning`/`levels`, verified-vs-curated semantics, and the exact Copilot GPT-5.6 effort correction. |
+| `.pi/extensions/pij/core/models/registry.ts` | Shared runtime-aware model catalog: Pi configuration, Copilot/Codex/Claude snapshots, and a bounded `omp models --json --no-extensions` inventory probe. Owns `ModelEntry.runtime`/`provider`/`selector`/`requestModelId`, effort/context metadata, verified-vs-curated semantics, strict whole-inventory validation, and centralized runtime-or-provider filtering. |
 | `.pi/extensions/pij/core/models/validate.ts` | Pure model and effort validation against registry entries; reports only positive contradictions and never blocks spawn. |
 | `.pi/extensions/pij/adapters/git-repository.ts` | Argv-only canonical Git common-directory resolver; main checkout and linked worktrees share one absolute identity, non-Git returns null. |
 | `.pi/extensions/pij/core/spawn.ts` | Spawn warning composition, structural/repository pending metadata including `spawnId`, adopt-parent grammar, and harness-specific effort translation (`:<level>` for Pi, `--effort` for Claude/Copilot, Codex config override). |
@@ -80,10 +81,10 @@ thin receiver). Plan 019.
 | Retained tmux history | Daemon delivery no longer deletes envelopes or replays marked history. | `msg-*` retained; `read-*` published after confirmed/unverified outcome; receipt event persisted before receipt marker. |
 | Telegram conversation routing | Bare text/captionless media follows the last session whose non-receipt bubble successfully reached that normalized chat id; explicit selection remains separate for `/tail`. | reply tag > explicit name > last speaker; `onSpoke` after first successful send; process-local maps in `startBridge`. |
 | Telegram sender context | Every agent bubble keeps `[pij-id]` first, then adds stable repository identity from the sender descriptor folder. | `[pij-id] [repo]` on `main`; `[pij-id] [repo/branch]` otherwise; bounded git failure or missing descriptor falls back to `[pij-id]`. |
-| Model registry | One shared registry composes source-derived rows and best-effort aliases for model discovery, validation, and provider binding. | Raw `github-copilot` rows and `provider:"copilot"` seed clones remain distinct projections; `verified:false` means not live-confirmed. |
+| Model catalog | One shared catalog composes runtime-local rows without conflating target runtime and upstream provider. | `ModelEntry` carries `runtime`, upstream `provider`, exact caller `selector`, and underlying `requestModelId`; known runtime filters select runtime rows, other filters match provider exactly; `verified:false` means not live-confirmed. |
 | Deterministic provider binding | Pi-family CLI and model-facing spawns resolve provider identity before tmux mutation. | Qualified refs pass through; bare ids with a `github-copilot` candidate bind there with notice; every other provider collision returns `E-AMBIGUOUS`. |
 | Bound provider identity | Provider is registry truth independent from the model string. | `SessionDescriptor.boundProvider?`; child boot receives `PIJ_SPAWN_PROVIDER`; `pij list` human/JSON surfaces it; null means legacy/default/genuinely unknown. |
-| Model effort capability | `ModelEntry.levels` is the canonical ordered effort set used by every current validation/advertisement consumer. | Exact Copilot ids `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna` use `none, low, medium, high, xhigh, max` only under `github-copilot` parsing and Copilot fallback construction; same-id rows under other providers retain source data. |
+| Model effort capability | `ModelEntry.levels` is the canonical ordered effort set used by every validation and advertisement consumer. | Pi derives non-null keys from `thinkingLevelMap`; OMP validates and retains values from its live `thinking: string[]`; the four Copilot GPT-5.6 ids use `none, low, medium, high, xhigh, max`, including Sol Fast. |
 | Validation posture | Unknown ids and unsupported known effort values warn without blocking; provider ambiguity fails closed. | Warnings list known levels; ambiguous provider choices return `E-AMBIGUOUS` before expectation or tmux mutation. |
 | Tailing | A bound claude session's transcript path is resolvable and streamable. | `pij tail` (AC-09). |
 | Semantic clear audit | Removing a semantic declaration remains an append-only, recoverable platform action. | `state-cleared` is assignment-coupled under the platform write lock; journal-first recovery reconciles its stamped sequence exactly once. |
@@ -107,8 +108,8 @@ thin receiver). Plan 019.
 | Watchdog stalled episode | daemon whole-life detector + manager watcher delivery | Two silent fires stamp `failureReason:"stalled"`; owner and each anomaly watcher are notified once until typed real recovery. `capture.mode:"always"` remains every-due-fire. |
 | Telegram last-speaker seam | Telegram bot + forwarder | `getLastSpeaker(String(chatId))` supplies inbound fallback; `onSpoke(from)` updates only after the first successful non-receipt Telegram send; `/tail` uses separate selected-target state. |
 | Telegram repository-context seam | Telegram forwarder | `senderContext(from)` runs once per `DeliveredMessage`; `startBridge` resolves the sender descriptor folder through an injected git runner with 2-second subprocess bounds and reuses the prefix across chunks/media. |
-| Model registry entry | `pij models`, peer spawn, agent spawn | `{ id, name, provider, verified, reasoning?, levels? }`; source-derived data is preferred over same-harness fallbacks, while provider projections remain separate. |
-| Copilot GPT-5.6 effort correction | registry + validation consumers | The exact trio exposes ordered levels `none\|low\|medium\|high\|xhigh\|max`; fallback aliases retain `verified:false`; unsupported `minimal` is reported but does not block. |
+| Model catalog entry | `pij models`, peer spawn, agent spawn | `{ id, name, runtime, provider, selector, requestModelId, verified, reasoning?, levels?, contextWindow? }`; runtime is the accepting client, provider is upstream identity, selector is passed exactly, and requestModelId records an alias's API id. OMP rows are complete only when the bounded CLI inventory is wholly valid. |
+| Copilot/OMP GPT-5.6 contract | registry + validation consumers | Copilot exposes four actual CLI ids and no OMP-only `-1m` aliases; OMP preserves provider-qualified base/`-1m` selectors and distinct contexts. All four families expose ordered levels `none\|low\|medium\|high\|xhigh\|max`; warnings never block spawn. |
 | Provider binding + projection | CLI spawn, model-facing spawn, registry/list | One resolver owns qualification; `boundProvider` persists separately from `boundModel` and projects in human/JSON list output. |
 | Chore store + verb family | CLI, PA/operator loops | Scope definitions union without shadowing; repo definitions must match an explicit command grammar with unknown-default refusal, run at the active worktree root, and require every path-like token to resolve within it; refusals distinguish forbidden constructs from commands that cannot be proven static and point to seat/fleet scope; committed repo JSON is formatted; values stay framed and bounded; failures stay visible and counted; pending deltas and flaps re-surface until ack; creator and instrument changes are projected; fleet files stay below `~/.pij/pij-chores/`. |
 
@@ -157,6 +158,7 @@ thin receiver). Plan 019.
 | `extension-authoring-harness` | consume | `harness/driver/tmux.ts` primitives (now re-exported from the shared lib); vitest/Biome/Driver smoke. |
 | tmux + `claude` CLI | consume (impure) | `split-window -P`, `send-keys`, `capture-pane`; Claude Code v2.1.x footer/transcript surface. |
 | Pi/Codex user configuration | consume (impure) | `~/.pi/agent/models.json` provider models/overrides and the top-level model in `~/.codex/config.toml`; unreadable sources degrade to curated aliases. |
+| OMP CLI | consume (impure, bounded) | `omp models --json --no-extensions` supplies the effective cached runtime inventory. A five-second process bound, nonzero exit, malformed row, missing exact selector, or empty inventory makes OMP unavailable; bare catalog discovery fails rather than presenting a partial catalog, while spawn remains warn-don't-block. |
 
 ### Domains That Depend On This
 
@@ -189,3 +191,4 @@ thin receiver). Plan 019.
 | 060-state-model-v2 | Added the assignment-coupled `state-cleared` spine event, journal-first recovery, and clear-state CLI wiring. | 2026-07-20 |
 | 076-pij-chore-primitive | Added union-merged chore rosters, then hardened field behavior with bounded sampled values, pane-resolved/validated seat identity, net-zero closure, full-on-delta, atomic update, creator attribution, forward-tolerant state, and re-instrumentation. | 2026-08-02 |
 | 077-chore-field-round-2 / PR A | Made repo chore rosters portable across linked worktrees and subdirectory invocation, enforced an unknown-refusing command grammar with exact safe runner flags plus resolved worktree containment, and formatted committed roster JSON without changing compact machine-state writers. | 2026-08-02 |
+| 106-model-catalog-parity | Separated runtime, provider, exact selector, and request model id; added Copilot Sol Fast; preserved OMP base/`-1m` variants and contexts; added bounded strict OMP inventory loading, runtime/provider filter compatibility, and honest incomplete-catalog handling. | 2026-08-28 |

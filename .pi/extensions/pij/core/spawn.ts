@@ -1016,6 +1016,12 @@ export function parseAdoptArgs(argv: readonly string[]): Result<AdoptRequest> {
 		const value = eq === -1 ? argv[++i] : tok?.slice(eq + 1);
 		if (value === undefined) return err("E-ARG", `--${key} needs a value`);
 		if (key === "harness") {
+			if (value === "pi") {
+				return err(
+					"E-ARG",
+					"pi/omp seats self-register at boot; you are already reachable — run `pij whoami` to confirm, never adopt",
+				);
+			}
 			if (!CONTROL_HARNESSES.has(value as HarnessKind))
 				return err("E-ARG", `--harness must be claude|copilot|codex (got '${value}')`);
 			harness = value as HarnessKind;
