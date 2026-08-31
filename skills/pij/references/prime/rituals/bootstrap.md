@@ -12,8 +12,9 @@ governance is the ruled default ([`store-native.md`](./store-native.md)), so a
 fully-governed repo legitimately has none. It is the day-zero
 ritual; role operation belongs in the orient files and protocol. Preconditions:
 a git repo, tmux, `pij`, the ambient `harness` CLI, one session for the
-`o-prime` window (registered via `pij phonehome` or `pij adopt`), and a human
-ready to name the work — the seat never invents portfolio items.
+`o-prime` window (pi/omp self-registers at boot; Claude/Copilot/Codex uses
+`pij phonehome` or `pij adopt`), and a human ready to name the work — the seat
+never invents portfolio items.
 
 ## 1. Seat and prove the o-prime
 

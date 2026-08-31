@@ -4,8 +4,8 @@
 // model but does NOT block spawn (the id is still returned immediately).
 
 import { describe, expect, it } from "vitest";
-import { buildSpawnWarning } from "../../core/spawn.js";
-import type { ModelEntry } from "./registry.js";
+import { buildEffortWarning, buildSpawnWarning } from "../../core/spawn.js";
+import { type ModelEntry, modelsForRuntime, parseOmpModelsJson } from "./registry.js";
 
 const KNOWN: ModelEntry[] = [
 	{ id: "fugu-ultra", name: "Sakana Fugu Ultra", provider: "sakana", verified: true },
@@ -93,5 +93,56 @@ describe("FIX-D: warning for pi near-miss includes closest-match suggestion", ()
 		const w = buildSpawnWarning("zzz-nothing-like-this", PI_KNOWN);
 		expect(w).not.toBeNull();
 		expect(w).not.toContain("did you mean");
+	});
+});
+
+describe("runtime-specific spawn validation (#306)", () => {
+	const catalogs: ModelEntry[] = [
+		{
+			id: "gpt-5.6-sol-fast",
+			selector: "gpt-5.6-sol-fast",
+			requestModelId: "gpt-5.6-sol-fast",
+			name: "Sol Fast",
+			provider: "github-copilot",
+			runtime: "copilot",
+			verified: true,
+			levels: ["none", "low", "medium", "high", "xhigh", "max"],
+		},
+		{
+			id: "gpt-5.6-sol-fast-1m",
+			selector: "github-copilot/gpt-5.6-sol-fast-1m",
+			requestModelId: "gpt-5.6-sol-fast",
+			name: "Sol Fast 1M",
+			provider: "github-copilot",
+			runtime: "omp",
+			verified: true,
+			levels: ["none", "low", "medium", "high", "xhigh", "max"],
+		},
+	];
+
+	it("warns for an OMP-only selector on the Copilot CLI catalog", () => {
+		const warning = buildSpawnWarning("gpt-5.6-sol-fast-1m", modelsForRuntime(catalogs, "copilot"));
+		expect(warning).toContain("unknown model");
+	});
+
+	it("accepts the same selector on the OMP catalog", () => {
+		expect(
+			buildSpawnWarning("github-copilot/gpt-5.6-sol-fast-1m", modelsForRuntime(catalogs, "omp")),
+		).toBeNull();
+	});
+
+	it("accepts a live-shape OMP effort without a false unsupported warning", () => {
+		const omp = parseOmpModelsJson({
+			models: [
+				{
+					provider: "openrouter",
+					id: "reasoner",
+					selector: "openrouter/reasoner",
+					name: "Reasoner",
+					thinking: ["off", "low", "medium", "high"],
+				},
+			],
+		});
+		expect(buildEffortWarning("high", "openrouter/reasoner", omp)).toBeNull();
 	});
 });

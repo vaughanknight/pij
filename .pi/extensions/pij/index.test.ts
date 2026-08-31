@@ -8,14 +8,15 @@
 // Non-vacuous: removing either publication path from index.ts fails its
 // corresponding assertion.
 
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import { FsChannel } from "./adapters/channel.js";
+import * as daemonHttp from "./adapters/daemon-http.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
@@ -82,6 +83,45 @@ function inboxPath(pijHome: string, id: string, name: string): string {
 	return join(pijHome, id, "inbox", name);
 }
 
+function rustEnvelope(command: string, data: unknown): Response {
+	return new Response(JSON.stringify({ ok: true, command, v: 1, data }));
+}
+
+function fakeRustGeneration(): daemonHttp.DaemonGeneration {
+	const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+		const path = new URL(String(url)).pathname;
+		if (path === "/v1/seats") {
+			return rustEnvelope("pij seats", { seats: [], unavailable: [] });
+		}
+		if (path === "/v1/register") {
+			const claim = JSON.parse(String(init?.body)) as Record<string, unknown>;
+			return rustEnvelope("pij register", {
+				id: claim.id,
+				harness: claim.harness,
+				proc: { pid: claim.pid, proc_start: claim.proc_start },
+				folder: claim.folder,
+				state: "idle",
+				parent: claim.parent ?? null,
+			});
+		}
+		if (path === "/v1/events") {
+			return new Response(`${JSON.stringify({ hello: true, v: 1, build: "pij-rs test" })}\n`);
+		}
+		throw new Error(`unexpected Rust fixture path ${path}`);
+	});
+	const location = { addr: "127.0.0.1:7461", stateDir: "/unused" };
+	return {
+		kind: "rust",
+		location,
+		health: { status: "healthy", build: "pij-rs test", offline: true, machine: "test" },
+		client: new daemonHttp.PijDaemonClient(location, "secret", {
+			fetch: fetchMock as typeof fetch,
+			readFile,
+			processStart: () => 20260831134200,
+		}),
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -94,6 +134,7 @@ describe("pij index — footer status bar", () => {
 	let origPlanId: string | undefined;
 	let origOmpCode: string | undefined;
 	let origAnnounceTo: string | undefined;
+	let origDaemonGeneration: string | undefined;
 
 	beforeEach(() => {
 		origPijHome = process.env.PIJ_HOME;
@@ -102,11 +143,12 @@ describe("pij index — footer status bar", () => {
 		origPlanId = process.env.PIJ_PLAN_ID;
 		origOmpCode = process.env.OMPCODE;
 		origAnnounceTo = process.env.PIJ_ANNOUNCE_TO;
+		origDaemonGeneration = process.env.PIJ_DAEMON_GENERATION;
 		pijHome = mkdtempSync(join(tmpdir(), "pij-status-test-"));
 		process.env.PIJ_HOME = pijHome;
-		// This suite exercises the legacy generation. Its live discriminator is the
-		// TS daemon lock; an empty directory correctly means no daemon at all.
-		writeFileSync(join(pijHome, "daemon.lock"), "{}");
+		// This suite witnesses legacy wiring. Pin the ruled forceback so a live
+		// Rust daemon cannot redirect these assertions into the rs-v1 path.
+		process.env.PIJ_DAEMON_GENERATION = "legacy";
 		delete process.env.PIJ_PARENT_ID;
 		delete process.env.PIJ_PLAN_ID;
 		delete process.env.OMPCODE;
@@ -128,6 +170,8 @@ describe("pij index — footer status bar", () => {
 		else process.env.OMPCODE = origOmpCode;
 		if (origAnnounceTo === undefined) delete process.env.PIJ_ANNOUNCE_TO;
 		else process.env.PIJ_ANNOUNCE_TO = origAnnounceTo;
+		if (origDaemonGeneration === undefined) delete process.env.PIJ_DAEMON_GENERATION;
+		else process.env.PIJ_DAEMON_GENERATION = origDaemonGeneration;
 	});
 
 	it("publishes the pij id to the status bar on session_start", async () => {
@@ -155,6 +199,38 @@ describe("pij index — footer status bar", () => {
 		} catch {
 			// ignore
 		}
+	});
+
+	it("marks the selected default Rust generation in Pi's status segment", async () => {
+		// daemon-http.test.ts owns the default-selection policy; this assertion owns
+		// index.ts's UI wiring after that policy selects Rust.
+		delete process.env.PIJ_DAEMON_GENERATION;
+		vi.spyOn(daemonHttp, "detectDaemonGeneration").mockResolvedValue(fakeRustGeneration());
+		const { pi, handlers } = makeFakePi();
+		const { ctx, statuses } = makeFakeCtx("native-rust-statusbar");
+
+		pijExtension(pi);
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+
+		expect(statuses.find((status) => status.key === "pij")?.value).toMatch(
+			/^pij-[a-z]+(-[a-z]+)* · rs-v1$/,
+		);
+		await handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("publishes the selected default Rust id through OMP's session_name segment", async () => {
+		delete process.env.PIJ_DAEMON_GENERATION;
+		process.env.OMPCODE = "1";
+		vi.spyOn(daemonHttp, "detectDaemonGeneration").mockResolvedValue(fakeRustGeneration());
+		const { pi, handlers, sessionNames } = makeFakePi();
+		const { ctx, statuses } = makeFakeCtx("native-rust-omp-statusbar");
+
+		pijExtension(pi);
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+
+		expect(sessionNames.at(-1)).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
+		expect(statuses.some((status) => status.key === "pij")).toBe(false);
+		await handlers.get("session_shutdown")?.({}, ctx);
 	});
 
 	it("publishes the pij id through OMP's default session_name segment", async () => {

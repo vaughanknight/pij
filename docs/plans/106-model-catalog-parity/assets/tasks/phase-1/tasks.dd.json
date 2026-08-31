@@ -1,0 +1,184 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Implement runtime-specific model catalogs",
+        "slug": "phase-1",
+        "status": "ready",
+        "complexity": "CS-3",
+        "summary": "One phase: test, implement, verify, and prepare the branch.",
+        "mode": "Simple",
+        "plan_version": "1.0.0",
+        "created": "2026-08-28"
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Add failing coverage for runtime-specific model catalogs, implement OMP effective-catalog parsing and runtime selection, remove context-collapsing overrides, then prove with targeted tests, static gates, live selectors, and the full harness gate."
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "tk-1061",
+          "title": "Add RED catalog and validation tests",
+          "domain": "pij models",
+          "phase": "ph-1061",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1061",
+          "success": "Tests fail for missing Sol Fast, OMP variants, exact selectors, honest load failure, and runtime-specific spawn validation.",
+          "notes": "No broad mocks; inject command execution only at the OMP process boundary.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0601",
+            "../../../plan.dd.json#acceptance_criteria/ac-0602",
+            "../../../plan.dd.json#acceptance_criteria/ac-0603",
+            "../../../plan.dd.json#acceptance_criteria/ac-0604",
+            "../../../plan.dd.json#acceptance_criteria/ac-0605"
+          ],
+          "receipt": "RED 17 failures; GREEN 82 targeted assertions"
+        },
+        {
+          "id": "tk-1062",
+          "title": "Implement runtime-aware catalog model",
+          "domain": "pij models",
+          "phase": "ph-1061",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1062",
+          "success": "Model entries carry runtime, upstream provider, and exact selector; Copilot and OMP inventories are distinct.",
+          "notes": "Use omp models --json --no-extensions; never refresh or read SQLite.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0601",
+            "../../../plan.dd.json#acceptance_criteria/ac-0602",
+            "../../../plan.dd.json#acceptance_criteria/ac-0603",
+            "../../../plan.dd.json#acceptance_criteria/ac-0604",
+            "../../../plan.dd.json#acceptance_criteria/ac-0605"
+          ],
+          "receipt": "registry/CLI tests 82 passed; live OMP eight-variant projection observed"
+        },
+        {
+          "id": "tk-1063",
+          "title": "Wire runtime-specific CLI and spawn validation",
+          "domain": "pij CLI",
+          "phase": "ph-1061",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1063",
+          "success": "models filtering and spawn/effort warnings select Copilot, OMP, or Pi catalog by target runtime while Claude/Codex remain unchanged.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0602",
+            "../../../plan.dd.json#acceptance_criteria/ac-0606",
+            "../../../plan.dd.json#acceptance_criteria/ac-0607"
+          ],
+          "receipt": "runtime validation tests 13 passed; OMP spawn integration 2 passed"
+        },
+        {
+          "id": "tk-1064",
+          "title": "Remove context-collapsing OMP overrides and verify",
+          "domain": "repository harness",
+          "phase": "ph-1061",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1064",
+          "success": "Only committed GPT-5.6 Luna/Sol/Terra overrides are removed or narrowed; targeted tests, typecheck, lint, checks, and live selector probes pass.",
+          "notes": "Do not import the canonical checkout's uncommitted local provider.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0608",
+            "../../../plan.dd.json#acceptance_criteria/ac-0609"
+          ],
+          "receipt": "harness checks: 8/8 sensors pass; live Copilot and OMP projections pass"
+        },
+        {
+          "id": "tk-1065",
+          "title": "Resolve independent model-catalog review findings",
+          "domain": "pij-control-plane",
+          "phase": "ph-1061",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1065",
+          "success": "OMP efforts parse live arrays, probes are bounded, catalogs fail honestly, provider filters remain compatible, malformed inventories fail whole, domain contracts are current, and all gates pass.",
+          "notes": "Review re-entry for FIX_REQUIRED findings F001-F006.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0603",
+            "../../../plan.dd.json#acceptance_criteria/ac-0604",
+            "../../../plan.dd.json#acceptance_criteria/ac-0605",
+            "../../../plan.dd.json#acceptance_criteria/ac-0606",
+            "../../../plan.dd.json#acceptance_criteria/ac-0607",
+            "../../../plan.dd.json#acceptance_criteria/ac-0609"
+          ],
+          "receipt": "83 pure assertions and 49 filtered integration assertions pass; Dim-0 RED/GREEN; typecheck, lint, and harness checks 8/8 pass"
+        },
+        {
+          "id": "tk-1066",
+          "title": "Accept live OMP null thinking metadata",
+          "domain": "pij-control-plane",
+          "phase": "ph-1061",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1066",
+          "success": "OMP null thinking rows coexist with reasoning rows while every other malformed inventory still fails whole; focused, live, static, and full gates pass.",
+          "notes": "Review re-entry for F007; preserve the disclosed inability to prove active OMP effort from current runtime evidence.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0603",
+            "../../../plan.dd.json#acceptance_criteria/ac-0605",
+            "../../../plan.dd.json#acceptance_criteria/ac-0606",
+            "../../../plan.dd.json#acceptance_criteria/ac-0609"
+          ],
+          "receipt": "F007 RED/GREEN; 184 focused pass, 1 skip; live OMP pass; typecheck, lint, harness checks 8/8 pass"
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {
+        "tk-1061": [
+          {
+            "id": "as-1061",
+            "assertion": "Targeted tests demonstrably fail before implementation and pass after it.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1062": [
+          {
+            "id": "as-1062",
+            "assertion": "Copilot API IDs and OMP client selectors remain separate with measured contexts.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1063": [
+          {
+            "id": "as-1063",
+            "assertion": "Each spawn target validates against its own runtime catalog without blocking spawn.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1064": [
+          {
+            "id": "as-1064",
+            "assertion": "Static, targeted, full, and live gates pass and branch is pushed.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1065": [
+          {
+            "id": "as-1065",
+            "assertion": "All six independent-review findings are fixed with focused, mutation, static, full-harness, and updated domain-contract proof.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1066": [
+          {
+            "id": "as-1066",
+            "assertion": "Live OMP thinking:null is an explicit non-reasoning shape without weakening whole-inventory validation or overstating effort proof.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ]
+      }
+    }
+  ]
+}

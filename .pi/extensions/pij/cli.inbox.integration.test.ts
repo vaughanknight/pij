@@ -377,6 +377,12 @@ describe("portable pij CLI baseline", () => {
 			harnessSessionId,
 			existing: true,
 		});
+
+		const taught = runPij(["inbox", "register"], { TMUX_PANE: "%44" });
+		expect(taught).toMatchObject({ code: 0, stderr: "" });
+		expect(taught.stdout).toBe(
+			"pi/omp seats self-register at boot; you are already reachable — run `pij whoami` to confirm, never adopt\n",
+		);
 	});
 
 	it("keeps register fail-loud when ambient identity and TMUX_PANE are both absent", {

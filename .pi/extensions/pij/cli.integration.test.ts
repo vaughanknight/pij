@@ -191,6 +191,26 @@ esac
 `,
 	);
 	chmodSync(tmux, 0o755);
+	const omp = join(BIN, "omp");
+	writeFileSync(
+		omp,
+		`#!/bin/sh
+if [ "$1" = "models" ]; then
+	if [ "\${FAKE_OMP_FAIL:-0}" = "1" ]; then
+		echo 'OMP inventory unavailable' >&2
+		exit 1
+	fi
+	if [ "\${FAKE_OMP_MALFORMED:-0}" = "1" ]; then
+		printf '%s\n' '{"models":[{"provider":"openrouter","id":"valid","selector":"openrouter/valid","name":"Valid"},{"provider":"openrouter","id":"missing-selector","name":"Malformed"}]}'
+		exit 0
+	fi
+	printf '%s\n' '{"models":[{"provider":"github-copilot","id":"gpt-5.6-sol","selector":"github-copilot/gpt-5.6-sol","name":"GPT-5.6 Sol","contextWindow":400000},{"provider":"openrouter","id":"shared-model","selector":"openrouter/shared-model","name":"Shared","contextWindow":128000,"thinking":["low","medium","high"]},{"provider":"sakana","id":"shared-model","selector":"sakana/shared-model","name":"Shared","contextWindow":128000,"thinking":["low","medium","high"]}]}'
+	exit 0
+fi
+exit 0
+`,
+	);
+	chmodSync(omp, 0o755);
 	A = boot("pij-A", "parent");
 	B = boot("pij-B", "worker");
 	boot("pij-C2", "worker");
@@ -234,6 +254,16 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 
 		const routing = readFileSync(join(REPO_ROOT, "skills/pij/references/00-routing.md"), "utf8");
 		const peer = readFileSync(join(REPO_ROOT, "skills/pij/references/routes/peer.md"), "utf8");
+		const ready = readFileSync(join(REPO_ROOT, "skills/pij/references/routes/ready.md"), "utf8");
+		const skill = readFileSync(join(REPO_ROOT, "skills/pij/SKILL.md"), "utf8");
+		const primeOrient = readFileSync(
+			join(REPO_ROOT, "skills/pij/references/prime/orient-oprime.md"),
+			"utf8",
+		);
+		const seatHandover = readFileSync(
+			join(REPO_ROOT, "skills/pij/references/prime/templates/seat-handover.md"),
+			"utf8",
+		);
 		const skillGuidance = `${routing}\n${peer}`;
 		const tableCells = (prefix: string): string[] => {
 			const row = routing.split("\n").find((line) => line.startsWith(prefix));
@@ -270,10 +300,23 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		);
 		expect(tableCells("| prereq |")).toEqual([
 			"prereq",
-			"pi extension loaded",
+			"**You are a pi/omp seat: the extension registered you at boot. Run NO pij identity command (no adopt, no inbox register).**",
 			`daemon (spawn auto-starts it) + self-adopt once using only the exact non-empty current-process pane: \`pij adopt "$TMUX_PANE" --harness <h> \${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}\``,
 			"`pij inbox register` or first `pij inbox --wait` — auto-registers the ambient session as pull-owned",
 		]);
+		const piOmpReadyStop =
+			"You are a pi/omp seat: the extension registered you at boot. Reply `Ready.` and";
+		expect(ready).toContain(piOmpReadyStop);
+		expect(ready).toContain("STOP — run NO pij identity command (no adopt, no inbox register).");
+		expect(skill).toContain(
+			"pi/omp replies `Ready.` and STOPS — run NO pij identity command (no adopt, no inbox register)",
+		);
+		expect(primeOrient).toContain(
+			"Pi/OMP: the extension registered you at boot; run\n   `pij whoami` to confirm, never adopt or inbox register.",
+		);
+		expect(seatHandover).toContain(
+			"Pi/OMP: the extension registered the incoming seat at boot; run `pij whoami`\n   to confirm, never adopt or inbox register.",
+		);
 
 		const externalPullBan = [
 			"Empty or absent `TMUX_PANE` means external pull mode.",
@@ -870,6 +913,58 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(result.out).toContain("sakana/shared-model");
 		expect(readFileSync(TMUX_LOG, "utf8")).toBe("");
 		expect(new FsSpawnExpectationStore(HOME).list()).toEqual([]);
+	});
+
+	it("projects live-shape OMP thinking arrays through the real models command", () => {
+		const result = pij(["models", "--harness", "omp", "--json"], { HOME });
+		expect(result.code, result.out).toBe(0);
+		const models = JSON.parse(result.out) as Array<{
+			selector: string;
+			levels: string[];
+		}>;
+		expect(models.find((model) => model.selector === "openrouter/shared-model")?.levels).toEqual([
+			"low",
+			"medium",
+			"high",
+		]);
+	});
+
+	it("fails bare and filtered discovery when requested OMP inventory is unavailable or malformed", () => {
+		const unavailable = pij(["models", "--json"], { HOME, FAKE_OMP_FAIL: "1" });
+		expect(unavailable.code).not.toBe(0);
+		expect(unavailable.out).toContain("E-NOREG");
+		expect(unavailable.out).toContain("omp");
+
+		const malformed = pij(["models", "--harness", "omp", "--json"], {
+			HOME,
+			FAKE_OMP_MALFORMED: "1",
+		});
+		expect(malformed.code).not.toBe(0);
+		expect(malformed.out).toContain("E-NOREG");
+	});
+
+	it.each([
+		"openrouter",
+		"sakana",
+		"github-copilot",
+	])("keeps --harness %s as an upstream-provider filter through the real bin", (provider) => {
+		const modelsPath = join(HOME, ".pi", "agent", "models.json");
+		mkdirSync(dirname(modelsPath), { recursive: true });
+		writeFileSync(
+			modelsPath,
+			JSON.stringify({
+				providers: {
+					"github-copilot": { models: [{ id: "copilot-provider-row" }] },
+					openrouter: { models: [{ id: "openrouter-provider-row" }] },
+					sakana: { models: [{ id: "sakana-provider-row" }] },
+				},
+			}),
+		);
+		const result = pij(["models", "--harness", provider, "--json"], { HOME });
+		expect(result.code, result.out).toBe(0);
+		const models = JSON.parse(result.out) as Array<{ provider: string }>;
+		expect(models.length).toBeGreaterThan(0);
+		expect(models.every((model) => model.provider === provider)).toBe(true);
 	});
 
 	it("control-plane spawn correlates one prelaunch expectation with descriptor and pane", () => {

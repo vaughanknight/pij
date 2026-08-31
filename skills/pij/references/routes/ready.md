@@ -8,10 +8,12 @@ prime or operator will push the next turn.
 
 ## Procedure
 
-1. Detect only the delivery owner:
-   - Pi with in-process pij tools is already push-owned; run no identity command.
+1. **You are a pi/omp seat: the extension registered you at boot. Reply `Ready.` and
+   STOP — run NO pij identity command (no adopt, no inbox register).** Otherwise,
+   detect only the delivery owner:
    - With an exact non-empty `$TMUX_PANE`, resolve `<h>` from the current host
-     (`claude`, `copilot`, `codex`, or `pi`) and run exactly
+     (`claude`, `copilot`, or `codex` — NEVER `pi`: pi/omp seats self-register at
+     boot and `pij adopt` rejects `--harness pi` by design) and run exactly
      `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}`.
      Carry the parent whenever the env has one — it is a self-declaration of who
      governs you, validated and persisted, and it is the ONLY moment it can be

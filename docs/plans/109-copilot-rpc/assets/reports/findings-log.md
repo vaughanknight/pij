@@ -302,3 +302,141 @@ instrument answers a different question.**
 The contract's own gap predates this unit and belongs to whoever owns
 `registry_contract`. What binds unit 1 is that it **cannot rely on it**.
 
+## D-1 — DEFERRED (frozen, trigger named) — a negative asserted by a timeout passes BECAUSE the timeout elapsed
+
+Not unit-1 work and **not to be done now**. Recorded here because it is a **defect
+class**, and the class is the fourth member of *coincidence by construction*.
+
+Three tests assert that a forbidden event does **not** happen, by waiting 20ms and
+requiring `timeout(...).is_err()`:
+
+```
+crates/daemon/src/delivery/mod.rs:1222
+crates/transport/src/uds.rs:566
+crates/daemon/tests/review_regressions.rs:301
+```
+
+> **They pass because the timeout elapsed.** A loaded CI runner that merely *delays* the
+> forbidden event produces the same green — so the assertion cannot distinguish *"this
+> never happens"* from *"this did not happen within 20ms on this machine today."*
+
+Same shape as the others in this family: the fixture cannot **produce** the case where
+the two states differ, so no quantity of green separates them. And the failure direction
+is the dangerous one — **green over a live regression**, not a false alarm.
+
+The idiomatic fix is already in-tree at five sites (`start_paused = true`,
+e.g. `lifecycle.rs:246`): with a paused clock, "nothing happened" stops being a wall-clock
+claim about a loaded machine.
+
+**Trigger:** first CI flake on any of the three, or post-release cleanup — whichever
+comes first. **Owner:** unassigned until the trigger fires.
+
+## F9 — GRADED — CAPABILITY ASYMMETRY: the fixture can produce a case production cannot reach
+
+> **The only launcher that stamps a port is the one that does not transmit the
+> correlator, and the only launcher that transmits the correlator never stamps a port.**
+
+The F1 fix keys on a launch id the registering process must echo back. `build_spawn_plan`
+emits `PIJ_SESSION_ID` and nothing else; `PIJ_SPAWN_ID` appears **zero times** across
+`crates/`. The TypeScript bridge forwards the field *only when the env var exists*, and
+the TS launcher that does export it **never emits `--ui-server`**.
+
+Observed on shipped routes, both arms:
+
+```
+arm1  SHIPPED-LAUNCH   at_spawn Some(58224)  ->  after_bind None
+arm2  TEST-SUPPLIED    at_spawn Some(58225)  ->  after_bind Some(58225)
+```
+
+**Arm 2 is the acceptance test's world. Arm 1 is production's.** The fix is correct and
+unreachable: every Copilot seat still loses its port at bind, and absence-model rows 1
+and 2 stay collapsed **in the fleet** while separated **in the test**.
+
+### Why this is a NEW class, not the previous one
+
+- **Coincidence by construction** — *the fixture cannot produce a case where the two
+  states differ.* (The registration always followed a fresh spawn; the contract wrote
+  equal values over equal values; the reported count was the configured limit.)
+- **Capability asymmetry** — *the fixture can produce a case production cannot reach.*
+  The witness reads the launch id out of the spawn response and hands it back on the
+  command line. A real seat is handed `PIJ_SESSION_ID` and nothing else.
+
+Same root — **the fixture's capabilities are not the shipped path's capabilities** — and
+the same consequence: **a green test about a code path no seat will ever take.** The
+first class is caught by asking *what can this fixture produce*; the second by asking
+**what does a real caller actually know**.
+
+### Ruled
+
+Emit `PIJ_SPAWN_ID` in the spawn argv beside `PIJ_SESSION_ID` — one line, and the bridge
+already forwards it. Chosen over inferring from `descriptor.proc.is_none()` because **a
+correlator should be explicit and carried, not inferred from a signal that means several
+things at once.**
+
+**And every witness gains an arm that supplies ONLY what a launched process could know** —
+a registration constructed from the recorded launched environment, and nothing else.
+That arm, and only that arm, would have caught this.
+
+### Second-order proof that the standard is working
+
+The revive unit's own witness was **green** and its author checked it against F9
+unprompted, found it read `spawn_id` from the persisted descriptor and passed
+`--spawn-id` by hand, and **withdrew its own receipt** — *"the fixture has a capability
+the shipped launcher did not provide; my prior green therefore does not prove fleet
+first-bind preservation."*
+
+## F9 addendum — the closing conditions, and a withdrawal worth naming
+
+### Why `PIJ_SESSION_ID` cannot carry the correlation
+
+It was considered and refused. `PIJ_SESSION_ID` is the **seat** id — **identical across
+incarnations by design**, which is what makes a revived seat the same seat:
+
+```
+first bind of THIS incarnation      -> pij-foo
+later incarnation of the SAME seat  -> pij-foo
+```
+
+**The discriminator would discriminate nothing**, collapsing back to either the
+unconditional clear (F1) or the unconditional inherit (R0-1). It is the
+recycled-identifier problem inverted: **the value is stable precisely where we need it
+to change.** The correlator must be incarnation-scoped.
+
+### The failure that would survive every response-reading test
+
+The spawn id is minted before the lock and stamped at the route; the argv is built from
+a plan input that had no such field. **If a second id is minted for the argv rather than
+threading the stamped one, emitted and stamped diverge — and every test that reads the
+launch id from the SPAWN RESPONSE still passes.** Same minted value, threaded end to
+end; never a second mint.
+
+Every launcher arm is enumerated in the receipt **with the line that transmits it,
+shown rather than assumed** — the Rust spawn plan, the TS bridge (which omits the field
+when the variable is absent), and the TS launcher (which exports it and never emits
+`--ui-server`). Nothing in the workspace spans that last seam, so comparing the two
+literals is a **human** check, and the absence of an instrument there is itself recorded.
+
+### Closing conditions
+
+1. **arm1 — through the SHIPPED launcher, end to end — goes green.** A test-supplied
+   environment may appear only as the contrast arm.
+2. **`pij-orthodox-tahr`'s witness goes green WITHOUT ANYONE TOUCHING IT.** It parses the
+   discrete argv the launcher recorded and derives both variables from that environment,
+   and it currently reds at *"launched process was not given PIJ_SPAWN_ID"*. **A witness
+   the fixer cannot see is the strongest kind** — if the fix does not turn it green
+   untouched, the fix is not reaching the launched environment.
+
+### The withdrawal, recorded by name
+
+**`pij-orthodox-tahr` withdrew its own GREEN receipt, unprompted, on a witness nobody
+had questioned, in a unit outside the reviewer's fence.** Told of a finding about
+someone else's code, it went and read its own file, found it took `spawn_id` from the
+persisted descriptor and passed it by hand, and wrote:
+
+> *"The fixture has a capability the shipped launcher did not provide; my prior green
+> therefore does not prove fleet first-bind preservation."*
+
+The reviewer could not have caught it — its fence is the mechanism, not the verb. This is
+the second time on this plan that a seat audited its own instrument against a finding
+about another's code and found itself on the wrong side.
+

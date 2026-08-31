@@ -7,7 +7,12 @@ import { describe, expect, it } from "vitest";
 import { FakeDelivery, FakeProcess, FakeRegistry } from "../../adapters/fakes.js";
 import type { CliDeps } from "../cli.js";
 import { dispatch, parseArgs } from "../cli.js";
-import { copilotSeedFromPi, type ModelEntry, parseModelsJson } from "./registry.js";
+import {
+	copilotSeedFromPi,
+	type ModelEntry,
+	parseModelsJson,
+	parseOmpModelsJson,
+} from "./registry.js";
 
 const T = Date.parse("2026-06-28T12:00:00.000Z");
 
@@ -25,7 +30,7 @@ const MODELS: ModelEntry[] = [
 ];
 
 const GPT56_LEVELS = ["none", "low", "medium", "high", "xhigh", "max"];
-const GPT56_IDS = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"];
+const GPT56_IDS = ["gpt-5.6-sol", "gpt-5.6-sol-fast", "gpt-5.6-terra", "gpt-5.6-luna"];
 const PI_GPT56_JSON = {
 	providers: {
 		"github-copilot": {
@@ -40,7 +45,7 @@ const PI_GPT56_JSON = {
 };
 const GPT56_MODELS = [...parseModelsJson(PI_GPT56_JSON), ...copilotSeedFromPi(PI_GPT56_JSON)];
 
-function deps(models: ModelEntry[]): CliDeps {
+function deps(models: ModelEntry[], unavailableRuntimes: readonly string[] = []): CliDeps {
 	return {
 		registry: new FakeRegistry([]),
 		delivery: new FakeDelivery(),
@@ -49,6 +54,7 @@ function deps(models: ModelEntry[]): CliDeps {
 		pijHome: "/home/.pij",
 		eventLogFor: () => ({ read: () => [], append: () => {}, lastSeq: () => 0, count: () => 0 }),
 		models,
+		unavailableModelRuntimes: unavailableRuntimes,
 	};
 }
 
@@ -119,6 +125,35 @@ describe("dispatch models", () => {
 		expect(r.stdout).not.toContain("fugu");
 	});
 
+	it.each([
+		"openrouter",
+		"sakana",
+		"github-copilot",
+	])("--harness %s remains a provider filter", (provider) => {
+		const providerModels: ModelEntry[] = [
+			{
+				id: `${provider}-pi`,
+				name: `${provider} Pi row`,
+				provider,
+				runtime: "pi",
+				verified: true,
+			},
+			{
+				id: "other",
+				name: "Other",
+				provider: "other",
+				runtime: "pi",
+				verified: true,
+			},
+		];
+		const r = dispatch(
+			{ verb: "models", json: true, harnessFilter: provider } as Parameters<typeof dispatch>[0],
+			deps(providerModels),
+		);
+		expect(r.exitCode).toBe(0);
+		expect(JSON.parse(r.stdout)).toEqual([providerModels[0]]);
+	});
+
 	it("labels unverified models", () => {
 		const r = dispatch({ verb: "models", json: false }, deps(MODELS));
 		expect(r.stdout).toMatch(/unverified|best.effort|\*/i);
@@ -145,28 +180,31 @@ describe("dispatch models", () => {
 		expect(r.stdout).toContain("m2");
 	});
 
-	it("--harness copilot JSON advertises corrected raw and cloned rows without deduping", () => {
+	it("--harness copilot JSON exposes actual ids without OMP selector aliases", () => {
 		const r = dispatch(
 			{ verb: "models", json: true, harnessFilter: "copilot" } as Parameters<typeof dispatch>[0],
 			deps(GPT56_MODELS),
 		);
 		const parsed = JSON.parse(r.stdout) as ModelEntry[];
-		expect(parsed).toHaveLength(GPT56_IDS.length * 2);
+		expect(parsed).toHaveLength(GPT56_IDS.length);
 		for (const id of GPT56_IDS) {
-			const rows = parsed.filter((entry) => entry.id === id);
-			expect(rows.map((entry) => entry.provider)).toEqual(["github-copilot", "copilot"]);
-			for (const row of rows) expect(row.levels).toEqual(GPT56_LEVELS);
+			expect(parsed.find((entry) => entry.id === id)).toMatchObject({
+				provider: "github-copilot",
+				runtime: "copilot",
+				selector: id,
+				contextWindow: 1_050_000,
+				levels: GPT56_LEVELS,
+			});
 		}
+		expect(parsed.some((entry) => entry.selector.endsWith("-1m"))).toBe(false);
 	});
 
-	it("--harness copilot table renders the corrected levels for both provider projections", () => {
+	it("--harness copilot table renders one corrected level row per actual id", () => {
 		const r = dispatch(
 			{ verb: "models", json: false, harnessFilter: "copilot" } as Parameters<typeof dispatch>[0],
 			deps(GPT56_MODELS),
 		);
-		expect(r.stdout.match(/none\/low\/medium\/high\/xhigh\/max/g)).toHaveLength(
-			GPT56_IDS.length * 2,
-		);
+		expect(r.stdout.match(/none\/low\/medium\/high\/xhigh\/max/g)).toHaveLength(GPT56_IDS.length);
 	});
 
 	it("--harness pi JSON preserves the corrected raw github-copilot row", () => {
@@ -179,7 +217,54 @@ describe("dispatch models", () => {
 			(entry) => entry.provider === "github-copilot" && entry.id === "gpt-5.6-sol",
 		);
 		expect(raw?.levels).toEqual(GPT56_LEVELS);
-		expect(parsed.some((entry) => entry.provider === "copilot")).toBe(true);
+		expect(parsed.every((entry) => entry.runtime === "pi")).toBe(true);
+	});
+
+	it("--harness omp lists exact base and -1m selectors with distinct contexts", () => {
+		const omp = parseOmpModelsJson({
+			models: [
+				{
+					provider: "github-copilot",
+					id: "gpt-5.6-sol-fast",
+					selector: "github-copilot/gpt-5.6-sol-fast",
+					name: "Sol Fast",
+					contextWindow: 400_000,
+				},
+				{
+					provider: "github-copilot",
+					id: "gpt-5.6-sol-fast-1m",
+					selector: "github-copilot/gpt-5.6-sol-fast-1m",
+					name: "Sol Fast 1M",
+					contextWindow: 1_050_000,
+				},
+			],
+		});
+		const r = dispatch(
+			{ verb: "models", json: true, harnessFilter: "omp" } as Parameters<typeof dispatch>[0],
+			deps(omp),
+		);
+		expect(r.exitCode).toBe(0);
+		const parsed = JSON.parse(r.stdout) as ModelEntry[];
+		expect(parsed.map(({ selector, contextWindow }) => ({ selector, contextWindow }))).toEqual([
+			{ selector: "github-copilot/gpt-5.6-sol-fast", contextWindow: 400_000 },
+			{ selector: "github-copilot/gpt-5.6-sol-fast-1m", contextWindow: 1_050_000 },
+		]);
+	});
+
+	it("--harness omp fails instead of returning an authoritative empty catalog", () => {
+		const r = dispatch(
+			{ verb: "models", json: true, harnessFilter: "omp" } as Parameters<typeof dispatch>[0],
+			deps([], ["omp"]),
+		);
+		expect(r.exitCode).not.toBe(0);
+		expect(JSON.parse(r.stderr)).toMatchObject({ error: "E-NOREG" });
+	});
+
+	it("bare models fails rather than returning a partial catalog", () => {
+		const r = dispatch({ verb: "models", json: true }, deps(MODELS, ["omp"]));
+		expect(r.exitCode).not.toBe(0);
+		expect(JSON.parse(r.stderr)).toMatchObject({ error: "E-NOREG" });
+		expect(r.stderr).toContain("omp");
 	});
 });
 
