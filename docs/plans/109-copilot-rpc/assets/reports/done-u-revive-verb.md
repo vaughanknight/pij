@@ -1,8 +1,8 @@
 # u-revive-verb — delivery receipt
 
 **Branch:** `s109/u-revive-verb`  
-**Code commit:** `d3b6595e`  
-**Required mechanism ancestor:** `27a161b1` from `s109/u-spawn-rpc-port`
+**Code commits:** `e8217cc2` (verb and route), `07812518` (production-shaped bind witness)
+**Required mechanism ancestor:** `3a33d656` from `s109/u-spawn-rpc-port`
 
 ## Public surface
 
@@ -34,14 +34,26 @@ router against a real `SqliteRegistry` and recorded fake tmux boundary.
 2. Run `pij-rs revive pij-returning-seat --session fleet --name returned`.
 3. Read through `Registry::get`: the descriptor is live, pre-bind (`proc = None`),
    has one non-zero fresh port unequal to 47777, and equals the response descriptor.
-4. Observe exactly one tmux launch whose argv contains Copilot plus
-   `--ui-server --port`.
-5. Register the revived seat with the exact fresh `spawn_id`: its own first bind
-   preserves the fresh port while adding the process identity.
+4. Observe exactly one tmux launch whose recorded discrete argv contains Copilot,
+   `--ui-server --port`, `PIJ_SESSION_ID=<seat>` and
+   `PIJ_SPAWN_ID=<route-minted-id>`.
+5. Parse the first-bind seat and spawn ids only from that recorded launched
+   environment, then register. Its own first bind preserves the fresh port while
+   adding the process identity.
 6. Register again as a later incarnation without a matching `spawn_id`: the port
    becomes `None` immediately. The old 47777 never reappears.
 7. Against separate real rows, absent returns `not_found`; live returns `refused`
    with the id and tombstone-only reason; tmux records zero calls.
+
+The first version of step 5 read `spawn_id` from the persisted descriptor and
+passed it to registration. That fixture had a capability production did not: the
+launcher emitted only `PIJ_SESSION_ID`, so a real process could not know the
+correlator the preservation rule required. I withdrew the prior green before
+correction. The replacement parses only FakeTmux's recorded launched argv; before
+the upstream fix it failed with `launched process was not given PIJ_SPAWN_ID`, and
+after `build_spawn_plan` began emitting the route-minted id it passed unchanged.
+This is **capability asymmetry**, not coincidence by construction: the fixture
+could produce a case the fleet could not reach.
 
 This two-arm registration witness closes the **coincidence by construction** in the
 original acceptance test. That test always registered immediately after a fresh
@@ -76,10 +88,11 @@ cargo test -p pij-cli --test revive
 | RF1 explicit route | Client posts the narrow body to `/v1/spawn` | exit 101; absent arm got `Adapter` instead of `NotFound`; transition arm reported revive failure |
 | RF2 tombstone-only | Invert both route and atomic launch guards | exit 101; live arm failed at “a live id cannot be revived”; tombstoned arm was refused |
 | RF3 fresh replacement | Reuse the predecessor port after allocation | exit 101; `left: 47777`, `right: 47777` at “revive must replace the old port” |
-| RF4 later-pass ownership | Spawn-id discriminator forced false, then forced true in separate runs | false: exit 101, first bind `None` vs fresh `Some(57711)`; true: exit 101, later incarnation `Some(57740)` vs `None` |
+| RF4 later-pass ownership | Spawn-id discriminator forced false, then forced true in separate runs after the production correlator fix | false: exit 101, first bind `None` vs fresh `Some(59582)`; true: exit 101, later incarnation `Some(59636)` vs `None` |
 | RF5 real upsert | Remove only `rpc_port_intent=excluded.rpc_port_intent` | exit 101; response carried fresh `54627`, real persisted row retained old `47777` |
 | RF6 derived intent | Drop persisted model while deriving the launch request | exit 101; `None` vs `Some("provider/prior-model")` |
 | RF7 persisted response | Alter response pane after the durable write | exit 101; response `pane: None` vs persisted `pane: Some("%100")` |
+| F9 production capability | Require first-bind inputs to come from recorded launched argv while the launcher omits `PIJ_SPAWN_ID` | exit 101 at `launched process was not given PIJ_SPAWN_ID`; refusal arm passed |
 
 The first pre-code public-surface probe also returned Clap exit 2 with
 `unrecognized subcommand 'revive'`. After all mutation restoration, the focused
@@ -96,6 +109,17 @@ response equalled persistence, the fresh non-zero port replaced the old one,
 correcting the test to the shipped command shape; it was a test expectation error,
 not a product defect.
 
+### Withdrawn green — capability asymmetry
+
+After reviewer F9 named the missing launcher correlator, I checked this unit's
+green witness and found it manually supplied the descriptor's `spawn_id`. I
+withdrew the receipt claim before being asked to change this test. The corrected
+witness reads the environment actually handed to the process and therefore failed
+on the unfixed product. That red was the witness correctly reporting a fleet
+defect, not a defect in this verb. On the fixed ancestor the same untouched arm is
+green, and the forced-never-match / forced-always-match mutations fail on opposite
+observations.
+
 ## Verification
 
 All Rust runs used this worktree's own `target/`; no shared `CARGO_TARGET_DIR`.
@@ -103,7 +127,7 @@ Test output was unfiltered and captured to a file before reporting Cargo's direc
 exit status.
 
 - `CARGO_INCREMENTAL=0 cargo test --locked -p pij-cli --test revive` — exit 0;
-  2 passed, 0 failed.
+  2 passed, 0 failed, with first-bind identity derived from recorded launch argv.
 - `PATH="$HOME/.cargo/bin:$PATH" CARGO_INCREMENTAL=0 cargo run --locked -p
   pij-testkit --bin pij-gate` — exit 0; all six stages passed: Rust 1.98.0 pin,
   lock, fmt, clippy, workspace tests and architecture (9 crates, 0 violations).
