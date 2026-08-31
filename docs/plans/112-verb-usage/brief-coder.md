@@ -43,3 +43,15 @@ MUST-HANDLE gotchas (each one silently corrupts the ranking):
 - Every count in the report names the store(s) it came from; where stores disagree, show both numbers, do not average.
 - A store you could not read (missing, locked, too big to scan in time) is a LABELED gap in the report, not a silent zero. For metrics-db (3.7GB) an indexed/LIMITed scan strategy is fine — say what you scanned.
 - The script must be re-runnable by anyone: `python3 tools/verb-usage/scan.py --out report.md`, no hardcoded seat names.
+
+## Execution receipts
+
+- Brief ACK: `ack clean` queued to `pij-dominant-vicuna` as receipt `c3652521-a034-4a41-a983-29807de28629` before implementation.
+- Scanner: `python3 tools/verb-usage/scan.py --out docs/plans/112-verb-usage/report.md` exited 0 on 2026-08-31; scanned 1,230 ledger files / 275,034 rows, 13,749 bash rows, 379,324 metrics candidates, and 349 OMP transcripts / 173,329 rows.
+- Read-only boundary: both SQLite connections use `file:` URIs with `mode=ro` and `PRAGMA query_only=ON`; file telemetry is opened only for reads.
+- Inventory: 97 TypeScript leaves; 17 current Rust command paths parsed from this branch's `crates/cli/src/main.rs`, including the landed `revive` verb. Rust `tail` remains a name-only false friend and is classified not implemented for TS parity.
+- Headline result: missing-in-rs machine ranking starts `report now`, `state`, `tail`, `report state`, `whoami`; `report.md` retains all four source counts separately and includes the required pij-fleet view.
+- Focused parser/parity validation: 21 assertions passed across inventory cardinality, shell executable-position filtering, redirections/newlines/heredocs/quoted payloads, OMP xd remapping, bin aliases, current Rust `revive`, sidecar semantic mappings, and the `tail` false friend.
+- Independent validation: the reviewer found four material defects (shell argument false positives, missing sidecar equivalences, bin-alias attribution, summed unresolved counts); all four were fixed and the same reviewer rechecked them as resolved with no remaining material finding.
+- `harness checks`: typecheck, lint, windows-compat, pkg-audit, and snapshots passed. Three repo-baseline/environment checks failed outside this brief's allowed paths: `local-paths` reports 13 existing absolute governance paths under `skills/pij/`; `test` has one failure in `npm-resolution-policy.integration.test.ts:536`; smoke passed its first two scenarios then eight surfaces timed out waiting for idle with blank panes.
+- PR / CI: pending ship receipts.
