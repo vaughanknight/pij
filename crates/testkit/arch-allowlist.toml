@@ -96,7 +96,7 @@ why = "Claude UDS transport behind the frozen Transport port: async Unix socket 
 
 [crates.pij-sidecars]
 internal = ["pij-core", "pij-store@dev", "pij-testkit@dev"]
-external = ["async-trait@dev", "axum@dev", "reqwest", "serde", "serde_json", "tokio"]
+external = ["async-trait@dev", "axum@dev", "nix", "reqwest", "serde", "serde_json", "tokio"]
 why = "Queue consumers over the seven frozen ports plus concrete Telegram HTTP, process-group, and shell/file adapters; store, testkit, async-trait, and axum remain dev-only proof dependencies."
 
 [crates.pij-daemon]
