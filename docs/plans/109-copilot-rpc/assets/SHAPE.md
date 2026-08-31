@@ -217,3 +217,61 @@ without consulting proc. If one ships, unit 2 consumes it and the rule dies in t
 
 A receipt asserting the rule is honoured **without naming where** is itself a finding.
 
+---
+
+# AMENDMENT 3 — revive is SPAWN OVER A TOMBSTONED ID; the allocator is Rust-side
+
+Ruled by the prime after unit 1 asked. Two answers, and the first changes a **shipped
+contract**.
+
+## Revive = a second `/v1/spawn` on a TOMBSTONED id
+
+Today a second spawn on an existing id **refuses**. That refusal is now **scoped to LIVE
+ids**:
+
+| id state | second `/v1/spawn` |
+|---|---|
+| **live** | **STILL REFUSES** — unchanged, and this half must not weaken |
+| **tombstoned** | **REVIVES**: allocates a FRESH port and overwrites the stamp |
+
+Rationale is the recycled-identifier rule this plan has now hit four times: a dead
+incarnation's port is **residue, not state**, and inheriting it produces the *plausible*
+failure — field present, `can_deliver` true, connect possibly succeeding against
+whatever now owns that port.
+
+**The binding transition test anchors on THIS path**: spawn over a tombstoned id →
+assert the old port is **replaced** → assert **nothing re-stamps the old value** on a
+later pass. A mutation that only clears on a sweep must fail.
+
+### This does NOT replace the re-registration ruling
+
+Both paths bind, because both run:
+
+- **spawn over a tombstoned id** → allocate fresh, overwrite. *(Amendment 3)*
+- **re-registration on an existing id** → **MUST NOT INHERIT** `rpc_port`; a
+  registration carrying no fresh port leaves it **`None`, not stale**. *(Amendment 1,
+  restated — demonstrated live on the shipped path: `at_spawn Some(true)`,
+  `after_register Some(true)`.)*
+
+A build that satisfies one and not the other still ships the defect, by the path it
+missed.
+
+## The allocator is Rust-side: bind `127.0.0.1:0`
+
+The TypeScript runtime is untouched. Unit 1 writes **the first port allocator in this
+workspace** — no precedent to copy, no existing collision test to extend.
+
+**The TOCTOU is acknowledged and NOT hidden** (R0-6): between our release of the
+ephemeral port and Copilot's bind, anything may take N. That is precisely why the stamp
+records **intent**, why **NEVER BOUND** is its own absence with `retry is pointless`,
+and why possession is verified at **read time** by unit 2 rather than asserted at stamp
+time by unit 1.
+
+## Channel discipline (recorded because it cost ten silent minutes)
+
+A coder **never blocks on an interactive modal**. It asks **inline, via `pij send`, to
+the PM** — invariant 9. A modal in an unwatched pane is invisible to everyone who could
+answer it: **the reviewer-fail-start bug wearing a new costume**, where a process is
+stopped and nothing anywhere says so. The failure mode is silence, which is the class
+this plan has been paying for all week.
+
