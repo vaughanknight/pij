@@ -142,3 +142,43 @@ And both arms exist. A green with no red beside it would have proved that the ne
 build works, not that the old one was broken — the old build's divergence is what
 makes the new build's equality mean something.
 
+## B-1 — BACKLOG, BLOCKING UNIT 2 — the extension registers a THIRD id, stranding the row the port is stamped on
+
+Found by the live deployment proof, **one seam above the one the fix closed**.
+
+Generation detection works — the seat toasts *detected Rust daemon v1, registered*.
+But the store then holds **two rows for one seat**:
+
+```
+pij-irregular-apocalypse   pre-bind, proc:false   pane %1963   spawn_id s-6a54b59c…
+pij-empirical-caribou      live,     proc:true    pane %1963   spawn_id s-6a54b59c…
+```
+
+**Same pane. Same spawn id. Two seats.** The daemon had everything needed to
+correlate them and created a second row instead: the extension's register path does
+not adopt `PIJ_SESSION_ID`, and rs registration has no adopt/claim semantics — the
+parity report had already called rs `register` *"a renamed, reduced adopt"*, before
+anyone knew it mattered here.
+
+### Why it blocks unit 2 specifically
+
+**`rpc_port` is stamped on the PRE-BIND row.** So every daemon-spawned rs seat strands
+a phantom row, and **the port is stranded with it** — while the live row, the one a
+consumer would look at, has no port at all.
+
+That is **F8's absence table one seam up**: an absent port on the live row no longer
+means *"never launched with the flags"*; it means *"launched, and the stamp is on the
+other row"*. Unit 2's read-time possession check would consult exactly the row that
+does not carry it.
+
+### The shape of it, for the record
+
+The launcher seam is **closed and proven** — env equals allocation, byte-for-byte, in
+production. The adjacent seam was never checked **because the correlator work looked
+complete**. That is E-031 at the seam level: *the fix landed in one half*, and the half
+it landed in was the one everybody was looking at.
+
+**Trigger: before unit 2 dispatches.** Not blocking the restart round — existing seats
+boot-register with no pre-bind row and strand nothing — and blocking real Copilot RPC
+use via spawn, which is unit 2's entire subject.
+
