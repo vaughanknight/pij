@@ -47,48 +47,7 @@ passive recipient of an autonomous job.
 - Perplexity MCP is available for web search and deep research.
 - When a skill/command says to launch or use subagents, do not run that orchestrator skill itself as a subagent. Stay in the parent session, use the skill's structure/prompts to launch multiple focused worker subagents in parallel, then synthesize their outputs in the parent. This especially applies to `plan-1a-v2-explore`.
 - Before launching research fan-out subagents, run a tiny canary (or otherwise verify the chosen agent's visible tools) that must successfully use read/search/list/shell tools. Do not trust outputs from children that cannot inspect files.
-- In this environment, built-in `scout`/`delegate` agents may be a bad fit for filesystem research because their frontmatter allowlists raw Pi tool names like `read`, `grep`, `find`, `ls`, and `bash`, while this session exposes lean-ctx names like `ctx_read`, `ctx_grep`, `ctx_find`, `ctx_ls`, and `ctx_shell`. Prefer agents with the full/current tool surface (for example `flowspace-research-v2`) or override/configure tools explicitly.
 - For subagent output, prefer explicit artifact paths such as `/tmp/<run-name>/<lens>.md`. Avoid passing `output: false` unless verified; it has previously produced a literal `false` file in the repo.
-
-# Lean-ctx tool preference
-
-When `ctx_*` tools are exposed in the session (provided by the `pi-lean-ctx`
-extension), ALWAYS prefer them over pi's raw built-ins. They route through
-lean-ctx for 60–90% token savings and let the engineering harness measure
-context cost. This is a hard preference, not a tiebreaker.
-
-Lean-ctx lowers the cost of a read; it does not justify unnecessary reading.
-The token-economics rules above apply unchanged: question first; maps,
-signatures, and narrow line ranges before full reads; full-read only files you
-are about to edit or whose whole contract matters; `diff` instead of rereading
-after edits; stop at sufficiency.
-
-Mapping (use the left column whenever both exist):
-
-- `ctx_read` over `read` / `cat` / `head` / `tail`
-- `ctx_shell` over `bash`
-- `ctx_grep` over `grep`
-- `ctx_find` over `find`
-- `ctx_ls` over `ls`
-- `ctx_edit` over native `edit` only when `edit` is unavailable; otherwise
-  the built-in `edit` is fine (it has no compression equivalent).
-
-`ctx_read` modes (`mode:` arg):
-
-- `auto` — let lean-ctx pick (recommended default).
-- `full` — files you're about to edit; use `diff` on re-read.
-- `map` / `signatures` — context-only files, API surface only.
-- `lines:N-M` — specific ranges.
-- `aggressive` / `entropy` — heavy compression for large context-only files.
-
-Anti-patterns:
-
-- Reaching for `read` / `bash` / `grep` "just this once" when `ctx_*`
-  exists — don't. The whole point is token savings on every call.
-- Looping on a failing `edit`. Switch to `ctx_edit` once and continue.
-
-If `ctx_*` tools are NOT present in this session (e.g. running outside the
-pij setup), fall back to the raw built-ins silently — don't ask.
 
 # Response formatting preference
 
@@ -125,8 +84,7 @@ read the file directly:
     pi --no-tools -p @/abs/path/to/file.jpg "Describe exactly what you see.
     Report only — do not run any tools, OCR, or workarounds."
 
-Use `ctx_shell` if it's exposed, otherwise `bash`. Capture stdout and
-treat the child's text response as your visual report.
+Use `bash`. Capture stdout and treat the child's text response as your visual report.
 
 Rules of thumb:
 
