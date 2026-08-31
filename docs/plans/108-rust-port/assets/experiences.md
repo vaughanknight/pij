@@ -832,3 +832,46 @@ Filed against this plan's harness, not the repo's: the pij engineering harness
 which is disclosed, accepted, and separate. This one is about the Rust loop the
 port actually lives in.
 
+## E-038 — an observer that consumes is not an observer
+
+Four probe families, one dead-but-unreaped process, four different answers
+(measured, 2/2 reproducible, encoded as
+`wave-7/reports/probe-zombie-contract.py`):
+
+| state | `ps` | non-zombie set | `killpg(pgid,0)` | `getpgid` |
+|---|---|---|---|---|
+| leader zombie + live child | `[(Z),(S)]` | `[child]` | `0` | ESRCH |
+| zombie leader only | `[(Z)]` | `[]` | **EPERM** | ESRCH |
+| after the parent reaps | `[]` | `[]` | ESRCH | ESRCH |
+
+`killpg(pgid, 9)` on a zombie-only group raises **PermissionError**. So an
+escalation that treats EPERM as failure fails on exactly the groups that are
+already gone, and a fallback that switches probe families **disagrees with itself
+under precisely the conditions it was added to resolve.**
+
+### The same class, four times, in four files, in one plan
+
+- a reviewer's probe read a zombie as a survivor and nearly filed a false finding;
+- the background classifier read `reap() -> None` as `Lost`, because `None` meant
+  *not exited*, *already observed*, and *never ours*;
+- the PM's ruled "cheap probe" fix could not converge on a zombie-only group —
+  a performance fix reintroducing the timing defect it was meant to cure;
+- and the sharpest one, the reviewer's again: **the first version of the probe
+  called `child.poll()` while observing.** `poll()` is a non-blocking `waitpid`,
+  so the observer REAPED the zombie it was measuring and printed `ps=[]` for a
+  state that existed until it looked. It would have taught every later reader
+  that zombies vanish on their own — the exact opposite of the contract the probe
+  exists to state.
+
+> **An observer that consumes is not an observer.** `reap()` consumes the exit
+> status; `poll()` consumes the zombie. Both destroy the fact they report on, and
+> both then report the absence they created.
+
+The zombie is not an edge case in this system. It is **the normal end state of a
+process nobody has reaped yet**, and every liveness question here has to be
+answered against it: absence of a row, absence of a permission, and absence of a
+child are three different absences, and only one of them means *gone*.
+
+Encoded as a runnable probe rather than a paragraph, because this is the fourth
+time the paragraph would not have been enough.
+
