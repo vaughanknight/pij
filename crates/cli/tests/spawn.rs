@@ -1,14 +1,20 @@
+use std::collections::{BTreeSet, VecDeque};
+use std::future::Future;
+use std::pin::Pin;
 use std::process::Command;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use pij_core::config::{AdapterChoice, Adapters, Config};
+use pij_core::error::{PijError, Result};
 use pij_core::model::{
     DeliveryOrigin, DeliveryOutcome, Envelope, Harness, Msg, ProcIdentity, Receipt, SeatDescriptor,
-    SeatId, Seq,
+    SeatId, SemanticState, Seq,
 };
-use pij_core::ports::Registry;
+use pij_core::ports::{Registry, Spine};
+use pij_daemon::RpcPortAllocator;
+use pij_daemon::events::EventBus;
 use pij_daemon::http::{HttpConfig, router_with_config};
-use pij_store::SqliteRegistry;
+use pij_store::{SqliteRegistry, SqliteSpine};
 use pij_testkit::fakes::{FakeLiveness, FakeTmux, FakeTransport};
 use pij_testkit::fresh_dir;
 
@@ -39,7 +45,50 @@ where
         .output()
         .expect("run shipped CLI")
 }
+struct ScriptedRpcPorts {
+    candidates: Mutex<VecDeque<u16>>,
+    seen_unavailable: Mutex<Vec<BTreeSet<u16>>>,
+}
 
+impl ScriptedRpcPorts {
+    fn new(candidates: impl IntoIterator<Item = u16>) -> Self {
+        Self {
+            candidates: Mutex::new(candidates.into_iter().collect()),
+            seen_unavailable: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn seen_unavailable(&self) -> Vec<BTreeSet<u16>> {
+        self.seen_unavailable
+            .lock()
+            .expect("port witness mutex")
+            .clone()
+    }
+}
+
+impl RpcPortAllocator for ScriptedRpcPorts {
+    fn allocate<'a>(
+        &'a self,
+        unavailable: &'a BTreeSet<u16>,
+    ) -> Pin<Box<dyn Future<Output = Result<u16>> + Send + 'a>> {
+        Box::pin(async move {
+            self.seen_unavailable
+                .lock()
+                .expect("port witness mutex")
+                .push(unavailable.clone());
+            let mut candidates = self.candidates.lock().expect("port candidate mutex");
+            while let Some(candidate) = candidates.pop_front() {
+                if !unavailable.contains(&candidate) {
+                    return Ok(candidate);
+                }
+            }
+            Err(PijError::Adapter {
+                adapter: "test/rpc-port".to_string(),
+                message: "scripted RPC ports exhausted".to_string(),
+            })
+        })
+    }
+}
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_intent() {
     let dir = fresh_dir("pij-spawn-e2e");
@@ -51,8 +100,24 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
     )
     .await
     .expect("open real store");
-    let registry = Arc::new(SqliteRegistry::new(pool));
+    let registry = Arc::new(SqliteRegistry::new(pool.clone()));
     let tmux = Arc::new(FakeTmux::new());
+    let spine = Arc::new(SqliteSpine::new(pool));
+    let rpc_ports = Arc::new(ScriptedRpcPorts::new([61_001, 61_003, 61_004]));
+    let mut live_port = SeatDescriptor::new("pij-live-port", Harness::Copilot, "/abs/tree");
+    live_port.rpc_port_intent = Some(61_001);
+    registry
+        .put(live_port)
+        .await
+        .expect("seed live port intent");
+    let mut dead_port = SeatDescriptor::new("pij-dead-port", Harness::Copilot, "/abs/tree");
+    dead_port.tombstoned_at = Some(1);
+    dead_port.tombstone_reason = Some("old incarnation".to_string());
+    dead_port.rpc_port_intent = Some(61_003);
+    registry
+        .put(dead_port)
+        .await
+        .expect("seed tombstoned port intent");
     let first_identity = ProcIdentity {
         pid: 4242,
         proc_start: 20260830112233,
@@ -69,6 +134,9 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
     .expect("build services");
     services.registry = registry.clone();
     services.tmux = tmux.clone();
+    services.spine = spine.clone();
+    services.event_bus = Arc::new(EventBus::new(spine.clone(), 16).expect("event bus"));
+    services.rpc_ports = rpc_ports.clone();
     services.liveness = Arc::new(
         FakeLiveness::new()
             .with_proc(first_identity)
@@ -141,10 +209,27 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
         .rpc_port_intent
         .expect("Copilot spawn stamps argv intent");
     let calls = tmux.calls();
+    assert_eq!(
+        old_port, 61_003,
+        "allocator must skip another live seat's stamped port"
+    );
+    let allocation_view = rpc_ports.seen_unavailable();
+    assert!(allocation_view[0].contains(&61_001));
+    assert!(
+        !allocation_view[0].contains(&61_003),
+        "a tombstoned seat no longer reserves its old port"
+    );
     assert_eq!(calls.len(), 3);
     assert!(!calls[0].contains("--ui-server"));
     assert!(calls[1].contains(r#"{\"crossSessionInbound\":\"accept\"}"#));
     assert!(calls[2].contains(&format!("\"--ui-server\", \"--port\", \"{old_port}\"")));
+    let mut postmortem = first.clone();
+    postmortem.role = Some("reviewer".to_string());
+    postmortem.semantic_state = Some(SemanticState::Done);
+    registry
+        .put(postmortem)
+        .await
+        .expect("stamp displaced post-mortem facts");
 
     let live_collision = run_cli(
         &dir,
@@ -197,32 +282,63 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
         Some(fresh_port),
         "nothing re-stamps the old value on a later pass"
     );
+    let revive_event = spine
+        .tail(Some(&first.id), Seq(0))
+        .await
+        .expect("read revive history")
+        .into_iter()
+        .find(|event| event.kind == "seat.revive-postmortem")
+        .expect("revive must preserve the displaced post-mortem");
+    let postmortem_payload: serde_json::Value =
+        serde_json::from_str(&revive_event.payload).expect("post-mortem payload");
+    assert_eq!(postmortem_payload["reason"], "test transition");
+    assert_eq!(postmortem_payload["role"], "reviewer");
+    assert_eq!(postmortem_payload["semantic_state"], "done");
 
-    let register_same = || {
-        run_cli(
-            &dir,
-            &addr,
-            &[
-                "register",
-                "pij-e2e-rpc",
-                "--harness",
-                "copilot",
-                "--folder",
-                "/abs/tree",
-                "--pane",
-                "%42",
-                "--pid",
-                "4242",
-                "--proc-start",
-                "20260830112233",
-            ],
-        )
+    let register_same = |spawn_id: Option<&str>| {
+        let mut args = vec![
+            "register",
+            "pij-e2e-rpc",
+            "--harness",
+            "copilot",
+            "--folder",
+            "/abs/tree",
+            "--pane",
+            "%42",
+            "--pid",
+            "4242",
+            "--proc-start",
+            "20260830112233",
+        ];
+        if let Some(spawn_id) = spawn_id {
+            args.extend(["--spawn-id", spawn_id]);
+        }
+        run_cli(&dir, &addr, &args)
     };
+
+    let fresh_spawn_id = revived.spawn_id.as_deref().expect("revive launch id");
+    let first_bind = register_same(Some(fresh_spawn_id));
+    assert!(
+        first_bind.status.success(),
+        "matching first registration: {}",
+        String::from_utf8_lossy(&first_bind.stderr)
+    );
+    let first_bind: Envelope<SeatDescriptor> =
+        serde_json::from_slice(&first_bind.stdout).expect("first-bind envelope");
+    assert_eq!(
+        first_bind
+            .data
+            .expect("first-bind descriptor")
+            .rpc_port_intent,
+        Some(fresh_port),
+        "the revived seat's matching first bind must preserve its fresh port intent"
+    );
+
     for pass in 1..=2 {
-        let registered = register_same();
+        let registered = register_same(None);
         assert!(
             registered.status.success(),
-            "registration pass {pass}: {}",
+            "unmatched registration pass {pass}: {}",
             String::from_utf8_lossy(&registered.stderr)
         );
         let envelope: Envelope<SeatDescriptor> =
@@ -233,7 +349,7 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
                 .expect("registered descriptor")
                 .rpc_port_intent,
             None,
-            "registration without a fresh allocation must not inherit port intent"
+            "registration without the matching launch id must clear port intent"
         );
     }
     assert_eq!(

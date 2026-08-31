@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const INBOX_ACK_EVENT_KIND: &str = "delivery.inbox-ack";
+const REVIVE_POSTMORTEM_EVENT_KIND: &str = "seat.revive-postmortem";
 
 use axum::Router;
 use axum::body::{Body, Bytes};
@@ -27,7 +28,7 @@ use axum::routing::{get, post};
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::model::{
-    Envelope, ErrorKind, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId, Seq,
+    Envelope, ErrorKind, Event, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId, Seq,
 };
 use pij_core::names::memorable_pij_id_candidates;
 use pij_core::ports::{LaunchCommand, Registry, SeatFilter};
@@ -359,6 +360,12 @@ async fn register(State(state): State<AppState>, Json(claim): Json<Registration>
         .find(|seat| seat.id == claimed_id)
         .cloned()
         .unwrap_or_else(|| SeatDescriptor::new(claimed_id, harness, claim.folder.clone()));
+    let binds_spawned_incarnation = descriptor.proc.is_none()
+        && descriptor
+            .spawn_id
+            .as_deref()
+            .zip(claim.spawn_id.as_deref())
+            .is_some_and(|(launched, claimed)| !launched.is_empty() && launched == claimed);
     descriptor.harness = harness;
     descriptor.folder = claim.folder;
     descriptor.pane = claim.pane;
@@ -379,10 +386,13 @@ async fn register(State(state): State<AppState>, Json(claim): Json<Registration>
     }
     descriptor.parent = claim.parent;
     descriptor.relay = claim.relay;
-    // A registration describes the current process incarnation but carries no
-    // freshly allocated Copilot UI-server port. Never inherit a dead launch's
-    // endpoint intent merely because the stable seat id is reused.
-    descriptor.rpc_port_intent = None;
+    // The pre-bind row's matching launch id proves this registration is binding
+    // the incarnation for which the fresh port intent was stamped. Preserve it
+    // for that transition only. Every unmatched or already-bound registration
+    // carries no fresh allocation and must clear rather than inherit.
+    if !binds_spawned_incarnation {
+        descriptor.rpc_port_intent = None;
+    }
     // Tombstone the predecessor BEFORE writing the successor, and name the
     // successor in the reason. Not a delete: queued work and history for the old
     // id must not silently vanish, and `SeatIsGone` carrying "superseded by X" is
@@ -431,36 +441,46 @@ async fn allocate_memorable_id(registry: &dyn Registry, seed: &str) -> Result<Op
     Ok(None)
 }
 
-/// Ask the kernel for a loopback port for one Copilot launch, excluding the
-/// tombstoned incarnation's old value. Dropping the listener before Copilot
-/// binds is an acknowledged TOCTOU: the resulting descriptor records argv
-/// intent, never listener possession.
-async fn allocate_copilot_rpc_port(excluded: Option<u16>) -> Result<u16> {
-    let bind = || async {
-        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
-            .await
-            .map_err(|error| PijError::Adapter {
+/// Read and publish the tombstone that a revive is about to replace. Reading
+/// registry truth here makes the ordering load-bearing: moving this call after
+/// the overwrite fails because the post-mortem no longer exists.
+async fn publish_revive_postmortem(state: &AppState, seat_id: &SeatId) -> Result<()> {
+    let previous =
+        state
+            .services
+            .registry
+            .get(seat_id)
+            .await?
+            .ok_or_else(|| PijError::Adapter {
                 adapter: "spawn".to_string(),
-                message: format!("could not allocate a loopback port for Copilot RPC: {error}"),
+                message: format!("cannot preserve revive history for absent seat `{seat_id}`"),
             })?;
-        let port = listener
-            .local_addr()
-            .map_err(|error| PijError::Adapter {
-                adapter: "spawn".to_string(),
-                message: format!("could not read the allocated Copilot RPC port: {error}"),
-            })?
-            .port();
-        Ok::<_, PijError>((listener, port))
-    };
-    let (listener, port) = bind().await?;
-    if Some(port) != excluded {
-        return Ok(port);
+    if previous.tombstoned_at.is_none() {
+        return Err(PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: format!("cannot preserve revive history for live seat `{seat_id}`"),
+        });
     }
-    // Hold the excluded port while asking the kernel again, making inequality
-    // structural rather than probabilistic.
-    let _excluded_listener = listener;
-    let (_replacement_listener, replacement) = bind().await?;
-    Ok(replacement)
+    let payload = serde_json::json!({
+        "tombstoned_at": previous.tombstoned_at,
+        "reason": previous.tombstone_reason,
+        "role": previous.role,
+        "semantic_state": previous.semantic_state,
+    })
+    .to_string();
+    state
+        .services
+        .event_bus
+        .publish(Event {
+            seq: None,
+            v: wire::EVENT_VERSION,
+            at: system_time_ms()?,
+            kind: REVIVE_POSTMORTEM_EVENT_KIND.to_string(),
+            seat: Some(previous.id),
+            payload,
+        })
+        .await?;
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -533,20 +553,18 @@ pub(crate) async fn launch_seat(
         Err(error) => return internal(command_name, error),
     };
     let _spawn_guard = state.spawn_lock.lock().await;
-    let (seat_id, prior_rpc_port_intent, reviving) = match request.id.clone() {
+    let (seat_id, displaced) = match request.id.clone() {
         Some(id) => match state.services.registry.get(&id).await {
             Ok(Some(existing)) if existing.tombstoned_at.is_none() => {
-                let reason = if existing_policy.allow_absent {
+                return refused(
+                    command_name,
                     format!(
-                        "seat `{id}` already exists and is live — spawn never overwrites a live roster row"
-                    )
-                } else {
-                    format!("seat `{id}` is live, so it cannot be revived")
-                };
-                return refused(command_name, reason);
+                        "seat `{id}` exists and is not tombstoned — only a tombstoned row may be revived"
+                    ),
+                );
             }
-            Ok(Some(existing)) => (id, existing.rpc_port_intent, true),
-            Ok(None) if existing_policy.allow_absent => (id, None, false),
+            Ok(Some(existing)) => (id, Some(existing)),
+            Ok(None) if existing_policy.allow_absent => (id, None),
             Ok(None) => {
                 return refused(
                     command_name,
@@ -557,7 +575,7 @@ pub(crate) async fn launch_seat(
         },
         None if existing_policy.allow_absent => {
             match allocate_memorable_id(&*state.services.registry, &spawn_id).await {
-                Ok(Some(id)) => (id, None, false),
+                Ok(Some(id)) => (id, None),
                 Ok(None) => {
                     return refused(
                         command_name,
@@ -571,8 +589,22 @@ pub(crate) async fn launch_seat(
     };
 
     let copilot_rpc_port_intent = if request.harness == Harness::Copilot {
-        let excluded_port = reviving.then_some(prior_rpc_port_intent).flatten();
-        match allocate_copilot_rpc_port(excluded_port).await {
+        let mut unavailable = displaced
+            .as_ref()
+            .and_then(|seat| seat.rpc_port_intent)
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let seats = match state.services.registry.list(SeatFilter::default()).await {
+            Ok(seats) => seats,
+            Err(error) => return internal(command_name, error),
+        };
+        unavailable.extend(
+            seats
+                .into_iter()
+                .filter(|seat| seat.tombstoned_at.is_none())
+                .filter_map(|seat| seat.rpc_port_intent),
+        );
+        match state.services.rpc_ports.allocate(&unavailable).await {
             Ok(port) => Some(port),
             Err(error) => return internal(command_name, error),
         }
@@ -609,6 +641,12 @@ pub(crate) async fn launch_seat(
         Ok(pane) => pane,
         Err(error) => return internal(command_name, error),
     };
+    if displaced.is_some()
+        && let Err(error) = publish_revive_postmortem(state, &seat_id).await
+    {
+        let _ = state.services.tmux.kill(&pane.id).await;
+        return internal(command_name, error);
+    }
 
     // Carry seat and launch intent into the fresh row; never carry possession.
     // `proc` remains absent until the new incarnation registers.

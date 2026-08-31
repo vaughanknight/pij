@@ -109,6 +109,21 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
 
     let relay: i64 = row.try_get("relay").map_err(adapter_error)?;
     let parent: Option<String> = row.try_get("parent").map_err(adapter_error)?;
+    let rpc_port_raw: Option<i64> = row.try_get("rpc_port_intent").map_err(adapter_error)?;
+    let rpc_port_intent = match rpc_port_raw {
+        None => None,
+        Some(port) => match u16::try_from(port) {
+            Ok(port) if port != 0 => Some(port),
+            _ => {
+                return Err(PijError::Adapter {
+                    adapter: "store/registry".to_string(),
+                    message: format!(
+                        "seat row has invalid rpc_port_intent {port}; expected NULL or 1..=65535"
+                    ),
+                });
+            }
+        },
+    };
 
     Ok(SeatDescriptor {
         id: SeatId(row.try_get::<String, _>("id").map_err(adapter_error)?),
@@ -137,10 +152,7 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
             .try_get::<Option<i64>, _>("cross_session_inbound_accept")
             .map_err(adapter_error)?
             .map(|flag| flag != 0),
-        rpc_port_intent: row
-            .try_get::<Option<i64>, _>("rpc_port_intent")
-            .map_err(adapter_error)?
-            .map(|port| port as u16),
+        rpc_port_intent,
     })
 }
 

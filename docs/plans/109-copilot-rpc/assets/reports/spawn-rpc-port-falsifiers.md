@@ -58,6 +58,48 @@ A new descriptor and a non-Copilot spawn both carry `rpc_port_intent: None`; leg
 
 **Red mutation:** make the constructor or non-Copilot spawn invent a port. The absence assertions must fail.
 
+## F8 — matching first bind preserves only the fresh incarnation
+
+**Path:** shipped `pij-rs spawn` over a tombstoned id → descriptor with fresh `spawn_id` and `rpc_port_intent` → shipped `pij-rs register --spawn-id <matching>` → `register` handler → real `SqliteRegistry::put` → response and `Registry::get` observation; then shipped registration with no matching `spawn_id` over the same id.
+
+The revived seat's first registration carrying the exact fresh launch `spawn_id` must preserve port B while adding its live process identity. A later registration with no matching launch id must clear B, and another read must prove old port A never reappears. Matching is explicit and non-empty: two absent ids do not authorize preservation.
+
+**Red baseline:** the current unconditional registration reset must erase B on the matching first bind. The shipped transition witness must fail by observing `None` where B is required.
+
+**Future mutation:** make every registration preserve the port. The unmatched second arm must retain B and fail.
+
+## F9 — corrupt persisted ports refuse instead of narrowing
+
+**Path:** real SQLite `seats.rpc_port_intent` → `SqliteRegistry::get` → `row_to_descriptor`.
+
+Migration 0009 must constrain stored values to `1..=65535` or NULL. With check constraints deliberately bypassed to model an already-corrupt store, reads of `0`, `65536`, `70000`, and `-1` must return a named adapter error rather than `Some` after integer narrowing.
+
+**Red baseline:** the current `i64 as u16` decoder returns forged present ports (`65536 → 0`, `70000 → 4464`, `-1 → 65535`) and must fail the witness.
+
+## F10 — descriptor reconciliation updates survivor and clears alias
+
+**Path:** real `SqliteOrchestration::reconcile_descriptors` transaction → survivor and alias SQL updates → `SqliteRegistry::get` for both rows.
+
+Arrange on-disk survivor port X, verified survivor port Y, and alias port A. Reconcile, then observe survivor Y and alias None. This changes values on both rows so omitted SQL columns cannot pass by coincidence.
+
+**Red baseline:** the current transaction leaves survivor X and alias A; both assertions must fail independently.
+
+## F11 — revive preserves the displaced post-mortem in the spine
+
+**Path:** shipped `pij-rs spawn` over a tombstoned id → shared `launch_seat` transition → daemon `EventBus`/`Spine` → descriptor overwrite.
+
+Seed a tombstoned descriptor with reason, role, and semantic state, revive through the shipped binary, then observe an append-only event for the displaced incarnation carrying all three facts while the new live descriptor is clean.
+
+**Red baseline:** the current revive overwrites the only row and emits no such event; event lookup must fail.
+
+## F12 — allocator excludes ports stamped on live seats
+
+**Path:** shipped `POST /v1/spawn` → shared `launch_seat` → injected `RpcPortAllocator` used by production composition → registry live-seat snapshot → emitted argv and persisted descriptor.
+
+Script the allocator's first kernel candidate to equal another live seat's stamped port and its next candidate to be free. Spawn through the authenticated route and observe only the second value in argv and descriptor. A tombstoned seat's old port does not reserve the number.
+
+**Red baseline:** the current allocator consults only the one revived descriptor and accepts the live seat's stamped candidate; the shipped path must expose that collision.
+
 ## Demonstrated red arms
 
 All commands ran with `env -u CARGO_TARGET_DIR CARGO_INCREMENTAL=0` from the unit worktree.
@@ -71,5 +113,14 @@ All commands ran with `env -u CARGO_TARGET_DIR CARGO_INCREMENTAL=0` from the uni
 | F5 | Removed only `rpc_port_intent=excluded.rpc_port_intent` from SQLite upsert | `cargo test --locked -p pij-store --test store_integration rpc_port_intent_updates_to_a_different_value_and_tombstone_clears_it` | old `Some(47781)` remained instead of `Some(51948)` |
 | F6 | Removed only `rpc_port_intent = NULL` from SQLite tombstone | same real-store test | tombstone retained `Some(51948)` instead of `None` |
 | F7 | Constructor invented `Some(1)` | same real-store test | closed-default assertion saw `Some(1)` instead of `None` |
+| F8/M7 | Forced the spawn-id predicate never to match | shipped CLI transition test | matching first bind cleared fresh `Some(61004)` to `None` |
+| F8/M6 | Forced the spawn-id predicate always to match | shipped CLI transition test | unmatched later registration retained stale `Some(61004)` instead of `None` |
+| F9a | Removed the migration range constraint (pre-fix baseline) | `cargo test --locked -p pij-store --test store_integration rpc_port_intent_schema_refuses_zero_negative_and_out_of_range_values` | invalid `0` write succeeded |
+| F9b | Kept narrowing decoder (pre-fix baseline) | `cargo test --locked -p pij-store --test store_integration corrupt_rpc_port_intent_is_a_named_read_error_never_a_narrowed_presence` | corrupt `0` decoded as `Some(0)` |
+| F10 alias | Reconciliation omitted alias clear (pre-fix baseline) | `cargo test --locked -p pij-store --test orchestration descriptor_merge_is_atomic_and_retains_both_inputs_and_mismatches` | alias retained `Some(47781)` |
+| F10 survivor | Removed only survivor `rpc_port_intent` update | same real-orchestration test | on-disk `Some(41001)` remained instead of verified `Some(51948)` |
+| F11 baseline | Revive emitted no post-mortem event | shipped CLI transition test | no `seat.revive-postmortem` event existed |
+| F11/M8 | Moved post-mortem publication after descriptor overwrite | shipped CLI transition test | revive failed because registry truth was live and the post-mortem was already gone |
+| F12 | Passed only the revived row's old port to the scripted allocator | shipped CLI transition test | allocator returned another live seat's stamped `61001` instead of free `61003` |
 
-Instrument correction: the first F1 command included `-- --exact` without the module-qualified test name and ran zero tests. It was discarded; the unfiltered-name command above ran one test and produced the recorded red.
+Instrument corrections: the first F1 command included `-- --exact` without the module-qualified test name and ran zero tests; it was discarded. The first F12 attempt used a non-object-safe async trait and failed compilation before exercising allocation; it was discarded. The first M8 move borrowed a moved `SeatId` and likewise failed compilation; after making that mutation executable, the behavioral red above was recorded.

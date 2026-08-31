@@ -184,8 +184,8 @@ impl SqliteOrchestration {
 
         let mut tx = begin_write(&self.pool).await?;
         let survivor_updated = sqlx::query(
-            "UPDATE seats SET harness=?2, pane=?3, folder=?4, model=?5, provider=?6, effort=?7 \
-             WHERE id=?1",
+            "UPDATE seats SET harness=?2, pane=?3, folder=?4, model=?5, provider=?6, effort=?7, \
+             rpc_port_intent=?8 WHERE id=?1",
         )
         .bind(plan.survivor.id.as_str())
         .bind(plan.survivor.harness.as_str())
@@ -194,22 +194,25 @@ impl SqliteOrchestration {
         .bind(plan.survivor.model.as_deref())
         .bind(plan.survivor.provider.as_deref())
         .bind(plan.survivor.effort.as_deref())
+        .bind(plan.survivor.rpc_port_intent.map(i64::from))
         .execute(&mut *tx)
         .await
         .map_err(adapter_error)?
         .rows_affected();
-        let alias_updated =
-            sqlx::query("UPDATE seats SET tombstoned_at=?2, tombstone_reason=?3 WHERE id=?1")
-                .bind(plan.alias.id.as_str())
-                .bind(verified_at)
-                .bind(format!(
-                    "equivalent descriptor merged into {}",
-                    plan.survivor.id
-                ))
-                .execute(&mut *tx)
-                .await
-                .map_err(adapter_error)?
-                .rows_affected();
+        let alias_updated = sqlx::query(
+            "UPDATE seats SET tombstoned_at=?2, tombstone_reason=?3, rpc_port_intent=NULL \
+             WHERE id=?1",
+        )
+        .bind(plan.alias.id.as_str())
+        .bind(verified_at)
+        .bind(format!(
+            "equivalent descriptor merged into {}",
+            plan.survivor.id
+        ))
+        .execute(&mut *tx)
+        .await
+        .map_err(adapter_error)?
+        .rows_affected();
         if survivor_updated != 1 || alias_updated != 1 {
             tx.rollback().await.map_err(adapter_error)?;
             return Err(PijError::Adapter {

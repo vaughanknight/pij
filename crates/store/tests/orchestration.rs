@@ -88,14 +88,18 @@ async fn descriptor_merge_is_atomic_and_retains_both_inputs_and_mismatches() {
     let mut old = SeatDescriptor::new("old-alias", Harness::Omp, "/old");
     old.proc = Some(process);
     old.model = Some("old-model".to_string());
+    old.rpc_port_intent = Some(47_781);
     let mut fresh_descriptor = SeatDescriptor::new("fresh-seat", Harness::Omp, "/fresh");
     fresh_descriptor.proc = Some(process);
     fresh_descriptor.model = Some("new-model".to_string());
+    fresh_descriptor.rpc_port_intent = Some(51_948);
     registry.put(old.clone()).await.expect("put old");
+    let mut stored_fresh = fresh_descriptor.clone();
+    stored_fresh.rpc_port_intent = Some(41_001);
     registry
-        .put(fresh_descriptor.clone())
+        .put(stored_fresh)
         .await
-        .expect("put fresh");
+        .expect("put stale survivor row");
 
     let decision = store
         .reconcile_descriptors(
@@ -126,6 +130,20 @@ async fn descriptor_merge_is_atomic_and_retains_both_inputs_and_mismatches() {
             .tombstone_reason
             .as_deref()
             .is_some_and(|reason| reason.contains("fresh-seat"))
+    );
+    assert_eq!(
+        alias.rpc_port_intent, None,
+        "reconciled alias must not retain a dead incarnation's port intent"
+    );
+    assert_eq!(
+        registry
+            .get(&fresh_descriptor.id)
+            .await
+            .expect("get survivor")
+            .expect("survivor row")
+            .rpc_port_intent,
+        Some(51_948),
+        "survivor update must carry the verified descriptor's port intent"
     );
     let history: (String, String, String, String, String) = sqlx::query_as(
         "SELECT survivor_id, alias_id, survivor_json, alias_json, mismatched_fields \

@@ -226,6 +226,69 @@ async fn rpc_port_intent_updates_to_a_different_value_and_tombstone_clears_it() 
 }
 
 #[tokio::test]
+async fn rpc_port_intent_schema_refuses_zero_negative_and_out_of_range_values() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let registry = SqliteRegistry::new(pool.clone());
+    let mut seat = SeatDescriptor::new("pij-rpc-range", Harness::Copilot, "/abs/tree");
+    seat.rpc_port_intent = Some(47_781);
+    registry.put(seat).await.expect("seed valid port");
+
+    for invalid in [0_i64, -1, 65_536, 70_000] {
+        let result = sqlx::query("UPDATE seats SET rpc_port_intent=?2 WHERE id=?1")
+            .bind("pij-rpc-range")
+            .bind(invalid)
+            .execute(&pool)
+            .await;
+        assert!(
+            result.is_err(),
+            "migration CHECK must refuse invalid rpc_port_intent={invalid}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn corrupt_rpc_port_intent_is_a_named_read_error_never_a_narrowed_presence() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let registry = SqliteRegistry::new(pool.clone());
+    registry
+        .put(SeatDescriptor::new(
+            "pij-rpc-corrupt",
+            Harness::Copilot,
+            "/abs/tree",
+        ))
+        .await
+        .expect("seed descriptor");
+    let mut connection = pool
+        .acquire()
+        .await
+        .expect("acquire corrupt-store connection");
+    sqlx::query("PRAGMA ignore_check_constraints = ON")
+        .execute(&mut *connection)
+        .await
+        .expect("model an already-corrupt store");
+
+    for invalid in [0_i64, -1, 65_536, 70_000] {
+        sqlx::query("UPDATE seats SET rpc_port_intent=?2 WHERE id=?1")
+            .bind("pij-rpc-corrupt")
+            .bind(invalid)
+            .execute(&mut *connection)
+            .await
+            .expect("plant corrupt port");
+        let error = registry
+            .get(&SeatId::from("pij-rpc-corrupt"))
+            .await
+            .expect_err("corrupt port must not become a present u16");
+        assert!(
+            error.to_string().contains("rpc_port_intent")
+                && error.to_string().contains(&invalid.to_string()),
+            "error must name the corrupt field and value: {error}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn filters_narrow_and_absent_filter_fields_do_not() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
