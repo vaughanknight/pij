@@ -196,10 +196,17 @@ async fn bg_cancel_observes_the_full_process_group_dead_before_cancelled_receipt
 
     for run in 0..3 {
         let id = format!("tree-{run}");
+        let command = if run == 0 {
+            // TERM is deliberately ignored by the shell and its child. This
+            // leg can finish only through the shipped SIGKILL escalation.
+            "trap '' TERM; while :; do sleep 30; done"
+        } else {
+            "trap 'sleep 1; exit' TERM; while :; do sleep 30; done"
+        };
         let start = BgRequest::Start {
             id: id.clone(),
             title: "cancellation witness".to_string(),
-            command: "trap 'sleep 1; exit' TERM; while :; do sleep 30; done".to_string(),
+            command: command.to_string(),
             target: target.clone(),
         };
         queue
