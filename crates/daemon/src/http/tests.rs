@@ -13,7 +13,7 @@ use pij_core::model::{
     DeliveryOrigin, Destination, Envelope, Event, Harness, Job, JobId, Outcome, Pane, ProcIdentity,
     Receipt, SeatDescriptor,
 };
-use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, Spine};
+use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, Spine, TmuxPort};
 use pij_core::wire::{self, WireEvent};
 use pij_testkit::fakes::{FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux};
 
@@ -354,6 +354,269 @@ async fn registration_corroborates_process_and_refuses_shared_process_aliases() 
         ["list", "put:pij-parent", "list", "put:pij-parent", "list",],
         "a refused alias is never persisted"
     );
+
+    server.abort();
+}
+#[tokio::test]
+async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
+    let registry = Arc::new(FakeRegistry::new());
+    let tmux = Arc::new(FakeTmux::new().with_pane(Pane {
+        id: "%caller".to_string(),
+        session: "fleet".to_string(),
+        window: "orchestrator".to_string(),
+        title: String::new(),
+        cursor_x: None,
+        cursor_y: None,
+    }));
+    let identity = ProcIdentity {
+        pid: 42,
+        proc_start: 20260831090000,
+    };
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.tmux = tmux.clone();
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(identity));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+
+    let spawned = client
+        .post(format!("http://{addr}/v1/spawn"))
+        .bearer_auth("key")
+        .json(&SpawnRequest {
+            id: None,
+            harness: Harness::Copilot,
+            executable: Some("copilot".to_string()),
+            model: Some("provider/model".to_string()),
+            effort: Some("high".to_string()),
+            cwd: "/abs/tree".to_string(),
+            session: Some("fleet".to_string()),
+            caller_pane: None,
+            name: None,
+            parent: None,
+            accept_inbound: false,
+        })
+        .send()
+        .await
+        .expect("spawn request");
+    assert_eq!(spawned.status(), reqwest::StatusCode::OK);
+
+    // Build the registration from what the launched process and tmux observe,
+    // never from the spawn response. Using that response's assigned id here hid
+    // the real mismatch: the registering runtime can claim a different id.
+    let launch = tmux
+        .calls()
+        .into_iter()
+        .find(|call| call.starts_with("new_window:"))
+        .expect("observed launch");
+    let launched_seat_id = launch
+        .split('"')
+        .find_map(|arg| arg.strip_prefix("PIJ_SESSION_ID="))
+        .expect("launched seat id")
+        .to_string();
+    let launched_spawn_id = launch
+        .split('"')
+        .find_map(|arg| arg.strip_prefix("PIJ_SPAWN_ID="))
+        .expect("launched spawn id")
+        .to_string();
+    let launched_pane = tmux
+        .list_panes()
+        .await
+        .expect("launched panes")
+        .into_iter()
+        .find(|pane| pane.id != "%caller")
+        .expect("spawned pane");
+    let prebind = registry
+        .list(SeatFilter::default())
+        .await
+        .expect("pre-bind roster")
+        .into_iter()
+        .find(|seat| seat.id.as_str() == launched_seat_id)
+        .expect("pre-bind row");
+    let allocated_port = prebind
+        .rpc_port_intent
+        .expect("Copilot launch allocates a port intent");
+    assert_eq!(
+        prebind.spawn_id.as_deref(),
+        Some(launched_spawn_id.as_str())
+    );
+    assert_eq!(prebind.pane.as_deref(), Some(launched_pane.id.as_str()));
+
+    let registered = client
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&Registration {
+            supersedes: None,
+            id: "pij-runtime-name".to_string(),
+            harness: "copilot".to_string(),
+            folder: "/abs/tree".to_string(),
+            pane: Some(launched_pane.id.clone()),
+            pid: Some(identity.pid),
+            proc_start: Some(identity.proc_start),
+            spawn_id: Some(launched_spawn_id.clone()),
+            model: None,
+            provider: None,
+            effort: None,
+            parent: None,
+            relay: false,
+        })
+        .send()
+        .await
+        .expect("registration");
+    assert_eq!(registered.status(), reqwest::StatusCode::OK);
+
+    let seats = registry
+        .list(SeatFilter::default())
+        .await
+        .expect("bound roster");
+    let bound = seats.iter().find(|seat| seat.proc == Some(identity));
+    assert_eq!(
+        (
+            seats.len(),
+            bound.map(|seat| seat.id.as_str()),
+            bound.and_then(|seat| seat.rpc_port_intent),
+        ),
+        (1, Some(launched_seat_id.as_str()), Some(allocated_port)),
+        "the launched identity is adopted as one row with its allocated port"
+    );
+    let bound = bound.expect("bound launched row");
+    assert_eq!(bound.spawn_id.as_deref(), Some(launched_spawn_id.as_str()));
+    assert_eq!(bound.pane.as_deref(), Some(launched_pane.id.as_str()));
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn reregistration_prefers_exact_id_over_spawn_match_without_fresh_allocation() {
+    let identity = ProcIdentity {
+        pid: 43,
+        proc_start: 20260831090001,
+    };
+    let mut unrelated = SeatDescriptor::new("pij-a-prebind", Harness::Copilot, "/abs/tree");
+    unrelated.pane = Some("%44".to_string());
+    unrelated.spawn_id = Some("spawn-shared".to_string());
+    unrelated.rpc_port_intent = Some(47_781);
+    let mut existing = SeatDescriptor::new("pij-z-existing", Harness::Copilot, "/abs/tree");
+    existing.pane = Some("%44".to_string());
+    existing.proc = Some(identity);
+    existing.spawn_id = Some("spawn-shared".to_string());
+    let registry = Arc::new(FakeRegistry::new().with_seat(unrelated).with_seat(existing));
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(identity));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&Registration {
+            supersedes: None,
+            id: "pij-z-existing".to_string(),
+            harness: "copilot".to_string(),
+            folder: "/abs/tree".to_string(),
+            pane: Some("%44".to_string()),
+            pid: Some(identity.pid),
+            proc_start: Some(identity.proc_start),
+            spawn_id: Some("spawn-shared".to_string()),
+            model: None,
+            provider: None,
+            effort: None,
+            parent: None,
+            relay: false,
+        })
+        .send()
+        .await
+        .expect("repeat registration");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let accepted: Envelope<SeatDescriptor> = response.json().await.expect("descriptor envelope");
+    let accepted = accepted.data.expect("descriptor");
+    assert_eq!(accepted.id.as_str(), "pij-z-existing");
+    assert_eq!(
+        accepted.rpc_port_intent, None,
+        "an ordinary re-registration has no fresh port allocation to inherit"
+    );
+
+    let seats = registry
+        .list(SeatFilter::default())
+        .await
+        .expect("roster after repeat registration");
+    let unrelated = seats
+        .iter()
+        .find(|seat| seat.id.as_str() == "pij-a-prebind")
+        .expect("unrelated pre-bind row");
+    assert_eq!(unrelated.proc, None, "repeat registration cannot adopt it");
+    assert_eq!(unrelated.rpc_port_intent, Some(47_781));
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn registration_cannot_adopt_a_spawn_match_from_another_pane() {
+    let identity = ProcIdentity {
+        pid: 44,
+        proc_start: 20260831090002,
+    };
+    let mut unrelated =
+        SeatDescriptor::new("pij-prebind-other-pane", Harness::Copilot, "/abs/tree");
+    unrelated.pane = Some("%44".to_string());
+    unrelated.spawn_id = Some("spawn-shared".to_string());
+    unrelated.rpc_port_intent = Some(47_781);
+    let registry = Arc::new(FakeRegistry::new().with_seat(unrelated));
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(identity));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&Registration {
+            supersedes: None,
+            id: "pij-runtime-other-pane".to_string(),
+            harness: "copilot".to_string(),
+            folder: "/abs/tree".to_string(),
+            pane: Some("%45".to_string()),
+            pid: Some(identity.pid),
+            proc_start: Some(identity.proc_start),
+            spawn_id: Some("spawn-shared".to_string()),
+            model: None,
+            provider: None,
+            effort: None,
+            parent: None,
+            relay: false,
+        })
+        .send()
+        .await
+        .expect("registration from another pane");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let accepted: Envelope<SeatDescriptor> = response.json().await.expect("descriptor envelope");
+    let accepted = accepted.data.expect("descriptor");
+    assert_eq!(accepted.id.as_str(), "pij-runtime-other-pane");
+    assert_eq!(
+        accepted.rpc_port_intent, None,
+        "a matching spawn id on another pane owns no port for this registration"
+    );
+
+    let unrelated = registry
+        .list(SeatFilter::default())
+        .await
+        .expect("roster after unrelated registration")
+        .into_iter()
+        .find(|seat| seat.id.as_str() == "pij-prebind-other-pane")
+        .expect("unrelated pre-bind row remains");
+    assert_eq!(unrelated.proc, None);
+    assert_eq!(unrelated.rpc_port_intent, Some(47_781));
 
     server.abort();
 }

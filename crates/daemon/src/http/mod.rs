@@ -366,6 +366,18 @@ async fn register(State(state): State<AppState>, Json(claim): Json<Registration>
     let mut descriptor = seats
         .iter()
         .find(|seat| seat.id == claimed_id)
+        .or_else(|| {
+            let spawn_id = claim
+                .spawn_id
+                .as_deref()
+                .filter(|spawn_id| !spawn_id.is_empty())?;
+            let pane = claim.pane.as_deref()?;
+            seats.iter().find(|seat| {
+                seat.proc.is_none()
+                    && seat.spawn_id.as_deref() == Some(spawn_id)
+                    && seat.pane.as_deref() == Some(pane)
+            })
+        })
         .cloned()
         .unwrap_or_else(|| SeatDescriptor::new(claimed_id, harness, claim.folder.clone()));
     let binds_spawned_incarnation = descriptor.proc.is_none()
