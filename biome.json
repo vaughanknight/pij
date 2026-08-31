@@ -14,7 +14,9 @@
 			"!scratch",
 			"!.harness",
 			"!**/prime-flow.json",
-			"!crates"
+			"!crates",
+			"!target",
+			"!**/target"
 		]
 	},
 	"vcs": {
