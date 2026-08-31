@@ -385,3 +385,58 @@ unprompted, found it read `spawn_id` from the persisted descriptor and passed
 the shipped launcher did not provide; my prior green therefore does not prove fleet
 first-bind preservation."*
 
+## F9 addendum — the closing conditions, and a withdrawal worth naming
+
+### Why `PIJ_SESSION_ID` cannot carry the correlation
+
+It was considered and refused. `PIJ_SESSION_ID` is the **seat** id — **identical across
+incarnations by design**, which is what makes a revived seat the same seat:
+
+```
+first bind of THIS incarnation      -> pij-foo
+later incarnation of the SAME seat  -> pij-foo
+```
+
+**The discriminator would discriminate nothing**, collapsing back to either the
+unconditional clear (F1) or the unconditional inherit (R0-1). It is the
+recycled-identifier problem inverted: **the value is stable precisely where we need it
+to change.** The correlator must be incarnation-scoped.
+
+### The failure that would survive every response-reading test
+
+The spawn id is minted before the lock and stamped at the route; the argv is built from
+a plan input that had no such field. **If a second id is minted for the argv rather than
+threading the stamped one, emitted and stamped diverge — and every test that reads the
+launch id from the SPAWN RESPONSE still passes.** Same minted value, threaded end to
+end; never a second mint.
+
+Every launcher arm is enumerated in the receipt **with the line that transmits it,
+shown rather than assumed** — the Rust spawn plan, the TS bridge (which omits the field
+when the variable is absent), and the TS launcher (which exports it and never emits
+`--ui-server`). Nothing in the workspace spans that last seam, so comparing the two
+literals is a **human** check, and the absence of an instrument there is itself recorded.
+
+### Closing conditions
+
+1. **arm1 — through the SHIPPED launcher, end to end — goes green.** A test-supplied
+   environment may appear only as the contrast arm.
+2. **`pij-orthodox-tahr`'s witness goes green WITHOUT ANYONE TOUCHING IT.** It parses the
+   discrete argv the launcher recorded and derives both variables from that environment,
+   and it currently reds at *"launched process was not given PIJ_SPAWN_ID"*. **A witness
+   the fixer cannot see is the strongest kind** — if the fix does not turn it green
+   untouched, the fix is not reaching the launched environment.
+
+### The withdrawal, recorded by name
+
+**`pij-orthodox-tahr` withdrew its own GREEN receipt, unprompted, on a witness nobody
+had questioned, in a unit outside the reviewer's fence.** Told of a finding about
+someone else's code, it went and read its own file, found it took `spawn_id` from the
+persisted descriptor and passed it by hand, and wrote:
+
+> *"The fixture has a capability the shipped launcher did not provide; my prior green
+> therefore does not prove fleet first-bind preservation."*
+
+The reviewer could not have caught it — its fence is the mechanism, not the verb. This is
+the second time on this plan that a seat audited its own instrument against a finding
+about another's code and found itself on the wrong side.
+
