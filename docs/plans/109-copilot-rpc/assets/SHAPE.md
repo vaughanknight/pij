@@ -157,3 +157,63 @@ for one and wrongly for another.
 `getForeground` equality is **not** sufficient readiness and is **not** a busy gate.
 **Never cache a pre-resume positive** — it caches a false positive.
 
+---
+
+# AMENDMENT 2 — the stamp records INTENT, and the live-proc rule is unit 2's
+
+From pre-code review findings R0-6 and R0-7. Both are about the **stamp**, not about
+revive, and together they define the boundary between the two units.
+
+## The field records INTENT and must be NAMED as intent
+
+The precedent (`cross_session_inbound_accept`) is derived from the argv actually built:
+it records *"we passed the setting"*, not *"the harness accepted it"*. For a boolean the
+harness honours deterministically, **intent and outcome coincide** and the stamp is
+honest.
+
+**A port is not that.** *"Spawn emitted `--ui-server --port N`"* does not establish that
+anything is listening on N. A failed bind — port held by another seat, an unrelated
+process, or an unreleased predecessor — yields a descriptor stamped with a port **the
+seat never owned**: field present, `can_deliver` true, and a connect that may succeed
+**against whatever does own it**. That is the dangerous "plausible" case reached **on
+the first spawn, with no dead predecessor and no recycling.**
+
+So the field means *"spawn launched this seat with `--ui-server` on N"* and **not** *"a
+listener exists"*, and its name and doc comment must say so. This plan family has
+already shipped a `parked` count that reported a config value and a `reader-read` that
+meant a machine — both because **a field's name promised more than its writer knew.**
+
+## Three absences become FOUR
+
+| absence | cause | remedy |
+|---|---|---|
+| no `rpc_port` field | never launched with `--ui-server` | **PERMANENT** — pointer rung for the seat's life |
+| **NEVER BOUND** | flag emitted, nothing ever listened | **retry is POINTLESS** |
+| no listener on a stamped port | seat died, port recycled | transient-or-stale — queue and retry |
+| no session at a live endpoint | connect fine, "Session not found" | **a DEFECT, not a routing outcome** |
+
+The original table attributed "no listener" solely to death-and-recycling. **The same
+observable is produced at birth by a bind that never succeeded**, and the remedies
+differ — so collapsing them would have been the exact defect the table exists to
+prevent, committed inside the table itself.
+
+## The live-proc rule is a READ-TIME obligation, owned by UNIT 2
+
+`spawn_seat` writes a **pre-bind row**: `descriptor.proc` is `None` when the descriptor
+is written, asserted as a deliberate property by a shipped test. So at the instant
+`rpc_port` is stamped there is **by construction no proc identity beside it.**
+
+The packet's rule — *a port asserts nothing without a live proc identity beside it* —
+is therefore **unsatisfiable at stamp time**. It is satisfiable only at **read time**,
+by a consumer refusing a port whose seat has no live proc.
+
+> **Written down here because the alternative is unit 1 believing unit 2 enforces it and
+> unit 2 believing unit 1 did — a rule both halves think the other owns.** Nothing
+> fails, nothing logs, and both receipts are honest.
+
+**Binding on unit 1:** ship no `can_deliver`-adjacent helper that reads `rpc_port`
+without consulting proc. If one ships, unit 2 consumes it and the rule dies in the seam.
+**Binding on unit 2:** refuse at delivery, not at stamping.
+
+A receipt asserting the rule is honoured **without naming where** is itself a finding.
+
