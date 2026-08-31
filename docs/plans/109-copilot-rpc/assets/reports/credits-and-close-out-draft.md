@@ -83,3 +83,38 @@ know**.
   disclosure line.**
 - **unit 2** (`u-copilot-rpc`), packet written; **verb parity** at 15%, with `tail`
   renamed before parity completes, while it is still a correction.
+
+## Observed in production, after the tag: RF29-2 was not hypothetical
+
+Before deploying, the prime ran **one rs spawn on the OLD build** — pre-merge daemon
+and binary — and captured both halves:
+
+```
+API response allocated:      pij-free-flute
+launched process env:        PIJ_SESSION_ID=pij-enchanting-aardvark
+```
+
+**Emitted and stamped diverged in production, on a plain omp spawn.**
+
+That is exactly the failure the reviewer registered as **RF29-2** before the fix
+existed: *the spawn id is minted in one place and the argv is built from another, so
+if a second id is minted for the argv rather than threading the stamped one, emitted
+and stamped diverge — and every test that reads the launch id from the SPAWN RESPONSE
+still passes.* It was written down as the failure to expect **if anything went
+wrong**, and it was already happening.
+
+Two things it settles for the record:
+
+- **The reviewer's condition was blocking a real fleet defect, not a theoretical
+  one.** "Same minted value threaded end to end, never a second mint" looked like
+  pedantry about an internal detail; it was a description of production.
+- **The correlator riding EVERY spawn, not only Copilot, is demonstrated rather than
+  argued.** This was an **omp** seat. Had the ruling gated the correlator on
+  `Harness::Copilot`, this divergence would have stayed live on every other harness
+  and been discovered by whoever needed it next.
+
+The discriminating pair is the post-deploy repeat of the identical spawn on the new
+build: **allocated == env id**. One command, two values, and the claim is settled in
+the direction the evidence points — which is how every other finding on this plan was
+closed.
+
