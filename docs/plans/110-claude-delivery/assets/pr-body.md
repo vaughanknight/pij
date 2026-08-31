@@ -88,6 +88,37 @@ The invented `#311` status shapes are replaced by lines **recorded off the wire*
 with a README naming which are recordings and which are not. `status-dropped.ndjson` remains
 unrecorded and says so. A fixture authored by its own consumer proves nothing about the wire.
 
+## Known limitations — read these before assuming this is usable today
+
+**1. The Rust daemon cannot bind a Claude seat.** The transcript-discovery binder — the loop that
+watches `~/.claude/projects/*.jsonl` to match a freshly spawned pane to its real Claude session and
+pid — is not ported, so a spawned Claude seat's descriptor keeps `proc: null` forever. Since
+`UdsTransport::discover` opens with `let pid = seat.proc?.pid;`, no proc means no discovery and no
+delivery: **the socket transport is unreachable for any seat this daemon spawned** unless something
+registers it by hand. The live demo below required exactly that hand registration.
+*Fix already in flight — plan 113 (u-bind).*
+
+**2. Consent is off fleet-wide.** See the drift qualifier above.
+
+**3. A held delivery is slow by design.** It now occupies the drain for up to `HOLD_GRACE` (~5 s),
+and up to four attempts before parking; a direct send blocks its sender for the same window before
+reporting `Held`. That is the cost of hearing a human's answer instead of guessing it. Denials were
+measured at 1.7–2.2 s, so the margin is ~2.3×; a slower human still yields `Held`, by design.
+
+### The demo, end to end
+
+```
+pij-rs spawn --harness claude --accept-inbound     -> consent stamped at spawn
+(hand registration — see limitation 1)
+pij-rs send --to <seat> --body "..."               -> {"outcome":"delivered",
+                                                       "origin":"injected-to-transport"}
+```
+
+In the recipient's transcript: a `queue-operation`, a real `type=user` turn, and an assistant reply.
+On its screen: `Message from @pij-fatal-woodpecker`. Zero tmux send-keys. The envelope carries
+`from="uds:/tmp/cc-socks/pij-uds-<pid>-0.sock"` — the routable reply address that replaced the dead
+`uds:pij-daemon` literal, visible in the wild.
+
 ## Not in scope
 
 Copilot RPC (plan 109). The send-keys path (it is being replaced, not repaired). The
