@@ -308,13 +308,30 @@ impl TelegramWorker {
     }
 
     async fn process_send(&self, job: &Job) -> SendOutcome {
-        let result = async {
-            let request: TelegramSend =
-                serde_json::from_str(&job.payload).map_err(|error| PijError::Adapter {
+        let request: TelegramSend = match serde_json::from_str(&job.payload) {
+            Ok(request) => request,
+            Err(error) => {
+                return SendOutcome::Terminal(PijError::Adapter {
                     adapter: "sidecars/telegram".to_string(),
                     message: format!("job payload is not a Telegram send: {error}"),
-                })?;
-            let chat_id = request.chat_id.as_deref().unwrap_or(&self.config.chat_id);
+                });
+            }
+        };
+        let chat_id = request
+            .chat_id
+            .as_deref()
+            .unwrap_or(&self.config.chat_id)
+            .to_string();
+        if chat_id != self.config.chat_id {
+            return SendOutcome::Terminal(PijError::Adapter {
+                adapter: "sidecars/telegram".to_string(),
+                message: format!(
+                    "refusing Telegram egress to chat `{chat_id}`: configured operator chat is `{}`",
+                    self.config.chat_id
+                ),
+            });
+        }
+        let result = async {
             let response = self
                 .client
                 .post(format!(
@@ -331,7 +348,7 @@ impl TelegramWorker {
                     message: format!("sendMessage returned HTTP {}", response.status()),
                 });
             }
-            Ok::<_, PijError>((chat_id.to_string(), request))
+            Ok::<_, PijError>((chat_id, request))
         }
         .await;
         let (chat_id, request) = match result {
