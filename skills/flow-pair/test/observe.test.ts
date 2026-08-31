@@ -119,7 +119,12 @@ describe("Observe — basic diff artifacts (T001)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(tmpRoot, {
+			recursive: true,
+			force: true,
+			maxRetries: 3,
+			retryDelay: 100,
+		});
 	});
 
 	it("returns {ok:true} with a real git fixture", () => {
@@ -202,7 +207,12 @@ describe("Observe — flow-state guard AC-13 (T002)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(tmpRoot, {
+			recursive: true,
+			force: true,
+			maxRetries: 3,
+			retryDelay: 100,
+		});
 	});
 
 	/** Create git repo, write forbidden file at filename (supports nested paths), optionally untracked. */
@@ -303,7 +313,12 @@ describe("Observe — P9 ordering invariant (T003)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(tmpRoot, {
+			recursive: true,
+			force: true,
+			maxRetries: 3,
+			retryDelay: 100,
+		});
 	});
 
 	it("P9: appendFileSync(events.jsonl) before any writeFileSync(diffs/)", () => {
