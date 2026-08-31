@@ -13,10 +13,15 @@
 			"!docs/plans",
 			"!scratch",
 			"!.harness",
-			"!**/prime-flow.json"
+			"!**/prime-flow.json",
+			"!crates"
 		]
 	},
-	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
 	"formatter": {
 		"enabled": true,
 		"indentStyle": "tab",
@@ -33,8 +38,12 @@
 		"enabled": true,
 		"rules": {
 			"recommended": true,
-			"suspicious": { "noExplicitAny": "error" },
-			"complexity": { "noForEach": "off" }
+			"suspicious": {
+				"noExplicitAny": "error"
+			},
+			"complexity": {
+				"noForEach": "off"
+			}
 		}
 	}
 }
