@@ -34,17 +34,25 @@ on the **merged** tree (a green on a unit branch is not a green after compositio
 
 Per-claim confidence, deliberately not uniform:
 
-- **ac-1117 — genuine chronological red-first.** `unrecognized_veto_expires_to_the_tmux_mode_verdict`
-  observed failing on its assertion before implementation.
+- **ac-1117 — mutation-witnessed, NOT chronological.** An earlier draft of this PR claimed a
+  genuine chronological red-first; cross-model review (F-R1) caught that the fix and its tests
+  landed in one commit (`4a0a0e93`), so no committed tree has the witness without the fix and
+  nobody can reproduce a chronological red from this history. Corrected to the same standard as
+  ac-1111.
 - **ac-1111 — reconstructed, not chronological, and labelled as such.** The pre-fix run was a
   *compile* error, which proves a test could not run, not that behaviour was absent. Proof branch
   `s111/u-gate-proof` splits the work three ways: A `e9735b85` (clock only — witness fails on its
   assertion), B `541c9085` (expiry only — green, the isolating step), C `59822844` (remainder),
   with `C^{tree} == afba5b65^{tree}` byte-identical, so the split is provably the same work
   re-ordered rather than a tree shaped to fail.
-- **ac-1115 — a PIN plus two witnesses.** The byte-equality tests over three live-recorded
-  fixtures are green from birth by design; only `garbage_layout_is_unrecognized` and
-  `live_copilot_v1_box_is_recognized_without_prompt_marker` are red-first.
+- **ac-1115 — a PIN plus two witnesses, and the pin is weaker than first stated.** Cross-model
+  review (F-R2) caught that "byte-equal on every fixture" over-claims: every recognized
+  expectation in the pin is the EMPTY string, so byte-equality is trivial there. What the pin
+  actually establishes is that the extracted parser reaches the same *recognition verdict* as the
+  pre-move parser on three live captures. Non-empty payload parsing is covered by separate clip
+  tests, **not** by the extraction pin — a named gap, not closed here. Only
+  `garbage_layout_is_unrecognized` and `live_copilot_v1_box_is_recognized_without_prompt_marker`
+  are red-first.
 - **ac-1116 — pinned, not built.** Asserts the *absence* of tmux calls, not merely a delivered
   receipt.
 
@@ -80,6 +88,12 @@ the proof is the same failures on main.
 - The plan says three consumers; there are **two** production call sites (`DrainWorker` is both
   the queued-retry drain and the pointer worker). Checked for a third ungated injection path —
   none exists.
+
+Cross-model review (`pij-melodic-dragon`, Opus 4.7, independent of both the coders and the PM
+who composed): **APPROVE-WITH-FINDINGS** — 2 findings, both "obscures information", **0
+"degrades a control"**. All 8 contract priorities re-derived by execution with mutation proofs
+M1–M9. Both findings were against the PM's own receipt language and are corrected above and in
+the plan. Verdict: `docs/plans/111-anti-step-on/assets/review-verdict.md`.
 
 Full engineering log, including instrument failures and one retracted finding of my own, in
 `docs/plans/111-anti-step-on/assets/findings.md` (F-1111…F-1129).

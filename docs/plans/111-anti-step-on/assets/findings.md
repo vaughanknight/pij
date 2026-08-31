@@ -284,3 +284,47 @@ name, and the entire plan was run by delivering instructions through `tmux send-
 capturing each pane to confirm an empty composer. Worth noting what that means for THIS plan
 specifically: the anti-step-on gate we just built is the thing that would make that fallback
 safe, and it is not yet deployed on the surface being used to deliver its own instructions.
+
+## Cross-model review (ph-1113) — and what it caught in ME
+
+`pij-melodic-dragon` (Opus 4.7 1M, xhigh; independent of the coders AND of the PM who composed):
+**APPROVE-WITH-FINDINGS** — 2 findings, both *obscures information*, **0 *degrades a control***.
+All 8 contract priorities re-derived by execution, mutations M1–M9. It independently confirmed
+the composition work: M8 kills the two named tests when `fixture_unarranged` is swapped away
+(so that coverage is real, not arranged green), the tmux fake is genuinely non-permissive, and
+the two red harness sensors reproduce on this branch with zero TS files in the diff.
+
+**Both findings were against MY receipt language, and both are right.**
+
+**F-R1 — ac-1117's receipt claimed "GENUINE chronological red-first". It does not clear that
+bar.** PM-verified against history after the finding: the fix and its tests landed in ONE commit
+(`4a0a0e93`); no committed tree has the witness present and the fix absent, so nobody can
+reproduce a chronological red from this history. The coder reported an assertion failure in its
+working tree before implementing — a claim about an uncommitted state, not independently
+verifiable. Relabelled mutation-witnessed, the same standard as ac-1111.
+
+**This is the sharp one.** I *rejected* u-gate's ac-1111 receipt for exactly this class of error,
+made it re-cut a three-commit proof branch with a tree-hash equality check, and wrote "a
+reconstruction can be shaped to fail" into the receipt. Then I took the *same coder's* ac-1117
+chronological claim at face value in the very next message and wrote "GENUINE" into a receipt
+myself. The difference was not evidence — it was that ac-1111's claim arrived with a visible
+defect (a compile error) and ac-1117's arrived looking clean. **A claim that looks clean gets
+less scrutiny than a claim that looks broken, which is exactly backwards when both rest on the
+same unverifiable foundation.** Same family as the retracted F-1123: I scrutinised what
+flattered the catch and waved through what confirmed the streak.
+
+**F-R2 — ac-1115's receipt claimed the extracted parser was proven "byte-equal to the pre-move
+parser on every fixture".** PM-verified: every recognized expectation in the pin is
+`Recognized(String::new())` — the empty string. Byte-equality over content that does not exist is
+trivial. What the pin establishes is agreement on the *recognition verdict*, which is real but
+weaker. Non-empty payload parsing is covered by separate clip tests, **not** by the extraction
+pin: no fixture in the pin carries typed text. Recorded as a **named gap**, not closed here —
+closing it needs a live capture with text in a composer, which is a scope addition for the
+o-prime to rule on, not something to slip in under a correction.
+
+**What this says about the review's value**: the cross-model reviewer found nothing wrong with
+the code and two things wrong with the *story told about* the code. Both would have shipped as
+overstated evidence in a PR whose whole argument is that evidence should be labelled by its
+actual strength. Independence from the composer, not just from the units, is what made that
+possible — the composer cannot audit his own receipt language, because the words look right to
+the person who chose them.
