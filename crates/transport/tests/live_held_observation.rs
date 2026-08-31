@@ -20,9 +20,7 @@
 use std::env;
 use std::time::{Duration, Instant};
 
-use pij_core::model::{
-    DeliveryOutcome, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId,
-};
+use pij_core::model::{DeliveryOutcome, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId};
 use pij_core::ports::Transport;
 use pij_transport::UdsTransport;
 
@@ -65,7 +63,10 @@ async fn an_unmarked_message_is_observed_held_on_the_live_wire() {
     let seat = seat(pid);
 
     assert!(
-        transport.can_deliver(&seat, &message("probe")).await.expect("can_deliver"),
+        transport
+            .can_deliver(&seat, &message("probe"))
+            .await
+            .expect("can_deliver"),
         "the live session at pid {pid} was not discoverable — check ~/.claude/sessions/{pid}.json"
     );
 

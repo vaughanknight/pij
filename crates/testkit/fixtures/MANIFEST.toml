@@ -263,24 +263,24 @@ answer = "Authentication capability exists only when procStart and pidDomain equ
 
 [[fixture]]
 path = "uds/user-frame.ndjson"
-sha256 = "a1d27d13c2e8db46edaa05636a660fa7fb48b8fafd111937395c08ba70968deb"
-bytes = 274
-note = "Sanitized byte-exact frame accepted and acted on by the isolated Claude Code 2.1.251 probe; sender, message id and body replaced with stable fixture values."
-answer = "Exactly one newline-terminated JSON user frame: our msg_id, daemon origin, sender name, and ordinary pij body wrapper; no invented from-mode assertion."
+sha256 = "e47f50bc29a7d7f283ddcec2d7ddf8c69113b66228aec55520b50b4bed58339f"
+bytes = 322
+note = "Byte-exact frame the transport emits, with the reply address that the recipient CLI must connect back to; sender, message id and body are stable fixture values and the socket path is a fixture path."
+answer = "Exactly one newline-terminated JSON user frame carrying a ROUTABLE uds: reply address in from=, the sender name, and the ordinary pij body wrapper; no invented from-mode assertion."
 
 [[fixture]]
 path = "uds/status-dropped.ndjson"
 sha256 = "9f7caad93d79e126910bd91953591d432d2c918150e96f3782788fa88736b5e6"
 bytes = 145
-note = "Documented Claude peer_message_status drop shape from GH #311, not observed in the isolated 2.1.251 daemon-origin probe."
-answer = "A dropped_msg_ids entry equal to our msg_id overrides the timer and returns Queued; unrelated ids do not. Evidence class remains documented-not-measured."
+note = "Documented Claude peer_message_status drop shape from GH #311. Still UNRECORDED: no drop was observed across the plan 110 arms, so the path it exercises remains unproven against a live build."
+answer = "A dropped_msg_ids entry equal to our msg_id overrides the timer and returns Queued; unrelated ids do not. Evidence class remains documented-not-measured, and refusing to upgrade an unknown status is the honest default."
 
 [[fixture]]
 path = "uds/status-held.ndjson"
-sha256 = "603940577452a1d696a54a49d75e6a8f09550fd195d8104f5116e7bf813b3697"
-bytes = 96
-note = "Documented Claude peer_message_status held shape from GH #311, not observed on the socket in the isolated 2.1.251 daemon-origin probe even though the recipient UI visibly held the message."
-answer = "If observed, wereHeld=true with our orig_msg_id maps to Held. The live probe's missing response is a blocking protocol finding, not evidence that a held message was delivered."
+sha256 = "7efab77e1d1c00c4525dbf79cead318eca50805e2e79ef9d7a22162b8eec1484"
+bytes = 291
+note = "RECORDING, not a construction: a peer_message_status held line captured off the wire from Claude 2.1.250 on 2026-08-31 (plan 110). Only the recipient socket path is sanitized; shape, field set, wording and the fresh-uuid msg_id are as emitted. Supersedes the invented GH #311 shape, which was never emitted across five measured arms."
+answer = "type=control with action=peer_message_status and status=held maps to Held. It carries NO orig_msg_id and NO wereHeld, so the decoder must not consult a correlation id: the private reply address is what correlates, which is why exactly one message may be in flight per connection."
 
 [[fixture]]
 path = "golden/cli/register-envelope.json"
@@ -302,3 +302,17 @@ sha256 = "c0c9901f03abf9d4cbb75497791db26fe7f464a67d40fc5a258c4e836c17d02d"
 bytes = 521
 note = "Computed pij list success envelope rendered by u-cli from two daemon-owned SeatDescriptors."
 answer = "Must preserve registry order and absent fields, including a paneless relay; the CLI relays descriptors rather than recomputing liveness or state."
+
+[[fixture]]
+path = "uds/status-denied.ndjson"
+sha256 = "34072695e7df669322c01766bf94a4437f8b4acec36f95faf28252bb40d309f4"
+bytes = 261
+note = "RECORDING captured off the wire from Claude 2.1.250 on 2026-08-31 (plan 110) when the recipient operator clicked Deny; only the recipient socket path is sanitized. The click is an INPUT, the line is the observation."
+answer = "type=control with action=peer_message_status and status=denied means the recipient refused and the message was NOT delivered. It must never be reported as success, and it is uncorrelatable to its own hold — two denials and two holds were byte-identical but for their uuids."
+
+[[fixture]]
+path = "uds/README.md"
+sha256 = "af215a661d581c1c7196c9e5ffd4ebde2bdf64e4d6243890b1573277876dfacc"
+bytes = 1030
+note = "Provenance note for the uds fixtures: which lines are recordings, which remain unrecorded, and why the distinction is load-bearing here."
+answer = "A fixture authored by its own consumer proves nothing about the wire; the previously invented status shapes kept the suite green over a decoder production could never satisfy."

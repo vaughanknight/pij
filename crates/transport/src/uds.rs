@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -10,13 +11,18 @@ use pij_core::ports::Transport;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::UnixStream;
+use tokio::net::{UnixListener, UnixStream};
 use tokio::time::{Instant, timeout, timeout_at};
 
 const NAME: &str = "claude-uds";
 const ACK_WAIT: Duration = Duration::from_millis(150);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
-const DAEMON_ORIGIN: &str = "uds:pij-daemon";
+/// Prefix for the per-delivery reply socket. The name is arbitrary — measured
+/// 2026-08-31: the CLI routes a hold receipt to ANY name inside its own socket
+/// namespace, not only `<pid>.sock` — which is what lets every delivery own a
+/// private reply address instead of the whole transport serialising on one.
+const REPLY_PREFIX: &str = "pij-uds";
+static REPLY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Claude Code's Unix-domain-socket message transport.
 ///
@@ -149,8 +155,28 @@ impl Transport for UdsTransport {
         let Some(endpoint) = self.discover(seat) else {
             return Ok(DeliveryOutcome::Queued);
         };
-        let frame = build_peer_frame(msg)?;
-        send_frame(&endpoint, &frame, msg, self.connect_timeout, self.ack_wait).await
+        // The receiver delivers `peer_message_status` by connecting BACK to the
+        // address we advertise in `from=`. The previous literal `uds:pij-daemon`
+        // is not an address, so the CLI logged "hold-receipt skipped: reply
+        // address unshaped or outside our socket namespace" and sent nothing —
+        // every held message then timed out into Delivered. Bind a real listener
+        // and name it.
+        let Some(inbox) = ReplyInbox::bind(&endpoint.socket_path) else {
+            // No reply address means no way to observe Held. Refusing to send is
+            // the honest outcome: delivering blind would resurrect the very
+            // defect this unit exists to remove.
+            return Ok(DeliveryOutcome::Queued);
+        };
+        let frame = build_peer_frame(msg, &inbox.origin())?;
+        send_frame(
+            &endpoint,
+            &frame,
+            msg,
+            self.connect_timeout,
+            self.ack_wait,
+            &inbox,
+        )
+        .await
     }
 }
 
@@ -235,7 +261,7 @@ struct PeerFrame<'a> {
     kind: &'static str,
     message: UserMessage<'a>,
     priority: &'static str,
-    from: &'static str,
+    from: &'a str,
 }
 
 #[derive(Serialize)]
@@ -244,10 +270,11 @@ struct UserMessage<'a> {
     content: &'a str,
 }
 
-fn build_peer_frame(msg: &Msg) -> Result<String> {
+fn build_peer_frame(msg: &Msg, origin: &str) -> Result<String> {
     let sender = xml_attribute(msg.from.as_str());
+    let from = xml_attribute(origin);
     let content = format!(
-        "<cross-session-message from=\"{DAEMON_ORIGIN}\" from-name=\"{sender}\">\n[pij from {}] {}\n</cross-session-message>",
+        "<cross-session-message from=\"{from}\" from-name=\"{sender}\">\n[pij from {}] {}\n</cross-session-message>",
         msg.from, msg.body
     );
     serde_json::to_string(&PeerFrame {
@@ -259,7 +286,7 @@ fn build_peer_frame(msg: &Msg) -> Result<String> {
             content: &content,
         },
         priority: "next",
-        from: DAEMON_ORIGIN,
+        from: origin,
     })
     .map_err(|error| PijError::Adapter {
         adapter: NAME.to_string(),
@@ -275,12 +302,74 @@ fn xml_attribute(value: &str) -> String {
         .replace('>', "&gt;")
 }
 
+/// A reply address the receiving CLI can actually reach.
+///
+/// One per delivery, named uniquely inside the recipient's own socket
+/// namespace. That is what makes positional correlation SOUND rather than a
+/// guess: the status frames carry no correlation id of any kind — no
+/// `orig_msg_id`, no `dropped_msg_ids`, and a denial cannot even be paired with
+/// its own hold — so the only way to know which message a status describes is
+/// for the channel to carry exactly one. A private address per delivery gives
+/// that without serialising the transport across seats.
+struct ReplyInbox {
+    path: PathBuf,
+    listener: UnixListener,
+}
+
+impl ReplyInbox {
+    /// Bind beside the recipient's own socket. `None` when the namespace is
+    /// unusable — the caller must then refuse to send rather than deliver blind.
+    fn bind(recipient_socket: &Path) -> Option<Self> {
+        let dir = recipient_socket.parent()?;
+        let unique = REPLY_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = dir.join(format!(
+            "{REPLY_PREFIX}-{}-{unique}.sock",
+            std::process::id()
+        ));
+        let _ = fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).ok()?;
+        Some(Self { path, listener })
+    }
+
+    fn origin(&self) -> String {
+        format!("uds:{}", self.path.display())
+    }
+
+    /// Read status lines until the deadline. One message is in flight on this
+    /// address, so the first status line that classifies IS this message's.
+    async fn wait_for_status(&self, msg_id: &str, deadline: Instant) -> Option<Status> {
+        let (stream, _) = timeout_at(deadline, self.listener.accept())
+            .await
+            .ok()?
+            .ok()?;
+        let mut reader = BufReader::new(stream);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match timeout_at(deadline, reader.read_line(&mut line)).await {
+                Err(_) | Ok(Ok(0)) | Ok(Err(_)) => return None,
+                Ok(Ok(_)) => match classify_status(&line, msg_id) {
+                    Status::Unrelated | Status::Malformed => {}
+                    decided => return Some(decided),
+                },
+            }
+        }
+    }
+}
+
+impl Drop for ReplyInbox {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
 async fn send_frame(
     endpoint: &Endpoint,
     frame: &str,
     msg: &Msg,
     connect_timeout: Duration,
     ack_wait: Duration,
+    inbox: &ReplyInbox,
 ) -> Result<DeliveryOutcome> {
     let Ok(Ok(mut stream)) =
         timeout(connect_timeout, UnixStream::connect(&endpoint.socket_path)).await
@@ -305,26 +394,55 @@ async fn send_frame(
     }
 
     let deadline = Instant::now() + ack_wait;
+    // Measured: every status line arrived on the REPLY address, none on this
+    // connection. Both are read anyway — the connection still reports a hangup,
+    // which must never be mistaken for delivery.
+    let status = tokio::select! {
+        status = inbox.wait_for_status(&msg.msg_id, deadline) => status,
+        outcome = same_connection_outcome(stream, msg, deadline) => match outcome {
+            SameConnection::Status(status) => Some(status),
+            SameConnection::Hangup => return Ok(DeliveryOutcome::Queued),
+            SameConnection::Quiet => None,
+        },
+    };
+
+    Ok(match status {
+        Some(Status::Dropped | Status::Malformed) => DeliveryOutcome::Queued,
+        Some(Status::Held) => DeliveryOutcome::Held {
+            reason: "recipient approval pending".to_string(),
+        },
+        Some(Status::Denied) => DeliveryOutcome::Held {
+            reason: "recipient declined the message".to_string(),
+        },
+        // Silence is never upgraded. The frame reached the socket; nothing in
+        // this path can observe a turn, and nothing here may claim one.
+        Some(Status::Unrelated) | None => DeliveryOutcome::Delivered {
+            origin: DeliveryOrigin::InjectedToTransport,
+        },
+    })
+}
+
+enum SameConnection {
+    Status(Status),
+    Hangup,
+    Quiet,
+}
+
+async fn same_connection_outcome(
+    stream: UnixStream,
+    msg: &Msg,
+    deadline: Instant,
+) -> SameConnection {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
     loop {
         line.clear();
         match timeout_at(deadline, reader.read_line(&mut line)).await {
-            Err(_) => {
-                return Ok(DeliveryOutcome::Delivered {
-                    origin: DeliveryOrigin::InjectedToTransport,
-                });
-            }
-            Ok(Ok(0)) | Ok(Err(_)) => return Ok(DeliveryOutcome::Queued),
+            Err(_) => return SameConnection::Quiet,
+            Ok(Ok(0)) | Ok(Err(_)) => return SameConnection::Hangup,
             Ok(Ok(_)) => match classify_status(&line, &msg.msg_id) {
-                Status::Dropped => return Ok(DeliveryOutcome::Queued),
-                Status::Held => {
-                    return Ok(DeliveryOutcome::Held {
-                        reason: "from-mode approval".to_string(),
-                    });
-                }
-                Status::Unrelated => {}
-                Status::Malformed => return Ok(DeliveryOutcome::Queued),
+                Status::Unrelated | Status::Malformed => {}
+                decided => return SameConnection::Status(decided),
             },
         }
     }
@@ -334,6 +452,9 @@ async fn send_frame(
 enum Status {
     Dropped,
     Held,
+    /// The recipient actively refused. Terminal in the CLI's own words: "it was
+    /// not delivered to their Claude session."
+    Denied,
     Unrelated,
     Malformed,
 }
@@ -342,7 +463,18 @@ fn classify_status(line: &str, msg_id: &str) -> Status {
     let Ok(value) = serde_json::from_str::<Value>(line) else {
         return Status::Malformed;
     };
-    if value.get("type").and_then(Value::as_str) != Some("peer_message_status") {
+    let kind = value.get("type").and_then(Value::as_str);
+    let action = value.get("action").and_then(Value::as_str);
+    // MEASURED wire shape, five arms on Claude 2.1.250/2.1.251, 2026-08-31:
+    // `{"type":"control","action":"peer_message_status","status":"held"|"denied",...}`.
+    // The bare `type=="peer_message_status"` documented in fork issue #311 was
+    // never emitted once. Matching only that form is the SECOND independent
+    // reason Held was unreachable — fixing the reply address alone would not
+    // have surfaced it. The bare form is still accepted: it costs nothing and a
+    // future build may adopt it.
+    let is_status = kind == Some("peer_message_status")
+        || (kind == Some("control") && action == Some("peer_message_status"));
+    if !is_status {
         return Status::Unrelated;
     }
 
@@ -354,6 +486,16 @@ fn classify_status(line: &str, msg_id: &str) -> Status {
         return Status::Dropped;
     }
 
+    // POSITIONAL, and it has to be: the measured frames carry their OWN fresh
+    // uuid and no correlation id back to the message they describe. The reply
+    // address is private to one delivery, which is what makes this sound.
+    match value.get("status").and_then(Value::as_str) {
+        Some("held") => return Status::Held,
+        Some("denied" | "expired") => return Status::Denied,
+        _ => {}
+    }
+
+    // The id-correlated form, kept for the shape the fork documented.
     let original_matches = value.get("orig_msg_id").and_then(Value::as_str) == Some(msg_id);
     let held = match value.get("wereHeld") {
         Some(Value::Bool(held)) => *held && original_matches,
@@ -379,11 +521,16 @@ mod tests {
     };
     use pij_core::ports::Transport;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-    use tokio::net::UnixListener;
+    use tokio::net::{UnixListener, UnixStream};
 
-    use super::{Status, UdsTransport, build_peer_frame, classify_status};
+    use serde_json::Value;
+
+    use super::{
+        REPLY_PREFIX, ReplyInbox, Status, UdsTransport, build_peer_frame, classify_status,
+    };
 
     static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
+    const FIXTURE_ORIGIN: &str = "uds:/tmp/cc-socks/pij-uds-fixture.sock";
     const HASH: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     struct TestDir(PathBuf);
@@ -627,37 +774,94 @@ mod tests {
 
     #[test]
     fn recorded_frame_is_byte_exact_and_contains_no_invented_mode() {
-        let actual = format!("{}\n", build_peer_frame(&message(None)).expect("frame"));
+        let actual = format!(
+            "{}\n",
+            build_peer_frame(&message(None), FIXTURE_ORIGIN).expect("frame")
+        );
         assert_eq!(actual, fixture("user-frame.ndjson"));
         assert!(!actual.contains("from-mode"));
 
         let mut escaped = message(None);
         escaped.from = SeatId::from("a&b\"<c>");
-        let escaped = build_peer_frame(&escaped).expect("escaped frame");
+        let escaped = build_peer_frame(&escaped, FIXTURE_ORIGIN).expect("escaped frame");
         assert!(escaped.contains("from-name=\\\"a&amp;b&quot;&lt;c&gt;\\\""));
     }
 
     #[test]
-    fn status_decision_table_distinguishes_drop_hold_and_unrelated() {
-        assert_eq!(
-            classify_status(&fixture("status-dropped.ndjson"), "msg-uds-001"),
-            Status::Dropped
-        );
+    fn status_decision_table_reads_the_recorded_wire_shape() {
+        // Recordings, not constructions — see the fixtures README.
         assert_eq!(
             classify_status(&fixture("status-held.ndjson"), "msg-uds-001"),
             Status::Held
         );
         assert_eq!(
-            classify_status(&fixture("status-held.ndjson"), "another-message"),
-            Status::Unrelated
+            classify_status(&fixture("status-denied.ndjson"), "msg-uds-001"),
+            Status::Denied
+        );
+        // The recorded frames carry NO id tying them to our message, so the
+        // decoder must NOT consult one: asking about a different message id has
+        // to give the same answer, because the channel — not the payload — is
+        // what correlates.
+        assert_eq!(
+            classify_status(&fixture("status-held.ndjson"), "a-completely-different-id"),
+            Status::Held
+        );
+        assert_eq!(
+            classify_status(&fixture("status-dropped.ndjson"), "msg-uds-001"),
+            Status::Dropped
         );
         assert_eq!(
             classify_status("not json", "msg-uds-001"),
             Status::Malformed
         );
+        // An unrelated control frame must never be read as a verdict.
+        assert_eq!(
+            classify_status(
+                r#"{"type":"control","action":"peer_idle_notice","from":"uds:/tmp/x.sock"}"#,
+                "msg-uds-001"
+            ),
+            Status::Unrelated
+        );
     }
 
-    async fn socket_case(response: Option<&str>, close_early: bool) -> DeliveryOutcome {
+    /// The decoder that shipped required `type=="peer_message_status"`. Across
+    /// five measured arms the CLI never emitted that; it emits `type=="control"`
+    /// with `action=="peer_message_status"`. This pins the discrimination so a
+    /// revert to the bare-only matcher fails here rather than silently making
+    /// `Held` unreachable again.
+    #[test]
+    fn the_control_shape_is_what_the_live_cli_actually_emits() {
+        let recorded = fixture("status-held.ndjson");
+        let parsed: Value = serde_json::from_str(&recorded).expect("recorded status is json");
+        assert_eq!(parsed.get("type").and_then(Value::as_str), Some("control"));
+        assert_eq!(
+            parsed.get("action").and_then(Value::as_str),
+            Some("peer_message_status")
+        );
+        assert!(
+            parsed.get("orig_msg_id").is_none() && parsed.get("wereHeld").is_none(),
+            "the recorded frame must carry no correlation id — that is why correlation is positional"
+        );
+    }
+
+    /// Where the fake server sends its status line.
+    #[derive(Clone, Copy, PartialEq)]
+    enum Reply {
+        /// Connect back to the address the frame advertised — what the real CLI does.
+        ToAdvertisedAddress,
+        /// Answer on the delivery connection instead.
+        OnTheSameConnection,
+        /// Never answer. This is what an UNROUTABLE `from=` looks like from here,
+        /// and it is the pre-fix behaviour the whole unit exists to remove.
+        Never,
+    }
+
+    struct Exchange {
+        outcome: DeliveryOutcome,
+        received: String,
+    }
+
+    async fn socket_case(response: Option<&str>, close_early: bool, reply: Reply) -> Exchange {
         let dir = TestDir::new();
         let socket = dir.0.join("listener.sock");
         let listener = UnixListener::bind(&socket).expect("bind fixture socket");
@@ -669,20 +873,33 @@ mod tests {
             let mut reader = BufReader::new(stream);
             let mut received = String::new();
             reader.read_line(&mut received).await.expect("read auth");
-            reader.read_line(&mut received).await.expect("read frame");
+            let mut frame = String::new();
+            reader.read_line(&mut frame).await.expect("read frame");
+            received.push_str(&frame);
+
             if let Some(response) = response {
-                let midpoint = response.len() / 2;
-                reader
-                    .get_mut()
-                    .write_all(&response.as_bytes()[..midpoint])
-                    .await
-                    .expect("write first status fragment");
-                tokio::task::yield_now().await;
-                reader
-                    .get_mut()
-                    .write_all(&response.as_bytes()[midpoint..])
-                    .await
-                    .expect("write second status fragment");
+                match reply {
+                    Reply::Never => {}
+                    Reply::OnTheSameConnection => {
+                        write_halved(reader.get_mut(), &response).await;
+                    }
+                    Reply::ToAdvertisedAddress => {
+                        let parsed: Value =
+                            serde_json::from_str(frame.trim()).expect("frame is json");
+                        let advertised = parsed
+                            .get("from")
+                            .and_then(Value::as_str)
+                            .expect("frame advertises a reply address")
+                            .strip_prefix("uds:")
+                            .expect("reply address is a uds: address")
+                            .to_string();
+                        let mut back = UnixStream::connect(&advertised)
+                            .await
+                            .expect("the advertised reply address must be reachable");
+                        write_halved(&mut back, &response).await;
+                        tokio::time::sleep(Duration::from_millis(60)).await;
+                    }
+                }
             }
             if !close_early {
                 tokio::time::sleep(Duration::from_millis(60)).await;
@@ -695,22 +912,32 @@ mod tests {
             .deliver(&target, &message(None))
             .await
             .expect("delivery result");
-        let received = tokio::time::timeout(Duration::from_millis(500), server)
+        let received = tokio::time::timeout(Duration::from_millis(800), server)
             .await
             .expect("fixture socket must be reached")
             .expect("fixture server");
-        let expected = format!(
-            "{{\"type\":\"auth\",\"token\":\"sanitized-peer-token\"}}\n{}",
-            fixture("user-frame.ndjson")
-        );
-        assert_eq!(received, expected);
-        outcome
+        Exchange { outcome, received }
+    }
+
+    /// Split every write so a status line that arrives in two chunks is still read
+    /// as one line — the real socket does not promise message boundaries.
+    async fn write_halved(stream: &mut UnixStream, response: &str) {
+        let midpoint = response.len() / 2;
+        stream
+            .write_all(&response.as_bytes()[..midpoint])
+            .await
+            .expect("write first status fragment");
+        tokio::task::yield_now().await;
+        stream
+            .write_all(&response.as_bytes()[midpoint..])
+            .await
+            .expect("write second status fragment");
     }
 
     #[tokio::test]
-    async fn timer_win_means_only_injected_to_transport() {
+    async fn silence_is_never_upgraded_past_injected_to_transport() {
         assert_eq!(
-            socket_case(None, false).await,
+            socket_case(None, false, Reply::Never).await.outcome,
             DeliveryOutcome::Delivered {
                 origin: DeliveryOrigin::InjectedToTransport
             }
@@ -718,21 +945,132 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn correlated_drop_and_hold_statuses_override_the_timer() {
+    async fn a_held_status_on_the_advertised_address_is_observed_as_held() {
         assert_eq!(
-            socket_case(Some(&fixture("status-dropped.ndjson")), false).await,
-            DeliveryOutcome::Queued
-        );
-        assert_eq!(
-            socket_case(Some(&fixture("status-held.ndjson")), false).await,
+            socket_case(
+                Some(&fixture("status-held.ndjson")),
+                false,
+                Reply::ToAdvertisedAddress
+            )
+            .await
+            .outcome,
             DeliveryOutcome::Held {
-                reason: "from-mode approval".to_string()
+                reason: "recipient approval pending".to_string()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_denial_is_reported_as_refused_delivery_not_as_success() {
+        assert_eq!(
+            socket_case(
+                Some(&fixture("status-denied.ndjson")),
+                false,
+                Reply::ToAdvertisedAddress
+            )
+            .await
+            .outcome,
+            DeliveryOutcome::Held {
+                reason: "recipient declined the message".to_string()
+            }
+        );
+    }
+
+    /// THE GUARD FOR THE WHOLE UNIT. A status the recipient tried to send but
+    /// could not route — exactly what an unroutable `from=` produces — must not
+    /// become Delivered by default. If the reply address ever stops being
+    /// load-bearing, this is the test that notices.
+    #[tokio::test]
+    async fn a_status_that_never_reaches_us_is_the_pre_fix_defect_and_stays_unclaimed() {
+        let held = fixture("status-held.ndjson");
+        let unreachable = socket_case(Some(&held), false, Reply::Never).await;
+        assert_eq!(
+            unreachable.outcome,
+            DeliveryOutcome::Delivered {
+                origin: DeliveryOrigin::InjectedToTransport
+            },
+            "an unheard hold receipt is the defect; it must never be an upgrade"
+        );
+        let reachable = socket_case(Some(&held), false, Reply::ToAdvertisedAddress).await;
+        assert_ne!(
+            unreachable.outcome, reachable.outcome,
+            "routable and unroutable must be DIFFERENT observable outcomes, or the address proves nothing"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_status_arriving_on_the_delivery_connection_is_still_honoured() {
+        assert_eq!(
+            socket_case(
+                Some(&fixture("status-held.ndjson")),
+                false,
+                Reply::OnTheSameConnection
+            )
+            .await
+            .outcome,
+            DeliveryOutcome::Held {
+                reason: "recipient approval pending".to_string()
             }
         );
     }
 
     #[tokio::test]
     async fn losing_the_ack_channel_before_the_timer_cannot_confirm_delivery() {
-        assert_eq!(socket_case(None, true).await, DeliveryOutcome::Queued);
+        assert_eq!(
+            socket_case(None, true, Reply::Never).await.outcome,
+            DeliveryOutcome::Queued
+        );
+    }
+
+    /// CONCURRENCY IS REFUSED, NOT RESOLVED. The status frames carry no
+    /// correlation id, so a second message on one connection could never be told
+    /// apart from the first. The transport therefore writes exactly one frame per
+    /// connection and gives it a private reply address. This asserts the wire, so
+    /// a future batching "optimisation" fails here instead of silently minting a
+    /// verdict for the wrong message.
+    #[tokio::test]
+    async fn exactly_one_message_is_ever_in_flight_on_one_connection() {
+        let exchange = socket_case(None, false, Reply::Never).await;
+        let lines: Vec<&str> = exchange.received.lines().collect();
+        assert_eq!(
+            lines.len(),
+            2,
+            "expected exactly an auth line and ONE frame, got: {lines:?}"
+        );
+        let auth: Value = serde_json::from_str(lines[0]).expect("auth line is json");
+        assert_eq!(auth.get("type").and_then(Value::as_str), Some("auth"));
+        let frame: Value = serde_json::from_str(lines[1]).expect("frame is json");
+        assert_eq!(frame.get("type").and_then(Value::as_str), Some("user"));
+        let advertised = frame
+            .get("from")
+            .and_then(Value::as_str)
+            .expect("frame advertises a reply address");
+        assert!(
+            advertised.starts_with("uds:/") && advertised.contains(REPLY_PREFIX),
+            "from= must be a routable path in the recipient's namespace, got {advertised}"
+        );
+    }
+
+    /// Two deliveries at once must NOT share a reply address, or the first status
+    /// to arrive would be attributed to whichever message asked first.
+    #[tokio::test]
+    async fn concurrent_deliveries_do_not_share_a_reply_address() {
+        let dir = TestDir::new();
+        let first = ReplyInbox::bind(&dir.0.join("listener.sock")).expect("first inbox");
+        let second = ReplyInbox::bind(&dir.0.join("listener.sock")).expect("second inbox");
+        assert_ne!(first.origin(), second.origin());
+    }
+
+    #[tokio::test]
+    async fn the_reply_socket_is_removed_when_the_delivery_ends() {
+        let dir = TestDir::new();
+        let path = {
+            let inbox = ReplyInbox::bind(&dir.0.join("listener.sock")).expect("inbox");
+            inbox.path.clone()
+        };
+        assert!(
+            !path.exists(),
+            "a reply socket must not outlive its delivery"
+        );
     }
 }
