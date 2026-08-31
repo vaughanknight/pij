@@ -602,11 +602,11 @@ mod tests {
     use pij_core::delivery::delivery_kind;
     use pij_core::error::PijError;
     use pij_core::events::EventFilter;
+    use pij_core::model::Pane;
     use pij_core::model::{
         DeliveryOrigin, DeliveryOutcome, Event, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId,
         SemanticState, Seq, SystemState,
     };
-    use pij_core::model::Pane;
     use pij_core::ports::{Queue, Registry, Spine, TmuxPort};
     use pij_harnesses::InteractionGate;
     use pij_testkit::fakes::{
@@ -727,8 +727,10 @@ mod tests {
         let spine = Arc::new(FakeSpine::new());
         let transport = Arc::new(transport);
         let tmux = Arc::new(tmux);
-        let interaction =
-            Arc::new(InteractionGate::with_idle_window(Arc::clone(&tmux) as Arc<dyn TmuxPort>, idle));
+        let interaction = Arc::new(InteractionGate::with_idle_window(
+            Arc::clone(&tmux) as Arc<dyn TmuxPort>,
+            idle,
+        ));
         let bus =
             Arc::new(EventBus::new(Arc::clone(&spine) as Arc<dyn Spine>, 16).expect("event bus"));
         let service = Arc::new(DeliveryService::with_sources(
@@ -859,7 +861,9 @@ mod tests {
                 cursor_x: Some(11),
                 cursor_y: Some(0),
             })
-            .with_standing_capture("\u{2570}\u{2500}\u{2500}\u{2500}\u{2500} hello \u{2500}\u{256f}")
+            .with_standing_capture(
+                "\u{2570}\u{2500}\u{2500}\u{2500}\u{2500} hello \u{2500}\u{256f}",
+            )
     }
 
     /// ac-1111 end to end: a PARKED draft delays delivery, it does not block it.
@@ -872,11 +876,8 @@ mod tests {
     #[tokio::test]
     async fn a_parked_draft_delays_delivery_and_then_stops_blocking_it() {
         let idle = Duration::from_millis(30);
-        let fixture = fixture_with_gate_and_idle(
-            FakeTransport::reachable(),
-            typing_pane("%108"),
-            idle,
-        );
+        let fixture =
+            fixture_with_gate_and_idle(FakeTransport::reachable(), typing_pane("%108"), idle);
         let mut recipient = bound("pij-parked");
         recipient.pane = Some("%108".to_string());
         register(&fixture, recipient.clone()).await;

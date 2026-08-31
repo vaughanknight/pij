@@ -814,7 +814,8 @@ impl FakeTmux {
             cursor_y: Some(0),
         });
         state.standing_capture = Some(
-            "\u{2570}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{256f}".to_string(),
+            "\u{2570}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{256f}"
+                .to_string(),
         );
     }
 
@@ -823,10 +824,7 @@ impl FakeTmux {
     /// Pairs with [`FakeTmux::with_pane`] when a test needs a composer with
     /// CONTENT rather than the blank one `with_clear_composer` arranges.
     pub fn with_standing_capture(self, text: impl Into<String>) -> Self {
-        self.state
-            .lock()
-            .expect("fake tmux mutex")
-            .standing_capture = Some(text.into());
+        self.state.lock().expect("fake tmux mutex").standing_capture = Some(text.into());
         self
     }
 
