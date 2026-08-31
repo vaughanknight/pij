@@ -13,7 +13,7 @@ use std::os::unix::process::CommandExt;
 
 use nix::errno::Errno;
 use nix::sys::signal::{Signal, kill, killpg};
-use nix::unistd::Pid;
+use nix::unistd::{Pid, getpgid};
 use pij_core::error::{PijError, Result};
 use pij_core::model::{Job, Outcome, SeatId};
 use pij_core::ports::Queue;
@@ -326,7 +326,7 @@ impl BgWorker {
                 // EPERM/ESRCH can mean only defunct residue remains. Do not fail
                 // the escalation itself; the next observed scan decides.
                 signal_group(pgid, Signal::SIGKILL, true)?;
-                signal_survivors(&survivors)?;
+                signal_survivors(pgid, &survivors)?;
                 escalated = true;
                 continue;
             }
@@ -334,7 +334,7 @@ impl BgWorker {
                 // macOS may report EPERM for a group whose leader is defunct.
                 // Every pid here was observed live in the owned group after the
                 // group escalation, so finish the same cancellation individually.
-                signal_survivors(&survivors)?;
+                signal_survivors(pgid, &survivors)?;
             }
             if now >= deadline {
                 return Err(PijError::Adapter {
@@ -509,9 +509,16 @@ fn signal_group(pgid: u32, signal: Signal, tolerate_no_target: bool) -> Result<(
     }
 }
 
-fn signal_survivors(survivors: &[u32]) -> Result<()> {
+fn signal_survivors(pgid: u32, survivors: &[u32]) -> Result<()> {
+    let owned_group = process_group_id(pgid)?;
     for survivor in survivors {
         let pid = process_group_id(*survivor)?;
+        // Re-check the fact immediately before SIGKILL. The process-table row
+        // was true at scan time; PID reuse can make it name a stranger now.
+        // Every mismatch/error is a one-directional veto, never a failure path.
+        if !matches!(getpgid(Some(pid)), Ok(group) if group == owned_group) {
+            continue;
+        }
         match kill(pid, Some(Signal::SIGKILL)) {
             Ok(()) | Err(Errno::ESRCH | Errno::EPERM) => {}
             Err(errno) => {
@@ -599,7 +606,7 @@ mod tests {
 
     use nix::sys::signal::Signal;
 
-    use super::{group_absent_fast, group_pids, probe_group_errno, signal_group};
+    use super::{group_absent_fast, group_pids, probe_group_errno, signal_group, signal_survivors};
 
     #[test]
     fn dead_group_errno_proves_absence() {
@@ -615,6 +622,22 @@ mod tests {
             Some(3)
         );
         assert!(group_absent_fast(pgid).expect("absence brake"));
+    }
+
+    #[test]
+    fn survivor_recheck_skips_a_pid_outside_the_owned_group() {
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "sleep 30"]).process_group(0);
+        let mut child = command.spawn().expect("spawn owned group");
+        let pgid = child.id();
+        signal_survivors(pgid, &[std::process::id()])
+            .expect("mismatched process group is a non-failing veto");
+        assert!(
+            group_pids(pgid).expect("owned group").contains(&pgid),
+            "ownership brake must spare both the stranger and the owned group"
+        );
+        signal_group(pgid, Signal::SIGKILL, false).expect("cleanup group");
+        child.wait().expect("reap cleanup child");
     }
 
     #[cfg(target_os = "macos")]
