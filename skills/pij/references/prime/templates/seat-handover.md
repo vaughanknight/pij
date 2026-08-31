@@ -15,14 +15,17 @@
    --prime --here --json` before changing any writer line. Until step 5 retires
    the outgoing marker, both seats are intentionally prime; this bounded overlap
    prevents a discovery gap during writer transfer.
-2. Read: spine → baton book → prime-flow (CLI-only) → briefs → THIS PACK →
+2. Read (from this repo's government root — in `AI-Substrate/pij`,
+   `/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/`, on the
+   `prime-governance` branch, not main; write this pack there too):
+   spine → baton book → prime-flow (CLI-only) → briefs → THIS PACK →
    local orient. Check the spine `Seq:` counter against this pack's
    `spine-seq at write:` line — a mismatch means you are reading mid-write.
 3. Rotation checklist — transfer EVERY writer line (they are easy to miss):
    - [ ] spine `Writer:` + a rulings entry recording the rotation
    - [ ] baton-book `Writer:`
    - [ ] orient-local writer/tuner line
-   - [ ] anything this repo added (grep `Writer:` under .harness/government/)
+   - [ ] anything this repo added (grep `Writer:` under the government root)
 4. Announce to the human and to every live stream **citing this pack** —
    streams do not know your id; say so explicitly per stream. All your A2A
    sends follow § C10 — Wire discipline (`<skill>/references/00-routing.md`
