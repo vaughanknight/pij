@@ -1,95 +1,149 @@
 # u-copilot-verify — installed Copilot RPC evidence
 
-**Binary:** GitHub Copilot CLI 1.0.82-0  
-**Date:** 2026-08-31  
-**Seat:** dedicated probe process started for this unit; no human/production seat was used  
-**Endpoint:** `127.0.0.1:47777`  
-**Assigned session id:** `10900000-0000-4000-8000-000000000000`
+**Display version:** GitHub Copilot CLI 1.0.82-0
+
+**Native package:** `@github/copilot-darwin-arm64@0.0.412-2`
+
+**Wire protocol:** `protocolVersion: 3`
+
+**Resolved executable:** `/Users/jordanknight/.npm-global/lib/node_modules/@github/copilot/node_modules/@github/copilot-darwin-arm64/copilot`
+
+**Executable SHA-256:** `3f7ca3e28fd92c3d20a24335296b65a6b483a4c590b7caeddd80211d97ebd00b`
+
+**Seats:** dedicated probe processes; no human/production seat was used
+
+**Re-review endpoints:** `127.0.0.1:47781`, `127.0.0.1:51948`
+
+**Random re-review session ids:** `eb0821f7-3e87-422a-8421-8300a5b34115`, `f336e876-26d3-4291-b720-842e2ca0f0d2`
 
 ## Verdicts
 
 | # | Claim | Verdict | Observation |
 |---|---|---|---|
-| 1 | `--ui-server --port N` accepts the flags and listens on N | **CONFIRM** | The dedicated process printed `Server listening on port 47777`; `lsof` pinned the listener to its Copilot child PID; `nc` connected. |
-| 2 | The endpoint uses vscode-jsonrpc `Content-Length` framing over TCP | **CONFIRM** | A framed `ping` returned a framed JSON-RPC response. An HTTP request was parsed as a malformed RPC header, independently identifying the stream parser. |
-| 3 | `session.send` exists, returns a server-assigned `messageId` | **DIVERGE** | The method and server-created id exist, but an assigned/foreground-matching session id was rejected until a client kept `session.resume` open. The design input has no resume/connection-lifetime prerequisite. |
-| 4 | `mode:"enqueue"` appends politely to the model turn queue, not the human composer | **DIVERGE** | Once a model turn was established, enqueue deferred to its boundary. Two back-to-back frames on one connection executed in reverse order, and enqueue discarded an unsent human composer buffer. |
-| 5 | `session.getForeground` is a once-per-session readiness call, not a busy gate | **DIVERGE** | It returns foreground identity/workspace/capabilities and remains positive while the model is busy, but equality with the assigned id did not make `session.send` addressable. No server-side latch was observed; a client-side latch is UNDETERMINED without transport code. |
-| 6 | Behavior while the listening session is mid-compose | **DIVERGE** | Both `enqueue` and `immediate` accepted and ran while text was unsent in the composer, then returned to a blank composer. No Copilot-owned persistence of either sentinel was found. |
+| 1 | `--ui-server --port N` accepts the flags and listens on N | **CONFIRM** | Two isolated processes requested different ports, `47781` and `51948`; each process owned exactly the requested listener and accepted a connection. |
+| 2 | The endpoint uses vscode-jsonrpc `Content-Length` framing over TCP | **CONFIRM** | A correctly byte-counted multibyte frame succeeded; a UTF-16-code-unit count produced uncorrelatable `-32700`; an over-declared frame was silent. |
+| 3a | `session.send` exists and returns a server-assigned `messageId` | **CONFIRM** | Requests carried no `messageId`; responses supplied distinct UUIDs. |
+| 3b | An assigned session id is directly sendable | **DIVERGE** | An assigned/foreground-matching id was rejected until a client kept `session.resume` open. The design input has no resume/connection-lifetime prerequisite. |
+| 4 | `mode:"enqueue"` appends politely to the model turn queue, not the human composer | **DIVERGE** | Two pipelined frames executed in reverse order even when both were labelled `queued`. An RPC turn also interjected while a human draft was pending, but the draft survived. |
+| 5 | `session.getForeground` is a once-per-session readiness call, not a busy gate | **DIVERGE** | It stays positive while busy, but it is also positive pre-resume when `session.send` fails. A client-side latch remains UNDETERMINED; a pre-resume positive must never be latched. |
+| 6 | Behavior while the listening session is mid-compose | **DIVERGE** | Both `enqueue` and `immediate` ran an unconsented model turn while text was pending. Pressing Enter afterwards submitted each preserved draft intact. |
 
 The divergences are findings, not probe failures. No transport code was written.
 
 ## Rig identity and isolation
 
-### Launch
+### Binary pin
+
+Two different executables on `PATH` print the same display version, so the version string alone is not an instrument pin:
 
 ```console
-$ copilot --ui-server --port 47777 --session-id 10900000-0000-4000-8000-000000000000 --no-color --no-custom-instructions --no-remote --no-auto-update
-● Server listening on port 47777
+$ which -a copilot
+/Users/jordanknight/.npm-global/bin/copilot
+/Users/jordanknight/.local/bin/copilot
 ```
 
-The process was started as a dedicated PTY job named `copilot-rpc-verify`. The chosen UUID and port were unique to this probe.
-
-### Version
+The probes in this correction launched the resolved native executable by absolute path.
 
 ```console
-$ copilot --version
+$ /Users/jordanknight/.npm-global/lib/node_modules/@github/copilot/node_modules/@github/copilot-darwin-arm64/copilot --version
 GitHub Copilot CLI 1.0.82-0.
 Run 'copilot update' to check for updates.
 ```
 
-### Listener owner and connection
-
 ```console
-$ lsof -nP -iTCP:47777 -sTCP:LISTEN
-COMMAND   PID         USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
-copilot 72023 jordanknight   28u  IPv4 0x8dca07b59bcdc030      0t0  TCP 127.0.0.1:47777 (LISTEN)
+$ node -p "require('/Users/jordanknight/.npm-global/lib/node_modules/@github/copilot/node_modules/@github/copilot-darwin-arm64/package.json').version"
+0.0.412-2
 ```
 
 ```console
-$ nc -vz 127.0.0.1 47777
-Connection to 127.0.0.1 port 47777 [tcp/*] succeeded!
+$ sha256sum /Users/jordanknight/.npm-global/lib/node_modules/@github/copilot/node_modules/@github/copilot-darwin-arm64/copilot
+3f7ca3e28fd92c3d20a24335296b65a6b483a4c590b7caeddd80211d97ebd00b  /Users/jordanknight/.npm-global/lib/node_modules/@github/copilot/node_modules/@github/copilot-darwin-arm64/copilot
+```
+
+The original 47777 run used the npm wrapper and a UUID supplied explicitly by this probe. Corrective probes used the random UUIDs above.
+
+### Isolated launches
+
+```console
+$ /Users/jordanknight/.npm-global/lib/node_modules/@github/copilot/node_modules/@github/copilot-darwin-arm64/copilot --ui-server --port 47781 --session-id eb0821f7-3e87-422a-8421-8300a5b34115 --no-color --no-custom-instructions --no-remote --no-auto-update
+● Server listening on port 47781
+```
+
+```console
+$ /Users/jordanknight/.npm-global/lib/node_modules/@github/copilot/node_modules/@github/copilot-darwin-arm64/copilot --ui-server --port 51948 --session-id f336e876-26d3-4291-b720-842e2ca0f0d2 --no-color --no-custom-instructions --no-remote --no-auto-update
+● Server listening on port 51948
+```
+
+### Listener owners and connections
+
+```console
+$ lsof -nP -iTCP:47781 -sTCP:LISTEN && nc -vz 127.0.0.1 47781
+COMMAND   PID         USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+copilot 13896 jordanknight   32u  IPv4 0xc68549c52ca7167c      0t0  TCP 127.0.0.1:47781 (LISTEN)
+Connection to 127.0.0.1 port 47781 [tcp/*] succeeded!
+```
+
+```console
+$ lsof -nP -iTCP:51948 -sTCP:LISTEN && nc -vz 127.0.0.1 51948
+COMMAND   PID         USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+copilot 13913 jordanknight   28u  IPv4 0xb69f6edf57c3d993      0t0  TCP 127.0.0.1:51948 (LISTEN)
+Connection to 127.0.0.1 port 51948 [tcp/*] succeeded!
 ```
 
 ## 1. Flag and listener — CONFIRM
 
-The launch, `lsof`, and active connect above settle both halves: the installed binary accepted the hidden flags and the process actually listened on the requested loopback port. The flag's omission from `copilot --help` did not substitute for a live probe.
+Two distinct requested ports were honoured exactly. Each launched process owned one listener on its requested `N`, and each accepted a connection. This discriminates `--port N` from a fixed/default-port implementation. The flag's omission from `copilot --help` did not substitute for a live probe.
 
 ## 2. Content-Length JSON-RPC framing — CONFIRM
 
-The body is 76 bytes:
+The endpoint reports wire `protocolVersion: 3`:
 
 ```console
-$ printf '%s' '{"jsonrpc":"2.0","id":"ping-1","method":"ping","params":{"message":"hello"}}' | wc -c
-76
-```
-
-Exact command and output:
-
-```console
-$ (printf 'Content-Length: 76\r\n\r\n%s' '{"jsonrpc":"2.0","id":"ping-1","method":"ping","params":{"message":"hello"}}'; sleep 1) | nc -w 2 127.0.0.1 47777
+$ (printf 'Content-Length: 76\r\n\r\n%s' '{"jsonrpc":"2.0","id":"ping-1","method":"ping","params":{"message":"hello"}}'; sleep 1) | nc -w 2 127.0.0.1 47781
 Content-Length: 128
 
-{"jsonrpc":"2.0","id":"ping-1","result":{"message":"pong: hello","timestamp":"2026-08-31T00:53:19.913864Z","protocolVersion":3}}
+{"jsonrpc":"2.0","id":"ping-1","result":{"message":"pong: hello","timestamp":"2026-08-31T02:05:29.604203Z","protocolVersion":3}}
 ```
 
-Independent negative discriminator:
+`Content-Length` is a UTF-8 byte count, not a JavaScript string length. The discriminator asserts that the two lengths differ so an accidentally ASCII-only fixture cannot pass for the wrong reason:
 
 ```console
-$ curl --http0.9 -i --max-time 5 http://127.0.0.1:47777/
-  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-                                 Dload  Upload   Total   Spent    Left  Speed
-
-  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
-100   139    0   139    0     0   107k      0 --:--:-- --:--:-- --:--:--  135k
-Content-Length: 116
-
-{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Message header must separate key and value using ':'"}}
+$ node -e 'const body = JSON.stringify({jsonrpc:"2.0",id:"utf8",method:"ping",params:{message:"baton — handoff 🤖"}}); console.log(body); console.log(`jsLength=${body.length}`); console.log(`utf8Bytes=${Buffer.byteLength(body,"utf8")}`); if (body.length === Buffer.byteLength(body,"utf8")) process.exit(1)'
+{"jsonrpc":"2.0","id":"utf8","method":"ping","params":{"message":"baton — handoff 🤖"}}
+jsLength=87
+utf8Bytes=91
 ```
 
-The endpoint treated the HTTP request line as a malformed vscode-jsonrpc header and framed its error with `Content-Length`.
+The correct byte count succeeds:
 
-## 3. `session.send`, `messageId`, and the missing resume prerequisite — DIVERGE
+```console
+$ (printf 'Content-Length: 91\r\n\r\n%s' '{"jsonrpc":"2.0","id":"utf8","method":"ping","params":{"message":"baton — handoff 🤖"}}'; sleep 1) | nc -w 2 127.0.0.1 47781
+Content-Length: 143
+
+{"jsonrpc":"2.0","id":"utf8","result":{"message":"pong: baton — handoff 🤖","timestamp":"2026-08-31T02:08:08.086696Z","protocolVersion":3}}
+```
+
+Declaring the JavaScript UTF-16 code-unit length truncates the UTF-8 body and returns an error whose `id:null` cannot be correlated to the request:
+
+```console
+$ (printf 'Content-Length: 87\r\n\r\n%s' '{"jsonrpc":"2.0","id":"utf8","method":"ping","params":{"message":"baton — handoff 🤖"}}'; sleep 1) | nc -w 2 127.0.0.1 47781
+Content-Length: 110
+
+{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"EOF while parsing a string at line 1 column 87"}}
+```
+
+Over-declaring the same 91-byte body as 95 bytes produces no output before the client timeout:
+
+```console
+$ (printf 'Content-Length: 95\r\n\r\n%s' '{"jsonrpc":"2.0","id":"utf8","method":"ping","params":{"message":"baton — handoff 🤖"}}'; sleep 1) | nc -w 2 127.0.0.1 47781
+(no output)
+```
+
+**Binding:** compute `Content-Length` with `Buffer.byteLength(body, "utf8")`, include a non-ASCII contract fixture, and enforce a client response deadline. A bad length presents as silence or an uncorrelatable parse error, not a useful framing diagnostic.
+
+## 3. `session.send`, `messageId`, and the missing resume prerequisite — CONFIRM / DIVERGE
+The two halves are graded separately: `messageId` assignment is **CONFIRM**; direct addressability without a live resume registration is **DIVERGE**. The original assigned id shown below was supplied explicitly by this probe, not discovered as a sentinel; corrective runs use the random UUIDs in the instrument pin.
+
 
 ### Foreground id matched the spawn-assigned id
 
@@ -150,32 +204,15 @@ Content-Length: 93
 {"jsonrpc":"2.0","id":"send-5","result":{"messageId":"17d904fc-55dd-46b5-a6a8-10fb2feb46a7"}}
 ```
 
-The request contained no `messageId`; the response supplied one. The TUI visibly ran the prompt and printed `COPILOT_RPC_VERIFY_SEND_1`.
+**3a — CONFIRM:** the request contained no `messageId`; the response supplied UUID `17d904fc-55dd-46b5-a6a8-10fb2feb46a7`. It was server-assigned, not echoed. The TUI visibly ran the prompt and printed `COPILOT_RPC_VERIFY_SEND_1`.
 
-**Finding:** on this build, `port + assigned session id` is insufficient. A live resumed RPC connection owns registration. Any transport design must account for that connection lifetime; it cannot assume per-message connect/send/close.
+**3b — DIVERGE:** on this build, `port + assigned session id` is insufficient. A live resumed RPC connection owns registration. Any transport design must account for that connection lifetime; it cannot assume per-message connect/send/close.
 
 ## 4. `mode:"enqueue"` semantics — DIVERGE
 
-### Back-to-back frames raced and executed in reverse order
+### Pipelined frames can execute in reverse order
 
-Two framed requests were written in this order in one write to the already-open persistent `nc` connection:
-
-```text
-Content-Length: 247
-
-{"jsonrpc":"2.0","id":"queue-1","method":"session.send","params":{"sessionId":"10900000-0000-4000-8000-000000000000","prompt":"Output exactly FIRST_MODEL_QUEUE, then integers 1 through 200 separated by spaces, and nothing else.","mode":"enqueue"}}Content-Length: 197
-
-{"jsonrpc":"2.0","id":"queue-2","method":"session.send","params":{"sessionId":"10900000-0000-4000-8000-000000000000","prompt":"Reply exactly SECOND_MODEL_QUEUE and nothing else.","mode":"enqueue"}}
-```
-
-Both acks succeeded:
-
-```text
-{"jsonrpc":"2.0","id":"queue-1","result":{"messageId":"fd5e02d0-b533-4612-805d-1e7a2fddb69e"}}
-{"jsonrpc":"2.0","id":"queue-2","result":{"messageId":"30f3a5f8-341e-47c3-8ec1-ac29e1fdb782"}}
-```
-
-Execution order came from the isolated session's own event log. `jq -e` makes an empty filter a non-zero failure rather than a false pass:
+The original idle-session burst wrote `queue-1` then `queue-2` in one TCP write. Both acks succeeded, but session events recorded `SECOND_MODEL_QUEUE` before `FIRST_MODEL_QUEUE`:
 
 ```console
 $ jq -ce 'select(.timestamp >= "2026-08-31T00:56:52.000Z" and .timestamp <= "2026-08-31T00:57:01.000Z") | select(.type == "user.message" or .type == "assistant.message") | {timestamp,type,marker:(if (.data.content | contains("FIRST_MODEL_QUEUE")) then "FIRST_MODEL_QUEUE" elif (.data.content | contains("SECOND_MODEL_QUEUE")) then "SECOND_MODEL_QUEUE" else "unexpected" end),delivery:(.data.delivery // null)}' /Users/jordanknight/.copilot/session-state/10900000-0000-4000-8000-000000000000/events.jsonl
@@ -185,35 +222,20 @@ $ jq -ce 'select(.timestamp >= "2026-08-31T00:56:52.000Z" and .timestamp <= "202
 {"timestamp":"2026-08-31T00:57:00.129Z","type":"assistant.message","marker":"FIRST_MODEL_QUEUE","delivery":null}
 ```
 
-### Established busy turn deferred correctly
-
-The first send was allowed to establish a turn before the second send was issued. Both used `mode:"enqueue"`:
+That evidence proved reversal, but not its mechanism: the control changed both write shape and session state. The reviewer isolated those variables by holding the session busy and sending `ORDER_A` then `ORDER_B` as two frames in one 487-byte write. Both frames were labelled `queued`, yet execution still reversed:
 
 ```console
-$ (printf 'Content-Length: 239\r\n\r\n%s' '{"jsonrpc":"2.0","id":"busy-1","method":"session.send","params":{"sessionId":"10900000-0000-4000-8000-000000000000","prompt":"Output exactly BUSY_FIRST, then integers 1 through 400 separated by spaces, and nothing else.","mode":"enqueue"}}'; sleep 1) | nc -w 2 127.0.0.1 47777
-Content-Length: 93
-
-{"jsonrpc":"2.0","id":"busy-1","result":{"messageId":"f88fc882-2064-48a5-b686-4db43f3c8015"}}
+$ jq -ce 'select(.type == "user.message") | select((.data.content | contains("BUSY_ESTABLISH")) or (.data.content | contains("ORDER_A")) or (.data.content | contains("ORDER_B"))) | {timestamp,marker:(if (.data.content | contains("BUSY_ESTABLISH")) then "BUSY_ESTABLISH" elif (.data.content | contains("ORDER_A")) then "ORDER_A" else "ORDER_B" end),delivery:.data.delivery}' docs/plans/109-copilot-rpc/assets/reports/review-verify-R2-2-ordering-events.jsonl
+{"timestamp":"2026-08-31T01:30:22.083Z","marker":"BUSY_ESTABLISH","delivery":"idle"}
+{"timestamp":"2026-08-31T01:30:37.325Z","marker":"ORDER_B","delivery":"queued"}
+{"timestamp":"2026-08-31T01:30:39.594Z","marker":"ORDER_A","delivery":"queued"}
 ```
 
-```console
-$ (printf 'Content-Length: 189\r\n\r\n%s' '{"jsonrpc":"2.0","id":"busy-2","method":"session.send","params":{"sessionId":"10900000-0000-4000-8000-000000000000","prompt":"Reply exactly BUSY_SECOND and nothing else.","mode":"enqueue"}}'; sleep 1) | nc -w 2 127.0.0.1 47777
-Content-Length: 93
+**Finding:** reversal persists after busy state is established. The evidence supports concurrent handling of pipelined frames, not a race limited to the idle-to-busy transition.
 
-{"jsonrpc":"2.0","id":"busy-2","result":{"messageId":"2250f5f8-cdb4-4c3a-9e53-18aef50636e6"}}
-```
+**Mitigation:** serialize-and-await per seat. Keep exactly one message in flight; send the next only after the previous turn is **observed complete**, never merely acked. Establishing a turn first is not sufficient, and an RPC ack cannot prove execution.
 
-```console
-$ jq -ce 'select(.timestamp >= "2026-08-31T00:58:59.000Z" and .timestamp <= "2026-08-31T00:59:10.000Z") | select(.type == "user.message" or .type == "assistant.message") | {timestamp,type,marker:(if (.data.content | contains("BUSY_FIRST")) then "BUSY_FIRST" elif (.data.content | contains("BUSY_SECOND")) then "BUSY_SECOND" else "unexpected" end),delivery:(.data.delivery // null)}' /Users/jordanknight/.copilot/session-state/10900000-0000-4000-8000-000000000000/events.jsonl
-{"timestamp":"2026-08-31T00:58:59.172Z","type":"user.message","marker":"BUSY_FIRST","delivery":"idle"}
-{"timestamp":"2026-08-31T00:59:07.438Z","type":"assistant.message","marker":"BUSY_FIRST","delivery":null}
-{"timestamp":"2026-08-31T00:59:07.462Z","type":"user.message","marker":"BUSY_SECOND","delivery":"queued"}
-{"timestamp":"2026-08-31T00:59:09.871Z","type":"assistant.message","marker":"BUSY_SECOND","delivery":null}
-```
-
-**Finding:** established model-turn queueing works, but request dispatch can race before busy state is established. No ordering guarantee is safe across a burst of sends.
-
-The human-composer part of this claim is settled by claim 6: enqueue is not merely unaware of the composer; it clears it.
+`enqueue` is polite to an already-established model turn boundary when sends are serialized. It is not permission to interject into a human's live composer; claim 6 carries that independent consent hazard.
 
 ## 5. Readiness and latching — DIVERGE
 
@@ -253,92 +275,65 @@ $ jq -ce 'select(.timestamp >= "2026-08-31T01:00:34.000Z") | select(.type == "us
 
 ## 6. Mid-compose behavior — DIVERGE
 
-### `enqueue` accepted, ran, and cleared the unsent buffer
+The original PTY observation was misread. After an RPC turn, the TUI rendered its empty-composer placeholder over a still-populated in-memory draft. Searching session files could only answer whether the text had been **submitted**; an unsent draft is absent from session state whether preserved or destroyed. Those two instruments did not observe draft survival.
 
-Exact PTY state before the RPC request (ANSI-stripped capture):
+The correction used a random session id and the missing discriminator: after each RPC turn completed, press Enter and inspect the resulting `user.message`.
 
-```text
-HUMAN_COMPOSER_SENTINEL_DO_NOT_SUBMIT
+### `enqueue`: RPC interjected; draft survived
 
- @ files · # issues
-```
-
-The sentinel was typed without Enter.
-
-```console
-$ (printf 'Content-Length: 203\r\n\r\n%s' '{"jsonrpc":"2.0","id":"compose-1","method":"session.send","params":{"sessionId":"10900000-0000-4000-8000-000000000000","prompt":"Reply exactly RPC_DURING_COMPOSE and do not use tools.","mode":"enqueue"}}'; sleep 1) | nc -w 2 127.0.0.1 47777
-Content-Length: 96
-
-{"jsonrpc":"2.0","id":"compose-1","result":{"messageId":"a98284d6-25bd-4091-86d1-468468a02ea6"}}
-```
-
-Exact material PTY state after the request:
+Typed without Enter:
 
 ```text
- ● Working esc interrupt · ctrl+q enqueue ❯ Reply exactly RPC_DURING_COMPOSE and do not use tools.10:56
- ● RPC_DURING_COMPOSE30.1545
- @ files · # issues
-```
-
-The RPC prompt ran immediately. The composer returned blank; the sentinel was neither submitted nor restored.
-
-### `immediate` exists and is no safer
-
-Exact PTY state before the request:
-
-```text
-HUMAN_COMPOSER_IMMEDIATE_DO_NOT_SUBMIT
+ENTER_PROBE_ENQUEUE_eb0821f7
 ```
 
 ```console
-$ (printf 'Content-Length: 217\r\n\r\n%s' '{"jsonrpc":"2.0","id":"immediate-1","method":"session.send","params":{"sessionId":"10900000-0000-4000-8000-000000000000","prompt":"Reply exactly RPC_IMMEDIATE_DURING_COMPOSE and do not use tools.","mode":"immediate"}}'; sleep 1) | nc -w 2 127.0.0.1 47777
-Content-Length: 98
+$ (printf 'Content-Length: 206\r\n\r\n%s' '{"jsonrpc":"2.0","id":"enter-enqueue","method":"session.send","params":{"sessionId":"eb0821f7-3e87-422a-8421-8300a5b34115","prompt":"Reply exactly ENTER_RPC_ENQUEUE and do not use tools.","mode":"enqueue"}}'; sleep 1) | nc -w 2 127.0.0.1 47781
+Content-Length: 100
 
-{"jsonrpc":"2.0","id":"immediate-1","result":{"messageId":"0b92ed3f-01f0-4e56-80f0-1f09f688c231"}}
+{"jsonrpc":"2.0","id":"enter-enqueue","result":{"messageId":"477fad88-aa42-49b7-8f66-af5576e47fdc"}}
 ```
 
-Exact material PTY state after the request:
+After `ENTER_RPC_ENQUEUE` completed, pressing Enter submitted the original draft intact.
+
+### `immediate`: RPC interjected; draft survived
+
+Typed without Enter:
 
 ```text
- ● Working esc interrupt · ctrl+q enqueue
- ❯ Reply exactly RPC_IMMEDIATE_DURING_COMPOSE and do not use tools.10:57
- ● RPC_IMMEDIATE_DURING_COMPOSE38
- @ files · # issues
+ENTER_PROBE_IMMEDIATE_eb0821f7
 ```
-
-The composer was blank again. No tested send mode preserved the unsent human buffer.
-
-### Recovery search
-
-The session event log did not contain either sentinel. `jq -e` made absence loud:
 
 ```console
-$ jq -ce 'select(tostring | contains("HUMAN_COMPOSER_"))' /Users/jordanknight/.copilot/session-state/10900000-0000-4000-8000-000000000000/events.jsonl
+$ (printf 'Content-Length: 212\r\n\r\n%s' '{"jsonrpc":"2.0","id":"enter-immediate","method":"session.send","params":{"sessionId":"eb0821f7-3e87-422a-8421-8300a5b34115","prompt":"Reply exactly ENTER_RPC_IMMEDIATE and do not use tools.","mode":"immediate"}}'; sleep 1) | nc -w 2 127.0.0.1 47781
+Content-Length: 102
 
-Command exited with code 4
+{"jsonrpc":"2.0","id":"enter-immediate","result":{"messageId":"5a7833ff-2e1f-4a65-bee6-701a334261e8"}}
 ```
 
-The exact recursive search run through the repository search tool was:
+After `ENTER_RPC_IMMEDIATE` completed, pressing Enter submitted the original draft intact.
 
-```text
-pattern: HUMAN_COMPOSER_(SENTINEL|IMMEDIATE)_DO_NOT_SUBMIT
-path: /Users/jordanknight/.copilot
-case-sensitive: true
-respect gitignore: false
+Exact session ordering for both modes:
+
+```console
+$ jq -ce 'select(.timestamp >= "2026-08-31T02:06:00.000Z") | select((.type == "user.message" or .type == "assistant.message") and ((.data.content | contains("ENTER_RPC_")) or (.data.content | startswith("ENTER_PROBE_")))) | {timestamp,type,content:.data.content,delivery:(.data.delivery // null)}' /Users/jordanknight/.copilot/session-state/eb0821f7-3e87-422a-8421-8300a5b34115/events.jsonl
+{"timestamp":"2026-08-31T02:06:08.800Z","type":"user.message","content":"Reply exactly ENTER_RPC_ENQUEUE and do not use tools.","delivery":"idle"}
+{"timestamp":"2026-08-31T02:06:11.286Z","type":"assistant.message","content":"ENTER_RPC_ENQUEUE","delivery":null}
+{"timestamp":"2026-08-31T02:06:27.343Z","type":"user.message","content":"ENTER_PROBE_ENQUEUE_eb0821f7","delivery":"idle"}
+{"timestamp":"2026-08-31T02:06:33.044Z","type":"assistant.message","content":"ENTER_PROBE_ENQUEUE_eb0821f7\n\nNo instruction is attached to that token — let me know what you'd like done.","delivery":null}
+{"timestamp":"2026-08-31T02:07:11.497Z","type":"user.message","content":"Reply exactly ENTER_RPC_IMMEDIATE and do not use tools.","delivery":"idle"}
+{"timestamp":"2026-08-31T02:07:14.147Z","type":"assistant.message","content":"ENTER_RPC_IMMEDIATE","delivery":null}
+{"timestamp":"2026-08-31T02:07:30.529Z","type":"user.message","content":"ENTER_PROBE_IMMEDIATE_eb0821f7","delivery":"idle"}
+{"timestamp":"2026-08-31T02:07:33.266Z","type":"assistant.message","content":"ENTER_PROBE_IMMEDIATE_eb0821f7\n\nStill no instruction bound to that token — tell me what you'd like me to do.","delivery":null}
 ```
 
-Exact output:
-
-```text
-No matches found
-```
-
-The external PTY capture retained the text because the probe harness recorded what had been rendered. No Copilot-owned session state, draft, or log under `~/.copilot` retained it. This supports "not recoverable from Copilot-owned state"; it does not claim that an independent terminal recorder could not recover rendered text.
+**Corrected finding:** neither tested mode destroyed the pending draft. Both modes did run an unconsented model turn in the human's live session while that draft was pending. The composer gate remains a hard precondition on consent grounds, not data-loss grounds.
 
 ## Consequences for downstream units
 
 1. `rpc_port + harness_session_id` does not describe a per-message connection. The installed server required a live `session.resume` registration before `session.send` accepted the assigned id.
-2. `session.getForeground == assigned id` is not sufficient readiness for send.
-3. No ordering guarantee is safe across back-to-back RPC sends. Once a model turn is established, later enqueue defers correctly.
-4. Neither `enqueue` nor `immediate` is safe against a human mid-compose. The observed consequence was loss of the unsent buffer, not merely interjection.
-5. A composer/interaction gate is therefore a hard precondition on the RPC path itself; mode selection cannot make an unsafe send safe.
+2. `session.getForeground == assigned id` is not sufficient readiness for send. **Never latch a positive observed before the live resume registration exists**; it is a demonstrated false ready.
+3. No ordering guarantee is safe across pipelined RPC sends, including while the model is already busy and both messages are labelled `queued`. Serialize-and-await: one message in flight per seat, next only after the previous turn is observed complete.
+4. Neither `enqueue` nor `immediate` is safe against a human mid-compose: both interject an unconsented model turn. The pending drafts survived and later submitted intact; no data loss was observed.
+5. A composer/interaction gate is therefore a hard precondition on the RPC path itself. Mode selection cannot supply consent, and a fast path around the gate disables the protection without deleting its code.
+6. Frame with `Buffer.byteLength(body, "utf8")`, defend it with a non-ASCII fixture, and impose a client response deadline; malformed lengths produce silence or uncorrelatable `id:null` errors.
