@@ -1,0 +1,153 @@
+{
+ "dd": {
+  "schema": "pij-team/packet"
+ },
+ "sections": [
+  {
+   "name": "meta",
+   "value": {
+    "title": "PM packet \u2014 plan 111 anti-step-on",
+    "plan": "docs/plans/111-anti-step-on/plan.dd.json",
+    "role": "pm",
+    "seat": "(assigned at spawn)",
+    "from": "pij-dominant-vicuna (o-prime)",
+    "updated": "2026-08-31"
+   }
+  },
+  {
+   "name": "mission",
+   "value": "Deliver PRD req-0004: close the four verified gaps between pij-rs's live InteractionGate and the TS pane-signals contract \u2014 idle expiry, self-echo exemption, fresh send-boundary capture, layout-aware composer recognition. The plan, impl-guide and this packet are AUTHORED BY THE O-PRIME and are the contract; you execute them. Objections are WANTED \u2014 raise them AT THE ACK, before any coder builds, never after implementations accumulate."
+  },
+  {
+   "name": "instructions",
+   "value": [
+    {
+     "id": "i1",
+     "text": "FIRST: read plan.dd.json, impl-guide.dd.json (same folder) and PRD row req-0004 (.harness/government/prd/base-prd.dd.md on branch prime-governance). ACK back to pij-dominant-vicuna with objections or 'ack clean' BEFORE dispatching anything."
+    },
+    {
+     "id": "i2",
+     "text": "Load BOTH the /pij skill and the /builder skill, and require the same of every coder and reviewer you spawn \u2014 work runs through /builder verbs (coders: /builder 6 implement; reviewer: /builder 7 review), acting from the packet contracts, never improvised from CLI help."
+    },
+    {
+     "id": "i3",
+     "text": "You code NOTHING in wave 1. Dispatch u-gate and u-observer to two coders in parallel per the impl-guide: omp, model github-copilot/gpt-5.6-sol-fast-1m, effort high \u2014 verify the exact model id with `pij models` at dispatch time, never hardcode from memory. Each coder: own worktree off s111/anti-step-on, own tmux WINDOW (never a pane beside anyone), own CARGO_TARGET_DIR, packet-coder ddoc you author FROM the impl-guide unit row (quote the frozen interface verbatim), instructed to ACK with objections before building."
+    },
+    {
+     "id": "i4",
+     "text": "RED-FIRST is non-negotiable: ac-1111's witness must be run and seen FAILING on the pre-fix tree, with the red output pasted into the receipt, before the fix lands. A regression test green from birth is a claim, not a witness."
+    },
+    {
+     "id": "i5",
+     "text": "You own composition (phase ph-1112) per the impl-guide composition section, on s111/anti-step-on. Coders never merge; you merge."
+    },
+    {
+     "id": "i6",
+     "text": "Receipts discipline: every plan AC gets its receipt field filled with a re-executable receipt (test name + tree sha, or run id). Report receipts to pij-dominant-vicuna as they land \u2014 the o-prime checks off the PRD row, you never touch the governance branch."
+    },
+    {
+     "id": "i7",
+     "text": "Gate: `~/.cargo/bin/cargo run -p pij-testkit --bin pij-gate` (the BARE cargo on this machine is a non-rustup 1.95 and fails the toolchain pin \u2014 see docs/plans/110-claude-delivery/assets/toolchain-note.md). All stages green before review."
+    },
+    {
+     "id": "i8",
+     "text": "Daemon restart rule: if you smoke-test against the live rs daemon, remember it runs a compiled binary \u2014 rebuild and restart it for your change to take effect, and NEVER borrow a live operator surface without an explicit window from the o-prime."
+    },
+    {
+     "id": "i9",
+     "text": "Status cards: pij report now at the start and end of every unit of work, and chase your coders' stale cards \u2014 their rot is your accountability."
+    }
+   ]
+  },
+  {
+   "name": "working_with",
+   "value": [
+    {
+     "id": "w1",
+     "text": "o-prime: pij-dominant-vicuna. Escalations, rulings, human asks route through it \u2014 you never ask Jordan directly; persist the pending decision and continue non-dependent work."
+    },
+    {
+     "id": "w2",
+     "text": "Reviewer (phase ph-1113): cross-model from the coder family \u2014 coder is gpt-5.6-sol, so reviewer must NOT be a gpt-5.6 variant; pick claude or gemini class from `pij models`. Reviewer re-derives verdicts by EXECUTION (runs the tests, applies the mutations), never by reading. The flow-pair `review` CLI verb fabricates verdicts \u2014 hand-persist the real verdict into the plan assets."
+    },
+    {
+     "id": "w3",
+     "text": "Peers are pij-blind at boot: every packet you send bakes in the recipient's id, your id, and the exact `pij send <you>` reply form."
+    }
+   ]
+  },
+  {
+   "name": "scope",
+   "value": {
+    "worktree": "/Users/jordanknight/pi-hacking/pij-worktrees/s111-anti-step-on",
+    "branch": "s111/anti-step-on",
+    "fence": "crates/harnesses/**, crates/daemon/src/pane_observer.rs, crates/daemon/src/delivery/mod.rs (composition wiring only), crates/daemon/src/pointer/worker.rs (composition wiring only), crates/daemon config surface for interaction_idle_ms, crates/testkit fakes, crates/tmux only if capture needs a flag, docs/plans/111-anti-step-on/**",
+    "forbidden_note": "NEVER touch: .the-flow-state.json, the-flow.json, the-flow.md, the governance branch/worktree (.harness/government/**), docs/plans/110-claude-delivery/** (live sibling plan), the frozen receipt vocabulary in crates/core (Delivered/Queued/Held/Refused/SeatIsGone \u2014 plan 110 owns it), main directly (push-protected; everything lands via the PR)."
+   }
+  },
+  {
+   "name": "done_bar",
+   "value": [
+    {
+     "id": "d1",
+     "text": "All six plan ACs receipted (re-executable receipts in plan.dd.json), ac-1111 witnessed red-first."
+    },
+    {
+     "id": "d2",
+     "text": "Both mutation proofs fire (idle-expiry revert, echo-match loosening) and are recorded in the plan assets."
+    },
+    {
+     "id": "d3",
+     "text": "pij-gate green via the rustup cargo; fmt, clippy -D warnings, full workspace tests."
+    },
+    {
+     "id": "d4",
+     "text": "PR OPEN against main from s111/anti-step-on with the receipts in its description, and GitHub CI GREEN on the PR \u2014 the work is not done at 'code complete'; it is done when the PR exists and its checks pass. Do not merge; merge is the o-prime's call with Jordan."
+    },
+    {
+     "id": "d5",
+     "text": "Cross-model review verdict persisted in docs/plans/111-anti-step-on/assets/ before the PR is marked ready."
+    },
+    {
+     "id": "d6",
+     "text": "Coder worktrees reaped by whoever created them; findings doc in assets/ (instrument failures included, honestly)."
+    }
+   ]
+  },
+  {
+   "name": "refs",
+   "value": [
+    {
+     "id": "ref1",
+     "path": "docs/plans/111-anti-step-on/plan.dd.json",
+     "note": "the plan \u2014 ACs, phases, non-goals"
+    },
+    {
+     "id": "ref2",
+     "path": "docs/plans/111-anti-step-on/impl-guide.dd.json",
+     "note": "units, frozen seam, composition, review contract"
+    },
+    {
+     "id": "ref3",
+     "path": ".pi/extensions/pij/core/daemon/pane-signals.ts",
+     "note": "TS reference implementation (on main)"
+    },
+    {
+     "id": "ref4",
+     "path": ".pi/extensions/pij/core/daemon/typing-guard-contract.test.ts",
+     "note": "the operator contract \u2014 port these cases by name"
+    },
+    {
+     "id": "ref5",
+     "path": "docs/how/pij-pane-signals.md",
+     "note": "TS design doc, plan 058 background"
+    },
+    {
+     "id": "ref6",
+     "path": "docs/plans/110-claude-delivery/assets/toolchain-note.md",
+     "note": "the bare-cargo 1.95 trap"
+    }
+   ]
+  }
+ ]
+}

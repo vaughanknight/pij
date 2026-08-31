@@ -1,55 +1,172 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use pij_core::error::Result;
 use pij_core::ports::TmuxPort;
 
-#[derive(Clone, Copy, Debug, Default)]
+use crate::composer::{ComposerRegion, composer_region};
+
+const DEFAULT_INTERACTION_IDLE: Duration = Duration::from_secs(60);
+const SELF_INJECTION_WINDOW: Duration = Duration::from_secs(2);
+const CAPTURE_LINES: u32 = u32::MAX;
+
+type Clock = Arc<dyn Fn() -> Instant + Send + Sync>;
+
+#[derive(Debug)]
+struct SelfInjection {
+    payload: String,
+    baseline: Option<String>,
+    expires_at: Instant,
+    tap_active: bool,
+    last_interaction_at: Option<Instant>,
+}
+
+#[derive(Debug, Default)]
 struct ComposerState {
     tap_active: bool,
-    composer_non_empty: bool,
+    composer_active: bool,
+    content: Option<String>,
+    last_interaction_at: Option<Instant>,
+    uncertainty_since: Option<Instant>,
+    self_injection: Option<SelfInjection>,
+}
+
+impl ComposerState {
+    fn expire_vetoes_if_idle(&mut self, now: Instant, idle_window: Duration) -> bool {
+        let recent_interaction = self
+            .last_interaction_at
+            .is_some_and(|observed_at| now.saturating_duration_since(observed_at) < idle_window);
+        let recent_uncertainty = self
+            .uncertainty_since
+            .is_some_and(|observed_at| now.saturating_duration_since(observed_at) < idle_window);
+        let stale = !recent_interaction && !recent_uncertainty;
+        if stale {
+            self.tap_active = false;
+            self.composer_active = false;
+            self.last_interaction_at = None;
+        }
+        stale
+    }
+
+    fn veto_active(&self) -> bool {
+        self.content.is_none() || self.tap_active || self.composer_active
+    }
+}
+fn collapsed_eq(left: &str, right: &str) -> bool {
+    left.split_whitespace().eq(right.split_whitespace())
 }
 
 /// Injection safety gate combining tmux mode with stateful composer interaction.
-///
 /// `TmuxPort::user_typing` reports only `pane_in_mode`. This gate owns the other
-/// half: tap activity and whether captured composer content is non-empty. The
-/// safety decision is an AND of two independent *clear* verdicts:
-/// `!pane_in_mode && !composer_interaction`. Either interaction signal blocks;
-/// a `false` observation from one detector is never, by itself, permission to
-/// inject. Consumers must feed tap and composer observations before asking.
+/// half: tap activity and recent changes to captured composer content. A recent
+/// interaction-backed veto blocks independently of tmux mode; once every such
+/// observation reaches the idle bound, composer uncertainty and stale latches
+/// decay and the verdict falls back to tmux mode alone. Consumers must feed tap
+/// and composer observations before asking.
 pub struct InteractionGate {
     tmux: Arc<dyn TmuxPort>,
     panes: Mutex<BTreeMap<String, ComposerState>>,
+    idle_window: Duration,
+    clock: Clock,
 }
 
 impl InteractionGate {
     pub fn new(tmux: Arc<dyn TmuxPort>) -> Self {
+        Self::with_idle_window(tmux, DEFAULT_INTERACTION_IDLE)
+    }
+
+    /// Construct a gate with a caller-selected idle window and the monotonic system clock.
+    pub fn with_idle_window(tmux: Arc<dyn TmuxPort>, idle_window: Duration) -> Self {
+        Self::with_clock(tmux, idle_window, Arc::new(Instant::now))
+    }
+
+    fn with_clock(tmux: Arc<dyn TmuxPort>, idle_window: Duration, clock: Clock) -> Self {
         Self {
             tmux,
             panes: Mutex::new(BTreeMap::new()),
+            idle_window,
+            clock,
         }
     }
 
     /// Record bytes from the pane tap. Activity blocks injection until the
-    /// consumer positively observes that the composer has cleared.
+    /// composer clears or the universal idle bound expires.
     pub fn record_tap(&self, pane: &str) {
-        self.panes
-            .lock()
-            .expect("interaction gate mutex")
-            .entry(pane.to_string())
-            .or_default()
-            .tap_active = true;
+        let now = (self.clock)();
+        let mut panes = self.panes.lock().expect("interaction gate mutex");
+        let state = panes.entry(pane.to_string()).or_default();
+        state.tap_active = true;
+        state.last_interaction_at = Some(now);
+    }
+
+    /// Record a payload about to be injected by pij. An exact, whitespace-collapsed
+    /// echo is exempt from acquiring a hold; any existing human hold survives.
+    pub fn record_self_injection(&self, pane: &str, payload: &str) {
+        let now = (self.clock)();
+        let mut panes = self.panes.lock().expect("interaction gate mutex");
+        let state = panes.entry(pane.to_string()).or_default();
+        state.self_injection = Some(SelfInjection {
+            payload: payload.to_string(),
+            baseline: state.content.clone(),
+            expires_at: now + SELF_INJECTION_WINDOW,
+            tap_active: state.tap_active,
+            last_interaction_at: state.last_interaction_at,
+        });
     }
 
     /// Record the current composer contents. Whitespace-only content is empty:
     /// captured TUIs pad blank composers to their full width.
     pub fn observe_composer(&self, pane: &str, content: &str) {
+        self.observe_composer_at(pane, content, false);
+    }
+
+    fn observe_composer_at(&self, pane: &str, content: &str, preserve_tap: bool) {
+        let now = (self.clock)();
         let mut panes = self.panes.lock().expect("interaction gate mutex");
         let state = panes.entry(pane.to_string()).or_default();
-        state.composer_non_empty = content.chars().any(|ch| !ch.is_whitespace());
-        if !state.composer_non_empty {
-            state.tap_active = false;
+        let tick_tap_active = state.tap_active;
+        state.uncertainty_since = None;
+        if state
+            .self_injection
+            .as_ref()
+            .is_some_and(|injection| now > injection.expires_at)
+        {
+            state.self_injection = None;
+        }
+        if content.chars().all(char::is_whitespace) {
+            let changed = state.content.as_deref() != Some(content);
+            if changed {
+                state.content = Some(content.to_string());
+                state.last_interaction_at = Some(now);
+            }
+            state.composer_active = false;
+            state.tap_active = preserve_tap && tick_tap_active;
+            return;
+        }
+
+        if state.content.as_deref() != Some(content) {
+            let injection = state.self_injection.take();
+            let explained = injection.as_ref().is_some_and(|injection| {
+                injection.payload.chars().any(|ch| !ch.is_whitespace())
+                    && (collapsed_eq(content, &injection.payload)
+                        || injection
+                            .baseline
+                            .as_deref()
+                            .is_some_and(|baseline| collapsed_eq(content, baseline)))
+            });
+            state.content = Some(content.to_string());
+            if let Some(injection) = injection.filter(|_| explained) {
+                state.tap_active = injection.tap_active;
+                state.last_interaction_at = injection.last_interaction_at;
+            } else {
+                state.composer_active = true;
+                state.last_interaction_at = Some(now);
+            }
+        }
+        let expired = state.expire_vetoes_if_idle(now, self.idle_window);
+        if preserve_tap && !expired {
+            state.tap_active = tick_tap_active;
         }
     }
 
@@ -58,42 +175,106 @@ impl InteractionGate {
     /// and explicit deletion are intentionally indistinguishable here. Tmux mode
     /// must still independently report clear before injection is permitted.
     pub fn record_composer_cleared(&self, pane: &str) {
-        self.panes
-            .lock()
-            .expect("interaction gate mutex")
-            .insert(pane.to_string(), ComposerState::default());
+        let now = (self.clock)();
+        let mut panes = self.panes.lock().expect("interaction gate mutex");
+        let state = panes.entry(pane.to_string()).or_default();
+        let changed = state.content.as_deref() != Some("");
+        state.tap_active = false;
+        state.composer_active = false;
+        state.uncertainty_since = None;
+        if changed {
+            state.content = Some(String::new());
+            state.last_interaction_at = Some(now);
+        }
     }
 
-    /// Forget a pane observation that can no longer be trusted. Unknown is a
-    /// conservative veto, including after a previously clear observation.
+    /// Record that composer recognition is unavailable. The first observation
+    /// starts a bounded uncertainty veto; repeated unknown classifications do not
+    /// refresh either uncertainty or interaction age.
     pub fn record_unknown(&self, pane: &str) {
-        self.panes
-            .lock()
-            .expect("interaction gate mutex")
-            .remove(pane);
+        let now = (self.clock)();
+        let mut panes = self.panes.lock().expect("interaction gate mutex");
+        let state = panes.entry(pane.to_string()).or_default();
+        state.content = None;
+        state.uncertainty_since.get_or_insert(now);
+    }
+
+    /// Re-capture the composer at the send boundary before deciding.
+    ///
+    /// Composer evidence is fresh; tap activity remains the observer tick's
+    /// non-destructive state. Cursor discovery enumerates all panes, so this adds
+    /// one fleet-wide listing and one capture round-trip per gated send.
+    pub async fn permits_injection_fresh(&self, pane: &str) -> Result<bool> {
+        let listed = self.tmux.list_panes().await?;
+        let Some(listed) = listed.into_iter().find(|listed| listed.id == pane) else {
+            return self.permits_with_additional_veto(pane, true).await;
+        };
+        let (Some(cursor_x), Some(cursor_y)) = (listed.cursor_x, listed.cursor_y) else {
+            return self.permits_with_additional_veto(pane, true).await;
+        };
+        let capture = self.tmux.capture(pane, CAPTURE_LINES).await?;
+        match composer_region(&capture, cursor_x, cursor_y) {
+            ComposerRegion::Recognized(content) => {
+                self.observe_composer_at(pane, &content, true);
+                self.permits_with_additional_veto(pane, false).await
+            }
+            ComposerRegion::Unrecognized => self.permits_with_additional_veto(pane, true).await,
+        }
     }
 
     /// True only when both independent gates report clear.
     pub async fn permits_injection(&self, pane: &str) -> Result<bool> {
-        let tmux_clear = !self.tmux.user_typing(pane).await?;
-        let composer_clear = self
-            .panes
-            .lock()
-            .expect("interaction gate mutex")
-            .get(pane)
-            .is_some_and(|state| !state.tap_active && !state.composer_non_empty);
-        Ok(tmux_clear && composer_clear)
+        self.permits_with_additional_veto(pane, false).await
+    }
+
+    async fn permits_with_additional_veto(
+        &self,
+        pane: &str,
+        additional_veto: bool,
+    ) -> Result<bool> {
+        let mode_active = self.tmux.user_typing(pane).await?;
+        let now = (self.clock)();
+        let mut panes = self.panes.lock().expect("interaction gate mutex");
+        let state = panes.entry(pane.to_string()).or_default();
+        if state.content.is_none() || additional_veto {
+            state.uncertainty_since.get_or_insert(now);
+        }
+        if mode_active {
+            state.last_interaction_at = Some(now);
+            return Ok(false);
+        }
+        if state.expire_vetoes_if_idle(now, self.idle_window) {
+            return Ok(true);
+        }
+        Ok(!additional_veto && !state.veto_active())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{Duration, Instant};
+
+    use pij_core::model::Pane;
 
     use pij_testkit::block_on;
     use pij_testkit::fakes::FakeTmux;
 
     use super::InteractionGate;
+
+    const RULE: &str = "────────────────────────────────";
+
+    fn pane(cursor_x: u32, cursor_y: u32) -> Pane {
+        Pane {
+            id: "%108".to_string(),
+            session: "pij".to_string(),
+            window: "worker".to_string(),
+            title: "worker".to_string(),
+            cursor_x: Some(cursor_x),
+            cursor_y: Some(cursor_y),
+        }
+    }
 
     #[test]
     fn injection_requires_both_tmux_and_composer_gates_clear() {
@@ -119,14 +300,290 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn parked_draft_holds_at_most_the_idle_window_then_sends() {
+        let elapsed_ms = Arc::new(AtomicU64::new(0));
+        let started_at = Instant::now();
+        let clock_ms = Arc::clone(&elapsed_ms);
+        let gate = InteractionGate::with_clock(
+            Arc::new(FakeTmux::new()),
+            Duration::from_secs(60),
+            Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
+        );
+
+        gate.observe_composer("%108", "draft parked here yesterday");
+        assert!(!block_on(gate.permits_injection("%108")).expect("fresh draft holds"));
+
+        elapsed_ms.store(59_999, Ordering::Relaxed);
+        assert!(!block_on(gate.permits_injection("%108")).expect("recent draft holds"));
+
+        elapsed_ms.store(60_000, Ordering::Relaxed);
+        assert!(block_on(gate.permits_injection("%108")).expect("parked draft expired"));
+
+        elapsed_ms.store(120_000, Ordering::Relaxed);
+        assert!(block_on(gate.permits_injection("%108")).expect("expired draft stays released"));
+    }
+    #[test]
+    fn typing_through_restart_is_not_rebaselined_away() {
+        let elapsed_ms = Arc::new(AtomicU64::new(0));
+        let started_at = Instant::now();
+        let clock_ms = Arc::clone(&elapsed_ms);
+        let gate = InteractionGate::with_clock(
+            Arc::new(FakeTmux::new()),
+            Duration::from_secs(60),
+            Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
+        );
+
+        gate.observe_composer("%108", "half typed thou");
+        elapsed_ms.store(10_000, Ordering::Relaxed);
+        gate.observe_composer("%108", "half typed thou");
+        assert!(!block_on(gate.permits_injection("%108")).expect("thinking pause holds"));
+
+        elapsed_ms.store(11_000, Ordering::Relaxed);
+        gate.observe_composer("%108", "half typed thought");
+        elapsed_ms.store(70_999, Ordering::Relaxed);
+        assert!(!block_on(gate.permits_injection("%108")).expect("resumed typing re-arms"));
+
+        gate.observe_composer("%108", "  \t\n");
+        assert!(block_on(gate.permits_injection("%108")).expect("blank releases"));
+    }
 
     #[test]
-    fn unknown_observation_blocks_injection() {
+    fn self_echo_never_acquires_a_hold() {
         let gate = InteractionGate::new(Arc::new(FakeTmux::new()));
-        assert!(
-            !block_on(gate.permits_injection("%108")).expect("typing gate"),
-            "one clear detector cannot authorize injection before the other has observed the pane"
+        gate.observe_composer("%108", "");
+        gate.record_self_injection("%108", "[pij from boss] status please");
+        gate.record_tap("%108");
+        gate.observe_composer("%108", " [pij   from boss]\nstatus please ");
+
+        assert!(block_on(gate.permits_injection("%108")).expect("self echo is exempt"));
+    }
+
+    #[test]
+    fn self_echo_never_destroys_an_active_human_hold() {
+        let gate = InteractionGate::new(Arc::new(FakeTmux::new()));
+        gate.observe_composer("%108", "");
+        gate.record_tap("%108");
+        gate.observe_composer("%108", "human mid sentence");
+        gate.record_self_injection("%108", "[pij from boss] barging in");
+        gate.record_tap("%108");
+        gate.observe_composer("%108", "[pij from boss] barging in");
+
+        assert!(!block_on(gate.permits_injection("%108")).expect("human hold survives echo"));
+    }
+
+    #[test]
+    fn self_echo_match_is_exact_not_a_substring() {
+        for capture in [
+            "[pij from boss] status please and my reply",
+            "my reply [pij from boss] status please",
+            "my [pij from boss] status please reply",
+        ] {
+            let gate = InteractionGate::new(Arc::new(FakeTmux::new()));
+            gate.observe_composer("%108", "");
+            gate.record_self_injection("%108", "[pij from boss] status please");
+            gate.record_tap("%108");
+            gate.observe_composer("%108", capture);
+
+            assert!(
+                !block_on(gate.permits_injection("%108")).expect("adjacent human text holds"),
+                "capture={capture:?}"
+            );
+        }
+    }
+    #[test]
+    fn self_echo_exemption_is_one_shot() {
+        let gate = InteractionGate::new(Arc::new(FakeTmux::new()));
+        let injected = "[pij from boss] status please";
+        gate.observe_composer("%108", "");
+        gate.record_self_injection("%108", injected);
+        gate.record_tap("%108");
+        gate.observe_composer("%108", injected);
+        assert!(block_on(gate.permits_injection("%108")).expect("exact echo is exempt"));
+
+        gate.record_tap("%108");
+        gate.observe_composer("%108", "[pij from boss] status please and my reply");
+        assert!(!block_on(gate.permits_injection("%108")).expect("later human input holds"));
+    }
+
+    #[test]
+    fn expired_self_echo_exemption_does_not_hide_human_input() {
+        let elapsed_ms = Arc::new(AtomicU64::new(0));
+        let started_at = Instant::now();
+        let clock_ms = Arc::clone(&elapsed_ms);
+        let gate = InteractionGate::with_clock(
+            Arc::new(FakeTmux::new()),
+            Duration::from_secs(60),
+            Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
         );
+        gate.observe_composer("%108", "");
+        gate.record_self_injection("%108", "[pij from boss] late");
+
+        elapsed_ms.store(2_001, Ordering::Relaxed);
+        gate.record_tap("%108");
+        gate.observe_composer("%108", "[pij from boss] late");
+        assert!(!block_on(gate.permits_injection("%108")).expect("expired exemption holds"));
+    }
+    #[test]
+    fn fresh_boundary_replaces_a_stale_clear_composer_observation() {
+        let capture = format!("output\n{RULE}\n❯ human typing\n{RULE}");
+        let tmux = Arc::new(
+            FakeTmux::new()
+                .with_pane(pane(100, 2))
+                .script_capture(capture),
+        );
+        let gate = InteractionGate::new(tmux.clone());
+        gate.observe_composer("%108", "");
+
+        assert!(
+            !block_on(gate.permits_injection_fresh("%108")).expect("fresh gate"),
+            "a capture taken now must override a stale-clear observer state"
+        );
+        let calls = tmux.calls();
+        assert!(calls.iter().any(|call| call == "list_panes"));
+        assert!(calls.iter().any(|call| call == "capture:%108:4294967295"));
+        assert!(calls.iter().all(|call| call != "drain_pane_tap:%108"));
+    }
+
+    #[test]
+    fn fresh_boundary_unrecognized_layout_defers() {
+        let tmux = Arc::new(
+            FakeTmux::new()
+                .with_pane(pane(3, 0))
+                .script_capture("ordinary shell output"),
+        );
+        let gate = InteractionGate::new(tmux);
+        gate.observe_composer("%108", "");
+
+        assert!(!block_on(gate.permits_injection_fresh("%108")).expect("unknown defers"));
+    }
+    #[test]
+    fn unrecognized_veto_expires_to_the_tmux_mode_verdict() {
+        let elapsed_ms = Arc::new(AtomicU64::new(0));
+        let started_at = Instant::now();
+        let clock_ms = Arc::clone(&elapsed_ms);
+        let tmux = Arc::new(
+            FakeTmux::new()
+                .with_pane(pane(3, 0))
+                .script_capture("ordinary shell output")
+                .script_capture("ordinary shell output"),
+        );
+        let gate = InteractionGate::with_clock(
+            tmux,
+            Duration::from_secs(60),
+            Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
+        );
+        gate.observe_composer("%108", "");
+        assert!(!block_on(gate.permits_injection_fresh("%108")).expect("fresh uncertainty vetoes"));
+
+        elapsed_ms.store(60_000, Ordering::Relaxed);
+        assert!(block_on(gate.permits_injection_fresh("%108")).expect("stale uncertainty expires"));
+    }
+
+    #[test]
+    fn fresh_boundary_preserves_and_vetoes_on_tick_derived_tap_state() {
+        let capture = format!("output\n{RULE}\n❯ \n{RULE}");
+        let tmux = Arc::new(
+            FakeTmux::new()
+                .with_pane(pane(2, 2))
+                .script_capture(capture),
+        );
+        let gate = InteractionGate::new(tmux.clone());
+        gate.observe_composer("%108", "");
+        gate.record_tap("%108");
+
+        assert!(!block_on(gate.permits_injection_fresh("%108")).expect("tap vetoes"));
+        assert!(
+            tmux.calls()
+                .iter()
+                .all(|call| call != "drain_pane_tap:%108")
+        );
+        assert!(!block_on(gate.permits_injection("%108")).expect("tap state preserved"));
+    }
+
+    #[test]
+    fn fresh_boundary_recognized_blank_without_tap_permits() {
+        let capture = format!("output\n{RULE}\n❯ \n{RULE}");
+        let tmux = Arc::new(
+            FakeTmux::new()
+                .with_pane(pane(2, 2))
+                .script_capture(capture),
+        );
+        let gate = InteractionGate::new(tmux);
+
+        assert!(block_on(gate.permits_injection_fresh("%108")).expect("blank permits"));
+    }
+
+    #[test]
+    fn initial_uncertainty_expires_to_tmux_mode_alone() {
+        let elapsed_ms = Arc::new(AtomicU64::new(0));
+        let started_at = Instant::now();
+        let clock_ms = Arc::clone(&elapsed_ms);
+        let gate = InteractionGate::with_clock(
+            Arc::new(FakeTmux::new()),
+            Duration::from_secs(60),
+            Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
+        );
+        assert!(!block_on(gate.permits_injection("%108")).expect("fresh uncertainty vetoes"));
+
+        elapsed_ms.store(60_000, Ordering::Relaxed);
+        assert!(block_on(gate.permits_injection("%108")).expect("stale uncertainty expires"));
+    }
+
+    #[test]
+    fn tap_latch_expires_after_the_idle_window() {
+        let elapsed_ms = Arc::new(AtomicU64::new(0));
+        let started_at = Instant::now();
+        let clock_ms = Arc::clone(&elapsed_ms);
+        let gate = InteractionGate::with_clock(
+            Arc::new(FakeTmux::new()),
+            Duration::from_secs(60),
+            Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
+        );
+        gate.observe_composer("%108", "");
+        gate.record_tap("%108");
+        assert!(!block_on(gate.permits_injection("%108")).expect("recent tap vetoes"));
+
+        elapsed_ms.store(60_000, Ordering::Relaxed);
+        assert!(block_on(gate.permits_injection("%108")).expect("stale tap expires"));
+    }
+
+    #[test]
+    fn repeated_unknown_observations_do_not_refresh_interaction_age() {
+        let elapsed_ms = Arc::new(AtomicU64::new(0));
+        let started_at = Instant::now();
+        let clock_ms = Arc::clone(&elapsed_ms);
+        let gate = InteractionGate::with_clock(
+            Arc::new(FakeTmux::new()),
+            Duration::from_secs(60),
+            Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
+        );
+        gate.observe_composer("%108", "human typing");
+        gate.record_unknown("%108");
+
+        elapsed_ms.store(30_000, Ordering::Relaxed);
+        gate.record_unknown("%108");
+        assert!(!block_on(gate.permits_injection("%108")).expect("fresh uncertainty vetoes"));
+
+        elapsed_ms.store(60_000, Ordering::Relaxed);
+        gate.record_unknown("%108");
+        assert!(block_on(gate.permits_injection("%108")).expect("uncertainty did not refresh"));
+    }
+
+    #[test]
+    fn active_tmux_mode_remains_the_fallback_veto() {
+        let elapsed_ms = Arc::new(AtomicU64::new(0));
+        let started_at = Instant::now();
+        let clock_ms = Arc::clone(&elapsed_ms);
+        let gate = InteractionGate::with_clock(
+            Arc::new(FakeTmux::new().with_user_typing()),
+            Duration::from_secs(60),
+            Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
+        );
+        gate.observe_composer("%108", "stale draft");
+        elapsed_ms.store(120_000, Ordering::Relaxed);
+
+        assert!(!block_on(gate.permits_injection("%108")).expect("active mode vetoes"));
     }
 
     #[test]

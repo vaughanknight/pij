@@ -747,6 +747,9 @@ pub struct FakeTmux {
 struct TmuxState {
     panes: Vec<Pane>,
     captures: VecDeque<String>,
+    /// Served when the scripted queue is empty, so a test whose subject makes
+    /// MANY captures does not have to script one per call.
+    standing_capture: Option<String>,
     typing: bool,
     taps: BTreeMap<String, PathBuf>,
     tap_drains: VecDeque<std::result::Result<Vec<u8>, String>>,
@@ -773,6 +776,55 @@ impl FakeTmux {
             .expect("fake tmux mutex")
             .captures
             .push_back(text.into());
+        self
+    }
+
+    /// Arrange a pane whose composer parses as RECOGNIZED and BLANK, for every
+    /// capture rather than once.
+    ///
+    /// Needed because the send-boundary gate captures on EVERY injection, so a
+    /// singly-scripted capture is consumed by the first one and every later call
+    /// falls back to an empty pane — which parses as `Unrecognized` and vetoes.
+    /// Deliberately NOT the fake's default: an unscripted capture stays an empty
+    /// pane and therefore a veto, because a fake that permits injection by
+    /// default would make the gate it is used to test unfalsifiable.
+    ///
+    /// The single box row is the OMP layout's empty-payload case; the cursor sits
+    /// on that row, which is what makes it a positively recognized blank rather
+    /// than an absence of evidence.
+    pub fn with_clear_composer(self, pane: &str) -> Self {
+        self.arrange_clear_composer(pane);
+        self
+    }
+
+    /// `with_clear_composer` for a fake already behind an `Arc`, so a test helper
+    /// can arrange a pane at the moment the seat is registered rather than
+    /// needing every pane id enumerated up front.
+    pub fn arrange_clear_composer(&self, pane: &str) {
+        let mut state = self.state.lock().expect("fake tmux mutex");
+        if state.panes.iter().any(|listed| listed.id == pane) {
+            return;
+        }
+        state.panes.push(Pane {
+            id: pane.to_string(),
+            session: "s".to_string(),
+            window: "w".to_string(),
+            title: "t".to_string(),
+            cursor_x: Some(0),
+            cursor_y: Some(0),
+        });
+        state.standing_capture = Some(
+            "\u{2570}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{256f}"
+                .to_string(),
+        );
+    }
+
+    /// Serve `text` for every capture that outruns the scripted queue.
+    ///
+    /// Pairs with [`FakeTmux::with_pane`] when a test needs a composer with
+    /// CONTENT rather than the blank one `with_clear_composer` arranges.
+    pub fn with_standing_capture(self, text: impl Into<String>) -> Self {
+        self.state.lock().expect("fake tmux mutex").standing_capture = Some(text.into());
         self
     }
 
@@ -841,7 +893,11 @@ impl TmuxPort for FakeTmux {
         state.recorder.record(format!("capture:{pane}:{lines}"));
         // An unscripted capture is an empty pane, not a panic: a fake that
         // explodes on an unexpected call makes tests about the fake.
-        Ok(state.captures.pop_front().unwrap_or_default())
+        Ok(state
+            .captures
+            .pop_front()
+            .or_else(|| state.standing_capture.clone())
+            .unwrap_or_default())
     }
 
     async fn attach_pane_tap(&self, pane: &str, sink: &Path) -> Result<()> {

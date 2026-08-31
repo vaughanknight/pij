@@ -218,9 +218,22 @@ impl DeliveryService {
                 // Socket capability is not permission to interrupt a person.
                 // The same gate protects queued retries in `DrainWorker`; the
                 // first-attempt path is the common path and must consult it too.
+                //
+                // FRESH, not the last observer tick: the verdict that AUTHORIZES
+                // an injection is derived from a capture taken here, at the send
+                // boundary. The tick cadence can be up to `pane_observer_interval_ms`
+                // stale, which is exactly long enough for a human to start typing
+                // between the observation and the write.
+                //
+                // Fresh in its COMPOSER half only. The tap half stays tick-derived:
+                // `drain_pane_tap` is destructive and owned by the observer loop,
+                // so draining here would steal its bytes. The residual window
+                // shrinks from the observer interval to capture-to-inject; it is
+                // bounded, not eliminated (plan 111 findings F-1112).
+                //
                 // A paneless pull consumer has no composer to gate.
                 let interaction_permits = match recipient.pane.as_deref() {
-                    Some(pane) => self.interaction.permits_injection(pane).await?,
+                    Some(pane) => self.interaction.permits_injection_fresh(pane).await?,
                     None => true,
                 };
                 if !interaction_permits || !self.transport.can_deliver(&recipient, &msg).await? {
@@ -590,11 +603,12 @@ mod tests {
     use pij_core::delivery::delivery_kind;
     use pij_core::error::PijError;
     use pij_core::events::EventFilter;
+    use pij_core::model::Pane;
     use pij_core::model::{
         DeliveryOrigin, DeliveryOutcome, Event, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId,
         SemanticState, Seq, SystemState,
     };
-    use pij_core::ports::{Queue, Registry, Spine};
+    use pij_core::ports::{Queue, Registry, Spine, TmuxPort};
     use pij_harnesses::InteractionGate;
     use pij_testkit::fakes::{
         CountingSpine, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
@@ -613,6 +627,7 @@ mod tests {
         spine: Arc<FakeSpine>,
         transport: Arc<FakeTransport>,
         interaction: Arc<InteractionGate>,
+        tmux: Arc<FakeTmux>,
     }
 
     fn fixture(transport: FakeTransport) -> Fixture {
@@ -700,11 +715,23 @@ mod tests {
     }
 
     fn fixture_with_gate(transport: FakeTransport, tmux: FakeTmux) -> Fixture {
+        fixture_with_gate_and_idle(transport, tmux, Duration::from_millis(60_000))
+    }
+
+    fn fixture_with_gate_and_idle(
+        transport: FakeTransport,
+        tmux: FakeTmux,
+        idle: Duration,
+    ) -> Fixture {
         let registry = Arc::new(FakeRegistry::new());
         let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
         let spine = Arc::new(FakeSpine::new());
         let transport = Arc::new(transport);
-        let interaction = Arc::new(InteractionGate::new(Arc::new(tmux)));
+        let tmux = Arc::new(tmux);
+        let interaction = Arc::new(InteractionGate::with_idle_window(
+            Arc::clone(&tmux) as Arc<dyn TmuxPort>,
+            idle,
+        ));
         let bus =
             Arc::new(EventBus::new(Arc::clone(&spine) as Arc<dyn Spine>, 16).expect("event bus"));
         let service = Arc::new(DeliveryService::with_sources(
@@ -723,6 +750,7 @@ mod tests {
             spine,
             transport,
             interaction,
+            tmux,
         }
     }
 
@@ -792,7 +820,14 @@ mod tests {
             assert!(fixture.transport.delivered().is_empty(), "{label}");
         }
 
-        let clear = fixture(FakeTransport::reachable());
+        // The clear arm now has to be clear AT THE BOUNDARY, not merely at the
+        // last observer tick: first-attempt delivery re-captures before it
+        // authorizes. That is the whole behaviour change, so this arm arranges a
+        // recognizable blank composer rather than only seeding the tick state.
+        let clear = fixture_with_gate(
+            FakeTransport::reachable(),
+            FakeTmux::new().with_clear_composer("%108"),
+        );
         clear.interaction.observe_composer("%108", "   ");
         let mut recipient = bound("pij-clear");
         recipient.pane = Some("%108".to_string());
@@ -810,6 +845,136 @@ mod tests {
             }
         );
         assert_eq!(clear.transport.delivered().len(), 1);
+    }
+
+    /// A pane presenting a composer with CONTENT, cursor parked at its end.
+    ///
+    /// The box row is the OMP layout: `first_column` lands after the corner, the
+    /// rules and the single space, so a cursor at column 11 clips the payload to
+    /// exactly "hello".
+    fn typing_pane(pane: &str) -> FakeTmux {
+        FakeTmux::new()
+            .with_pane(Pane {
+                id: pane.to_string(),
+                session: "s".to_string(),
+                window: "w".to_string(),
+                title: "t".to_string(),
+                cursor_x: Some(11),
+                cursor_y: Some(0),
+            })
+            .with_standing_capture(
+                "\u{2570}\u{2500}\u{2500}\u{2500}\u{2500} hello \u{2500}\u{256f}",
+            )
+    }
+
+    /// ac-1111 end to end: a PARKED draft delays delivery, it does not block it.
+    ///
+    /// The composer never goes blank and the human never returns. Before the idle
+    /// window the send is queued; once the same unchanged content has outlived the
+    /// window, delivery PROCEEDS. This is the regression that forced TS's
+    /// fleet-wide emergency bypass (72b5dd61) — there, a walked-away draft held a
+    /// pane forever.
+    #[tokio::test]
+    async fn a_parked_draft_delays_delivery_and_then_stops_blocking_it() {
+        let idle = Duration::from_millis(30);
+        let fixture =
+            fixture_with_gate_and_idle(FakeTransport::reachable(), typing_pane("%108"), idle);
+        let mut recipient = bound("pij-parked");
+        recipient.pane = Some("%108".to_string());
+        register(&fixture, recipient.clone()).await;
+
+        // First send: the draft is fresh, so it is a real hold.
+        let held = fixture
+            .service
+            .send("pij-from".into(), recipient.id.clone(), "wait your turn")
+            .await
+            .expect("a live draft queues durably");
+        assert_eq!(held.outcome, DeliveryOutcome::Queued);
+        assert!(fixture.transport.delivered().is_empty());
+
+        // The draft is never touched again and never cleared.
+        tokio::time::sleep(idle * 3).await;
+
+        let sent = fixture
+            .service
+            .send("pij-from".into(), recipient.id, "no longer blocked")
+            .await
+            .expect("an expired hold delivers");
+        assert_eq!(
+            sent.outcome,
+            DeliveryOutcome::Delivered {
+                origin: DeliveryOrigin::InjectedToTransport
+            },
+            "a parked draft must DELAY delivery, never block it forever"
+        );
+    }
+
+    /// ac-1114 end to end: the verdict comes from the send boundary, not the tick.
+    ///
+    /// The observer state says the composer is clear — the human started typing
+    /// after that observation. Only a capture taken at the send boundary can see
+    /// it, so a stale-clear tick must not be enough to authorize an injection.
+    #[tokio::test]
+    async fn a_stale_clear_tick_cannot_authorize_an_injection_a_fresh_capture_vetoes() {
+        let fixture = fixture_with_gate(FakeTransport::reachable(), typing_pane("%108"));
+        let mut recipient = bound("pij-racing");
+        recipient.pane = Some("%108".to_string());
+        register(&fixture, recipient.clone()).await;
+
+        // The last observer tick saw a blank composer. It is already out of date.
+        fixture.interaction.observe_composer("%108", "   ");
+
+        let receipt = fixture
+            .service
+            .send("pij-from".into(), recipient.id, "mid-keystroke")
+            .await
+            .expect("a fresh veto queues durably");
+
+        assert_eq!(
+            receipt.outcome,
+            DeliveryOutcome::Queued,
+            "a stale CLEAR tick must not outrank a fresh capture showing a human typing"
+        );
+        assert!(fixture.transport.delivered().is_empty());
+        assert!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .any(|call| call.starts_with("capture:%108")),
+            "the verdict must derive from a capture taken at the send boundary"
+        );
+    }
+
+    /// ac-1116: a paneless seat is never gated, and is never even LOOKED at.
+    ///
+    /// Pinned rather than built — this is existing behaviour that must survive the
+    /// change. Asserting the absence of tmux calls, not merely a delivered
+    /// receipt, is what makes it a pin: a paneless pull consumer has no composer,
+    /// so the gate must not reach for one.
+    #[tokio::test]
+    async fn a_paneless_seat_is_never_gated_and_never_captured() {
+        let fixture = fixture_with_gate(FakeTransport::reachable(), typing_pane("%108"));
+        let mut recipient = bound("pij-paneless");
+        recipient.pane = None;
+        register(&fixture, recipient.clone()).await;
+
+        let receipt = fixture
+            .service
+            .send("pij-from".into(), recipient.id, "pull consumer")
+            .await
+            .expect("paneless delivery");
+
+        assert_eq!(
+            receipt.outcome,
+            DeliveryOutcome::Delivered {
+                origin: DeliveryOrigin::InjectedToTransport
+            }
+        );
+        assert!(
+            fixture.tmux.calls().is_empty(),
+            "a paneless seat has no composer: the gate must not capture, list, or probe"
+        );
     }
 
     #[tokio::test]
