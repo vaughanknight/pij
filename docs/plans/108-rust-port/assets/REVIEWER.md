@@ -195,3 +195,26 @@ Corollary from the same wave: a stress sample and a mutation answer different
 questions, and the stress sample is the weaker one. Prefer the mutation first, and
 use repetition to bound the frequency once you already know the cause.
 
+### A seventh habit — surfacing a violation is not enforcing one
+
+Three failures in one hour, all the same shape, all in the tooling rather than the
+product:
+
+- a runner **printed** `TREE: 1 modified` and carried on, so a check ran against a
+  dirty tree it had already noticed;
+- a runner **filtered** for stage lines, so a hard `--locked` failure produced no
+  matching output and was summarised as `OK — 5s` for a gate plus six workspace
+  runs. *"No output"* and *"no problems"* are the same string to a summary line;
+- an offline test run **regenerated `Cargo.lock`** in the worktree it was judging —
+  COMMON 1.4 violated by the reviewer, on a head whose entire finding was that the
+  lock was missing. A gate that repairs its own input is a formatter reporting
+  PASS.
+
+So: a condition your tooling can DETECT must make it **stop**, not annotate. Print
+plus proceed is the shape that lets a known-bad input reach a verdict, and it reads
+as diligence in the transcript afterwards.
+
+Concretely, for any runner or probe here: abort on a dirty tree; fail loudly when a
+filter matches nothing; never let a read-only check write to what it judges — and if
+it must (offline resolution, cache warmup), do it in a copy and say so.
+
