@@ -77,8 +77,8 @@
         {
           "id": "ac-1106",
           "claim": "Live round trip on the real fleet, both arms, three observers: bypass-marked delivered with no dialog and byte-exact above 1022 bytes against an --accept-inbound seat; unmarked message observed Held before any human click against a non-accepting seat.",
-          "state": "unchecked",
-          "receipt": "sender status line + recipient transcript records + operator screen; any click recorded as an INPUT"
+          "state": "checked",
+          "receipt": "ALL THREE ARMS LIVE on the composed head: Held 62.9ms (non-accepting seat); Delivered 3000B/40 contiguous lines into an --accept-inbound seat, real type=user turn, no hold record; Refused 2.24s through the SHIPPED transport, operator's Deny recorded as an INPUT. SCOPE QUALIFIER (reviewer F3): the held and refused arms stamp cross_session_inbound_accept=Some(true) on a NON-accepting seat, which is the stamp/reality drift that is the only production trigger for these outcomes today — the arms are honest about the transport and do not demonstrate a configuration the fleet currently has."
         },
         {
           "id": "ac-1107",
@@ -157,6 +157,34 @@
           "state": "unchecked",
           "owner": "pm",
           "note": "Disclosed unprobed in req-0002. The one-in-flight conclusion does not depend on closing it."
+        },
+        {
+          "id": "oq-1104",
+          "state": "unchecked",
+          "owner": "o-prime / Jordan",
+          "question": "Held and Refused are DRIFT-ONLY reachable today: every live Claude session record carries crossSessionInbound=null, can_deliver refuses before any write, and an accepting seat never holds. Should the PR say so, and should the descriptor consume the CLI record's own consent flag?",
+          "note": "Reviewer F3 + mirror gap, verified live: zero accepting seats on the fleet. A hand-started seat whose operator DID launch with accept is never served, because the register path never reads the consent flag that is sitting on disk. Adjacent to oq-1101."
+        },
+        {
+          "id": "oq-1105",
+          "state": "unchecked",
+          "owner": "o-prime",
+          "question": "The direct send path claims note_delivered(InjectedToTransport) BEFORE transport.deliver and compensates only Queued/Err, so a Held or Refused leaves the ledger saying DELIVERED for a message that was denied. Intended, or store the outcome with the claim?",
+          "note": "Reviewer F6. Both directions prevent the worse outcome, but the ledger and the receipt stream disagree and an auditor sees delivered for a refused message."
+        },
+        {
+          "id": "oq-1106",
+          "state": "unchecked",
+          "owner": "o-prime",
+          "question": "A human slower than HOLD_GRACE still yields Held; the job then backs off and re-delivers, re-prompting someone who may have already denied, and the park reason says 'has not approved' rather than 'answered no'. Fix direction: keep the reply inbox alive across the job lifecycle and let the worker cancel the retry on a denial.",
+          "note": "Reviewer addendum. This is a transport->worker contract change, so it is a seam change and not patched in this branch."
+        },
+        {
+          "id": "oq-1107",
+          "state": "unchecked",
+          "owner": "o-prime",
+          "question": "PRE-EXISTING, and plan 110's tests now enshrine it: a bound row re-registering has rpc_port_intent CLEARED, while the allocator treats live rows' intents as the RESERVED set — so spawn(port) -> register -> re-register frees a port a live Copilot is listening on.",
+          "note": "Reviewer, found while re-deriving. Not introduced here, but it contradicts the u-adopt goal 'the stamped rpc_port surviving onto the row consumers read', which holds only until the seat's next registration."
         }
       ]
     }

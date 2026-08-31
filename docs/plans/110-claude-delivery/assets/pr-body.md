@@ -60,9 +60,23 @@ not be switched on without this.
 | Delivered byte-exact | live, `--accept-inbound` seat: 3000 bytes, lines 1..40 contiguous, real `type=user` turn, no hold record |
 | every guard | witnessed RED by mutating its fix away — reply address (4 fail), status matcher (5), held backoff (2), unbound clause (1) |
 | gate | `pij-gate` exit 0 on the composed, rebased head, rustc 1.98.0 |
+| review | cross-model (GLM 5.3 Flash), every mutation re-executed independently; five findings fixed, four escalated as open questions |
 
-**Honestly labelled gap:** the *refused* arm is proven only against a fake server. No live refusal has
-been observed end to end, because it needs a human to click Deny.
+| Refused | live, operator clicked Deny: `Refused` through the shipped transport after 2.24 s |
+
+### The scope qualifier that matters most
+
+**These outcomes are drift-only reachable on today's fleet, and the PR should not be read as
+"socket delivery is now on".** Verified live by the reviewer: every Claude session record carries
+`crossSessionInbound: null`, so `can_deliver` refuses before any write and the CLI never gets a
+frame to hold; and an *accepting* seat never holds. So `Held` and `Refused` are reachable in
+production only under **stamp/reality drift** — a descriptor claiming a consent the CLI did not
+apply.
+
+The live held and refused arms above stamp `cross_session_inbound_accept = Some(true)` on a
+**non-accepting** seat, which *is* that drift. They are honest about the transport and they do not
+demonstrate a configuration the fleet currently has. Said plainly here rather than left for a reader
+to discover.
 
 **One test that is not a guard:** `the_control_shape_is_what_the_live_cli_actually_emits` stays green
 under the status-matcher mutation. It pins the fixture; it does not guard the decoder. Kept, and not
