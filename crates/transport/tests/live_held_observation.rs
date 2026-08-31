@@ -156,3 +156,53 @@ async fn a_long_body_reaches_an_accepting_seat_without_a_dialog() {
         "an accepting recipient must not hold, and silence must not be upgraded past injection"
     );
 }
+
+/// The live REFUSED arm. Needs a human to click Deny, so it waits for one.
+///
+/// ```text
+/// PIJ_LIVE_REFUSING_PID=<pid> cargo test -p pij-transport --test live_held_observation \
+///   -- --ignored --nocapture refused
+/// ```
+///
+/// The operator's click is an INPUT, not the observation. The observation is the
+/// `status:"denied"` line the CLI sends to our reply address, and the
+/// `Refused{reason}` the shipped transport returns because of it.
+#[tokio::test]
+#[ignore = "needs a human to click Deny; set PIJ_LIVE_REFUSING_PID"]
+async fn a_declined_message_is_observed_refused_on_the_live_wire() {
+    let Some(pid) = env::var("PIJ_LIVE_REFUSING_PID")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u32>().ok())
+    else {
+        panic!("set PIJ_LIVE_REFUSING_PID to a running, NON-accepting Claude session");
+    };
+    let transport = UdsTransport::new()
+        .expect("HOME must name the account owning ~/.claude")
+        .with_ack_wait(Duration::from_secs(90));
+    let seat = seat(pid);
+
+    let sentinel = format!("WOODPECKER-DENY-{}", std::process::id());
+    let sent = Instant::now();
+    let outcome = transport
+        .deliver(
+            &seat,
+            &message(&format!(
+                "{sentinel} — plan 110 live REFUSED arm. Please click DENY on this dialog. \
+                 Your click is recorded as an input; the observation is the status line it produces."
+            )),
+        )
+        .await
+        .expect("deliver");
+    let elapsed = sent.elapsed();
+
+    println!("sentinel {sentinel}: outcome after {elapsed:?}: {outcome:?}");
+    match outcome {
+        DeliveryOutcome::Refused { reason } => {
+            println!("REFUSED observed on the live wire after {elapsed:?}, reason: {reason}");
+        }
+        DeliveryOutcome::Held { reason } => panic!(
+            "still Held after {elapsed:?} ({reason}) — nobody clicked, or the denial never routed"
+        ),
+        other => panic!("expected Refused, got {other:?}"),
+    }
+}

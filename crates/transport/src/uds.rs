@@ -86,6 +86,19 @@ impl UdsTransport {
         }
     }
 
+    /// Wait longer than [`ACK_WAIT`] for a status line.
+    ///
+    /// The default 150 ms is tuned for the machine-side verdict — `held` lands in
+    /// ~70 ms. A DENIAL is a different kind of fact: it arrives only when a human
+    /// clicks, seconds later. Observing one end to end therefore needs a window
+    /// sized for a person, and it must run through this same transport rather
+    /// than a bespoke client, or it proves the wire and not the code.
+    #[must_use]
+    pub fn with_ack_wait(mut self, ack_wait: Duration) -> Self {
+        self.ack_wait = ack_wait;
+        self
+    }
+
     fn discover(&self, seat: &SeatDescriptor) -> Option<Endpoint> {
         let pid = seat.proc?.pid;
         let direct = self.sessions_dir.join(format!("{pid}.json"));
@@ -344,13 +357,24 @@ impl ReplyInbox {
             .ok()?;
         let mut reader = BufReader::new(stream);
         let mut line = String::new();
+        // HELD IS NOT TERMINAL, and returning on it loses the answer. Measured on
+        // the live wire: `held` at 58 ms, then `denied` at 1.74 s, BOTH on this
+        // address. A transport that returned at 58 ms would report a message the
+        // human went on to REFUSE as merely pending, and the refusal — the only
+        // thing the human actually said — would be dropped. So remember a hold and
+        // keep listening for a terminal answer until the deadline.
+        //
+        // A human slower than the deadline still yields Held, which is honest: at
+        // that instant it IS held. Backoff-and-park owns what happens next.
+        let mut pending = None;
         loop {
             line.clear();
             match timeout_at(deadline, reader.read_line(&mut line)).await {
-                Err(_) | Ok(Ok(0)) | Ok(Err(_)) => return None,
+                Err(_) | Ok(Ok(0)) | Ok(Err(_)) => return pending,
                 Ok(Ok(_)) => match classify_status(&line, msg_id) {
                     Status::Unrelated | Status::Malformed => {}
-                    decided => return Some(decided),
+                    Status::Held => pending = Some(Status::Held),
+                    terminal => return Some(terminal),
                 },
             }
         }
@@ -906,7 +930,15 @@ mod tests {
                             .await
                             .expect("the advertised reply address must be reachable");
                         write_halved(&mut back, &response).await;
-                        tokio::time::sleep(Duration::from_millis(60)).await;
+                        // Close the reply channel at once. A HOLD is no longer
+                        // terminal — the transport keeps listening for the denial
+                        // that may follow — so leaving this open would make the
+                        // outcome depend on a sleep racing the ack deadline, and
+                        // these tests would pass or fail by machine load rather
+                        // than by behaviour. EOF is the recipient saying "that is
+                        // all", which is exactly what a real one-status exchange
+                        // does.
+                        drop(back);
                     }
                 }
             }
@@ -1020,6 +1052,62 @@ mod tests {
             DeliveryOutcome::Held {
                 reason: "recipient approval pending".to_string()
             }
+        );
+    }
+
+    /// THE SEQUENCE A HUMAN ACTUALLY PRODUCES. Measured live: `held` at 58 ms,
+    /// then `denied` at 1.74 s, both on the reply address. Returning at the hold
+    /// drops the refusal — the only thing the person actually said. Mutate
+    /// `wait_for_status` back to `decided => return Some(decided)` and this fails.
+    #[tokio::test]
+    async fn a_hold_followed_by_a_denial_is_refused_not_held() {
+        let dir = TestDir::new();
+        let socket = dir.0.join("listener.sock");
+        let listener = UnixListener::bind(&socket).expect("bind fixture socket");
+        write_record(&dir.0, 4242, "%99", &socket);
+        let transport = transport(&dir.0).with_ack_wait(Duration::from_millis(600));
+        let held = fixture("status-held.ndjson");
+        let denied = fixture("status-denied.ndjson");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept transport");
+            let mut reader = BufReader::new(stream);
+            let mut auth = String::new();
+            reader.read_line(&mut auth).await.expect("read auth");
+            let mut frame = String::new();
+            reader.read_line(&mut frame).await.expect("read frame");
+            let parsed: Value = serde_json::from_str(frame.trim()).expect("frame is json");
+            let advertised = parsed
+                .get("from")
+                .and_then(Value::as_str)
+                .expect("reply address")
+                .strip_prefix("uds:")
+                .expect("uds address")
+                .to_string();
+            let mut back = UnixStream::connect(&advertised)
+                .await
+                .expect("reply address reachable");
+            back.write_all(held.as_bytes()).await.expect("write held");
+            // The human takes a moment. That is the whole point.
+            tokio::time::sleep(Duration::from_millis(120)).await;
+            back.write_all(denied.as_bytes())
+                .await
+                .expect("write denied");
+            tokio::time::sleep(Duration::from_millis(60)).await;
+        });
+
+        let target = seat(4242, Some("%99"), Harness::Claude);
+        let outcome = transport
+            .deliver(&target, &message(None))
+            .await
+            .expect("delivery result");
+        let _ = tokio::time::timeout(Duration::from_millis(900), server).await;
+        assert_eq!(
+            outcome,
+            DeliveryOutcome::Refused {
+                reason: "the recipient declined the message".to_string()
+            },
+            "a hold that becomes a denial must be reported as the denial"
         );
     }
 
