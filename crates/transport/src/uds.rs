@@ -497,7 +497,6 @@ async fn send_frame(
                 .wait_for_status(&msg.msg_id, deadline, hold_grace)
                 .await
                 .or(Some(Status::Dropped)),
-            SameConnection::Quiet => None,
         },
     };
 
@@ -517,10 +516,13 @@ async fn send_frame(
     })
 }
 
+/// What the DELIVERY connection had to say. There is deliberately no "quiet"
+/// variant: a connection with nothing to say must not get a vote, because both
+/// this and the reply inbox run to the same deadline and a real Held would be
+/// decided by a coin flip.
 enum SameConnection {
     Status(Status),
     Hangup,
-    Quiet,
 }
 
 async fn same_connection_outcome(
