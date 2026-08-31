@@ -503,13 +503,9 @@ async fn spawn_stamps_only_the_argv_that_reached_the_observed_launch() {
         .await
         .expect("collision request");
     assert_eq!(collision.status(), reqwest::StatusCode::BAD_REQUEST);
-    assert!(
-        collision
-            .text()
-            .await
-            .expect("collision body")
-            .contains("spawn never overwrites")
-    );
+    let collision_body = collision.text().await.expect("collision body");
+    assert!(collision_body.contains("exists and is not tombstoned"));
+    assert!(collision_body.contains("only a tombstoned row may be revived"));
     assert_eq!(tmux.calls().len(), 3, "collision launches no extra process");
 
     let unresolved = client
