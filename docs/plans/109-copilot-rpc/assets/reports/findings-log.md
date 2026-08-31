@@ -217,3 +217,41 @@ now known false, and the two that stand were confirmed by connecting rather than
 launching without error. **Every one would otherwise have been found by a coder
 mid-transport with a design already committed.**
 
+## F0-6 — GRADED (reviewer-originated) — prefer a discriminator that fails by CONTENT, not by silence
+
+Unit 0's corrected Enter probe distinguishes *preserved* from *destroyed* by
+**presence vs absence**: if the draft were destroyed, Enter submits **nothing**. The
+reviewer demonstrated the red arm — composer empty at RPC time, Enter pressed, **no
+`user.message` produced at all** — so the probe is genuinely capable of returning the
+other answer and is not a formality.
+
+But a better shape appeared **by accident**. A composer-clear that silently failed
+(the literal six characters `\u0015` sent instead of a control byte) left two strings
+in the buffer, and the submission came back **concatenated**:
+
+```
+preserved  -> "SENTINEL_A + <esc> + MARKER_B"
+destroyed  -> "MARKER_B" alone
+```
+
+**Both worlds yield a positive artifact.** Enter-alone discriminates by
+presence-vs-absence; concatenation discriminates by **content**.
+
+> **A witness whose failure mode is silence is the class this plan family has been
+> bitten by repeatedly** — a filtered runner summarising a hard failure as `OK`, a
+> `jq` search whose negative was guaranteed, a fake that stopped injecting so a clean
+> pass looked exactly like the original defect.
+
+**Carry for unit 2's regression test:** use the concatenation form.
+
+## F0-7 — GRADED — evidence must be as durable as the claim it corrects
+
+Unit 0's ordering evidence cites a **committed artifact**; its corrected
+buffer-survival evidence cited a **machine-local absolute path** under
+`~/.copilot/session-state/`. The corrected claim was therefore evidenced only under the
+reviewer's committed reproductions, not its own.
+
+**Standing:** when a correction lands, its evidence is committed beside the receipt.
+A retraction resting on a path that exists on one machine is a retraction that decays
+back into the claim it replaced.
+
