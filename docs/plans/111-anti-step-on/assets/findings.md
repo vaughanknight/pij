@@ -198,3 +198,34 @@ read as a witness; a `queued` receipt read as delivery). The correction cost one
 claim, left standing, would have cast doubt on every green receipt on the fleet. An instrument
 that cannot distinguish the states it is used to compare manufactures the very lie it reports.
 
+
+## The "pre-existing" claim, VERIFIED rather than passed on
+
+u-observer reported harness checks non-green for out-of-fence surfaces and noted no u-observer
+file was named. That is a reasonable report, but "pre-existing" is a claim like any other, so it
+was checked against main rather than repeated.
+
+**Method**: `harness checks --quick` on this branch and on a throwaway detached worktree at
+`origin/main` (8235f198), same linked `node_modules`, failure OUTPUTS compared, not just counts.
+
+**F-1124 — `local-paths` fails identically on main and on this branch.** The failure output is
+byte-identical between the two runs. Definitively pre-existing, definitively not ours.
+
+**F-1125 — the vitest failure on main (`npm-resolution-policy.integration`) also fails on this
+branch.** Re-run in isolation here: still red. Pre-existing. (Consistent with the known
+registry.npmjs.org egress block on this machine — the proxy serves stale metadata, so the test
+fails closed.) Our diff touches **zero** TypeScript files, which is a supporting argument, not
+the proof — the proof is that the same test is red on main.
+
+**F-1126 — and one failure that was MINE, caught before it was reported as a difference.**
+The branch's first checks run showed a *different* test failing than main's:
+`worktree.test.ts` with `ENOTEMPTY, Directory not empty` on temp dirs. That looked like a
+branch-only regression. It was not: I was creating and removing git worktrees (the main probe,
+the coder trees) **while the suite ran**, and the test's `afterEach` cleanup raced my activity.
+Run in isolation on the same branch: 7 passed. My own measurement produced the anomaly I was
+about to attribute to the code. Recorded because the near-miss is the lesson — a probe that
+perturbs the system it measures manufactures differences, and comparing failure OUTPUTS rather
+than failure COUNTS is what exposed it.
+
+**Conclusion for the PR**: harness checks has two red sensors; both are red on main; neither is
+ours. The PR states that with the evidence rather than claiming a green it does not have.
