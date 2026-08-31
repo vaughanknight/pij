@@ -7,9 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use pij_core::error::{PijError, Result};
-use pij_core::model::Pane;
 use pij_core::ports::{Registry, SeatFilter, TmuxPort};
-use pij_harnesses::InteractionGate;
+use pij_harnesses::{ComposerRegion, InteractionGate, composer_region};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::task::JoinSet;
@@ -249,7 +248,13 @@ impl PaneObserver {
                 }
             };
             let tap_active = !bytes.is_empty() || !trailing_bytes.is_empty();
-            let Some(composer) = rendered_composer(&capture, &pane) else {
+            let (Some(cursor_x), Some(cursor_y)) = (pane.cursor_x, pane.cursor_y) else {
+                self.set_unknown(&pane.id);
+                continue;
+            };
+            let ComposerRegion::Recognized(composer) =
+                composer_region(&capture, cursor_x, cursor_y)
+            else {
                 self.set_unknown(&pane.id);
                 continue;
             };
@@ -386,133 +391,6 @@ impl PaneObserverLoop {
     }
 }
 
-fn rendered_composer(capture: &str, pane: &Pane) -> Option<String> {
-    let (cursor_x, cursor_y) = pane.cursor_x.zip(pane.cursor_y)?;
-    let lines: Vec<&str> = capture.lines().collect();
-
-    for (row, line) in lines.iter().enumerate().rev() {
-        let trimmed = line.trim();
-        if let Some(inner) = trimmed
-            .strip_prefix('╰')
-            .and_then(|inner| inner.strip_suffix('╯'))
-        {
-            let leading = line.chars().position(|ch| ch == '╰')?;
-            let left_rules = inner.chars().take_while(|ch| *ch == '─').count();
-            let after_rules: String = inner.chars().skip(left_rules).collect();
-            let spacing = after_rules
-                .chars()
-                .take_while(|ch| ch.is_whitespace())
-                .count();
-            let payload: String = after_rules
-                .chars()
-                .skip(spacing)
-                .collect::<String>()
-                .trim_end_matches('─')
-                .trim_end()
-                .to_string();
-            if payload.is_empty() && usize::try_from(cursor_y).ok()? == row {
-                return Some(String::new());
-            }
-            let first_column = leading + 1 + left_rules + spacing;
-            return clip_payload(&payload, row, first_column, cursor_x, cursor_y);
-        }
-    }
-
-    let rules: Vec<usize> = lines
-        .iter()
-        .enumerate()
-        .filter_map(|(row, line)| is_plain_rule(line).then_some(row))
-        .collect();
-    for pair in (1..rules.len()).rev() {
-        let lower = rules[pair - 1];
-        let upper = rules[pair];
-        let interior = &lines[lower + 1..upper];
-        if interior
-            .first()
-            .is_some_and(|line| line.trim_start().starts_with('❯'))
-        {
-            return clip_multiline(interior, lower + 1, cursor_x, cursor_y);
-        }
-        if pair == rules.len() - 1 && interior.iter().all(|line| line.trim().is_empty()) {
-            return clip_multiline(interior, lower + 1, cursor_x, cursor_y);
-        }
-    }
-
-    let prompt = lines
-        .iter()
-        .enumerate()
-        .rev()
-        .find(|(_, line)| line.trim_start().starts_with('❯'))?;
-    let trailing = &lines[prompt.0 + 1..];
-    if !trailing.iter().any(|line| is_copilot_footer(line)) {
-        return None;
-    }
-    let composer_end = trailing
-        .iter()
-        .position(|line| is_copilot_footer(line))
-        .map_or(lines.len(), |offset| prompt.0 + 1 + offset);
-    clip_multiline(&lines[prompt.0..composer_end], prompt.0, cursor_x, cursor_y)
-}
-
-fn clip_multiline(
-    lines: &[&str],
-    start_row: usize,
-    cursor_x: u32,
-    cursor_y: u32,
-) -> Option<String> {
-    let active = usize::try_from(cursor_y).ok()?.checked_sub(start_row)?;
-    if active >= lines.len() {
-        return None;
-    }
-    let mut clipped: Vec<String> = lines.iter().map(|line| (*line).to_string()).collect();
-    clipped[active] = take_chars(&clipped[active], usize::try_from(cursor_x).ok()?);
-    if let Some(first) = clipped.first_mut() {
-        *first = strip_prompt(first);
-    }
-    Some(clipped.join("\n"))
-}
-
-fn clip_payload(
-    payload: &str,
-    row: usize,
-    first_column: usize,
-    cursor_x: u32,
-    cursor_y: u32,
-) -> Option<String> {
-    if usize::try_from(cursor_y).ok()? != row {
-        return None;
-    }
-    let column = usize::try_from(cursor_x).ok()?.checked_sub(first_column)?;
-    Some(take_chars(payload, column))
-}
-
-fn take_chars(text: &str, count: usize) -> String {
-    text.chars().take(count).collect()
-}
-
-fn strip_prompt(line: &str) -> String {
-    let trimmed = line.trim_start();
-    trimmed
-        .strip_prefix('❯')
-        .map_or_else(|| line.to_string(), |rest| rest.trim_start().to_string())
-}
-
-fn is_plain_rule(line: &str) -> bool {
-    const BOX: [char; 20] = [
-        '┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼', '╭', '╮', '╰', '╯', '╠', '╣', '╦', '╩', '╬',
-        '│', '║',
-    ];
-    !line.chars().any(|ch| BOX.contains(&ch))
-        && line
-            .split(|ch| ch != '─')
-            .any(|run| run.chars().count() >= 8)
-}
-
-fn is_copilot_footer(line: &str) -> bool {
-    let lower = line.trim().to_lowercase();
-    lower.starts_with("/ commands") || lower.contains("esc interrupt") || lower.contains("context")
-}
-
 fn observer_error(message: impl Into<String>) -> PijError {
     PijError::Adapter {
         adapter: "daemon/pane-observer".to_string(),
@@ -522,7 +400,7 @@ fn observer_error(message: impl Into<String>) -> PijError {
 
 #[cfg(test)]
 mod tests {
-    use pij_core::model::{Harness, SeatDescriptor, SeatId};
+    use pij_core::model::{Harness, Pane, SeatDescriptor, SeatId};
     use std::process::Command;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -589,38 +467,6 @@ mod tests {
         async fn tombstone(&self, seat: &SeatId, reason: &str) -> Result<pij_core::model::Seq> {
             self.inner.tombstone(seat, reason).await
         }
-    }
-
-    #[test]
-    fn cursor_clips_suggestion_text_to_the_right() {
-        let pane = pane("%1", 7, 2);
-        assert_eq!(
-            rendered_composer(&framed("hello suggested-text"), &pane),
-            Some("hello".to_string())
-        );
-    }
-
-    #[test]
-    fn omp_inline_composer_is_clipped_at_the_measured_cursor() {
-        assert_eq!(
-            rendered_composer("╰─ hello suggested-text ─╯", &pane("%1", 8, 0)),
-            Some("hello".to_string())
-        );
-        assert_eq!(
-            rendered_composer("╰─     ─╯", &pane("%1", 3, 0)),
-            Some(String::new())
-        );
-    }
-
-    #[test]
-    fn missing_cursor_pair_or_unknown_layout_is_unknown() {
-        let mut missing = pane("%1", 0, 0);
-        missing.cursor_x = None;
-        assert_eq!(rendered_composer(&framed("hello"), &missing), None);
-        assert_eq!(
-            rendered_composer("ordinary shell output", &pane("%2", 1, 0)),
-            None
-        );
     }
 
     #[tokio::test]
