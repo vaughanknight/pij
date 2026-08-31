@@ -127,3 +127,43 @@ than green-from-birth. Sent back to stage clock injection as a behaviour-neutral
 first, run the witness on that tree for a genuine assertion failure, then implement expiry —
 or say plainly that the ordering is impossible and record Mutation A as the substitute with
 its limitation named. Code accepted; receipt corrected.
+
+## Composition (ph-1112)
+
+**F-1121 — the plan says three consumers; there are TWO production call sites.**
+`delivery/mod.rs` (first-attempt) and `pointer/worker.rs` (`DrainWorker`, which serves BOTH the
+queued-retry drain AND the pointer worker — they are one worker, not two). Checked for a third,
+ungated injection path rather than assuming the count was right: `submit_command` is the only
+other way bytes reach a pane, and it sits behind the same gate at `worker.rs:217`, after the
+pane/proc/hold guards. No ungated path exists. A miscount in a contract is harmless here, but
+only because it was checked — hunting a third consumer that does not exist would have ended
+either in a wasted search or an invented one.
+
+**F-1122 — switching to the fresh verdict makes EVERY injection depend on capture and
+recognition succeeding.** Wiring it broke 12 daemon tests, and that was the composition working:
+tests that had seeded a clear composer through the observer tick now had to present a
+recognizable composer AT the boundary. Two of those failures were real coverage, not noise —
+`unknown_or_human_typing_gate_releases_body_without_delivery` and
+`failed_command_uses_durable_attempt_backoff` both depend on the gate having NO evidence, so
+they now use an explicitly unarranged fixture. Arranging every pane by default would have
+deleted that coverage while turning the suite green, which is the failure mode this plan exists
+to avoid.
+
+The fake was deliberately NOT made permissive by default: an unscripted capture stays an empty
+pane and therefore a veto. A fake that permits injection by default makes the gate it is used
+to test unfalsifiable.
+
+**Integration proofs, each mutation-checked rather than accepted green-from-birth:**
+- `a_parked_draft_delays_delivery_and_then_stops_blocking_it` (ac-1111 e2e) — shortening the
+  wait below the idle window turns it RED.
+- `a_stale_clear_tick_cannot_authorize_an_injection_a_fresh_capture_vetoes` (ac-1114 e2e) —
+  reverting the call to `permits_injection` turns it RED. This is the one that proves the
+  WIRING, not just the gate.
+- `a_paneless_seat_is_never_gated_and_never_captured` (ac-1116 pin) — asserts the ABSENCE of
+  tmux calls, not merely a delivered receipt.
+
+**F-1123 — `pij-gate` prints a FAIL stage and still EXITS 0.** Observed on this tree: the
+verdict block read `fmt FAIL … pij-gate: 1 stage(s) failed — fmt. The task is not done.` and the
+process exited with code 0. Any consumer keying on the exit status — CI, a script, an agent
+running it unattended — reads that run as a pass. Caught here only because the human-readable
+verdict was being read directly. Out of this plan's fence; reported upward rather than fixed.
