@@ -11,6 +11,31 @@
 > improving, something went wrong.** Ground on this at session start with
 > `/eng-harness-flow` (or `harness boot`) before touching code.
 
+## Governance lives on the `prime-governance` branch (not on main)
+
+This repo's governance — the spine, rulings, doctrine, briefs, handovers,
+canaries, the roster and the **PRD** — is **not on `main`**. It lives on the
+standing `prime-governance` branch, permanently checked out at:
+
+    /Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/
+
+Read it there with absolute paths; no checkout dance, and every seat can read
+it while only the o-prime writes it. That branch **never merges to main** — so
+nothing in a PR will ever prompt you to look at it, which is exactly how the
+last spine rotted unnoticed (the copy on `main` was eight weeks stale while the
+real one accumulated at a path git could not see). If a doc, packet or skill
+points you at `.harness/government/...` inside this checkout and it is not
+there, that is why: prefix the standing worktree path above.
+
+The live requirements register is
+`.harness/government/prd/base-prd.dd.json` (a deterministic document — edit via
+the `ddocs` CLI, `ddocs validate` then `ddocs build`). **A requirement row is
+checked by a RECEIPT — a sha, a test name, or a run id — never by prose.**
+The TypeScript-era register is closed at `prd/archive/`.
+
+What stays on `main`: product code, `docs/plans/<ord>-<slug>/` plan folders
+(they ride the code PR), and anything a gate or CI reads.
+
 ## Inherited from pi-mono (do not violate without explicit user approval)
 
 - No `any` types unless absolutely necessary.

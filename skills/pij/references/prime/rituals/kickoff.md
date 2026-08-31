@@ -65,7 +65,10 @@ Run steps in order. Artifacts make the process reconstructable; conversation doe
 Mechanical command details and the manifest example live in
 [`../../../../../docs/how/pij-team-scaffold.md`](../../../../../docs/how/pij-team-scaffold.md).
 
-Write `.harness/government/canaries/s<ord>.md` while the evidence is fresh:
+Write `<government-root>/canaries/s<ord>.md` while the evidence is fresh — in
+`AI-Substrate/pij` that is
+`/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/canaries/s<ord>.md`,
+on the `prime-governance` branch, not main:
 
 | Leg | Mechanical proof |
 |---|---|

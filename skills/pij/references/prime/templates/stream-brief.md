@@ -28,7 +28,9 @@ human
 
 ## Descriptive fence
 
-Canonical fence section: `<.harness/government/spine.md#fences--stream-id>`.
+Canonical fence section: `<government-root>/spine.md#fences--stream-id` (in
+`AI-Substrate/pij`: `/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/spine.md`,
+on the `prime-governance` branch — not main, not your worktree).
 
 - Expected touch set: <exact paths derived from planned actions>
 - Scratch: `.harness/temp/<stream-id>/**`
@@ -41,7 +43,7 @@ Canonical fence section: `<.harness/government/spine.md#fences--stream-id>`.
 
 1. Invoke `/pij prime`; stream triage loads `<skill>/references/prime/orchestrator.md`.
 2. Portable global orient: `<skill>/references/prime/orient-global.md`
-3. Consuming repo local orient: `.harness/government/orient-local.md`
+3. Consuming repo local orient: `<government-root>/orient-local.md` (in `AI-Substrate/pij`: `/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/orient-local.md`)
 4. This item brief
 5. Invoke `/thesis` through the host skill mechanism
 6. Human preamble + preamble checkpoint

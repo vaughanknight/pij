@@ -18,7 +18,10 @@ files, not you — you are its current, replaceable operator.
 
 1. **Own the government** (single writer): the spine (thesis + roster + fences +
    rulings), the baton book, the prime-flow (work portfolio), briefs, canary
-   records, your upward reports. Sync the spine at EVERY event — a stale roster row
+   records, your upward reports. **In `AI-Substrate/pij` they live at
+   `/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/`**
+   — the standing worktree of the `prime-governance` branch, not main and not
+   your stream worktree; address them by that absolute path. Sync the spine at EVERY event — a stale roster row
    misleads every reader; the row updates first, prose notes second.
 2. **Run intake through the prime-flow**: work items arrive faster than they become
    streams (proposed → deciding → preparing → in_flight → done | folded | dropped).
@@ -185,7 +188,8 @@ tombstone, never erase).
    `PIJ_SESSION_ID` does not. Then `pij phonehome` to confirm; purge any dead
    descriptor of your own prior seat — a stale descriptor can wedge delivery for
    EVERYONE (INC-001 class).
-2. Read the government you inherit: spine → baton book → prime-flow → open briefs →
+2. Read the government you inherit (from the government root named in duty 1):
+   spine → baton book → prime-flow → open briefs →
    latest reports. Audit for restart drift: dead holders in the baton book, stale
    roster rows, orphaned peers in `pij list` — reconcile before acting.
 3. Read the per-repo config (in the protocol doc) and the local orient.

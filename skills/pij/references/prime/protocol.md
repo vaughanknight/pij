@@ -35,12 +35,16 @@ owner asks the human directly (§ Human rulings). A human may enter any pane.
 
 ## Government files
 
-The o-prime is the single writer of:
+The o-prime is the single writer of, under this repo's government root:
 
-- `.harness/government/spine.md` — thesis, roster, fences, watch, allocations, rulings;
-- `.harness/government/baton-book.md` — current leases, queue, append-only grant log;
-- `.harness/government/prime-flow.json` — portfolio state;
+- `spine.md` — thesis, roster, fences, watch, allocations, rulings;
+- `baton-book.md` — current leases, queue, append-only grant log;
+- `prime-flow.json` — portfolio state;
 - briefs, canary records, local orient, and encode candidates.
+
+**Government root for `AI-Substrate/pij`**: `/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/`
+— the standing worktree of the `prime-governance` branch. It is **not** on main
+and not in your stream worktree; read and write it there by absolute path.
 
 Anyone may read. Row state changes before prose and every mutation uses a UTC
 stamp. History is struck or tombstoned, never erased. A hard restart once killed
