@@ -169,14 +169,25 @@ export type RouteOutcome =
 	 *  Deliberately NOT the same outcome as `rs-auth-rejected`, and the
 	 *  difference is not cosmetic. A key that EXISTS and is refused means the
 	 *  seat has an rs relationship and something is broken — fail loud. NO key
-	 *  file at all means the opposite: this seat could never have registered
-	 *  into rs, because registering requires the key. Legacy is therefore not a
-	 *  re-homing, it is simply where the seat has always lived.
+	 *  file at all is the common case for a seat with no rs relationship at
+	 *  all: registering into rs requires the key, so a seat that never had one
+	 *  was never registered, and legacy is simply where it has always lived.
 	 *
 	 *  Collapsing the two costs the whole fleet: every seat that has never used
 	 *  rs — and every sandboxed test process, which is how this was caught —
 	 *  would hard-fail on adopt/whoami/report/state/phonehome instead of working
-	 *  exactly as it does today. Still reported, never silent. */
+	 *  exactly as it does today. Still reported, never silent.
+	 *
+	 *  KNOWN LIMITATION, and the message says so rather than picking the
+	 *  comfortable branch: key-absent has TWO causes and this side cannot tell
+	 *  them apart. Either the seat was never registered in rs (benign — the
+	 *  case above), or it WAS registered and the credential was later lost (a
+	 *  wiped state dir, a subprocess with a different HOME, permissions). In
+	 *  that second world an rs-resident seat is served by legacy, which is
+	 *  precisely the re-homing the loud arm exists to prevent — arriving here
+	 *  wearing the fallback's clothes. Distinguishing them requires asking rs,
+	 *  which requires the key we do not have. So the outcome NAMES the
+	 *  ambiguity instead of asserting the happy cause as fact. */
 	| {
 			readonly kind: "legacy-no-rs-credentials";
 			readonly verb: string;
@@ -243,7 +254,7 @@ export function describeOutcome(outcome: RouteOutcome): string {
 		case "legacy-unrouted":
 			return `${outcome.verb}: served by legacy (no rs route — this verb is not in the rs route table)`;
 		case "legacy-no-rs-credentials":
-			return `${outcome.verb}: served by legacy (rs at ${outcome.addr} is live, but this seat holds no rs credential — ${outcome.stateDir}/daemon.key is absent, so it was never registered in rs)`;
+			return `${outcome.verb}: served by legacy (rs at ${outcome.addr} is live, but there is no rs credential at ${outcome.stateDir}/daemon.key — either this seat was never registered in rs, or its credential is gone; these are indistinguishable from here)`;
 		case "legacy-no-rs-daemon":
 			return `${outcome.verb}: served by legacy (no rs daemon answered at ${outcome.addr})`;
 		case "legacy-rs-not-implemented":

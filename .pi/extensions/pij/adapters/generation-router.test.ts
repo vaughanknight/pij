@@ -280,8 +280,21 @@ describe("a keyless seat still works (the regression that 8 integration tests ca
 		const { outcome } = await routeVerb("whoami", undefined, [], keyless());
 		const line = describeOutcome(outcome);
 		expect(line).toContain("no rs credential");
-		expect(line).toContain("daemon.key is absent");
+		expect(line).toContain("/tmp/pij-rs-test/daemon.key");
 		expect(line).toContain("127.0.0.1:7461");
+	});
+
+	// The message must report the OBSERVATION (no credential at this path) and
+	// not the INFERENCE (therefore never registered). Key-absent has a second
+	// cause — a seat that IS in rs whose credential was lost — and in that
+	// world the confident version is false while an rs-resident seat is quietly
+	// served by legacy. Unresolvable from this side, so it must be stated.
+	it("names the ambiguity instead of asserting the comfortable cause", async () => {
+		const line = describeOutcome((await routeVerb("whoami", undefined, [], keyless())).outcome);
+		expect(line).toContain("indistinguishable from here");
+		expect(line).toMatch(/never registered in rs, or its credential is gone/);
+		// The inference must NOT be stated as fact.
+		expect(line).not.toMatch(/so it was never registered/);
 	});
 
 	it("and a PRESENT-but-refused key still fails loud — the guard is intact", async () => {
