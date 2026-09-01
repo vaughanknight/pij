@@ -3,6 +3,15 @@
 Coder: `pij-female-hummingbird`. O-prime: `pij-dominant-vicuna`.
 Branch `s117/delivery-repro`. Evidence gathered 2026-09-01.
 
+> **`report` was not one verb with a bug. It was the first verb of three with the
+> same design, and the only one anybody had typed.**
+>
+> This is the second time in one day that the verb someone happened to type was
+> mistaken for the extent of the defect — the first was F-U8, where
+> `grep -c 'render:'` returned zero and *every* routed row was missing its
+> renderer; `adopt` was simply first. **Enumerate the set before fixing the
+> member.**
+
 Three defects were found. Two were fixed here. The third is someone else's row.
 The brief named two suspects for the delivery failure; **both are refuted**, and
 the real cause was only visible once they were gone.
@@ -309,6 +318,30 @@ Sized as three parts — table row + deny-list leaf granularity, wire shape,
 identity derivation — and deliberately left for its own unit with its own red
 witnesses. Part three is the author of F1 applying that fix to two more call
 sites, so it wants a reviewer who is not the author.
+
+### Recommendation — a route row is an unchecked claim about the far side
+
+The structural version of what was caught by hand above.
+
+**A row in `RS_ROUTE_TABLE` is a claim that the far side speaks the shim's
+language, and nothing checks that claim.** `callRs` posts `{argv, caller}` for
+every routed row; only `report` and the identity verbs were ever built to receive
+it. A row pointing at a handler that cannot deserialize that body yields 422,
+which classifies as `rs-error`, which **never falls back by design** — so the
+verb hard-fails fleet-wide the moment the row lands.
+
+The deny list cannot protect against this. The deny list exists so that routing
+is a **deliberate act**; this hazard arrives *through* a deliberate act. It is
+the same defect as plan 114's invented `/v1/report/<leaf>` paths — which 404'd,
+classified as not-implemented, fell back to legacy, and looked exactly like a
+verb wave 2 had not landed yet, with every suite green — except that this one
+fails **loud and unrecoverably** instead of quietly. The path-agreement test
+added then checks that the PATH exists. Nothing checks that the BODY is accepted.
+
+Proposed guard: **no row is addable to the route table without a test that the
+far side accepts the shim's actual body.** Same shape as the existing
+path-agreement test, one field deeper — and the same law as the deny list's:
+safety must not depend on the person adding a row happening to check.
 
 ---
 
