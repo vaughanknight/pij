@@ -892,3 +892,138 @@ async fn the_receipt_carries_the_line_the_typescript_cli_prints() {
 
     server.abort();
 }
+
+// ─── ac-1142's READ SURFACE (u-readback) ────────────────────────────────────
+//
+// `a_card_written_via_rs_is_readable_via_rs` above proves the card is DURABLE:
+// it reopens the store and reads through core's own path. That is the write
+// half. ac-1142 makes a second, separate claim — "`pij state <id>` returns it" —
+// and it names the surface an OPERATOR uses. A card that only core can read back
+// is not a card the operator can read back.
+//
+// Nothing here re-proves durability; these read the card through the shipped
+// `/v1/state` route, which is the only thing the AC's second clause is about.
+
+async fn post_state(addr: SocketAddr, seat: &str) -> reqwest::Response {
+    reqwest::Client::new()
+        .post(format!("http://{addr}/v1/state"))
+        .bearer_auth(KEY)
+        .json(&serde_json::json!({ "id": seat }))
+        .send()
+        .await
+        .expect("post /v1/state")
+}
+
+/// RED WITNESS for the readback half of ac-1142.
+///
+/// Chronologically red on the composed tree: `report now` reaches rs and the
+/// card lands in the spine (witnessed live in sqlite `spine_events`), and
+/// `/v1/state` answers 200 with a good descriptor projection — but that
+/// projection has no card in it, so the operator-facing half of the AC is
+/// unmet. This fails on the card assertions, not on a missing route and not on a
+/// compile error.
+#[tokio::test]
+async fn a_card_written_via_rs_is_read_back_by_state() {
+    let (addr, server, _store, _config) = daemon().await;
+
+    let written = post_report(
+        addr,
+        Some(SEAT),
+        &["report", "now", "landed the readback", "await composition"],
+    )
+    .await;
+    assert_eq!(written.status(), reqwest::StatusCode::OK);
+
+    let response = post_state(addr, SEAT).await;
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let envelope: Envelope<serde_json::Value> = response.json().await.expect("state envelope");
+    let card = envelope.data.expect("state data");
+
+    // TS spells the card's two halves `statusPrev` (what was done) and
+    // `statusNext` (what is next) — `.pi/extensions/pij/core/cli.ts:5752-5753`
+    // (`node show`) and `:2878-2879` (`list`). Same names here, so a consumer
+    // that already parses either surface parses this one unchanged.
+    assert_eq!(card["statusPrev"], "landed the readback");
+    assert_eq!(card["statusNext"], "await composition");
+    // `statusAt` (cli.ts:5754) and `statusSeq` (cli.ts:5755): when the card was
+    // written, and the spine sequence that carries it.
+    assert!(
+        card["statusAt"].as_u64().is_some_and(|at| at > 0),
+        "a card that was written has a time it was written at"
+    );
+    assert!(
+        card["statusSeq"].as_u64().is_some(),
+        "the card's spine sequence is what makes it citable"
+    );
+    // Freshness is computed ON READ, as core defines it — not stored.
+    assert_eq!(card["statusStale"], false);
+
+    server.abort();
+}
+
+/// A seat that has never reported is DISTINGUISHABLE from one whose card failed
+/// to load — and from one carrying an empty card.
+///
+/// `null` here is a real answer: "this seat exists and has never written a
+/// card". It is the one case where a null is honest, because rs DID look and
+/// there genuinely is none — unlike the `unsupported` fields, where rs cannot
+/// look at all.
+#[tokio::test]
+async fn a_seat_that_never_reported_reads_back_a_null_card_not_an_empty_one() {
+    let (addr, server, _store, _config) = daemon().await;
+
+    let response = post_state(addr, SEAT).await;
+    let envelope: Envelope<serde_json::Value> = response.json().await.expect("state envelope");
+    let card = envelope.data.expect("state data");
+
+    assert!(card["statusPrev"].is_null());
+    assert!(card["statusNext"].is_null());
+    assert!(card["statusAt"].is_null());
+    assert!(card["statusSeq"].is_null());
+    // Not `false`: staleness of a card that does not exist is not "fresh".
+    assert!(
+        card["statusStale"].is_null(),
+        "a seat with no card is not a seat with a FRESH card"
+    );
+    // And the keys are PRESENT, so a consumer can tell "no card" from "this
+    // build does not report cards" without guessing.
+    for key in [
+        "statusPrev",
+        "statusNext",
+        "statusAt",
+        "statusSeq",
+        "statusStale",
+    ] {
+        assert!(card.get(key).is_some(), "{key} must be present as null");
+    }
+
+    server.abort();
+}
+
+/// The declared semantic state and its note ride back too — `report blocked`
+/// and `report question` set both, and an operator reading `state` is asking
+/// exactly the question they answer.
+///
+/// TS surfaces the note beside the state on the same card
+/// (`.pi/extensions/pij/core/cli.ts:5794` renders the report line).
+#[tokio::test]
+async fn state_reads_back_the_declared_state_and_its_note() {
+    let (addr, server, _store, _config) = daemon().await;
+
+    let declared = post_report(
+        addr,
+        Some(SEAT),
+        &["report", "blocked", "waiting on the seam unit"],
+    )
+    .await;
+    assert_eq!(declared.status(), reqwest::StatusCode::OK);
+
+    let response = post_state(addr, SEAT).await;
+    let envelope: Envelope<serde_json::Value> = response.json().await.expect("state envelope");
+    let card = envelope.data.expect("state data");
+
+    assert_eq!(card["semanticState"], "blocked");
+    assert_eq!(card["stateNote"], "waiting on the seam unit");
+
+    server.abort();
+}
