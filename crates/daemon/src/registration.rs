@@ -143,6 +143,11 @@ impl RegistrationService {
                 .zip(claim.spawn_id.as_deref())
                 .is_some_and(|(launched, claimed)| !launched.is_empty() && launched == claimed);
         descriptor.harness = harness;
+        if descriptor.harness == Harness::Claude
+            && descriptor.cross_session_inbound_accept.is_none()
+        {
+            descriptor.cross_session_inbound_accept = Some(true);
+        }
         descriptor.folder = claim.folder;
         descriptor.pane = claim.pane;
         descriptor.proc = proc;

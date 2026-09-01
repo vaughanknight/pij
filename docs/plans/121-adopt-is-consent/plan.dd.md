@@ -54,11 +54,11 @@ Today cross_session_inbound_accept is derived only from spawn argv; the registra
 
 | id | claim | state | note | receipt | pressure | proven_by | text |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| ac-1 | — | [ ] unchecked | — | — | — | — | Adopt a hand-started Claude seat (real pane, CLI running with crossSessionInbound accept): a pij send to it lands as a real type=user turn — witnessed live in the pane, not a unit test |
-| ac-2 | — | [ ] unchecked | — | — | — | — | Control on the same build: a seat whose recipient CLI lacks the accept setting still receives (frame sent) but is HELD by the harness — proving pij asserted nothing (both worlds emit a positive artifact) |
-| ac-3 | — | [ ] unchecked | — | — | — | — | An explicit Some(false) on a row is never overwritten by registration or backfill (test separates NULL-at-adopt from Some(false)-later) |
-| ac-4 | — | [ ] unchecked | — | — | — | — | Backfill is idempotent and skips tombstoned rows; running it twice changes zero additional rows |
-| ac-5 | — | [ ] unchecked | — | — | — | — | Test pinning absence of from-mode in emitted frames still passes unmodified (uds.rs:925) |
+| ac-1 | — | [x] checked | — | docs/plans/121-adopt-is-consent/assets/live-witness.md — pane %1 + recipient JSONL type=user | — | — | Adopt a hand-started Claude seat (real pane, CLI running with crossSessionInbound accept): a pij send to it lands as a real type=user turn — witnessed live in the pane, not a unit test |
+| ac-2 | — | [x] checked | — | docs/plans/121-adopt-is-consent/assets/live-witness.md — pane %2 held notice + complete JSONL system-only/user=0 count | — | — | Control on the same build: a seat whose recipient CLI lacks the accept setting still receives (frame sent) but is HELD by the harness — proving pij asserted nothing (both worlds emit a positive artifact) |
+| ac-3 | — | [x] checked | — | daemon + store targeted tests green; registration mutation produced (Some(true), Some(true)); backfill mutation changed explicit false to true | — | — | An explicit Some(false) on a row is never overwritten by registration or backfill (test separates NULL-at-adopt from Some(false)-later) |
+| ac-4 | — | [x] checked | — | consent_backfill_upgrades_only_live_unknown_claude_rows_and_is_idempotent passed; tombstone and repeat-update mutations each failed the witness | — | — | Backfill is idempotent and skips tombstoned rows; running it twice changes zero additional rows |
+| ac-5 | — | [x] checked | — | cargo test -p pij-transport recorded_frame_is_byte_exact_and_contains_no_invented_mode — 1 passed; crates/transport/src/uds.rs unmodified | — | — | Test pinning absence of from-mode in emitted frames still passes unmodified (uds.rs:925) |
 | ac-6 | — | [ ] unchecked | — | — | — | — | pij-gate all stages green; typecheck green; vitest green modulo the known pre-existing npm-resolution failure |
 
 <a id="phases"></a>

@@ -188,12 +188,11 @@ async fn consent_backfill_upgrades_only_live_unknown_claude_rows_and_is_idempote
     let migrated_pool = pij_store::open(&fresh.path())
         .await
         .expect("migrate schema 9 to current");
-    let rows: Vec<(String, Option<i64>)> = sqlx::query_as(
-        "SELECT id, cross_session_inbound_accept FROM seats ORDER BY id",
-    )
-    .fetch_all(&migrated_pool)
-    .await
-    .expect("read backfilled consent states");
+    let rows: Vec<(String, Option<i64>)> =
+        sqlx::query_as("SELECT id, cross_session_inbound_accept FROM seats ORDER BY id")
+            .fetch_all(&migrated_pool)
+            .await
+            .expect("read backfilled consent states");
     assert_eq!(
         rows,
         vec![
