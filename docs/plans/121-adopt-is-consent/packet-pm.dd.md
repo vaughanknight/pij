@@ -48,7 +48,7 @@ Deliver plan 121: Claude seat registration stamps cross_session_inbound_accept=S
 | --- | --- |
 | worktree | /Users/jordanknight/pi-hacking/pij-worktrees/s121-adopt-is-consent |
 | branch | s121/adopt-is-consent |
-| fence | crates/daemon/src/registration.rs · crates/daemon/migrations/** (new migration) · crates/daemon tests for registration · docs/plans/121-adopt-is-consent/** |
+| fence | crates/daemon/src/registration.rs · crates/store/migrations/0010_*.sql (new) · crates/store migration tests · crates/daemon registration tests · docs/plans/121-adopt-is-consent/** |
 | forbidden_note | Never write .the-flow-state.json, the-flow.json, the-flow.md. Do NOT touch crates/transport/src/uds.rs (the from-mode pin at :925 must survive UNMODIFIED — ac-5), spawn.rs, or the shim routing. A need outside the fence = stop and ask the prime. |
 
 <a id="done-bar"></a>
