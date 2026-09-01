@@ -72,6 +72,20 @@ function pij(
 	const env = {
 		...process.env,
 		PIJ_HOME: HOME,
+		// HERMETIC (plan 119). This suite sandboxes `PIJ_HOME` and asserts LEGACY
+		// registry behaviour, but generation routing runs first and reaches
+		// whatever rs daemon happens to be live on the developer's machine — so
+		// on a workstation running pij, thirteen of these fail with `E-RS: … not
+		// falling back to legacy`, while CI (where no daemon runs) is green.
+		//
+		// A suite whose result depends on what else is running on the host is not
+		// testing what it names. Pinning the generation is not narrowing the
+		// coverage either: the routed path has its own tests
+		// (`generation-routing.test.ts`, `generation-seam.test.ts`, and the rs
+		// side's `shim_http.rs`), and what this file is FOR is the legacy CLI over
+		// a sandbox home. An explicit `PIJ_DAEMON_GENERATION` in `extraEnv` still
+		// wins, so a test that wants the routed path can ask for it.
+		PIJ_DAEMON_GENERATION: "legacy",
 		PATH: `${BIN}:${process.env.PATH ?? ""}`,
 		TMUX_PANE: "%1",
 		CLAUDE_CODE_SESSION_ID: "",

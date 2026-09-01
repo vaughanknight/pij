@@ -8,6 +8,7 @@ mod client;
 mod exposure;
 mod identity;
 mod report;
+mod shim;
 mod types;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -105,6 +106,14 @@ enum Endpoint {
     /// the daemon the caller's `argv` untouched; the leaf is the second token of
     /// that argv, not a second path.
     Report,
+    /// The shim-originated `send` and `inbox`, on their own versioned paths
+    /// (plan 119). Separate from [`Self::Send`] / [`Self::Inbox`] on purpose —
+    /// those speak the `pij-rs` CLI's language (a caller-supplied `from` and
+    /// `seat`), these speak the shim's (`{argv, caller}`) and DERIVE the acting
+    /// seat. `shim.rs` carries the reason the two are not one route.
+    ShimSend,
+    /// See [`Self::ShimSend`].
+    ShimInbox,
     /// Register this seat, with rs minting the name (plan 114, ac-1147).
     Adopt,
     /// Name the calling seat from the store it registered into (ac-1142).
@@ -122,7 +131,7 @@ enum Endpoint {
 }
 
 impl Endpoint {
-    const ALL: [Self; 15] = [
+    const ALL: [Self; 17] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -138,6 +147,8 @@ impl Endpoint {
         Self::Whoami,
         Self::Phonehome,
         Self::State,
+        Self::ShimSend,
+        Self::ShimInbox,
     ];
 
     const fn path(self) -> &'static str {
@@ -157,6 +168,13 @@ impl Endpoint {
             Self::Whoami => "/v1/whoami",
             Self::Phonehome => "/v1/phonehome",
             Self::State => "/v1/state",
+            // PLAN 119 — a DISTINCT, VERSIONED path for shim-originated calls, never
+            // an overload of `/v1/send` / `/v1/inbox`. Those structs tolerate
+            // unknown fields, so the additive shape would have an older daemon
+            // accept an asserted `from` and silently discard the caller evidence
+            // meant to constrain it. See `shim.rs`.
+            Self::ShimSend => "/v1/shim/send",
+            Self::ShimInbox => "/v1/shim/inbox",
         }
     }
 
@@ -171,6 +189,7 @@ impl Endpoint {
             | Self::Report => Method::POST,
             Self::Adopt | Self::Whoami | Self::Phonehome => Method::POST,
             Self::State => Method::POST,
+            Self::ShimSend | Self::ShimInbox => Method::POST,
             Self::Health | Self::Inbox | Self::Seats | Self::Events => Method::GET,
         }
     }
@@ -236,6 +255,8 @@ fn router_with_optional_federation(
                     | Endpoint::Whoami
                     | Endpoint::Phonehome
                     | Endpoint::State
+                    | Endpoint::ShimSend
+                    | Endpoint::ShimInbox
             ) {
                 Method::POST
             } else {
@@ -266,6 +287,8 @@ fn router_with_optional_federation(
             ),
             Endpoint::Phonehome => router.route(endpoint.path(), post(identity::phonehome)),
             Endpoint::State => router.route(endpoint.path(), post(seat_state)),
+            Endpoint::ShimSend => router.route(endpoint.path(), post(shim::shim_send)),
+            Endpoint::ShimInbox => router.route(endpoint.path(), post(shim::shim_inbox)),
         };
     }
     router
@@ -699,19 +722,31 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendRequest>) -
     match accepted {
         Ok(receipt) => envelope(StatusCode::OK, &Envelope::ok("pij send", receipt)),
 
-        Err(error @ PijError::SeatIsGone { .. }) => envelope(
+        Err(error) => send_failure("pij send", error),
+    }
+}
+
+/// Map a delivery failure onto the wire, once.
+///
+/// Shared by `/v1/send` and `/v1/shim/send` so the two paths cannot answer the
+/// same failure differently — a second copy of this match is a second thing to
+/// keep in agreement, and a caller that changed generation would see a
+/// different status for an identical refusal.
+pub(crate) fn send_failure(command: &str, error: PijError) -> Response {
+    match error {
+        error @ PijError::SeatIsGone { .. } => envelope(
             StatusCode::GONE,
-            &Envelope::<()>::refused("pij send", ErrorKind::Refused, error.to_string()),
+            &Envelope::<()>::refused(command, ErrorKind::Refused, error.to_string()),
         ),
-        Err(error @ PijError::NoRegistryEntry { .. }) => envelope(
+        error @ PijError::NoRegistryEntry { .. } => envelope(
             StatusCode::NOT_FOUND,
-            &Envelope::<()>::refused("pij send", ErrorKind::NotFound, error.to_string()),
+            &Envelope::<()>::refused(command, ErrorKind::NotFound, error.to_string()),
         ),
-        Err(error @ PijError::SelfAddressed { .. }) => envelope(
+        error @ PijError::SelfAddressed { .. } => envelope(
             StatusCode::BAD_REQUEST,
-            &Envelope::<()>::refused("pij send", ErrorKind::Refused, error.to_string()),
+            &Envelope::<()>::refused(command, ErrorKind::Refused, error.to_string()),
         ),
-        Err(error) => internal("pij send", error),
+        error => internal(command, error),
     }
 }
 #[derive(Deserialize)]
@@ -1475,14 +1510,14 @@ fn report_failure(command: &str, error: PijError) -> Response {
     }
 }
 
-fn refused(command: &str, reason: impl std::fmt::Display) -> Response {
+pub(crate) fn refused(command: &str, reason: impl std::fmt::Display) -> Response {
     envelope(
         StatusCode::BAD_REQUEST,
         &Envelope::<()>::refused(command, ErrorKind::Refused, reason.to_string()),
     )
 }
 
-fn internal(command: &str, error: impl std::fmt::Display) -> Response {
+pub(crate) fn internal(command: &str, error: impl std::fmt::Display) -> Response {
     envelope(
         StatusCode::INTERNAL_SERVER_ERROR,
         // An adapter failed at its boundary and its own words travel in `meta`.
@@ -1493,7 +1528,7 @@ fn internal(command: &str, error: impl std::fmt::Display) -> Response {
     )
 }
 
-fn envelope<T: serde::Serialize>(status: StatusCode, body: &Envelope<T>) -> Response {
+pub(crate) fn envelope<T: serde::Serialize>(status: StatusCode, body: &Envelope<T>) -> Response {
     match serde_json::to_string(body) {
         Ok(text) => (
             status,

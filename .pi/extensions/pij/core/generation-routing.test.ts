@@ -6,6 +6,7 @@ import {
 	decidePreCall,
 	describeOutcome,
 	findRoute,
+	LEAF_CLOSED_VERBS,
 	NEVER_ROUTED,
 	RS_ROUTE_TABLE,
 	type RsRouteRow,
@@ -407,5 +408,169 @@ describe("the shim has no minter (ac-1147)", () => {
 
 	it("prose about minting does not trip the scanner", () => {
 		expect(scanForMinter(`/* the memorable id minter lives in rs, never here */`)).toEqual([]);
+	});
+});
+
+describe("the mailbox verbs (plan 119)", () => {
+	const shimRow = (verb: string, leaf: string | undefined): RsRouteRow =>
+		({
+			verb,
+			leaf,
+			rsPath: "/v1/shim/x",
+			method: "POST",
+			humanOutput: "render",
+			render: () => "",
+			jsonOutput: "refuse",
+			jsonRefusal: "x",
+			why: "test row",
+		}) as RsRouteRow;
+
+	it("`inbox register` keeps its denial, and the denial still names its reason", () => {
+		const denial = NEVER_ROUTED.find(
+			(entry) => entry.verb === "inbox" && entry.leaf === "register",
+		);
+		expect(denial).toBeDefined();
+		// The reason is not decoration: it is the thing s120 must replace before
+		// this denial may be lifted. If someone shortens it away, the next reader
+		// loses why the leaf is denied and lifts it for free.
+		expect(denial?.why).toContain("BIND EVIDENCE");
+		expect(denial?.why).toContain("never falls back");
+	});
+
+	it("a denied LEAF does not deny its siblings", () => {
+		expect(
+			decidePreCall({
+				verb: "inbox",
+				leaf: "register",
+				force: undefined,
+				addr: ADDR,
+				rsLive: true,
+			}),
+		).toMatchObject({ kind: "legacy-denied", verb: "inbox" });
+		// `check` is enumerated, so it is NOT swept up by its sibling's denial.
+		expect(findRoute("inbox", "check")).toBeDefined();
+	});
+
+	// THE POINT OF THE CLOSED DEFAULT, pinned the only way that means anything.
+	//
+	// Written in the `tail` test's shape deliberately: the made-up leaf is put IN
+	// the route table — with a whole-verb row beside it, which is the exact thing
+	// that would make it route — and asserted unrouted ANYWAY. A test that merely
+	// checked "there is no row for `frobnicate`" would pass just as happily with
+	// LEAF_CLOSED_VERBS deleted, which is the change it exists to catch.
+	//
+	// Narrowing `inbox` from verb granularity to leaf granularity spends "safety
+	// with no author": while the whole verb was denied, a leaf nobody had imagined
+	// was denied by construction. The closed default is what buys that back, and
+	// the failure it prevents arrives months from now in a commit that never
+	// mentions registration, written by someone adding a mailbox leaf.
+	it("an unenumerated inbox leaf stays unrouted EVEN IF a whole-verb row exists", () => {
+		expect(LEAF_CLOSED_VERBS).toContain("inbox");
+		const table: RsRouteRow[] = [
+			shimRow("inbox", "check"),
+			// The trap: a family row that a leaf-open verb would fall back to.
+			shimRow("inbox", undefined),
+		];
+		expect(findRoute("inbox", "frobnicate", table)).toBeUndefined();
+		// And against the SHIPPED table, which now really does carry a bare row —
+		// the case the trap above was simulating.
+		expect(findRoute("inbox", "frobnicate")).toBeUndefined();
+		expect(
+			decidePreCall(
+				{ verb: "inbox", leaf: "frobnicate", force: undefined, addr: ADDR, rsLive: true },
+				table,
+			),
+		).toEqual({ kind: "legacy-unrouted", verb: "inbox" });
+		// And the enumerated one still routes, or the guard is just "deny inbox".
+		expect(findRoute("inbox", "check", table)).toBeDefined();
+	});
+
+	// `requiresSeatInRs` — KNOWN PRESENT, never merely not-known-absent.
+	//
+	// The hazard: every `pij inbox` leaf calls ensureCurrentRegistration
+	// (cli.ts:939), so auto-registration is a property of the VERB. A seat in
+	// NEITHER store has no ambient id, so follow-the-seat cannot fire (it needs
+	// seatInRs === false AND seatInLegacy === true), the call reaches rs, rs
+	// refuses because no rs seat owns the pane, and an rs refusal NEVER falls
+	// back. That seat would then register nowhere.
+	it.each([
+		["absent", false as const],
+		["unknown", undefined],
+	])("a seat whose rs presence is %s goes to legacy, not rs", (_label, seatInRs) => {
+		const table = [shimRow("send", undefined)].map((row) => ({
+			...row,
+			requiresSeatInRs: true,
+		})) as RsRouteRow[];
+		expect(
+			decidePreCall(
+				{ verb: "send", force: undefined, addr: ADDR, rsLive: true, seatId: "pij-x", seatInRs },
+				table,
+			),
+		).toMatchObject({ kind: "legacy-seat-not-in-rs", verb: "send" });
+	});
+
+	it("a seat KNOWN PRESENT in rs routes", () => {
+		const table = [{ ...shimRow("send", undefined), requiresSeatInRs: true }] as RsRouteRow[];
+		expect(
+			decidePreCall(
+				{
+					verb: "send",
+					force: undefined,
+					addr: ADDR,
+					rsLive: true,
+					seatId: "pij-x",
+					seatInRs: true,
+				},
+				table,
+			),
+		).toMatchObject({ kind: "try-rs" });
+	});
+
+	it("bare `pij inbox` routes — it is the public alias of `check` (F3)", () => {
+		// Routing runs BEFORE the alias parser, so an unrouted bare form means an
+		// rs-only seat must type the noncanonical `inbox check` or fall to legacy
+		// and get E-NOID: this unit's own defect, preserved in the one spelling
+		// everybody uses.
+		expect(findRoute("inbox", undefined)?.rsPath).toBe("/v1/shim/inbox");
+	});
+
+	it("the shipped mailbox rows carry the precondition", () => {
+		for (const [verb, leaf] of [
+			["send", undefined],
+			["inbox", "check"],
+			["inbox", undefined],
+		] as const) {
+			expect(findRoute(verb, leaf)?.requiresSeatInRs).toBe(true);
+		}
+	});
+
+	// A row is a CLAIM that the far side speaks the shim's language, and nothing
+	// checks that claim: `callRs` posts {argv, caller} for every routed row, and
+	// a handler that cannot deserialize it answers 422 -> rs-error -> NEVER falls
+	// back, taking the verb out fleet-wide. So the mailbox rows must point at the
+	// shim-originated paths and never at the pij-rs CLI's own.
+	it("the mailbox rows point at the shim paths, not at /v1/send or /v1/inbox", () => {
+		expect(findRoute("send", undefined)?.rsPath).toBe("/v1/shim/send");
+		expect(findRoute("inbox", "check")?.rsPath).toBe("/v1/shim/inbox");
+	});
+
+	it("the outcome tells `not known to be in rs` apart from `known to be in legacy`", () => {
+		// Two different claims, and collapsing them is how a seat gets re-homed on
+		// an unknown rather than on a fact.
+		const notInRs = describeOutcome({
+			kind: "legacy-seat-not-in-rs",
+			verb: "send",
+			addr: ADDR,
+			seatId: "pij-x",
+		});
+		const followed = describeOutcome({
+			kind: "legacy-seat-followed",
+			verb: "send",
+			addr: ADDR,
+			seatId: "pij-x",
+		});
+		expect(notInRs).not.toEqual(followed);
+		expect(notInRs).toContain("KNOWN PRESENT");
+		expect(followed).toContain("lives in legacy");
 	});
 });

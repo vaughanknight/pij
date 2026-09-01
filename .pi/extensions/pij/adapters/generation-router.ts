@@ -45,6 +45,12 @@ import {
 export interface GenerationRouterDeps {
 	readonly fetch: typeof fetch;
 	readonly readFile: typeof fsReadFile;
+	/** Read a `--body-file` argument: a path, or `-` for this process's stdin.
+	 *
+	 *  Separate from `readFile` because `-` is not a path and the stdin read is
+	 *  the whole reason this indirection exists — a test must be able to supply
+	 *  a body without a file system or a live stdin. */
+	readonly readBody: (path: string) => Promise<string>;
 	readonly env: NodeJS.ProcessEnv;
 	readonly home: string;
 	/** The ambient seat id, when one resolves — used only to follow a seat that
@@ -55,6 +61,10 @@ export interface GenerationRouterDeps {
 	readonly seatInLegacy?: ((id: string) => boolean) | undefined;
 	/** Does the rs store hold this seat? Absent = the question was not asked;
 	 *  absence is never read as "no". */
+	/** Which rs seat owns this pane, if any. See [`rsSeatByPane`]. */
+	readonly rsSeatByPane?:
+		| ((pane: string) => Promise<string | undefined | "unreadable">)
+		| undefined;
 	readonly seatInRs?:
 		| ((id: string) => Promise<boolean | "unreadable"> | boolean | "unreadable")
 		| undefined;
@@ -79,6 +89,10 @@ export function defaultRouterDeps(): GenerationRouterDeps {
 	return {
 		fetch,
 		readFile: fsReadFile,
+		readBody: async (path: string) =>
+			path === "-"
+				? await fsReadFile(0 as unknown as string, "utf8")
+				: await fsReadFile(path, "utf8"),
 		env: process.env,
 		home: homedir(),
 		cwd: () => process.cwd(),
@@ -253,10 +267,44 @@ export async function routeVerb(
 	// unanswerable question stays unanswered rather than becoming a guess:
 	// `undefined` here means "not known", and decidePreCall refuses to follow a
 	// seat on anything less than both answers.
-	const seatInRs =
+	let seatInRs =
 		probe.kind === "live" && seatId !== undefined && deps.seatInRs !== undefined
 			? await deps.seatInRs(seatId)
 			: undefined;
+	// F2, plan 119 — CALLER EVIDENCE, for the rows that demand rs residency.
+	//
+	// `ambientSeatId` reads the LEGACY registry, so a fresh rs-only seat resolves
+	// to nothing: `seatId` is undefined, `seatInRs` is never even asked, and
+	// `requiresSeatInRs` then refuses to route for precisely the population the
+	// routing exists to serve. The precondition was right and the only evidence
+	// it could see came from the wrong store.
+	//
+	// A pane is evidence the caller already carries and rs can check against its
+	// own roster. Matching it claims NOTHING — no session id is asserted, and the
+	// daemon still derives the acting seat itself through the ladder on every
+	// call. This only answers "does rs hold a live seat on my pane".
+	//
+	// Deliberately narrow: it runs only for a row that asks for it, only when the
+	// legacy answer did not already establish residency, and an `"unreadable"`
+	// roster stays unreadable rather than becoming a yes.
+	let subjectSeatId = seatId;
+	const callerPane = deps.env.TMUX_PANE;
+	if (
+		row?.requiresSeatInRs === true &&
+		seatInRs !== true &&
+		probe.kind === "live" &&
+		callerPane !== undefined &&
+		callerPane !== "" &&
+		deps.rsSeatByPane !== undefined
+	) {
+		const owner = await deps.rsSeatByPane(callerPane);
+		if (owner === "unreadable") {
+			seatInRs = "unreadable";
+		} else if (owner !== undefined) {
+			subjectSeatId = owner;
+			seatInRs = true;
+		}
+	}
 	const pre = decidePreCall(
 		{
 			verb,
@@ -264,9 +312,9 @@ export async function routeVerb(
 			force,
 			addr,
 			rsLive: probe.kind === "live",
-			seatId,
+			seatId: subjectSeatId,
 			seatInRs,
-			seatInLegacy: seatId === undefined ? undefined : deps.seatInLegacy?.(seatId),
+			seatInLegacy: subjectSeatId === undefined ? undefined : deps.seatInLegacy?.(subjectSeatId),
 		},
 		table,
 	);
@@ -301,6 +349,40 @@ async function callRs(
 	// machine-granularity and names no seat, and the identity the TS verbs read
 	// lives in this process's environment, which the daemon cannot see.
 	const caller = buildCallerContext(deps.env, callerProcessFacts(deps));
+	// `--body-file <path|->` is resolved HERE, by the caller, because only the
+	// caller can: the path is relative to this process's cwd and `-` is this
+	// process's stdin, neither of which the daemon shares. The bytes travel in
+	// their own field and NEVER through argv — on the legacy path a body
+	// re-appended to argv and re-parsed turned a body starting `--` into a FLAG,
+	// and a valued flag swallowed a whole file (cli.ts, plan 093 D4). Same
+	// defect, avoided the same way: the parser never sees the body.
+	let bodyLiteral: string | undefined;
+	const bodyFileAt = argv.indexOf("--body-file");
+	if (bodyFileAt !== -1) {
+		const path = argv[bodyFileAt + 1];
+		if (path === undefined || path.startsWith("--")) {
+			return {
+				outcome: {
+					kind: "rs-error",
+					verb,
+					addr: location.addr,
+					detail: "--body-file takes a path (or - for stdin)",
+				},
+			};
+		}
+		try {
+			bodyLiteral = await deps.readBody(path);
+		} catch (error) {
+			return {
+				outcome: {
+					kind: "rs-error",
+					verb,
+					addr: location.addr,
+					detail: `--body-file: ${error instanceof Error ? error.message : String(error)}`,
+				},
+			};
+		}
+	}
 	let response: Awaited<ReturnType<typeof fetch>>;
 	try {
 		response =
@@ -309,7 +391,15 @@ async function callRs(
 				: await deps.fetch(url, {
 						method: "POST",
 						headers: { ...headers, "Content-Type": "application/json" },
-						body: JSON.stringify({ argv, caller }),
+						// `body_literal` is OMITTED when absent rather than sent as
+						// null: the shim request is `deny_unknown_fields` on the rs
+						// side, and "the caller had none" must stay distinguishable
+						// from "the caller sent an empty one".
+						body: JSON.stringify(
+							bodyLiteral === undefined
+								? { argv, caller }
+								: { argv, caller, body_literal: bodyLiteral },
+						),
 					});
 	} catch (error) {
 		// The daemon answered the probe and then failed this call. That is a real
@@ -453,6 +543,57 @@ export async function probeDecisionOnly(
 			line: describeOutcome({ ...pre, verb: label } as RouteOutcome),
 		};
 	});
+}
+
+/** Ask rs which seat owns a PANE — the caller-evidence route to rs residency.
+ *
+ *  F2, plan 119. `ambientSeatId` resolves through the LEGACY registry, so a
+ *  fresh rs-only seat — the entire acceptance population — yields no ambient id,
+ *  `seatInRs` is never even asked, and `requiresSeatInRs` therefore refuses to
+ *  route for exactly the callers the routing exists to serve. The precondition
+ *  was right; the only evidence it could see was from the wrong store.
+ *
+ *  A pane is evidence the caller already carries and the daemon can check
+ *  against its own roster, so residency is established WITHOUT the caller
+ *  claiming a session id — which stays forbidden. This answers "does rs hold a
+ *  live seat on my pane", nothing more; the daemon still derives the acting seat
+ *  itself, through the ladder, on every call.
+ *
+ *  `undefined` means no live rs seat owns it. `"unreadable"` means we could not
+ *  find out, and is NEVER collapsed into "no" — that collapse is the verified
+ *  negative we never verified. */
+export function rsSeatByPane(
+	location: DaemonLocation,
+	deps: GenerationRouterDeps,
+): (pane: string) => Promise<string | undefined | "unreadable"> {
+	let roster: Promise<ReadonlyMap<string, string> | undefined> | undefined;
+	return async (pane: string) => {
+		roster ??= (async () => {
+			try {
+				const key = (await deps.readFile(join(location.stateDir, "daemon.key"), "utf8")).trim();
+				const response = await deps.fetch(`http://${location.addr}/v1/seats`, {
+					headers: { Authorization: `Bearer ${key}` },
+				});
+				const data = decodeEnvelope<{
+					readonly seats?: readonly {
+						readonly id?: string;
+						readonly pane?: string;
+					}[];
+				}>(await response.text()).data;
+				const byPane = new Map<string, string>();
+				for (const seat of data.seats ?? []) {
+					if (seat.id !== undefined && seat.pane !== undefined && !byPane.has(seat.pane)) {
+						byPane.set(seat.pane, seat.id);
+					}
+				}
+				return byPane;
+			} catch {
+				return undefined;
+			}
+		})();
+		const resolved = await roster;
+		return resolved === undefined ? "unreadable" : resolved.get(pane);
+	};
 }
 
 /** Ask rs whether it holds a seat — once per invocation, memoised.
