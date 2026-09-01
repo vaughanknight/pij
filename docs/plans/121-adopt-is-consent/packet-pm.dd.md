@@ -63,7 +63,7 @@ Deliver plan 121: Claude seat registration stamps cross_session_inbound_accept=S
 
 ## Refs
 
-- governance briefs/s121-register-reads-consent.md (amended: adopt-is-consent)
-- governance rulings/2026-09-01-adopt-is-consent.md + 2026-08-31-crosssessioninbound-on-at-all-times.md
-- scratch/s119/woodpecker-body-delivery-answer.md (mechanism map: uds.rs:170-178 gate, spawn.rs:163-165 stamp, plan-113 discovery)
-- req-0018 PRD note (137 dead-pane rows — why backfill tolerates stamping them)
+- assets/inputs/s121-register-reads-consent.md (the brief, amended: adopt-is-consent)
+- assets/inputs/2026-09-01-adopt-is-consent.md (the ruling, verbatim)
+- assets/inputs/woodpecker-body-delivery-answer.md (mechanism map: uds.rs:170-178 gate, spawn.rs:163-165 stamp, plan-113 discovery)
+- plan.dd.md non_goals for why stamping dead-pane rows is tolerated (req-0018 measured 137 such rows)
