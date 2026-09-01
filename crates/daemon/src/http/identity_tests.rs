@@ -542,14 +542,17 @@ async fn phonehome_reports_a_recycled_pid_as_unbound() {
     rebooted.abort();
 }
 
-/// THE PANELESS FORM THE READY ROUTE USES, and rs CANNOT serve it — by design,
-/// not by omission.
+/// THE PANELESS FORM THE READY ROUTE USES, and rs REFUSES IT OUTRIGHT — by
+/// design, not by omission.
 ///
 /// `pij inbox register --json` names no pane and no process. rs admission
-/// refuses every registration without bind evidence (`NoBindEvidence`), which is
-/// the control that stops a subagent claiming a seat it cannot prove it is. With
-/// no pane there is nothing to derive that evidence from, so the honest answer is
-/// a refusal that says what it would take — never a relaxed admission.
+/// refuses every registration without bind evidence (`NoBindEvidence`), the
+/// control that stops a subagent claiming a seat it cannot prove it is. With no
+/// pane there is nothing to DERIVE that evidence from — and a caller-supplied
+/// pid cannot stand in for it, because a control whose input the subject
+/// supplies is not a control. Paneless admission is unsolved (req-0015) and
+/// accepting a claim in the meantime would be the control switched off, not a
+/// stopgap.
 ///
 /// CONSEQUENCE FOR THE ROUTE TABLE, and it is not this unit's to fix: adding a
 /// `{ verb:"inbox", leaf:"register" }` row would send every paneless seat here,
@@ -574,50 +577,13 @@ async fn the_paneless_form_is_refused_by_name_when_nothing_can_bind_it() {
     let envelope = refusal_envelope(response).await;
     let text = serde_json::to_string(&envelope).expect("envelope json");
     assert!(
-        text.contains("procStart") && text.contains("bind evidence"),
-        "the refusal says exactly what it would take, and why: {text}"
+        text.contains("bind evidence") && text.contains("register"),
+        "the refusal says WHY a paneless claim is not accepted — bind evidence cannot be a \
+         thing the subject asserts — and names the verb that does take one: {text}"
     );
     assert!(
         live_seats(&world.registry).await.is_empty(),
         "nothing half-registered on the way to the refusal"
-    );
-
-    world.server.abort();
-}
-
-/// …and the paneless form that CAN prove itself is admitted. The rule is not
-/// "panes only"; it is "evidence or nothing".
-#[tokio::test]
-async fn a_paneless_seat_with_a_corroborated_process_registers() {
-    let registry = Arc::new(FakeRegistry::new());
-    let world = world(registry.clone(), true).await;
-
-    let response = reqwest::Client::new()
-        .post(format!("http://{}/v1/adopt", world.addr))
-        .bearer_auth("key")
-        .json(&serde_json::json!({
-            "argv": ["inbox", "register", "--harness", "claude"],
-            "caller": { "cwd": "/abs/elsewhere", "pid": PID, "procStart": PROC_START }
-        }))
-        .send()
-        .await
-        .expect("inbox register");
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
-
-    let seats = live_seats(&world.registry).await;
-    assert_eq!(seats.len(), 1);
-    assert_eq!(
-        seats[0].pane, None,
-        "paneless means paneless, not pane-unknown"
-    );
-    assert_eq!(seats[0].folder, "/abs/elsewhere");
-    assert_eq!(
-        seats[0].proc,
-        Some(ProcIdentity {
-            pid: PID,
-            proc_start: PROC_START
-        }),
-        "the claim was corroborated against the liveness port before it became a row"
     );
 
     world.server.abort();
@@ -860,4 +826,306 @@ fn caller_context_accepts_all_three_wire_spellings() {
             );
         }
     }
+}
+
+// ── F004: a tombstone is a POST-MORTEM, not an identity ────────────────────
+//
+// The pane resolver already selects only live rows. The ASSERTED-ID arm did not,
+// and that asymmetry is the finding: the derive-don't-assert guard covers the
+// case where two facts DISAGREE, not the case where the one fact is DEAD.
+//
+// The exploit is not hypothetical. Supersession tombstones a predecessor while
+// RETAINING its process identity (`registration.rs`), so the dead row still names
+// a pid that is genuinely alive — and `phonehome` re-observes it and answers
+// `bound: true` for a seat nothing can address.
+
+/// Tombstone a seat the way supersession does: dead row, process identity KEPT.
+async fn tombstone_keeping_proc(registry: &FakeRegistry, seat: &str) {
+    let mut row = registry
+        .get(&pij_core::model::SeatId::from(seat))
+        .await
+        .expect("read seat")
+        .expect("seat exists");
+    assert!(
+        row.proc.is_some(),
+        "the point of this fixture is a DEAD row whose process is still alive"
+    );
+    row.tombstoned_at = Some(1_725_000_000_000);
+    row.tombstone_reason = Some("superseded at a native session boundary".to_string());
+    registry.put(row).await.expect("tombstone");
+}
+
+#[tokio::test]
+async fn phonehome_refuses_a_tombstoned_seat_rather_than_confirming_a_corpse() {
+    let registry = Arc::new(FakeRegistry::new());
+    let world = world(registry.clone(), true).await;
+    assert_eq!(
+        adopt(world.addr, &["adopt", PANE, "--harness", "claude"])
+            .await
+            .status(),
+        reqwest::StatusCode::OK
+    );
+    let seat = live_seats(&world.registry).await[0].id.0.clone();
+    tombstone_keeping_proc(&world.registry, &seat).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{}/v1/phonehome?seat={seat}", world.addr))
+        .bearer_auth("key")
+        .json(&serde_json::json!({ "argv": ["phonehome"] }))
+        .send()
+        .await
+        .expect("phonehome");
+    assert_ne!(
+        response.status(),
+        reqwest::StatusCode::OK,
+        "the row is dead; that its pid is still alive makes the WRONG answer more \
+         convincing, not more true"
+    );
+    let envelope = refusal_envelope(response).await;
+    let text = serde_json::to_string(&envelope).expect("envelope json");
+    assert!(
+        text.contains("superseded at a native session boundary"),
+        "the refusal names the tombstone REASON, so the operator learns what happened to the \
+         seat rather than that it is merely gone: {text}"
+    );
+
+    world.server.abort();
+}
+
+#[tokio::test]
+async fn whoami_refuses_a_tombstoned_asserted_id() {
+    let registry = Arc::new(FakeRegistry::new());
+    let world = world(registry.clone(), true).await;
+    assert_eq!(
+        adopt(world.addr, &["adopt", PANE, "--harness", "claude"])
+            .await
+            .status(),
+        reqwest::StatusCode::OK
+    );
+    let seat = live_seats(&world.registry).await[0].id.0.clone();
+    tombstone_keeping_proc(&world.registry, &seat).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{}/v1/whoami", world.addr))
+        .bearer_auth("key")
+        .json(&serde_json::json!({ "seat": seat }))
+        .send()
+        .await
+        .expect("whoami");
+    assert_ne!(response.status(), reqwest::StatusCode::OK);
+    refusal_envelope(response).await;
+
+    world.server.abort();
+}
+
+/// The report half of F004, asserted on the STORE.
+///
+/// Identity and reporting must agree with DELIVERY, which already refuses a dead
+/// recipient. A card written for a tombstoned seat is a success receipt for
+/// something nothing can act on.
+#[tokio::test]
+async fn a_report_against_a_tombstoned_seat_persists_no_card() {
+    let registry = Arc::new(FakeRegistry::new());
+    let spine = Arc::new(FakeSpine::new());
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        spine.clone(),
+    )
+    .await;
+    services.tmux = Arc::new(
+        FakeTmux::new()
+            .with_pane(Pane {
+                id: PANE.to_string(),
+                session: "work".to_string(),
+                window: "@1".to_string(),
+                title: "claude".to_string(),
+                cursor_x: None,
+                cursor_y: None,
+            })
+            .with_pane_process(
+                PANE,
+                PaneProcess {
+                    pid: PID,
+                    cwd: FOLDER.to_string(),
+                },
+            ),
+    );
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(ProcIdentity {
+        pid: PID,
+        proc_start: PROC_START,
+    }));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+
+    assert_eq!(
+        adopt(addr, &["adopt", PANE, "--harness", "claude"])
+            .await
+            .status(),
+        reqwest::StatusCode::OK
+    );
+    let seat = live_seats(&registry).await[0].id.0.clone();
+    tombstone_keeping_proc(&registry, &seat).await;
+    let before = spine.len();
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/report"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({
+            "seat": seat,
+            "argv": ["report", "now", "did a thing", "will do another"]
+        }))
+        .send()
+        .await
+        .expect("report");
+    assert_ne!(response.status(), reqwest::StatusCode::OK);
+    refusal_envelope(response).await;
+    assert_eq!(
+        spine.len(),
+        before,
+        "THE STORE, not the output: a refused report appends NOTHING to the spine"
+    );
+
+    server.abort();
+}
+
+// ── F005: the corpse-binding trap, closed on the rs side ───────────────────
+
+/// `adopt` DERIVES its evidence. `register` accepts an asserted one. That split
+/// is now the rule, and this is the test that holds it.
+///
+/// The paneless branch used to accept a caller-supplied `(pid, proc_start)` pair,
+/// and it was right about what it DEMANDED — the pair, corroborated, no admission
+/// without bind evidence. The defect was that the routed shim can satisfy it with
+/// its OWN Node process: real evidence, corroborated for the instant the CLI
+/// lives, and worthless the moment it exits. A later phonehome then reports
+/// unbound or recycled for a seat that registered successfully.
+///
+/// This is the second of two independent refusals by design — the shim refuses
+/// paneless `adopt` on the TS side too. A control this plan has already re-opened
+/// once does not get to depend on a single guard.
+#[tokio::test]
+async fn adopt_refuses_a_paneless_claim_even_when_the_process_corroborates() {
+    let registry = Arc::new(FakeRegistry::new());
+    let world = world(registry.clone(), true).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{}/v1/adopt", world.addr))
+        .bearer_auth("key")
+        .json(&serde_json::json!({
+            "argv": ["inbox", "register", "--harness", "claude"],
+            // A pair the daemon CAN corroborate — this is the shim's own live
+            // Node process, which is exactly the problem.
+            "caller": { "cwd": "/abs/elsewhere", "pid": PID, "procStart": PROC_START }
+        }))
+        .send()
+        .await
+        .expect("paneless adopt");
+    assert_ne!(
+        response.status(),
+        reqwest::StatusCode::OK,
+        "corroborating a caller-supplied process proves the process exists NOW, not that it is \
+         the seat's"
+    );
+    let envelope = refusal_envelope(response).await;
+    let text = serde_json::to_string(&envelope).expect("envelope json");
+    assert!(
+        text.contains("register"),
+        "the refusal names the verb that DOES take an asserted process identity: {text}"
+    );
+    assert!(
+        live_seats(&world.registry).await.is_empty(),
+        "nothing bound to a process that is about to exit"
+    );
+
+    world.server.abort();
+}
+
+/// F005 PART 3 — A CLAIMED PID IS INADMISSIBLE AS BIND EVIDENCE, pinned on the
+/// path that still exists rather than as a side effect of the paneless refusal.
+///
+/// Refusing the paneless form closes today's bug. It does NOT state the rule,
+/// and a rule nothing tests is one re-opened branch away from gone: whoever
+/// designs paneless admission later (req-0015) will read the refusal as "this
+/// form is unimplemented", not as "a claim is never evidence".
+///
+/// So the claim is made on the PANE path, where it can be ignored rather than
+/// merely unreachable. The caller asserts a pid that is CORROBORABLE — the
+/// liveness port knows it, so accepting it would look entirely reasonable and
+/// this test would not fail for some incidental reason. The row must still carry
+/// the pid tmux reported for the pane.
+#[tokio::test]
+async fn adopt_binds_the_pane_process_and_ignores_a_claimed_pid() {
+    const CLAIMED_PID: u32 = 5150;
+    const CLAIMED_START: u64 = PROC_START + 4242;
+
+    let registry = Arc::new(FakeRegistry::new());
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.tmux = Arc::new(
+        FakeTmux::new()
+            .with_pane(Pane {
+                id: PANE.to_string(),
+                session: "work".to_string(),
+                window: "@1".to_string(),
+                title: "claude".to_string(),
+                cursor_x: None,
+                cursor_y: None,
+            })
+            .with_pane_process(
+                PANE,
+                PaneProcess {
+                    pid: PID,
+                    cwd: FOLDER.to_string(),
+                },
+            ),
+    );
+    // BOTH processes are live. The claim is not rejected because it is false —
+    // it is ignored because it is a CLAIM.
+    services.liveness = Arc::new(
+        FakeLiveness::new()
+            .with_proc(ProcIdentity {
+                pid: PID,
+                proc_start: PROC_START,
+            })
+            .with_proc(ProcIdentity {
+                pid: CLAIMED_PID,
+                proc_start: CLAIMED_START,
+            }),
+    );
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/adopt"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({
+            "argv": ["adopt", PANE, "--harness", "claude"],
+            "caller": { "TMUX_PANE": PANE, "pid": CLAIMED_PID, "procStart": CLAIMED_START }
+        }))
+        .send()
+        .await
+        .expect("adopt");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+    let row = &live_seats(&registry).await[0];
+    assert_eq!(
+        row.proc,
+        Some(ProcIdentity {
+            pid: PID,
+            proc_start: PROC_START
+        }),
+        "the row binds the process TMUX reported for the pane. The caller's claim was live and \
+         corroborable and is still not evidence — bind evidence is the anti-impersonation \
+         control, and a control whose input the subject supplies is not a control."
+    );
+    assert_ne!(
+        row.proc.expect("bound").pid,
+        CLAIMED_PID,
+        "a claimed pid never reaches the row"
+    );
+
+    server.abort();
 }

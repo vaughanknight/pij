@@ -8,13 +8,21 @@ import {
 	CALLER_WIRE_KEYS,
 	describeOutcome,
 	findRoute,
+	isDirectPanelessAdopt,
 	NEVER_ROUTED,
+	PANELESS_ADOPT_REFUSAL,
 	RS_ROUTE_TABLE,
 	type RsRouteRow,
 	renderRsAnswer,
+	servedByLegacy,
 	subjectSeatFromArgv,
 } from "../core/generation-routing.js";
-import { type GenerationRouterDeps, probeDecisionOnly, routeVerb } from "./generation-router.js";
+import {
+	type GenerationRouterDeps,
+	probeDecisionOnly,
+	probeRs,
+	routeVerb,
+} from "./generation-router.js";
 
 const KEY = "k".repeat(64);
 const HEALTH = JSON.stringify({
@@ -309,10 +317,25 @@ describe("rs output keeps the CLI's surface (finding 7)", () => {
 		why: "t",
 	};
 
-	it("--json gets JSON", () => {
-		expect(renderRsAnswer(bare, { a: 1 }, ["report", "now", "--json"])).toEqual({
+	// THIS TEST USED TO ASSERT THE BUG. It pinned that any payload becomes JSON
+	// verbatim — which is precisely the raw-schema bypass F003 found. A row that
+	// cannot honour the legacy --json contract must refuse it by name.
+	it("--json is REFUSED by a row that cannot honour the legacy contract", () => {
+		const result = renderRsAnswer(bare, { a: 1 }, ["report", "now", "--json"]);
+		expect(result.kind).toBe("json-refused");
+		if (result.kind !== "json-refused") throw new Error("unreachable");
+		expect(result.message).not.toContain('{"a":1}');
+	});
+
+	it("--json is PROJECTED when the row declares one", () => {
+		const projecting: RsRouteRow = {
+			...bare,
+			jsonOutput: "project",
+			projectJson: () => ({ id: "pij-x", verbs: {}, capabilitySchema: 2 }),
+		};
+		expect(renderRsAnswer(projecting, { a: 1 }, ["report", "now", "--json"])).toEqual({
 			kind: "json",
-			text: '{"a":1}',
+			text: '{"id":"pij-x","verbs":{},"capabilitySchema":2}',
 		});
 	});
 
@@ -537,8 +560,10 @@ describe("item 7 uses u-report's `line` rather than re-deriving the sentence", (
 		});
 	});
 
-	it("--json still wins over it", () => {
-		expect(renderRsAnswer(row, { line: "x" }, ["report", "now", "--json"]).kind).toBe("json");
+	it("--json does not silently take rs's `line` shape either", () => {
+		expect(renderRsAnswer(row, { line: "x" }, ["report", "now", "--json"]).kind).toBe(
+			"json-refused",
+		);
 	});
 
 	it("a payload with no line still refuses loudly rather than printing JSON", () => {
@@ -718,10 +743,180 @@ describe("every routed row can be read by a human (F-U8)", () => {
 		expect(result.kind).toBe("no-renderer");
 	});
 
-	it("--json still wins for every row", () => {
+	// The replacement for "--json still wins for every row", which asserted the
+	// defect as though it were a safety property.
+	it("EVERY row declares its machine output, and never emits rs's raw schema", () => {
 		for (const row of RS_ROUTE_TABLE) {
+			expect(["project", "refuse"], `${row.verb} ${row.leaf ?? ""}`).toContain(row.jsonOutput);
+			if (row.jsonOutput === "project") expect(row.projectJson).toBeDefined();
+			if (row.jsonOutput === "refuse") expect(row.jsonRefusal).toBeTruthy();
 			const argv = row.leaf === undefined ? [row.verb, "--json"] : [row.verb, row.leaf, "--json"];
-			expect(renderRsAnswer(row, { id: "x" }, argv).kind).toBe("json");
+			const result = renderRsAnswer(row, { rsOnlyKey: "leaked" }, argv);
+			if (result.kind === "json") {
+				expect(result.text).not.toContain("rsOnlyKey");
+			} else {
+				expect(result.kind).toBe("json-refused");
+			}
 		}
+	});
+
+	it("the whoami refusal names the capability gate, because absence reads as permission", () => {
+		const result = renderRsAnswer(findRoute("whoami", undefined), { id: "x" }, [
+			"whoami",
+			"--json",
+		]);
+		if (result.kind !== "json-refused") throw new Error("expected a refusal");
+		expect(result.message).toContain("verbs");
+		expect(result.message).toContain("capabilitySchema");
+	});
+});
+
+/** Reviewer findings F001, F002, F005 — the three no-fallback paths that were
+ *  not paths at all. */
+describe("routing faults are named outcomes, never crashes or quiet fallbacks", () => {
+	const HEALTH_OK = JSON.stringify({
+		ok: true,
+		command: "pij ping",
+		v: 1,
+		data: { status: "healthy", build: "t", offline: false, machine: "t" },
+	});
+
+	const probeDeps = (
+		handler: (url: string) => Response,
+		over: Partial<GenerationRouterDeps> = {},
+	): GenerationRouterDeps => ({
+		fetch: (async (input: RequestInfo | URL) => handler(String(input))) as unknown as typeof fetch,
+		readFile: (async () => "k".repeat(64)) as unknown as GenerationRouterDeps["readFile"],
+		env: { PIJ_RS_ADDR: "127.0.0.1:7461", PIJ_RS_STATE_DIR: "/tmp/s" },
+		home: "/tmp/home",
+		...over,
+	});
+
+	// F001. This crashed the CLI: probeRs rethrew, the entrypoint used `void`,
+	// and whoami/adopt/report/state died as an unhandled rejection.
+	it("a non-pij body is a NAMED outcome, not a thrown error", async () => {
+		const { outcome } = await routeVerb(
+			"whoami",
+			undefined,
+			["whoami"],
+			probeDeps(() => new Response("<html>proxy error</html>", { status: 200 })),
+		);
+		expect(outcome.kind).toBe("rs-unreadable");
+		expect(servedByLegacy(outcome)).toBe(false);
+		expect(describeOutcome(outcome)).toMatch(/cannot read/);
+	});
+
+	it("a wire-version skew is the same named outcome", async () => {
+		const skewed = JSON.stringify({ ok: true, command: "pij ping", v: 99, data: {} });
+		const { outcome } = await routeVerb(
+			"whoami",
+			undefined,
+			["whoami"],
+			probeDeps(() => new Response(skewed, { status: 200 })),
+		);
+		expect(outcome.kind).toBe("rs-unreadable");
+		expect(servedByLegacy(outcome)).toBe(false);
+	});
+
+	it("probeRs never throws, whatever answers at the addr", async () => {
+		for (const body of ["", "<html>", "{", "null"]) {
+			await expect(
+				probeRs(probeDeps(() => new Response(body, { status: 200 }))),
+			).resolves.toBeDefined();
+		}
+	});
+
+	// F002. A roster we could not read became "rs does not have this seat" —
+	// a verified negative nobody verified — and then followed the seat to
+	// legacy. Silent re-homing through the guard that exists to prevent it.
+	it("an UNREADABLE roster refuses; it does not follow the seat to legacy", async () => {
+		const { outcome } = await routeVerb(
+			"whoami",
+			undefined,
+			["whoami"],
+			probeDeps(() => new Response(HEALTH_OK, { status: 200 }), {
+				ambientSeatId: () => "pij-me",
+				seatInRs: () => "unreadable",
+				seatInLegacy: () => true,
+			}),
+		);
+		expect(outcome).toMatchObject({ kind: "rs-roster-unreadable", seatId: "pij-me" });
+		expect(servedByLegacy(outcome)).toBe(false);
+		expect(describeOutcome(outcome)).toMatch(/UNKNOWN/);
+	});
+
+	it("a roster we DID read still follows a legacy-resident seat", async () => {
+		const { outcome } = await routeVerb(
+			"whoami",
+			undefined,
+			["whoami"],
+			probeDeps(() => new Response(HEALTH_OK, { status: 200 }), {
+				ambientSeatId: () => "pij-me",
+				seatInRs: () => false,
+				seatInLegacy: () => true,
+			}),
+		);
+		expect(outcome.kind).toBe("legacy-seat-followed");
+	});
+
+	it("unreadable and read-negative are different kinds AND different sentences", async () => {
+		const mk = async (seatInRs: boolean | "unreadable") =>
+			(
+				await routeVerb(
+					"whoami",
+					undefined,
+					["whoami"],
+					probeDeps(() => new Response(HEALTH_OK, { status: 200 }), {
+						ambientSeatId: () => "pij-me",
+						seatInRs: () => seatInRs,
+						seatInLegacy: () => true,
+					}),
+				)
+			).outcome;
+		const unreadable = await mk("unreadable");
+		const negative = await mk(false);
+		expect(unreadable.kind).not.toBe(negative.kind);
+		expect(describeOutcome(unreadable)).not.toBe(describeOutcome(negative));
+	});
+});
+
+/** F005 — the paneless `adopt` door, shim side.
+ *
+ *  Source pins, because the refusal lives at the CLI entry ahead of routing and
+ *  cannot be reached through `routeVerb`. Named as pins, not as behavioural
+ *  proof; the behavioural proof is the live run recorded in the receipt. */
+describe("the shim refuses a direct paneless adopt (F005)", () => {
+	it("refuses the direct paneless form", () => {
+		expect(isDirectPanelessAdopt("adopt", ["--harness", "claude"])).toBe(true);
+	});
+
+	it("allows the pane form", () => {
+		expect(isDirectPanelessAdopt("adopt", ["%2116", "--harness", "claude"])).toBe(false);
+	});
+
+	// `--current` is the sanctioned paneless form: it aliases to `inbox
+	// register`, which is denied from routing and reaches legacy intact.
+	// Refusing it here broke that alias — caught by cli.integration.test.ts,
+	// which is why the behavioural test matters more than a source pin.
+	it("lets `adopt --current` through", () => {
+		expect(isDirectPanelessAdopt("adopt", ["--current"])).toBe(false);
+		expect(isDirectPanelessAdopt("adopt", ["--current", "--harness", "claude"])).toBe(false);
+	});
+
+	it("touches no other verb", () => {
+		expect(isDirectPanelessAdopt("whoami", [])).toBe(false);
+		expect(isDirectPanelessAdopt("report", ["now", "a", "b"])).toBe(false);
+	});
+
+	it("the refusal carries the REASON, not just the grammar", () => {
+		// A bare grammar complaint gets "fixed" by relaxing the grammar.
+		expect(PANELESS_ADOPT_REFUSAL).toMatch(/dead pid/);
+		expect(PANELESS_ADOPT_REFUSAL).toContain("adopt --current");
+	});
+
+	it("the entry promise is caught, so no routing fault escapes as a crash", () => {
+		const cli = readFileSync(fileURLToPath(new URL("../cli.ts", import.meta.url)), "utf8");
+		expect(cli).toMatch(/bootThroughGenerationRouting\(\)\s*\.catch\(/);
+		expect(cli).not.toMatch(/void bootThroughGenerationRouting\(\)/);
 	});
 });

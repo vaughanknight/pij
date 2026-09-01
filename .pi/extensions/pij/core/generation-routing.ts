@@ -73,6 +73,31 @@ export interface RsRouteRow {
 	 *                shape). Better where available: ONE copy of the wording,
 	 *                on the side that knows the result. */
 	readonly humanOutput: "render" | "rs-line";
+	/** How a MACHINE caller sees this row's answer. REQUIRED, for the same
+	 *  reason `humanOutput` is.
+	 *
+	 *  `--json` used to bypass every renderer and emit rs's payload RAW, so a
+	 *  parser received rs's schema where the TS contract was promised. That is
+	 *  the fourth instance of this plan's recurring seam — a value crossing by
+	 *  literal schema with neither side testing the other's full shape — and it
+	 *  is the WORST of the four, because the human path at least has a reader
+	 *  who can see something is wrong. A parser cannot.
+	 *
+	 *  It is not a cosmetic gap. Legacy `whoami --json` always emits `verbs` and
+	 *  `capabilitySchema`; a capability consumer reads a MISSING gate as an
+	 *  ungated one, so raw rs output does not merely lose data, it reads as
+	 *  PERMISSION. Absence is the dangerous direction.
+	 *
+	 *    "project" — the row carries `projectJson` and returns the TS contract.
+	 *    "refuse"  — rs cannot honour the legacy contract for this verb, so
+	 *                `--json` is refused BY NAME rather than answered wrongly. */
+	readonly jsonOutput: "project" | "refuse";
+	/** Build the legacy `--json` contract from rs's payload. Required when
+	 *  `jsonOutput` is "project". */
+	readonly projectJson?: (payload: unknown) => unknown;
+	/** Why `--json` is refused, named for the caller. Required when
+	 *  `jsonOutput` is "refuse". */
+	readonly jsonRefusal?: string;
 	/** How to render an rs payload for a HUMAN caller.
 	 *
 	 *  ac-1143 says the CLI's external surface is unchanged, and output shape is
@@ -179,6 +204,9 @@ function renderState(payload: unknown): string {
 export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	{
 		verb: "adopt",
+		jsonOutput: "refuse",
+		jsonRefusal:
+			"rs answers adopt with a SeatDescriptor and has no `lifecycle` (pending/bound) column — it binds by (pid, proc_start) it observes itself, so the legacy pending/bound distinction cannot be reproduced",
 		rsPath: "/v1/adopt",
 		method: "POST",
 		humanOutput: "render",
@@ -187,6 +215,9 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	},
 	{
 		verb: "whoami",
+		jsonOutput: "refuse",
+		jsonRefusal:
+			"legacy whoami --json carries `verbs` and `capabilitySchema`, the capability gate. rs holds neither, and a consumer reading a MISSING gate reads an UNGATED one — absence is the permissive direction, so emitting a partial object is worse than refusing",
 		humanOutput: "render",
 		render: renderWhoami,
 		rsPath: "/v1/whoami",
@@ -198,6 +229,9 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	},
 	{
 		verb: "phonehome",
+		jsonOutput: "refuse",
+		jsonRefusal:
+			"legacy phonehome --json carries `harnessSessionId` and `lifecycle`; rs has no column for either and binds by process identity instead",
 		humanOutput: "render",
 		render: renderPhonehome,
 		rsPath: "/v1/phonehome",
@@ -217,6 +251,9 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	{
 		verb: "report",
 		leaf: "now",
+		jsonOutput: "refuse",
+		jsonRefusal:
+			"legacy report --json emits the whole spine EVENT; rs returns its own receipt shape, and the two are not the same object",
 		// rs returns the finished sentence in `line` — one copy of the wording,
 		// on the side that knows the result.
 		humanOutput: "rs-line",
@@ -227,6 +264,9 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	{
 		verb: "report",
 		leaf: "state",
+		jsonOutput: "refuse",
+		jsonRefusal:
+			"legacy report --json emits the whole spine EVENT; rs returns its own receipt shape, and the two are not the same object",
 		// rs returns the finished sentence in `line` — one copy of the wording,
 		// on the side that knows the result.
 		humanOutput: "rs-line",
@@ -237,6 +277,9 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	{
 		verb: "report",
 		leaf: "blocked",
+		jsonOutput: "refuse",
+		jsonRefusal:
+			"legacy report --json emits the whole spine EVENT; rs returns its own receipt shape, and the two are not the same object",
 		// rs returns the finished sentence in `line` — one copy of the wording,
 		// on the side that knows the result.
 		humanOutput: "rs-line",
@@ -247,6 +290,9 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	{
 		verb: "report",
 		leaf: "clear",
+		jsonOutput: "refuse",
+		jsonRefusal:
+			"legacy report --json emits the whole spine EVENT; rs returns its own receipt shape, and the two are not the same object",
 		// rs returns the finished sentence in `line` — one copy of the wording,
 		// on the side that knows the result.
 		humanOutput: "rs-line",
@@ -257,6 +303,9 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	{
 		verb: "report",
 		leaf: "question",
+		jsonOutput: "refuse",
+		jsonRefusal:
+			"legacy report --json emits the whole spine EVENT; rs returns its own receipt shape, and the two are not the same object",
 		// rs returns the finished sentence in `line` — one copy of the wording,
 		// on the side that knows the result.
 		humanOutput: "rs-line",
@@ -266,6 +315,9 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	},
 	{
 		verb: "state",
+		jsonOutput: "refuse",
+		jsonRefusal:
+			"rs names its field `role` where the legacy contract says `orchestrationRole`, and its own answer lists 14 further fields it does not carry — a projection would be a rename over a hole",
 		humanOutput: "render",
 		render: renderState,
 		rsPath: "/v1/state",
@@ -514,6 +566,37 @@ export type RouteOutcome =
 			readonly addr: string;
 			readonly stateDir: string;
 	  }
+	/** NOT a fallback. rs answered with something we cannot interpret — a
+	 *  non-pij body, a wire-version skew, a truncated response.
+	 *
+	 *  Its own outcome because it used to be no outcome at all: `probeRs`
+	 *  rethrew anything it could not classify, and the entrypoint launched the
+	 *  routing promise with `void`, so a malformed rs body terminated whoami,
+	 *  adopt, report and state as an UNHANDLED REJECTION. Nine carefully
+	 *  distinguished outcomes and a tenth path that escaped all of them.
+	 *
+	 *  It must never fall back: we do not know what rs did, and answering from
+	 *  legacy would be asserting an answer we never received. */
+	| {
+			readonly kind: "rs-unreadable";
+			readonly verb: string;
+			readonly addr: string;
+			readonly detail: string;
+	  }
+	/** NOT a fallback. rs is live, but we could not read its roster, so we do
+	 *  not know which store owns this seat.
+	 *
+	 *  A failed roster read used to collapse to `false` — "rs does not have this
+	 *  seat" — which is a VERIFIED NEGATIVE we never verified. It then followed
+	 *  the seat to legacy: silent re-homing, this plan's headline risk, arriving
+	 *  through the guard added to prevent it. Could-not-read is an error. */
+	| {
+			readonly kind: "rs-roster-unreadable";
+			readonly verb: string;
+			readonly addr: string;
+			readonly seatId: string;
+			readonly detail: string;
+	  }
 	/** NOT a fallback. rs answered with a real failure and it is surfaced. */
 	| {
 			readonly kind: "rs-error";
@@ -552,6 +635,10 @@ export function describeOutcome(outcome: RouteOutcome): string {
 			return `${outcome.verb}: served by legacy (seat ${outcome.seatId} lives in legacy; followed, not re-homed — rs at ${outcome.addr} is live)`;
 		case "rs-auth-rejected":
 			return `${outcome.verb}: rs at ${outcome.addr} REJECTED THE KEY — not falling back to legacy (read ${outcome.stateDir}/daemon.key; note rs checks auth BEFORE matching the route, so this can also mask a route rs does not implement)`;
+		case "rs-unreadable":
+			return `${outcome.verb}: rs at ${outcome.addr} answered with something this CLI cannot read — not falling back to legacy, because we do not know what rs did (${outcome.detail})`;
+		case "rs-roster-unreadable":
+			return `${outcome.verb}: rs at ${outcome.addr} is live but its seat roster could not be read, so which store owns \`${outcome.seatId}\` is UNKNOWN — refusing rather than assuming legacy (${outcome.detail})`;
 		case "rs-error":
 			return `${outcome.verb}: rs at ${outcome.addr} FAILED — not falling back to legacy (${outcome.detail})`;
 	}
@@ -568,8 +655,12 @@ export interface PreCallInput {
 	readonly rsLive: boolean;
 	/** The ambient seat, when one resolves. */
 	readonly seatId?: string | undefined;
-	/** Does that seat exist in the rs store? `undefined` = not asked/unknowable. */
-	readonly seatInRs?: boolean | undefined;
+	/** Does that seat exist in the rs store?
+	 *    true / false  — a roster we ACTUALLY READ says so
+	 *    "unreadable"  — we asked and could not find out. NOT the same as false,
+	 *                    and the difference is a silent re-homing.
+	 *    undefined     — not asked (no seat to ask about, or rs is not live). */
+	readonly seatInRs?: boolean | "unreadable" | undefined;
 	/** Does that seat exist in the legacy store? */
 	readonly seatInLegacy?: boolean | undefined;
 }
@@ -607,6 +698,18 @@ export function decidePreCall(
 		return { kind: "legacy-no-rs-daemon", verb, addr };
 	}
 	if (force === "rs") return { kind: "try-rs", row };
+	// An unreadable roster is an ERROR, never a quiet legacy answer. We do not
+	// know where this seat lives, and guessing is exactly the re-homing the
+	// follow-the-seat rule exists to prevent.
+	if (input.seatId !== undefined && input.seatInRs === "unreadable") {
+		return {
+			kind: "rs-roster-unreadable",
+			verb,
+			addr,
+			seatId: input.seatId,
+			detail: "the rs seat roster could not be read",
+		};
+	}
 	// Follow the seat (oq-1141). Only when we actually know both answers: an
 	// unknown is not a licence to re-home a seat, and it is not a licence to
 	// claim we followed one either.
@@ -687,14 +790,29 @@ export function classifyRsResponse(
 export type RsRenderResult =
 	| { readonly kind: "json"; readonly text: string }
 	| { readonly kind: "rendered"; readonly text: string }
-	| { readonly kind: "no-renderer"; readonly message: string };
+	| { readonly kind: "no-renderer"; readonly message: string }
+	/** `--json` asked for, and this row cannot honour the legacy contract. Loud,
+	 *  because a parser cannot notice a quiet one. */
+	| { readonly kind: "json-refused"; readonly message: string };
 
 export function renderRsAnswer(
 	row: RsRouteRow | undefined,
 	payload: unknown,
 	argv: readonly string[],
 ): RsRenderResult {
-	if (argv.includes("--json")) return { kind: "json", text: JSON.stringify(payload) };
+	if (argv.includes("--json")) {
+		// NOT `JSON.stringify(payload)`. That handed rs's schema to a caller
+		// promised the TS one.
+		if (row?.jsonOutput === "project" && row.projectJson !== undefined) {
+			return { kind: "json", text: JSON.stringify(row.projectJson(payload)) };
+		}
+		const name =
+			row === undefined ? "?" : row.leaf === undefined ? row.verb : `${row.verb} ${row.leaf}`;
+		return {
+			kind: "json-refused",
+			message: `rs served \`${name}\`, but its answer cannot be projected onto the \`--json\` contract this CLI promises${row?.jsonRefusal === undefined ? "" : ` — ${row.jsonRefusal}`}. Refusing rather than emitting a different schema under the same flag.`,
+		};
+	}
 	// The row DECLARES how a human sees it, and the declaration is honoured in
 	// the order it names. A row promising `render` that has none is a bug in the
 	// table, not a reason to print a blob.
@@ -713,3 +831,34 @@ export function renderRsAnswer(
 		message: `rs served \`${name}\` but the route table has no human renderer for it — refusing to print raw JSON where the CLI's own output belongs (re-run with --json, or give the row a \`render\`)`,
 	};
 }
+
+/** Is this a DIRECT paneless `adopt` — the form with no durable process to bind?
+ *
+ *  Pure, so it can be tested as behaviour rather than pinned by scanning source.
+ *  (The first version of this guard WAS a source scan, and it broke on the very
+ *  next edit to the code it was guarding — a pin that fails on refactor teaches
+ *  the next person to loosen it.)
+ *
+ *  Legacy grammar requires a `%N` pane positional; routing now runs ahead of
+ *  that parse, so without this the paneless form reaches rs, whose paneless
+ *  branch accepts `caller.pid`/`caller.procStart` as bind evidence — and the
+ *  only process the shim can offer is its own Node CLI, which exits when the
+ *  command does. The seat is then bound to a dead pid, and the next phonehome
+ *  is unbound or, worse, re-bound to whatever recycled that pid.
+ *
+ *  `--current` is the SANCTIONED paneless form: it aliases to `inbox register`,
+ *  which is on the deny list and never routed. It must pass through. */
+export function isDirectPanelessAdopt(verb: string, args: readonly string[]): boolean {
+	if (verb !== "adopt") return false;
+	if (args.includes("--current")) return false;
+	return !args.some((token) => token.startsWith("%"));
+}
+
+/** What the caller is told when that form is refused. Its own constant so the
+ *  REASON travels with the refusal — a bare grammar complaint would be "fixed"
+ *  by someone relaxing the grammar. */
+export const PANELESS_ADOPT_REFUSAL =
+	'E-ARG: `pij adopt` needs the pane it is adopting — `pij adopt "$TMUX_PANE" --harness <h>`.\n' +
+	"A paneless adopt has no durable process to bind to: the only process identity this\n" +
+	"command could offer is the CLI's own, which exits when the command does, leaving the\n" +
+	"seat bound to a dead pid. Use `pij adopt --current` for the paneless form.\n";
