@@ -292,6 +292,17 @@ pub struct Card {
 /// that eats the end of somebody's sentence.
 pub const CARD_LIMIT: usize = 280;
 
+/// The documented maximum length of a state NOTE, after whitespace collapsing.
+///
+/// A DIFFERENT limit from [`CARD_LIMIT`], and deliberately so: the TypeScript
+/// generation callers use today caps `report blocked`/`report question` text at
+/// 200 (`REPORT_NOTE_MAX_LENGTH`, `.pi/extensions/pij/core/cli.ts:816`) while
+/// capping did/next at 280. Naming it here rather than inlining 200 at the one
+/// boundary that enforces it keeps the two limits distinguishable — a handler
+/// that reused `CARD_LIMIT` for notes would accept a 201-character note and look
+/// correct in every test that only exercised 280.
+pub const NOTE_LIMIT: usize = 200;
+
 impl SeatDescriptor {
     /// A minimal descriptor: unbound, idle, undeclared.
     pub fn new(id: impl Into<SeatId>, harness: Harness, folder: impl Into<String>) -> Self {
@@ -742,6 +753,24 @@ pub struct Pane {
     /// Zero-based cursor row, when tmux supplied one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor_y: Option<u32>,
+}
+
+/// The process a tmux pane is running, as the daemon DERIVES it from tmux.
+///
+/// Deliberately NOT a field a caller supplies. Adoption's identity facts have to
+/// be observed by the daemon itself: a caller-asserted pid is a claim, and this
+/// platform has already paid for treating an asserted identity as a derived one
+/// (an unvalidated `PIJ_SESSION_ID` minting a phantom seat). The pair that
+/// matters is `(pid, proc_start)` — the pid alone is recycled at boot — and the
+/// start time is read from the liveness port, never from tmux, so the two facts
+/// come from two different observers.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaneProcess {
+    /// `#{pane_pid}` — the pane's foreground process, which is exactly the pid
+    /// the TS CLI records at adopt time.
+    pub pid: u32,
+    /// `#{pane_current_path}` — the folder the seat is working in.
+    pub cwd: String,
 }
 
 /// Whether a harness session is ready to receive a turn.

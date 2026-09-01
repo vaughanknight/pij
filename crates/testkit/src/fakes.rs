@@ -26,7 +26,7 @@ use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
 use pij_core::model::{
     BindHealth, DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, ModelRow, Msg,
-    Outcome, Pane, ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
+    Outcome, Pane, PaneProcess, ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
 };
 use pij_core::ports::{
     DeliveryAck, DeliveryEnqueue, HarnessPort, LaunchCommand, LivenessPort, Queue, Registry,
@@ -751,6 +751,12 @@ struct TmuxState {
     /// MANY captures does not have to script one per call.
     standing_capture: Option<String>,
     typing: bool,
+    /// What tmux reports for `#{pane_pid}`/`#{pane_current_path}`, per pane.
+    ///
+    /// Separate from `panes` ON PURPOSE: a pane that tmux LISTS but whose
+    /// process cannot be read is a real state (the pane died between the two
+    /// calls), and folding the two would make it unscriptable.
+    pane_processes: BTreeMap<String, PaneProcess>,
     taps: BTreeMap<String, PathBuf>,
     tap_drains: VecDeque<std::result::Result<Vec<u8>, String>>,
     recorder: Recorder,
@@ -765,6 +771,16 @@ impl FakeTmux {
     /// Arrange a pane.
     pub fn with_pane(self, pane: Pane) -> Self {
         self.state.lock().expect("fake tmux mutex").panes.push(pane);
+        self
+    }
+
+    /// Arrange the process tmux reports for a pane.
+    pub fn with_pane_process(self, pane: &str, process: PaneProcess) -> Self {
+        self.state
+            .lock()
+            .expect("fake tmux mutex")
+            .pane_processes
+            .insert(pane.to_string(), process);
         self
     }
 
@@ -871,6 +887,15 @@ impl TmuxPort for FakeTmux {
         let mut state = self.state.lock().expect("fake tmux mutex");
         state.recorder.record("list_panes".to_string());
         Ok(state.panes.clone())
+    }
+
+    async fn pane_process(&self, pane: &str) -> Result<Option<PaneProcess>> {
+        let mut state = self.state.lock().expect("fake tmux mutex");
+        state.recorder.record(format!("pane_process:{pane}"));
+        // An unarranged pane has NO process, which is the "pane is gone" answer.
+        // Nothing is invented: a test that wants a process must say so, so an
+        // adoption that succeeds proves the fake was asked and answered.
+        Ok(state.pane_processes.get(pane).cloned())
     }
 
     async fn submit(&self, pane: &str, text: &str) -> Result<()> {
