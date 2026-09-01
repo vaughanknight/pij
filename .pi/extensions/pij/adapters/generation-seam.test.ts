@@ -225,9 +225,13 @@ describe("`inbox` is DENIED, and the paneless form stays on legacy (F-U5)", () =
 });
 
 describe("report is five leaf rows, and `verify` is not one of them (finding 6)", () => {
-	it("routes the five shapes rs can honour", () => {
+	it("routes the five shapes rs can honour, all at the one endpoint it serves", () => {
 		for (const leaf of ["now", "state", "blocked", "clear", "question"]) {
-			expect(findRoute("report", leaf)?.rsPath).toBe(`/v1/report/${leaf}`);
+			// One path, five rows. The leaf travels in argv; rs registers a
+			// single `/v1/report`, and pointing rows at `/v1/report/<leaf>` sent
+			// every report to a 404 that looked like an unlanded verb.
+			expect(findRoute("report", leaf)?.rsPath).toBe("/v1/report");
+			expect(findRoute("report", leaf)?.leaf).toBe(leaf);
 		}
 	});
 
@@ -410,70 +414,57 @@ describe("the diagnostic tells the truth about leaf rows", () => {
 	});
 });
 
-/** Item 8 — the cross-runtime literal seam.
+/** Item 8 — the cross-runtime wire contract, held by a SHARED FIXTURE.
  *
- *  The TS writer emits caller keys; a Rust handler reads them by literal. The
- *  agreement is held together by two files happening to match, and a rename on
- *  either side presents as a GREEN SUITE ON BOTH plus a fleet that silently
- *  stops being attributable. PIJ_SPAWN_ID cost this repo the same way.
+ *  `crates/daemon/tests/fixtures/caller-context.wire.json` IS the contract. This
+ *  half asserts the shim WRITES exactly it; `report_http.rs` asserts the daemon
+ *  READS exactly it and that every field arrives populated.
  *
- *  LIMITATION, named rather than left to be discovered: arm C is DORMANT on this
- *  branch. No Rust reader of these keys exists yet (u-report is not merged), so
- *  it passes vacuously today and only bites once a reader lands. Arm D exists so
- *  the scanner itself is not taken on trust, and the PM must confirm at
- *  composition that arm C went live. */
+ *  A FIXTURE, NOT A SCANNER, and the reason is the bug that got here. The first
+ *  version of this guard scanned Rust sources for the TS spelling. To be right
+ *  it had to model serde's rename/alias; to catch the ACTUAL defect it would
+ *  also have had to model that serde SILENTLY DROPS UNKNOWN FIELDS — the whole
+ *  reason a total disagreement produced no symptom either side could see. A
+ *  scanner that must model the other runtime's deserializer is the wrong tool.
+ *  Both halves here assert on POPULATED values, so neither can pass vacuously,
+ *  which is exactly the property the scanner lacked: a deliberate half-rename
+ *  survived it.
+ *
+ *  This platform had already written the remedy down once, for PIJ_SPAWN_ID: a
+ *  shared artifact, not a human-verified name match. */
 describe("cross-runtime caller-key seam (item 8)", () => {
-	const CRATES = fileURLToPath(new URL("../../../../crates", import.meta.url));
+	const FIXTURE = fileURLToPath(
+		new URL("../../../../crates/daemon/tests/fixtures/caller-context.wire.json", import.meta.url),
+	);
 
-	const rustSources = (): readonly { path: string; text: string }[] => {
-		const out: { path: string; text: string }[] = [];
-		const walk = (dir: string): void => {
-			let entries: import("node:fs").Dirent[];
-			try {
-				entries = readdirSync(dir, { withFileTypes: true });
-			} catch {
-				return;
-			}
-			for (const entry of entries) {
-				const full = join(dir, entry.name);
-				if (entry.isDirectory()) {
-					if (entry.name !== "target") walk(full);
-				} else if (entry.name.endsWith(".rs")) {
-					out.push({ path: full, text: readFileSync(full, "utf8") });
-				}
-			}
-		};
-		walk(CRATES);
-		return out;
+	const wireContract = (): Record<string, unknown> => {
+		const parsed = JSON.parse(readFileSync(FIXTURE, "utf8")) as Record<string, unknown>;
+		delete parsed._comment;
+		return parsed;
 	};
 
-	/** Which keys actually IDENTIFY a caller-block reader — measured, not
-	 *  assumed. Counting `"<key>"` across crates/*.rs today:
-	 *      pid 5 · cwd 2 · procStart 1 (claude_bind.rs) · the other six 0.
-	 *  So the process-shaped keys are ordinary spellings this repo already uses
-	 *  elsewhere; keying the scan on them flagged six unrelated files, then one.
-	 *  Only the six identity keys are unique to this block. */
-	const SHARED_SPELLINGS = ["cwd", "pid", "procStart"];
-	const DISTINCTIVE = CALLER_WIRE_KEYS.filter((key) => !SHARED_SPELLINGS.includes(key));
+	it("the shim WRITES exactly the wire contract", () => {
+		const contract = wireContract();
+		const caller = buildCallerContext(
+			{
+				PIJ_SESSION_ID: contract.pijSessionId as string,
+				TMUX_PANE: contract.tmuxPane as string,
+				PIJ_PARENT_ID: contract.pijParentId as string,
+				CLAUDE_CODE_SESSION_ID: contract.claudeCodeSessionId as string,
+				COPILOT_AGENT_SESSION_ID: contract.copilotAgentSessionId as string,
+				CODEX_THREAD_ID: contract.codexThreadId as string,
+			},
+			{
+				cwd: contract.cwd as string,
+				pid: contract.pid as number,
+				procStart: contract.procStart as number,
+			},
+		);
+		expect(caller).toEqual(contract);
+	});
 
-	/** A Rust file that reads any DISTINCTIVE caller key must read ALL the wire
-	 *  keys. A file naming a strict subset is a half-renamed reader — the drift
-	 *  this whole guard exists for. */
-	const partialReaders = (
-		sources: readonly { path: string; text: string }[],
-		keys: readonly string[],
-	): readonly { path: string; missing: readonly string[] }[] =>
-		sources
-			.map(({ path, text }) => ({
-				path,
-				distinctive: DISTINCTIVE.filter((key) => text.includes(`"${key}"`)),
-				missing: keys.filter((key) => !text.includes(`"${key}"`)),
-			}))
-			.filter((row) => row.distinctive.length > 0 && row.missing.length > 0)
-			.map(({ path, missing }) => ({ path, missing }));
-
-	// Arm A — always live. The wire really carries these names.
-	it("the body on the wire carries exactly the wire keys", async () => {
+	it("and puts exactly it on the wire", async () => {
+		const contract = wireContract();
 		const seen: Seen[] = [];
 		await routeVerb(
 			"whoami",
@@ -481,67 +472,38 @@ describe("cross-runtime caller-key seam (item 8)", () => {
 			["whoami"],
 			deps(seen, {
 				env: {
-					...CALLER_ENV,
-					PIJ_PARENT_ID: "pij-parent",
-					COPILOT_AGENT_SESSION_ID: "c-1",
-					CODEX_THREAD_ID: "t-1",
+					PIJ_RS_ADDR: "127.0.0.1:7461",
+					PIJ_RS_STATE_DIR: "/tmp/s",
+					PIJ_SESSION_ID: contract.pijSessionId as string,
+					TMUX_PANE: contract.tmuxPane as string,
+					PIJ_PARENT_ID: contract.pijParentId as string,
+					CLAUDE_CODE_SESSION_ID: contract.claudeCodeSessionId as string,
+					COPILOT_AGENT_SESSION_ID: contract.copilotAgentSessionId as string,
+					CODEX_THREAD_ID: contract.codexThreadId as string,
 				},
-				cwd: () => "/w",
-				pid: () => 7,
-				procStart: () => 20260901120000,
+				cwd: () => contract.cwd as string,
+				pid: () => contract.pid as number,
+				procStart: () => contract.procStart as number,
 			}),
 		);
-		const body = JSON.parse(seen[0]?.body ?? "{}") as { caller?: Record<string, unknown> };
-		expect(Object.keys(body.caller ?? {}).sort()).toEqual([...CALLER_WIRE_KEYS].sort());
+		const body = JSON.parse(seen[0]?.body ?? "{}") as { caller?: unknown };
+		expect(body.caller).toEqual(contract);
 	});
 
-	// Arm B — always live. ONE TS-side copy of the spelling, not two.
+	// Non-vacuity: the fixture must actually carry every key, or "deep-equals the
+	// fixture" would be a weaker claim than it reads as.
+	it("the fixture carries every wire key, populated", () => {
+		const contract = wireContract();
+		expect(Object.keys(contract).sort()).toEqual([...CALLER_WIRE_KEYS].sort());
+		for (const [key, value] of Object.entries(contract)) {
+			expect(value, key).not.toBeUndefined();
+			expect(value, key).not.toBeNull();
+			expect(String(value).length, key).toBeGreaterThan(0);
+		}
+	});
+
 	it("the wire keys are derived from the allowlist, not a second hand-written list", () => {
 		for (const [, field] of CALLER_ENV_ALLOWLIST) expect(CALLER_WIRE_KEYS).toContain(field);
-		expect(CALLER_WIRE_KEYS).toEqual([
-			"pijSessionId",
-			"tmuxPane",
-			"pijParentId",
-			"claudeCodeSessionId",
-			"copilotAgentSessionId",
-			"codexThreadId",
-			"cwd",
-			"pid",
-			"procStart",
-		]);
-	});
-
-	// Arm C — dormant until a Rust reader lands, then load-bearing.
-	it("no Rust reader names a STRICT SUBSET of the wire keys", () => {
-		expect(partialReaders(rustSources(), CALLER_WIRE_KEYS)).toEqual([]);
-	});
-
-	// Arm D — positive control, so arm C's silence is provably "nothing is
-	// wrong" rather than "the scanner cannot see".
-	it("a file using only a SHARED spelling is not mistaken for a reader", () => {
-		// claude_bind.rs uses "procStart" for its own purposes and is not a
-		// caller-block reader. Flagging it would train the next person to
-		// ignore this test.
-		expect(
-			partialReaders([{ path: "/fake/unrelated.rs", text: 'j["procStart"]' }], CALLER_WIRE_KEYS),
-		).toEqual([]);
-	});
-
-	it("the scan catches a half-renamed reader", () => {
-		const halfRenamed = [
-			{
-				path: "/fake/report.rs",
-				text: 'let id = caller.get("pijSessionId"); let pane = caller.get("tmux_pane");',
-			},
-		];
-		const found = partialReaders(halfRenamed, CALLER_WIRE_KEYS);
-		expect(found).toHaveLength(1);
-		expect(found[0]?.missing).toContain("tmuxPane");
-	});
-
-	it("and passes a reader that names them all", () => {
-		const text = CALLER_WIRE_KEYS.map((key) => `caller.get("${key}")`).join(";");
-		expect(partialReaders([{ path: "/fake/ok.rs", text }], CALLER_WIRE_KEYS)).toEqual([]);
 	});
 });
 
@@ -568,5 +530,54 @@ describe("item 7 uses u-report's `line` rather than re-deriving the sentence", (
 		expect(renderRsAnswer(row, { line: { not: "a string" } }, ["report", "now"]).kind).toBe(
 			"no-renderer",
 		);
+	});
+});
+
+/** Every path the table points at must be a path rs actually registers.
+ *
+ *  This exists because the report rows shipped pointing at `/v1/report/now`,
+ *  `/v1/report/state` and three siblings — paths rs does not serve. The failure
+ *  was invisible by construction: each call 404'd, classified as
+ *  not-implemented, fell back to legacy, and produced exactly the behaviour of
+ *  a verb wave 2 had not landed yet. Every test passed. Only driving the real
+ *  CLI against a real daemon showed it.
+ *
+ *  Same lesson as the caller-key fixture, one layer up: the two runtimes agree
+ *  on a NAME, and nothing but a shared reading of the same source keeps them
+ *  agreeing. */
+describe("every routed path is a path rs registers", () => {
+	const MOD_RS = fileURLToPath(
+		new URL("../../../../crates/daemon/src/http/mod.rs", import.meta.url),
+	);
+
+	const registeredPaths = (source: string): ReadonlySet<string> => {
+		const paths = new Set<string>();
+		for (const match of source.matchAll(/Self::\w+\s*=>\s*"(\/v1\/[^"]*|\/health)"/g)) {
+			paths.add(match[1] as string);
+		}
+		if (paths.size === 0) throw new Error("no endpoint paths found — did Endpoint::path move?");
+		return paths;
+	};
+
+	it("the daemon registers every rsPath in the route table", () => {
+		const registered = registeredPaths(readFileSync(MOD_RS, "utf8"));
+		const missing = RS_ROUTE_TABLE.filter((row) => !registered.has(row.rsPath)).map((row) => ({
+			verb: row.leaf === undefined ? row.verb : `${row.verb} ${row.leaf}`,
+			rsPath: row.rsPath,
+		}));
+		expect(missing).toEqual([]);
+	});
+
+	// Positive control — the exact defect this was written for.
+	it("catches a path rs does not serve", () => {
+		const registered = registeredPaths(readFileSync(MOD_RS, "utf8"));
+		expect(registered.has("/v1/report")).toBe(true);
+		expect(registered.has("/v1/report/now")).toBe(false);
+	});
+
+	it("the five report rows share the one endpoint rs registers", () => {
+		const reportRows = RS_ROUTE_TABLE.filter((row) => row.verb === "report");
+		expect(reportRows).toHaveLength(5);
+		expect([...new Set(reportRows.map((row) => row.rsPath))]).toEqual(["/v1/report"]);
 	});
 });

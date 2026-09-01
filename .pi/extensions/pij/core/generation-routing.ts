@@ -98,38 +98,48 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 		method: "POST",
 		why: "ready gesture's own success criterion (PM ack O2) — legacy answering it for an rs seat is the identity violation this plan prevents",
 	},
+	// FIVE LEAF ROWS ON ONE PATH. Per-leaf so `verify` can be held back; all of
+	// them point at `/v1/report`, the single endpoint rs registers
+	// (crates/daemon/src/http/mod.rs, `Endpoint::Report => "/v1/report"`). The
+	// leaf travels in `argv`, which is how the handler already reads it.
+	//
+	// The first version of these rows invented `/v1/report/<leaf>` paths rs does
+	// not serve. Nothing caught it: every report 404'd, classified as
+	// not-implemented, fell back to legacy, and looked EXACTLY like a verb wave 2
+	// had not landed yet — every suite green. Only driving the real CLI against a
+	// real daemon showed it, which is why the path-agreement test exists.
 	{
 		verb: "report",
 		leaf: "now",
-		rsPath: "/v1/report/now",
+		rsPath: "/v1/report",
 		method: "POST",
 		why: "ac-1142 — the card must be written where the seat lives",
 	},
 	{
 		verb: "report",
 		leaf: "state",
-		rsPath: "/v1/report/state",
+		rsPath: "/v1/report",
 		method: "POST",
 		why: "ac-1144 — report family parity",
 	},
 	{
 		verb: "report",
 		leaf: "blocked",
-		rsPath: "/v1/report/blocked",
+		rsPath: "/v1/report",
 		method: "POST",
 		why: "ac-1144 — report family parity",
 	},
 	{
 		verb: "report",
 		leaf: "clear",
-		rsPath: "/v1/report/clear",
+		rsPath: "/v1/report",
 		method: "POST",
 		why: "ac-1144 — report family parity",
 	},
 	{
 		verb: "report",
 		leaf: "question",
-		rsPath: "/v1/report/question",
+		rsPath: "/v1/report",
 		method: "POST",
 		why: "ac-1144 — report family parity",
 	},
