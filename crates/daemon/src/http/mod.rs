@@ -816,7 +816,10 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
 
     envelope(
         StatusCode::OK,
-        &Envelope::ok("pij state", state_card(seat, liveness, &state.machine_alias)),
+        &Envelope::ok(
+            "pij state",
+            state_card(seat, liveness, &state.machine_alias),
+        ),
     )
 }
 
