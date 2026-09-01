@@ -132,8 +132,14 @@ enum Command {
         #[arg(long)]
         parent: Option<String>,
         /// Configure Claude to accept cross-session inbound messages.
-        #[arg(long)]
+        /// Claude seats default to accepting; this flag affirms that default
+        /// explicitly and is kept for existing callers.
+        #[arg(long, conflicts_with = "no_accept_inbound")]
         accept_inbound: bool,
+        /// Opt this Claude seat OUT of the default inbound-consent stamp.
+        /// Has no effect on non-Claude harnesses, which never accept it.
+        #[arg(long, conflicts_with = "accept_inbound")]
+        no_accept_inbound: bool,
     },
     /// Relaunch one tombstoned seat with its prior identity and launch intent.
     Revive {
@@ -781,6 +787,7 @@ fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijE
         name,
         parent,
         accept_inbound,
+        no_accept_inbound,
     } = command
     else {
         return Ok(None);
@@ -823,6 +830,14 @@ fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijE
             message: "cwd is not valid UTF-8 and cannot be stored in a descriptor".to_string(),
         })?;
 
+    // Claude seats accept inbound by default (Jordan's ruling, plan 116); an explicit
+    // --no-accept-inbound withdraws it. Non-Claude harnesses keep the prior behavior:
+    // false unless explicitly requested, which build_spawn_plan then refuses by name.
+    let accept_inbound = match harness {
+        Harness::Claude => !*no_accept_inbound,
+        _ => *accept_inbound,
+    };
+
     Ok(Some(SpawnRequest {
         id: id.clone().map(Into::into),
         harness: *harness,
@@ -834,7 +849,7 @@ fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijE
         caller_pane,
         name: name.clone(),
         parent: parent.clone().map(Into::into),
-        accept_inbound: *accept_inbound,
+        accept_inbound,
     }))
 }
 
@@ -919,8 +934,9 @@ mod tests {
     use pij_core::model::SeatId;
 
     use super::{
-        Cli, Command, DaemonAction, git_dir_is_linked, prepare_revive_request, resolve_bind_addr,
-        resolve_client_addr, resolve_inbox_seat, resolve_state_dir,
+        Cli, Command, DaemonAction, git_dir_is_linked, prepare_revive_request,
+        prepare_spawn_request, resolve_bind_addr, resolve_client_addr, resolve_inbox_seat,
+        resolve_state_dir,
     };
 
     #[test]
@@ -1157,6 +1173,109 @@ mod tests {
         assert!(
             id.is_none(),
             "the CLI must not invent an id: the daemon holds the roster and the lock"
+        );
+    }
+
+    #[test]
+    fn claude_spawn_accepts_inbound_by_default() {
+        let parsed = Cli::try_parse_from([
+            "pij-rs",
+            "spawn",
+            "--harness",
+            "claude",
+            "--cwd",
+            "/abs/tree",
+            "--session",
+            "fleet",
+        ])
+        .expect("default claude spawn parses");
+        let request = prepare_spawn_request(&parsed.command)
+            .expect("valid request")
+            .expect("spawn request");
+        assert!(
+            request.accept_inbound,
+            "plan 116: Claude seats accept inbound by default with no flags"
+        );
+    }
+
+    #[test]
+    fn no_accept_inbound_withdraws_the_claude_default() {
+        let parsed = Cli::try_parse_from([
+            "pij-rs",
+            "spawn",
+            "--harness",
+            "claude",
+            "--cwd",
+            "/abs/tree",
+            "--session",
+            "fleet",
+            "--no-accept-inbound",
+        ])
+        .expect("opt-out flag parses");
+        let request = prepare_spawn_request(&parsed.command)
+            .expect("valid request")
+            .expect("spawn request");
+        assert!(
+            !request.accept_inbound,
+            "--no-accept-inbound must withdraw the default"
+        );
+    }
+
+    #[test]
+    fn explicit_accept_inbound_still_works_for_claude() {
+        let parsed = Cli::try_parse_from([
+            "pij-rs",
+            "spawn",
+            "--harness",
+            "claude",
+            "--cwd",
+            "/abs/tree",
+            "--session",
+            "fleet",
+            "--accept-inbound",
+        ])
+        .expect("explicit affirmation parses");
+        let request = prepare_spawn_request(&parsed.command)
+            .expect("valid request")
+            .expect("spawn request");
+        assert!(request.accept_inbound);
+    }
+
+    #[test]
+    fn accept_inbound_and_no_accept_inbound_conflict() {
+        let parsed = Cli::try_parse_from([
+            "pij-rs",
+            "spawn",
+            "--harness",
+            "claude",
+            "--accept-inbound",
+            "--no-accept-inbound",
+        ]);
+        assert!(
+            parsed.is_err(),
+            "affirming and withdrawing consent in the same call must not silently pick one"
+        );
+    }
+
+    #[test]
+    fn non_claude_spawn_defaults_to_no_inbound_setting() {
+        let parsed = Cli::try_parse_from([
+            "pij-rs",
+            "spawn",
+            "--harness",
+            "copilot",
+            "--cwd",
+            "/abs/tree",
+            "--session",
+            "fleet",
+        ])
+        .expect("default copilot spawn parses");
+        let request = prepare_spawn_request(&parsed.command)
+            .expect("valid request")
+            .expect("spawn request");
+        assert!(
+            !request.accept_inbound,
+            "non-Claude harnesses must not silently inherit the Claude default"
         );
     }
 

@@ -170,7 +170,7 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
     });
     let addr = addr.to_string();
 
-    let spawn = |id: &str, harness: &str, accept_inbound: bool| {
+    let spawn = |id: &str, harness: &str, flag: Option<&str>| {
         let mut args = vec![
             "spawn",
             "--id",
@@ -188,8 +188,8 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
             "--session",
             "fleet",
         ];
-        if accept_inbound {
-            args.push("--accept-inbound");
+        if let Some(flag) = flag {
+            args.push(flag);
         }
         let output = run_cli(&dir, &addr, &args);
         assert!(
@@ -202,14 +202,20 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
         envelope.data.expect("spawn descriptor")
     };
 
-    let closed = spawn("pij-e2e-closed", "claude", false);
-    let accepted = spawn("pij-e2e-open", "claude", true);
+    let closed = spawn("pij-e2e-closed", "claude", Some("--no-accept-inbound"));
+    let accepted = spawn("pij-e2e-open", "claude", Some("--accept-inbound"));
+    let defaulted = spawn("pij-e2e-default", "claude", None);
     assert_eq!(closed.cross_session_inbound_accept, Some(false));
     assert_eq!(accepted.cross_session_inbound_accept, Some(true));
+    assert_eq!(
+        defaulted.cross_session_inbound_accept,
+        Some(true),
+        "Claude seats accept inbound by default (Jordan's ruling, plan 116)"
+    );
     assert_eq!(closed.rpc_port_intent, None);
     assert_eq!(accepted.rpc_port_intent, None);
 
-    let first = spawn("pij-e2e-rpc", "copilot", false);
+    let first = spawn("pij-e2e-rpc", "copilot", None);
     assert_eq!(first.proc, None, "spawn writes a pre-bind row");
     let old_port = first
         .rpc_port_intent
@@ -225,10 +231,14 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
         !allocation_view[0].contains(&61_003),
         "a tombstoned seat no longer reserves its old port"
     );
-    assert_eq!(calls.len(), 3);
+    assert_eq!(calls.len(), 4);
     assert!(!calls[0].contains("--ui-server"));
     assert!(calls[1].contains(r#"{\"crossSessionInbound\":\"accept\"}"#));
-    assert!(calls[2].contains(&format!("\"--ui-server\", \"--port\", \"{old_port}\"")));
+    assert!(
+        calls[2].contains(r#"{\"crossSessionInbound\":\"accept\"}"#),
+        "default-path claude spawn must emit the setting in argv, not just the descriptor stamp"
+    );
+    assert!(calls[3].contains(&format!("\"--ui-server\", \"--port\", \"{old_port}\"")));
     let mut postmortem = first.clone();
     postmortem.role = Some("reviewer".to_string());
     postmortem.semantic_state = Some(SemanticState::Done);
@@ -256,7 +266,7 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
         !live_collision.status.success(),
         "a live id must still refuse"
     );
-    assert_eq!(tmux.calls().len(), 3, "live collision launches nothing");
+    assert_eq!(tmux.calls().len(), 4, "live collision launches nothing");
 
     registry
         .tombstone(&first.id, "test transition")
@@ -274,7 +284,7 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
     );
     let recycled = std::net::TcpListener::bind(("127.0.0.1", old_port))
         .expect("old intent port is free for the recycled-owner witness");
-    let revived = spawn("pij-e2e-rpc", "copilot", false);
+    let revived = spawn("pij-e2e-rpc", "copilot", None);
     let fresh_port = revived.rpc_port_intent.expect("revive stamps fresh intent");
     assert_ne!(fresh_port, old_port, "revive must replace the old value");
     drop(recycled);
