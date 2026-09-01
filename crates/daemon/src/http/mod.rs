@@ -1274,7 +1274,16 @@ async fn report(State(state): State<AppState>, Json(request): Json<ReportRequest
     // in, with every surface reporting success. That is the split-brain this
     // plan exists to prevent.
     match state.services.registry.get(&seat).await {
-        Ok(Some(_)) => {}
+        // EXISTENCE IS NOT ENOUGH — the row must be LIVE (F004). A tombstoned
+        // seat still has a row, so an existence check writes cards and success
+        // receipts for a recipient DELIVERY already refuses. Identity, reporting
+        // and delivery have to agree about who is addressable, or the fleet gets
+        // a card it can read and a seat it cannot reach.
+        Ok(Some(descriptor)) => {
+            if let Some(refusal) = identity::refuse_tombstoned(command, &descriptor) {
+                return refusal;
+            }
+        }
         Ok(None) => {
             return refused(
                 command,
