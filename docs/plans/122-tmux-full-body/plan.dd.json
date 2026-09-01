@@ -1,0 +1,87 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "tmux-full-body",
+        "slug": "tmux-full-body",
+        "ordinal": 122,
+        "status": "draft",
+        "summary": "tmux delivery types the FULL framed body into the pane \u2014 the pointer/inbox rung is retired for tmux-reachable seats (Jordan 2026-09-01: tmux is instant; the pull is an extra turn)."
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Ruling rulings/2026-09-01-tmux-types-full-bodies.md (vendored in assets/inputs/): for a pane seat with no socket rung (copilot/codex CLI; any seat when the socket is unavailable), rs must tmux-submit the full framed body as the turn. Today the drain worker announces a body-free pointer (crates/daemon/src/pointer/mod.rs:40-45) and the seat must pull pij inbox \u2014 an extra turn per message. Politeness gate unchanged: typing veto and composer-idle still govern WHEN; a busy composer queues and retries, never degrades to a pointer."
+    },
+    {
+      "name": "goals",
+      "value": [
+        "New delivery behavior: Pointer rung replaced by full-body tmux submit for pane seats without a socket",
+        "Body framed by the ONE shared formatter (crates/core/src/framing.rs, plan 118) \u2014 head [pij-rs from X] and tail [/pij] intact",
+        "Bodies >1022 bytes arrive INTACT (the macOS pty chunk hazard woodpecker measured: send-keys silently keeps only the tail) \u2014 chunked typing or tmux load-buffer/paste-buffer, coder probes and picks with evidence",
+        "Delivery outcome recorded honestly: typed-to-pane is its own receipt class, distinct from socket InjectedToTransport and from any reader-read ack"
+      ]
+    },
+    {
+      "name": "non_goals",
+      "value": [
+        "Claude socket path (untouched \u2014 socket remains the preferred rung)",
+        "The park-after-N announcer for genuinely unreachable seats (no pane = Observe/Queue as today)",
+        "s121 consent stamping (separate unit, separate worktree)",
+        "Reader-read receipts for typed delivery \u2014 tmux has no ack; do not fake one"
+      ]
+    },
+    {
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "ac-1",
+          "text": "Live witness: a hand-started copilot or codex CLI pane seat registered in rs receives a pij send as the FULL framed body typed+submitted into its pane \u2014 witnessed in the pane, no pij inbox involved",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-2",
+          "text": "A 3000+ byte body arrives byte-intact in the pane (proven against the 1022-byte pty hazard; test red first on naive send-keys)",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-3",
+          "text": "Typing veto still wins: with the pane's composer holding human keystrokes, delivery queues and retries \u2014 the body is never spliced into a human's draft (test from a composer with content)",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-4",
+          "text": "Framing: head and tail markers present exactly once, from framing.rs \u2014 no second formatter minted",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-5",
+          "text": "Claude socket delivery unaffected: existing socket tests green unmodified; a socket-available seat never falls to typing",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-6",
+          "text": "pij-gate green, typecheck green, vitest green modulo known npm-resolution pre-existing failure",
+          "state": "unchecked"
+        }
+      ]
+    },
+    {
+      "name": "phases",
+      "value": [
+        {
+          "id": "ph-9c5e",
+          "title": "Phase 1 \u2014 body rung + hazard proof + live witness",
+          "brief": "Single unit; PM codes it itself, reviewer after.",
+          "state": "unchecked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
+        }
+      ]
+    }
+  ],
+  "references": []
+}
