@@ -1,0 +1,64 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "PM packet \u2014 s123 one-message-one-delivery",
+        "role": "pm",
+        "plan": "docs/plans/123-one-message-one-delivery/plan.dd.json",
+        "seat": "(filled at spawn)",
+        "updated": "2026-09-01"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "Deliver plan 123: one message = one delivery. Fix the pushed-event/ack seam so a pi/omp seat is not served the same body twice. SMALL UNIT, NO FAN-OUT: you code it, reviewer after."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        "Read plan.dd.md, impl-guide.dd.md, assets/inputs/omp-extension-delivery-findings.md (the diagnosis, with file:line receipts), .agents/skills/pij-team/TENETS.md",
+        "Reproduce the duplicate FIRST (ac-2) \u2014 you are fixing an observed defect, not a described one",
+        "Ack this packet to prime pij-still-weasel with a NUMBERED plan before coding; prime rules the ack",
+        "Base main b48c2828; rebase after PR #341 merges. Coordinate through the prime with s122 (pij-social-marsupial) \u2014 you share the delivery seam, you never talk sideways",
+        "This is a cross-runtime seam: prove the wire END TO END, not by two green suites",
+        "Report card at start/finish (pij report now)"
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        "prime pij-still-weasel \u2014 pane %2081; pij send pij-still-weasel",
+        "s122 PM pij-social-marsupial \u2014 adjacent seam, ALL coordination via prime",
+        "reviewer appointed by prime at review time"
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/pij-worktrees/s123-one-message-one-delivery",
+        "branch": "s123/one-message-one-delivery",
+        "fence": "crates/daemon/src/delivery/mod.rs (PushedEvent + publish path) \u00b7 crates/core (event type, additive only) \u00b7 .pi/extensions/pij/adapters/rust-runtime.ts \u00b7 .pi/extensions/pij/adapters/daemon-http.ts (ack call only) \u00b7 their tests \u00b7 docs/plans/123-one-message-one-delivery/**",
+        "forbidden_note": "Never write .the-flow-state.json, the-flow.json, the-flow.md. Do NOT touch crates/transport/src/uds.rs, s121 files (registration.rs, store/migrations, migrate.rs), or s122 files (core/delivery.rs rung selection, pointer/**, tmux/lib.rs). Outside the fence = stop and ask the prime."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        "ac-1..ac-6 witnessed, ac-1/ac-2 live in an omp pane",
+        "gate + typecheck + vitest green (modulo known pre-existing)",
+        "PR open, reviewer verdict via prime before merge"
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        "assets/inputs/omp-extension-delivery-findings.md (diagnosis, credit pij-killing-time)",
+        "governance PRD req-0023 (this row) and req-0022 (s122, the interaction)"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "one-message-one-delivery",
+        "slug": "one-message-one-delivery",
+        "ordinal": 123,
+        "status": "draft",
+        "summary": "A message is delivered exactly once: the extension that consumes a pushed event can ack its queue row, so the daemon never also pointers (or, post-s122, re-types) the same body."
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Diagnosed defect (assets/inputs/omp-extension-delivery-findings.md, file:line receipts): DeliveryService publishes message.pushed even when the computed outcome is Queued (crates/daemon/src/delivery/mod.rs:298-322); PushedEvent carries NO job_id (:527-539) while ack requires the claimed job_id (:30-38, :340-413). The pi/omp extension therefore injects the full body (rust-runtime.ts:104-123 \u2192 session.ts:589-600) but cannot ack, the row stays live, and the pointer worker announces it (pointer/worker.rs:292-327) because uds can_deliver rejects non-Claude harnesses. Observed live: omp got the body at transcripts/accept-omp-lark-%2167.txt:145 and the pointer at :153. URGENCY: after s122 the unacked row will TYPE the body a second time \u2014 the duplicate gets worse."
+    },
+    {
+      "name": "goals",
+      "value": [
+        "One message = one delivery for a pi/omp seat: body injected once, no pointer, no retype",
+        "The consumer can ack what it took \u2014 job_id (or an equivalent claim handle) reaches the extension with the pushed event",
+        "The daemon never announces/types a row an extension consumer has legitimately taken",
+        "Wire change is additive and skew-safe: an OLD extension against a NEW daemon must not lose delivery, and a NEW extension against an OLD daemon must not double-ack (state which direction fails loudly and prove it)"
+      ]
+    },
+    {
+      "name": "non_goals",
+      "value": [
+        "Event-stream cursor + reconnect/replay (the SECOND defect in the same findings doc \u2014 its own unit, own witness)",
+        "Claude socket path and s121 consent stamping",
+        "Widening uds can_deliver to non-Claude harnesses (that is the pi-extension transport question, not this seam)"
+      ]
+    },
+    {
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "ac-1",
+          "text": "Live witness: an omp seat receives ONE message and shows exactly one rendering \u2014 the injected [pij from <id>] body \u2014 and NO [pij-rs \u2026]message waiting pointer; proven in the pane AND by the queue row reaching a terminal acked state",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-2",
+          "text": "Pre-fix red: the same scenario on the unfixed tree produces both renderings (reproduce the observed duplicate before fixing it)",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-3",
+          "text": "A body the extension did NOT consume (no live consumer attached) still reaches the seat by the daemon's own rung \u2014 the fix must not create a silent drop; both worlds emit a positive artifact",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-4",
+          "text": "Version skew tested in both directions with a stated, loud failure mode (old extension/new daemon; new extension/old daemon) \u2014 no silent body loss, no double-ack",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-5",
+          "text": "Compatible with s122: with tmux full-body typing enabled, an extension-consumed message is typed ZERO additional times (run the composed check against s122's branch or state precisely why it cannot be run yet)",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-6",
+          "text": "pij-gate green, typecheck green, vitest green modulo the known pre-existing npm-resolution failure",
+          "state": "unchecked"
+        }
+      ]
+    },
+    {
+      "name": "phases",
+      "value": [
+        {
+          "id": "ph-0177",
+          "title": "Phase 1 \u2014 ack seam + duplicate witness",
+          "brief": "One unit; PM codes it, reviewer after. Spans Rust daemon and the TS extension \u2014 one seam, two sides.",
+          "state": "unchecked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
+        }
+      ]
+    }
+  ],
+  "references": []
+}
