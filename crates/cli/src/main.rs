@@ -13,7 +13,9 @@ use pij_cli::{
     render_frame, setup_refusal,
 };
 use pij_core::error::PijError;
-use pij_core::model::{Envelope, ErrorKind, Harness, SeatId};
+use pij_core::model::{Envelope, ErrorKind, Event, Harness, SeatId};
+use pij_core::wire;
+use pij_harnesses::{claude_homes, ensure_claude_inbound_accept, inspect_claude_inbound};
 use serde_json::{Value, json};
 
 #[derive(Parser)]
@@ -61,6 +63,11 @@ enum Command {
     },
     /// Ask a running daemon whether it is healthy.
     Ping,
+    /// Inspect local client configuration without changing it.
+    Doctor {
+        #[command(subcommand)]
+        action: DoctorAction,
+    },
     /// Register one seat claim for daemon verification.
     Register {
         /// Existing same-process seat replaced by this registration.
@@ -372,6 +379,12 @@ enum DaemonAction {
     Bounce,
 }
 
+#[derive(Clone, Debug, Subcommand)]
+enum DoctorAction {
+    /// Report cross-session inbound state for every discovered Claude home.
+    ClaudeInbound,
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     run(Cli::parse()).await
@@ -434,6 +447,13 @@ async fn run(cli: Cli) -> ExitCode {
         };
     }
 
+    if let Command::Doctor {
+        action: DoctorAction::ClaudeInbound,
+    } = &cli.command
+    {
+        return run_claude_inbound_doctor(cli.json);
+    }
+
     let prepared_spawn = match prepare_spawn_request(&cli.command) {
         Ok(request) => request,
         Err(error) => {
@@ -465,6 +485,7 @@ async fn run(cli: Cli) -> ExitCode {
 
     match cli.command {
         Command::Daemon { .. } => unreachable!("daemon returned before client construction"),
+        Command::Doctor { .. } => unreachable!("doctor returned before client construction"),
         Command::Ping => emit(&client.ping().await, cli.json),
         Command::Sidecar { action } => emit(&client.sidecar(&action.request()).await, cli.json),
         Command::Register {
@@ -505,6 +526,7 @@ async fn run(cli: Cli) -> ExitCode {
             harness,
             parent,
         } => {
+            warn_caller_claude_home(&harness);
             let argv = adopt_argv(
                 pane.or_else(|| std::env::var("TMUX_PANE").ok()).as_deref(),
                 &harness,
@@ -792,6 +814,31 @@ fn adopt_argv(pane: Option<&str>, harness: &str, parent: Option<&str>) -> Vec<St
 /// `pid`/`proc_start` are deliberately NOT filled from this process. It is a
 /// short-lived child of the seat, so its pid would corroborate for an instant and
 /// then name a dead process forever after — a worse answer than no answer.
+fn warn_caller_claude_home(harness: &str) {
+    if let Some(warning) = caller_claude_warning(harness, std::env::var_os("CLAUDE_CONFIG_DIR")) {
+        eprintln!("pij-rs warning: {warning}");
+    }
+}
+
+fn caller_claude_warning(harness: &str, config_dir: Option<OsString>) -> Option<String> {
+    if harness != Harness::Claude.as_str() {
+        return None;
+    }
+    let home = config_dir
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)?;
+    let state = inspect_claude_inbound(std::slice::from_ref(&home))
+        .into_iter()
+        .next()
+        .expect("one requested Claude home yields one state");
+    (state.error.is_some() || state.current.as_deref() != Some("accept")).then(|| {
+        format!(
+            "caller CLAUDE_CONFIG_DIR {} does not set crossSessionInbound=accept; daemon registration writes only daemon-derived homes",
+            home.display()
+        )
+    })
+}
+
 fn caller_context() -> CallerContext {
     let read = |key: &str| std::env::var(key).ok().filter(|value| !value.is_empty());
     CallerContext {
@@ -821,10 +868,103 @@ fn identity_request(seat: Option<String>, pane: Option<String>) -> IdentityReque
     }
 }
 
+#[derive(serde::Serialize)]
+struct ClaudeInboundDoctorRow {
+    home: PathBuf,
+    current: Option<String>,
+    required: &'static str,
+    status: &'static str,
+    error: Option<String>,
+}
+
+fn run_claude_inbound_doctor(json: bool) -> ExitCode {
+    let rows = inspect_claude_inbound(&claude_homes())
+        .into_iter()
+        .map(|report| {
+            let status = if report.error.is_some() {
+                "error"
+            } else if report.current.as_deref() == Some("accept") {
+                "accept"
+            } else if report.current.is_some() {
+                "not-accept"
+            } else if report.file_exists {
+                "key-missing"
+            } else {
+                "file-missing"
+            };
+            ClaudeInboundDoctorRow {
+                home: report.home,
+                current: report.current,
+                required: "accept",
+                status,
+                error: report.error,
+            }
+        })
+        .collect::<Vec<_>>();
+    emit(&Envelope::ok("pij doctor claude-inbound", rows), json)
+}
+
 async fn run_daemon(bind: &str, state_dir: PathBuf, offline: bool) -> ExitCode {
+    let reports = ensure_claude_inbound_accept(&claude_homes());
     let config = daemon_config(bind, &state_dir.join("pij.sqlite"), offline);
     match pij_daemon::boot(&config, state_dir).await {
         Ok(daemon) => {
+            for report in reports.iter().filter(|report| report.changed) {
+                let at = match system_time_ms() {
+                    Ok(at) => at,
+                    Err(error) => {
+                        eprintln!(
+                            "pij-rs warning: Claude inbound setting changed but its config event timestamp failed: {error}"
+                        );
+                        continue;
+                    }
+                };
+                if let Err(error) = daemon
+                    .publish_event(Event {
+                        seq: None,
+                        v: wire::EVENT_VERSION,
+                        at,
+                        kind: "config.claude-inbound-ensured".to_string(),
+                        seat: None,
+                        payload: json!({
+                            "home": report.home,
+                            "before": report.before,
+                            "after": report.after,
+                        })
+                        .to_string(),
+                    })
+                    .await
+                {
+                    eprintln!(
+                        "pij-rs warning: Claude inbound setting changed but its config event could not be published: {error}"
+                    );
+                }
+            }
+            let homes = reports
+                .iter()
+                .map(|report| {
+                    let outcome = if report.error.is_some() {
+                        "error"
+                    } else if report.changed {
+                        "touched"
+                    } else {
+                        "skipped"
+                    };
+                    format!("{}={outcome}", report.home.display())
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            println!(
+                "pij-rs claude inbound: {}",
+                if homes.is_empty() { "no homes" } else { &homes }
+            );
+            for report in reports.iter().filter(|report| report.error.is_some()) {
+                eprintln!(
+                    "pij-rs claude inbound: {}: {}",
+                    report.home.display(),
+                    report.error.as_deref().unwrap_or("unknown error")
+                );
+            }
             println!(
                 "pij-rs daemon: listening on {} · key {} (0600) · offline={}",
                 daemon.addr,
@@ -846,6 +986,20 @@ async fn run_daemon(bind: &str, state_dir: PathBuf, offline: bool) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn system_time_ms() -> Result<u64, PijError> {
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| PijError::Adapter {
+            adapter: "pij daemon".to_string(),
+            message: format!("system clock is before Unix epoch: {error}"),
+        })?
+        .as_millis();
+    u64::try_from(millis).map_err(|_| PijError::Adapter {
+        adapter: "pij daemon".to_string(),
+        message: "system clock milliseconds exceed u64".to_string(),
+    })
 }
 
 fn emit<T: serde::Serialize>(envelope: &Envelope<T>, json: bool) -> ExitCode {
@@ -1090,6 +1244,7 @@ impl Command {
     fn name(&self) -> &'static str {
         match self {
             Command::Daemon { .. } => "pij daemon",
+            Command::Doctor { .. } => "pij doctor claude-inbound",
             Command::Ping => "pij ping",
             Command::Sidecar { .. } => "pij sidecar",
             Command::Register { .. } => "pij register",
@@ -1113,13 +1268,38 @@ mod tests {
     use std::ffi::OsString;
 
     use clap::{CommandFactory, Parser};
-    use pij_core::model::SeatId;
+    use pij_core::model::{Harness, SeatId};
 
     use super::{
-        Cli, Command, DaemonAction, git_dir_is_linked, prepare_revive_request,
-        prepare_spawn_request, resolve_bind_addr, resolve_client_addr, resolve_inbox_seat,
-        resolve_state_dir,
+        Cli, Command, DaemonAction, caller_claude_warning, git_dir_is_linked,
+        prepare_revive_request, prepare_spawn_request, resolve_bind_addr, resolve_client_addr,
+        resolve_inbox_seat, resolve_state_dir,
     };
+
+    #[test]
+    fn claude_adopt_warns_for_unaccepted_caller_config_dir() {
+        let home = pij_testkit::fresh_dir("pij-caller-claude-warning");
+        let warning = caller_claude_warning(
+            Harness::Claude.as_str(),
+            Some(home.clone().into_os_string()),
+        )
+        .expect("missing setting warns");
+        assert!(warning.contains(&home.display().to_string()));
+        std::fs::write(
+            home.join("settings.json"),
+            r#"{"crossSessionInbound":"accept"}"#,
+        )
+        .expect("accepted settings");
+        assert!(
+            caller_claude_warning(
+                Harness::Claude.as_str(),
+                Some(home.clone().into_os_string()),
+            )
+            .is_none()
+        );
+        assert!(caller_claude_warning("omp", Some(home.clone().into_os_string())).is_none());
+        let _ = std::fs::remove_dir_all(home);
+    }
 
     #[test]
     fn clap_exposes_every_ruled_verb() {
@@ -1139,9 +1319,10 @@ mod tests {
                 // Adding a verb to this roster is meant to be a DELIBERATE act
                 // that fails this test first — which is exactly what it did for
                 // `report` (u-report), adopt/whoami/phonehome (u-identity) and
-                // `state` (u-readback).
+                // `state` (u-readback) and `doctor` (plan 126).
                 "daemon",
                 "ping",
+                "doctor",
                 "register",
                 "adopt",
                 "whoami",

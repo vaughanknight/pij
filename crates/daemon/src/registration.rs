@@ -1,10 +1,14 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use pij_core::error::PijError;
-use pij_core::model::{Harness, ProcIdentity, SeatDescriptor, SeatId};
+use pij_core::model::{Event, Harness, ProcIdentity, SeatDescriptor, SeatId};
 use pij_core::ports::{LivenessPort, Registry, SeatFilter};
+use pij_core::wire;
+use pij_harnesses::ensure_claude_inbound_accept;
 
+use crate::events::EventBus;
 use crate::http::Registration;
 
 #[derive(Debug)]
@@ -26,11 +30,23 @@ impl std::fmt::Display for RegistrationError {
 pub(crate) struct RegistrationService {
     registry: Arc<dyn Registry>,
     liveness: Arc<dyn LivenessPort>,
+    event_bus: Arc<EventBus>,
+    claude_homes: Vec<PathBuf>,
 }
 
 impl RegistrationService {
-    pub(crate) fn new(registry: Arc<dyn Registry>, liveness: Arc<dyn LivenessPort>) -> Self {
-        Self { registry, liveness }
+    pub(crate) fn new(
+        registry: Arc<dyn Registry>,
+        liveness: Arc<dyn LivenessPort>,
+        event_bus: Arc<EventBus>,
+        claude_homes: Vec<PathBuf>,
+    ) -> Self {
+        Self {
+            registry,
+            liveness,
+            event_bus,
+            claude_homes,
+        }
     }
 
     pub(crate) async fn register(
@@ -118,6 +134,32 @@ impl RegistrationService {
                 "unrecognised harness after admission".to_string(),
             ));
         };
+        if harness == Harness::Claude {
+            for report in ensure_claude_inbound_accept(&self.claude_homes) {
+                if let Some(error) = report.error.as_deref() {
+                    eprintln!("pij-rs claude inbound: {}: {error}", report.home.display());
+                    continue;
+                }
+                if report.changed {
+                    self.event_bus
+                        .publish(Event {
+                            seq: None,
+                            v: wire::EVENT_VERSION,
+                            at: system_time_ms()?,
+                            kind: "config.claude-inbound-ensured".to_string(),
+                            seat: Some(claimed_id.clone()),
+                            payload: serde_json::json!({
+                                "home": report.home,
+                                "before": report.before,
+                                "after": report.after,
+                            })
+                            .to_string(),
+                        })
+                        .await
+                        .map_err(RegistrationError::Runtime)?;
+                }
+            }
+        }
         let mut descriptor = seats
             .iter()
             .find(|seat| seat.id == claimed_id)
@@ -210,4 +252,76 @@ fn system_time_ms() -> std::result::Result<u64, RegistrationError> {
             message: "system clock milliseconds exceed u64".to_string(),
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::sync::Arc;
+
+    use pij_core::model::{Harness, Seq};
+    use pij_core::ports::Spine;
+    use pij_testkit::fakes::{FakeLiveness, FakeRegistry, FakeSpine};
+
+    use super::RegistrationService;
+    use crate::events::EventBus;
+    use crate::http::Registration;
+
+    #[tokio::test]
+    async fn claude_inbound_registration_changes_once_and_publishes_once() {
+        let root = pij_testkit::fresh_dir("pij-claude-inbound-registration");
+        let home = root.join(".claude");
+        fs::create_dir_all(&home).expect("Claude home");
+        fs::write(
+            home.join("settings.json"),
+            r#"{"crossSessionInbound":"hold","keep":true}"#,
+        )
+        .expect("seed settings");
+        let registry = Arc::new(FakeRegistry::new());
+        let liveness = Arc::new(
+            FakeLiveness::new().with_proc(pij_core::model::ProcIdentity {
+                pid: 4242,
+                proc_start: 126,
+            }),
+        );
+        let spine = Arc::new(FakeSpine::new());
+        let event_bus =
+            Arc::new(EventBus::new(Arc::clone(&spine) as Arc<dyn Spine>, 8).expect("event bus"));
+        let service = RegistrationService::new(registry, liveness, event_bus, vec![home.clone()]);
+        let claim = Registration {
+            supersedes: None,
+            id: "pij-claude-config".to_string(),
+            harness: Harness::Claude.as_str().to_string(),
+            folder: root.display().to_string(),
+            pane: None,
+            pid: Some(4242),
+            proc_start: Some(126),
+            spawn_id: None,
+            model: None,
+            provider: None,
+            effort: None,
+            parent: None,
+            relay: false,
+        };
+
+        service
+            .register(claim.clone())
+            .await
+            .expect("first registration");
+        service.register(claim).await.expect("second registration");
+
+        let settings: serde_json::Value = serde_json::from_slice(
+            &fs::read(home.join("settings.json")).expect("settings readable"),
+        )
+        .expect("valid settings");
+        assert_eq!(settings["crossSessionInbound"], "accept");
+        let events = spine.tail(None, Seq(0)).await.expect("spine tail");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, "config.claude-inbound-ensured");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&events[0].payload).expect("event payload")["after"],
+            "accept"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
 }

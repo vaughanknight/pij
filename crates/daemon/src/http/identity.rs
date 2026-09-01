@@ -520,6 +520,8 @@ pub(crate) async fn adopt(
     let registration = RegistrationService::new(
         std::sync::Arc::clone(&state.services.registry),
         std::sync::Arc::clone(&state.services.liveness),
+        std::sync::Arc::clone(&state.services.event_bus),
+        pij_harnesses::claude_homes(),
     );
     if let Err(error) = registration.register(claim).await {
         return match error {

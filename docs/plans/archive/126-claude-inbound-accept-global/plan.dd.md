@@ -12,7 +12,7 @@
 | title | claude-inbound-accept-global |
 | slug | claude-inbound-accept-global |
 | ordinal | 126 |
-| status | ready |
+| status | in-progress |
 | complexity | — |
 | summary | pij enforces crossSessionInbound=accept in every Claude home on every machine it runs on, so a hand-started Claude receives peer messages as real turns with no operator settings edit. |
 | backpressure | — |
@@ -52,10 +52,10 @@ RULING 2026-09-02 (government rulings/2026-09-02-claude-inbound-accept-is-global
 
 | id | claim | state | note | receipt | pressure | proven_by | text |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| AC1 | — | — | — | — | — | — | Unit (pure fn over a temp dir): absent file → created with the key; key absent → added, other keys byte-preserved, backup written; key=hold → changed, backup written; already accept → no write, no backup, no event; malformed JSON → untouched, reported. RED-first on the pre-fix tree. |
-| AC2 | — | — | — | — | — | — | Integration: daemon boot with a temp HOME lacking the key → key present after boot, spine has config.claude-inbound-ensured; second boot → no new event. |
-| AC3 | — | — | — | — | — | — | LIVE (done-bar ruling): on this machine, remove the key from ~/.claude/settings.json (backup first), restart an ISOLATED rs daemon built from the branch with HOME pointed appropriately or the real home per PM judgement, confirm the key is back, then hand-start `claude --dangerously-skip-permissions` WITHOUT any --settings flag in a tmux window, type /pij ready, send it a message from another seat → real type=user turn in its transcript, outcome delivered/injected-to-transport, no pointer. Pane transcript + spine rows pasted into assets/live-claude-no-settings.md. |
-| AC4 | — | — | — | — | — | — | `pij-rs doctor claude-inbound` output pasted for both homes; typecheck/cargo test/harness checks green. |
+| AC1 | Settings ensure semantics | [x] checked | — | cargo test -p pij-harnesses claude_settings: 10 passed; r3 review APPROVE | — | — | Unit (pure fn over a temp dir): absent file → created with the key; key absent → added, other keys byte-preserved, backup written; key=hold → changed, backup written; already accept → no write, no backup, no event; malformed JSON → untouched, reported. RED-first on the pre-fix tree. |
+| AC2 | Daemon boot idempotency and event | [x] checked | — | cargo test -p pij-cli --test claude_inbound: two boots, one config event; 2 passed | — | — | Integration: daemon boot with a temp HOME lacking the key → key present after boot, spine has config.claude-inbound-ensured; second boot → no new event. |
+| AC3 | Live no-settings Claude inbound delivery | [x] checked | — | assets/live-claude-no-settings.md; native type=user; delivered/injected-to-transport; r3 review | — | — | LIVE (done-bar ruling): on this machine, remove the key from ~/.claude/settings.json (backup first), restart an ISOLATED rs daemon built from the branch with HOME pointed appropriately or the real home per PM judgement, confirm the key is back, then hand-start `claude --dangerously-skip-permissions` WITHOUT any --settings flag in a tmux window, type /pij ready, send it a message from another seat → real type=user turn in its transcript, outcome delivered/injected-to-transport, no pointer. Pane transcript + spine rows pasted into assets/live-claude-no-settings.md. |
+| AC4 | Doctor output and project gates | [x] checked | — | doctor both homes accept; cargo workspace 533 passed; clippy clean; harness checks 2026-09-01T23:47:13Z green | — | — | `pij-rs doctor claude-inbound` output pasted for both homes; typecheck/cargo test/harness checks green. |
 
 <a id="phases"></a>
 
@@ -63,4 +63,4 @@ RULING 2026-09-02 (government rulings/2026-09-02-claude-inbound-accept-is-global
 
 | id | title | brief | state | note | receipt | depends_on | tasks | objective | delivers | key_risks |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ph-88ee | Ensure + hook + doctor + live proof | Implement u1 (pure ensure fn + doctor), wire the two call sites, prove AC1-AC4, PR into main. | [ ] unchecked | — | — | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
+| ph-88ee | Ensure + hook + doctor + live proof | Implement u1 (pure ensure fn + doctor), wire the two call sites, prove AC1-AC4, PR into main. | [x] checked | — | AC1-AC4 checked; r3 review APPROVE; final cargo and harness gates green | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |

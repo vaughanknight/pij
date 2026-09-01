@@ -1,0 +1,54 @@
+{
+  "dd": { "schema": "builder/review" },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Cross-model review r3 (final) — claude-inbound-accept-global",
+        "reviewer": "pij-quickest-oscar",
+        "model": "claude-opus-5",
+        "round": "r3",
+        "date": "2026-09-02",
+        "plan": "../../plan.dd.json#meta",
+        "note": "Final round: narrow re-review of the n1 fix, and the closing verdict for plan 126.\n\nSUBJECT: the working tree at claude_settings.rs 13293c8b, cli/tests/claude_inbound.rs d8004625, cli/src/main.rs 87b42510 (UNCHANGED from r2 — the fix landed entirely in the harness crate and the test, which is the right place for it and is itself evidence the diff is as narrow as described).\n\nMETHOD unchanged: targeted suites re-run and watched (14/14 — harness 10, CLI integration 2, caller-warning 1, registration 1), then the claim re-derived independently by running the built binary against nine file states rather than trusting the new test. Full workspace not re-run, per instruction.\n\nVERDICT: APPROVE. Every finding across three rounds is resolved. Four non-blocking residuals stay on the record (#findings/r-open). One condition on the approval, in the reviewer's gift to state and prime's to weigh: see the AC4 note below.\n\nAC FINAL\n- AC1 TRUE — semantics proven by 10 harness tests and, across the three rounds, by ~45 adversarial documents run against the public planner from outside the repo.\n- AC2 TRUE — the named integration test exists and I reproduced its claim by hand with two real daemon boots.\n- AC3 TRUE — re-derived in r1 from the native Claude transcript (a genuine type=user turn, distinct from the queue-operation row) and the isolated spine's delivered/injected-to-transport row. Untouched since.\n- AC4 TRUE for doctor output and read-only behaviour, now including the state that was wrong in r2. CONDITION: per the dispatcher's instruction the full workspace was not re-run in r2 or r3, so AC4's 'typecheck/cargo test/harness checks green' half rests on r1's full-workspace run (60 ok, 0 failures) plus targeted greens since. The tree has changed materially in both later rounds. One full `cargo test --workspace` plus harness checks on the final tree should gate the PR — I am naming it rather than assuming someone will, because a green from two rounds ago is not a green for this tree.\n\nA NOTE ON THE FIX'S SHAPE, because it is better than what was strictly asked for: I offered two options in r2 and the PM took the stronger one. `inspect_claude_inbound` now calls `plan_inbound_accept` and maps its three outcomes, so the writer and the reader cannot hold different opinions about a document — divergence is structurally impossible rather than patched case by case. Had the narrow fix been taken (a second `trim().is_empty()` branch in the inspector) the two surfaces would have agreed today and drifted again on the next ruling. This is the difference between one owner for a classification and two owners who currently agree."
+      }
+    },
+    {
+      "name": "findings",
+      "value": [
+        {
+          "id": "a9",
+          "kind": "defect",
+          "severity": "MAJOR",
+          "address": "crates/harnesses/src/claude_settings.rs:136",
+          "finding": "r2 n1 (the doctor called a file malformed that the writer repairs) — FIXED at the source, and fixed in the way that removes the class rather than the instance.\n\nWHAT CHANGED: `inspect_claude_inbound` no longer parses the document itself. It reads the file and hands the text to `plan_inbound_accept`, mapping `NoChange`/`Write` to `current: before` with `error: None`, and `Refuse` to `error`. The `file_exists` distinction that r1 f5 introduced is preserved — it comes from the read's `ErrorKind::NotFound`, which is genuinely the inspector's own business and not a classification. So the one thing the two surfaces must agree on is now computed once.\n\nRE-DERIVED AGAINST THE BUILT BINARY, nine states, not the two the fix was about:\n```\nno file            status=file-missing  current=None    error=None\nempty (0 bytes)    status=key-missing   current=None    error=None   <- was error/malformed\nwhitespace only    status=key-missing   current=None    error=None   <- was error/malformed\nkeyless object     status=key-missing   current=None    error=None\nhold               status=not-accept    current='hold'  error=None\naccept             status=accept        current='accept'\nnon-string value 5 status=not-accept    current='5'\nmalformed          status=error         ... 'key must be a string at line 1 column 2'\nroot array         status=error         ... 'root must be a JSON object'\n```\nThe two target states moved and the other seven did not — which is what I was checking for, since a delegation change is exactly the kind of fix that can quietly reclassify neighbours. `file-missing` in particular survives as distinct from `key-missing`, so the r1 f5 fix is intact rather than collateral damage.\n\nSTILL READ-ONLY, checked rather than assumed: after all nine doctor invocations the home contained `settings.json` and nothing else — no `settings.json.bak-*`, no leftover `.tmp`. The doctor consults the planner without ever reaching the writer.\n\nThe test now covers it too: a whitespace-only file asserts `key-missing` AND asserts the file's bytes are unchanged afterwards — the read-only assertion on precisely the state that now plans a write, which is the assertion that would catch the worst version of this fix going wrong.",
+          "receipt": "inspect_claude_inbound read in full at 13293c8b; nine-state doctor probe against target/debug/pij-rs; directory listing after the probe; cli/tests/claude_inbound.rs:31-44 read"
+        },
+        {
+          "id": "a10",
+          "kind": "dim0",
+          "severity": "NA",
+          "address": "crates/cli/tests/claude_inbound.rs:82",
+          "finding": "UNREQUESTED IMPROVEMENT WORTH RECORDING: the two-boot test stopped re-implementing the daemon's own read.\n\nIn r2 that test counted spine rows with a hand-written `sqlx::query_scalar(\"SELECT COUNT(*) FROM spine_events WHERE kind = ...\")`. It now opens a `SqliteSpine` and calls `tail(None, Seq(0))`, filtering by kind in Rust — so it reads through the same port the daemon writes through, and the `sqlx` dev-dependency added in r2 has been removed from crates/cli again. A test that restates the producer's query in SQL drifts the moment the schema or the port's semantics move; one that consumes the producer's result does not.\n\nI checked the one way this could have weakened the test rather than strengthening it: `SqliteSpine::tail` (store/src/spine.rs:74) is `WHERE seq > ?1 ... ORDER BY seq` with NO LIMIT clause, so it returns every row since the cursor. The count assertion is therefore still exhaustive and cannot become vacuous as the daemon's boot chatter grows. If tail had been paginated, the second-boot assertion could have started passing for the wrong reason.\n\nRecorded as a positive Dim-0 observation, not a finding.",
+          "receipt": "cli/tests/claude_inbound.rs:82-125 read; store/src/spine.rs:74-87 read for the LIMIT check; crates/cli/Cargo.toml dev-dependencies re-read"
+        },
+        {
+          "id": "r-open",
+          "kind": "question",
+          "severity": "NIT",
+          "address": "crates/harnesses/src/claude_settings.rs:238",
+          "finding": "CARRIED-FORWARD RESIDUALS — none blocking, all previously reported and consciously left. Collected here so they are inherited as a list rather than rediscovered.\n\n1. READ-MODIFY-WRITE RACE (r1 f1 residual). The rename removed the corruption and truncation modes; a settings change written by Claude Code between pij's read and pij's rename is still lost. Prime's call whether a lock or compare-before-write is wanted; a reviewer should not decide that scope.\n2. NO DIRECTORY FSYNC after the rename (r1 f1 residual). A crash immediately after can lose the repair, not the data. The next boot redoes it.\n3. EXTENDED ATTRIBUTES AND ACLs DROPPED by the atomic replace (r2 n2). Measured: mode survives, a seeded xattr did not. The round-2 claim 'preserving permissions' is true exactly as worded; this is the unstated limit beside it.\n4. STALE TEMP FROM A RECYCLED PID (r2 n3) costs one spurious `File exists` error before self-healing, because the error arm removes the temp.\n5. `EnsureReport.after` remains unconditionally \"accept\" including on error rows (r1 f4 residual). Latent only — both consumers read it inside a `changed` filter.\n\nItems 1 and 2 are the two worth an explicit decision before this ships to other machines, since the whole point of the plan is that pij edits this file unattended on every machine it runs on. The rest are cosmetic or self-healing.",
+          "receipt": "each item traced to its originating row in r1-cross-model.dd.json and r2-cross-model.dd.json; all five re-confirmed present at 13293c8b"
+        }
+      ]
+    },
+    {
+      "name": "verdict",
+      "value": [
+        { "id": "v1", "finding": "#findings/a9", "resolution": "fixed", "rationale": "r2 n1 fixed at the source. Confirmed against the built binary across nine states, not the two the fix targeted: the two intended states moved, the other seven held, file-missing survived as distinct, and the doctor wrote nothing. The stronger of the two fixes I offered was taken — one owner for the classification, so this cannot recur on the next ruling." },
+        { "id": "v2", "finding": "#findings/a10", "resolution": "confirmed", "rationale": "Positive observation, recorded rather than filed as a defect. The test now consumes the spine port instead of restating its SQL, and I verified tail is unpaginated so the count assertion stays exhaustive." },
+        { "id": "v3", "finding": "#findings/r-open", "resolution": "deferred", "rationale": "Five residuals carried forward, explicitly not blocking and explicitly not forgotten. Items 1 and 2 (the write race and the missing directory fsync) deserve a decision from prime before this runs unattended on other machines; the remaining three are cosmetic or self-healing. Deferred, not dismissed." }
+      ]
+    }
+  ]
+}

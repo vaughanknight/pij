@@ -8,6 +8,7 @@ use pij_core::model::{Harness, SeatDescriptor};
 use pij_core::ports::{LivenessPort, Registry, SeatFilter};
 use serde::Deserialize;
 
+use crate::events::EventBus;
 use crate::http::Registration;
 use crate::registration::RegistrationService;
 
@@ -22,12 +23,18 @@ pub(crate) struct ClaudeBinder {
 }
 
 impl ClaudeBinder {
-    pub(crate) fn new(registry: Arc<dyn Registry>, liveness: Arc<dyn LivenessPort>) -> Self {
+    pub(crate) fn new(
+        registry: Arc<dyn Registry>,
+        liveness: Arc<dyn LivenessPort>,
+        event_bus: Arc<EventBus>,
+    ) -> Self {
         let home = env::var_os("HOME").map(PathBuf::from);
         Self::from_home(
             home,
             registry,
             liveness,
+            event_bus,
+            pij_harnesses::claude_homes(),
             pij_harnesses::proc::local_utc_offset_minutes,
         )
     }
@@ -36,9 +43,16 @@ impl ClaudeBinder {
         home: Option<PathBuf>,
         registry: Arc<dyn Registry>,
         liveness: Arc<dyn LivenessPort>,
+        event_bus: Arc<EventBus>,
+        claude_homes: Vec<PathBuf>,
         utc_offset_minutes: fn() -> Result<i32>,
     ) -> Self {
-        let registration = RegistrationService::new(Arc::clone(&registry), Arc::clone(&liveness));
+        let registration = RegistrationService::new(
+            Arc::clone(&registry),
+            Arc::clone(&liveness),
+            Arc::clone(&event_bus),
+            claude_homes,
+        );
         Self {
             home,
             registry,
@@ -173,12 +187,17 @@ mod tests {
 
     use pij_core::model::{Harness, SeatDescriptor};
     use pij_core::ports::Registry;
-    use pij_testkit::fakes::{FakeLiveness, FakeRegistry};
+    use pij_testkit::fakes::{FakeLiveness, FakeRegistry, FakeSpine};
 
     use super::ClaudeBinder;
+    use crate::events::EventBus;
 
     fn zero_utc_offset() -> pij_core::error::Result<i32> {
         Ok(0)
+    }
+
+    fn event_bus() -> Arc<EventBus> {
+        Arc::new(EventBus::new(Arc::new(FakeSpine::new()), 8).expect("event bus"))
     }
 
     struct TestHome(PathBuf);
@@ -253,6 +272,8 @@ mod tests {
             Some(home.0.clone()),
             registry.clone(),
             liveness,
+            event_bus(),
+            Vec::new(),
             zero_utc_offset,
         );
 
@@ -284,6 +305,8 @@ mod tests {
             Some(home.0.clone()),
             registry.clone(),
             liveness,
+            event_bus(),
+            Vec::new(),
             zero_utc_offset,
         );
 
@@ -321,6 +344,8 @@ mod tests {
             Some(home.0.clone()),
             registry.clone(),
             liveness,
+            event_bus(),
+            Vec::new(),
             zero_utc_offset,
         );
 

@@ -34,7 +34,7 @@ use std::time::Duration;
 
 use pij_core::config::{AdapterChoice, Config};
 use pij_core::error::{PijError, Result};
-use pij_core::model::{Harness, ProcIdentity};
+use pij_core::model::{Event, Harness, ProcIdentity, Seq};
 use pij_core::orchestration::OrchestrationService;
 use pij_core::ports::{HarnessPort, LivenessPort, Queue, Registry, Spine, TmuxPort, Transport};
 use pij_harnesses::proc::ProcLiveness;
@@ -185,6 +185,7 @@ pub struct Daemon {
     pub addr: SocketAddr,
     /// The per-boot bearer key.
     pub key: BootKey,
+    event_bus: Arc<events::EventBus>,
     shutdown: tokio::sync::oneshot::Sender<()>,
     joined: tokio::task::JoinHandle<()>,
     /// Owned so it cannot outlive the boot that started it: a worker still
@@ -204,6 +205,14 @@ pub struct Daemon {
 }
 
 impl Daemon {
+    /// Persist and broadcast one event through this daemon's configured spine.
+    ///
+    /// # Errors
+    /// Store failures, or an event that already carries a sequence.
+    pub async fn publish_event(&self, event: Event) -> Result<Seq> {
+        self.event_bus.publish(event).await
+    }
+
     /// Ask the server to stop, and wait for it.
     ///
     /// # Errors
@@ -546,6 +555,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     let claude_binder = Arc::new(claude_bind::ClaudeBinder::new(
         Arc::clone(&services.registry),
         Arc::clone(&services.liveness),
+        Arc::clone(&services.event_bus),
     ));
 
     let drain = Arc::new(pointer::DrainWorker::new(
@@ -646,6 +656,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     // Infallible by construction: every refusal happened in step 8b.
     let sidecars = sidecars.start()?;
 
+    let event_bus = Arc::clone(&services.event_bus);
     let router = http::router_with_federation(
         services,
         http::HttpConfig {
@@ -667,6 +678,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     Ok(Daemon {
         addr,
         key,
+        event_bus,
         shutdown,
         joined,
         federation_worker,
