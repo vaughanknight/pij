@@ -364,6 +364,41 @@ pub struct StateCard {
     pub tombstoned_at: Option<u64>,
     /// Why it was tombstoned — the row IS the post-mortem.
     pub tombstone_reason: Option<String>,
+    // --- the status card (ac-1142's readback half) -------------------------
+    //
+    // TS spells the card's two halves `statusPrev` (what was done) and
+    // `statusNext` (what is next) — `.pi/extensions/pij/core/cli.ts:5752-5753`
+    // (`node show`) and `:2878-2879` (`list`). Those names are used verbatim so
+    // a consumer that already parses either TS surface parses this one
+    // unchanged.
+    //
+    // A DELIBERATE WIDENING, stated rather than smuggled: TS `state` itself does
+    // NOT carry the card (`core/cli.ts:3615`, whose `--json` arm has no status
+    // field). ac-1142 nonetheless names `pij state <id>` as the surface that
+    // returns it, and rs has no `node show` to carry it instead — so rs `state`
+    // answers MORE than its TS twin. That is the opposite of `unsupported`
+    // below, which names what rs answers LESS.
+    //
+    // All five are ALWAYS PRESENT, `null` when the seat has never reported. Null
+    // is an honest answer here and only here: rs DID look, through the same
+    // `ReportService` the write path uses, and there genuinely is no card —
+    // unlike an `unsupported` field, where rs cannot look at all.
+    /// TS `statusPrev` (cli.ts:5752) — what the seat last said it did.
+    pub status_prev: Option<String>,
+    /// TS `statusNext` (cli.ts:5753) — what it said it would do next.
+    pub status_next: Option<String>,
+    /// TS `statusAt` (cli.ts:5754) — when the card was written, epoch ms.
+    pub status_at: Option<u64>,
+    /// TS `statusSeq` (cli.ts:5755) — the spine sequence carrying the card,
+    /// which is what makes it citable.
+    pub status_seq: Option<u64>,
+    /// Whether the card is past core's staleness threshold, computed ON READ by
+    /// `ReportService` rather than stored. `None` when there is no card: a seat
+    /// that never reported does not have a FRESH card.
+    pub status_stale: Option<bool>,
+    /// The explanation supplied with `report blocked` / `report question`,
+    /// which TS renders beside the declared state (cli.ts:5794).
+    pub state_note: Option<String>,
     /// Every TS field this store cannot answer, named with its reason.
     pub unsupported: Vec<UnsupportedField>,
 }

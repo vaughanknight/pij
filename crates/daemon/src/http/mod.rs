@@ -857,11 +857,41 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
         None => None,
     };
 
+    // The card, read through the SAME service the write path uses
+    // (`report` above builds it identically). Consuming `ReportService` rather
+    // than re-deriving a projection is what keeps the read and the write
+    // agreeing about staleness, the card limit, and which spine event is
+    // "latest" — a second implementation here would drift from the first
+    // silently, and the drift would only ever show up as an operator reading a
+    // card that the writer thinks says something else.
+    let clock = match system_time_ms() {
+        Ok(now) => now,
+        Err(error) => return internal("pij state", error),
+    };
+    let reports = pij_core::report::ReportService::new(
+        state.services.registry.as_ref(),
+        state.services.spine.as_ref(),
+        move || clock,
+        pij_core::report::ReportConfig::default(),
+    );
+    let card = match reports.card(&id).await {
+        Ok(card) => card,
+        Err(error) => return internal("pij state", error),
+    };
+    // The NOTE lives on the state history record, not the descriptor: the
+    // descriptor carries the declared state, the record carries why. Reading
+    // only the descriptor would report a blocked seat with no reason, which is
+    // the half of the answer nobody needs.
+    let state_note = match reports.latest_state_record(&id).await {
+        Ok(record) => record.and_then(|record| record.note),
+        Err(error) => return internal("pij state", error),
+    };
+
     envelope(
         StatusCode::OK,
         &Envelope::ok(
             "pij state",
-            state_card(seat, liveness, &state.machine_alias),
+            state_card(seat, liveness, &state.machine_alias, card, state_note),
         ),
     )
 }
@@ -871,6 +901,8 @@ fn state_card(
     seat: SeatDescriptor,
     liveness: Option<pij_core::model::Liveness>,
     machine_alias: &str,
+    card: Option<pij_core::report::CardStatus>,
+    state_note: Option<String>,
 ) -> StateCard {
     use pij_core::model::{Liveness, SystemState};
     StateCard {
@@ -904,6 +936,18 @@ fn state_card(
         machine: Some(seat.machine.unwrap_or_else(|| machine_alias.to_string())),
         tombstoned_at: seat.tombstoned_at,
         tombstone_reason: seat.tombstone_reason,
+        // `as_ref()` throughout: all five come from ONE optional card, so they
+        // are all present or all null together. Reading them from separate
+        // sources would let a caller see a `statusPrev` with no `statusAt`.
+        status_prev: card.as_ref().map(|status| status.card.did.clone()),
+        status_next: card.as_ref().map(|status| status.card.next.clone()),
+        status_at: card.as_ref().map(|status| status.card.at),
+        status_seq: card
+            .as_ref()
+            .and_then(|status| status.card.seq)
+            .map(|seq| seq.0),
+        status_stale: card.as_ref().map(|status| status.stale),
+        state_note,
         unsupported: unsupported_state_fields(),
     }
 }
