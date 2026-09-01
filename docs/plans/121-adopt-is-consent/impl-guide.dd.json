@@ -1,0 +1,75 @@
+{
+  "dd": {
+    "schema": "pij-team/impl-guide"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Implementation guide \u2014 adopt-is-consent",
+        "plan": "docs/plans/121-adopt-is-consent/plan.dd.json",
+        "mode": "build",
+        "updated": "2026-09-01"
+      }
+    },
+    {
+      "name": "architecture",
+      "value": "Doctrine: .agents/skills/pij-team/TENETS.md tenets 1-6. THIS UNIT IS DELIBERATELY ONE UNIT \u2014 no fan-out (pij-team: small task, PM codes it itself, then calls the reviewer). Frozen seam, settled here: (1) STAMP at the daemon registration path \u2014 crates/daemon/src/registration.rs \u2014 when harness==Claude: cross_session_inbound_accept becomes Some(true) UNLESS the row already carries Some(false) (explicit refusal is honored; NULL is the only state upgraded). The spawn path (crates/harnesses/src/spawn.rs:163-165, http/mod.rs:663) is UNTOUCHED \u2014 it already stamps from argv. (2) BACKFILL as a sqlx migration on the seats table: UPDATE ... SET cross_session_inbound_accept=1 WHERE harness='claude' AND cross_session_inbound_accept IS NULL AND tombstoned=0 (adjust to actual column names \u2014 READ the schema first, do not trust this line). Dead-pane rows MAY be stamped \u2014 reason carried: can_deliver additionally requires a discoverable session record (uds.rs:120-132), which a dead pane lacks, so the stamp alone cannot resurrect delivery to a corpse; req-0018 reaping owns those rows. (3) NO from-mode emission anywhere \u2014 uds.rs:925 pin must survive unmodified. A third surface wanting the stamp is stop-and-ask. CONSTRAINT WITH REASON: the ruling makes registration the consent act, so the stamp belongs at the REGISTRATION seam only \u2014 stamping in can_deliver or the drain worker would make consent a read-time inference again, the exact shape the ruling deleted."
+    },
+    {
+      "name": "fan_out",
+      "value": {
+        "decision": "<solo-pm | coders>",
+        "rationale": "<Why. Rules: SOLO-PM when the work has no parallelizable seams or is small \u2014 the PM codes it itself, then runs the reviewer. CODERS when units below can proceed in parallel (or it is multi-phase): 1-n coders per wave, PM composes after each wave, reviewer after composition. The units table is the argument for this decision \u2014 if you cannot write independent unit rows with clean interfaces, the answer is solo-pm. Dispatch overhead counts: a unit cheaper than its own dispatch (spawn+canary+ack+review) is not a unit - fold it into a sibling.>"
+      }
+    },
+    {
+      "name": "units",
+      "value": [
+        {
+          "id": "u1",
+          "name": "<unit/service name>",
+          "paths": "<exact fence: crates/<x>/**, docs/services/<name>.md \u2014 nothing else>",
+          "responsibility": "<one bounded thing this unit does; one domain = one unit = one service page>",
+          "interface": "<the SETTLED contract: pub fns/types/trait it exposes, the config section it is constructed with, the envelope/schema it emits. Coders implement this verbatim; changes are a PM ruling.>",
+          "test_strategy": "<how this unit proves its contract STANDALONE with fakes, and the exact scoped test command (Rust example: `cargo test -p <crate>` + testkit fakes); name the specific cases that must exist. Fix-tests must be mutation-checked (break the code, watch the test fail).>",
+          "depends_on": "<unit ids or 'none'>",
+          "wave": 1,
+          "note": "<sibling hazards, allow-list rows granted, parked debt folded in>"
+        }
+      ]
+    },
+    {
+      "name": "isolation",
+      "value": {
+        "mode": "worktree-per-coder",
+        "note": "Default: each coder gets its own worktree, branching off the PM's plan branch; unit lands back onto the plan branch (PM merges \u2014 coders never merge). Shared-tree work is the retro-proven #1 hazard (staged sweeps, untrustworthy greens) \u2014 only choose it for trivially disjoint single-wave work, and then file-scoped `git add` only, never -A. REMEMBER: fences partition WRITE intent, not the build \u2014 a mid-refactor sibling can still break your compile, so waves must respect build dependencies, and a broken workspace build is a PM composition concern, not a coder's to fix cross-fence."
+      }
+    },
+    {
+      "name": "composition",
+      "value": {
+        "composer": "pm",
+        "steps": "<Composition is an explicit, separate step \u2014 the first-light pattern: everything already exists as tested parts; this is the wiring that makes them one system. Read order = each unit's service page / done report. Steps: merge unit branches in dependency order onto the plan branch \u2192 wire at the composition root \u2192 make `harness checks` green on the composed tree \u2192 run the integration proof. Known composition failure modes to check deliberately: mis-wiring (right parts, wrong plumbing), interface drift from this doc, envelope/schema drift between units, stale doc-comments across fence boundaries. RULE: composition is wiring, not building \u2014 if a unit needs INTERNAL rework at compose time, that is a defect in the contracts phase, not a composition task: stop, record it (harness observe + the skill EXPERIENCES.md), and have it ruled before touching the unit.>",
+        "integration_proof": "<the named end-to-end evidence: integration test file(s) and/or a live run transcript captured as the plan's exit evidence>"
+      }
+    },
+    {
+      "name": "review",
+      "value": {
+        "when": "after composition (or after solo-pm coding), before the PR into main",
+        "inputs": "plan.dd.md + this impl-guide + full branch diff; priority = plan promises, composition seams, interface drift, correctness, contract-test gaps",
+        "model_override": ""
+      }
+    },
+    {
+      "name": "risks",
+      "value": [
+        {
+          "id": "r1",
+          "text": "<known risk + the check that retires it>"
+        }
+      ]
+    }
+  ]
+}

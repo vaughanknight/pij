@@ -147,6 +147,86 @@ async fn an_older_store_is_migrated_forward_rather_than_refused() {
 }
 
 #[tokio::test]
+async fn consent_backfill_upgrades_only_live_unknown_claude_rows_and_is_idempotent() {
+    let fresh = FreshStore::new();
+    let options = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(fresh.path())
+        .create_if_missing(true);
+    let legacy_pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .expect("open legacy store");
+    let legacy_migrator = sqlx::migrate::Migrator {
+        migrations: std::borrow::Cow::Owned(
+            pij_store::migrate::MIGRATIONS
+                .iter()
+                .filter(|migration| migration.version <= 9)
+                .cloned()
+                .collect(),
+        ),
+        ..sqlx::migrate::Migrator::DEFAULT
+    };
+    legacy_migrator
+        .run(&legacy_pool)
+        .await
+        .expect("migrate fixture to schema 9");
+    sqlx::raw_sql(
+        "INSERT INTO seats \
+         (id, harness, folder, state, relay, tombstoned_at, seq, cross_session_inbound_accept) \
+         VALUES \
+         ('pij-claude-live', 'claude', '/live', 'idle', 0, NULL, 1, NULL), \
+         ('pij-claude-refused', 'claude', '/refused', 'idle', 0, NULL, 2, 0), \
+         ('pij-claude-tombstone', 'claude', '/dead', 'idle', 0, 1, 3, NULL), \
+         ('pij-omp-live', 'omp', '/omp', 'idle', 0, NULL, 4, NULL)",
+    )
+    .execute(&legacy_pool)
+    .await
+    .expect("seed schema-9 consent states");
+    drop(legacy_pool);
+
+    let migrated_pool = pij_store::open(&fresh.path())
+        .await
+        .expect("migrate schema 9 to current");
+    let rows: Vec<(String, Option<i64>)> =
+        sqlx::query_as("SELECT id, cross_session_inbound_accept FROM seats ORDER BY id")
+            .fetch_all(&migrated_pool)
+            .await
+            .expect("read backfilled consent states");
+    assert_eq!(
+        rows,
+        vec![
+            ("pij-claude-live".to_string(), Some(1)),
+            ("pij-claude-refused".to_string(), Some(0)),
+            ("pij-claude-tombstone".to_string(), None),
+            ("pij-omp-live".to_string(), None),
+        ],
+        "backfill changes only non-tombstoned Claude rows whose consent is unknown"
+    );
+    assert_eq!(
+        pij_store::schema_version(&migrated_pool)
+            .await
+            .expect("schema version"),
+        10,
+        "the backfill advances the schema cache with its migration"
+    );
+
+    let backfill = pij_store::migrate::MIGRATIONS
+        .iter()
+        .find(|migration| migration.version == 10)
+        .expect("consent backfill migration");
+    let repeated = sqlx::raw_sql(&backfill.sql)
+        .execute(&migrated_pool)
+        .await
+        .expect("repeat the exact backfill SQL");
+    assert_eq!(
+        repeated.rows_affected(),
+        0,
+        "running the backfill SQL twice changes zero additional rows"
+    );
+}
+
+#[tokio::test]
 async fn the_sqlite_registry_honours_the_same_contract_the_fake_does() {
     // The point of the shared suite: this is the identical function
     // `contract_over_fakes.rs` runs. If SQL and the fake ever disagree, exactly

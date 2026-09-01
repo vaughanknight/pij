@@ -177,6 +177,42 @@ async fn adopt_persists_a_row_that_whoami_then_names() {
     world.server.abort();
 }
 
+#[tokio::test]
+async fn adopt_upgrades_unknown_claude_consent_but_preserves_explicit_refusal() {
+    let registry = Arc::new(FakeRegistry::new());
+    let world = world(Arc::clone(&registry), true).await;
+
+    let response = adopt(world.addr, &["adopt", PANE, "--harness", "claude"]).await;
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let mut row = live_seats(&registry)
+        .await
+        .into_iter()
+        .next()
+        .expect("adopted seat");
+    let consent_after_adopt = row.cross_session_inbound_accept;
+
+    row.cross_session_inbound_accept = Some(false);
+    let id = row.id.clone();
+    registry.put(row).await.expect("record explicit refusal");
+
+    let response = adopt(world.addr, &["adopt", PANE, "--harness", "claude"]).await;
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let consent_after_readopt = registry
+        .get(&id)
+        .await
+        .expect("read re-adopted seat")
+        .expect("re-adopted seat exists")
+        .cross_session_inbound_accept;
+
+    assert_eq!(
+        (consent_after_adopt, consent_after_readopt),
+        (Some(true), Some(false)),
+        "registration upgrades only unknown Claude consent and never overwrites an explicit refusal"
+    );
+
+    world.server.abort();
+}
+
 /// THE DISCRIMINATING ARM: a print-only success is a FAILURE.
 ///
 /// This is the exact TS defect, reproduced as a test rather than as behaviour.
