@@ -51,10 +51,10 @@ Diagnosis (pij-upset-anglerfish, 2026-09-01, .harness/temp/omp-statusline-fix.md
 
 | id | claim | state | note | receipt | pressure | proven_by |
 | --- | --- | --- | --- | --- | --- | --- |
-| AC1 | LIVE: 10 hand-started `omp` sessions in tmux, back to back; every status bar shows the pij id (tmux capture of each footer pasted). Pre-fix census rate was roughly 1 in 4 missing, so 10/10 is the bar. | [ ] unchecked | — | — | — | — |
-| AC2 | LIVE forced miss: with the native set stubbed/forced to fail (e.g. temporarily make setSessionName return false via a test hook or run with the name pre-set to source:user), the setStatus row shows the id AND the notice line appears. Transcript pasted. | [ ] unchecked | — | — | — | — |
-| AC3 | Unit: fake pi API whose setSessionName fails N times then succeeds → helper retries per schedule, stops once the readback matches, sets status regardless; fails forever → notice emitted exactly once. RED-first on the pre-fix tree. | [ ] unchecked | — | — | — | — |
-| AC4 | `just typecheck`, extension vitest, `harness checks` green (npm ci first in a fresh worktree). | [ ] unchecked | — | — | — | — |
+| AC1 | LIVE: 10 hand-started `omp` sessions in tmux, back to back; every status bar shows the pij id (tmux capture of each footer pasted). Pre-fix census rate was roughly 1 in 4 missing, so 10/10 is the bar. | [x] checked | — | assets/live-footers.md: 10/10 hand-started explicit-worktree OMP footer captures. | — | — |
+| AC2 | LIVE forced miss: with the native set stubbed/forced to fail (e.g. temporarily make setSessionName return false via a test hook or run with the name pre-set to source:user), the setStatus row shows the id AND the notice line appears. Transcript pasted. | [x] checked | — | assets/live-footers.md: forced native miss shows one warning plus keyed status row. | — | — |
+| AC3 | Unit: fake pi API whose setSessionName fails N times then succeeds → helper retries per schedule, stops once the readback matches, sets status regardless; fails forever → notice emitted exactly once. RED-first on the pre-fix tree. | [x] checked | — | RED artifact://54; GREEN session-name.test.ts 4/4 and index.test.ts 13/13. | — | — |
+| AC4 | `just typecheck`, extension vitest, `harness checks` green (npm ci first in a fresh worktree). | [x] checked | — | harness checks status ok at 2026-09-01T21:55:53.271Z; typecheck, lint, test, smoke and all other sensors passed. | — | — |
 
 <a id="phases"></a>
 
@@ -62,4 +62,4 @@ Diagnosis (pij-upset-anglerfish, 2026-09-01, .harness/temp/omp-statusline-fix.md
 
 | id | title | brief | state | note | receipt | depends_on | tasks | objective | delivers | key_risks |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ph-d726 | Retry + fallback + live 10/10 proof | Implement the shared helper, wire both call sites, prove AC1-AC4, PR into main. | [ ] unchecked | — | — | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
+| ph-d726 | Retry + fallback + live 10/10 proof | Implement the shared helper, wire both call sites, prove AC1-AC4, PR into main. | [x] checked | — | — | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |

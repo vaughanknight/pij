@@ -1,9 +1,9 @@
 // pij index wiring — status bar (plan 018).
 //
 // Pattern P8: tests target the wiring, not the core. This file owns ONE
-// concern: session_start publishes the pij id through the host's persistent
-// status surface — Pi's keyed extension status or OMP's default session_name
-// segment. Fakes keep both paths at unit speed with no live TUI.
+// concern: session_start publishes the pij id through every applicable persistent
+// status surface — Pi's keyed extension status and OMP's default session_name
+// segment.
 //
 // Non-vacuous: removing either publication path from index.ts fails its
 // corresponding assertion.
@@ -48,6 +48,7 @@ function makeFakePi(onSendUserMessage: (message: string) => void = () => {}) {
 		setSessionName: async (name: string) => {
 			sessionNames.push(name);
 		},
+		getSessionName: () => sessionNames.at(-1),
 	} as unknown as ExtensionAPI;
 	return { pi, handlers, sentUserMessages, sessionNames };
 }
@@ -229,7 +230,7 @@ describe("pij index — footer status bar", () => {
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 
 		expect(sessionNames.at(-1)).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
-		expect(statuses.some((status) => status.key === "pij")).toBe(false);
+		expect(statuses.find((status) => status.key === "pij")?.value).toBe(sessionNames.at(-1));
 		await handlers.get("session_shutdown")?.({}, ctx);
 	});
 
@@ -242,7 +243,7 @@ describe("pij index — footer status bar", () => {
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 
 		expect(sessionNames.at(-1)).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
-		expect(statuses.some((status) => status.key === "pij")).toBe(false);
+		expect(statuses.find((status) => status.key === "pij")?.value).toBe(sessionNames.at(-1));
 		await handlers.get("session_shutdown")?.({}, ctx);
 	});
 

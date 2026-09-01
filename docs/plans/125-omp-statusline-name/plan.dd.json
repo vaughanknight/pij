@@ -39,22 +39,26 @@
         {
           "id": "AC1",
           "claim": "LIVE: 10 hand-started `omp` sessions in tmux, back to back; every status bar shows the pij id (tmux capture of each footer pasted). Pre-fix census rate was roughly 1 in 4 missing, so 10/10 is the bar.",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "assets/live-footers.md: 10/10 hand-started explicit-worktree OMP footer captures."
         },
         {
           "id": "AC2",
           "claim": "LIVE forced miss: with the native set stubbed/forced to fail (e.g. temporarily make setSessionName return false via a test hook or run with the name pre-set to source:user), the setStatus row shows the id AND the notice line appears. Transcript pasted.",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "assets/live-footers.md: forced native miss shows one warning plus keyed status row."
         },
         {
           "id": "AC3",
           "claim": "Unit: fake pi API whose setSessionName fails N times then succeeds → helper retries per schedule, stops once the readback matches, sets status regardless; fails forever → notice emitted exactly once. RED-first on the pre-fix tree.",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "RED artifact://54; GREEN session-name.test.ts 4/4 and index.test.ts 13/13."
         },
         {
           "id": "AC4",
           "claim": "`just typecheck`, extension vitest, `harness checks` green (npm ci first in a fresh worktree).",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "harness checks status ok at 2026-09-01T21:55:53.271Z; typecheck, lint, test, smoke and all other sensors passed."
         }
       ]
     },
@@ -65,7 +69,7 @@
           "id": "ph-d726",
           "title": "Retry + fallback + live 10/10 proof",
           "brief": "Implement the shared helper, wire both call sites, prove AC1-AC4, PR into main.",
-          "state": "unchecked",
+          "state": "checked",
           "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
         }
       ]

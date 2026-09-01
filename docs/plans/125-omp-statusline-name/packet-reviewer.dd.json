@@ -6,40 +6,76 @@
     {
       "name": "meta",
       "value": {
-        "title": "Reviewer packet — <plan slug>",
+        "title": "Reviewer packet — omp-statusline-name",
         "role": "reviewer",
-        "plan": "docs/plans/<ord>-<slug>/plan.dd.json",
+        "plan": "docs/plans/125-omp-statusline-name/plan.dd.json",
         "seat": "<pij seat name once spawned>",
-        "updated": "<date>"
+        "updated": "2026-09-02"
       }
     },
     {
       "name": "mission",
-      "value": "You are the cross-model reviewer for plan <ord>-<slug>. The composed implementation is complete on the branch below. Judge whether the code makes the plan's promises TRUE — plan fidelity, correctness, and composition seams (where units meet is where it breaks) — and return findings the PM can act on. You are read-only on the code."
+      "value": "You are the cross-model reviewer for plan 125-omp-statusline-name. Judge the complete branch diff against the plan, impl-guide u1, and live proof. You are read-only on code; write only the review ddoc under assets/reviews/."
     },
     {
       "name": "instructions",
       "value": [
-        { "id": "i1", "text": "Orient: read the plan (rendered .dd.md), the impl-guide (the intended decomposition + interfaces), and then the full diff of the branch against its base. DOGFOOD FLOWSPACE: use `flowspace3 search` to locate consumers/related code by meaning while reviewing; report misses as friction." },
-        { "id": "i2", "text": "Review with the /builder review discipline: verify claims against fresh evidence — run targeted tests yourself, read exit status, never trust a green claim you did not see." },
-        { "id": "i2b", "text": "Your dispatcher OWES you three lists in this packet, and you should refuse to start without them: (1) WHERE THE AUTHOR IS LEAST CONFIDENT (hunt there first), (2) an instruction to DISBELIEVE THE AUTHOR'S OWN RECEIPTS (re-derive, don't audit prose), (3) WHAT IS ALREADY KNOWN-OPEN (spend zero findings re-reporting it). Proven 2026-08-28: this brief shape bought a 4-for-4 all-confirmed zero-noise review, including a defect the author hunted for in writing and could not see from inside." },
-        { "id": "i3", "text": "Priority order: (1) plan promises that are not actually true, (2) composition-seam defects between units, (3) interface drift from the impl-guide, (4) correctness/safety in the changed code, (5) test gaps on the contract. Style noise is unwanted." },
-        { "id": "i4", "text": "Findings: at most the material ones, each with severity (CRITICAL/HIGH/MEDIUM), exact location, the claim, the proof, and the smallest fix. `no_material_findings` is a valid verdict." },
-        { "id": "i5", "text": "Deliver as a ddoc review record in the plan folder (assets/reviews/), build it, and send the PM the path + a one-line verdict." }
+        {
+          "id": "i1",
+          "text": "Orient: read the plan (rendered .dd.md), the impl-guide (the intended decomposition + interfaces), and then the full diff of the branch against its base. DOGFOOD FLOWSPACE: use `flowspace3 search` to locate consumers/related code by meaning while reviewing; report misses as friction."
+        },
+        {
+          "id": "i2",
+          "text": "Review with the /builder review discipline: verify claims against fresh evidence — run targeted tests yourself, read exit status, never trust a green claim you did not see."
+        },
+        {
+          "id": "i2b",
+          "text": "Your dispatcher OWES you three lists in this packet, and you should refuse to start without them: (1) WHERE THE AUTHOR IS LEAST CONFIDENT (hunt there first), (2) an instruction to DISBELIEVE THE AUTHOR'S OWN RECEIPTS (re-derive, don't audit prose), (3) WHAT IS ALREADY KNOWN-OPEN (spend zero findings re-reporting it)."
+        },
+        {
+          "id": "i3",
+          "text": "Priority order: (1) plan promises that are not actually true, (2) composition-seam defects between units, (3) interface drift from the impl-guide, (4) correctness/safety in the changed code, (5) test gaps on the contract. Style noise is unwanted."
+        },
+        {
+          "id": "i4",
+          "text": "Findings: at most the material ones, each with severity (CRITICAL/HIGH/MEDIUM), exact location, the claim, the proof, and the smallest fix. `no_material_findings` is a valid verdict."
+        },
+        {
+          "id": "i5",
+          "text": "Deliver as a ddoc review record in the plan folder (assets/reviews/), build it, and send the PM the path + a one-line verdict."
+        },
+        {
+          "id": "i6",
+          "text": "WHERE THE AUTHOR IS LEAST CONFIDENT: inspect the concurrency seam between the 10-second background retry, first-turn reassertion, session generation cancellation, and exactly-once notice; also judge whether schedule semantics match the plan."
+        },
+        {
+          "id": "i7",
+          "text": "DISBELIEVE THE AUTHOR RECEIPTS: rerun the focused tests and derive the branch diff from origin/main yourself; treat plan/task/live-footers prose only as claims until code and command output corroborate it."
+        },
+        {
+          "id": "i8",
+          "text": "KNOWN OPEN: no known product defect is being waived. Out-of-scope harness frictions are the stale packet paths, npm min-release-age bootstrap conflict, and one opaque combined-gate smoke failure that passed standalone and on rerun."
+        }
       ]
     },
     {
       "name": "working_with",
       "value": [
-        { "id": "w1", "text": "The PM is your counterpart: verdict and findings go to the PM; the PM may refute findings with evidence — re-judge refutations on the evidence, not on rank." },
-        { "id": "w2", "text": "You do not fix code, commit, or open PRs. If you find something outside the plan's scope, name it as a note for prime rather than expanding the review." }
+        {
+          "id": "w1",
+          "text": "The PM is your counterpart: verdict and findings go to the PM; the PM may refute findings with evidence — re-judge refutations on the evidence, not on rank."
+        },
+        {
+          "id": "w2",
+          "text": "You do not fix code, commit, or open PRs. If you find something outside the plan's scope, name it as a note for prime rather than expanding the review."
+        }
       ]
     },
     {
       "name": "scope",
       "value": {
-        "worktree": "<read-only checkout or the pm's worktree path>",
-        "branch": "<branch under review>",
+        "worktree": ".",
+        "branch": "125-omp-statusline-name",
         "fence": "read-only on code; write only assets/reviews/ in the plan folder",
         "forbidden_note": "No code edits, no merges, no government files."
       }
@@ -47,17 +83,38 @@
     {
       "name": "done_bar",
       "value": [
-        { "id": "d1", "text": "Every plan AC judged true/false with evidence cited." },
-        { "id": "d2", "text": "Composition seams between units explicitly examined and reported." },
-        { "id": "d3", "text": "Review record ddoc written, built, and path delivered to the PM with a verdict line." }
+        {
+          "id": "d1",
+          "text": "Every plan AC judged true/false with evidence cited."
+        },
+        {
+          "id": "d2",
+          "text": "Composition seams between units explicitly examined and reported."
+        },
+        {
+          "id": "d3",
+          "text": "Review record ddoc written, built, and path delivered to the PM with a verdict line."
+        }
       ]
     },
     {
       "name": "refs",
       "value": [
-        { "id": "r0", "path": ".agents/skills/pij-team/TENETS.md", "note": "the doctrine — tenet 5: you judge diffs against contracts, not philosophy" },
-        { "id": "r1", "path": "docs/plans/<ord>-<slug>/impl-guide.dd.json", "note": "intended units + interfaces — drift from this is a finding" },
-        { "id": "r2", "path": "docs/plans/<ord>-<slug>/plan.dd.md", "note": "the promises under judgment" }
+        {
+          "id": "r0",
+          "path": ".agents-skills-port/pij-team/TENETS.md",
+          "note": "the doctrine — tenet 5: you judge diffs against contracts, not philosophy"
+        },
+        {
+          "id": "r1",
+          "path": "docs/plans/125-omp-statusline-name/impl-guide.dd.json",
+          "note": "intended units + interfaces — drift from this is a finding"
+        },
+        {
+          "id": "r2",
+          "path": "docs/plans/125-omp-statusline-name/plan.dd.md",
+          "note": "the promises under judgment"
+        }
       ]
     }
   ]

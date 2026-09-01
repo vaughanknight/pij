@@ -67,7 +67,7 @@
           "title": "Prove deterministic and live acceptance",
           "domain": "pij extension",
           "phase": "ph-d726",
-          "state": "unchecked",
+          "state": "checked",
           "done": "tasks.dd.json#done_when/tk-1254",
           "success": "AC1-AC4 have command or tmux-capture receipts in the plan assets and every witness window is closed.",
           "notes": "Hand-start OMP witnesses; never substitute pij-spawned clients.",
@@ -76,7 +76,8 @@
             "../../../plan.dd.json#acceptance_criteria/AC2",
             "../../../plan.dd.json#acceptance_criteria/AC3",
             "../../../plan.dd.json#acceptance_criteria/AC4"
-          ]
+          ],
+          "receipt": "AC1-AC4 proof: focused 17 tests pass; harness checks all 8 sensors pass; assets/live-footers.md."
         }
       ]
     },
@@ -114,8 +115,9 @@
           {
             "id": "as-1254",
             "assertion": "Focused tests, typecheck, harness checks, forced-miss transcript, and ten hand-started OMP footer captures satisfy AC1-AC4.",
-            "state": "unchecked",
-            "pressure": "not-applicable"
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "harness checks status ok at 2026-09-01T21:55:53.271Z; assets/live-footers.md records forced miss and 10/10 local-extension OMP witnesses."
           }
         ]
       }

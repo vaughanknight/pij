@@ -38,7 +38,7 @@ Implement u1 from the binding impl-guide: prove the helper red-first, implement 
 | tk-1251 | Add RED session-name publisher tests | pij extension | ph-d726 | [x] checked | — | RED suite failed at missing helper import before implementation; artifact://54. | [tk-1251](tasks.dd.md#done-when) | Vitest covers retry success, already-equal readback, permanent failure, status fallback, and one notice. | Run the new file before adding the helper and retain the failing receipt. | [AC3](../../../plan.dd.md#acceptance-criteria) |
 | tk-1252 | Implement bounded session-name publisher | pij extension | ph-d726 | [x] checked | — | just test session-name.test.ts: 4 passed; just typecheck: pass. | [tk-1252](tasks.dd.md#done-when) | A pi-free helper retries on the declared schedule, verifies readback when exposed, always publishes status, and reports honest failure. | Frozen deps and return type come from impl-guide u1. | [AC3](../../../plan.dd.md#acceptance-criteria) |
 | tk-1253 | Wire both daemon generation paths | pij extension | ph-d726 | [x] checked | — | Both call sites migrated; just typecheck passed. | [tk-1253](tasks.dd.md#done-when) | Rust and legacy session_start paths share the helper; a failed startup gets one extra first-inbound attempt. | Keep index.ts changes to the two setSessionName call sites and their shared local state; plan 124 converges nearby. | [AC1](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria) |
-| tk-1254 | Prove deterministic and live acceptance | pij extension | ph-d726 | [ ] unchecked | — | — | [tk-1254](tasks.dd.md#done-when) | AC1-AC4 have command or tmux-capture receipts in the plan assets and every witness window is closed. | Hand-start OMP witnesses; never substitute pij-spawned clients. | [AC1](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria), [AC3](../../../plan.dd.md#acceptance-criteria), [AC4](../../../plan.dd.md#acceptance-criteria) |
+| tk-1254 | Prove deterministic and live acceptance | pij extension | ph-d726 | [x] checked | — | AC1-AC4 proof: focused 17 tests pass; harness checks all 8 sensors pass; assets/live-footers.md. | [tk-1254](tasks.dd.md#done-when) | AC1-AC4 have command or tmux-capture receipts in the plan assets and every witness window is closed. | Hand-start OMP witnesses; never substitute pij-spawned clients. | [AC1](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria), [AC3](../../../plan.dd.md#acceptance-criteria), [AC4](../../../plan.dd.md#acceptance-criteria) |
 
 <a id="done-when"></a>
 
@@ -64,6 +64,6 @@ Implement u1 from the binding impl-guide: prove the helper red-first, implement 
 
 ### tk-1254
 
-| id | assertion | state | pressure |
-| --- | --- | --- | --- |
-| as-1254 | Focused tests, typecheck, harness checks, forced-miss transcript, and ten hand-started OMP footer captures satisfy AC1-AC4. | [ ] unchecked | not-applicable |
+| id | assertion | state | pressure | receipt |
+| --- | --- | --- | --- | --- |
+| as-1254 | Focused tests, typecheck, harness checks, forced-miss transcript, and ten hand-started OMP footer captures satisfy AC1-AC4. | [x] checked | not-applicable | harness checks status ok at 2026-09-01T21:55:53.271Z; assets/live-footers.md records forced miss and 10/10 local-extension OMP witnesses. |
