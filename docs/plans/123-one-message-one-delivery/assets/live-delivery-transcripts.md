@@ -84,6 +84,45 @@ not_before: 1788254007
 
 With the extension absent, no event consumer claimed or injected the message. The daemon-owned inbox path returned the full body in the real OMP pane and atomically finished the queue row; no silent drop.
 
-## AC-5 — composed s122 check not yet runnable
+## AC-5 — composed with s122: zero additional tmux typings
 
-Prime receipt: s122 branch `s122/tmux-full-body` compiles but remains mid-edit and uncommitted with four dirty files; its `interaction.rs` verdict seam is still in flight. The prime withheld a moving ref and will provide a pinned SHA once that seam is committed green. Therefore the composed zero-additional-tmux-typing check cannot yet be run; no s122 bytes were copied or inferred here.
+**Composition**: s123 detached head `6e0fd786` merged without commit with pinned s122 `c5c7fd2c`
+**Daemon**: composed worktree binary at `127.0.0.1:7564`
+**Client**: OMP 18.0.3 with the composed worktree extension loaded explicitly
+**Seat**: `pij-like-gibbon` · pane `%2234`
+**Message id**: `ac5-s123-s122`
+
+An unsent `draft-holding` composer value forced s122's first-attempt tmux rung to queue instead of type. Send receipt:
+
+```text
+pij send: ok — {"msg_id":"ac5-s123-s122","outcome":{"outcome":"queued"},"at":1788254936237}
+```
+
+The event consumer then claimed the row, injected once, and acknowledged it. Pane transcript:
+
+```text
+❯ draft-holding
+
+[pij from pij-obedient-marmot] AC5-S123-S122 zero-additional-typing witness
+
+Understood. I’ll stay idle and not make any edits or commands.
+```
+
+The composer draft disappeared when the injected turn landed. No second copy was typed by s122's enabled tmux body rung. Queue receipt:
+
+```text
+id: 1
+kind: delivery:pij-like-gibbon
+serial_key: pij-like-gibbon
+dedupe_key: ac5-s123-s122
+state: done
+worker: pij-like-gibbon
+outcome: NULL
+enqueued_at: 1788254936
+claimed_at: 1788254936
+acked_at: 1788254936
+attempt: 0
+not_before: 0
+```
+
+The composed suites were also green: focused Vitest 12/12 and `cargo test -p pij-daemon` 211/211. The terminal row means s122's drain worker had no body left to type: extension consumption produced exactly one rendering and zero additional tmux typings.
