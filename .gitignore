@@ -207,6 +207,3 @@ pocs/*/out/
 # never on main. Ignored so a hand-written file cannot silently resurrect the tree.
 .harness/government/
 /government/
-
-# Per-worktree cargo target dirs (impl-guide mandates CARGO_TARGET_DIR per coder)
-.cargo-target/
