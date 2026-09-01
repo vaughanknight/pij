@@ -22,6 +22,7 @@ import {
 	probeDecisionOnly,
 	probeRs,
 	routeVerb,
+	rsSeatByPane,
 } from "./generation-router.js";
 
 const KEY = "k".repeat(64);
@@ -206,8 +207,13 @@ describe("`inbox` is DENIED, and the paneless form stays on legacy (F-U5)", () =
 		// ANYWHERE, and the deny list is where the reason survives to meet
 		// whoever is about to add that row.
 		expect(NEVER_ROUTED.map((entry) => entry.verb)).toContain("inbox");
-		const why = NEVER_ROUTED.find((entry) => entry.verb === "inbox")?.why ?? "";
-		expect(why).toContain("BIND EVIDENCE");
+		// s119 moved this from verb granularity to LEAF granularity. The reason
+		// text is unchanged and still attached to the leaf it was always about —
+		// nothing was struck, and it is what s120 must replace before the denial
+		// may be lifted.
+		const entry = NEVER_ROUTED.find((row) => row.verb === "inbox");
+		expect(entry?.leaf).toBe("register");
+		expect(entry?.why ?? "").toContain("BIND EVIDENCE");
 	});
 
 	it("stays on legacy EVEN IF someone adds a row for it", async () => {
@@ -227,9 +233,30 @@ describe("`inbox` is DENIED, and the paneless form stays on legacy (F-U5)", () =
 		expect(seen).toEqual([]);
 	});
 
-	it("no route-table row reaches rs for it", () => {
+	// UPDATED IN PLAN 119, and what it protects is unchanged.
+	//
+	// It used to assert that NO inbox row exists, which was the right guard while
+	// the denial was verb-wide. s119 routes the mailbox READ leaves, so that
+	// assertion would now fail for a reason that has nothing to do with the
+	// hazard — and deleting it would leave the hazard unguarded. So it asserts
+	// the thing it was always really about: THE PANELESS REGISTRATION FORM NEVER
+	// REACHES RS. The read leaves were never what F-U5 was about; `register` is.
+	it("no route-table row reaches rs for the PANELESS REGISTRATION form", () => {
 		expect(findRoute("inbox", "register")).toBeUndefined();
-		expect(findRoute("inbox", undefined)).toBeUndefined();
+	});
+
+	// And the closed default is what keeps that true for a leaf nobody has
+	// imagined yet — the property the verb-wide deny used to give for free.
+	it("a leaf nobody has enumerated does not route either", () => {
+		expect(findRoute("inbox", "frobnicate")).toBeUndefined();
+	});
+
+	// The read leaves DO route, or s119 shipped nothing. Asserted here rather
+	// than only in the routing tests so the two halves of this file cannot drift
+	// into disagreeing about the same table.
+	it("the mailbox READ leaves route, which is the whole of s119", () => {
+		expect(findRoute("inbox", undefined)?.rsPath).toBe("/v1/shim/inbox");
+		expect(findRoute("inbox", "check")?.rsPath).toBe("/v1/shim/inbox");
 	});
 });
 
@@ -390,6 +417,40 @@ describe("the production call site wires the seat lookups (finding 4)", () => {
 			"seatInLegacy",
 			"seatInRs",
 		]);
+	});
+
+	// F2, plan 119. `ambientSeatId` reads the LEGACY registry, so for a fresh
+	// rs-only seat — the entire acceptance population — it resolves to nothing,
+	// `seatInRs` is never asked, and `requiresSeatInRs` refuses to route for
+	// exactly the callers the routing exists to serve. `rsSeatByPane` is the only
+	// evidence such a caller has. Unwired, the precondition is unreachable in
+	// production while every test that hands in a `seatId` still passes — the
+	// same shape as `legacy-seat-followed` being declared, tested, and dead.
+	it("routingDeps also wires the pane lookup, or rs-only seats can never route", () => {
+		const body = readFileSync(CLI, "utf8");
+		const start = body.indexOf("function routingDeps()");
+		expect(start).toBeGreaterThan(-1);
+		expect(body.slice(start, start + 2500)).toMatch(/rsSeatByPane\s*:/);
+	});
+
+	// F1, plan 119. This gate read `entry.verb === verb` alone, which was correct
+	// while every deny was verb-wide and became a silent bug the moment one
+	// carried a leaf: `inbox register`'s denial sent EVERY `pij inbox …` to
+	// legacy — `inbox check` included — before `findRoute` or `decidePreCall`
+	// ran. The pure tests passed throughout, because this gate is UPSTREAM of the
+	// function they exercise. A source scan is the honest instrument here: it
+	// cannot prove the gate behaves, only that it still reads the leaf, which is
+	// the exact regression.
+	it("the entrypoint deny gate is leaf-aware", () => {
+		const source = readFileSync(CLI, "utf8");
+		const start = source.indexOf("const denied = NEVER_ROUTED");
+		expect(start).toBeGreaterThan(-1);
+		const gate = source.slice(start, start + 300);
+		expect(gate).toMatch(/entry\.leaf/);
+		// A verb-wide deny must still deny every leaf, so the gate has to accept
+		// an ABSENT leaf as well — checking only `entry.leaf === leaf` would let
+		// `tail` route the moment anyone passed a leaf.
+		expect(gate).toMatch(/entry\.leaf === undefined/);
 	});
 
 	// Positive control: without it, "all three found" could mean the scanner is
@@ -918,5 +979,207 @@ describe("the shim refuses a direct paneless adopt (F005)", () => {
 		const cli = readFileSync(fileURLToPath(new URL("../cli.ts", import.meta.url)), "utf8");
 		expect(cli).toMatch(/bootThroughGenerationRouting\(\)\s*\.catch\(/);
 		expect(cli).not.toMatch(/void bootThroughGenerationRouting\(\)/);
+	});
+});
+
+/** F2 — THE ACCEPTANCE POPULATION: a fresh seat that lives ONLY in rs.
+ *
+ *  This is `pij-literary-bonobo`. It ran `/pij ready`, registered into rs, and
+ *  has no legacy record at all — so `ambientSeatId`, which opens the LEGACY
+ *  registry, resolves to nothing for it. With only that evidence available,
+ *  `requiresSeatInRs` can never be satisfied, `routeVerb` returns
+ *  `legacy-seat-not-in-rs`, legacy's sender precheck runs, and the seat gets
+ *  E-NOID — the exact failure this unit exists to remove, reproduced by the
+ *  guard added to prevent it.
+ *
+ *  Every test here supplies NO `ambientSeatId`, deliberately. Handing one in is
+ *  what masked the defect: it makes the precondition look reachable while the
+ *  production call site cannot discover a seat at all.
+ */
+describe("an rs-only seat can route (F2, plan 119)", () => {
+	const RS_ONLY_ENV = {
+		PIJ_RS_ADDR: "127.0.0.1:7461",
+		PIJ_RS_STATE_DIR: "/tmp/s",
+		// No PIJ_SESSION_ID: a hand-started seat has none. A pane is all it has.
+		TMUX_PANE: "%2159",
+	};
+
+	const rsOnly = (seen: Seen[], over: Partial<GenerationRouterDeps> = {}) =>
+		deps(seen, {
+			env: RS_ONLY_ENV,
+			// The legacy registry knows nothing about this seat — the whole point.
+			ambientSeatId: () => undefined,
+			seatInLegacy: () => false,
+			seatInRs: async () => false,
+			rsSeatByPane: async (pane: string) => (pane === "%2159" ? "pij-literary-bonobo" : undefined),
+			...over,
+		});
+
+	it("send reaches the shim endpoint on pane evidence alone", async () => {
+		const seen: Seen[] = [];
+		const { outcome } = await routeVerb(
+			"send",
+			undefined,
+			["send", "pij-still-weasel", "hello"],
+			rsOnly(seen),
+		);
+		expect(outcome.kind).toBe("rs");
+		expect(seen.at(-1)?.url).toContain("/v1/shim/send");
+	});
+
+	it("bare inbox reaches the shim endpoint too", async () => {
+		const seen: Seen[] = [];
+		const { outcome } = await routeVerb("inbox", undefined, ["inbox"], rsOnly(seen));
+		expect(outcome.kind).toBe("rs");
+		expect(seen.at(-1)?.url).toContain("/v1/shim/inbox");
+	});
+
+	it("the pane is matched, never asserted — no session id is invented", async () => {
+		const seen: Seen[] = [];
+		await routeVerb("send", undefined, ["send", "x", "hi"], rsOnly(seen));
+		const body = JSON.parse(seen.at(-1)?.body ?? "{}") as {
+			caller?: Record<string, unknown>;
+		};
+		// The caller block carries the pane it really has and NOT a session id it
+		// does not: minting one for a seat that lacks it is phantom-seat minting.
+		expect(body.caller?.tmuxPane).toBe("%2159");
+		expect("pijSessionId" in (body.caller ?? {})).toBe(false);
+	});
+
+	it("a pane rs does not own stays on legacy", async () => {
+		const seen: Seen[] = [];
+		const { outcome } = await routeVerb(
+			"send",
+			undefined,
+			["send", "x", "hi"],
+			rsOnly(seen, { env: { ...RS_ONLY_ENV, TMUX_PANE: "%9999" } }),
+		);
+		expect(outcome.kind).toBe("legacy-seat-not-in-rs");
+		expect(seen.filter((call) => call.url.includes("/v1/shim/"))).toEqual([]);
+	});
+
+	// An unreadable roster is NOT a no. Collapsing them is the verified negative
+	// we never verified, and it re-homes a seat on an unknown rather than a fact.
+	it("an unreadable rs roster refuses rather than falling back", async () => {
+		const seen: Seen[] = [];
+		const { outcome } = await routeVerb(
+			"send",
+			undefined,
+			["send", "x", "hi"],
+			rsOnly(seen, { rsSeatByPane: async () => "unreadable" as const }),
+		);
+		expect(outcome.kind).toBe("rs-roster-unreadable");
+	});
+
+	// A paneless caller has nothing for the pane lookup to match, so it never
+	// routes — which is exactly why `--wait`, whose legitimate users are paneless
+	// pull peers, cannot be broken by the bare-inbox row.
+	it("a paneless caller never routes, so pull peers keep legacy", async () => {
+		const seen: Seen[] = [];
+		const { outcome } = await routeVerb(
+			"inbox",
+			undefined,
+			["inbox", "--wait"],
+			rsOnly(seen, { env: { PIJ_RS_ADDR: "127.0.0.1:7461", PIJ_RS_STATE_DIR: "/tmp/s" } }),
+		);
+		expect(outcome.kind).toBe("legacy-seat-not-in-rs");
+	});
+});
+
+/** F4/F5/F6 — the second review round. */
+describe("the routed mailbox finishes, and its lookups tell live from dead (plan 119)", () => {
+	const RS_ONLY_ENV = {
+		PIJ_RS_ADDR: "127.0.0.1:7461",
+		PIJ_RS_STATE_DIR: "/tmp/s",
+		TMUX_PANE: "%2159",
+	};
+
+	// F5 — a REUSED pane held by an old tombstone must not read as rs-resident.
+	// `/v1/seats` lists tombstones (`Registry::list` with no live filter) while
+	// the ladder resolves only live rows, so indexing a dead row would make the
+	// shim route and rs then refuse a seat it cannot resolve — and an rs refusal
+	// never falls back, so legacy never runs and the caller is stuck.
+	it("a pane held only by a TOMBSTONED rs row is not rs residency", async () => {
+		const seen: Seen[] = [];
+		const roster = JSON.stringify({
+			ok: true,
+			command: "pij seats",
+			v: 1,
+			data: {
+				seats: [
+					// Dead, and holding the pane. `tombstoned_at` is
+					// skip_serializing_if=Option::is_none, so PRESENT means dead.
+					{ id: "pij-old-ghost", pane: "%2159", tombstoned_at: 1788240000 },
+				],
+			},
+		});
+		const lookup = rsSeatByPane(
+			{ addr: "127.0.0.1:7461", stateDir: "/tmp/s" },
+			deps(seen, {
+				readFile: (async () => "key") as unknown as GenerationRouterDeps["readFile"],
+				fetch: (async () => new Response(roster, { status: 200 })) as unknown as typeof fetch,
+			}),
+		);
+		expect(await lookup("%2159")).toBeUndefined();
+	});
+
+	it("a LIVE row holding the pane still is", async () => {
+		// The control. Without it, "tombstoned is rejected" could mean the lookup
+		// is broken rather than discriminating.
+		const seen: Seen[] = [];
+		const roster = JSON.stringify({
+			ok: true,
+			command: "pij seats",
+			v: 1,
+			data: { seats: [{ id: "pij-alive", pane: "%2159" }] },
+		});
+		const lookup = rsSeatByPane(
+			{ addr: "127.0.0.1:7461", stateDir: "/tmp/s" },
+			deps(seen, {
+				readFile: (async () => "key") as unknown as GenerationRouterDeps["readFile"],
+				fetch: (async () => new Response(roster, { status: 200 })) as unknown as typeof fetch,
+			}),
+		);
+		expect(await lookup("%2159")).toBe("pij-alive");
+	});
+
+	// F6 — the diagnostic must agree with the call it explains. `pij generation`
+	// is what an operator consults to find out what just happened; one wired to
+	// different inputs than the real call lies exactly when it is consulted.
+	it("`pij generation` reports rs for an rs-only pane, as the real call does", async () => {
+		const shared = {
+			env: RS_ONLY_ENV,
+			ambientSeatId: () => undefined,
+			seatInLegacy: () => false,
+			seatInRs: async () => false as const,
+			rsSeatByPane: async () => "pij-literary-bonobo",
+		};
+		const real = await routeVerb("send", undefined, ["send", "x", "hi"], deps([], shared));
+		const [diagnostic] = await probeDecisionOnly(["send"], deps([], shared));
+		expect(real.outcome.kind).toBe("rs");
+		expect(diagnostic?.generation).toBe("rs");
+	});
+
+	it("and reports legacy for a pane rs does not hold, also as the real call does", async () => {
+		const shared = {
+			env: RS_ONLY_ENV,
+			ambientSeatId: () => undefined,
+			seatInLegacy: () => false,
+			seatInRs: async () => false as const,
+			rsSeatByPane: async () => undefined,
+		};
+		const real = await routeVerb("send", undefined, ["send", "x", "hi"], deps([], shared));
+		const [diagnostic] = await probeDecisionOnly(["send"], deps([], shared));
+		expect(real.outcome.kind).toBe("legacy-seat-not-in-rs");
+		expect(diagnostic?.generation).toBe("legacy");
+	});
+
+	// F4 — a claim-then-ack row must say how it finishes, and the closure must
+	// only exist when there is something to acknowledge.
+	it("the mailbox rows declare their acknowledgement path", () => {
+		expect(findRoute("inbox", undefined)?.acknowledgePath).toBe("/v1/shim/inbox/ack");
+		expect(findRoute("inbox", "check")?.acknowledgePath).toBe("/v1/shim/inbox/ack");
+		// `send` is one-step: nothing to finish, so no path.
+		expect(findRoute("send", undefined)?.acknowledgePath).toBeUndefined();
 	});
 });

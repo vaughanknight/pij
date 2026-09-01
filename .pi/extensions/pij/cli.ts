@@ -47,6 +47,7 @@ import {
 	defaultRouterDeps,
 	probeDecisionOnly,
 	routeVerb,
+	rsSeatByPane,
 	rsSeatLookup,
 } from "./adapters/generation-router.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
@@ -4624,12 +4625,21 @@ async function bootThroughGenerationRouting(): Promise<void> {
 	// A table lookup, not a branch on the verb: `findRoute` and the deny list
 	// own the answer, and both are data.
 	const leaf = process.argv[3]?.startsWith("-") ? undefined : process.argv[3];
-	const denied = NEVER_ROUTED.some((entry) => entry.verb === verb);
+	// LEAF-AWARE (F1, plan 119). This read `entry.verb === verb` alone, which was
+	// right while every deny was verb-wide and became a silent bug the moment one
+	// carried a leaf: `inbox register`'s denial sent EVERY `pij inbox …` to
+	// legacy, `inbox check` included, before `findRoute` or `decidePreCall` ran.
+	// The pure tests passed throughout, because they exercise `decidePreCall` and
+	// this gate is upstream of it — the guard was right and its production call
+	// site defeated it.
+	const denied = NEVER_ROUTED.some(
+		(entry) => entry.verb === verb && (entry.leaf === undefined || entry.leaf === leaf),
+	);
 	if (denied || findRoute(verb, leaf) === undefined) {
 		main();
 		return;
 	}
-	const { outcome, payload, row } = await routeVerb(
+	const { outcome, payload, row, acknowledge } = await routeVerb(
 		verb,
 		leaf,
 		process.argv.slice(2),
@@ -4646,6 +4656,18 @@ async function bootThroughGenerationRouting(): Promise<void> {
 	}
 	if (outcome.kind === "rs") {
 		emitRsPayload(row, payload, process.argv.slice(2));
+		// F4 — ORDER IS THE CONTRACT. A claim is acknowledged only after the
+		// caller actually HAS the message, which here means after it has been
+		// rendered: a process that dies before this line leaves the job claimable
+		// again, which is a duplicate read rather than a lost body. Skipped when
+		// the render itself refused, for the same reason.
+		if (acknowledge !== undefined && process.exitCode === undefined) {
+			const warning = await acknowledge();
+			// A failed acknowledgement is a WARNING, never an error: the message is
+			// already in the caller's hands, and failing here would hide a body
+			// they have just been shown.
+			if (warning !== undefined) process.stderr.write(`${warning}\n`);
+		}
 		return;
 	}
 	// rs-error / rs-auth-rejected. Loud, named, and NOT a fallback.
@@ -4698,6 +4720,11 @@ function routingDeps() {
 			}
 		},
 		seatInRs: rsSeatLookup(daemonLocationForRouting(base.env, base.home), base),
+		// F2 — the ONLY evidence a fresh rs-only seat has. Without this wired
+		// here, `requiresSeatInRs` is unreachable in production while every test
+		// that hands in a `seatId` passes: the same shape as `legacy-seat-followed`
+		// being declared, tested, and dead at the call site.
+		rsSeatByPane: rsSeatByPane(daemonLocationForRouting(base.env, base.home), base),
 	};
 }
 

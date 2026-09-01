@@ -98,6 +98,35 @@ export interface RsRouteRow {
 	/** Why `--json` is refused, named for the caller. Required when
 	 *  `jsonOutput` is "refuse". */
 	readonly jsonRefusal?: string;
+	/** Route ONLY when the ambient seat is KNOWN PRESENT in the rs store.
+	 *
+	 *  Not "not known absent" — KNOWN PRESENT. Unknown, unreadable and absent all
+	 *  go legacy.
+	 *
+	 *  It exists because of a hazard the mailbox verbs have and the identity
+	 *  verbs do not. EVERY `pij inbox` leaf — bare, `check` and `register` alike
+	 *  — calls `ensureCurrentRegistration` (`cli.ts:939`), so "first use
+	 *  auto-registers this ambient session" is a property of the VERB, not of the
+	 *  `register` leaf. A seat in NEITHER store therefore has no ambient id, so
+	 *  follow-the-seat cannot fire (it requires `seatInRs === false` AND
+	 *  `seatInLegacy === true`), the call falls through to rs, rs refuses because
+	 *  no rs seat owns that pane, and an rs refusal NEVER FALLS BACK. That seat
+	 *  would then register nowhere, where today it registers in legacy and works
+	 *  — the deny list's original hazard arriving through the read leaves.
+	 *
+	 *  This is strictly MORE closed than follow-the-seat, which only diverts a
+	 *  seat known to live in legacy. Here an unknown seat is never given the
+	 *  benefit of the doubt toward rs. */
+	readonly requiresSeatInRs?: boolean;
+	/** Path of this row's ACKNOWLEDGEMENT, for a two-step read.
+	 *
+	 *  F4. `inbox` claims and then acknowledges: the claim records nothing and the
+	 *  client acks only once it HAS the message, so a client that dies mid-read
+	 *  gets a duplicate instead of a silent loss. A routed read that never acked
+	 *  left the job `running` with no `ReaderRead` and let the message be claimed
+	 *  again after the lease expired — while printing "claimed", honestly and
+	 *  incompletely. A row that claims must say how it finishes. */
+	readonly acknowledgePath?: string;
 	/** How to render an rs payload for a HUMAN caller.
 	 *
 	 *  ac-1143 says the CLI's external surface is unchanged, and output shape is
@@ -188,6 +217,35 @@ function renderState(payload: unknown): string {
 			? `\n  (${unsupported.length} field(s) the rs store does not carry — re-run with --json to see which and why)`
 			: "";
 	return `${head}${detail.length === 0 ? "" : `\n  ${detail.join("  ·  ")}`}${note}`;
+}
+
+/** rs shim send -> the TS `sent → …` line, core/cli.ts's send renderer.
+ *
+ *  It does NOT reproduce legacy's second line (`receipt → … (also in: pij tail
+ *  …)`), because that line names a LEGACY affordance: `pij tail` follows a peer
+ *  transcript in the TS store and is on the deny list precisely because rs's
+ *  `tail` is a different object. Printing a pointer to a surface that cannot
+ *  answer for this message would be a worse lie than omitting it. */
+function renderShimSend(payload: unknown): string {
+	const outcome = field(payload, "outcome");
+	const word =
+		typeof outcome === "object" && outcome !== null
+			? ((outcome as Record<string, unknown>).outcome ?? "?")
+			: (outcome ?? "?");
+	return `sent (rs) — msg ${text(payload, "msg_id") ?? "?"} — receipt ${String(word)}`;
+}
+
+/** rs shim inbox -> a count and the bodies. Claims, not deliveries: the rs
+ *  inbox route claims without recording delivery, and saying "claimed" rather
+ *  than "received" is the difference between what happened and what a reader
+ *  would assume. */
+function renderShimInbox(payload: unknown): string {
+	if (!Array.isArray(payload) || payload.length === 0) return "inbox: empty";
+	const lines = payload.map((claim) => {
+		const message = field(claim, "message");
+		return `  from ${text(message, "from") ?? "?"}: ${text(message, "body") ?? ""}`;
+	});
+	return [`inbox: ${payload.length} claimed`, ...lines].join("\n");
 }
 
 /** THE ROUTE TABLE. Data, consumed by a dispatcher with no per-verb logic.
@@ -313,6 +371,82 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 		method: "POST",
 		why: "ac-1144 — report family parity",
 	},
+	// PLAN 119 — the mailbox verbs. Both point at the SHIM-ORIGINATED paths, not
+	// at `/v1/send` and `/v1/inbox`: those speak the `pij-rs` CLI's language (a
+	// caller-supplied `from` and `seat`) and TOLERATE UNKNOWN FIELDS, so the
+	// additive shape would have an older daemon accept an asserted `from` while
+	// silently discarding the caller evidence meant to constrain it. Measured,
+	// not assumed: a POST carrying `caller` failed on `from` and never on
+	// `caller`. Overloading fails quietly; a distinct path fails loudly.
+	{
+		verb: "send",
+		jsonOutput: "refuse",
+		jsonRefusal:
+			"legacy send --json emits the TS receipt envelope with its attachments and broadcast fan-out; rs returns its own Receipt {msg_id, outcome, at} and has no attachment or broadcast model, so the two are not the same object",
+		humanOutput: "render",
+		render: renderShimSend,
+		rsPath: "/v1/shim/send",
+		method: "POST",
+		requiresSeatInRs: true,
+		why: "s119 — a seat that registers into rs must be able to speak; `send` running on legacy is what left pij-literary-bonobo registered and mute",
+	},
+	{
+		verb: "inbox",
+		leaf: "check",
+		jsonOutput: "refuse",
+		jsonRefusal:
+			"legacy inbox --json emits the TS inbox envelope (attachments, receipt settlement, registration fields); rs returns raw queue CLAIMS and records no delivery, so the two are not the same object",
+		humanOutput: "render",
+		render: renderShimInbox,
+		rsPath: "/v1/shim/inbox",
+		acknowledgePath: "/v1/shim/inbox/ack",
+		method: "POST",
+		requiresSeatInRs: true,
+		why: "s119 — the explicit mailbox read",
+	},
+	{
+		// BARE `pij inbox` — enumerated, REVERSING my first call (F3, gopher).
+		//
+		// I left it out on purpose and the reasoning was wrong on both halves.
+		// It is the PUBLIC form: `core/inbox.ts` defines bare inbox as the alias
+		// of `check`, so leaving it unrouted means an rs-only seat must type the
+		// noncanonical `pij inbox check` or fall to legacy and get E-NOID — the
+		// exact failure this unit exists to remove, preserved in the one spelling
+		// everybody actually uses. Routing is upstream of the alias parser, so
+		// the alias cannot rescue it.
+		//
+		// My two reasons, and why neither survives:
+		//
+		//  - the auto-registration every leaf performs (`cli.ts:939`) — handled
+		//    by `requiresSeatInRs`, not by leaving a hole. A seat not KNOWN
+		//    PRESENT in rs never routes, so it keeps its legacy auto-registration.
+		//    That is the guard's whole job, and declining to enumerate was me
+		//    distrusting a guard I had just written.
+		//
+		//  - `--wait` parsing to no leaf and landing here — true, and it is
+		//    refused BY NAME at the endpoint (`shim.rs`, `parse_inbox`). Worth
+		//    stating why that refusal is safe rather than merely loud: the
+		//    population that legitimately blocks on `--wait` is PANELESS pull
+		//    peers, and a paneless caller has no pane for `rsSeatByPane` to
+		//    match, so it never satisfies `requiresSeatInRs` and never routes.
+		//    A caller that DOES reach the refusal has a pane, which makes it a
+		//    pushed seat — and legacy refuses `--wait` for those already
+		//    (`cli.ts:965`). The two generations agree.
+		//
+		// This is an enumeration, not a fallback: `inbox frobnicate` still has no
+		// row and still does not route.
+		verb: "inbox",
+		jsonOutput: "refuse",
+		jsonRefusal:
+			"legacy inbox --json emits the TS inbox envelope (attachments, receipt settlement, registration fields); rs returns raw queue CLAIMS and records no delivery, so the two are not the same object",
+		humanOutput: "render",
+		render: renderShimInbox,
+		rsPath: "/v1/shim/inbox",
+		acknowledgePath: "/v1/shim/inbox/ack",
+		method: "POST",
+		requiresSeatInRs: true,
+		why: "s119 — bare `pij inbox` is the public alias of `check`, and routing runs before the alias parser",
+	},
 	{
 		verb: "state",
 		jsonOutput: "refuse",
@@ -346,10 +480,28 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
  *  putting `tail` IN the route table and asserting it is denied anyway. A test
  *  that merely asserted `tail` is absent from the table would pass just as
  *  happily with this list deleted. */
-export const NEVER_ROUTED: readonly { readonly verb: string; readonly why: string }[] = [
+/** One deny-list entry. Named, because `decidePreCall` takes the list as a
+ *  parameter and an inline shape there would silently drop `leaf`. */
+export interface DenyEntry {
+	readonly verb: string;
+	/** Deny ONE leaf. Absent denies the whole verb.
+	 *
+	 *  `inbox` moved from verb granularity to leaf granularity in s119, and the
+	 *  move is not a weakening: the reason below was only ever about ONE leaf,
+	 *  and it stays attached to that leaf with its wording intact. Nothing is
+	 *  struck. What made the verb-wide form safe was that a leaf nobody had
+	 *  thought of was denied BY CONSTRUCTION — safety with no author — and that
+	 *  property is preserved by `LEAF_CLOSED_VERBS` below rather than by this
+	 *  entry. An enumeration is only as good as its default. */
+	readonly leaf?: string;
+	readonly why: string;
+}
+
+export const NEVER_ROUTED: readonly DenyEntry[] = [
 	{
 		verb: "inbox",
-		why: "PANELESS ADMISSION IS UNSOLVED, and routing this breaks registration fleet-wide. Every rs registration requires BIND EVIDENCE — a (pid, proc_start) pair the daemon corroborates (crates/core/src/admission.rs:143, NoBindEvidence). It is an anti-impersonation control: a subagent inherits its parent's environment and can CLAIM anything, but cannot manufacture evidence for a session that is not its own. The paneless ready form `pij inbox register --json` names no pane and no process, so there is nothing to derive evidence from and rs must refuse. Under the never-bare-404 rule that refusal arrives WITH an envelope, which classifies as rs-error and never falls back — so a routed `inbox` would stop paneless seats registering ANYWHERE, where today they register in legacy and work. Forwarding the pij CLI's own pid is NOT the fix: it corroborates for the instant the process lives and then exits, binding the seat to a dead process so every later phonehome reports unbound — a worse lie than the refusal, and persisted. A designed admission path for pull-mode seats is its own row, not this plan's.",
+		leaf: "register",
+		why: "PANELESS ADMISSION IS UNSOLVED, and routing this breaks registration fleet-wide. Every rs registration requires BIND EVIDENCE — a (pid, proc_start) pair the daemon corroborates (crates/core/src/admission.rs:143, NoBindEvidence). It is an anti-impersonation control: a subagent inherits its parent's environment and can CLAIM anything, but cannot manufacture evidence for a session that is not its own. The paneless ready form `pij inbox register --json` names no pane and no process, so there is nothing to derive evidence from and rs must refuse. Under the never-bare-404 rule that refusal arrives WITH an envelope, which classifies as rs-error and never falls back — so a routed `inbox` would stop paneless seats registering ANYWHERE, where today they register in legacy and work. Forwarding the pij CLI's own pid is NOT the fix: it corroborates for the instant the process lives and then exits, binding the seat to a dead process so every later phonehome reports unbound — a worse lie than the refusal, and persisted. Jordan's ruling of 2026-09-01 (we guide, we do not police) replaces this refusal with an admission GRADE — a seat that cannot prove itself is admitted as `unproven` and told the gesture that promotes it. That is s120. Until the graded path is LIVE the denial stands, because striking a deny reason in a unit that does not supply its replacement leaves the justification gone and the hazard in place.",
 	},
 	{
 		verb: "tail",
@@ -357,13 +509,40 @@ export const NEVER_ROUTED: readonly { readonly verb: string; readonly why: strin
 	},
 ];
 
+/** Verbs whose leaves must be ENUMERATED: an unlisted leaf does not route.
+ *
+ *  THE DEFAULT IS THE WHOLE POINT. While `inbox` was denied at VERB
+ *  granularity, a leaf nobody had imagined — a new registration variant, a new
+ *  admission form — was denied by construction. Narrowing the denial to one
+ *  leaf spends that, and spends it silently: without this set, a future
+ *  `pij inbox <anything>` would fall back to the whole-verb row and AUTO-ROUTE,
+ *  re-opening the admission hazard months from now, in a commit that never
+ *  mentions registration, written by someone adding a mailbox leaf who has no
+ *  reason to think about admission.
+ *
+ *  So the reasoning is pinned rather than the instance: `generation-routing.test.ts`
+ *  asserts a MADE-UP leaf is not routed, in the same shape as the `tail` test —
+ *  which puts `tail` IN the table and asserts it is denied anyway, because a
+ *  test that merely checked for absence would pass just as happily with the
+ *  guard deleted.
+ *
+ *  Safety must not depend on nobody adding something later. */
+export const LEAF_CLOSED_VERBS: readonly string[] = ["inbox"];
+
 /** Find the row for a typed invocation. Leaf rows win over whole-verb rows, so
- *  a family can be routed wholesale and one leaf held back (or vice versa). */
+ *  a family can be routed wholesale and one leaf held back (or vice versa).
+ *
+ *  For a verb in [`LEAF_CLOSED_VERBS`] there is no whole-verb fallback: only an
+ *  exact `(verb, leaf)` row routes, and everything else stays on legacy. */
 export function findRoute(
 	verb: string,
 	leaf: string | undefined,
 	table: readonly RsRouteRow[] = RS_ROUTE_TABLE,
+	leafClosed: readonly string[] = LEAF_CLOSED_VERBS,
 ): RsRouteRow | undefined {
+	if (leafClosed.includes(verb)) {
+		return table.find((row) => row.verb === verb && row.leaf === leaf);
+	}
 	if (leaf !== undefined) {
 		const exact = table.find((row) => row.verb === verb && row.leaf === leaf);
 		if (exact !== undefined) return exact;
@@ -503,6 +682,17 @@ export type RouteOutcome =
 	/** Legacy, because the table has no row — the default for every verb we
 	 *  have not deliberately moved (this is `tail`'s answer). */
 	| { readonly kind: "legacy-unrouted"; readonly verb: string }
+	/** Legacy, because this verb routes only for a seat KNOWN PRESENT in rs, and
+	 *  this one is not known to be. Distinct from `legacy-seat-followed`, which
+	 *  is a seat we know lives in legacy; this is the weaker, safer statement
+	 *  "we do not know that it lives in rs", and it covers absent, unknown and
+	 *  never-registered alike. */
+	| {
+			readonly kind: "legacy-seat-not-in-rs";
+			readonly verb: string;
+			readonly addr: string;
+			readonly seatId?: string | undefined;
+	  }
 	/** Legacy, because no rs daemon answered at the resolved addr. */
 	| { readonly kind: "legacy-no-rs-daemon"; readonly verb: string; readonly addr: string }
 	/** Legacy, because this seat holds NO rs credential at all.
@@ -631,6 +821,8 @@ export function describeOutcome(outcome: RouteOutcome): string {
 			return `${outcome.verb}: served by legacy (no rs daemon answered at ${outcome.addr})`;
 		case "legacy-rs-not-implemented":
 			return `${outcome.verb}: served by legacy (rs at ${outcome.addr} does not implement ${outcome.rsPath} yet)`;
+		case "legacy-seat-not-in-rs":
+			return `${outcome.verb}: served by legacy (this verb routes only for a seat KNOWN PRESENT in the rs store; ${outcome.seatId === undefined ? "no ambient seat resolved" : `\`${outcome.seatId}\` is not known to be there`} — rs at ${outcome.addr} is live)`;
 		case "legacy-seat-followed":
 			return `${outcome.verb}: served by legacy (seat ${outcome.seatId} lives in legacy; followed, not re-homed — rs at ${outcome.addr} is live)`;
 		case "rs-auth-rejected":
@@ -674,7 +866,7 @@ export interface PreCallInput {
 export function decidePreCall(
 	input: PreCallInput,
 	table: readonly RsRouteRow[] = RS_ROUTE_TABLE,
-	deny: readonly { readonly verb: string; readonly why: string }[] = NEVER_ROUTED,
+	deny: readonly DenyEntry[] = NEVER_ROUTED,
 ): { readonly kind: "try-rs"; readonly row: RsRouteRow } | RouteOutcome {
 	const { verb, addr, force } = input;
 	if (force === "legacy") return { kind: "legacy-forced", verb };
@@ -682,7 +874,12 @@ export function decidePreCall(
 	// is denied no matter what the table or rs says. Forced rs does NOT override
 	// it — an operator forcing a generation is choosing a daemon, not overruling
 	// a false-friend ruling.
-	const denied = deny.find((entry) => entry.verb === verb);
+	// A leafless deny entry denies the whole verb; one carrying a leaf denies
+	// only that leaf. Both are checked here, before the table, so a deny always
+	// outranks a row.
+	const denied = deny.find(
+		(entry) => entry.verb === verb && (entry.leaf === undefined || entry.leaf === input.leaf),
+	);
 	if (denied !== undefined) return { kind: "legacy-denied", verb, why: denied.why };
 	const row = findRoute(verb, input.leaf, table);
 	if (row === undefined) return { kind: "legacy-unrouted", verb };
@@ -715,6 +912,34 @@ export function decidePreCall(
 	// claim we followed one either.
 	if (input.seatId !== undefined && input.seatInRs === false && input.seatInLegacy === true) {
 		return { kind: "legacy-seat-followed", verb, addr, seatId: input.seatId };
+	}
+	// KNOWN PRESENT, or legacy. See `requiresSeatInRs` for why the mailbox verbs
+	// need a stricter test than follow-the-seat: unknown, unreadable and absent
+	// all go legacy, so a seat in NEITHER store keeps the legacy auto-registration
+	// that every `pij inbox` leaf performs. Placed AFTER the forced-rs check, so
+	// an operator forcing a generation can still reach rs.
+	// UNREADABLE IS NOT A NO. The check above needs a `seatId` to fire, and a
+	// fresh rs-only seat has none — so without this arm an unreadable roster
+	// collapses into "not in rs" and the caller is served by LEGACY on a question
+	// we never answered. That is the verified negative we never verified, and it
+	// re-homes exactly the rs-resident seat this precondition exists to protect.
+	if (row.requiresSeatInRs === true && input.seatInRs === "unreadable") {
+		return {
+			kind: "rs-roster-unreadable",
+			verb,
+			addr,
+			seatId: input.seatId ?? "the seat owning this pane",
+			detail:
+				"this verb routes only for a seat known present in rs, and the rs seat roster could not be read",
+		};
+	}
+	if (row.requiresSeatInRs === true && input.seatInRs !== true) {
+		return {
+			kind: "legacy-seat-not-in-rs",
+			verb,
+			addr,
+			seatId: input.seatId,
+		};
 	}
 	return { kind: "try-rs", row };
 }
