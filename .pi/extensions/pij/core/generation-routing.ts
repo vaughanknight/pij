@@ -53,6 +53,26 @@ export interface RsRouteRow {
 	readonly seatFrom?: "ambient" | "argument";
 	/** Why this row exists — read by humans, never by code. */
 	readonly why: string;
+	/** How a HUMAN caller sees this row's answer. REQUIRED on every routed row.
+	 *
+	 *  It is required because the alternative was shipped and it was wrong:
+	 *  every row went live with no renderer, and the first one anybody typed —
+	 *  `adopt` — REFUSED TO PRINT while the write had already persisted. The
+	 *  operator was told it failed; sqlite disagreed. `/pij ready` tells a seat
+	 *  to verify the write and never the print, so a seat obeying the guidance
+	 *  concluded adopt had failed and retried. A failure line that persisted
+	 *  everything — the exact inverse of the success-line-that-persists-nothing
+	 *  this plan exists to close.
+	 *
+	 *  Making it a required field closes the CLASS: a new row cannot be added
+	 *  without saying how a human reads it, so this cannot be latent again in a
+	 *  verb nobody has typed yet.
+	 *
+	 *    "render"  — this row carries a `render` below.
+	 *    "rs-line" — rs returns the finished sentence in `line` (u-report's
+	 *                shape). Better where available: ONE copy of the wording,
+	 *                on the side that knows the result. */
+	readonly humanOutput: "render" | "rs-line";
 	/** How to render an rs payload for a HUMAN caller.
 	 *
 	 *  ac-1143 says the CLI's external surface is unchanged, and output shape is
@@ -63,6 +83,86 @@ export interface RsRouteRow {
 	 *  a human caller is a LOUD refusal, never a silent JSON blob — see
 	 *  `cli.ts`. */
 	readonly render?: (payload: unknown) => string;
+}
+
+/** Shared readers for the rs payloads these renderers print.
+ *
+ *  rs answers adopt/whoami with a SeatDescriptor and phonehome/state with their
+ *  own shapes. Nothing here invents a field: where rs does not hold a fact the
+ *  TS sentence carries, the renderer SAYS SO rather than omitting it silently or
+ *  filling it in. A rendered line that quietly drops a fact is how a surface
+ *  changes without anyone deciding to change it. */
+function field(payload: unknown, name: string): unknown {
+	return (payload as Record<string, unknown> | null | undefined)?.[name];
+}
+
+function text(payload: unknown, name: string): string | undefined {
+	const value = field(payload, name);
+	return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+/** rs adopt/whoami -> the TS `adopt` sentence, cli.ts:3276/3280.
+ *
+ *  TS's bound form names the HARNESS SESSION ID. rs has no column for it and
+ *  binds by `(pid, proc_start)` which it observes itself — so this says what rs
+ *  actually did instead of printing a field it does not have. Naming the
+ *  difference is the point; fabricating it would be the split-brain in
+ *  miniature. */
+function renderAdopt(payload: unknown): string {
+	const id = text(payload, "id") ?? "?";
+	const pane = text(payload, "pane");
+	const proc = field(payload, "proc") as { readonly pid?: number } | undefined;
+	const where = pane === undefined ? "no pane" : `pane ${pane}`;
+	const bound =
+		proc?.pid === undefined
+			? "not bound to a process"
+			: `bound by process identity (pid ${proc.pid}), which rs observes itself`;
+	return `adopted ${id} (${where}, ${bound}) — peers can now: pij send ${id} "<text>"`;
+}
+
+/** rs whoami -> the TS `whoami` block, core/cli.ts:2787-2791.
+ *
+ *  `data dir` is omitted with a reason rather than blanked: rs seats have no
+ *  data dir, and an empty value would read as one that failed to resolve. */
+function renderWhoami(payload: unknown): string {
+	return [
+		`pij session: ${text(payload, "id") ?? "?"}`,
+		`folder:      ${text(payload, "folder") ?? "?"}`,
+		`state:       ${text(payload, "state") ?? "idle"}`,
+		`role:        ${text(payload, "role") ?? "—"}`,
+		"data dir:    — (rs seats have no data dir; the legacy store's concept)",
+	].join("\n");
+}
+
+/** rs phonehome -> the TS `phoned home:` line, core/cli.ts:3757. */
+function renderPhonehome(payload: unknown): string {
+	const seat = text(payload, "seat") ?? "?";
+	const harness = text(payload, "harness") ?? "?";
+	if (field(payload, "bound") === true) {
+		return `phoned home: ${seat} ↔ ${harness} (bound by process identity, observed by the daemon)`;
+	}
+	// NOT bound is the answer that matters most, so it says WHY rather than
+	// leaving a seat to guess whether it exists.
+	const why = text(payload, "resolved_by");
+	return `phoned home: ${seat} — NOT bound${why === undefined ? "" : ` (${why})`}; rs binds by (pid, proc_start) and could not observe that pair`;
+}
+
+/** rs state -> the TS `state` line. Carries rs's own `unsupported` notes, which
+ *  name by field what rs cannot honour instead of silently differing. */
+function renderState(payload: unknown): string {
+	const id = text(payload, "id") ?? "?";
+	const head = `${id}: ${text(payload, "state") ?? "?"} · ${text(payload, "liveness") ?? "?"}`;
+	const detail = [
+		text(payload, "cwd") === undefined ? undefined : `cwd: ${text(payload, "cwd")}`,
+		text(payload, "harness") === undefined ? undefined : `harness: ${text(payload, "harness")}`,
+		text(payload, "parent") === undefined ? undefined : `parent: ${text(payload, "parent")}`,
+	].filter((part): part is string => part !== undefined);
+	const unsupported = field(payload, "unsupported");
+	const note =
+		Array.isArray(unsupported) && unsupported.length > 0
+			? `\n  (${unsupported.length} field(s) the rs store does not carry — re-run with --json to see which and why)`
+			: "";
+	return `${head}${detail.length === 0 ? "" : `\n  ${detail.join("  ·  ")}`}${note}`;
 }
 
 /** THE ROUTE TABLE. Data, consumed by a dispatcher with no per-verb logic.
@@ -81,10 +181,14 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 		verb: "adopt",
 		rsPath: "/v1/adopt",
 		method: "POST",
+		humanOutput: "render",
+		render: renderAdopt,
 		why: "ready gesture step 1 — rs mints the seat id (ac-1147); the shim never invents a name",
 	},
 	{
 		verb: "whoami",
+		humanOutput: "render",
+		render: renderWhoami,
 		rsPath: "/v1/whoami",
 		// POST, not GET: a GET carried no caller context, and rs cannot answer
 		// "who am I" for a caller it cannot see. Reading verbs that must
@@ -94,6 +198,8 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	},
 	{
 		verb: "phonehome",
+		humanOutput: "render",
+		render: renderPhonehome,
 		rsPath: "/v1/phonehome",
 		method: "POST",
 		why: "ready gesture's own success criterion (PM ack O2) — legacy answering it for an rs seat is the identity violation this plan prevents",
@@ -111,6 +217,9 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	{
 		verb: "report",
 		leaf: "now",
+		// rs returns the finished sentence in `line` — one copy of the wording,
+		// on the side that knows the result.
+		humanOutput: "rs-line",
 		rsPath: "/v1/report",
 		method: "POST",
 		why: "ac-1142 — the card must be written where the seat lives",
@@ -118,6 +227,9 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	{
 		verb: "report",
 		leaf: "state",
+		// rs returns the finished sentence in `line` — one copy of the wording,
+		// on the side that knows the result.
+		humanOutput: "rs-line",
 		rsPath: "/v1/report",
 		method: "POST",
 		why: "ac-1144 — report family parity",
@@ -125,6 +237,9 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	{
 		verb: "report",
 		leaf: "blocked",
+		// rs returns the finished sentence in `line` — one copy of the wording,
+		// on the side that knows the result.
+		humanOutput: "rs-line",
 		rsPath: "/v1/report",
 		method: "POST",
 		why: "ac-1144 — report family parity",
@@ -132,6 +247,9 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	{
 		verb: "report",
 		leaf: "clear",
+		// rs returns the finished sentence in `line` — one copy of the wording,
+		// on the side that knows the result.
+		humanOutput: "rs-line",
 		rsPath: "/v1/report",
 		method: "POST",
 		why: "ac-1144 — report family parity",
@@ -139,12 +257,17 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	{
 		verb: "report",
 		leaf: "question",
+		// rs returns the finished sentence in `line` — one copy of the wording,
+		// on the side that knows the result.
+		humanOutput: "rs-line",
 		rsPath: "/v1/report",
 		method: "POST",
 		why: "ac-1144 — report family parity",
 	},
 	{
 		verb: "state",
+		humanOutput: "render",
+		render: renderState,
 		rsPath: "/v1/state",
 		method: "POST",
 		// `pij state <id>` asks about ANOTHER seat.
@@ -572,7 +695,12 @@ export function renderRsAnswer(
 	argv: readonly string[],
 ): RsRenderResult {
 	if (argv.includes("--json")) return { kind: "json", text: JSON.stringify(payload) };
-	if (row?.render !== undefined) return { kind: "rendered", text: row.render(payload) };
+	// The row DECLARES how a human sees it, and the declaration is honoured in
+	// the order it names. A row promising `render` that has none is a bug in the
+	// table, not a reason to print a blob.
+	if (row?.humanOutput === "render" && row.render !== undefined) {
+		return { kind: "rendered", text: row.render(payload) };
+	}
 	// An rs handler may carry the exact sentence the TS CLI prints, in `line`.
 	// Printing it beats re-deriving the wording here, which would put a second
 	// copy of that sentence on this side of the wire — the thing that drifts.
