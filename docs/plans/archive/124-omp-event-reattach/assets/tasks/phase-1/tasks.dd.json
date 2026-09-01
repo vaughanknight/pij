@@ -24,42 +24,66 @@
           "title": "Add RED-first daemon client tests for reconnect cursors, refusal fallback, key rotation, bounded retry, and backoff.",
           "state": "checked",
           "note": "u1 / AC3-AC5",
-          "done": "#done_when/tk-1241"
+          "done": "#done_when/tk-1241",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC4",
+            "../../../plan.dd.json#acceptance_criteria/AC5"
+          ]
         },
         {
           "id": "tk-1242",
           "title": "Implement the supervised reconnecting daemon event client and transparent key refresh without daemon changes.",
           "state": "checked",
           "note": "u1 / G1-G3",
-          "done": "#done_when/tk-1242"
+          "done": "#done_when/tk-1242",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC4"
+          ]
         },
         {
           "id": "tk-1243",
           "title": "Add RED-first runtime restart tests for notices, seat continuity, replayed injection, and one inbox acknowledgement.",
           "state": "checked",
           "note": "u2 / AC3-AC5",
-          "done": "#done_when/tk-1243"
+          "done": "#done_when/tk-1243",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC5"
+          ]
         },
         {
           "id": "tk-1244",
           "title": "Wire runtime re-attach through existing pushedChain and consumePushed, preserving the same seat id and pane.",
           "state": "checked",
           "note": "u2 / G4-G5",
-          "done": "#done_when/tk-1244"
+          "done": "#done_when/tk-1244",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC3"
+          ]
         },
         {
           "id": "tk-1245",
           "title": "Run focused tests, typecheck, harness checks, then the prime-granted hand-started omp daemon-restart proof and capture evidence.",
           "state": "checked",
           "note": "AC1-AC5",
-          "done": "#done_when/tk-1245"
+          "done": "#done_when/tk-1245",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC5"
+          ]
         },
         {
           "id": "tk-1246",
           "title": "Complete Claude Opus review, resolve every finding, and hand the approved branch to builder post-flight and ship.",
           "state": "checked",
           "note": "done bar d1-d5",
-          "done": "#done_when/tk-1246"
+          "done": "#done_when/tk-1246",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC5"
+          ]
         }
       ]
     },

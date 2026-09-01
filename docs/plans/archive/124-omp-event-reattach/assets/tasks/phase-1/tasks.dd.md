@@ -35,12 +35,12 @@ RED-first extension tests precede each implementation. Prime grants the daemon r
 
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| tk-1241 | Add RED-first daemon client tests for reconnect cursors, refusal fallback, key rotation, bounded retry, and backoff. | — | — | [x] checked | u1 / AC3-AC5 | — | [x] 1/1 [tk-1241](#tk-1241) | — | — | — |
-| tk-1242 | Implement the supervised reconnecting daemon event client and transparent key refresh without daemon changes. | — | — | [x] checked | u1 / G1-G3 | — | [x] 1/1 [tk-1242](#tk-1242) | — | — | — |
-| tk-1243 | Add RED-first runtime restart tests for notices, seat continuity, replayed injection, and one inbox acknowledgement. | — | — | [x] checked | u2 / AC3-AC5 | — | [x] 1/1 [tk-1243](#tk-1243) | — | — | — |
-| tk-1244 | Wire runtime re-attach through existing pushedChain and consumePushed, preserving the same seat id and pane. | — | — | [x] checked | u2 / G4-G5 | — | [x] 1/1 [tk-1244](#tk-1244) | — | — | — |
-| tk-1245 | Run focused tests, typecheck, harness checks, then the prime-granted hand-started omp daemon-restart proof and capture evidence. | — | — | [x] checked | AC1-AC5 | — | [x] 1/1 [tk-1245](#tk-1245) | — | — | — |
-| tk-1246 | Complete Claude Opus review, resolve every finding, and hand the approved branch to builder post-flight and ship. | — | — | [x] checked | done bar d1-d5 | — | [x] 1/1 [tk-1246](#tk-1246) | — | — | — |
+| tk-1241 | Add RED-first daemon client tests for reconnect cursors, refusal fallback, key rotation, bounded retry, and backoff. | — | — | [x] checked | u1 / AC3-AC5 | — | [x] 1/1 [tk-1241](#tk-1241) | — | — | [AC3](../../../plan.dd.md#acceptance-criteria), [AC4](../../../plan.dd.md#acceptance-criteria), [AC5](../../../plan.dd.md#acceptance-criteria) |
+| tk-1242 | Implement the supervised reconnecting daemon event client and transparent key refresh without daemon changes. | — | — | [x] checked | u1 / G1-G3 | — | [x] 1/1 [tk-1242](#tk-1242) | — | — | [AC3](../../../plan.dd.md#acceptance-criteria), [AC4](../../../plan.dd.md#acceptance-criteria) |
+| tk-1243 | Add RED-first runtime restart tests for notices, seat continuity, replayed injection, and one inbox acknowledgement. | — | — | [x] checked | u2 / AC3-AC5 | — | [x] 1/1 [tk-1243](#tk-1243) | — | — | [AC3](../../../plan.dd.md#acceptance-criteria), [AC5](../../../plan.dd.md#acceptance-criteria) |
+| tk-1244 | Wire runtime re-attach through existing pushedChain and consumePushed, preserving the same seat id and pane. | — | — | [x] checked | u2 / G4-G5 | — | [x] 1/1 [tk-1244](#tk-1244) | — | — | [AC3](../../../plan.dd.md#acceptance-criteria) |
+| tk-1245 | Run focused tests, typecheck, harness checks, then the prime-granted hand-started omp daemon-restart proof and capture evidence. | — | — | [x] checked | AC1-AC5 | — | [x] 1/1 [tk-1245](#tk-1245) | — | — | [AC1](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria), [AC5](../../../plan.dd.md#acceptance-criteria) |
+| tk-1246 | Complete Claude Opus review, resolve every finding, and hand the approved branch to builder post-flight and ship. | — | — | [x] checked | done bar d1-d5 | — | [x] 1/1 [tk-1246](#tk-1246) | — | — | [AC5](../../../plan.dd.md#acceptance-criteria) |
 
 <a id="done-when"></a>
 
