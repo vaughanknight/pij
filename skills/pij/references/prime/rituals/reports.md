@@ -48,7 +48,7 @@ If no layer exists above the o-prime:
 - the spine, baton grant log, prime-flow history, rulings, and encode candidates
   are the evidence record — under this repo's government root, which for
   `AI-Substrate/pij` is
-  `/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/`
+  `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/`
   on the standing `prime-governance` branch, not main;
 - send the human only main-event digests: phase ships, stream unblocks or
   dissolutions, incidents/collisions, and rulings needed;
