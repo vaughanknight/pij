@@ -18,12 +18,28 @@
     },
     {
       "name": "tasks",
-      "value": []
+      "value": [
+        {
+          "id": "tk-0a01",
+          "title": "Deliver and prove transactional tmux full-body routing",
+          "state": "checked",
+          "receipt": "assets/reviews/review-fixes.md plus definitive pij-gate receipt",
+          "success": "Pane delivery is lossless, exclusive, recoverable, and honestly receipted across live clients and queued control bodies.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0a01",
+            "../../../plan.dd.json#acceptance_criteria/ac-0a02",
+            "../../../plan.dd.json#acceptance_criteria/ac-0a03",
+            "../../../plan.dd.json#acceptance_criteria/ac-0a04",
+            "../../../plan.dd.json#acceptance_criteria/ac-0a05",
+            "../../../plan.dd.json#acceptance_criteria/ac-0a06",
+            "../../../plan.dd.json#acceptance_criteria/ac-0a07"
+          ]
+        }
+      ]
     },
     {
       "name": "done_when",
       "value": {}
     }
-  ],
-  "references": []
+  ]
 }

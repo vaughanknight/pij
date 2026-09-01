@@ -160,6 +160,7 @@ struct SpineState {
     events: Vec<(Seq, Event)>,
     seq: u64,
     append_errors: VecDeque<String>,
+    latest_matching_errors: VecDeque<String>,
 }
 
 impl FakeSpine {
@@ -184,6 +185,15 @@ impl FakeSpine {
             .lock()
             .expect("fake spine mutex")
             .append_errors
+            .push_back(message.into());
+    }
+
+    /// Make the next bounded latest-event lookup fail with `message`.
+    pub fn script_latest_matching_error(&self, message: impl Into<String>) {
+        self.state
+            .lock()
+            .expect("fake spine mutex")
+            .latest_matching_errors
             .push_back(message.into());
     }
 }
@@ -227,7 +237,13 @@ impl Spine for FakeSpine {
                 message: "latest_matching requires at least one event kind".to_string(),
             });
         }
-        let state = self.state.lock().expect("fake spine mutex");
+        let mut state = self.state.lock().expect("fake spine mutex");
+        if let Some(message) = state.latest_matching_errors.pop_front() {
+            return Err(PijError::Adapter {
+                adapter: "fake/spine".to_string(),
+                message,
+            });
+        }
         Ok(state
             .events
             .iter()
@@ -240,6 +256,39 @@ impl Spine for FakeSpine {
                 event.seq = Some(*seq);
                 event
             }))
+    }
+
+    async fn latest_matching_message(
+        &self,
+        seat: &SeatId,
+        kind: &str,
+        msg_id: &str,
+    ) -> Result<Option<Event>> {
+        let mut state = self.state.lock().expect("fake spine mutex");
+        if let Some(message) = state.latest_matching_errors.pop_front() {
+            return Err(PijError::Adapter {
+                adapter: "fake/spine".to_string(),
+                message,
+            });
+        }
+        for (seq, event) in state
+            .events
+            .iter()
+            .rev()
+            .filter(|(_, event)| event.seat.as_ref() == Some(seat) && event.kind == kind)
+        {
+            let payload: serde_json::Value =
+                serde_json::from_str(&event.payload).map_err(|error| PijError::Adapter {
+                    adapter: "fake/spine".to_string(),
+                    message: format!("invalid event payload for message lookup: {error}"),
+                })?;
+            if payload["msg_id"].as_str() == Some(msg_id) {
+                let mut event = event.clone();
+                event.seq = Some(*seq);
+                return Ok(Some(event));
+            }
+        }
+        Ok(None)
     }
 }
 
@@ -313,6 +362,16 @@ impl Spine for CountingSpine {
     async fn latest_matching(&self, seat: &SeatId, kinds: &[&str]) -> Result<Option<Event>> {
         self.latest_calls.fetch_add(1, Ordering::Relaxed);
         self.inner.latest_matching(seat, kinds).await
+    }
+
+    async fn latest_matching_message(
+        &self,
+        seat: &SeatId,
+        kind: &str,
+        msg_id: &str,
+    ) -> Result<Option<Event>> {
+        self.latest_calls.fetch_add(1, Ordering::Relaxed);
+        self.inner.latest_matching_message(seat, kind, msg_id).await
     }
 }
 
@@ -771,6 +830,10 @@ struct TmuxState {
     /// test the second, and the untestable branch is the one that broke.
     capture_failures: BTreeSet<String>,
     next_stage: u64,
+    stage_errors: VecDeque<String>,
+    commit_errors: VecDeque<String>,
+    cleanup_errors: VecDeque<String>,
+    input_disabled: BTreeSet<String>,
     staged: BTreeMap<String, (StagedSubmit, String)>,
     recorder: Recorder,
 }
@@ -917,6 +980,52 @@ impl FakeTmux {
             .calls
             .clone()
     }
+    /// Fail the next staged body write after releasing fake pane ownership.
+    #[must_use]
+    pub fn script_stage_error(self, message: impl Into<String>) -> Self {
+        self.state
+            .lock()
+            .expect("fake tmux mutex")
+            .stage_errors
+            .push_back(message.into());
+        self
+    }
+
+    /// Fail the next commit before Enter after releasing fake pane ownership.
+    #[must_use]
+    pub fn script_commit_error(self, message: impl Into<String>) -> Self {
+        self.state
+            .lock()
+            .expect("fake tmux mutex")
+            .commit_errors
+            .push_back(message.into());
+        self
+    }
+
+    /// Fail post-Enter cleanup while preserving the successful submit outcome.
+    #[must_use]
+    pub fn script_cleanup_error(self, message: impl Into<String>) -> Self {
+        self.state
+            .lock()
+            .expect("fake tmux mutex")
+            .cleanup_errors
+            .push_back(message.into());
+        self
+    }
+
+    /// Number of pane transactions still owned by the fake.
+    pub fn staged_len(&self) -> usize {
+        self.state.lock().expect("fake tmux mutex").staged.len()
+    }
+
+    /// Whether the fake transaction currently owns disabled pane input.
+    pub fn pane_input_disabled(&self, pane: &str) -> bool {
+        self.state
+            .lock()
+            .expect("fake tmux mutex")
+            .input_disabled
+            .contains(pane)
+    }
 }
 
 #[async_trait]
@@ -944,6 +1053,12 @@ impl TmuxPort for FakeTmux {
                 message: format!("pane {pane} already has a staged submit"),
             });
         }
+        if state.input_disabled.contains(pane) {
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message: format!("pane {pane} input is already disabled"),
+            });
+        }
         state.next_stage = state.next_stage.saturating_add(1);
         let staged = StagedSubmit {
             pane: pane.to_string(),
@@ -954,6 +1069,7 @@ impl TmuxPort for FakeTmux {
         state
             .staged
             .insert(staged.token.clone(), (staged.clone(), String::new()));
+        state.input_disabled.insert(pane.to_string());
         Ok(staged)
     }
 
@@ -969,6 +1085,14 @@ impl TmuxPort for FakeTmux {
             return Err(PijError::Adapter {
                 adapter: "fake-tmux".to_string(),
                 message: "staged submit ownership mismatch".to_string(),
+            });
+        }
+        if let Some(message) = state.stage_errors.pop_front() {
+            state.staged.remove(&staged.token);
+            state.input_disabled.remove(&staged.pane);
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message,
             });
         }
         state
@@ -995,12 +1119,21 @@ impl TmuxPort for FakeTmux {
 
     async fn commit_submit(&self, staged: &StagedSubmit) -> Result<()> {
         let mut state = self.state.lock().expect("fake tmux mutex");
+        if let Some(message) = state.commit_errors.pop_front() {
+            state.staged.remove(&staged.token);
+            state.input_disabled.remove(&staged.pane);
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message,
+            });
+        }
         let Some((owned, text)) = state.staged.remove(&staged.token) else {
             return Err(PijError::Adapter {
                 adapter: "fake-tmux".to_string(),
                 message: format!("unknown staged submit {}", staged.token),
             });
         };
+        state.input_disabled.remove(&staged.pane);
         if &owned != staged || !staged.staged {
             return Err(PijError::Adapter {
                 adapter: "fake-tmux".to_string(),
@@ -1013,6 +1146,9 @@ impl TmuxPort for FakeTmux {
         state
             .recorder
             .record(format!("submit:{}:{text}", staged.pane));
+        if let Some(message) = state.cleanup_errors.pop_front() {
+            state.recorder.record(format!("cleanup_error:{message}"));
+        }
         state.standing_capture = Some(
             "\u{2570}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{256f}"
                 .to_string(),
@@ -1036,6 +1172,7 @@ impl TmuxPort for FakeTmux {
                 message: format!("unknown staged submit {}", staged.token),
             });
         };
+        state.input_disabled.remove(&staged.pane);
         if &owned != staged {
             return Err(PijError::Adapter {
                 adapter: "fake-tmux".to_string(),

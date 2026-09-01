@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use pij_core::error::{PijError, Result};
 use pij_core::framing::self_injection_matches;
-use pij_core::ports::TmuxPort;
+use pij_core::ports::{StagedSubmit, TmuxPort};
 
 use crate::composer::{ComposerRegion, composer_region};
 
@@ -90,6 +90,44 @@ pub struct InteractionGate {
     clock: Clock,
 }
 
+struct SelfInjectionScope<'a> {
+    gate: &'a InteractionGate,
+    pane: String,
+}
+
+impl Drop for SelfInjectionScope<'_> {
+    fn drop(&mut self) {
+        self.gate.clear_self_injection(&self.pane);
+    }
+}
+
+struct PaneTransaction<'a> {
+    gate: &'a InteractionGate,
+    staged: StagedSubmit,
+    self_injection: Option<SelfInjectionScope<'a>>,
+}
+
+impl<'a> PaneTransaction<'a> {
+    fn new(gate: &'a InteractionGate, staged: StagedSubmit) -> Self {
+        Self {
+            gate,
+            staged,
+            self_injection: None,
+        }
+    }
+
+    async fn abort(self) -> Result<()> {
+        self.gate.tmux.abort_submit(&self.staged).await
+    }
+
+    async fn stage_and_commit(mut self, text: &str) -> Result<StagedSubmission> {
+        self.self_injection = Some(self.gate.self_injection_scope(&self.staged.pane, text));
+        self.gate.tmux.stage_submit(&mut self.staged, text).await?;
+        self.gate.tmux.commit_submit(&self.staged).await?;
+        Ok(StagedSubmission::Submitted)
+    }
+}
+
 impl InteractionGate {
     pub fn new(tmux: Arc<dyn TmuxPort>) -> Self {
         Self::with_idle_window(tmux, DEFAULT_INTERACTION_IDLE)
@@ -132,6 +170,25 @@ impl InteractionGate {
             tap_active: state.tap_active,
             last_interaction_at: state.last_interaction_at,
         });
+    }
+
+    fn self_injection_scope(&self, pane: &str, payload: &str) -> SelfInjectionScope<'_> {
+        self.record_self_injection(pane, payload);
+        SelfInjectionScope {
+            gate: self,
+            pane: pane.to_string(),
+        }
+    }
+
+    fn clear_self_injection(&self, pane: &str) {
+        if let Some(state) = self
+            .panes
+            .lock()
+            .expect("interaction gate mutex")
+            .get_mut(pane)
+        {
+            state.self_injection = None;
+        }
     }
 
     /// Record the current composer contents. Whitespace-only content is empty:
@@ -279,11 +336,11 @@ impl InteractionGate {
         pane: &str,
         text: &str,
     ) -> Result<StagedSubmission> {
-        let mut staged = self.tmux.acquire_submit(pane).await?;
+        let transaction = PaneTransaction::new(self, self.tmux.acquire_submit(pane).await?);
         let verdict = match self.fresh_injection_verdict(pane).await {
             Ok(verdict) => verdict,
             Err(error) => {
-                return match self.tmux.abort_submit(&staged).await {
+                return match transaction.abort().await {
                     Ok(()) => Err(error),
                     Err(recovery) => Err(PijError::Adapter {
                         adapter: "interaction-gate".to_string(),
@@ -295,13 +352,10 @@ impl InteractionGate {
             }
         };
         if !verdict.permitted || !verdict.composer_idle {
-            self.tmux.abort_submit(&staged).await?;
+            transaction.abort().await?;
             return Ok(StagedSubmission::Deferred);
         }
-        self.record_self_injection(pane, text);
-        self.tmux.stage_submit(&mut staged, text).await?;
-        self.tmux.commit_submit(&staged).await?;
-        Ok(StagedSubmission::Submitted)
+        transaction.stage_and_commit(text).await
     }
 
     /// True only when both independent gates report clear.
@@ -339,11 +393,12 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use pij_core::model::Pane;
+    use pij_core::ports::TmuxPort;
 
     use pij_testkit::block_on;
     use pij_testkit::fakes::FakeTmux;
 
-    use super::InteractionGate;
+    use super::{InteractionGate, PaneTransaction, StagedSubmission};
 
     const RULE: &str = "────────────────────────────────";
 
@@ -725,6 +780,92 @@ mod tests {
         elapsed_ms.store(120_000, Ordering::Relaxed);
 
         assert!(!block_on(gate.permits_injection("%108")).expect("active mode vetoes"));
+    }
+    #[test]
+    fn transaction_exit_table_clears_marker_input_and_exemption() {
+        #[derive(Clone, Copy, Debug)]
+        enum Exit {
+            Success,
+            StageFail,
+            CommitFail,
+            CleanupFail,
+            Abort,
+            Deadline,
+            Death,
+        }
+
+        for exit in [
+            Exit::Success,
+            Exit::StageFail,
+            Exit::CommitFail,
+            Exit::CleanupFail,
+            Exit::Abort,
+            Exit::Deadline,
+            Exit::Death,
+        ] {
+            let base = FakeTmux::new().with_clear_composer("%108");
+            let fake = match exit {
+                Exit::StageFail => base.script_stage_error("scripted stage failure"),
+                Exit::CommitFail => base.script_commit_error("scripted commit failure"),
+                Exit::CleanupFail => base.script_cleanup_error("scripted cleanup failure"),
+                Exit::Deadline => base.script_stage_error("staging exceeded 1s deadline"),
+                Exit::Death => base.script_stage_error("daemon died during transaction"),
+                Exit::Success | Exit::Abort => base,
+            };
+            let tmux = Arc::new(fake);
+            let gate = InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>);
+            gate.observe_composer("%108", "");
+            let result = match exit {
+                Exit::Abort => {
+                    let staged = block_on(tmux.acquire_submit("%108")).expect("acquire abort row");
+                    block_on(PaneTransaction::new(&gate, staged).abort())
+                        .map(|()| StagedSubmission::Deferred)
+                }
+                _ => block_on(gate.submit_with_owned_input("%108", "MATCHING-HUMAN-TEXT")),
+            };
+            match exit {
+                Exit::Success | Exit::CleanupFail => assert_eq!(
+                    result.expect("Enter is the successful outcome boundary"),
+                    StagedSubmission::Submitted
+                ),
+                Exit::Abort => {
+                    assert_eq!(result.expect("explicit abort"), StagedSubmission::Deferred)
+                }
+                Exit::StageFail | Exit::CommitFail | Exit::Deadline | Exit::Death => {
+                    assert!(result.is_err(), "{exit:?} must not report submission")
+                }
+            }
+            if matches!(exit, Exit::CleanupFail) {
+                assert!(
+                    tmux.calls()
+                        .iter()
+                        .any(|call| call == "cleanup_error:scripted cleanup failure"),
+                    "cleanup-fail row must actually inject the failure"
+                );
+            }
+            assert_eq!(tmux.staged_len(), 0, "{exit:?}: ownership marker leaked");
+            assert!(
+                !tmux.pane_input_disabled("%108"),
+                "{exit:?}: pane input remained disabled"
+            );
+            let exemption_active = gate
+                .panes
+                .lock()
+                .expect("interaction gate mutex")
+                .get("%108")
+                .is_some_and(|state| state.self_injection.is_some());
+            assert!(
+                !exemption_active,
+                "{exit:?}: self-injection exemption leaked"
+            );
+
+            gate.record_tap("%108");
+            gate.observe_composer("%108", "MATCHING-HUMAN-TEXT");
+            assert!(
+                !block_on(gate.permits_injection("%108")).expect("human-input verdict"),
+                "{exit:?}: matching human input was hidden by stale exemption"
+            );
+        }
     }
 
     #[test]

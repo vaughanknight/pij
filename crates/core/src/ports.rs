@@ -83,6 +83,17 @@ pub trait Spine: Send + Sync {
     /// Implementations return at most one highest-sequence row and refuse an
     /// empty kind set rather than silently broadening it.
     async fn latest_matching(&self, seat: &SeatId, kinds: &[&str]) -> Result<Option<Event>>;
+
+    /// Latest event for one seat and kind whose JSON payload names `msg_id`.
+    ///
+    /// The spine performs the predicate in its bounded query; callers must not
+    /// materialize seat history to recover an older per-message fact.
+    async fn latest_matching_message(
+        &self,
+        seat: &SeatId,
+        kind: &str,
+        msg_id: &str,
+    ) -> Result<Option<Event>>;
 }
 
 /// Authority-owned identity and outcome committed by a delivery acknowledgement.
@@ -264,9 +275,11 @@ pub trait TmuxPort: Send + Sync {
     async fn acquire_submit(&self, pane: &str) -> Result<StagedSubmit>;
 
     /// Stage `text` without submitting it while external pane input is suspended.
+    /// A returned error must release marker and input ownership.
     async fn stage_submit(&self, staged: &mut StagedSubmit, text: &str) -> Result<()>;
 
-    /// Submit the staged composer and restore human input.
+    /// Submit the staged composer and restore human input. Once Enter is accepted,
+    /// cleanup failure must not turn the delivered transaction into an error.
     async fn commit_submit(&self, staged: &StagedSubmit) -> Result<()>;
 
     /// Leave staged text unsent, show recovery when needed, and restore input.

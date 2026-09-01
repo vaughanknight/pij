@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use pij_core::error::Result;
+use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::model::{Event, SeatId, Seq};
 use pij_core::ports::Spine;
@@ -72,6 +72,28 @@ impl Spine for TestSpine {
                 event.seat.as_ref() == Some(seat) && kinds.iter().any(|kind| *kind == event.kind)
             })
             .cloned())
+    }
+
+    async fn latest_matching_message(
+        &self,
+        seat: &SeatId,
+        kind: &str,
+        msg_id: &str,
+    ) -> Result<Option<Event>> {
+        for event in self.events.lock().expect("test spine mutex").iter().rev() {
+            if event.seat.as_ref() != Some(seat) || event.kind != kind {
+                continue;
+            }
+            let payload: serde_json::Value =
+                serde_json::from_str(&event.payload).map_err(|error| PijError::Adapter {
+                    adapter: "test/spine".to_string(),
+                    message: format!("invalid event payload for message lookup: {error}"),
+                })?;
+            if payload["msg_id"].as_str() == Some(msg_id) {
+                return Ok(Some(event.clone()));
+            }
+        }
+        Ok(None)
     }
 }
 

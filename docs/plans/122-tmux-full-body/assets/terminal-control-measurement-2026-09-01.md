@@ -1,6 +1,6 @@
 # Terminal-control body measurement — 2026-09-01
 
-**Client**: hand-started OMP v18.0.3 in pane `%2250`, with no extensions/skills/rules.  
+**Client**: hand-started OMP v18.0.3 in pane `%2250`, with no extensions/skills/rules.
 **Transcript**: `/Users/jordanknight/.omp/agent/sessions/-pi-hacking-pij-worktrees-s122-tmux-full-body/2026-09-01T09-45-16-873Z_01a05c5b-d349-7000-9db1-b9fc911be028.jsonl`.
 
 The body was injected inside one bracketed-paste transaction and the persisted pre-render user turn was compared with the sent bytes.

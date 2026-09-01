@@ -47,6 +47,7 @@ pub struct DrainWorker {
     tmux: Arc<dyn TmuxPort>,
     interaction: Arc<InteractionGate>,
     event_bus: Arc<EventBus>,
+    clock: fn() -> Result<u64>,
 }
 
 impl DrainWorker {
@@ -82,6 +83,7 @@ impl DrainWorker {
             tmux,
             interaction,
             event_bus,
+            clock: system_time_ms,
         })
     }
 
@@ -342,7 +344,10 @@ impl DrainWorker {
         pane: &str,
         msg: &Msg,
     ) -> Result<()> {
-        if self.control_body_pointer_announced(msg).await? {
+        let already_announced = self
+            .keep_control_body_pullable(job_id, self.control_body_pointer_announced(msg).await)
+            .await?;
+        if already_announced {
             return self.release_body(job_id).await;
         }
         let pointer = render_control_body_pointer(&msg.from, msg.from_machine.as_deref());
@@ -358,35 +363,35 @@ impl DrainWorker {
                     "reason": "terminal-control",
                 })
                 .to_string();
-                if let Err(error) = self
-                    .event_bus
-                    .publish(Event {
-                        seq: None,
-                        v: 1,
-                        at: system_time_ms()?,
-                        kind: CONTROL_BODY_POINTER_EVENT_KIND.to_string(),
-                        seat: Some(msg.to.clone()),
-                        payload,
-                    })
-                    .await
-                {
-                    self.release_body(job_id).await?;
-                    return Err(error);
-                }
+                let at = self
+                    .keep_control_body_pullable(job_id, (self.clock)())
+                    .await?;
+                self.keep_control_body_pullable(
+                    job_id,
+                    self.event_bus
+                        .publish(Event {
+                            seq: None,
+                            v: 1,
+                            at,
+                            kind: CONTROL_BODY_POINTER_EVENT_KIND.to_string(),
+                            seat: Some(msg.to.clone()),
+                            payload,
+                        })
+                        .await
+                        .map(|_| ()),
+                )
+                .await?;
                 self.release_body(job_id).await
             }
             Ok(StagedSubmission::Deferred) => self.release_body(job_id).await,
-            Err(error) => {
-                self.release_body(job_id).await?;
-                Err(error)
-            }
+            Err(error) => self.keep_control_body_pullable(job_id, Err(error)).await,
         }
     }
 
     async fn control_body_pointer_announced(&self, msg: &Msg) -> Result<bool> {
         let Some(event) = self
             .event_bus
-            .latest_matching(&msg.to, &[CONTROL_BODY_POINTER_EVENT_KIND])
+            .latest_matching_message(&msg.to, CONTROL_BODY_POINTER_EVENT_KIND, &msg.msg_id)
             .await?
         else {
             return Ok(false);
@@ -410,6 +415,21 @@ impl DrainWorker {
 
     async fn release_body(&self, job_id: JobId) -> Result<()> {
         self.queue.retry(job_id, Duration::ZERO).await
+    }
+
+    async fn keep_control_body_pullable<T>(&self, job_id: JobId, result: Result<T>) -> Result<T> {
+        match result {
+            Ok(value) => Ok(value),
+            Err(error) => match self.release_body(job_id).await {
+                Ok(()) => Err(error),
+                Err(release) => Err(PijError::Adapter {
+                    adapter: "daemon/pointer".to_string(),
+                    message: format!(
+                        "{error}; additionally failed to keep control body pullable: {release}"
+                    ),
+                }),
+            },
+        }
     }
 
     /// Back off a body whose recipient could not be observed.
@@ -482,6 +502,7 @@ mod tests {
     use async_trait::async_trait;
     use pij_core::config::Config;
     use pij_core::delivery::delivery_kind;
+    use pij_core::error::PijError;
     use pij_core::model::{
         DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, Pane,
         ProcIdentity, SeatDescriptor, SeatId,
@@ -506,6 +527,7 @@ mod tests {
         tmux: Arc<FakeTmux>,
         interaction: Arc<InteractionGate>,
         event_bus: Arc<EventBus>,
+        spine: Arc<FakeSpine>,
         arrange_composers: bool,
     }
 
@@ -579,6 +601,7 @@ mod tests {
             tmux,
             interaction,
             event_bus,
+            spine,
             arrange_composers,
         }
     }
@@ -765,6 +788,169 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Msg>(&claimed.1.payload).expect("queued message"),
             msg
+        );
+    }
+
+    #[tokio::test]
+    async fn control_pointer_lookup_error_leaves_body_immediately_claimable() {
+        let fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
+        register(&fixture, seat("pij-control-error", Some("%control-error"))).await;
+        fixture.interaction.observe_composer("%control-error", "");
+        let msg = message("pij-control-error", "before\u{1b}after", None);
+        let id = enqueue(&fixture, &msg).await;
+        fixture
+            .spine
+            .script_latest_matching_error("scripted bounded lookup failure");
+
+        let error = fixture
+            .worker
+            .drain_once()
+            .await
+            .expect_err("spine lookup failure is reported");
+        assert!(
+            error
+                .to_string()
+                .contains("scripted bounded lookup failure"),
+            "{error}"
+        );
+        assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)]);
+        assert_eq!(fixture.queue.live_len(), 1, "body remains queued");
+        let claimed = fixture
+            .queue
+            .claim(&[delivery_kind(&msg.to)], "reader")
+            .await
+            .expect("claim inbox immediately after lookup failure")
+            .expect("control body must not wait for lease expiry");
+        assert_eq!(claimed.0, id);
+        assert_eq!(
+            serde_json::from_str::<Msg>(&claimed.1.payload).expect("queued message"),
+            msg
+        );
+        assert!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .all(|call| !call.starts_with("submit:")),
+            "failed lookup cannot claim that a notice was shown"
+        );
+    }
+    #[tokio::test]
+    async fn control_pointer_timestamp_error_leaves_body_immediately_claimable() {
+        fn failing_clock() -> pij_core::error::Result<u64> {
+            Err(PijError::Adapter {
+                adapter: "test/clock".to_string(),
+                message: "scripted timestamp failure".to_string(),
+            })
+        }
+
+        let mut fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
+        fixture.worker.clock = failing_clock;
+        register(&fixture, seat("pij-control-clock", Some("%control-clock"))).await;
+        fixture.interaction.observe_composer("%control-clock", "");
+        let msg = message("pij-control-clock", "before\u{1b}after", None);
+        let id = enqueue(&fixture, &msg).await;
+
+        let error = fixture
+            .worker
+            .drain_once()
+            .await
+            .expect_err("timestamp failure is reported");
+        assert!(
+            error.to_string().contains("scripted timestamp failure"),
+            "{error}"
+        );
+        assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)]);
+        assert_eq!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .filter(|call| call.starts_with("submit:"))
+                .count(),
+            1,
+            "the explanation landed before timestamp construction"
+        );
+        let claimed = fixture
+            .queue
+            .claim(&[delivery_kind(&msg.to)], "reader")
+            .await
+            .expect("claim inbox immediately after timestamp failure")
+            .expect("control body must not wait for lease expiry");
+        assert_eq!(claimed.0, id);
+        assert_eq!(
+            serde_json::from_str::<Msg>(&claimed.1.payload).expect("queued message"),
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn two_control_bodies_for_one_seat_each_receive_one_notice() {
+        let fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
+        register(&fixture, seat("pij-control-pair", Some("%control-pair"))).await;
+        fixture.interaction.observe_composer("%control-pair", "");
+        let mut first = message("pij-control-pair", "first\u{1b}body", None);
+        first.msg_id = "control-pair-first".to_string();
+        let mut second = message("pij-control-pair", "second\u{7}body", None);
+        second.msg_id = "control-pair-second".to_string();
+        enqueue(&fixture, &first).await;
+        enqueue(&fixture, &second).await;
+
+        fixture
+            .worker
+            .drain_once()
+            .await
+            .expect("announce first body");
+        fixture
+            .worker
+            .drain_once()
+            .await
+            .expect("announce second body");
+        assert_eq!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .filter(|call| call.starts_with("submit:"))
+                .count(),
+            2,
+            "each queued message receives its own notice"
+        );
+        for msg in [&first, &second] {
+            let event = fixture
+                .event_bus
+                .latest_matching_message(
+                    &msg.to,
+                    super::CONTROL_BODY_POINTER_EVENT_KIND,
+                    &msg.msg_id,
+                )
+                .await
+                .expect("query per-message notice")
+                .expect("message has durable notice");
+            let payload: serde_json::Value =
+                serde_json::from_str(&event.payload).expect("notice payload");
+            assert_eq!(payload["msg_id"], msg.msg_id);
+        }
+
+        fixture
+            .worker
+            .drain_once()
+            .await
+            .expect("suppress first repeat");
+        fixture
+            .worker
+            .drain_once()
+            .await
+            .expect("suppress second repeat");
+        assert_eq!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .filter(|call| call.starts_with("submit:"))
+                .count(),
+            2,
+            "per-message facts suppress repeats without cross-talk"
         );
     }
 

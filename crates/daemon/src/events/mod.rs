@@ -143,6 +143,16 @@ impl EventBus {
         self.spine.latest_matching(seat, kinds).await
     }
 
+    /// Return the latest durable fact for one exact seat, kind, and message.
+    pub async fn latest_matching_message(
+        &self,
+        seat: &SeatId,
+        kind: &str,
+        msg_id: &str,
+    ) -> Result<Option<Event>> {
+        self.spine.latest_matching_message(seat, kind, msg_id).await
+    }
+
     /// Attach to events published after this call without replaying the spine.
     ///
     /// Use this for a consumer that only needs a wake-up for future work. A

@@ -63,9 +63,6 @@ fn rendered_composer(capture: &str, cursor_x: u32, cursor_y: u32) -> Option<Stri
         {
             return clip_multiline(interior, lower + 1, cursor_x, cursor_y);
         }
-        if pair == rules.len() - 1 && interior.iter().all(|line| line.trim().is_empty()) {
-            return clip_multiline(interior, lower + 1, cursor_x, cursor_y);
-        }
     }
 
     let prompt = lines
@@ -293,6 +290,23 @@ mod tests {
             composer_region(capture, 2, 3),
             ComposerRegion::Recognized(String::new()),
             "a non-composer rounded border must not stop the scan before the cursor's composer"
+        );
+    }
+
+    #[test]
+    fn decorative_blank_rule_region_is_not_an_idle_composer() {
+        let capture = concat!(
+            "╭────────────╮\n",
+            "│ status box │\n",
+            "╰────────────╯\n",
+            "────────────────\n",
+            "                \n",
+            "────────────────",
+        );
+        assert_eq!(
+            composer_region(capture, 2, 4),
+            ComposerRegion::Unrecognized,
+            "blank decoration without a prompt or harness footer cannot authorize staging"
         );
     }
 

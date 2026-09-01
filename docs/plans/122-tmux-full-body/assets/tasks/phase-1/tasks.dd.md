@@ -33,7 +33,9 @@ _Empty._
 
 ## Tasks
 
-_No entries._
+| id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| tk-0a01 | Deliver and prove transactional tmux full-body routing | — | — | [x] checked | — | assets/reviews/review-fixes.md plus definitive pij-gate receipt | — | Pane delivery is lossless, exclusive, recoverable, and honestly receipted across live clients and queued control bodies. | — | [ac-0a01](../../../plan.dd.md#acceptance-criteria), [ac-0a02](../../../plan.dd.md#acceptance-criteria), [ac-0a03](../../../plan.dd.md#acceptance-criteria), [ac-0a04](../../../plan.dd.md#acceptance-criteria), [ac-0a05](../../../plan.dd.md#acceptance-criteria), [ac-0a06](../../../plan.dd.md#acceptance-criteria), [ac-0a07](../../../plan.dd.md#acceptance-criteria) |
 
 <a id="done-when"></a>
 

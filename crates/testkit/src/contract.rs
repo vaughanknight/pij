@@ -258,6 +258,30 @@ pub async fn spine_contract(spine: &dyn Spine) {
             .is_empty(),
         "tail since the newest cursor is empty"
     );
+    let older_message = event(
+        "control-pointer",
+        Some(seat_a.clone()),
+        "{\"msg_id\":\"m-older\"}",
+    );
+    spine
+        .append(older_message.clone())
+        .await
+        .expect("older per-message fact");
+    spine
+        .append(event(
+            "control-pointer",
+            Some(seat_a.clone()),
+            "{\"msg_id\":\"m-newer\"}",
+        ))
+        .await
+        .expect("newer per-message fact");
+    let found = spine
+        .latest_matching_message(&seat_a, "control-pointer", "m-older")
+        .await
+        .expect("bounded per-message lookup")
+        .expect("older message fact remains addressable");
+    assert_eq!(found.kind, "control-pointer");
+    assert_eq!(found.payload, older_message.payload);
 }
 
 /// Every promise the [`Queue`] port makes (R4).
@@ -519,6 +543,32 @@ pub async fn tmux_contract(tmux: &dyn TmuxPort, fixture: &dyn TmuxContractFixtur
         "literal sent keys must become visible; expected {:?} in {after_send:?}",
         fixture.sent_keys_capture()
     );
+
+    let mut staged = tmux
+        .acquire_submit(&pane.id)
+        .await
+        .expect("acquire_submit must reserve the pane");
+    tmux.stage_submit(&mut staged, "contract staged body")
+        .await
+        .expect("stage_submit must retain ownership");
+    assert!(
+        staged.staged,
+        "successful staging updates the owned transaction"
+    );
+    tmux.commit_submit(&staged)
+        .await
+        .expect("commit_submit must submit and release ownership");
+    let aborted = tmux
+        .acquire_submit(&pane.id)
+        .await
+        .expect("a committed transaction releases the pane");
+    assert_ne!(
+        staged.token, aborted.token,
+        "each transaction must receive a fresh ownership identity"
+    );
+    tmux.abort_submit(&aborted)
+        .await
+        .expect("abort_submit must release ownership without Enter");
 
     let created = tmux
         .new_window(&pane.session, fixture.new_window_name(), "/tmp", None)

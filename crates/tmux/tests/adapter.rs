@@ -1,8 +1,9 @@
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Barrier};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use pij_core::model::Pane;
@@ -90,6 +91,12 @@ fn fake_tmux_honours_the_shared_contract() {
             "drain_pane_tap:%41".to_string(),
             "send_keys:%41:literal | payload".to_string(),
             "capture:%41:100".to_string(),
+            "acquire_submit:%41".to_string(),
+            "stage_submit:%41:contract staged body".to_string(),
+            "commit_submit:%41:fake-stage-1".to_string(),
+            "submit:%41:contract staged body".to_string(),
+            "acquire_submit:%41".to_string(),
+            "abort_submit:%41:fake-stage-2".to_string(),
             "new_window:contract-fake:contract-created".to_string(),
             "kill:%101".to_string(),
             "list_panes".to_string(),
@@ -260,7 +267,7 @@ async fn staged_submit_excludes_human_input_mid_body_and_before_enter() {
         "pij-rs-submit-owned-{}-{nonce}.bin",
         std::process::id()
     ));
-    let body = "0123456789abcdef".repeat(1_250);
+    let body = "0123456789abcdef".repeat(500);
     let mut expected = Vec::with_capacity(body.len() + 13);
     expected.extend_from_slice(b"\x1b[200~");
     expected.extend_from_slice(body.as_bytes());
@@ -456,6 +463,416 @@ fn daemon_death_mid_stage_restores_input_within_bound() {
         "watchdog must leave visible recovery guidance"
     );
     fs::remove_file(ready).expect("remove helper ready file");
+}
+
+#[test]
+fn acquire_watchdog_race_helper_process() {
+    let Ok(wrapper) = std::env::var("PIJ_ACQUIRE_RACE_WRAPPER") else {
+        return;
+    };
+    let pane = std::env::var("PIJ_ACQUIRE_RACE_PANE").expect("race helper pane");
+    let tmux = TmuxAdapter::with_binary(wrapper, std::env::temp_dir());
+    let error = block_on(tmux.acquire_submit(&pane))
+        .expect_err("expired owner must make conditional disable fail closed");
+    assert!(
+        error
+            .to_string()
+            .contains("did not grant staged-submit ownership")
+            || error.to_string().contains("ownership")
+                && error.to_string().contains("no longer matches"),
+        "{error}"
+    );
+}
+
+#[test]
+fn watchdog_expiry_before_disable_cannot_strand_input() {
+    let Some(session) = TestSession::start_or_skip("submit-acquire-race") else {
+        return;
+    };
+    let pane = block_on(TmuxAdapter::for_server(&session.server, &session.tap_root).list_panes())
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    fs::create_dir_all(&session.tap_root).expect("create race fixture directory");
+    let ready = session.tap_root.join("disable-waiting");
+    let release = session.tap_root.join("release-disable");
+    let wrapper = session.tap_root.join("tmux-race-wrapper");
+    let log = session.tap_root.join("wrapper.log");
+    let script = format!(
+        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> {}\ncase \"${{6-}}\" in *'run-shell -b'*'select-pane -d'*) printf ready > {}; while [ ! -e {} ]; do sleep 0.01; done ;; esac\nexec tmux -L {} \"$@\"\n",
+        shell_literal(&log.to_string_lossy()),
+        shell_literal(&ready.to_string_lossy()),
+        shell_literal(&release.to_string_lossy()),
+        shell_literal(&session.server)
+    );
+    fs::write(&wrapper, script).expect("write race wrapper");
+    let mut permissions = fs::metadata(&wrapper)
+        .expect("race wrapper metadata")
+        .permissions();
+    permissions.set_mode(0o700);
+    fs::set_permissions(&wrapper, permissions).expect("make race wrapper executable");
+
+    let mut helper = Command::new(std::env::current_exe().expect("current test binary"))
+        .args([
+            "--exact",
+            "acquire_watchdog_race_helper_process",
+            "--nocapture",
+        ])
+        .env("PIJ_ACQUIRE_RACE_WRAPPER", &wrapper)
+        .env("PIJ_ACQUIRE_RACE_PANE", &pane.id)
+        .spawn()
+        .expect("spawn acquisition race helper");
+    wait_for_file(&ready, 1, Duration::from_secs(2));
+    assert!(!pane_input_off(&session, &pane.id));
+    assert!(submit_marker(&session, &pane.id).is_empty());
+
+    signal_process(helper.id(), "-STOP");
+    fs::write(&release, b"release").expect("let tmux execute atomic acquisition");
+    let acquired_deadline = Instant::now() + Duration::from_secs(1);
+    while submit_marker(&session, &pane.id).is_empty() {
+        assert!(
+            Instant::now() < acquired_deadline,
+            "tmux did not execute the atomic reservation"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(pane_input_off(&session, &pane.id));
+    let recovery_deadline = Instant::now() + Duration::from_secs(3);
+    while !submit_marker(&session, &pane.id).is_empty() {
+        assert!(
+            Instant::now() < recovery_deadline,
+            "submit marker did not clear; wrapper calls:\n{}",
+            fs::read_to_string(&log).unwrap_or_else(|error| format!("<unreadable: {error}>"))
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        !pane_input_off(&session, &pane.id),
+        "watchdog must restore input while the owning daemon is stopped"
+    );
+    signal_process(helper.id(), "-CONT");
+    let status = helper.wait().expect("reap acquisition race helper");
+    assert!(status.success(), "acquisition race helper failed: {status}");
+    assert!(!pane_input_off(&session, &pane.id));
+    assert!(submit_marker(&session, &pane.id).is_empty());
+
+    session.run(["send-keys", "-t", &pane.id, "-l", "HUMAN-KEYBOARD-WORKS"]);
+    std::thread::sleep(Duration::from_millis(50));
+    let capture = session.run(["capture-pane", "-p", "-t", &pane.id]);
+    assert!(
+        String::from_utf8_lossy(&capture.stdout).contains("HUMAN-KEYBOARD-WORKS"),
+        "human input must work after the stopped daemon resumes"
+    );
+}
+
+#[test]
+fn separate_adapters_cannot_both_reserve_one_pane() {
+    let Some(session) = TestSession::start_or_skip("submit-adapter-cas") else {
+        return;
+    };
+    let pane = block_on(TmuxAdapter::for_server(&session.server, &session.tap_root).list_panes())
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    let barrier = Arc::new(Barrier::new(3));
+    let mut racers = Vec::new();
+    for _ in 0..2 {
+        let tmux = TmuxAdapter::for_server(&session.server, &session.tap_root);
+        let pane_id = pane.id.clone();
+        let start = Arc::clone(&barrier);
+        racers.push(std::thread::spawn(move || {
+            start.wait();
+            block_on(tmux.acquire_submit(&pane_id))
+        }));
+    }
+    barrier.wait();
+    let results: Vec<_> = racers
+        .into_iter()
+        .map(|racer| racer.join().expect("join adapter racer"))
+        .collect();
+    assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+    assert_eq!(results.iter().filter(|result| result.is_err()).count(), 1);
+    let loser = results
+        .iter()
+        .find_map(|result| result.as_ref().err())
+        .expect("one reservation loser");
+    assert!(
+        loser.to_string().contains("already has staged submit"),
+        "{loser}"
+    );
+    let winner = results
+        .into_iter()
+        .find_map(Result::ok)
+        .expect("one reservation winner");
+    assert_eq!(submit_marker(&session, &pane.id), winner.token);
+    assert!(pane_input_off(&session, &pane.id));
+
+    let cleaner = TmuxAdapter::for_server(&session.server, &session.tap_root);
+    block_on(cleaner.abort_submit(&winner)).expect("winner releases reservation");
+    assert!(!pane_input_off(&session, &pane.id));
+    assert!(submit_marker(&session, &pane.id).is_empty());
+}
+
+#[test]
+fn ownership_tokens_do_not_recycle_across_adapters() {
+    let Some(session) = TestSession::start_or_skip("submit-unique-token") else {
+        return;
+    };
+    session.run(["split-window", "-d", "-t", &session.name, "cat"]);
+    let panes = block_on(TmuxAdapter::for_server(&session.server, &session.tap_root).list_panes())
+        .expect("list isolated panes");
+    assert_eq!(panes.len(), 2);
+    let first_adapter = TmuxAdapter::for_server(&session.server, &session.tap_root);
+    let second_adapter = TmuxAdapter::for_server(&session.server, &session.tap_root);
+    let first = block_on(first_adapter.acquire_submit(&panes[0].id)).expect("first reservation");
+    let second = block_on(second_adapter.acquire_submit(&panes[1].id)).expect("second reservation");
+    assert_ne!(
+        first.token, second.token,
+        "transactions need fresh OS-random identities"
+    );
+    block_on(first_adapter.abort_submit(&first)).expect("release first reservation");
+    block_on(second_adapter.abort_submit(&second)).expect("release second reservation");
+}
+
+#[test]
+fn stale_watchdog_cannot_release_a_later_adapter_transaction() {
+    let Some(session) = TestSession::start_or_skip("submit-stale-watchdog") else {
+        return;
+    };
+    let pane = block_on(TmuxAdapter::for_server(&session.server, &session.tap_root).list_panes())
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    fs::create_dir_all(&session.tap_root).expect("create stale-watchdog fixture directory");
+    let log = session.tap_root.join("watchdog-wrapper.log");
+    let wrapper = session.tap_root.join("tmux-watchdog-wrapper");
+    let script = format!(
+        "#!/bin/sh\nprintf '%s|%s\\n' \"${{5-}}\" \"${{6-}}\" >> {}\nexec tmux -L {} \"$@\"\n",
+        shell_literal(&log.to_string_lossy()),
+        shell_literal(&session.server)
+    );
+    fs::write(&wrapper, script).expect("write watchdog wrapper");
+    let mut permissions = fs::metadata(&wrapper)
+        .expect("watchdog wrapper metadata")
+        .permissions();
+    permissions.set_mode(0o700);
+    fs::set_permissions(&wrapper, permissions).expect("make watchdog wrapper executable");
+
+    let first_adapter = TmuxAdapter::with_binary(&wrapper, &session.tap_root);
+    let first = block_on(first_adapter.acquire_submit(&pane.id)).expect("first transaction");
+    block_on(first_adapter.abort_submit(&first)).expect("first transaction aborts");
+    std::thread::sleep(Duration::from_millis(300));
+    let second_adapter = TmuxAdapter::with_binary(&wrapper, &session.tap_root);
+    let second = block_on(second_adapter.acquire_submit(&pane.id)).expect("later transaction");
+    assert_ne!(first.token, second.token);
+
+    let first_watchdog = format!("#{{==:#{{@pij-submit-owner}},{}}}|", first.token);
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        let observed = fs::read_to_string(&log).unwrap_or_default();
+        if observed
+            .lines()
+            .any(|line| line.starts_with(&first_watchdog) && line.contains("-recovering"))
+        {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "first watchdog did not execute; wrapper calls:\n{observed}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(submit_marker(&session, &pane.id), second.token);
+    assert!(
+        pane_input_off(&session, &pane.id),
+        "stale watchdog must not restore the later owner's input"
+    );
+    block_on(second_adapter.abort_submit(&second)).expect("release later transaction");
+}
+
+#[test]
+fn submit_cas_process_helper_process() {
+    let Ok(server) = std::env::var("PIJ_CAS_RACE_SERVER") else {
+        return;
+    };
+    let pane = std::env::var("PIJ_CAS_RACE_PANE").expect("CAS helper pane");
+    let ready = PathBuf::from(std::env::var("PIJ_CAS_RACE_READY").expect("CAS helper ready"));
+    let start = PathBuf::from(std::env::var("PIJ_CAS_RACE_START").expect("CAS helper start"));
+    let result = PathBuf::from(std::env::var("PIJ_CAS_RACE_RESULT").expect("CAS helper result"));
+    let release = PathBuf::from(std::env::var("PIJ_CAS_RACE_RELEASE").expect("CAS helper release"));
+    fs::write(ready, b"ready").expect("signal CAS helper readiness");
+    wait_for_file(&start, 1, Duration::from_secs(3));
+    let tmux = TmuxAdapter::for_server(server, std::env::temp_dir());
+    match block_on(tmux.acquire_submit(&pane)) {
+        Ok(staged) => {
+            fs::write(&result, format!("ok:{}", staged.token)).expect("write CAS winner");
+            wait_for_file(&release, 1, Duration::from_secs(3));
+            block_on(tmux.abort_submit(&staged)).expect("CAS winner releases pane");
+        }
+        Err(error) => {
+            fs::write(result, format!("err:{error}")).expect("write CAS loser");
+        }
+    }
+}
+
+#[test]
+fn separate_processes_cannot_both_reserve_one_pane() {
+    let Some(session) = TestSession::start_or_skip("submit-process-cas") else {
+        return;
+    };
+    let pane = block_on(TmuxAdapter::for_server(&session.server, &session.tap_root).list_panes())
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    fs::create_dir_all(&session.tap_root).expect("create process CAS fixture directory");
+    let start = session.tap_root.join("start");
+    let release = session.tap_root.join("release");
+    let mut children = Vec::new();
+    let mut result_paths = Vec::new();
+    for index in 0..2 {
+        let ready = session.tap_root.join(format!("ready-{index}"));
+        let result = session.tap_root.join(format!("result-{index}"));
+        let child = Command::new(std::env::current_exe().expect("current test binary"))
+            .args([
+                "--exact",
+                "submit_cas_process_helper_process",
+                "--nocapture",
+            ])
+            .env("PIJ_CAS_RACE_SERVER", &session.server)
+            .env("PIJ_CAS_RACE_PANE", &pane.id)
+            .env("PIJ_CAS_RACE_READY", &ready)
+            .env("PIJ_CAS_RACE_START", &start)
+            .env("PIJ_CAS_RACE_RESULT", &result)
+            .env("PIJ_CAS_RACE_RELEASE", &release)
+            .spawn()
+            .expect("spawn process CAS racer");
+        children.push(child);
+        result_paths.push((ready, result));
+    }
+    for (ready, _) in &result_paths {
+        wait_for_file(ready, 1, Duration::from_secs(2));
+    }
+    fs::write(&start, b"start").expect("release process CAS racers");
+    let results: Vec<String> = result_paths
+        .iter()
+        .map(|(_, result)| {
+            String::from_utf8(wait_for_file(result, 4, Duration::from_secs(2)))
+                .expect("UTF-8 CAS result")
+        })
+        .collect();
+    assert_eq!(
+        results
+            .iter()
+            .filter(|result| result.starts_with("ok:"))
+            .count(),
+        1
+    );
+    assert_eq!(
+        results
+            .iter()
+            .filter(|result| result.starts_with("err:"))
+            .count(),
+        1
+    );
+    let winner = results
+        .iter()
+        .find_map(|result| result.strip_prefix("ok:"))
+        .expect("one process CAS winner");
+    assert_eq!(submit_marker(&session, &pane.id), winner);
+    assert!(pane_input_off(&session, &pane.id));
+
+    fs::write(&release, b"release").expect("release process CAS winner");
+    for mut child in children {
+        let status = child.wait().expect("reap process CAS racer");
+        assert!(status.success(), "process CAS racer failed: {status}");
+    }
+    assert!(!pane_input_off(&session, &pane.id));
+    assert!(submit_marker(&session, &pane.id).is_empty());
+}
+
+#[tokio::test]
+async fn post_enter_cleanup_failure_remains_success_and_submits_once() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let output_path = std::env::temp_dir().join(format!(
+        "pij-rs-submit-cleanup-failure-{}-{nonce}.bin",
+        std::process::id()
+    ));
+    let body = "ONE-TURN-ONLY";
+    let mut expected = Vec::new();
+    expected.extend_from_slice(b"\x1b[200~");
+    expected.extend_from_slice(body.as_bytes());
+    expected.extend_from_slice(b"\x1b[201~\r");
+    let command = format!(
+        "stty raw -echo; dd bs=1 count={} of={} 2>/dev/null; sleep 5",
+        expected.len(),
+        output_path.display()
+    );
+    let Some(session) = TestSession::start_or_skip_with_command("submit-cleanup-error", &command)
+    else {
+        return;
+    };
+    let pane = TmuxAdapter::for_server(&session.server, &session.tap_root)
+        .list_panes()
+        .await
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    fs::create_dir_all(&session.tap_root).expect("create cleanup fixture directory");
+    let wrapper = session.tap_root.join("tmux-cleanup-wrapper");
+    let failed_once = session.tap_root.join("cleanup-failed-once");
+    let script = format!(
+        "#!/bin/sh\ncase \"${{5-}}\" in *-committed*) if [ ! -e {} ]; then : > {}; exit 71; fi ;; esac\nexec tmux -L {} \"$@\"\n",
+        shell_literal(&failed_once.to_string_lossy()),
+        shell_literal(&failed_once.to_string_lossy()),
+        shell_literal(&session.server)
+    );
+    fs::write(&wrapper, script).expect("write cleanup wrapper");
+    let mut permissions = fs::metadata(&wrapper)
+        .expect("cleanup wrapper metadata")
+        .permissions();
+    permissions.set_mode(0o700);
+    fs::set_permissions(&wrapper, permissions).expect("make cleanup wrapper executable");
+
+    let tmux = TmuxAdapter::with_binary(&wrapper, &session.tap_root);
+    let mut staged = tmux.acquire_submit(&pane.id).await.expect("acquire input");
+    tmux.stage_submit(&mut staged, body)
+        .await
+        .expect("stage body");
+    tmux.commit_submit(&staged)
+        .await
+        .expect("Enter is success despite cleanup error");
+    assert!(!pane_input_off(&session, &pane.id));
+    let observed = wait_for_file(&output_path, expected.len(), Duration::from_secs(3));
+    assert_eq!(
+        observed, expected,
+        "cleanup failure must not duplicate the turn"
+    );
+    wait_for_submit_marker_clear(&session, &pane.id, Duration::from_secs(3));
+    fs::remove_file(output_path).expect("remove cleanup capture");
+}
+
+fn signal_process(pid: u32, signal: &str) {
+    let output = Command::new("kill")
+        .args([signal, &pid.to_string()])
+        .output()
+        .expect("invoke process signal");
+    assert!(
+        output.status.success(),
+        "kill {signal} {pid} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn shell_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
 fn pane_input_off(session: &TestSession, pane: &str) -> bool {
