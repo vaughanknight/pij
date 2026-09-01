@@ -1,0 +1,66 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "PM packet \u2014 s121 adopt-is-consent",
+        "role": "pm",
+        "plan": "docs/plans/121-adopt-is-consent/plan.dd.json",
+        "seat": "(filled at spawn)",
+        "updated": "2026-09-01"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "Deliver plan 121: Claude seat registration stamps cross_session_inbound_accept=Some(true) (adopt IS consent \u2014 Jordan 2026-09-01) plus an idempotent backfill migration, so adopted/hand-started Claude seats get full-body socket delivery. SMALL UNIT, NO FAN-OUT: you code it yourself, then call the reviewer."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        "Read, in order: plan.dd.md, impl-guide.dd.md (frozen seam \u2014 the stamp lives at the registration path ONLY), and .agents/skills/pij-team/TENETS.md",
+        "HARD GATE: write NO product code until PR #341 (s119/send-inbox) merges to main and you have rebased this branch onto that main; prep (reading, failing witnesses, migration draft) is allowed now",
+        "Ack this packet to the prime (pij-still-weasel) with a NUMBERED plan of your steps before coding; prime rules the ack by number",
+        "Witness discipline: every regression test proven red on the pre-fix tree first; the live AC witnesses (ac-1, ac-2) run in real panes, not unit tests",
+        "Read the actual seats table schema before writing the migration \u2014 the impl-guide's SQL sketch is a sketch, not truth",
+        "Reviewer: pij-impressive-gopher (rs-only; the PRIME relays \u2014 send review-ready notice to the prime, never sideways)",
+        "Report card at start and finish of each unit of work (pij report now)"
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        "prime pij-still-weasel \u2014 pane %2081, rs-only; reach it: pij send pij-still-weasel (works post-s119) or tmux send-keys to %2081",
+        "reviewer pij-impressive-gopher \u2014 cross-model, mechanism-first, already holds the oracle; all traffic via prime"
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/pij-worktrees/s121-adopt-is-consent",
+        "branch": "s121/adopt-is-consent",
+        "fence": "crates/daemon/src/registration.rs \u00b7 crates/daemon/migrations/** (new migration) \u00b7 crates/daemon tests for registration \u00b7 docs/plans/121-adopt-is-consent/**",
+        "forbidden_note": "Never write .the-flow-state.json, the-flow.json, the-flow.md. Do NOT touch crates/transport/src/uds.rs (the from-mode pin at :925 must survive UNMODIFIED \u2014 ac-5), spawn.rs, or the shim routing. A need outside the fence = stop and ask the prime."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        "ac-1..ac-6 in plan.dd.md all witnessed, ac-1/ac-2 live in panes",
+        "pij-gate all stages green; typecheck green; vitest green modulo known npm-resolution pre-existing failure (verify it fails identically on unmodified main before claiming pre-existing)",
+        "PR open with both witnesses documented; reviewer verdict via prime before merge"
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        "governance briefs/s121-register-reads-consent.md (amended: adopt-is-consent)",
+        "governance rulings/2026-09-01-adopt-is-consent.md + 2026-08-31-crosssessioninbound-on-at-all-times.md",
+        "scratch/s119/woodpecker-body-delivery-answer.md (mechanism map: uds.rs:170-178 gate, spawn.rs:163-165 stamp, plan-113 discovery)",
+        "req-0018 PRD note (137 dead-pane rows \u2014 why backfill tolerates stamping them)"
+      ]
+    }
+  ]
+}

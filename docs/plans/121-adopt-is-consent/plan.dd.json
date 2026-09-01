@@ -1,0 +1,88 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "adopt-is-consent",
+        "slug": "adopt-is-consent",
+        "ordinal": 121,
+        "status": "draft",
+        "summary": "Registration stamps delivery consent: adopting a Claude seat into pij IS the consent act (Jordan 2026-09-01), so every adopted/hand-started seat gets full-body socket delivery instead of pointer turns."
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Today cross_session_inbound_accept is derived only from spawn argv; the registration/adopt path stamps nothing, so every hand-started Claude seat has NULL and can_deliver (crates/transport/src/uds.rs:170-178) refuses the socket rung \u2014 pointers forever. Ruling 2026-09-01 (governance rulings/2026-09-01-adopt-is-consent.md): adopt IS consent. Stamp Some(true) at Claude registration/adopt + backfill existing rows. Lineage: oq-1104 mirror gap (PR #330 review), oq-1101 default (resolved by ruling), req-0008 family. Brief: governance briefs/s121-register-reads-consent.md (amended by excision same day)."
+    },
+    {
+      "name": "goals",
+      "value": [
+        "Claude seat registration/adopt stamps cross_session_inbound_accept=Some(true) on the descriptor",
+        "Backfill migration: existing non-tombstoned Claude rows with NULL become Some(true)",
+        "An adopted, hand-started Claude seat receives a full message body as a real turn with no store hack",
+        "pij still NEVER emits from-mode=bypass (uds.rs:925 pin stands)"
+      ]
+    },
+    {
+      "name": "non_goals",
+      "value": [
+        "Recipient-side crossSessionInbound setting (operator act; handled by 2026-08-31 ruling via settings)",
+        "s120 grading/admission work",
+        "Held/approval-path changes",
+        "Non-Claude harness socket delivery",
+        "req-0018 reaping (dead-pane rows may receive the stamp \u2014 harmless: can_deliver also needs a discoverable session record, which a dead pane lacks; reaping tombstones them later)"
+      ]
+    },
+    {
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "ac-1",
+          "text": "Adopt a hand-started Claude seat (real pane, CLI running with crossSessionInbound accept): a pij send to it lands as a real type=user turn \u2014 witnessed live in the pane, not a unit test",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-2",
+          "text": "Control on the same build: a seat whose recipient CLI lacks the accept setting still receives (frame sent) but is HELD by the harness \u2014 proving pij asserted nothing (both worlds emit a positive artifact)",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-3",
+          "text": "An explicit Some(false) on a row is never overwritten by registration or backfill (test separates NULL-at-adopt from Some(false)-later)",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-4",
+          "text": "Backfill is idempotent and skips tombstoned rows; running it twice changes zero additional rows",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-5",
+          "text": "Test pinning absence of from-mode in emitted frames still passes unmodified (uds.rs:925)",
+          "state": "unchecked"
+        },
+        {
+          "id": "ac-6",
+          "text": "pij-gate all stages green; typecheck green; vitest green modulo the known pre-existing npm-resolution failure",
+          "state": "unchecked"
+        }
+      ]
+    },
+    {
+      "name": "phases",
+      "value": [
+        {
+          "id": "ph-6c57",
+          "title": "Phase 1 \u2014 stamp + backfill + witness",
+          "brief": "Single unit; PM codes it itself per pij-team (no fan-out), reviewer after.",
+          "state": "unchecked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
+        }
+      ]
+    }
+  ],
+  "references": []
+}
