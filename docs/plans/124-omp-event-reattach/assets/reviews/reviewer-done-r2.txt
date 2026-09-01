@@ -1,0 +1,12 @@
+REVIEWER DONE — round r2 (written retroactively during r3; the r2 session was interrupted before this marker was written)
+seat:    pij-thoughtful-manatee
+model:   claude-opus-5
+plan:    124 omp-event-reattach
+date:    2026-09-02
+
+review:  docs/plans/124-omp-event-reattach/assets/reviews/review-r2.dd.json
+         docs/plans/124-omp-event-reattach/assets/reviews/review-r2.dd.md
+
+VERDICT: APPROVE WITH MINOR FOLLOW-UPS — both r1 MAJORs fixed and RED-verified on the pre-fix tree; all r1 MINORs and the NIT resolved or deferred; two new MINORs raised (F8 poison-frame wedge, F9 unwitnessed backoff reset), neither blocking.
+
+Open at the close of r2: `harness checks` was RED on the `test` sensor (30s timeout in cli.integration.test.ts, a file untouched by this branch). Resolved in r3 — see reviewer-done-r3.txt.

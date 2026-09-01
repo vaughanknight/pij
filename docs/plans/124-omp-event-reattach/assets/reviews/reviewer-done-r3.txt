@@ -1,0 +1,31 @@
+REVIEWER DONE — round r3 (final)
+seat:    pij-thoughtful-manatee
+model:   claude-opus-5
+plan:    124 omp-event-reattach
+branch:  124-omp-event-reattach
+date:    2026-09-02
+
+review:  docs/plans/124-omp-event-reattach/assets/reviews/review-r3.dd.json
+         docs/plans/124-omp-event-reattach/assets/reviews/review-r3.dd.md
+
+FINAL BRANCH VERDICT: APPROVE — F8 and F9 are fixed and each proven by injection against a green baseline; Q2 deferred as a non-blocking coverage gap; no new findings this round.
+
+Dispositions
+  F8 (MINOR, poison frame wedged the stream)  fixed
+  F9 (MINOR, backoff reset had no witness)    fixed
+  Q2 (question, no live witness for replay across the gap)  deferred, accepted
+
+Re-derived, not audited
+  focused suite (daemon-http, rust-runtime, daemon-wire, index): 4 files / 43 tests passed
+  just typecheck: exit 0
+  ddocs validate plan.dd.json: 0 errors / 0 warnings
+  harness checks: 8/8 GREEN, HARNESS_EXIT=0 — closes the r2 RED, which did not reproduce
+  mutation controls in a throwaway worktree at 857527bd + this diff (baseline 17/17 green):
+    delete `if (sawFrame) attempt = 0;`   -> 1 failed / 16  (F9 witness bites)
+    always rethrow (pre-fix shape)        -> 1 failed / 16  (F8 RED witness; matches fix-r2's number)
+    MAX_FRAME_ATTEMPTS = 1                -> 2 failed / 15  (r1 F3 property still separately guarded)
+    MAX_FRAME_ATTEMPTS = 4                -> 1 failed / 16  (the bound itself is asserted)
+  inbox recovery promise in the new notice verified from source, not accepted from prose
+
+Return channel: pij-rs send --addr 127.0.0.1:7461 --state-dir $HOME/.pij-rs --from pij-thoughtful-manatee --to pij-given-hawk --msg-id p124-review-result
+Fence honoured: code read-only; the only files written are under docs/plans/124-omp-event-reattach/assets/reviews/.

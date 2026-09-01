@@ -351,15 +351,127 @@ describe("pij-rs HTTP client", () => {
 		const stateDir = root();
 		writeFileSync(join(stateDir, "daemon.key"), "secret\n");
 		const sleeps: Array<{ readonly ms: number; readonly release: () => void }> = [];
-		let attach = 0;
-		const fetchMock = vi.fn(async () => {
-			attach += 1;
-			if (attach === 1) return eventStream([]);
-			throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } });
-		});
+		const fetchMock = vi.fn(async () => eventStream([]));
 		const baseDeps = deps(fetchMock as typeof fetch);
 		const client = new PijDaemonClient({ addr: "127.0.0.1:7461", stateDir }, "secret", {
 			...baseDeps,
+			random: () => 1,
+			sleep: (ms) =>
+				new Promise<void>((resolveSleep) => sleeps.push({ ms, release: resolveSleep })),
+		});
+		const stop = await client.watchEvents(
+			() => {},
+			(error) => {
+				throw error;
+			},
+		);
+		try {
+			const expected = [300, 600, 1_200, 2_400, 4_800, 5_000, 5_000];
+			for (let index = 0; index < expected.length; index += 1) {
+				await vi.waitFor(() => expect(sleeps).toHaveLength(index + 1));
+				expect(sleeps[index]?.ms).toBe(expected[index]);
+				sleeps[index]?.release();
+			}
+		} finally {
+			stop();
+		}
+	});
+
+	it("reports a stream protocol error while continuing the supervised reconnect", async () => {
+		const stateDir = root();
+		writeFileSync(join(stateDir, "daemon.key"), "secret\n");
+		let attach = 0;
+		const fetchMock = vi.fn(async () => {
+			attach += 1;
+			if (attach === 1) {
+				return new Response(
+					`${JSON.stringify({ hello: true, v: 1, build: "pij-rs test" })}\nnot-json\n`,
+				);
+			}
+			return eventStream([], true);
+		});
+		const errors: Error[] = [];
+		const client = new PijDaemonClient({ addr: "127.0.0.1:7461", stateDir }, "secret", {
+			...deps(fetchMock as typeof fetch),
+			random: () => 0.5,
+			sleep: async () => {},
+		});
+		const stop = await client.watchEvents(
+			() => {},
+			(error) => errors.push(error),
+		);
+		try {
+			await vi.waitFor(() => expect(attach).toBe(2));
+			expect(errors).toHaveLength(1);
+			expect(errors[0]?.message).toContain("daemon event line is invalid JSON");
+		} finally {
+			stop();
+		}
+	});
+
+	it("does not advance a cursor until asynchronous frame consumption succeeds", async () => {
+		const stateDir = root();
+		writeFileSync(join(stateDir, "daemon.key"), "secret\n");
+		const urls: URL[] = [];
+		const fetchMock = vi.fn(async (url: string | URL | Request) => {
+			urls.push(new URL(String(url)));
+			if (urls.length === 1) return eventStream([frame("alpha", 7)]);
+			return eventStream([], true);
+		});
+		const errors: Error[] = [];
+		const client = new PijDaemonClient({ addr: "127.0.0.1:7461", stateDir }, "secret", {
+			...deps(fetchMock as typeof fetch),
+			random: () => 0.5,
+			sleep: async () => {},
+		});
+		const failedConsumption = Promise.reject(new Error("consume failed"));
+		void failedConsumption.catch(() => {});
+		const stop = await client.watchEvents(
+			() => failedConsumption,
+			(error) => errors.push(error),
+		);
+		try {
+			await vi.waitFor(() => expect(urls).toHaveLength(2));
+			expect(urls[1]?.searchParams.has("since")).toBe(false);
+			expect(errors.map((error) => error.message)).toContain("consume failed");
+		} finally {
+			stop();
+		}
+	});
+
+	it("keeps the HTTP status backstop when a failed response has a success envelope", async () => {
+		const stateDir = root();
+		writeFileSync(join(stateDir, "daemon.key"), "secret\n");
+		const fetchMock = vi.fn(
+			async () =>
+				new Response(JSON.stringify({ ok: true, command: "pij events", v: 1, data: {} }), {
+					status: 500,
+				}),
+		);
+		const client = new PijDaemonClient(
+			{ addr: "127.0.0.1:7461", stateDir },
+			"secret",
+			deps(fetchMock as typeof fetch),
+		);
+		await expect(
+			client.watchEvents(
+				() => {},
+				() => {},
+			),
+		).rejects.toThrow("pij events failed with HTTP 500");
+	});
+
+	it("resets reconnect backoff after a stream consumes a frame", async () => {
+		const stateDir = root();
+		writeFileSync(join(stateDir, "daemon.key"), "secret\n");
+		const sleeps: Array<{ readonly ms: number; readonly release: () => void }> = [];
+		let attach = 0;
+		const fetchMock = vi.fn(async () => {
+			attach += 1;
+			return attach === 2 ? eventStream([frame("alpha", 1)]) : eventStream([]);
+		});
+		const client = new PijDaemonClient({ addr: "127.0.0.1:7461", stateDir }, "secret", {
+			...deps(fetchMock as typeof fetch),
 			random: () => 0.5,
 			sleep: (ms) =>
 				new Promise<void>((resolveSleep) => sleeps.push({ ms, release: resolveSleep })),
@@ -371,12 +483,69 @@ describe("pij-rs HTTP client", () => {
 			},
 		);
 		try {
-			const expected = [250, 500, 1_000, 2_000, 4_000, 5_000, 5_000];
-			for (let index = 0; index < expected.length; index += 1) {
-				await vi.waitFor(() => expect(sleeps).toHaveLength(index + 1));
-				expect(sleeps[index]?.ms).toBe(expected[index]);
-				sleeps[index]?.release();
+			await vi.waitFor(() => expect(sleeps).toHaveLength(1));
+			expect(sleeps[0]?.ms).toBe(250);
+			sleeps[0]?.release();
+			await vi.waitFor(() => expect(sleeps).toHaveLength(2));
+			expect(sleeps[1]?.ms).toBe(250);
+		} finally {
+			stop();
+		}
+	});
+
+	it("bounds poison-frame retries, notices once, and continues with the next frame", async () => {
+		const stateDir = root();
+		writeFileSync(join(stateDir, "daemon.key"), "secret\n");
+		const sleeps: Array<{ readonly release: () => void }> = [];
+		let attaches = 0;
+		const poison = {
+			machine: "alpha",
+			cursor: 1,
+			event: {
+				v: 1,
+				at: 1,
+				kind: "message.pushed",
+				seat: "pij-target",
+				payload: JSON.stringify({ msg_id: "poison-1", from: "pij-a", body: 42 }),
+			},
+		};
+		const fetchMock = vi.fn(async () => {
+			attaches += 1;
+			return eventStream([poison, frame("alpha", 2)], attaches >= 5);
+		});
+		const notices: string[] = [];
+		const consumed: number[] = [];
+		const client = new PijDaemonClient({ addr: "127.0.0.1:7461", stateDir }, "secret", {
+			...deps(fetchMock as typeof fetch),
+			random: () => 0.5,
+			sleep: (_ms, signal) =>
+				new Promise<void>((resolveSleep) => {
+					const release = (): void => {
+						signal.removeEventListener("abort", release);
+						resolveSleep();
+					};
+					signal.addEventListener("abort", release, { once: true });
+					sleeps.push({ release });
+				}),
+		});
+		const stop = await client.watchEvents(
+			(received) => {
+				if (received.cursor === 1) throw new Error("body must be a string");
+				consumed.push(received.cursor);
+			},
+			() => {},
+			(notice) => notices.push(notice),
+		);
+		try {
+			for (let attempt = 1; attempt < 5; attempt += 1) {
+				await vi.waitFor(() => expect(sleeps).toHaveLength(attempt));
+				sleeps[attempt - 1]?.release();
+				await vi.waitFor(() => expect(attaches).toBe(attempt + 1));
 			}
+			await vi.waitFor(() => expect(consumed).toEqual([2]));
+			expect(notices.filter((notice) => notice.includes("poison-1"))).toEqual([
+				"pij: skipped poison frame poison-1 after 5 attempts: body must be a string; message remains in pij inbox",
+			]);
 		} finally {
 			stop();
 		}

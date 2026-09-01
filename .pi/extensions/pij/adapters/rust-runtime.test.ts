@@ -342,7 +342,10 @@ describe("RustRuntimeSession", () => {
 		expect(acknowledgements).toEqual([]);
 	});
 
-	it("re-attaches after key rotation, restores the same seat, and consumes replay once", async () => {
+	it.each([
+		false,
+		true,
+	])("re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: %s)", async (seatKnown) => {
 		vi.stubEnv("PIJ_ANNOUNCE_TO", "");
 		vi.stubEnv("PIJ_SPAWN_ID", "");
 		vi.stubEnv("PIJ_SPAWN_MODEL", "");
@@ -360,7 +363,21 @@ describe("RustRuntimeSession", () => {
 			const parsed = new URL(String(url));
 			if (parsed.pathname === "/v1/seats") {
 				seatReads += 1;
-				return envelope("pij seats", { seats: [], unavailable: [] });
+				const seats =
+					seatReads > 1 && seatKnown
+						? [
+								{
+									id: registeredId,
+									harness: "omp",
+									pane: "%42",
+									proc: { pid: process.pid, proc_start: 20260829103052 },
+									folder: "/abs/tree",
+									state: "idle",
+									parent: null,
+								},
+							]
+						: [];
+				return envelope("pij seats", { seats, unavailable: [] });
 			}
 			if (parsed.pathname === "/v1/register") {
 				const claim = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -429,9 +446,9 @@ describe("RustRuntimeSession", () => {
 
 		await vi.waitFor(() => {
 			expect(acknowledgements).toEqual([{ seat: boot.id, job_id: 1 }]);
-			expect(registrations).toHaveLength(2);
+			expect(registrations).toHaveLength(seatKnown ? 1 : 2);
 		});
-		expect(registrations[1]).toMatchObject({ id: boot.id, pane: "%42" });
+		if (!seatKnown) expect(registrations[1]).toMatchObject({ id: boot.id, pane: "%42" });
 		expect(seatReads).toBeGreaterThanOrEqual(2);
 		expect(JSON.parse(eventUrls[1]?.searchParams.get("since") ?? "null")).toEqual({ test: 1 });
 		expect(eventAuthorizations).toEqual(["Bearer old-key", "Bearer new-key"]);

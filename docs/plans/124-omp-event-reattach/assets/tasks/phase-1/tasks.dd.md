@@ -39,8 +39,8 @@ RED-first extension tests precede each implementation. Prime grants the daemon r
 | tk-1242 | Implement the supervised reconnecting daemon event client and transparent key refresh without daemon changes. | — | — | [x] checked | u1 / G1-G3 | — | [x] 1/1 [tk-1242](#tk-1242) | — | — | — |
 | tk-1243 | Add RED-first runtime restart tests for notices, seat continuity, replayed injection, and one inbox acknowledgement. | — | — | [x] checked | u2 / AC3-AC5 | — | [x] 1/1 [tk-1243](#tk-1243) | — | — | — |
 | tk-1244 | Wire runtime re-attach through existing pushedChain and consumePushed, preserving the same seat id and pane. | — | — | [x] checked | u2 / G4-G5 | — | [x] 1/1 [tk-1244](#tk-1244) | — | — | — |
-| tk-1245 | Run focused tests, typecheck, harness checks, then the prime-granted hand-started omp daemon-restart proof and capture evidence. | — | — | [ ] unchecked | AC1-AC5 | — | [ ] 0/1 [tk-1245](#tk-1245) | — | — | — |
-| tk-1246 | Complete Claude Opus review, resolve findings, close ddoc evidence, post-flight, archive, and ship through governed gates. | — | — | [ ] unchecked | done bar d1-d5 | — | [ ] 0/1 [tk-1246](#tk-1246) | — | — | — |
+| tk-1245 | Run focused tests, typecheck, harness checks, then the prime-granted hand-started omp daemon-restart proof and capture evidence. | — | — | [x] checked | AC1-AC5 | — | [x] 1/1 [tk-1245](#tk-1245) | — | — | — |
+| tk-1246 | Complete Claude Opus review, resolve every finding, and hand the approved branch to builder post-flight and ship. | — | — | [x] checked | done bar d1-d5 | — | [x] 1/1 [tk-1246](#tk-1246) | — | — | — |
 
 <a id="done-when"></a>
 
@@ -74,10 +74,10 @@ RED-first extension tests precede each implementation. Prime grants the daemon r
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-1245 | Focused vitest, just typecheck, and harness checks are green; after prime replies GRANTED, a hand-started omp survives the restart, receives the body inline, shows pushed to inbox-ack with no pointer, and pij_send succeeds. | [ ] unchecked | not-applicable |
+| dw-1245 | Focused vitest, just typecheck, and harness checks are green; after prime replies GRANTED, a hand-started omp survives the restart, receives the body inline, shows pushed to inbox-ack with no pointer, and pij_send succeeds. | [x] checked | not-applicable |
 
 ### tk-1246
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-1246 | Claude Opus review verdict is recorded, findings are fixed or evidence-refuted, every AC carries a receipt, post-flight archives the plan, and ship opens the governed PR. | [ ] unchecked | not-applicable |
+| dw-1246 | Claude Opus final review approves the branch; every finding is fixed, evidence-refuted, or explicitly deferred with a reason; all plan AC rows carry receipts. | [x] checked | not-applicable |

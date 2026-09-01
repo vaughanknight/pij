@@ -112,14 +112,11 @@ export class RustRuntimeSession {
 					this.session.capture("daemon_event", frame);
 					return;
 				}
-				this.pushedChain = this.pushedChain
-					.then(() => this.consumePushed(frame.event.payload, seat, client))
-					.catch((error: unknown) => {
-						this.session.capture("daemon_event_error", {
-							message: error instanceof Error ? error.message : String(error),
-							frame,
-						});
-					});
+				const consumed = this.pushedChain.then(() =>
+					this.consumePushed(frame.event.payload, seat, client),
+				);
+				this.pushedChain = consumed.catch(() => undefined);
+				return consumed;
 			},
 			(error) => this.session.capture("daemon_event_error", { message: error.message }),
 			(notice) => {

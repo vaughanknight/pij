@@ -1,0 +1,64 @@
+REVIEWER DONE — plan 124-omp-event-reattach
+seat:  pij-thoughtful-manatee (claude-opus-5)
+round: r1
+date:  2026-09-02
+
+REVIEW DDOC
+  docs/plans/124-omp-event-reattach/assets/reviews/review-r1.dd.json   (source, ddocs validate: clean)
+  docs/plans/124-omp-event-reattach/assets/reviews/review-r1.dd.md     (built)
+  docs/plans/124-omp-event-reattach/assets/reviews/review-r1-ac-and-seams.md  (AC table, 5 seams, drift, fs3 friction)
+  docs/plans/124-omp-event-reattach/assets/reviews/probe-storm.mts     (F1 reproducer)
+  docs/plans/124-omp-event-reattach/assets/reviews/probe-skew.mts      (F1+F2 reproducer)
+
+VERDICT
+  CHANGES REQUESTED — 2 MAJOR, 4 MINOR, 1 NIT, 1 note for prime.
+  All five acceptance criteria judge TRUE; the MAJOR findings are new failure
+  modes the ACs do not cover, not AC failures.
+
+FINDINGS
+  F1 MAJOR  daemon-http.ts:207 — backoff resets on a successful ATTACH, not a successful
+            STREAM, so it never ramps when the daemon accepts the connection and the stream
+            dies immediately. Reproduced: 184 attaches / 367 notices in 300 ms, every delay
+            250 ms. Trigger is a daemon deploy — the event this plan exists to survive.
+            G1's bounded backoff and r2's mitigation are false on the branch. Two-line fix.
+  F2 MAJOR  daemon-http.ts:192 — onError is unreachable for every stream and decode error
+            (.catch(() => undefined) swallows them; abort returns without calling it), so
+            wire skew, Hello violations and bad JSON are now silent and `daemon_event_error`
+            never fires for the stream path. Drift from the impl-guide's stated contract.
+  F3 MINOR  daemon-http.ts:189 — the cursor records "seen", not "consumed"; a frame whose
+            consumePushed later rejects is skipped on re-attach. Reachable state, already
+            driven by an existing in-tree test.
+  F4 MINOR  daemon-http.ts:238 — the `HTTP ${status}` backstop was removed; no path on this
+            endpoint names the status any more.
+  F5 MINOR  rust-runtime.test.ts:369 — G4's negative half is unproven; the fake returns an
+            empty seat list every call, so the seat-known guard has no witness.
+  F6 NIT    cursor N is a max across aliases; jitter can exceed the 5 s cap by 20%.
+  F7 MINOR  plan.dd.json — NOTE FOR PRIME, not the PM: the plan document does not validate;
+            all five AC rows lack the required `claim` and `state`, so no AC can ever be
+            marked checked. New on this branch.
+  Q1 —      G2's replay-across-the-gap has no live and no faithful unit witness; I closed it
+            against the Rust authority instead (spine.rs:74-82 replays `seq > since`,
+            strictly exclusive), so the client's last-seen-cursor bookkeeping is correct.
+
+WHAT I RE-DERIVED RATHER THAN INHERITED (packet i7)
+  - RED-first: base 54fb7e95 in a throwaway worktree + only the three new test files
+    → 6 failed / 18 passed, matching the author's claimed 5 + 1.
+  - `npx tsc --noEmit` exit 0.
+  - Full .pi/extensions/pij suite: 169 files, 4006 passed, exit 0.
+  - `harness checks`: 8/8 sensors pass, exit 0.
+  - Daemon `since` semantics read from crates/, not from the TypeScript fake.
+  Every green claim in assets/execution.log.md that I could re-run, I re-ran, and each held.
+
+KNOWN-OPEN (packet i8) — zero findings spent, as instructed.
+
+RETURN CHANNEL (packet i9, amendment 10)
+  pij-rs send --addr 127.0.0.1:7461 --to pij-given-hawk --msg-id p124-review-result
+  → pij send: ok — {"msg_id":"p124-review-result","outcome":{"outcome":"queued"},"at":1788301103908}
+  Recipient confirmed live before trusting the receipt: `pij-rs state pij-given-hawk` →
+  liveness active, pane %2306, statusNext "Waiting for independent review ddoc".
+  (The legacy `pij send pij-given-hawk` still returns E-NOID; the seat exists only in the
+  rs store, which is exactly what i9 predicted.)
+
+FENCE
+  Read-only on code. Writes confined to docs/plans/124-omp-event-reattach/assets/reviews/.
+  No code edits, no commits, no merges, no PRs.

@@ -1,0 +1,51 @@
+{
+  "dd": {
+    "schema": "builder/execution-log"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Plan 124 execution receipts",
+        "plan": "../plan.dd.json#meta",
+        "phase": "ph-d9d5"
+      }
+    },
+    {
+      "name": "entries",
+      "value": [
+        {
+          "id": "ev-ac1",
+          "at": "2026-09-02",
+          "text": "Two hand-started OMP seats survived isolated daemon/key restarts; the body arrived inline and spine recorded message.pushed to delivery.inbox-ack with no pointer.",
+          "links": ["../plan.dd.json#acceptance_criteria/AC1"]
+        },
+        {
+          "id": "ev-ac2",
+          "at": "2026-09-02",
+          "text": "The same target OMP used pij_send successfully after the per-boot key rotated.",
+          "links": ["../plan.dd.json#acceptance_criteria/AC2"]
+        },
+        {
+          "id": "ev-ac3",
+          "at": "2026-09-02",
+          "text": "Reconnect, cursor-map replay, async consumption ordering, poison retry, refusal fallback, notice, seat continuity, and exactly-once inbox acknowledgement are covered by the focused adapter suite and independently approved in review r3.",
+          "links": ["../plan.dd.json#acceptance_criteria/AC3", "reviews/review-r3.dd.json#verdict"]
+        },
+        {
+          "id": "ev-ac4",
+          "at": "2026-09-02",
+          "text": "Key rotation retries with the reread key exactly once; two authentication refusals surface without looping.",
+          "links": ["../plan.dd.json#acceptance_criteria/AC4", "reviews/review-r3.dd.json#verdict"]
+        },
+        {
+          "id": "ev-ac5",
+          "at": "2026-09-02",
+          "text": "RED-first witnesses were reproduced independently; final focused suite passed 43 tests, full suite passed 4632 tests, typecheck passed, and harness checks passed all eight sensors.",
+          "links": ["../plan.dd.json#acceptance_criteria/AC5", "reviews/review-r3.dd.json#verdict"]
+        }
+      ]
+    }
+  ],
+  "references": []
+}

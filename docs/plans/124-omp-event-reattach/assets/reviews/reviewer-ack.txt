@@ -1,0 +1,60 @@
+REVIEWER ACK — plan 124-omp-event-reattach
+seat:  pij-thoughtful-manatee (claude-opus-5, Opus 5)
+role:  cross-model reviewer
+state: ACK ONLY — no review started, no code read, no edits. Awaiting your ruling on this file.
+
+PACKET PRECONDITION CHECK (i2b): SATISFIED — all three owed lists are present.
+  - least-confident list ......... i6
+  - disbelieve-receipts order ..... i7
+  - known-open exclusion list ..... i8
+No refusal-to-start condition triggered.
+
+NUMBERED PLAN
+ 1. Orient on contracts first: read plan.dd.md (r2) and impl-guide.dd.json (r1), then
+    .agents/skills/pij-team/TENETS.md (r0). Extract AC1-AC5 verbatim into a judging table
+    before looking at any implementation, so the ACs are not read through the diff.
+ 2. Take the full branch diff against its base (git merge-base 124-omp-event-reattach main,
+    then diff that range) and inventory the changed units against the impl-guide's intended
+    decomposition. Interface drift from the guide is logged as a candidate finding (i3 #3).
+ 3. Dogfood flowspace3: use `flowspace3 search --mode semantic` to find consumers and related
+    code by meaning while reading each changed unit. Record every miss / bad hit as friction,
+    excluding the known-open ".pi tree not indexable" item (i8).
+ 4. Hunt the three least-confident sites FIRST (i6), before any broad sweep:
+      4a. cursor advancement vs asynchronous pushedChain consumption — look for advance-before-
+          durable-consume, lost/duplicated events on interleaving, and exactly-once inject-to-ack.
+      4b. the text-prefix trigger scheduling post-reattach seat verification — trigger fragility,
+          prefix collisions, and whether the guard's production call site actually supplies its
+          inputs.
+      4c. lifecycle cancellation while a stream read or backoff sleep is pending — leaked tasks,
+          swallowed cancellation, reconnect-after-shutdown, unbounded backoff.
+ 5. Disbelieve the author's receipts (i7): treat assets/execution.log.md and
+    assets/live-restart-transcript.md as claims. Re-derive each behavioural claim from source,
+    and re-run the smallest relevant tests myself, reading exit status directly — no green is
+    accepted that I did not personally observe.
+ 6. Examine composition seams between units explicitly (done-bar d2): for each seam, name the
+    two sides, what crosses it, and whether one side reads the other's definition or restates it.
+    End-to-end evidence required before calling a seam live.
+ 7. Judge every AC true/false with cited evidence (done-bar d1). Findings are the material ones
+    only, each carrying: severity (CRITICAL/HIGH/MEDIUM), exact file:line, the claim, the proof,
+    and the smallest fix. Style noise suppressed. `no_material_findings` is an acceptable verdict.
+ 8. Spend zero findings on the known-open list (i8): isolated-restart safety brake, flowspace3
+    .pi indexing, npm ci min-release-age git-dep bug, Biome schema-version info, isolated
+    pane-observer foreign-tap noise. Anything out of plan scope is filed as a note for prime,
+    not an expanded review (w2).
+ 9. Write the review record as a ddoc under docs/plans/124-omp-event-reattach/assets/reviews/,
+    build it, and keep all long output there.
+10. Deliver via the return-channel override (i9): pij-rs send --addr 127.0.0.1:7461
+    --state-dir $HOME/.pij-rs --from pij-thoughtful-manatee --to pij-given-hawk
+    --body <one-line> --msg-id p124-review-result — path + one-line verdict only.
+    (ACK id p124-review-ack is held back per your instruction to stop at this file.)
+
+FENCE ACKNOWLEDGED
+  read-only on code; my only writes are under docs/plans/124-omp-event-reattach/assets/reviews/.
+  No code edits, no commits, no merges, no PRs, no government files.
+
+OPEN ITEM FOR THE DISPATCHER
+  The legacy `pij send pij-given-hawk` path returns E-NOID (no such session in the legacy
+  registry) — consistent with i9. I have NOT yet exercised the pij-rs override; it will be
+  proven on first real send rather than assumed.
+
+STOPPED HERE. Awaiting your ruling.

@@ -56,6 +56,7 @@ const DEFAULT_DEPS: DaemonHttpDeps = {
 const INITIAL_RECONNECT_MS = 250;
 const MAX_RECONNECT_MS = 5_000;
 const RECONNECT_JITTER = 0.2;
+const MAX_FRAME_ATTEMPTS = 5;
 
 /** Resolve extension transport controls: explicit environment, then Rust defaults. */
 export function daemonLocation(
@@ -157,46 +158,77 @@ export class PijDaemonClient {
 	}
 
 	async watchEvents(
-		onFrame: (frame: EventFrame) => void,
+		onFrame: (frame: EventFrame) => unknown,
 		onError: (error: Error) => void,
 		onNotice?: (text: string) => void,
 	): Promise<() => void> {
 		const controller = new AbortController();
 		const cursors = new Map<string, number>();
 		const initial = await this.attachEvents(cursors, controller.signal);
-		void this.superviseEvents(initial, cursors, onFrame, onNotice, controller.signal).catch(
-			(error: unknown) => {
-				if (!controller.signal.aborted) onError(asError(error));
-			},
-		);
+		void this.superviseEvents(
+			initial,
+			cursors,
+			onFrame,
+			onError,
+			onNotice,
+			controller.signal,
+		).catch((error: unknown) => {
+			if (!controller.signal.aborted) onError(asError(error));
+		});
 		return () => controller.abort();
 	}
 
 	private async superviseEvents(
 		initial: ReadableStream<Uint8Array>,
 		cursors: Map<string, number>,
-		onFrame: (frame: EventFrame) => void,
+		onFrame: (frame: EventFrame) => unknown,
+		onError: (error: Error) => void,
 		onNotice: ((text: string) => void) | undefined,
 		signal: AbortSignal,
 	): Promise<void> {
 		let stream = initial;
 		let attempt = 0;
+		const frameAttempts = new Map<string, number>();
 		while (!signal.aborted) {
-			await pumpEventStream(
-				stream,
-				(frame) => {
-					onFrame(frame);
-					cursors.set(frame.machine, frame.cursor);
-				},
-				signal,
-			).catch(() => undefined);
+			let sawFrame = false;
+			try {
+				await pumpEventStream(
+					stream,
+					async (frame) => {
+						const key = `${frame.machine}\0${frame.cursor}`;
+						try {
+							await onFrame(frame);
+							frameAttempts.delete(key);
+						} catch (error) {
+							const attempts = (frameAttempts.get(key) ?? 0) + 1;
+							if (attempts < MAX_FRAME_ATTEMPTS) {
+								frameAttempts.set(key, attempts);
+								throw error;
+							}
+							frameAttempts.delete(key);
+							onNotice?.(
+								`pij: skipped poison frame ${frameMessageId(frame)} after ${MAX_FRAME_ATTEMPTS} attempts: ${asError(error).message}; message remains in pij inbox`,
+							);
+						}
+						cursors.set(frame.machine, frame.cursor);
+						sawFrame = true;
+					},
+					signal,
+				);
+			} catch (error) {
+				if (!signal.aborted) onError(asError(error));
+			}
 			if (signal.aborted) return;
+			if (sawFrame) attempt = 0;
 
 			onNotice?.("pij: daemon stream lost, reconnecting…");
 			while (!signal.aborted) {
 				const base = Math.min(INITIAL_RECONNECT_MS * 2 ** Math.min(attempt, 5), MAX_RECONNECT_MS);
 				const random = this.deps.random?.() ?? Math.random();
-				const delay = Math.round(base * (1 - RECONNECT_JITTER + random * RECONNECT_JITTER * 2));
+				const delay = Math.min(
+					MAX_RECONNECT_MS,
+					Math.round(base * (1 - RECONNECT_JITTER + random * RECONNECT_JITTER * 2)),
+				);
 				await (this.deps.sleep ?? sleep)(delay, signal);
 				if (signal.aborted) return;
 				try {
@@ -204,7 +236,7 @@ export class PijDaemonClient {
 					let cursor = 0;
 					for (const value of cursors.values()) cursor = Math.max(cursor, value);
 					onNotice?.(`pij: re-attached at cursor ${cursor}`);
-					attempt = 0;
+					attempt += 1;
 					break;
 				} catch (error) {
 					if (isCursorRefusal(error) && cursors.size > 0) {
@@ -213,7 +245,7 @@ export class PijDaemonClient {
 						try {
 							stream = await this.attachEvents(cursors, signal);
 							onNotice?.("pij: re-attached live-only");
-							attempt = 0;
+							attempt += 1;
 							break;
 						} catch {
 							// The live-only retry joins the same bounded reconnect loop.
@@ -235,7 +267,16 @@ export class PijDaemonClient {
 				? ""
 				: `?since=${encodeURIComponent(JSON.stringify(Object.fromEntries(cursors)))}`;
 		const response = await this.request(`/v1/events${since}`, { signal });
-		if (!response.ok) decodeEnvelope<unknown>(await response.text());
+		if (!response.ok) {
+			const status = response.status;
+			try {
+				decodeEnvelope<unknown>(await response.text());
+			} catch (error) {
+				if (error instanceof DaemonRefusalError) throw error;
+				throw new Error(`pij events failed with HTTP ${status}: ${asError(error).message}`);
+			}
+			throw new Error(`pij events failed with HTTP ${status}`);
+		}
 		if (!response.body) throw new Error("pij events returned no response body");
 		return response.body;
 	}
@@ -280,7 +321,7 @@ export class PijDaemonClient {
 
 async function pumpEventStream(
 	stream: ReadableStream<Uint8Array>,
-	onFrame: (frame: EventFrame) => void,
+	onFrame: (frame: EventFrame) => unknown,
 	signal: AbortSignal,
 ): Promise<void> {
 	const reader = stream.getReader();
@@ -307,14 +348,14 @@ async function pumpEventStream(
 					continue;
 				}
 				if (!sawHello) throw new Error("pij events frame arrived before Hello");
-				onFrame(decoded);
+				await onFrame(decoded);
 			}
 		}
 		if (buffered.trim() !== "") {
 			const decoded = decodeStreamLine(buffered);
 			if (!("hello" in decoded)) {
 				if (!sawHello) throw new Error("pij events frame arrived before Hello");
-				onFrame(decoded);
+				await onFrame(decoded);
 			}
 		}
 	} finally {
@@ -344,6 +385,19 @@ function isCursorRefusal(error: unknown): boolean {
 		error instanceof DaemonRefusalError &&
 		(error.kind === "cursor_reset" || error.kind === "refused")
 	);
+}
+
+function frameMessageId(frame: EventFrame): string {
+	try {
+		const value: unknown = JSON.parse(frame.event.payload);
+		if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+			const msgId = (value as Record<string, unknown>).msg_id;
+			if (typeof msgId === "string" && msgId !== "") return msgId;
+		}
+	} catch {
+		// The wire payload itself is the poison; the cursor still identifies it.
+	}
+	return `${frame.machine}:${frame.cursor}`;
 }
 
 function configuredValue(name: string, value: string | undefined, fallback: string): string {

@@ -50,14 +50,14 @@
         {
           "id": "tk-1245",
           "title": "Run focused tests, typecheck, harness checks, then the prime-granted hand-started omp daemon-restart proof and capture evidence.",
-          "state": "unchecked",
+          "state": "checked",
           "note": "AC1-AC5",
           "done": "#done_when/tk-1245"
         },
         {
           "id": "tk-1246",
-          "title": "Complete Claude Opus review, resolve findings, close ddoc evidence, post-flight, archive, and ship through governed gates.",
-          "state": "unchecked",
+          "title": "Complete Claude Opus review, resolve every finding, and hand the approved branch to builder post-flight and ship.",
+          "state": "checked",
           "note": "done bar d1-d5",
           "done": "#done_when/tk-1246"
         }
@@ -102,15 +102,15 @@
           {
             "id": "dw-1245",
             "assertion": "Focused vitest, just typecheck, and harness checks are green; after prime replies GRANTED, a hand-started omp survives the restart, receives the body inline, shows pushed to inbox-ack with no pointer, and pij_send succeeds.",
-            "state": "unchecked",
+            "state": "checked",
             "pressure": "not-applicable"
           }
         ],
         "tk-1246": [
           {
             "id": "dw-1246",
-            "assertion": "Claude Opus review verdict is recorded, findings are fixed or evidence-refuted, every AC carries a receipt, post-flight archives the plan, and ship opens the governed PR.",
-            "state": "unchecked",
+            "assertion": "Claude Opus final review approves the branch; every finding is fixed, evidence-refuted, or explicitly deferred with a reason; all plan AC rows carry receipts.",
+            "state": "checked",
             "pressure": "not-applicable"
           }
         ]
