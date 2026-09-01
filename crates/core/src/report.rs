@@ -182,28 +182,6 @@ where
         self.set_state(seat, None, None).await
     }
 
-    /// Declare (or clear) a semantic state directly.
-    ///
-    /// [`done`](Self::done), [`blocked`](Self::blocked), [`question`](Self::question)
-    /// and [`clear`](Self::clear) are the four declarations this service had, and
-    /// they cover four of the six words [`SemanticState`] carries: `Ready`,
-    /// `Waiting` and `Hold` had no way in. A caller reaching for one of those had
-    /// only two options — re-implement the registry-then-spine sequence beside
-    /// this service, or map the state onto a near-fit that IS exposed. Both are
-    /// how the two would drift, so the sequence is exposed once, here.
-    ///
-    /// `note` is retained exactly as the explaining declarations retain theirs;
-    /// `None` for `state` clears, which is what [`clear`](Self::clear) is.
-    pub async fn declare(
-        &self,
-        seat: &SeatId,
-        state: Option<SemanticState>,
-        note: Option<&str>,
-    ) -> Result<Seq> {
-        self.set_state(seat, state, note.map(collapse_whitespace))
-            .await
-    }
-
     /// Read the latest state-history record, independently of the registry row.
     pub async fn latest_state_record(&self, seat: &SeatId) -> Result<Option<StateRecord>> {
         let Some(event) = self.latest_event(seat, STATE_EVENT_KIND).await? else {

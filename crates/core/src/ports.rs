@@ -30,7 +30,7 @@ use async_trait::async_trait;
 use crate::error::Result;
 use crate::model::{
     BindHealth, DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, ModelRow, Msg,
-    Outcome, Pane, PaneProcess, ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
+    Outcome, Pane, ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
 };
 
 /// How to narrow a registry listing. Absent fields mean "do not filter",
@@ -227,20 +227,6 @@ pub struct LaunchCommand {
 pub trait TmuxPort: Send + Sync {
     /// All panes tmux currently reports.
     async fn list_panes(&self) -> Result<Vec<Pane>>;
-
-    /// The pane's foreground process and working folder, asked of tmux directly.
-    ///
-    /// `Ok(None)` means the pane is GONE — a distinct fact from a tmux failure,
-    /// and the one adoption needs: adopting a dissolved pane must refuse, not
-    /// persist a seat against a descriptor nothing is running behind. Deliberately
-    /// NOT folded into [`Self::list_panes`]: the list's wire shape is parsed from a
-    /// format string whose last field is the user-controlled title, and widening it
-    /// would put a new field in front of every historical fixture.
-    ///
-    /// Deliberately has NO default implementation. A default returning `Ok(None)`
-    /// would make every fake answer "no process" and every adoption test pass
-    /// without ever observing one — a witness that cannot fail.
-    async fn pane_process(&self, pane: &str) -> Result<Option<PaneProcess>>;
 
     /// SUBMIT `text` to a pane as a turn: type it AND send it.
     ///

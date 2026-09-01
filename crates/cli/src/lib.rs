@@ -14,8 +14,8 @@ pub mod client;
 
 pub use address::{AddressError, parse_destination, render_destination};
 pub use client::{
-    CallerContext, DaemonClient, FederatedRoster, IdentityRequest, Phonehome, Registration,
-    ReviveRequest, SendRequest, SpawnRequest, StreamFrame, TailError, TailStream, setup_refusal,
+    DaemonClient, FederatedRoster, Registration, ReviveRequest, SendRequest, SpawnRequest,
+    StreamFrame, TailError, TailStream, setup_refusal,
 };
 
 use std::path::{Path, PathBuf};
