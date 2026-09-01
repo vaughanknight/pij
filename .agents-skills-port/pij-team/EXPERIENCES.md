@@ -39,6 +39,27 @@ we hand the pattern to pij and the harness. Also `harness observe` each one.
 
 ## Frictions / open issues
 
+- 2026-09-02 (planarian, PM 125 — req-0034 instance): REVIEWER TRANSPORT MUST
+  CONVERGE BEFORE THE CANARY. `pij spawn --harness claude` produced a legacy
+  descriptor while the PM lived in rs; PM→reviewer sends returned no-registry,
+  reviewer→PM replies queued, and legacy resolution later misidentified the PM
+  as the reviewer. Prime's working recovery was to type `pij adopt
+  "$TMUX_PANE" --harness claude` into the reviewer pane, with Enter as a
+  separate keystroke. Encode that adoption in the Claude reviewer dispatcher;
+  a packet instruction cannot repair two address spaces after dispatch.
+- 2026-09-02 (planarian, PM 125): A WORKTREE LIVE WITNESS MUST EXCLUDE THE
+  GLOBAL EXTENSION COPY. Bare `omp` in the linked worktree loaded main's
+  globally linked pij extension, so an apparent 10/10 said nothing about the
+  branch. `omp --no-extensions -e <worktree>/.pi/extensions/pij/index.ts`
+  proved the branch; the identical shape against the pre-fix main extension
+  missed 1/10. Reviewer packets for extension work should demand both the
+  explicit worktree load and an identical-shape pre-fix control.
+- 2026-09-02 (planarian, PM 125): packet paths drifted before work began:
+  `.agents/skills/pij-team/TENETS.md` and government `settings.dd.md` did not
+  exist in the dispatched tree; the working doctrine was under
+  `.agents-skills-port/pij-team/`, and the model had to be discovered with
+  `pij models`. Templates must emit paths that resolve in the target worktree.
+
 - 2026-08-28 (duck, team-new POC): untracked skill/schema folders are INVISIBLE
   in fresh worktrees — ddocs build dies E401 there while passing on main
   (DL-032; fix = commit the substrate, done via PR). ddocs resolves schemas
@@ -334,4 +355,10 @@ we hand the pattern to pij and the harness. Also `harness observe` each one.
   (2) THE DECLINED LIST: an allowlist grant should also name the crates that
   were CONSIDERED AND REJECTED (with the source that rejected them), so no
   coder re-litigates a settled choice mid-unit. Both from packet set e06894b.
+- 2026-09-02 (planarian, PM 125): reviewer i2b was decisively confirmed. The
+  least-confidence list aimed Claude Opus at the timer/reassert/cancellation
+  seam; it found the missing tests, false late-warning ordering, dishonest
+  blind fallback, and unhandled rejection while ignoring style noise. Three
+  review rounds closed every finding, and the final converse assertion came
+  from the reviewer's own smallest-fix wording. Keep the three-list brief.
 - (add as they arise)

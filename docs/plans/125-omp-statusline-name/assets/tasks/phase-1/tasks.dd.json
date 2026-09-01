@@ -31,7 +31,7 @@
           "satisfies": [
             "../../../plan.dd.json#acceptance_criteria/AC3"
           ],
-          "receipt": "RED suite failed at missing helper import before implementation; artifact://54."
+          "receipt": "Behavioural RED artifact://212; GREEN targeted suite 22/22."
         },
         {
           "id": "tk-1252",
@@ -45,7 +45,7 @@
           "satisfies": [
             "../../../plan.dd.json#acceptance_criteria/AC3"
           ],
-          "receipt": "just test session-name.test.ts: 4 passed; just typecheck: pass."
+          "receipt": "session-name.test.ts 6/6; just typecheck pass."
         },
         {
           "id": "tk-1253",
@@ -60,7 +60,7 @@
             "../../../plan.dd.json#acceptance_criteria/AC1",
             "../../../plan.dd.json#acceptance_criteria/AC2"
           ],
-          "receipt": "Both call sites migrated; just typecheck passed."
+          "receipt": "index.test.ts 17/17; combined targeted suite 23/23; just typecheck pass."
         },
         {
           "id": "tk-1254",
@@ -77,7 +77,7 @@
             "../../../plan.dd.json#acceptance_criteria/AC3",
             "../../../plan.dd.json#acceptance_criteria/AC4"
           ],
-          "receipt": "AC1-AC4 proof: focused 17 tests pass; harness checks all 8 sensors pass; assets/live-footers.md."
+          "receipt": "AC1-AC4: targeted 23/23; ship gate all 8 sensors pass at 23:04:10Z; assets/live-footers.md."
         }
       ]
     },
@@ -90,7 +90,7 @@
             "assertion": "Focused helper tests fail before implementation and cover retry success, already-equal readback, permanent failure, unconditional status, and exactly-once notice.",
             "state": "checked",
             "pressure": "not-applicable",
-            "receipt": "RED: just test .pi/extensions/pij/core/session-name.test.ts failed because session-name.js did not exist (artifact://54)."
+            "receipt": "Import RED artifact://54; behavioural RED artifact://212: restoring pre-fix one-shot call sites failed keyed fallback and first-turn reassertion tests."
           }
         ],
         "tk-1252": [
@@ -99,7 +99,7 @@
             "assertion": "publishSeatName uses only the frozen narrow deps, bounded attempts, and returns took plus attempts without importing pi APIs.",
             "state": "checked",
             "pressure": "not-applicable",
-            "receipt": "session-name.ts: pi-free narrow deps, bounded absolute schedule, readback verification, tagged result; focused Vitest 4/4 passed."
+            "receipt": "session-name.ts: bounded absolute schedule, readback verification, honest blind success, tagged result, and contained dependency failures; helper tests 6/6."
           }
         ],
         "tk-1253": [
@@ -108,7 +108,7 @@
             "assertion": "Both daemon generations publish through the shared helper on OMP and perform only one extra first-inbound attempt after startup failure.",
             "state": "checked",
             "pressure": "not-applicable",
-            "receipt": "index.ts rust and legacy paths call startOmpSessionNamePublication; first turn schedules one [0] reassert after startup failure."
+            "receipt": "index.ts shares both call sites; tests cover settled-success skip, immediate first-turn recovery, late recovery notice, and stale shutdown cancellation."
           }
         ],
         "tk-1254": [
@@ -117,7 +117,7 @@
             "assertion": "Focused tests, typecheck, harness checks, forced-miss transcript, and ten hand-started OMP footer captures satisfy AC1-AC4.",
             "state": "checked",
             "pressure": "not-applicable",
-            "receipt": "harness checks status ok at 2026-09-01T21:55:53.271Z; assets/live-footers.md records forced miss and 10/10 local-extension OMP witnesses."
+            "receipt": "Ship gate harness checks green at 2026-09-01T23:04:10.350Z after the final suppression assertion; assets/live-footers.md records forced miss, branch witnesses, pre-fix control, and final-tree smoke."
           }
         ]
       }

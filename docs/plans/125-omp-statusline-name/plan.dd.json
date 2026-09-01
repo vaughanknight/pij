@@ -40,7 +40,7 @@
           "id": "AC1",
           "claim": "LIVE: 10 hand-started `omp` sessions in tmux, back to back; every status bar shows the pij id (tmux capture of each footer pasted). Pre-fix census rate was roughly 1 in 4 missing, so 10/10 is the bar.",
           "state": "checked",
-          "receipt": "assets/live-footers.md: 10/10 hand-started explicit-worktree OMP footer captures."
+          "receipt": "assets/live-footers.md: branch 10/10 plus identical explicit-load pre-fix control 9/10 with pij-pretty-fly miss."
         },
         {
           "id": "AC2",
@@ -52,13 +52,13 @@
           "id": "AC3",
           "claim": "Unit: fake pi API whose setSessionName fails N times then succeeds → helper retries per schedule, stops once the readback matches, sets status regardless; fails forever → notice emitted exactly once. RED-first on the pre-fix tree.",
           "state": "checked",
-          "receipt": "RED artifact://54; GREEN session-name.test.ts 4/4 and index.test.ts 13/13."
+          "receipt": "Behavioural RED artifact://212; GREEN session-name.test.ts 6/6 and index.test.ts 17/17."
         },
         {
           "id": "AC4",
           "claim": "`just typecheck`, extension vitest, `harness checks` green (npm ci first in a fresh worktree).",
           "state": "checked",
-          "receipt": "harness checks status ok at 2026-09-01T21:55:53.271Z; typecheck, lint, test, smoke and all other sensors passed."
+          "receipt": "Ship gate harness checks status ok at 2026-09-01T23:04:10.350Z after final test edit; all eight sensors passed."
         }
       ]
     },

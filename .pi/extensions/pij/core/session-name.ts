@@ -15,18 +15,30 @@ export async function publishSeatName(
 	self: string,
 	schedule: readonly number[] = DEFAULT_SESSION_NAME_SCHEDULE_MS,
 ): Promise<{ took: boolean; attempts: number }> {
-	deps.setStatus(PIJ_STATUS_KEY, self);
+	try {
+		deps.setStatus(PIJ_STATUS_KEY, self);
+	} catch {
+		// Native publication must still proceed when the fallback surface is unavailable.
+	}
 
 	let attempts = 0;
 	let previousAt = 0;
+	let publishedWithoutReadback = false;
 	for (const scheduledAt of schedule) {
 		const waitMs = Math.max(0, scheduledAt - previousAt);
 		previousAt = scheduledAt;
-		if (waitMs > 0) await deps.sleep(waitMs);
+		if (waitMs > 0) {
+			try {
+				await deps.sleep(waitMs);
+			} catch {
+				break;
+			}
+		}
 
 		attempts += 1;
 		try {
 			await deps.setSessionName(self);
+			publishedWithoutReadback = true;
 		} catch {
 			continue;
 		}
@@ -40,6 +52,11 @@ export async function publishSeatName(
 		}
 	}
 
-	deps.notice(`pij: could not set omp session name — id is ${self}`);
+	if (!deps.getSessionName && publishedWithoutReadback) return { took: true, attempts };
+	try {
+		deps.notice(`pij: could not set omp session name — id is ${self}`);
+	} catch {
+		// The tagged result remains the caller's authoritative failure signal.
+	}
 	return { took: false, attempts };
 }

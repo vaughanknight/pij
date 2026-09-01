@@ -67,7 +67,7 @@
       "value": [
         {
           "id": "r1",
-          "text": "Extension API may not expose getSessionName → blind bounded retries; verify by reading the omp extension API surface, cite the line."
+          "text": "RESOLVED: ExtensionAPI exposes getSessionName(): string | undefined at node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts:909-911; production always supplies it."
         },
         {
           "id": "r2",

@@ -102,3 +102,41 @@ pij-liquid-walrus
 ```
 
 The native session-name segment is absent, the keyed extension-status row still contains `pij-liquid-walrus`, and the notice appears exactly once. The temporary no-op seam was restored before any subsequent check or commit; the witness window was closed.
+
+## AC1 control — identical launch shape, pre-fix extension
+
+To separate the retry fix from explicit extension loading, ten more hand-started tmux windows used the same `omp --no-extensions -e … --auto-approve` shape but pointed `-e` at the main-checkout pre-fix extension. That file still contains the one-shot `await pi.setSessionName(self)` calls and no OMP status fallback. One of ten controls missed; all windows were closed after capture.
+
+| Control | Registered id | Native footer id |
+|---|---|---|
+| 1 | `pij-poised-moth` | present |
+| 2 | `pij-pretty-fly` | **missing** |
+| 3 | `pij-helpless-stork` | present |
+| 4 | `pij-thoughtful-gazelle` | present |
+| 5 | `pij-conventional-walrus` | present |
+| 6 | `pij-melted-penguin` | present |
+| 7 | `pij-falling-outside` | present |
+| 8 | `pij-like-lark` | present |
+| 9 | `pij-objective-tern` | present |
+| 10 | `pij-mid-lemming` | present |
+
+Miss capture (`p125b-02`):
+
+```text
+You are pij session pij-pretty-fly (PEER). This is context only — no action is required.
+◫ 4.7%/1M ⟲ · ⬢ Opus 5 (1M) · ◒ high · ⑂ 125-omp-statusline-name *2 ?1 · S0.26 ★ 1
+```
+
+The extension registered `pij-pretty-fly`, but neither the native session-name segment nor a keyed fallback row appears. At the identical explicit-load shape, pre-fix produced 9/10 while this branch produced 10/10 plus the independent fallback row.
+
+## Post-review final-tree smoke
+
+After the R-01/R-03/R-05/R-06 fixes and the final green `harness checks`, one additional hand-started explicit-worktree OMP confirmed the actual final source still renders both surfaces:
+
+```text
+pij: detected Rust daemon v1 at 127.0.0.1:7461; registered pij-open-galliform
+◫ 4.7%/1M ⟲ · pij-open-galliform · ⬢ Opus 5 (1M) · ◒ high · ⑂ 125-omp-statusline-name *14 ?1 · S0.26 ★ 1
+pij-open-galliform
+```
+
+The `p125-final` window was closed immediately after capture.

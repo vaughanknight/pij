@@ -1,0 +1,110 @@
+{
+  "dd": { "schema": "builder/review" },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Cross-model review r2 — omp-statusline-name",
+        "reviewer": "pij-yelping-cephalopod",
+        "model": "claude-opus-5",
+        "round": "r2",
+        "date": "2026-09-02",
+        "plan": "docs/plans/125-omp-statusline-name/plan.dd.json",
+        "note": "Re-review of the CURRENT WORKING TREE (r1 judged the committed tree 54fb7e9..HEAD; the r1-response edits were uncommitted at review time and are included here). Read-only throughout: no source or test was mutated, per prime's ruling on step 6. Independently re-derived on this tree: targeted `npx vitest run core/session-name.test.ts index.test.ts` bare exit 0, 22/22 (6 + 16); `just typecheck` exit 0; `harness checks` exit 0 with all EIGHT sensors passing (local-paths, typecheck, lint, test, windows-compat, smoke, pkg-audit, snapshots) — which also retires my r1 amber, confirming that red was the worktree.test.ts tmpdir flake I called it and not a regression. VERDICT: six of the seven r1 findings are closed; R-07 stays deferred by agreement. No blocking finding remains. What is left is one MINOR — the fix for R-03 is itself untested — plus three NITs and one stale receipt."
+      }
+    },
+    {
+      "name": "findings",
+      "value": [
+        {
+          "id": "N-1",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": ".pi/extensions/pij/index.ts:206-209 (notifyRecovered) and :534-537 (the noticeShown branch)",
+          "finding": "The recovery notice — the behaviour added specifically to close R-03 — has no test. CLAIM: `notifyRecovered` and the `if (publication.noticeShown) publication.notifyRecovered()` branch are never executed by any test in the suite; the string `set after retry` appears in no test file. PROOF: the one test that drives the reassert path, index.test.ts:271 'reasserts immediately on the first turn when startup publication missed', fires turn_start while the primary window is still SLEEPING at its 250ms step, so `noticeShown` is false when the reassert resolves and the recovery branch is skipped — the test then asserts only the ABSENCE of the failure notice. The branch is reachable in production (primary exhausts at 10s and notices, first turn arrives after that, reassert succeeds), which is precisely the standing-false-warning case R-03 reported. So the fix for a reported finding is itself in the state that finding's parent, R-01, was raised for. Severity is MINOR rather than MAJOR because the untested surface is one info-level notice, not the publication or cancellation logic R-01 covered. SMALLEST FIX: extend the existing test — construct it with a short schedule so the primary exhausts and notices BEFORE turn_start fires, then assert both `could not set omp session name` and `omp session name set after retry — id is <self>` are present, in that order."
+        },
+        {
+          "id": "N-2",
+          "kind": "defect",
+          "severity": "NIT",
+          "address": ".pi/extensions/pij/index.ts:526 and index.test.ts:256",
+          "finding": "The healthy-skip gate reads `!publication.took`, and `took` is only written when the PRIMARY publishSeatName promise resolves. A first turn arriving while the primary is mid-window but destined to succeed therefore still reasserts. This is not a defect against the contract — G1 explicitly licenses one extra attempt on the first user turn, and the extra set is idempotent — but the test that guards it, 'does not reassert on the first turn after startup publication took', proves the skip only for an ALREADY-SETTLED publication: its fake takes on attempt 1, so `await new Promise(setTimeout(0))` is enough for the `.then` to land before turn_start. Name the test after the wire fact it actually establishes ('after the startup publication has RESOLVED as taken'), or add the in-flight case so the gap is a decision rather than an accident."
+        },
+        {
+          "id": "N-3",
+          "kind": "defect",
+          "severity": "NIT",
+          "address": ".pi/extensions/pij/core/session-name.ts:38-42,55",
+          "finding": "Blind mode no longer lies (R-05 closed — it returns took:true and emits no notice), but it still never early-exits: `publishedWithoutReadback` is set on the first successful set and the loop then runs the remaining schedule anyway, so a blind publisher issues all five sets across the full 10s window and only reports success at the end. impl-guide u1's note is 'Do not spam: schedule is bounded'. Unreachable in production now that risk r1 is recorded RESOLVED, so this is a tidiness point only. SMALLEST FIX: `if (!deps.getSessionName) return { took: true, attempts };` immediately after the successful set."
+        },
+        {
+          "id": "N-4",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": "docs/plans/125-omp-statusline-name/plan.dd.json AC4",
+          "finding": "AC4's receipt is stale relative to the tree it now certifies. It still cites `harness checks status ok at 2026-09-01T21:55:53.271Z`, a run that predates every r1-response change: the helper's five try/catch arms and the blind-success early return, the reassert rewrite with took/noticeShown/notifyRecovered, three new wiring tests and three new helper tests. AC3's sibling receipt was correctly refreshed to `6/6 and 16/16`; AC4's was not. This is bookkeeping, not doubt — I re-ran the gate myself on the current tree and it is GREEN, exit 0, all eight sensors passing. SMALLEST FIX: re-cite AC4 with a run timestamped after the r1-response edits; my run is available to quote if you would rather not spend the wall-clock."
+        },
+        {
+          "id": "N-5",
+          "kind": "defect",
+          "severity": "NIT",
+          "address": ".pi/extensions/pij/index.ts:181,191-194,197,209",
+          "finding": "`let publication: NonNullable<typeof ompSessionNamePublication>;` is declared uninitialised and then captured by the `notice` and `notifyRecovered` closures, which dereference `publication.noticeShown` before the declaration is assigned at :197. Safe TODAY only because the sole caller that can invoke those closures, `publishSeatName`, is started at :210 — after the assignment. Moving that call above :197, or ever calling `deps.setStatus`/`deps.notice` during construction, converts this into a ReferenceError from the temporal dead zone rather than a compile error, because the closure defers the check past TypeScript's definite-assignment analysis. SMALLEST FIX: build the publication object first and derive `deps` from it, or hold `noticeShown` in a plain closure variable as the previous revision did."
+        }
+      ]
+    },
+    {
+      "name": "verdict",
+      "value": [
+        {
+          "id": "V2-R01",
+          "finding": "N-1",
+          "resolution": "fixed",
+          "rationale": "R-01 (MAJOR) CLOSED. Three wiring tests now exist and I ran them: index.test.ts:256 healthy-no-reassert, :271 first-turn-miss-reasserts, :290 shutdown-cancels-the-stale-window. I judged each non-vacuous by inspection rather than by mutation, per the ruling: delete the `!publication.took` gate and :256 goes red (two names instead of one); delete the turn_start reassert and :271 goes red (it asserts length 2 SYNCHRONOUSLY after turn_start, which only the immediate reassert can satisfy — the primary's own next attempt is 250ms away); delete the generation guard in the `setSessionName` dep and :290 goes red (the sleeping window would push a second name at 250ms). All three therefore witness the guards they name. Residue, tracked as N-1: the recovery-notice branch added in the same change is not among them. Partial-coverage note, not a finding: :290 proves cancellation on SHUTDOWN only — the execution log's broader claim, that a stale generation cannot overwrite a REPLACEMENT session, still has no test for the reload path that mints a successor."
+        },
+        {
+          "id": "V2-R02",
+          "finding": "N-4",
+          "resolution": "refuted",
+          "rationale": "R-02 CLOSED, downgraded MAJOR -> MINOR in the r1 addendum and now discharged. The control run refuted the load-bearing half — the `--no-extensions -e` shape still races against the pre-fix extension (1 miss in 10, pij-pretty-fly) — so the objection that the launch shape had removed the variable under test is dead. AC1's note has been rewritten to cite the control, which is the right disposition. I stand by the arithmetic on the record: at the 10% pre-fix rate observed AT THIS SHAPE, 10/10 is p=0.35 and does not separate the retry from luck at n=10; what the control proves DETERMINISTICALLY is G2's — the pre-fix miss capture has no fallback row at all, while every branch witness carries the keyed row by construction. The AC is true; its strength lives in the second surface, not the count."
+        },
+        {
+          "id": "V2-R03",
+          "finding": "N-1",
+          "resolution": "fixed",
+          "rationale": "R-03 CLOSED on the mechanism, with its own fix untested (N-1). The reassert now fires IMMEDIATELY at turn_start instead of chaining onto the settled primary promise, so an early first turn can land the name before the 10s window expires and no false warning is ever printed — the common case is now correct by construction rather than by luck. For the late-turn case the warning still prints first, but `notifyRecovered` follows it with `pij: omp session name set after retry — id is <self>` at info level, gated on `noticeShown` so a session that never warned gets no spurious recovery line. That is a better answer than the one I proposed (suppressing the notice until after the reassert), because it keeps G3's 'never silence' promise intact while retracting the claim honestly. It also resolves the interface drift I raised in the r1 addendum: `took` is retained on the publication and the gate is back, so u1's 'if it had not taken' holds again."
+        },
+        {
+          "id": "V2-R04",
+          "finding": "N-4",
+          "resolution": "confirmed",
+          "rationale": "R-04 CLOSED as far as I can carry it, and I want the limit stated rather than glossed. I cannot read artifact://212, and the ruling forbids me re-running the pre-fix tree, so I did not VERIFY the receipt — I derived its arithmetic independently and it matches. Against the old call-site wiring (`if omp: await pi.setSessionName(self)`, no status, no reassert, no cancellation) exactly three current contract tests go red: index.test.ts:239 and :252, the two OMP cases asserting the keyed `pij` row equals the published name — the old omp branch writes no such row, so `statuses.find(...)?.value` is undefined — plus :271, which cannot see a second name without the reassert. Three, matching the claim. Equally worth recording: the other two new wiring tests, :256 and :290, pass VACUOUSLY against the old wiring, because code that never arms a timer has nothing to cancel and nothing to re-assert. They are sound witnesses for the new guards and are NOT part of the pre-fix RED; AC3's receipt should not be read as covering them."
+        },
+        {
+          "id": "V2-R05",
+          "finding": "N-3",
+          "resolution": "fixed",
+          "rationale": "R-05 CLOSED. `if (!deps.getSessionName && publishedWithoutReadback) return { took: true, attempts };` removes the false failure claim, and the test was renamed to 'treats a resolved blind publication as successful without a false notice' — which now describes what it asserts, rather than describing bounded retries while freezing a lie. impl-guide risk r1 has been rewritten to RESOLVED with the ExtensionAPI citation. Residue N-3 (no early exit) is tidiness on an unreachable path."
+        },
+        {
+          "id": "V2-R06",
+          "finding": "N-5",
+          "resolution": "fixed",
+          "rationale": "R-06 CLOSED, and better than I asked for. Every dependency call — setStatus, sleep, setSessionName, getSessionName, notice — is now inside a try, so publishSeatName cannot reject and the missing `.catch` I flagged is moot rather than papered over. The sleep arm additionally `break`s instead of swallowing, so a broken timer ends the window rather than collapsing it into five immediate back-to-back attempts, which was the NIT I raised on the in-flight version; index.test.ts's helper suite covers both new arms ('continues native publication when the fallback status surface throws', 'stops instead of collapsing the schedule when the retry timer fails'). N-5 is a new, unrelated fragility introduced by the same rewrite."
+        },
+        {
+          "id": "V2-R07",
+          "finding": "N-5",
+          "resolution": "deferred",
+          "rationale": "R-07 (omp+rs keyed row shows bare `self` where pi+rs shows `${self} · rs-v1`) remains deferred by agreement — out of the plan's scope, noted for prime per packet w2, not re-raised here."
+        },
+        {
+          "id": "V2-GATE",
+          "finding": "N-4",
+          "resolution": "confirmed",
+          "rationale": "ALL FOUR ACs judged TRUE on this tree (done-bar d1). AC1: true, evidence resting on G2's guaranteed second surface plus the control's demonstration that the shape still races pre-fix. AC2: true, unchanged since r1 — the forced-miss capture shows absent native segment, keyed row present, exactly one warning. AC3: GREEN re-derived by me at 22/22 with bare exit 0; RED corroborated by derivation, with the vacuity caveat in V2-R04. AC4: true — I re-ran the whole gate on the current tree myself and it is exit 0 with all eight sensors green, which is a stronger statement than the plan's own cited receipt, that receipt being stale (N-4). Composition seams (d2) re-examined and unchanged from r1: one helper, two call sites, rs path still RETURNs before the legacy site so no double-fire, generation captured before any await and bumped at shutdown. VERDICT: APPROVE. No blocking finding; N-1 is the one I would fix before the PR, the rest are cheap or cosmetic."
+        }
+      ]
+    }
+  ]
+}

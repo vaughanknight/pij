@@ -72,5 +72,5 @@ Doctrine: .agents/skills/pij-team/TENETS.md. TypeScript-only, inside the pi/omp 
 
 | id | text |
 | --- | --- |
-| r1 | Extension API may not expose getSessionName → blind bounded retries; verify by reading the omp extension API surface, cite the line. |
+| r1 | RESOLVED: ExtensionAPI exposes getSessionName(): string \| undefined at node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts:909-911; production always supplies it. |
 | r2 | A source:user name set by pij could block a later user rename — acceptable; note it in the done report. |

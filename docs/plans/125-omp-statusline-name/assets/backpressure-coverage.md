@@ -1,7 +1,7 @@
 # Backpressure Coverage — omp-statusline-name
 
 **Plan**: [plan.dd.md](../plan.dd.md)
-**Basis (plan SHA-256)**: `2dec7c839a800c65e1932b0d2968a8770e65e80aab789ad31f8a28bddf32ce35`
+**Basis (plan SHA-256)**: `0ebf3f91cb656c8c1e21c3eeb802670ecf7caf67b78464fe165c58f052cfd5c4`
 **Generated**: 2026-09-02
 **Certainty**: Partial
 

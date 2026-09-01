@@ -165,8 +165,12 @@ export default function (pi: ExtensionAPI): void {
 		| {
 				deps: SessionNamePublisherDeps;
 				self: string;
-				result: Promise<{ took: boolean; attempts: number }>;
-				reasserted: boolean;
+				state: {
+					reasserted: boolean;
+					took: boolean;
+					noticeShown: boolean;
+				};
+				notifyRecovered(): void;
 		  }
 		| undefined;
 
@@ -176,7 +180,7 @@ export default function (pi: ExtensionAPI): void {
 		generation: number,
 	): void => {
 		if (generation !== ompSessionNameGeneration) return;
-		let noticeShown = false;
+		const state = { reasserted: false, took: false, noticeShown: false };
 		const deps: SessionNamePublisherDeps = {
 			setSessionName: async (sessionName) => {
 				if (generation !== ompSessionNameGeneration) return;
@@ -188,18 +192,29 @@ export default function (pi: ExtensionAPI): void {
 				if (generation === ompSessionNameGeneration) ctx.ui.setStatus(key, text);
 			},
 			notice: (text) => {
-				if (generation !== ompSessionNameGeneration || noticeShown) return;
-				noticeShown = true;
+				if (generation !== ompSessionNameGeneration || state.noticeShown) return;
 				ctx.ui.notify(text, "warning");
+				state.noticeShown = true;
 			},
 			sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 		};
-		ompSessionNamePublication = {
+		const publication = {
 			deps,
 			self: name,
-			result: publishSeatName(deps, name),
-			reasserted: false,
+			state,
+			notifyRecovered: () => {
+				if (generation !== ompSessionNameGeneration) return;
+				try {
+					ctx.ui.notify(`pij: omp session name set after retry — id is ${name}`, "info");
+				} catch {
+					// Recovery remains successful when the transient notice surface is unavailable.
+				}
+			},
 		};
+		ompSessionNamePublication = publication;
+		void publishSeatName(deps, name).then((result) => {
+			if (ompSessionNamePublication === publication && result.took) state.took = true;
+		});
 	};
 
 	// pij_spawn — open a new tmux window running a pij worker (T206).
@@ -522,11 +537,20 @@ export default function (pi: ExtensionAPI): void {
 	// (finding 08). timestamp is epoch ms; the coordinator speaks ISO.
 	pi.on("turn_start", (event) => {
 		const publication = ompSessionNamePublication;
-		if (publication && !publication.reasserted) {
-			publication.reasserted = true;
-			void publication.result.then((result) => {
-				if (result.took || ompSessionNamePublication !== publication) return;
-				publication.result = publishSeatName(publication.deps, publication.self, [0]);
+		if (publication && !publication.state.took && !publication.state.reasserted) {
+			publication.state.reasserted = true;
+			void publishSeatName(
+				{
+					...publication.deps,
+					// The primary retry window owns the single final-failure notice.
+					notice: () => {},
+				},
+				publication.self,
+				[0],
+			).then((result) => {
+				if (ompSessionNamePublication !== publication || !result.took) return;
+				publication.state.took = true;
+				if (publication.state.noticeShown) publication.notifyRecovered();
 			});
 		}
 		session?.onTurnStart(new Date(event.timestamp).toISOString());

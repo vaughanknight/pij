@@ -84,7 +84,7 @@ describe("publishSeatName", () => {
 		expect(notices).toEqual([`pij: could not set omp session name — id is ${SELF}`]);
 	});
 
-	it("uses bounded blind retries when readback is unavailable", async () => {
+	it("treats a resolved blind publication as successful without a false notice", async () => {
 		const notices: string[] = [];
 		let attempts = 0;
 
@@ -101,8 +101,54 @@ describe("publishSeatName", () => {
 			[0, 0],
 		);
 
-		expect(result).toEqual({ took: false, attempts: 2 });
+		expect(result).toEqual({ took: true, attempts: 2 });
 		expect(attempts).toBe(2);
+		expect(notices).toEqual([]);
+	});
+
+	it("continues native publication when the fallback status surface throws", async () => {
+		let current: string | undefined;
+		const result = await publishSeatName(
+			{
+				setSessionName: async (name) => {
+					current = name;
+				},
+				getSessionName: () => current,
+				setStatus: () => {
+					throw new Error("status unavailable");
+				},
+				notice: () => {},
+				sleep: async () => {},
+			},
+			SELF,
+			[0],
+		);
+
+		expect(result).toEqual({ took: true, attempts: 1 });
+	});
+
+	it("stops instead of collapsing the schedule when the retry timer fails", async () => {
+		let attempts = 0;
+		const notices: string[] = [];
+
+		const result = await publishSeatName(
+			{
+				setSessionName: async () => {
+					attempts += 1;
+				},
+				getSessionName: () => undefined,
+				setStatus: () => {},
+				notice: (text) => notices.push(text),
+				sleep: async () => {
+					throw new Error("timer unavailable");
+				},
+			},
+			SELF,
+			[0, 250, 1_000],
+		);
+
+		expect(result).toEqual({ took: false, attempts: 1 });
+		expect(attempts).toBe(1);
 		expect(notices).toHaveLength(1);
 	});
 });

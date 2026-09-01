@@ -12,7 +12,7 @@
 | title | Reviewer packet — omp-statusline-name |
 | role | reviewer |
 | plan | docs/plans/125-omp-statusline-name/plan.dd.json |
-| seat | &lt;pij seat name once spawned&gt; |
+| seat | pij-yelping-cephalopod |
 | updated | 2026-09-02 |
 
 <a id="mission"></a>
