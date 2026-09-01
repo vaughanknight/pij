@@ -43,7 +43,6 @@ function scaffoldRunDir(ledgerRoot: string, runId: string): string {
 /** Minimal worker-fix.md template for T002 fixture. */
 const MINIMAL_TEMPLATE =
 	"# Fix {{FIX_PACKET_ID}}\nDelegation: {{DELEGATION_ID}}\nReview: {{REVIEW_ID}}\nRun: {{RUN_ID}}\nAllowed:\n{{ALLOWED_FILES_LIST}}\nFindings:\n{{FINDINGS_SUMMARY}}\n";
-const REVIEW_SCHEMA_PATH = join(import.meta.dirname, "..", "schemas", "review.schema.json");
 
 // ─── TrackingDeps: records callLog for ordering assertions ────────────────────
 

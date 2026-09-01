@@ -141,7 +141,8 @@ describe("flow-pair dispatch — stdout format (Fix 1)", () => {
 		const writer = new LedgerWriter(ledgerRoot, nodeLedgerDeps());
 		const runResult = writer.createRun("cli-test-repo-xyz");
 		expect(runResult.ok).toBe(true);
-		const runId = runResult.run!.runId;
+		const runId = runResult.run?.runId;
+		if (runId === undefined) throw new Error("expected createRun to return a run id");
 
 		// Step 2: create plan + tasks fixture files the CLI can read
 		const planPath = join(tmpRoot, "plan.md");

@@ -364,7 +364,8 @@ describe("cluster-set single-source (Phase 7 MED guardrail)", () => {
 		const section = md.split(/^## /m).find((s) => s.startsWith("Canonical clusters"));
 		expect(section).toBeDefined();
 		const clusters: string[] = [];
-		for (const line of section!.split("\n")) {
+		if (section === undefined) throw new Error("missing Canonical clusters section");
+		for (const line of section.split("\n")) {
 			const m = line.match(/^\|\s*`([a-z-]+)`/);
 			if (m) clusters.push(m[1]);
 		}

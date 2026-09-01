@@ -314,7 +314,8 @@ describe("runOutcomeError + renderAgentError (AC-09 message shapes)", () => {
 			{ preset: "read-only", reportPath: null },
 		);
 		expect(e).toEqual({ code: "E-PERMISSION", kind: "shell", preset: "read-only" });
-		expect(renderAgentError(e!)).toContain(
+		if (!e) throw new Error("expected a permission error");
+		expect(renderAgentError(e)).toContain(
 			"E-PERMISSION: run denied (shell blocked by preset 'read-only')",
 		);
 	});
