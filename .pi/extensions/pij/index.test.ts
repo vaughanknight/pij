@@ -1,9 +1,9 @@
 // pij index wiring — status bar (plan 018).
 //
 // Pattern P8: tests target the wiring, not the core. This file owns ONE
-// concern: session_start publishes the pij id through the host's persistent
-// status surface — Pi's keyed extension status or OMP's default session_name
-// segment. Fakes keep both paths at unit speed with no live TUI.
+// concern: session_start publishes the pij id through every applicable persistent
+// status surface — Pi's keyed extension status and OMP's default session_name
+// segment.
 //
 // Non-vacuous: removing either publication path from index.ts fails its
 // corresponding assertion.
@@ -29,10 +29,14 @@ import pijExtension from "./index.js";
 
 /** Minimal fake ExtensionAPI — captures only what index.ts needs at wiring
  *  time + what session_start triggers (sendUserMessage for the boot announce). */
-function makeFakePi(onSendUserMessage: (message: string) => void = () => {}) {
+function makeFakePi(
+	onSendUserMessage: (message: string) => void = () => {},
+	sessionNameTakesAfter = 1,
+) {
 	const handlers = new Map<string, (...args: unknown[]) => unknown>();
 	const sentUserMessages: string[] = [];
 	const sessionNames: string[] = [];
+	let currentSessionName: string | undefined;
 	const pi = {
 		on: (event: string, handler: (...args: unknown[]) => unknown) => {
 			handlers.set(event, handler);
@@ -46,7 +50,9 @@ function makeFakePi(onSendUserMessage: (message: string) => void = () => {}) {
 		},
 		setSessionName: async (name: string) => {
 			sessionNames.push(name);
+			if (sessionNames.length >= sessionNameTakesAfter) currentSessionName = name;
 		},
+		getSessionName: () => currentSessionName,
 	} as unknown as ExtensionAPI;
 	return { pi, handlers, sentUserMessages, sessionNames };
 }
@@ -54,6 +60,7 @@ function makeFakePi(onSendUserMessage: (message: string) => void = () => {}) {
 /** Minimal fake ExtensionContext — captures setStatus calls. */
 function makeFakeCtx(initialSessionId: string | undefined = "test-session-statusbar-018") {
 	const statuses: Array<{ key: string; value: string | undefined }> = [];
+	const notices: string[] = [];
 	let sessionId = initialSessionId;
 	const ctx = {
 		sessionManager: { getSessionId: () => sessionId },
@@ -61,10 +68,10 @@ function makeFakeCtx(initialSessionId: string | undefined = "test-session-status
 		compact: () => {},
 		ui: {
 			setStatus: (key: string, value: string | undefined) => statuses.push({ key, value }),
-			notify: () => {},
+			notify: (message: string) => notices.push(message),
 		},
 	} as unknown as ExtensionContext;
-	return { ctx, statuses, setSessionId: (next: string | undefined) => (sessionId = next) };
+	return { ctx, statuses, notices, setSessionId: (next: string | undefined) => (sessionId = next) };
 }
 
 function allocatePiIdentity(pijHome: string, nativeSessionId: string): string {
@@ -228,7 +235,7 @@ describe("pij index — footer status bar", () => {
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 
 		expect(sessionNames.at(-1)).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
-		expect(statuses.some((status) => status.key === "pij")).toBe(false);
+		expect(statuses.find((status) => status.key === "pij")?.value).toBe(sessionNames.at(-1));
 		await handlers.get("session_shutdown")?.({}, ctx);
 	});
 
@@ -241,8 +248,84 @@ describe("pij index — footer status bar", () => {
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 
 		expect(sessionNames.at(-1)).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
-		expect(statuses.some((status) => status.key === "pij")).toBe(false);
+		expect(statuses.find((status) => status.key === "pij")?.value).toBe(sessionNames.at(-1));
 		await handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("does not reassert after startup publication has settled successfully", async () => {
+		process.env.OMPCODE = "1";
+		const { pi, handlers, sessionNames } = makeFakePi();
+		const { ctx } = makeFakeCtx("omp-first-turn-already-took");
+
+		pijExtension(pi);
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(sessionNames).toHaveLength(1);
+
+		handlers.get("turn_start")?.({ timestamp: Date.now() });
+		expect(sessionNames).toHaveLength(1);
+		await handlers.get("session_shutdown")?.({ reason: "quit" }, ctx);
+	});
+
+	it("reasserts immediately on the first turn when startup publication missed", async () => {
+		process.env.OMPCODE = "1";
+		const { pi, handlers, sessionNames } = makeFakePi(() => {}, 2);
+		const { ctx, notices } = makeFakeCtx("omp-first-turn-reassert");
+
+		pijExtension(pi);
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+		expect(sessionNames).toHaveLength(1);
+
+		handlers.get("turn_start")?.({ timestamp: Date.now() });
+		expect(sessionNames).toHaveLength(2);
+
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(notices.filter((message) => message.includes("omp session name"))).toEqual([]);
+		await handlers.get("session_shutdown")?.({ reason: "quit" }, ctx);
+	});
+
+	it("announces recovery when the first turn succeeds after the retry notice", async () => {
+		vi.useFakeTimers();
+		try {
+			delete process.env.PIJ_DAEMON_GENERATION;
+			process.env.OMPCODE = "1";
+			vi.spyOn(daemonHttp, "detectDaemonGeneration").mockResolvedValue(fakeRustGeneration());
+			const { pi, handlers, sessionNames } = makeFakePi(() => {}, 6);
+			const { ctx, notices } = makeFakeCtx("omp-late-turn-recovery");
+
+			pijExtension(pi);
+			await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+			await vi.advanceTimersByTimeAsync(10_000);
+			expect(sessionNames).toHaveLength(5);
+			expect(notices.filter((message) => message.includes("omp session name"))).toEqual([
+				expect.stringContaining("could not set omp session name"),
+			]);
+
+			handlers.get("turn_start")?.({ timestamp: Date.now() });
+			await vi.advanceTimersByTimeAsync(0);
+			expect(sessionNames).toHaveLength(6);
+			expect(notices.filter((message) => message.includes("omp session name"))).toEqual([
+				expect.stringContaining("could not set omp session name"),
+				expect.stringContaining("omp session name set after retry"),
+			]);
+			await handlers.get("session_shutdown")?.({ reason: "quit" }, ctx);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("cancels a stale retry window on session shutdown", async () => {
+		process.env.OMPCODE = "1";
+		const { pi, handlers, sessionNames } = makeFakePi(() => {}, Number.POSITIVE_INFINITY);
+		const { ctx } = makeFakeCtx("omp-shutdown-cancel");
+
+		pijExtension(pi);
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+		expect(sessionNames).toHaveLength(1);
+
+		await handlers.get("session_shutdown")?.({ reason: "quit" }, ctx);
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(sessionNames).toHaveLength(1);
 	});
 
 	it("reuses on reload, mints on new, and preserves an existing opaque id with prime metadata", async () => {

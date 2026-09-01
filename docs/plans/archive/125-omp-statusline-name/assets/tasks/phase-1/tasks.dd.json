@@ -1,0 +1,126 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Phase 1",
+        "slug": "phase-1",
+        "status": "ready",
+        "summary": ""
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Implement u1 from the binding impl-guide: prove the helper red-first, implement bounded publication, wire both generation paths, then collect deterministic and live evidence."
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "tk-1251",
+          "title": "Add RED session-name publisher tests",
+          "domain": "pij extension",
+          "phase": "ph-d726",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1251",
+          "success": "Vitest covers retry success, already-equal readback, permanent failure, status fallback, and one notice.",
+          "notes": "Run the new file before adding the helper and retain the failing receipt.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC3"
+          ],
+          "receipt": "Behavioural RED artifact://212; GREEN targeted suite 22/22."
+        },
+        {
+          "id": "tk-1252",
+          "title": "Implement bounded session-name publisher",
+          "domain": "pij extension",
+          "phase": "ph-d726",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1252",
+          "success": "A pi-free helper retries on the declared schedule, verifies readback when exposed, always publishes status, and reports honest failure.",
+          "notes": "Frozen deps and return type come from impl-guide u1.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC3"
+          ],
+          "receipt": "session-name.test.ts 6/6; just typecheck pass."
+        },
+        {
+          "id": "tk-1253",
+          "title": "Wire both daemon generation paths",
+          "domain": "pij extension",
+          "phase": "ph-d726",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1253",
+          "success": "Rust and legacy session_start paths share the helper; a failed startup gets one extra first-inbound attempt.",
+          "notes": "Keep index.ts changes to the two setSessionName call sites and their shared local state; plan 124 converges nearby.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2"
+          ],
+          "receipt": "index.test.ts 17/17; combined targeted suite 23/23; just typecheck pass."
+        },
+        {
+          "id": "tk-1254",
+          "title": "Prove deterministic and live acceptance",
+          "domain": "pij extension",
+          "phase": "ph-d726",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1254",
+          "success": "AC1-AC4 have command or tmux-capture receipts in the plan assets and every witness window is closed.",
+          "notes": "Hand-start OMP witnesses; never substitute pij-spawned clients.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC4"
+          ],
+          "receipt": "Post-rebase targeted 23/23; ship gate all 8 sensors pass at 23:22:56Z; assets/live-footers.md."
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {
+        "tk-1251": [
+          {
+            "id": "as-1251",
+            "assertion": "Focused helper tests fail before implementation and cover retry success, already-equal readback, permanent failure, unconditional status, and exactly-once notice.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "Import RED artifact://54; behavioural RED artifact://212: restoring pre-fix one-shot call sites failed keyed fallback and first-turn reassertion tests."
+          }
+        ],
+        "tk-1252": [
+          {
+            "id": "as-1252",
+            "assertion": "publishSeatName uses only the frozen narrow deps, bounded attempts, and returns took plus attempts without importing pi APIs.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "session-name.ts: bounded absolute schedule, readback verification, honest blind success, tagged result, and contained dependency failures; helper tests 6/6."
+          }
+        ],
+        "tk-1253": [
+          {
+            "id": "as-1253",
+            "assertion": "Both daemon generations publish through the shared helper on OMP and perform only one extra first-inbound attempt after startup failure.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "index.ts shares both call sites; tests cover settled-success skip, immediate first-turn recovery, late recovery notice, and stale shutdown cancellation."
+          }
+        ],
+        "tk-1254": [
+          {
+            "id": "as-1254",
+            "assertion": "Focused tests, typecheck, harness checks, forced-miss transcript, and ten hand-started OMP footer captures satisfy AC1-AC4.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "Post-rebase ship gate harness checks green at 2026-09-01T23:22:56.568Z; assets/live-footers.md records the live surfaces and pre-fix control."
+          }
+        ]
+      }
+    }
+  ]
+}
