@@ -42,7 +42,13 @@ import { FsEventLog } from "./adapters/event-log.js";
 import { FsFenceStore } from "./adapters/fence-store.js";
 import { FsFocusStore } from "./adapters/focus-store.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
-import { probeDecisionOnly, routeVerb } from "./adapters/generation-router.js";
+import {
+	daemonLocationForRouting,
+	defaultRouterDeps,
+	probeDecisionOnly,
+	routeVerb,
+	rsSeatLookup,
+} from "./adapters/generation-router.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
 import { FsOpJournal } from "./adapters/op-journal.js";
 import { FsPlatformWriteLock } from "./adapters/platform-write-lock.js";
@@ -131,6 +137,8 @@ import {
 	describeOutcome,
 	findRoute,
 	NEVER_ROUTED,
+	type RsRouteRow,
+	renderRsAnswer,
 	servedByLegacy,
 } from "./core/generation-routing.js";
 import {
@@ -4612,7 +4620,12 @@ async function bootThroughGenerationRouting(): Promise<void> {
 		main();
 		return;
 	}
-	const { outcome, payload } = await routeVerb(verb, leaf, process.argv.slice(2));
+	const { outcome, payload, row } = await routeVerb(
+		verb,
+		leaf,
+		process.argv.slice(2),
+		routingDeps(),
+	);
 	// Opt-in per-call trace. Always on stderr, so it can never corrupt a
 	// `--json` stdout that a caller is parsing.
 	if (process.env.PIJ_ROUTE_DIAGNOSTIC === "1") {
@@ -4623,12 +4636,76 @@ async function bootThroughGenerationRouting(): Promise<void> {
 		return;
 	}
 	if (outcome.kind === "rs") {
-		process.stdout.write(`${JSON.stringify(payload)}\n`);
+		emitRsPayload(row, payload, process.argv.slice(2));
 		return;
 	}
 	// rs-error / rs-auth-rejected. Loud, named, and NOT a fallback.
 	process.stderr.write(`E-RS: ${describeOutcome(outcome)}\n`);
 	process.exitCode = 4;
+}
+
+/** The deps the routed path runs with in PRODUCTION.
+ *
+ *  This function is the whole of finding 4. `legacy-seat-followed` was built,
+ *  documented and unit-tested, and could never fire for anything an operator
+ *  typed, because the call site passed no deps and the default set carries no
+ *  seat lookups — so the guard's only exercise was a test that handed them in.
+ *  ac-1143's third outcome existed everywhere except where it had to.
+ *
+ *  It is free today only because no rs handler exists, so every routed verb
+ *  lands on not-implemented and legacy answers anyway — accidentally right for
+ *  every seat. The moment a handler matches, a legacy-resident seat would POST
+ *  to an rs that has never heard of it and take an envelope refusal: rs-error,
+ *  exit 4, no fallback, fleet-wide. */
+function routingDeps() {
+	const base = defaultRouterDeps();
+	let registry: FsRegistry | undefined;
+	const openRegistry = (): FsRegistry | undefined => {
+		if (registry !== undefined) return registry;
+		try {
+			registry = new FsRegistry(pijHome);
+			return registry;
+		} catch {
+			return undefined;
+		}
+	};
+	return {
+		...base,
+		ambientSeatId: () => {
+			try {
+				const reg = openRegistry();
+				if (reg === undefined) return undefined;
+				const self = resolveAmbientSelf(reg);
+				return self.ok ? self.value : undefined;
+			} catch {
+				return undefined;
+			}
+		},
+		seatInLegacy: (id: string) => {
+			try {
+				return openRegistry()?.read(id) !== undefined;
+			} catch {
+				return false;
+			}
+		},
+		seatInRs: rsSeatLookup(daemonLocationForRouting(base.env, base.home), base),
+	};
+}
+
+/** Print an rs-served answer the way the caller expects it. The DECISION is
+ *  `renderRsAnswer` in core (pure, tested); this only performs it. */
+function emitRsPayload(
+	row: RsRouteRow | undefined,
+	payload: unknown,
+	argv: readonly string[],
+): void {
+	const result = renderRsAnswer(row, payload, argv);
+	if (result.kind === "no-renderer") {
+		process.stderr.write(`E-RS: ${result.message}\n`);
+		process.exitCode = 4;
+		return;
+	}
+	process.stdout.write(`${result.text}\n`);
 }
 
 /** `pij generation [<verb>]` — the answer to "who served that, and from where".
@@ -4641,7 +4718,10 @@ async function bootThroughGenerationRouting(): Promise<void> {
 async function runGenerationDiagnostic(argv: readonly string[]): Promise<void> {
 	const json = argv.includes("--json");
 	const verbs = argv.filter((token) => !token.startsWith("-"));
-	const decisions = await probeDecisionOnly(verbs.length > 0 ? verbs : undefined);
+	// The SAME deps the real call uses. Without them the diagnostic reports
+	// "would be attempted against rs" for a seat the real call follows to
+	// legacy — a diagnostic contradicting the behaviour it exists to explain.
+	const decisions = await probeDecisionOnly(verbs.length > 0 ? verbs : undefined, routingDeps());
 	if (json) {
 		process.stdout.write(`${JSON.stringify(decisions, null, 2)}\n`);
 		return;
