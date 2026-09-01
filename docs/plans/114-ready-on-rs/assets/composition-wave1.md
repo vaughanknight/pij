@@ -70,6 +70,38 @@ onto ac-1141.** u-identity closes it.
   lived. I had reasoned from the only path I had seen and made it binding anyway.
   The coder told me instead of quietly softening it.
 
+## AMENDMENT — I MIS-VERIFIED ac-1143
+
+Recorded 2026-09-01, after wave-2 coders read the seam I had already signed off.
+
+Above I recorded nine named outcomes as satisfying ac-1143. That check was
+**incomplete and I am correcting it rather than leaving it standing.** I verified
+the outcomes EXISTED and were DISTINGUISHABLE. I never verified the third one was
+REACHABLE from the CLI entry point. It is not.
+
+`defaultRouterDeps()` (`generation-router.ts:48`) returns only
+`{ fetch, readFile, env, home }`. `cli.ts:4615` calls `routeVerb` with no deps.
+`decidePreCall`'s follow-the-seat guard needs `ambientSeatId`, `seatInLegacy` and
+`seatInRs`, so **`legacy-seat-followed` cannot fire for anything an operator can
+type.** Its only exercise is `generation-router.test.ts:233`, which hands the deps
+in. ac-1143's third outcome — the one oq-1141 was ruled to produce — does not
+exist in production.
+
+Found by u-report's coder (F1), corroborated by u-readback (S2). It is free today
+only because no rs handler exists: every routed verb hits an absent axum route and
+lands on `legacy-rs-not-implemented`, which is accidentally right for every seat.
+It becomes fleet-breaking the day `/v1/report` matches.
+
+**The lesson against my own name:** a guard that is declared, tested, and
+unreachable reads as coverage — the computed-but-unconsulted costume, and I had
+cited that exact pattern at others twice in this same session before walking into
+it. Verifying that a mechanism EXISTS is not verifying it is WIRED. The
+distinguishing question I skipped is one command: does the production call site
+supply what the guard needs?
+
+ac-1143 is therefore **NOT satisfied by wave 1** and is reopened. It is item 4 of
+the seam unit now in flight.
+
 ## Open, not closed
 
 1. `tsc --noEmit` excludes `**/*.test.ts` repo-wide — ~730 lines of new test code
