@@ -19,6 +19,10 @@ const KEY: &str = "test-local-key";
 const PANE: &str = "%119";
 const SENDER: &str = "pij-shim-sender";
 const RECIPIENT: &str = "pij-shim-recipient";
+/// The recipient owns a pane too, so a READ can derive its reader the same way
+/// a send derives its sender. One pane cannot be both ends of a send — that is
+/// self-addressed and refused.
+const RECIPIENT_PANE: &str = "%120";
 
 async fn daemon() -> (SocketAddr, tokio::task::JoinHandle<()>, FreshStore) {
     let store = FreshStore::new();
@@ -44,9 +48,11 @@ async fn daemon() -> (SocketAddr, tokio::task::JoinHandle<()>, FreshStore) {
     let mut sender = SeatDescriptor::new(SENDER, Harness::Claude, "/abs/tree");
     sender.pane = Some(PANE.to_string());
     services.registry.put(sender).await.expect("seed sender");
+    let mut recipient = SeatDescriptor::new(RECIPIENT, Harness::Omp, "/abs/tree");
+    recipient.pane = Some(RECIPIENT_PANE.to_string());
     services
         .registry
-        .put(SeatDescriptor::new(RECIPIENT, Harness::Omp, "/abs/tree"))
+        .put(recipient)
         .await
         .expect("seed recipient");
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -307,6 +313,107 @@ async fn the_shim_paths_the_route_table_names_are_served() {
         let payload: Envelope<serde_json::Value> = response.json().await.expect("envelope");
         assert!(!payload.ok, "{path} should have refused this body");
     }
+
+    server.abort();
+}
+
+/// F4 — A ROUTED READ MUST FINISH. Claim, decode, acknowledge, and the next
+/// read is empty.
+///
+/// `InboxClaim` is a two-step contract: the claim moves the job to `running` and
+/// records nothing; the CLIENT acknowledges only once it HAS the message, so a
+/// client that dies mid-read gets a duplicate rather than a silent loss. The
+/// routed read claimed and never acked — leaving the job running, recording no
+/// `ReaderRead`, and letting the same message be claimed again after the lease
+/// expired, while rendering "claimed" perfectly honestly. Honest and incomplete.
+///
+/// The third read is what makes this a test of COMPLETION rather than of
+/// plumbing: without the ack the message is still there to be claimed again.
+#[tokio::test]
+async fn a_routed_read_acknowledges_and_the_next_read_is_empty() {
+    let (addr, server, _store) = daemon().await;
+
+    // Give the reader something to read. The recipient owns the pane, so the
+    // reader is DERIVED on both halves of the read.
+    let sent = post(
+        addr,
+        "/v1/shim/send",
+        serde_json::json!({
+            "argv": ["send", RECIPIENT, "a message to claim"],
+            "caller": { "tmuxPane": PANE },
+        }),
+    )
+    .await;
+    assert_eq!(sent.status(), reqwest::StatusCode::OK);
+
+    let claimed: Envelope<Vec<serde_json::Value>> = post(
+        addr,
+        "/v1/shim/inbox",
+        serde_json::json!({ "argv": ["inbox"], "caller": { "tmuxPane": RECIPIENT_PANE } }),
+    )
+    .await
+    .json()
+    .await
+    .expect("claim envelope");
+    let claims = claimed.data.expect("claims");
+    assert_eq!(claims.len(), 1, "one claim: {claims:?}");
+    let job_id = claims[0]
+        .get("job_id")
+        .expect("the claim must name its job");
+
+    let acked = post(
+        addr,
+        "/v1/shim/inbox/ack",
+        serde_json::json!({ "caller": { "tmuxPane": RECIPIENT_PANE }, "job_id": job_id }),
+    )
+    .await;
+    assert_eq!(
+        acked.status(),
+        reqwest::StatusCode::OK,
+        "the read must be completable through a path that DERIVES its reader"
+    );
+
+    let again: Envelope<Vec<serde_json::Value>> = post(
+        addr,
+        "/v1/shim/inbox",
+        serde_json::json!({ "argv": ["inbox"], "caller": { "tmuxPane": RECIPIENT_PANE } }),
+    )
+    .await
+    .json()
+    .await
+    .expect("second claim envelope");
+    assert_eq!(
+        again.data.expect("claims"),
+        Vec::<serde_json::Value>::new(),
+        "an acknowledged message must not be claimable again"
+    );
+
+    server.abort();
+}
+
+/// The acknowledgement derives its reader too, and refuses a caller it cannot
+/// resolve — so an unresolvable caller cannot retire a message.
+#[tokio::test]
+async fn an_unresolvable_caller_cannot_acknowledge() {
+    let (addr, server, _store) = daemon().await;
+
+    let response = post(
+        addr,
+        "/v1/shim/inbox/ack",
+        serde_json::json!({ "caller": { "tmuxPane": "%no-such-pane" }, "job_id": 1 }),
+    )
+    .await;
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    // And the ack body is `deny_unknown_fields` for the same reason the send
+    // body is: a field this daemon does not understand must never be dropped.
+    let unknown = post(
+        addr,
+        "/v1/shim/inbox/ack",
+        serde_json::json!({ "caller": { "tmuxPane": PANE }, "job_id": 1, "extra": true }),
+    )
+    .await;
+    assert_eq!(unknown.status(), reqwest::StatusCode::BAD_REQUEST);
 
     server.abort();
 }

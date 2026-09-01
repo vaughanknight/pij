@@ -22,6 +22,7 @@ import {
 	probeDecisionOnly,
 	probeRs,
 	routeVerb,
+	rsSeatByPane,
 } from "./generation-router.js";
 
 const KEY = "k".repeat(64);
@@ -1082,5 +1083,103 @@ describe("an rs-only seat can route (F2, plan 119)", () => {
 			rsOnly(seen, { env: { PIJ_RS_ADDR: "127.0.0.1:7461", PIJ_RS_STATE_DIR: "/tmp/s" } }),
 		);
 		expect(outcome.kind).toBe("legacy-seat-not-in-rs");
+	});
+});
+
+/** F4/F5/F6 — the second review round. */
+describe("the routed mailbox finishes, and its lookups tell live from dead (plan 119)", () => {
+	const RS_ONLY_ENV = {
+		PIJ_RS_ADDR: "127.0.0.1:7461",
+		PIJ_RS_STATE_DIR: "/tmp/s",
+		TMUX_PANE: "%2159",
+	};
+
+	// F5 — a REUSED pane held by an old tombstone must not read as rs-resident.
+	// `/v1/seats` lists tombstones (`Registry::list` with no live filter) while
+	// the ladder resolves only live rows, so indexing a dead row would make the
+	// shim route and rs then refuse a seat it cannot resolve — and an rs refusal
+	// never falls back, so legacy never runs and the caller is stuck.
+	it("a pane held only by a TOMBSTONED rs row is not rs residency", async () => {
+		const seen: Seen[] = [];
+		const roster = JSON.stringify({
+			ok: true,
+			command: "pij seats",
+			v: 1,
+			data: {
+				seats: [
+					// Dead, and holding the pane. `tombstoned_at` is
+					// skip_serializing_if=Option::is_none, so PRESENT means dead.
+					{ id: "pij-old-ghost", pane: "%2159", tombstoned_at: 1788240000 },
+				],
+			},
+		});
+		const lookup = rsSeatByPane(
+			{ addr: "127.0.0.1:7461", stateDir: "/tmp/s" },
+			deps(seen, {
+				readFile: (async () => "key") as unknown as GenerationRouterDeps["readFile"],
+				fetch: (async () => new Response(roster, { status: 200 })) as unknown as typeof fetch,
+			}),
+		);
+		expect(await lookup("%2159")).toBeUndefined();
+	});
+
+	it("a LIVE row holding the pane still is", async () => {
+		// The control. Without it, "tombstoned is rejected" could mean the lookup
+		// is broken rather than discriminating.
+		const seen: Seen[] = [];
+		const roster = JSON.stringify({
+			ok: true,
+			command: "pij seats",
+			v: 1,
+			data: { seats: [{ id: "pij-alive", pane: "%2159" }] },
+		});
+		const lookup = rsSeatByPane(
+			{ addr: "127.0.0.1:7461", stateDir: "/tmp/s" },
+			deps(seen, {
+				readFile: (async () => "key") as unknown as GenerationRouterDeps["readFile"],
+				fetch: (async () => new Response(roster, { status: 200 })) as unknown as typeof fetch,
+			}),
+		);
+		expect(await lookup("%2159")).toBe("pij-alive");
+	});
+
+	// F6 — the diagnostic must agree with the call it explains. `pij generation`
+	// is what an operator consults to find out what just happened; one wired to
+	// different inputs than the real call lies exactly when it is consulted.
+	it("`pij generation` reports rs for an rs-only pane, as the real call does", async () => {
+		const shared = {
+			env: RS_ONLY_ENV,
+			ambientSeatId: () => undefined,
+			seatInLegacy: () => false,
+			seatInRs: async () => false as const,
+			rsSeatByPane: async () => "pij-literary-bonobo",
+		};
+		const real = await routeVerb("send", undefined, ["send", "x", "hi"], deps([], shared));
+		const [diagnostic] = await probeDecisionOnly(["send"], deps([], shared));
+		expect(real.outcome.kind).toBe("rs");
+		expect(diagnostic?.generation).toBe("rs");
+	});
+
+	it("and reports legacy for a pane rs does not hold, also as the real call does", async () => {
+		const shared = {
+			env: RS_ONLY_ENV,
+			ambientSeatId: () => undefined,
+			seatInLegacy: () => false,
+			seatInRs: async () => false as const,
+			rsSeatByPane: async () => undefined,
+		};
+		const real = await routeVerb("send", undefined, ["send", "x", "hi"], deps([], shared));
+		const [diagnostic] = await probeDecisionOnly(["send"], deps([], shared));
+		expect(real.outcome.kind).toBe("legacy-seat-not-in-rs");
+		expect(diagnostic?.generation).toBe("legacy");
+	});
+
+	// F4 — a claim-then-ack row must say how it finishes, and the closure must
+	// only exist when there is something to acknowledge.
+	it("the mailbox rows declare their acknowledgement path", () => {
+		expect(findRoute("inbox", undefined)?.acknowledgePath).toBe("/v1/shim/inbox/ack");
+		expect(findRoute("inbox", "check")?.acknowledgePath).toBe("/v1/shim/inbox/ack");
+		// `send` is one-step: nothing to finish, so no path.
+		expect(findRoute("send", undefined)?.acknowledgePath).toBeUndefined();
 	});
 });

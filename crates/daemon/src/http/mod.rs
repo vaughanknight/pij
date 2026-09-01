@@ -114,6 +114,9 @@ enum Endpoint {
     ShimSend,
     /// See [`Self::ShimSend`].
     ShimInbox,
+    /// The acknowledgement half of a routed inbox read. See
+    /// [`shim::shim_inbox_ack`] for why it is not `/v1/inbox/ack`.
+    ShimInboxAck,
     /// Register this seat, with rs minting the name (plan 114, ac-1147).
     Adopt,
     /// Name the calling seat from the store it registered into (ac-1142).
@@ -131,7 +134,7 @@ enum Endpoint {
 }
 
 impl Endpoint {
-    const ALL: [Self; 17] = [
+    const ALL: [Self; 18] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -149,6 +152,7 @@ impl Endpoint {
         Self::State,
         Self::ShimSend,
         Self::ShimInbox,
+        Self::ShimInboxAck,
     ];
 
     const fn path(self) -> &'static str {
@@ -175,6 +179,7 @@ impl Endpoint {
             // meant to constrain it. See `shim.rs`.
             Self::ShimSend => "/v1/shim/send",
             Self::ShimInbox => "/v1/shim/inbox",
+            Self::ShimInboxAck => "/v1/shim/inbox/ack",
         }
     }
 
@@ -189,7 +194,7 @@ impl Endpoint {
             | Self::Report => Method::POST,
             Self::Adopt | Self::Whoami | Self::Phonehome => Method::POST,
             Self::State => Method::POST,
-            Self::ShimSend | Self::ShimInbox => Method::POST,
+            Self::ShimSend | Self::ShimInbox | Self::ShimInboxAck => Method::POST,
             Self::Health | Self::Inbox | Self::Seats | Self::Events => Method::GET,
         }
     }
@@ -257,6 +262,7 @@ fn router_with_optional_federation(
                     | Endpoint::State
                     | Endpoint::ShimSend
                     | Endpoint::ShimInbox
+                    | Endpoint::ShimInboxAck
             ) {
                 Method::POST
             } else {
@@ -289,6 +295,7 @@ fn router_with_optional_federation(
             Endpoint::State => router.route(endpoint.path(), post(seat_state)),
             Endpoint::ShimSend => router.route(endpoint.path(), post(shim::shim_send)),
             Endpoint::ShimInbox => router.route(endpoint.path(), post(shim::shim_inbox)),
+            Endpoint::ShimInboxAck => router.route(endpoint.path(), post(shim::shim_inbox_ack)),
         };
     }
     router

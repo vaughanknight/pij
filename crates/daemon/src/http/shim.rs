@@ -288,6 +288,86 @@ pub(crate) async fn shim_inbox(State(state): State<AppState>, body: axum::body::
     }
 }
 
+/// The acknowledgement half of a routed inbox read.
+///
+/// `InboxClaim` is a two-step contract: a claim moves the job to `running` and
+/// records nothing, and the CLIENT acknowledges only after it has received and
+/// DECODED the message (`delivery/mod.rs`). The native rs client does exactly
+/// that (`crates/cli/src/client.rs`). Without this the routed read left the job
+/// `running`, recorded no `ReaderRead`, and let the same message be claimed
+/// again after the lease expired — rendering "claimed" honestly while the
+/// operation was half-finished.
+///
+/// Why a shim path rather than reusing `/v1/inbox/ack`: that route takes a
+/// caller-supplied `seat`, and this endpoint family exists precisely so a seat
+/// is never asserted. Here the reader is DERIVED, exactly as the claim was, so
+/// the two halves of one read are attributed the same way. (The existing route
+/// already ignores its `seat` field for attribution — it keys on the job's
+/// serial key — so nothing is weakened by not sending one.)
+///
+/// KNOWN RESIDUAL, stated rather than hidden: deriving the reader proves the
+/// CALLER is a real live seat on its pane; it does not prove this job was
+/// claimed by that seat, because the ack path has no queue read to check it
+/// against. That is no weaker than the existing endpoint, which asserts a seat
+/// and then ignores it — but it is not a proof either, and calling it one would
+/// be the kind of claim this plan exists to stop making.
+pub(crate) async fn shim_inbox_ack(
+    State(state): State<AppState>,
+    body: axum::body::Bytes,
+) -> Response {
+    let request = match decode_ack(&body) {
+        DecodedAck::Request(request) => request,
+        DecodedAck::Refusal(response) => return response,
+    };
+    // The reader is derived BEFORE the ack, so an unresolvable caller cannot
+    // retire another seat's message.
+    if let Subject::Refusal(response) = subject(&state, INBOX, request.caller.as_ref()).await {
+        return response;
+    }
+    match state
+        .services
+        .delivery
+        .acknowledge_inbox(request.job_id)
+        .await
+    {
+        Ok(acknowledged) => super::envelope(
+            axum::http::StatusCode::OK,
+            &pij_core::model::Envelope::ok(INBOX, acknowledged.origin),
+        ),
+        Err(error) => internal(INBOX, error),
+    }
+}
+
+/// A decoded acknowledgement, or the refusal. Same shape and same reason as
+/// [`Decoded`]: an axum `Response` is a large error variant.
+enum DecodedAck {
+    Request(Box<ShimAckRequest>),
+    Refusal(Response),
+}
+
+/// The ack body. `deny_unknown_fields` for the same reason [`ShimRequest`] has
+/// it: a field this daemon does not understand must be refused, never dropped.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ShimAckRequest {
+    #[serde(default)]
+    pub caller: Option<CallerContext>,
+    pub job_id: pij_core::model::JobId,
+}
+
+fn decode_ack(body: &[u8]) -> DecodedAck {
+    match serde_json::from_slice::<ShimAckRequest>(body) {
+        Ok(request) => DecodedAck::Request(Box::new(request)),
+        Err(error) => DecodedAck::Refusal(refused(
+            INBOX,
+            format!(
+                "this acknowledgement does not match the shim wire contract: {error}. The \
+                 contract is {{caller, job_id}} and unknown fields are REFUSED on purpose."
+            ),
+        )),
+    }
+}
+
 /// Which `pij inbox` shapes rs serves.
 ///
 /// `register` is NOT among them and must never reach here — the route table's

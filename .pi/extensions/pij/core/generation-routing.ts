@@ -118,6 +118,15 @@ export interface RsRouteRow {
 	 *  seat known to live in legacy. Here an unknown seat is never given the
 	 *  benefit of the doubt toward rs. */
 	readonly requiresSeatInRs?: boolean;
+	/** Path of this row's ACKNOWLEDGEMENT, for a two-step read.
+	 *
+	 *  F4. `inbox` claims and then acknowledges: the claim records nothing and the
+	 *  client acks only once it HAS the message, so a client that dies mid-read
+	 *  gets a duplicate instead of a silent loss. A routed read that never acked
+	 *  left the job `running` with no `ReaderRead` and let the message be claimed
+	 *  again after the lease expired — while printing "claimed", honestly and
+	 *  incompletely. A row that claims must say how it finishes. */
+	readonly acknowledgePath?: string;
 	/** How to render an rs payload for a HUMAN caller.
 	 *
 	 *  ac-1143 says the CLI's external surface is unchanged, and output shape is
@@ -390,6 +399,7 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 		humanOutput: "render",
 		render: renderShimInbox,
 		rsPath: "/v1/shim/inbox",
+		acknowledgePath: "/v1/shim/inbox/ack",
 		method: "POST",
 		requiresSeatInRs: true,
 		why: "s119 — the explicit mailbox read",
@@ -432,6 +442,7 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 		humanOutput: "render",
 		render: renderShimInbox,
 		rsPath: "/v1/shim/inbox",
+		acknowledgePath: "/v1/shim/inbox/ack",
 		method: "POST",
 		requiresSeatInRs: true,
 		why: "s119 — bare `pij inbox` is the public alias of `check`, and routing runs before the alias parser",

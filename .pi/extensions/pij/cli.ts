@@ -4639,7 +4639,7 @@ async function bootThroughGenerationRouting(): Promise<void> {
 		main();
 		return;
 	}
-	const { outcome, payload, row } = await routeVerb(
+	const { outcome, payload, row, acknowledge } = await routeVerb(
 		verb,
 		leaf,
 		process.argv.slice(2),
@@ -4656,6 +4656,18 @@ async function bootThroughGenerationRouting(): Promise<void> {
 	}
 	if (outcome.kind === "rs") {
 		emitRsPayload(row, payload, process.argv.slice(2));
+		// F4 — ORDER IS THE CONTRACT. A claim is acknowledged only after the
+		// caller actually HAS the message, which here means after it has been
+		// rendered: a process that dies before this line leaves the job claimable
+		// again, which is a duplicate read rather than a lost body. Skipped when
+		// the render itself refused, for the same reason.
+		if (acknowledge !== undefined && process.exitCode === undefined) {
+			const warning = await acknowledge();
+			// A failed acknowledgement is a WARNING, never an error: the message is
+			// already in the caller's hands, and failing here would hide a body
+			// they have just been shown.
+			if (warning !== undefined) process.stderr.write(`${warning}\n`);
+		}
 		return;
 	}
 	// rs-error / rs-auth-rejected. Loud, named, and NOT a fallback.
