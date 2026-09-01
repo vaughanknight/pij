@@ -408,6 +408,47 @@
         "from": "post-flight",
         "to": "ship"
       }
+    },
+    {
+      "id": "NOD-003",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-09-01T23:23:47.970Z",
+      "details": {
+        "node": "backpressure-53fac10a1a1e",
+        "type": "backpressure",
+        "chore": {
+          "kind": "command",
+          "importance": "optional"
+        }
+      }
+    },
+    {
+      "id": "UPD-008",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-01T23:23:48.131Z",
+      "details": {
+        "node": "backpressure-53fac10a1a1e",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-018",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-01T23:23:48.280Z",
+      "details": {
+        "node": "backpressure-53fac10a1a1e",
+        "from": "known",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "optional"
+        }
+      }
     }
   ],
   "nodes": [
@@ -754,6 +795,32 @@
         }
       ],
       "ran_at": "2026-09-01T23:05:41.300Z"
+    },
+    {
+      "id": "backpressure-53fac10a1a1e",
+      "type": "backpressure",
+      "label": "Backpressure survey (post-rebase)",
+      "status": "done",
+      "next": [
+        "plan"
+      ],
+      "created_at": "2026-09-01T23:23:47.970Z",
+      "modified_at": "2026-09-01T23:23:48.280Z",
+      "command": "run /eng-harness-flow --hook pre-coding --json",
+      "chore": {
+        "kind": "command",
+        "importance": "optional"
+      },
+      "branch_of": "plan",
+      "comments": [
+        {
+          "at": "2026-09-01T23:23:48.131Z",
+          "text": "decision:approved verdict:Partial artifact:docs/plans/archive/125-omp-statusline-name/assets/backpressure-coverage.md time:2026-09-01T23:23:30Z basis_sha256:53fac10a1a1e466ecef3547e78b99d31fa19106e13a2017d2ab89e3b9082b409",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "ran_at": "2026-09-01T23:23:48.280Z"
     }
   ],
   "plan_dir": "docs/plans/archive/125-omp-statusline-name"

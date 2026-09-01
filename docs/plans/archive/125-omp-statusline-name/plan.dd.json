@@ -58,7 +58,7 @@
           "id": "AC4",
           "claim": "`just typecheck`, extension vitest, `harness checks` green (npm ci first in a fresh worktree).",
           "state": "checked",
-          "receipt": "Ship gate harness checks status ok at 2026-09-01T23:04:10.350Z after final test edit; all eight sensors passed."
+          "receipt": "Post-rebase ship gate harness checks status ok at 2026-09-01T23:22:56.568Z; all eight sensors passed."
         }
       ]
     },
