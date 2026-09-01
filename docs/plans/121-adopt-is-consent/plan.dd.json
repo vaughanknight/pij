@@ -72,7 +72,8 @@
         {
           "id": "ac-6",
           "text": "pij-gate all stages green; typecheck green; vitest green modulo the known pre-existing npm-resolution failure",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "pij-gate all stages green (artifact://167); harness checks all 8 stages green, including typecheck, vitest, smoke, and local-paths"
         }
       ]
     },
@@ -83,7 +84,8 @@
           "id": "ph-6c57",
           "title": "Phase 1 — stamp + backfill + witness",
           "brief": "Single unit; PM codes it itself per pij-team (no fan-out), reviewer after.",
-          "state": "unchecked",
+          "state": "checked",
+          "receipt": "ac-1..ac-6 checked; live witness artifact + pij-gate + harness checks green",
           "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
         }
       ]

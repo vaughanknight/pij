@@ -59,7 +59,7 @@ Today cross_session_inbound_accept is derived only from spawn argv; the registra
 | ac-3 | — | [x] checked | — | daemon + store targeted tests green; registration mutation produced (Some(true), Some(true)); backfill mutation changed explicit false to true | — | — | An explicit Some(false) on a row is never overwritten by registration or backfill (test separates NULL-at-adopt from Some(false)-later) |
 | ac-4 | — | [x] checked | — | consent_backfill_upgrades_only_live_unknown_claude_rows_and_is_idempotent passed; tombstone and repeat-update mutations each failed the witness | — | — | Backfill is idempotent and skips tombstoned rows; running it twice changes zero additional rows |
 | ac-5 | — | [x] checked | — | cargo test -p pij-transport recorded_frame_is_byte_exact_and_contains_no_invented_mode — 1 passed; crates/transport/src/uds.rs unmodified | — | — | Test pinning absence of from-mode in emitted frames still passes unmodified (uds.rs:925) |
-| ac-6 | — | [ ] unchecked | — | — | — | — | pij-gate all stages green; typecheck green; vitest green modulo the known pre-existing npm-resolution failure |
+| ac-6 | — | [x] checked | — | pij-gate all stages green (artifact://167); harness checks all 8 stages green, including typecheck, vitest, smoke, and local-paths | — | — | pij-gate all stages green; typecheck green; vitest green modulo the known pre-existing npm-resolution failure |
 
 <a id="phases"></a>
 
@@ -67,4 +67,4 @@ Today cross_session_inbound_accept is derived only from spawn argv; the registra
 
 | id | title | brief | state | note | receipt | depends_on | tasks | objective | delivers | key_risks |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ph-6c57 | Phase 1 — stamp + backfill + witness | Single unit; PM codes it itself per pij-team (no fan-out), reviewer after. | [ ] unchecked | — | — | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
+| ph-6c57 | Phase 1 — stamp + backfill + witness | Single unit; PM codes it itself per pij-team (no fan-out), reviewer after. | [x] checked | — | ac-1..ac-6 checked; live witness artifact + pij-gate + harness checks green | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
