@@ -6,7 +6,7 @@
     {
       "name": "meta",
       "value": {
-        "title": "Reviewer packet \u2014 s122 tmux-full-body",
+        "title": "Reviewer packet \u2014 s122 tmux-full-body (SECOND reviewer, pinned 2701005f)",
         "role": "reviewer",
         "plan": "docs/plans/122-tmux-full-body/plan.dd.json",
         "seat": "(filled at spawn)",
@@ -15,18 +15,19 @@
     },
     {
       "name": "mission",
-      "value": "Cross-model review of s122 at pinned commit c5c7fd2c: tmux types the FULL framed body into pane seats; the pointer rung is retired. READ-ONLY. Your question is the MECHANISM. Context you must weigh: this unit's own live witness already caught a real defect the tests missed \u2014 a parked human draft was clobbered because gate inputs were hardcoded. Assume more of that class remains."
+      "value": "FRESH cross-model review of s122 at pinned 2701005f. READ-ONLY. Context: the FIRST reviewer produced seven findings (R001-R007) and the coder has since REBUILT the mechanism as one PaneTransaction rather than patching. You are reviewing the REBUILD, not the original. That first reviewer then degraded \u2014 it re-derived the same finding repeatedly and issued an APPROVE that was silent on its own open findings. So: form your OWN view from source, cite it, and if you find yourself repeating a finding you already sent, stop and say so."
     },
     {
       "name": "instructions",
       "value": [
-        "Read plan.dd.md, impl-guide.dd.md, assets/live-pane-witnesses-2026-09-01.md, assets/pointer-witness-disposition-2026-09-01.json, then the diff at c5c7fd2c",
-        "PRIORITY 1 \u2014 the paste/typing boundary: a body that is chunked or pasted must arrive INTACT and as ONE submission. Hunt for the partial-submit and interleaving cases: what happens if the pane is written to mid-paste, or the body contains newlines, a leading slash, or bracket sequences the terminal interprets",
-        "PRIORITY 2 \u2014 one-capture gate semantics: verify the single fresh_injection_verdict genuinely feeds BOTH facts to the real call sites, and that no hardcoded gate input survives anywhere. That exact shape caused the clobber. Also confirm SOCKET behaviour is unchanged, including the 60s parked-draft expiry",
-        "PRIORITY 3 \u2014 the retired pointer witnesses: the PM was required to label each removed test RETARGETED or RETIRED. Audit that disposition file against the diff \u2014 a test labelled retargeted must actually exist in its new form; a retirement must name what replaced it. This is where a guard silently disappears",
-        "PRIORITY 4 \u2014 TypedToPane receipt + migration 0011: the receipt must be honest (a typed pane is NOT an observed delivery \u2014 check nothing upgrades it to a stronger claim), and the CHECK-constraint widening must converge with s121's 0010/SCHEMA_VERSION without either stream renumbering",
-        "The live transcripts are evidence: verify they show what they claim, including the negative case (a draft that was NOT clobbered)",
-        "Report findings to the PRIME (pij-still-weasel), never sideways to the coder. Verdict: APPROVE or findings with severity."
+        "Read plan.dd.md, impl-guide.dd.md, assets/reviews/review.047ea0ed.md (the R001-R007 set), assets/reviews/review-fixes.md (the coder's response), then the diff at 2701005f",
+        "PRIORITY 1 \u2014 is the ownership invariant actually indivisible now? One PaneTransaction should own token, marker, input state and exemption. Hunt for any path where marker/input/exemption can still diverge, and for any state transition NOT conditioned on the 128-bit token",
+        "PRIORITY 2 \u2014 the exit table (success/stage-fail/commit-fail/cleanup-fail/abort/deadline/death/drop-without-commit): verify each row is ASSERTED BY A TEST, not merely documented. The invariant to check on every row: input ends ENABLED on every ownership-mismatch or error path",
+        "PRIORITY 3 \u2014 Enter as irreversible success: prove a forced cleanup error after Enter yields exactly ONE delivery and does not report failure",
+        "PRIORITY 4 \u2014 concurrency witnesses: two adapters in one process and two processes racing one pane. Confirm they would FAIL against the pre-rebuild code (a green-from-birth test is not a witness)",
+        "PRIORITY 5 \u2014 R004 negative parser test (decoration must NOT read as an idle composer) and R005/R006 keep_control_body_pullable with forced lookup and clock errors: confirm the refused body stays readable",
+        "Check the stated supported body-size ceiling has a bound test at the LARGEST supported size, and that behaviour above it is defined",
+        "Report to the PRIME (pij-still-weasel). Verdict: APPROVE or findings with severity. State which claims you verified yourself vs took on the coder's evidence."
       ]
     },
     {
@@ -40,9 +41,9 @@
       "name": "scope",
       "value": {
         "worktree": "/Users/jordanknight/pi-hacking/pij-worktrees/s122-tmux-full-body",
-        "branch": "s122/tmux-full-body @ c5c7fd2c",
-        "fence": "READ-ONLY \u2014 write nothing except your findings under assets/reviews/",
-        "forbidden_note": "Do not edit source, tests, or plan docs. Do not contact the coder directly. Do not move or rebase the branch."
+        "branch": "s122/tmux-full-body @ 2701005f",
+        "fence": "READ-ONLY \u2014 write nothing except findings under assets/reviews/",
+        "forbidden_note": "Do not edit source, tests or plan docs. Do not contact the coder. Do not move the branch."
       }
     },
     {
@@ -56,9 +57,9 @@
     {
       "name": "refs",
       "value": [
-        "assets/live-pane-witnesses-2026-09-01.md",
-        "assets/pointer-witness-disposition-2026-09-01.json",
-        "governance PRD req-0022 and ruling 2026-09-01-tmux-types-full-bodies.md"
+        "assets/reviews/review.047ea0ed.md (R001-R007)",
+        "assets/reviews/review-fixes.md (coder response)",
+        "governance rulings 2026-09-01-tmux-types-full-bodies.md and 2026-09-01-tmux-typing-control-byte-exception.md"
       ]
     }
   ]
