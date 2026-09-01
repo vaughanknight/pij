@@ -270,7 +270,12 @@ impl DrainWorker {
         let permits = match self.interaction.permits_injection_fresh(pane).await {
             Ok(permits) => permits,
             Err(error) => {
-                self.release_or_backoff(job_id, &job, &msg).await?;
+                // An ERROR, not a veto, and the distinction is the whole fix.
+                // `release_or_backoff` picks ZERO delay for a body, which is
+                // right when the gate merely said no and wrong when the capture
+                // itself FAILED — this is the exact call that spun 20,168 times
+                // against a pane that no longer existed.
+                self.backoff_unobservable(job_id, job.attempt).await?;
                 return Err(error);
             }
         };
@@ -529,6 +534,47 @@ impl DrainWorker {
         self.queue.retry(job_id, Duration::ZERO).await
     }
 
+    /// Release a body whose RECIPIENT could not be observed, on the shared
+    /// backoff curve.
+    ///
+    /// `release_body` is `retry(job, Duration::ZERO)` — immediately claimable
+    /// again — and that is right for a release the worker CHOSE: a vetoed
+    /// composer, a parked pointer, a recipient that is simply not ready yet.
+    ///
+    /// It is wrong when the recipient's pane could not be CAPTURED AT ALL, and
+    /// the live fleet measured how wrong. `pij-mammoth-ostrich` carried pane
+    /// `%1861`, which no longer existed; every claim failed the capture,
+    /// released at zero delay, and was the lowest claimable id again on the very
+    /// next tick — TWENTY THOUSAND ONE HUNDRED AND SIXTY-EIGHT attempts, one
+    /// failed `tmux capture-pane` every five seconds, indefinitely, for a pane
+    /// that was never coming back. Nothing about that failure was transient and
+    /// nothing in the retry schedule ever said so.
+    ///
+    /// The starvation fix does not close this on its own. With the pass
+    /// continuing, the queue drains regardless — so the spin stops being fatal
+    /// and becomes INVISIBLE, which is the worse of the two: load and log noise
+    /// in exactly the place anyone would look for a real signal.
+    ///
+    /// SCOPED DELIBERATELY NARROWLY, and the scope is the interesting part. It
+    /// covers only the failure that says something about THE RECIPIENT. It does
+    /// NOT cover `announce_pointer`'s internal failures — a spine append, the
+    /// clock, an encode, a submit — because those are WORKER-side, say nothing
+    /// about whether the seat can collect its own mail, and `not_before` gates
+    /// the READER's claim as well as this worker's. Backing those off would make
+    /// a push-side fault delay the recipient's own `pij inbox`, removing the
+    /// fallback that exists precisely for when push is broken.
+    /// `pending_pointer_fact_retries_without_resubmitting_experienced_line`
+    /// holds that line: it claims the body as a reader immediately after a spine
+    /// failure, and it caught the first, wider version of this change.
+    ///
+    /// THE RULE: a release the worker chose stays immediate; a release forced by
+    /// a recipient we could not observe backs off. The curve is [`retry_delay`],
+    /// the same one `backoff_command` and `backoff_held` (plan 110) already use
+    /// — reused rather than re-minted.
+    async fn backoff_unobservable(&self, job_id: JobId, attempt: u32) -> Result<()> {
+        self.queue.retry(job_id, retry_delay(attempt)).await
+    }
+
     async fn backoff_command(&self, job_id: JobId, attempt: u32) -> Result<()> {
         self.queue.retry(job_id, retry_delay(attempt)).await
     }
@@ -756,7 +802,7 @@ mod tests {
 
     use super::{
         DrainWorker, EventBus, POINTER_ANNOUNCED_EVENT_KIND, POINTER_PARKED_EVENT_KIND,
-        POINTER_UNPARKED_EVENT_KIND, PointerPolicy,
+        POINTER_UNPARKED_EVENT_KIND, PointerPolicy, retry_delay,
     };
 
     const CADENCE: Duration = Duration::from_secs(90);
@@ -2030,6 +2076,73 @@ mod tests {
             "a recipient whose pane vanished must not end the pass: the message \
              queued behind it was never even claimed. delivered = {:?}",
             fixture.transport.delivered()
+        );
+    }
+    /// A recipient we could not OBSERVE backs off; one the worker merely
+    /// declined to inject into stays immediate (plan 117).
+    ///
+    /// `release_body` is `retry(job, Duration::ZERO)` and it served both, so a
+    /// recipient whose pane had vanished was retried as fast as the drain could
+    /// tick: `pij-mammoth-ostrich` reached attempt 20,168 against `%1861`, one
+    /// failed `tmux capture-pane` every five seconds for a pane that was never
+    /// coming back. The starvation fix drains the queue past it; it does not
+    /// stop the spin, and an invisible spin is worse than a fatal one because it
+    /// is noise in the place a real signal would appear.
+    ///
+    /// THE TEST ASSERTS THE DISTINCTION, NOT MERELY THE BACKOFF. Putting every
+    /// release on the curve would pass a one-armed test and delay every polite
+    /// retry on the fleet — the opposite mistake, and one nobody would notice
+    /// for weeks. The vetoed arm is what makes the failing arm mean anything.
+    ///
+    /// The scope of "could not observe" is held by a THIRD test rather than
+    /// this one: `pending_pointer_fact_retries_without_resubmitting_experienced_line`
+    /// claims the body as a READER immediately after a spine failure, and it
+    /// caught the first version of this change, which backed off every error
+    /// path and would have made a worker-side fault delay the recipient's own
+    /// `pij inbox` — removing the fallback that exists for when push is broken.
+    #[tokio::test]
+    async fn an_unobservable_recipient_backs_off_while_a_vetoed_one_stays_immediate() {
+        // UNOBSERVABLE: the pane is gone, so the capture ERRORS.
+        let vanished = fixture(
+            FakeTransport::reachable(),
+            FakeTmux::new().with_vanished_pane("%1861"),
+        );
+        register(&vanished, seat("pij-vanished", Some("%1861"))).await;
+        enqueue(&vanished, &message("pij-vanished", "never lands", None)).await;
+        let _ = vanished.worker.drain_once().await;
+        let delays: Vec<Duration> = vanished
+            .queue
+            .retried()
+            .into_iter()
+            .map(|(_, delay)| delay)
+            .collect();
+        assert_eq!(
+            delays,
+            [retry_delay(0)],
+            "a release forced by a recipient we could not observe must go on the \
+             shared backoff curve"
+        );
+        assert!(
+            delays[0] > Duration::ZERO,
+            "the curve's first step must not be zero, or the backoff is decorative"
+        );
+
+        // VETOED: the pane captures fine, the gate simply says no. Unchanged —
+        // the worker chose this release, and the next tick may find a different
+        // world.
+        let vetoed = fixture_unarranged(FakeTransport::reachable(), FakeTmux::new());
+        register(&vetoed, seat("pij-vetoed", Some("%77"))).await;
+        enqueue(&vetoed, &message("pij-vetoed", "waits politely", None)).await;
+        let _ = vetoed.worker.drain_once().await;
+        assert_eq!(
+            vetoed
+                .queue
+                .retried()
+                .into_iter()
+                .map(|(_, delay)| delay)
+                .collect::<Vec<_>>(),
+            [Duration::ZERO],
+            "a release the worker CHOSE must stay immediately claimable"
         );
     }
 }
