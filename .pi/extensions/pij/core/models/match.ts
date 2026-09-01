@@ -28,13 +28,13 @@ function levenshtein(a: string, b: string): number {
 		let prev = i;
 		for (let j = 1; j <= lb; j++) {
 			const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-			const cur = Math.min(prev + 1, row[j]! + 1, row[j - 1]! + cost);
+			const cur = Math.min(prev + 1, (row[j] ?? 0) + 1, (row[j - 1] ?? 0) + cost);
 			row[j - 1] = prev;
 			prev = cur;
 		}
 		row[lb] = prev;
 	}
-	return row[lb]!;
+	return row[lb] ?? 0;
 }
 
 /**
@@ -55,7 +55,7 @@ export function closestModel(query: string, models: readonly ModelEntry[]): Mode
 
 	// 2. Prefix match (query is a prefix of the normalised model id)
 	const prefixed = models.filter((m) => normalizeModelQuery(m.id).startsWith(norm));
-	if (prefixed.length === 1) return prefixed[0]!;
+	if (prefixed.length === 1) return prefixed[0] ?? null;
 	if (prefixed.length > 1) {
 		// Shortest prefix match wins (most specific without being too broad)
 		return prefixed.reduce((a, b) => (a.id.length <= b.id.length ? a : b));

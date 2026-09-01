@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { HarnessKind } from "../types.js";
-import { type BadModelDetection, detectBadModelInPane, extractBoundModel } from "./badmodel.js";
+import { detectBadModelInPane, extractBoundModel } from "./badmodel.js";
 
 // ─── claude ──────────────────────────────────────────────────────────────────
 
