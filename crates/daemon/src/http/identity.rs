@@ -109,11 +109,25 @@ pub struct CallerContext {
     /// The caller's working folder. Used only when no pane can supply one.
     #[serde(default)]
     pub cwd: Option<String>,
-    /// Claimed pid. Only ever believed together with `proc_start`, and only
-    /// after the liveness port observes the same start time.
+    /// Claimed pid — DIAGNOSTIC ONLY. **Never admissible as bind evidence.**
+    ///
+    /// Retained on the wire because it is useful in a refusal message and in a
+    /// log, and removing it would only mean the next person re-adds it without
+    /// this comment. But bind evidence is the ANTI-IMPERSONATION control, and a
+    /// control whose input the subject supplies is not a control: a subagent
+    /// inherits its parent's environment and can assert anything, while it
+    /// cannot manufacture what the daemon OBSERVES.
+    ///
+    /// The routed shim forwarding its own short-lived process was merely the
+    /// FIRST caller to notice a claim was accepted. The next one need not be
+    /// short-lived, and need not be honest.
+    ///
+    /// `adopt_binds_the_pane_process_and_ignores_a_claimed_pid` pins this on the
+    /// path that still exists, so re-opening paneless admission cannot quietly
+    /// re-open this too.
     #[serde(default)]
     pub pid: Option<u32>,
-    /// Claimed process start stamp.
+    /// Claimed process start stamp — DIAGNOSTIC ONLY, see [`Self::pid`].
     #[serde(default, rename = "procStart", alias = "proc_start")]
     pub proc_start: Option<u64>,
 }
@@ -293,6 +307,44 @@ pub(crate) fn parse_adopt_argv(argv: &[String]) -> Result<AdoptArgs, String> {
     Ok(args)
 }
 
+/// A tombstoned row is a POST-MORTEM, not an identity.
+///
+/// ONE definition, consulted by every path that resolves a seat, because the
+/// defect this closes was an ASYMMETRY: the pane resolver already selected only
+/// live rows while the asserted-id arm accepted any row `get` returned. A rule
+/// spelled in one place and forgotten in another is how that happens.
+pub(crate) fn is_live(seat: &SeatDescriptor) -> bool {
+    seat.tombstoned_at.is_none()
+}
+
+/// Refuse a dead seat, NAMING what killed it.
+///
+/// The reason matters more than the refusal. "No such seat" sends an operator
+/// looking for a typo; "superseded at a native session boundary" tells them their
+/// seat was replaced and which id to use instead.
+///
+/// Why this is not merely tidy: supersession tombstones a predecessor while
+/// RETAINING its process identity, so a dead row can still name a pid that is
+/// genuinely alive. `phonehome` would re-observe that live process and answer
+/// `bound: true` for a seat nothing can address — identity and reporting claiming
+/// success while delivery refuses the same recipient. The liveness of the process
+/// makes the wrong answer more convincing, not more true.
+pub(crate) fn refuse_tombstoned(command: &str, seat: &SeatDescriptor) -> Option<Response> {
+    if is_live(seat) {
+        return None;
+    }
+    Some(refused(
+        command,
+        format!(
+            "seat `{}` is tombstoned and is not an identity: {}. A dead row can still name a live              pid — supersession keeps the process identity — so confirming it would report a              binding for a seat nothing can address.",
+            seat.id,
+            seat.tombstone_reason
+                .as_deref()
+                .unwrap_or("no reason recorded"),
+        ),
+    ))
+}
+
 const ADOPT: &str = "pij adopt";
 const WHOAMI: &str = "pij whoami";
 const PHONEHOME: &str = "pij phonehome";
@@ -372,44 +424,43 @@ pub(crate) async fn adopt(
             }),
         )
     } else {
-        // The paneless form. There is no pane to derive from, so the folder must
-        // be stated, and a process identity is believed only when the caller
-        // supplies the PAIR — `RegistrationService` then re-observes it and
-        // refuses a mismatch.
-        let Some(folder) = caller.cwd.clone().filter(|cwd| !cwd.trim().is_empty()) else {
-            return refused(
-                ADOPT,
-                "a paneless registration must state its folder (`caller.cwd`): with no pane there \
-                 is nothing to derive one from",
-            );
-        };
-        let proc = match (caller.pid, caller.proc_start) {
-            (Some(pid), Some(proc_start)) => ProcIdentity { pid, proc_start },
-            (None, None) => {
-                // rs ADMISSION requires bind evidence for every registration
-                // (`RefusalReason::NoBindEvidence`) — the control that stops a
-                // subagent from claiming a seat it cannot prove it is. With no
-                // pane there is nothing to derive from, so a paneless caller that
-                // names no process cannot be admitted, and weakening admission to
-                // let it in would retire an anti-impersonation control to serve a
-                // convenience. Refused by name, with what it would take.
-                return refused(
-                    ADOPT,
-                    "a paneless registration needs a process identity rs can corroborate: send \
-                     `caller.pid` WITH `caller.procStart`. rs admits no seat without bind \
-                     evidence, and with no pane there is nothing to derive it from. A seat that \
-                     cannot supply one stays where it already lives — it is not re-homed here.",
-                );
-            }
-            _ => {
-                return refused(
-                    ADOPT,
-                    "a claimed pid must travel with its start stamp — a pid alone is recycled at \
-                     boot and is not an identity",
-                );
-            }
-        };
-        (folder, Some(proc))
+        // F005 — ADOPT DERIVES ITS EVIDENCE; `register` ACCEPTS AN ASSERTED ONE.
+        // PANELESS REGISTRATION IS REFUSED OUTRIGHT.
+        //
+        // This branch used to admit a seat on a caller-supplied
+        // `(pid, proc_start)` pair, and it was right about what it DEMANDED: the
+        // pair, corroborated against the liveness port, no admission without
+        // bind evidence. The defect was one level up. Bind evidence is the
+        // ANTI-IMPERSONATION control, and a control whose input the SUBJECT
+        // SUPPLIES is not a control — a subagent inherits its parent's
+        // environment and can assert anything, while it cannot manufacture what
+        // the daemon observes for itself.
+        //
+        // The routed shim forwarding its own short-lived Node process was
+        // therefore never the root cause; it was the first caller to notice a
+        // claim was accepted. The next one need not be short-lived, and need not
+        // be honest. There is no check that separates "the caller's process"
+        // from "the seat's process" over HTTP — the daemon cannot see who
+        // dialled it — so the honest boundary is the VERB, not a cleverer test.
+        //
+        // Paneless admission is UNSOLVED, carved out as req-0015; designing an
+        // evidence rule for it is that row's work. Accepting a claim meanwhile
+        // is not a stopgap, it is the control switched off.
+        //
+        // Second of two independent refusals by design: the shim refuses a
+        // direct paneless `adopt` before routing. A control this plan has
+        // already re-opened once does not get to rest on a single guard.
+        return refused(
+            ADOPT,
+            "adopt registers a seat from evidence the daemon can DERIVE, and with no pane there \
+             is nothing to derive from. A caller-supplied pid is not accepted here at all: bind \
+             evidence exists to stop a process claiming to be a seat it is not, so a pid the \
+             caller asserts cannot be the thing that proves it. Over HTTP the daemon also cannot \
+             tell the caller's process from the seat's, and a routed adopt would bind the seat \
+             to the short-lived CLI process that made the request. Use `register` for a paneless \
+             seat: it takes an explicit id and an explicit process identity from a caller that \
+             knows its own.",
+        );
     };
 
     let seats = match state.services.registry.list(SeatFilter::default()).await {
@@ -423,7 +474,7 @@ pub(crate) async fn adopt(
     let incumbent = pane.as_deref().and_then(|pane| {
         seats
             .iter()
-            .find(|seat| seat.tombstoned_at.is_none() && seat.pane.as_deref() == Some(pane))
+            .find(|seat| is_live(seat) && seat.pane.as_deref() == Some(pane))
     });
     let seat_id = match incumbent {
         Some(seat) => seat.id.clone(),
@@ -642,7 +693,7 @@ async fn resolve_seat(
         };
         let Some(seat) = seats
             .into_iter()
-            .find(|seat| seat.tombstoned_at.is_none() && seat.pane.as_deref() == Some(pane))
+            .find(|seat| is_live(seat) && seat.pane.as_deref() == Some(pane))
         else {
             return Resolved::Refusal(refused(
                 command,
@@ -669,7 +720,10 @@ async fn resolve_seat(
     }
     let asserted = SeatId::from(asserted.expect("one of the two is present"));
     match state.services.registry.get(&asserted).await {
-        Ok(Some(seat)) => Resolved::Seat(seat, ResolvedBy::AssertedId),
+        Ok(Some(seat)) => match refuse_tombstoned(command, &seat) {
+            Some(refusal) => Resolved::Refusal(refusal),
+            None => Resolved::Seat(seat, ResolvedBy::AssertedId),
+        },
         // NOT a mint, and not a 404: an id that names nothing is a refusal with a
         // reason, and the store is untouched.
         Ok(None) => Resolved::Refusal(refused(
