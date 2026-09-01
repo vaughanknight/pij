@@ -590,7 +590,12 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
 /// The in-crate HTTP tests prove the handler. This proves the parts nothing else
 /// exercises: `Client::state`, the clap subcommand, and the fact that what the
 /// registry actually persisted is what comes back — not what a fake was handed.
-#[tokio::test]
+// MULTI-THREAD, like the two shipped-CLI tests above it. `run_cli` is a
+// synchronous blocking `Command::output()`, so on the default current_thread
+// runtime it blocks the only worker and `axum::serve` is never scheduled — the
+// real binary then waits forever on a server that cannot answer. The bare
+// `#[tokio::test]` here deadlocked rather than failed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shipped_cli_reads_one_seat_state_back_from_the_real_store() {
     let dir = fresh_dir("pij-state-e2e");
     std::fs::write(dir.join("daemon.key"), "state-test-key").expect("write client key");

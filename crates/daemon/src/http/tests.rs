@@ -2735,7 +2735,10 @@ async fn state_names_what_it_cannot_answer_instead_of_nulling_it() {
         "terminal",
         "failureReason",
     ] {
-        assert!(named.contains(&field), "{field} must be named as unsupported");
+        assert!(
+            named.contains(&field),
+            "{field} must be named as unsupported"
+        );
         assert!(
             card.get(field).is_none(),
             "{field} must be ABSENT from the card — emitting it as null answers a question rs never asked"
