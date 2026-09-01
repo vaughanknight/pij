@@ -1,0 +1,96 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "omp-event-reattach",
+        "slug": "omp-event-reattach",
+        "ordinal": 124,
+        "status": "ready",
+        "summary": "omp/pi extension survives an rs daemon restart: re-reads the per-boot key, re-attaches the event stream with a cursor, and full-body delivery resumes without a pointer."
+      }
+    },
+    {
+      "name": "summary",
+      "value": "OBSERVED 2026-09-02 (prime, live): after the rs daemon was restarted for the #342 deploy, every already-open omp stopped receiving bodies. Trace: spine 1682 message.pushed published → the omp never injected (its /v1/events stream died with the old process; pumpEventStream reports the error and exits; the only watchEvents call is the boot-time attach) → the queue row fell to the pointer worker (spine 1688) → operator pane shows `message waiting — run: pij inbox`. Second symptom, same root: the omp pij_send TOOL fails `missing or wrong bearer token` because the daemon key is per boot and the extension read it once at boot. A fresh omp works (spine 1696-1698: pushed → injected → inbox-ack, no pointer). The extension has no reconnect, no cursor, no key refresh. This plan gives it all three. Ruling context: pointer is RETIRED for omp/pi (rulings/2026-09-01-tmux-types-full-bodies.md); a pointer after a restart is a defect."
+    },
+    {
+      "name": "goals",
+      "value": [
+        "G1 Reconnect: when the /v1/events stream ends or errors, the extension re-attaches with bounded backoff (e.g. 250ms→5s, jittered) until the daemon answers; it never gives up while the session lives.",
+        "G2 Cursor: every consumed frame updates an in-memory cursor per machine alias; re-attach passes since={<alias>:cursor} so frames emitted during the gap are REPLAYED, injected, and acked exactly as #342 does live frames. If the daemon refuses the cursor (beyond spine / unknown machine), fall back to a live-only attach and emit a visible extension notice.",
+        "G3 Key refresh: before each re-attach and on any 401/403 from any client call, re-read <state-dir>/daemon.key so a per-boot key rotation is transparent; pij_send tool works after a restart with no user action.",
+        "G4 Seat continuity: after reconnect confirm the seat is still registered (whoami/seat lookup); if the daemon reports it unknown, re-register with the same id and pane rather than minting a new id.",
+        "G5 Visibility: one short notice line in the omp session on stream loss and on re-attach (`pij: daemon stream lost, reconnecting…` / `pij: re-attached at cursor N`), never silence."
+      ]
+    },
+    {
+      "name": "non_goals",
+      "value": [
+        "No change to the daemon delivery/pointer policy (owned by s122/s123).",
+        "No cursor persistence to disk across omp restarts (a fresh omp attaches live-only by design).",
+        "No Claude-harness socket work (s121)."
+      ]
+    },
+    {
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "AC1",
+          "text": "LIVE, hand-started, in tmux: open omp by hand → kill and relaunch the rs daemon → from another seat `pij send <omp-id> <body>` → body appears INLINE in the omp pane, spine shows message.pushed → delivery.inbox-ack, and NO delivery.pointer-announced for that msg_id. Transcript of the pane + the spine rows pasted into the plan assets.",
+          "claim": "LIVE, hand-started, in tmux: open omp by hand → kill and relaunch the rs daemon → from another seat `pij send <omp-id> <body>` → body appears INLINE in the omp pane, spine shows message.pushed → delivery.inbox-ack, and NO delivery.pointer-announced for that msg_id. Transcript of the pane + the spine rows pasted into the plan assets.",
+          "state": "checked",
+          "receipt": "assets/live-restart-transcript.md",
+          "proven_by": "assets/execution-log.dd.json#entries/ev-ac1"
+        },
+        {
+          "id": "AC2",
+          "text": "LIVE: same session, after the restart, the omp pij_send tool succeeds (no bearer-token error) — pane transcript pasted.",
+          "claim": "LIVE: same session, after the restart, the omp pij_send tool succeeds (no bearer-token error) — pane transcript pasted.",
+          "state": "checked",
+          "receipt": "assets/live-restart-transcript.md",
+          "proven_by": "assets/execution-log.dd.json#entries/ev-ac2"
+        },
+        {
+          "id": "AC3",
+          "text": "Unit: with a fake daemon, stream drop → client reconnects with since carrying the last cursor; frames sent during the gap are delivered once (no duplicate injection) and acked; a refused cursor falls back to live-only with a notice.",
+          "claim": "Unit: with a fake daemon, stream drop → client reconnects with since carrying the last cursor; frames sent during the gap are delivered once (no duplicate injection) and acked; a refused cursor falls back to live-only with a notice.",
+          "state": "checked",
+          "receipt": "assets/reviews/review-r3.dd.md; focused adapter suite",
+          "proven_by": "assets/execution-log.dd.json#entries/ev-ac3"
+        },
+        {
+          "id": "AC4",
+          "text": "Unit: key rotation on the fake → next request succeeds after re-read; a request that fails auth once triggers re-read and one retry, not a loop.",
+          "claim": "Unit: key rotation on the fake → next request succeeds after re-read; a request that fails auth once triggers re-read and one retry, not a loop.",
+          "state": "checked",
+          "receipt": "assets/reviews/review-r3.dd.md; focused adapter suite",
+          "proven_by": "assets/execution-log.dd.json#entries/ev-ac4"
+        },
+        {
+          "id": "AC5",
+          "text": "Every new test proven RED against the pre-fix tree first (witness-never-failed rule); `just typecheck` and the extension vitest suite green; `harness checks` green on the composed tree.",
+          "claim": "Every new test proven RED against the pre-fix tree first (witness-never-failed rule); `just typecheck` and the extension vitest suite green; `harness checks` green on the composed tree.",
+          "state": "checked",
+          "receipt": "assets/reviews/review-r3.dd.md; harness checks 2026-09-02",
+          "proven_by": "assets/execution-log.dd.json#entries/ev-ac5"
+        }
+      ]
+    },
+    {
+      "name": "phases",
+      "value": [
+        {
+          "id": "ph-d9d5",
+          "title": "Reconnect + key refresh + live proof",
+          "brief": "Implement u1+u2 per impl-guide, prove AC1-AC5, PR into main.",
+          "state": "checked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
+        }
+      ]
+    }
+  ]
+}

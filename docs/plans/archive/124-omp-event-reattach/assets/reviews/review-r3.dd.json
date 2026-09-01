@@ -1,0 +1,69 @@
+{
+  "dd": {
+    "schema": "builder/review"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Cross-model review r3 \u2014 124 omp-event-reattach (final)",
+        "reviewer": "pij-thoughtful-manatee",
+        "model": "claude-opus-5",
+        "round": "r3",
+        "date": "2026-09-02",
+        "plan": "../../plan.dd.json#meta",
+        "note": "Final round. Judges the r2 findings F8/F9 and question Q2 against the fix round described in assets/reviews/fix-r2.md, and returns a branch verdict. Read-only on code; the only files I wrote are in assets/reviews/. I did not audit the fix prose \u2014 every disposition below is re-derived.\n\nMETHOD (4 independent checks):\n(1) FOCUSED SUITE, as asked: `just test` on daemon-http.test.ts, rust-runtime.test.ts, daemon-wire.test.ts, index.test.ts -> 4 files, 43 tests passed (r2 saw 41; the two new cases are the +2). `just typecheck` exit 0. `ddocs validate plan.dd.json` -> 0 errors / 0 warnings.\n(2) MUTATION WITH A BASELINE CONTROL, in a throwaway worktree at 857527bd with this round's full diff applied (baseline there: 17/17 green, so the harness is live). Four injections, each reverting one property the fix claims:\n    M1 delete `if (sawFrame) attempt = 0;`  -> FAILS `resets reconnect backoff after a stream consumes a frame` (1 failed / 16). F9's witness is real.\n    M2 always rethrow (never bound retries) -> FAILS `bounds poison-frame retries...` (1 failed / 16). This is also the exact pre-fix source shape for F8, so it doubles as the RED-first witness, and it reproduces fix-r2's reported `1 failed / 16 passed` pre-fix number.\n    M3 MAX_FRAME_ATTEMPTS = 1 (skip on first failure, no retry) -> FAILS the poison test AND `does not advance a cursor until asynchronous frame consumption succeeds` (2 failed / 15). The r1 F3 property is still guarded underneath the new retry.\n    M4 MAX_FRAME_ATTEMPTS = 4 -> FAILS the poison test (1 failed / 16). The bound itself is asserted, not just its existence.\n(3) SOURCE RE-DERIVATION of the recovery promise the new notice makes ('message remains in pij inbox'): `/v1/inbox` is a GET peek and `/v1/inbox/ack` is the only removal (daemon-http.ts:152-158), so a skipped frame leaves its queue row intact; and because claimInbox returns the queue HEAD while `pushedInboxClaim` merely captures an id mismatch and still delivers what it got (rust-runtime.ts:226-247), the skipped message is re-delivered automatically by the NEXT pushed frame. The notice is true and the recovery is not operator-only.\n(4) HARNESS: `harness checks` on the composed tree -> 8/8 GREEN (local-paths, typecheck, lint, test, windows-compat, smoke, pkg-audit, snapshots), HARNESS_EXIT=0. This closes the one item r2 left open: r2's run was RED on the `test` sensor with a 30s timeout in cli.integration.test.ts, a file untouched by this branch (last changed d9ee0e28) that passes alone in 16.2s of its 30s budget. It did not reproduce, which supports the r2 judgement that it was load-dependent flake in a real-pi integration test rather than a defect from this work. AC5's receipt is now witnessed by me directly.\n\nCHECKED AND DISMISSED (recorded so a later reader does not re-open them): the skip path sets `sawFrame = true` and so resets the backoff \u2014 correct, because the cursor advanced, which is progress; the `frameAttempts` map retains an entry for a frame the live-only cursor-refusal fallback then makes unreachable \u2014 one tiny entry per occurrence, not worth a finding; `ackInbox` failures are still swallowed inside consumePushed and therefore never retried \u2014 pre-existing and unchanged by this round. Packet i8 known-open items cost zero findings."
+      }
+    },
+    {
+      "name": "findings",
+      "value": [
+        {
+          "id": "F8",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": ".pi/extensions/pij/adapters/daemon-http.ts:191",
+          "finding": "r2 F8 (MINOR) \u2014 a frame that can never be consumed wedged the event stream permanently\n\nFIXED, and the fix is witnessed at its exact bound. superviseEvents now counts failures per `${machine}\\0${cursor}`; the first four rejections still retain the cursor and tear the stream down into the capped reconnect loop, and the fifth emits one notice naming the message id and the error, advances the cursor, and continues in the same stream (daemon-http.ts:191-215, MAX_FRAME_ATTEMPTS = 5).\n\nRE-DERIVED, NOT READ. M2 above restores the pre-fix behaviour (always rethrow) and turns the new test RED with exactly the 1-failed/16-passed shape fix-r2 reports, so the test is a witness rather than a claim. M4 shows the test asserts the number five, not merely 'some bound'. M3 shows the r1 F3 property (no cursor advance on a rejected consumer) still has its own separate witness underneath the retry, so the new code did not quietly repeal the fix it is layered on.\n\nMY r2 PROBE'S SCENARIO IS NOW BOUNDED: probe-poison.mts drove 174 non-progressing attaches in 300 ms against the r2 tree. Under this code the same input takes four reconnects and then progresses, with one visible notice. The observable I complained about \u2014 the seat silently stops receiving every message behind the poison frame, for the life of the omp process \u2014 no longer exists.\n\nON THE TRADE PRIME CHOSE: skipping after five attempts can skip a frame whose failure was transient over a long window, so I checked the recovery claim in the notice rather than accepting it (method 3 above). The queue row survives, and the next pushed frame's claim returns it. That is a genuine recovery path, not a paper one.",
+          "receipt": "docs/plans/124-omp-event-reattach/assets/reviews/probe-poison.mts"
+        },
+        {
+          "id": "F9",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": ".pi/extensions/pij/adapters/daemon-http.ts:222",
+          "finding": "r2 F9 (MINOR) \u2014 the reset half of the F1 fix had no witness\n\nFIXED. The new case `resets reconnect backoff after a stream consumes a frame` drives 250ms -> a stream that delivers one frame -> the next outage, and asserts the delay is 250 again rather than climbing.\n\nPROVEN BY THE SAME METHOD THAT FOUND IT: in r2 I deleted `if (sawFrame) attempt = 0;` and the whole adapter suite stayed green. Deleting the same line now fails (M1). Stated honestly: this test is green-from-birth on the pre-fix tree \u2014 it must be, because the code was already correct and the finding was a missing witness, not a defect. Its validity therefore rests entirely on the injection control above, which is the right evidence for this class of finding."
+        },
+        {
+          "id": "Q2",
+          "kind": "question",
+          "severity": "NA",
+          "address": "docs/plans/124-omp-event-reattach/assets/reviews/fix-r2.md:11",
+          "finding": "r2 Q2 (question) \u2014 replay across the gap still has no live witness\n\nDEFERRED, ACCEPTED. I re-read assets/live-restart-transcript.md in full to check the deferral rather than take it: every message in it (spine rows 3-8) was sent AFTER the re-attach, and the transcript states the first restart happened before any isolated messages existed. So the gap is unchanged \u2014 no live run has exercised a frame emitted WHILE the stream was down.\n\nWHY ACCEPTING IT IS REASONABLE, not merely convenient: the case is covered in unit form by the cursor-map reconnect test, and the daemon-side contract is read directly from source (crates/store/src/spine.rs:74-82, `WHERE seq > ?1`, i.e. strictly exclusive replay) rather than from a report. It is also awkward to stage against an rs daemon restart specifically, because a stopped daemon cannot accept the in-gap send; the honest rig is a stream drop with the daemon alive.\n\nRecorded here so close-out does not read this as covered. Not blocking, and no product change is warranted."
+        }
+      ]
+    },
+    {
+      "name": "verdict",
+      "value": [
+        {
+          "id": "v1",
+          "finding": "#findings/F8",
+          "resolution": "fixed",
+          "rationale": "Re-derived by injection with a live baseline control: reverting to the pre-fix shape turns the new test RED with the same count fix-r2 reports, and two further mutations show the bound and the underlying r1 F3 property are each separately asserted. The recovery promise printed in the notice was verified against the inbox source, not accepted."
+        },
+        {
+          "id": "v2",
+          "finding": "#findings/F9",
+          "resolution": "fixed",
+          "rationale": "The line I deleted in r2 with no consequence now fails a test when deleted. The witness exists and bites."
+        },
+        {
+          "id": "v3",
+          "finding": "#findings/Q2",
+          "resolution": "deferred",
+          "rationale": "FINAL BRANCH VERDICT: APPROVE. Every finding raised across r1, r2 and r3 is now fixed or explicitly deferred with a reason, and I raised no new findings this round. Both r1 MAJORs, all r1 MINORs and the NIT were re-derived in r2; the two r2 MINORs are fixed here, each proven by injection against a green baseline rather than by reading. Focused suite 43/43, typecheck 0, plan.dd.json validates 0/0. AC1-AC5 judged TRUE. The one open item is Q2, a coverage gap (no live witness for replay across the gap) that is covered in unit form and by direct reading of the Rust replay predicate \u2014 non-blocking, and worth one line in close-out rather than another round."
+        }
+      ]
+    }
+  ]
+}

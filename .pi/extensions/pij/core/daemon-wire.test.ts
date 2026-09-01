@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+	DaemonRefusalError,
 	decodeEnvelope,
 	decodeStreamLine,
 	PijNoDaemonError,
@@ -36,6 +37,37 @@ describe("pij-rs envelope", () => {
 		} catch (error) {
 			expect(error).toBeInstanceOf(PijWireSkewError);
 			expect(error).toMatchObject({ code: "PIJ_WIRE_SKEW", found: 2, supported: 1 });
+		}
+	});
+
+	it("preserves cursor-reset refusals as structured daemon errors", () => {
+		expect(() =>
+			decodeEnvelope(
+				JSON.stringify({
+					ok: false,
+					command: "pij events",
+					v: 1,
+					error: "cursor_reset",
+					meta: "cursor 7 is beyond spine 2",
+				}),
+			),
+		).toThrow(DaemonRefusalError);
+		try {
+			decodeEnvelope(
+				JSON.stringify({
+					ok: false,
+					command: "pij events",
+					v: 1,
+					error: "cursor_reset",
+					meta: "cursor 7 is beyond spine 2",
+				}),
+			);
+		} catch (error) {
+			expect(error).toMatchObject({
+				command: "pij events",
+				kind: "cursor_reset",
+				message: "cursor 7 is beyond spine 2",
+			});
 		}
 	});
 

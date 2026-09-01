@@ -1,0 +1,176 @@
+{
+  "dd": {
+    "schema": "builder/review"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Cross-model review r2 \u2014 124 omp-event-reattach (fix round)",
+        "reviewer": "pij-thoughtful-manatee",
+        "model": "claude-opus-5",
+        "round": "r2",
+        "date": "2026-09-02",
+        "plan": "../../plan.dd.json#meta",
+        "note": "Re-review of the fix round described in assets/reviews/fix-r1.md. Read-only on code; the only files I wrote are in assets/reviews/. I did not audit the fix prose: I re-derived every disposition. (1) RED-FIRST, INDEPENDENTLY: base 857527bd checked out into a throwaway worktree, ONLY the two changed test files copied in \u2014 4 failed / 18 passed, and the four failures are exactly the four fix-r1 claims (backoff ramp, protocol error to onError, cursor advance on rejected consumer, HTTP-500 success-envelope backstop). (2) GREEN: `just test` on the four named files = 4 files / 41 tests passed; `just typecheck` exit 0; `ddocs validate plan.dd.json` = 0 errors 0 warnings. (3) MY OWN r1 PROBES RE-RUN against the fixed tree: probe-storm.mts now yields distinct delays [250, 500, 1000, 2000, 4000, 5000] (was [250] forever); probe-skew.mts emits `onError: pij daemon wire v99 is unsupported...` on every failed stream (was silent) with the same bounded ramp. (4) MUTATION, NOT READING: I injected the reverse of each fix in a throwaway worktree to check the new tests are witnesses rather than claims \u2014 reverting the F1 increment fails `caps reconnect backoff` (control: the harness bites), and deleting the F5 seat-known guard fails the new `seat known: true` case. That same method produced F9 below: deleting the OTHER half of the F1 fix changes nothing. A third probe written for this round is preserved beside this document: assets/reviews/probe-poison.mts (F8). Packet i8 known-open items still cost zero findings."
+      }
+    },
+    {
+      "name": "findings",
+      "value": [
+        {
+          "id": "F8",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": ".pi/extensions/pij/adapters/daemon-http.ts:191",
+          "finding": "NEW, INTRODUCED BY THE F3 FIX \u2014 a frame that can never be consumed now wedges the event stream permanently instead of being skipped.\n\nThe F3 fix is right about the cursor (do not advance past a frame we did not consume) but it pairs that with a second change: a rejected consumer now propagates out of `pumpEventStream`, so it also TEARS DOWN THE STREAM. Since the cursor did not advance, the next attach replays the same frame first, which fails the same way, forever. Before this round the rejection was caught at rust-runtime.ts:115-120, logged as `daemon_event_error`, and the stream carried on.\n\nREACHABILITY: `consumePushed` starts with `pushedMessage(payload, seat)` = `JSON.parse(payload)` + `pushedMessageValue` validation (rust-runtime.ts:216, 360-392). Any `message.pushed` payload this extension cannot parse \u2014 a shape a newer daemon emits, exactly the version-skew case this plan's reconnect story exists for \u2014 is a permanent rejection, not a transient one.\n\nPROOF (my probe): assets/reviews/probe-poison.mts drives the real client against a fake that replays one `message.pushed` frame whose payload is `not-json`, with a consumer that always rejects. In 300 ms: 174 attaches, the SAME frame delivered 174 times, 174 onError calls, `since` never once present on the URL, backoff correctly bounded at [250...5000]. The loop is bounded but makes no progress, and every event behind the poison frame is never delivered for the life of the omp process. The only operator-visible symptom is a 'stream lost / re-attached' notice pair every 5 s; onError only reaches `session.capture`, never the pane.\n\nWHY MINOR AND NOT MAJOR: it needs a payload this client cannot parse, which today's daemon does not emit. The consequence when it does happen is total and silent (the seat stops receiving all messages), which is why it should not be left unhandled.\n\nSMALLEST FIX: discriminate permanent from transient in the consumer, not in the pump. Have rust-runtime's onFrame catch its own decode/validation failures (capture `daemon_event_error` and resolve, so the cursor advances past a frame that can never be consumed) and reject only for transport-class failures that a replay could plausibly fix.",
+          "receipt": "docs/plans/124-omp-event-reattach/assets/reviews/probe-poison.mts"
+        },
+        {
+          "id": "F9",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": ".pi/extensions/pij/adapters/daemon-http.ts:205",
+          "finding": "HALF OF THE F1 FIX HAS NO WITNESS. The fix has two halves: `attempt += 1` after every successful attach (the ramp) and `if (sawFrame) attempt = 0;` after a stream that actually delivered a frame (the reset). The new `caps reconnect backoff after exponential growth` test never delivers a frame, so it exercises only the ramp.\n\nPROOF BY INJECTION (assets/reviews/, throwaway worktree at 857527bd + this round's diff): deleting the line `if (sawFrame) attempt = 0;` outright leaves the whole adapter suite green \u2014 2 files, 22 tests passed. CONTROL, so this is not a dead harness: reverting the other half (`attempt += 1` back to `attempt = 0`) fails `caps reconnect backoff after exponential growth`, 1 failed / 14 passed.\n\nCONSEQUENCE IF IT IS EVER DELETED: `attempt` becomes monotonic for the life of the session, so a healthy long-lived seat that reconnects a handful of times over a day sits permanently at the 5 s ceiling and never returns to the 250 ms first retry \u2014 a slow, invisible degradation of exactly the latency this plan is about, with a green suite.\n\nSMALLEST FIX: one case whose fake delivers a frame before each close, asserting the delay sequence returns to 250 rather than continuing to climb.",
+          "receipt": "mutation run recorded in this document's meta note"
+        },
+        {
+          "id": "Q2",
+          "kind": "question",
+          "severity": "NA",
+          "address": "docs/plans/124-omp-event-reattach/assets/reviews/fix-r1.md:14",
+          "finding": "Q1 IS ANSWERED AS A DIFFERENT QUESTION. fix-r1 records Q1 as 'answered \u2014 Rust replay is strictly seq > since; no code change'. That is the AC3 exactly-once analysis from the companion r1 document, and it does stand. But r1's Q1 asked something else: G2's replay-ACROSS-THE-GAP has no LIVE witness \u2014 every message in assets/live-restart-transcript.md was sent after the re-attach, and the transcript itself says the first restart happened 'before any isolated messages existed'.\n\nSo the gap is unchanged: no live run has ever exercised a frame emitted WHILE the stream was down. It is covered in unit form (the cursor-map reconnect test) and the Rust-side contract is read directly from crates/store/src/spine.rs, which is why this stays a question and not a defect.\n\nNOT BLOCKING. If prime wants it closed rather than accepted, the isolated rig already exists: send while the isolated daemon is stopped, then start it, and paste the pane showing the body arriving inline after re-attach."
+        },
+        {
+          "id": "R1-F1",
+          "kind": "dim0",
+          "severity": "NA",
+          "address": "docs/plans/124-omp-event-reattach/assets/reviews/review-r1.dd.json#findings",
+          "finding": "r1 F1 (MAJOR) \u2014 unbounded reconnect backoff whenever attach succeeds and the stream dies immediately\n\nFIXED and witnessed. `attempt` now increments after every successful attach and resets only once a frame has been consumed (daemon-http.ts:205, :190). My r1 probe-storm.mts, unchanged, now reports distinct delays [250, 500, 1000, 2000, 4000, 5000] where in r1 it reported [250] forever; probe-skew.mts agrees. The rewritten `caps reconnect backoff` test is RED on the pre-fix tree, and reverting the increment makes it RED again on the fixed tree (control). G1 and risk-mitigation r2 are now true. Residual: the reset half is unwitnessed \u2014 F9.",
+          "receipt": "docs/plans/124-omp-event-reattach/assets/reviews/probe-storm.mts"
+        },
+        {
+          "id": "R1-F2",
+          "kind": "dim0",
+          "severity": "NA",
+          "address": "docs/plans/124-omp-event-reattach/assets/reviews/review-r1.dd.json#findings",
+          "finding": "r1 F2 (MAJOR) \u2014 onError unreachable for every stream and decode error\n\nFIXED. The pump is now inside try/catch and non-abort failures call onError before the bounded reconnect continues (daemon-http.ts:201-203). probe-skew.mts prints `onError: pij daemon wire v99 is unsupported by this extension (v1); upgrade pij.` on every failed stream, where in r1 it printed none across 244 attaches. The new protocol-error test is RED on the pre-fix tree. NOT FILED as a new finding: a wire skew is still retried forever rather than treated as terminal \u2014 that was a suggestion in r1, the PM was free to decline it, and the diagnostic is visible either way.",
+          "receipt": "docs/plans/124-omp-event-reattach/assets/reviews/probe-skew.mts"
+        },
+        {
+          "id": "R1-F3",
+          "kind": "dim0",
+          "severity": "NA",
+          "address": "docs/plans/124-omp-event-reattach/assets/reviews/review-r1.dd.json#findings",
+          "finding": "r1 F3 (MINOR) \u2014 cursor recorded 'seen', not 'consumed'\n\nFIXED. `watchEvents` accepts an async frame consumer, `pumpEventStream` awaits it, and the cursor is set only after it resolves (daemon-http.ts:193-197); RustRuntimeSession returns the real consumePushed promise while keeping its own chain recovered (rust-runtime.ts:115-119). The new test proves the second attach carries no `since` after a rejected consumer, and is RED on the pre-fix tree. The trade this introduces is F8."
+        },
+        {
+          "id": "R1-F4",
+          "kind": "dim0",
+          "severity": "NA",
+          "address": "docs/plans/124-omp-event-reattach/assets/reviews/review-r1.dd.json#findings",
+          "finding": "r1 F4 (MINOR) \u2014 removed HTTP-status backstop on /v1/events\n\nFIXED. A non-OK response rethrows DaemonRefusalError so the cursor-refusal fallback still works, and otherwise throws an error naming the status, including the ok:true-envelope-with-500 case (daemon-http.ts:254-262). RED on the pre-fix tree: 'promise resolved instead of rejecting'."
+        },
+        {
+          "id": "R1-F5",
+          "kind": "dim0",
+          "severity": "NA",
+          "address": "docs/plans/124-omp-event-reattach/assets/reviews/review-r1.dd.json#findings",
+          "finding": "r1 F5 (MINOR) \u2014 re-registration guard had no witness\n\nFIXED, and the guard is now a real witness rather than a claim: deleting `seats.some((candidate) => candidate.id === seat)` from ensureRegistration fails the new `seat known: true` case (1 failed / 6 passed). The parameterized test is green on the pre-fix tree, which is what a gap-closing test should be."
+        },
+        {
+          "id": "R1-F6",
+          "kind": "dim0",
+          "severity": "NA",
+          "address": "docs/plans/124-omp-event-reattach/assets/reviews/review-r1.dd.json#findings",
+          "finding": "r1 F6 (NIT) \u2014 jitter could exceed the 5s cap; multi-alias cursor notice\n\nPARTLY FIXED, remainder accepted. The final jittered delay is clamped to MAX_RECONNECT_MS (daemon-http.ts:210-213) and the backoff test now drives random()=1, i.e. maximum jitter, so the clamp is exercised rather than merely written. The multi-alias `re-attached at cursor N` wording is deferred by the PM; accepted as cosmetic and consistent with the plan's own wording."
+        },
+        {
+          "id": "R1-F7",
+          "kind": "dim0",
+          "severity": "NA",
+          "address": "docs/plans/124-omp-event-reattach/assets/reviews/review-r1.dd.json#findings",
+          "finding": "r1 F7 (MINOR, note for prime) \u2014 plan.dd.json did not validate\n\nFIXED by prime ruling. `ddocs validate docs/plans/124-omp-event-reattach/plan.dd.json` is 0 errors / 0 warnings. I diffed the file: every AC id and text is preserved verbatim, with claim/state/receipt added. One observation, not a finding: AC3-AC5 cite this reviewer's own r1 document as their receipt, so the plan's receipts and the review are not independent of each other."
+        },
+        {
+          "id": "R1-Q1",
+          "kind": "dim0",
+          "severity": "NA",
+          "address": "docs/plans/124-omp-event-reattach/assets/reviews/review-r1.dd.json#findings",
+          "finding": "r1 Q1 (question) \u2014 no live witness for replay across the gap\n\nANSWERED AS A DIFFERENT QUESTION \u2014 see Q2. The exactly-once analysis fix-r1 records does stand; the live-coverage gap Q1 actually raised is unchanged and accepted as non-blocking."
+        }
+      ]
+    },
+    {
+      "name": "verdict",
+      "value": [
+        {
+          "id": "v1",
+          "finding": "#findings/F8",
+          "resolution": "confirmed",
+          "rationale": "New this round, reproduced with the real client (174 non-progressing attaches, the same frame delivered 174 times). Not a reason to hold the branch: it is strictly narrower than the loss it replaced, and the r1 fix it comes from is the right direction. Should be closed before this path meets a daemon on a different version."
+        },
+        {
+          "id": "v2",
+          "finding": "#findings/F9",
+          "resolution": "confirmed",
+          "rationale": "Proven by injection with a live control, not by reading. The behaviour is correct today; the line is one refactor from deletion with a green suite."
+        },
+        {
+          "id": "v3",
+          "finding": "#findings/Q2",
+          "resolution": "deferred",
+          "rationale": "Coverage question, not a defect; unit coverage plus the Rust source contract read directly from crates/store/src/spine.rs is adequate. Recorded so close-out does not read Q1 as fully answered."
+        },
+        {
+          "id": "v4",
+          "finding": "#findings/R1-F1",
+          "resolution": "fixed",
+          "rationale": "Re-verified by re-running my own r1 probe against the fixed tree, by the RED-first check on the pre-fix tree, and by reverting the fix to confirm the new test bites."
+        },
+        {
+          "id": "v5",
+          "finding": "#findings/R1-F2",
+          "resolution": "fixed",
+          "rationale": "Re-verified by probe-skew.mts, which now emits the skew diagnostic it was silent about in r1, plus the RED-first check."
+        },
+        {
+          "id": "v6",
+          "finding": "#findings/R1-F3",
+          "resolution": "fixed",
+          "rationale": "Re-verified from the code path and by the RED-first check; the consequence of the chosen approach is filed as F8."
+        },
+        {
+          "id": "v7",
+          "finding": "#findings/R1-F4",
+          "resolution": "fixed",
+          "rationale": "Re-verified from the code and by the RED-first check."
+        },
+        {
+          "id": "v8",
+          "finding": "#findings/R1-F5",
+          "resolution": "fixed",
+          "rationale": "Re-verified by deleting the guard and watching the new case fail \u2014 the gap is closed with a witness, not just a case."
+        },
+        {
+          "id": "v9",
+          "finding": "#findings/R1-F6",
+          "resolution": "fixed",
+          "rationale": "Clamp verified and exercised at maximum jitter; the deferred cosmetic half is accepted."
+        },
+        {
+          "id": "v10",
+          "finding": "#findings/R1-F7",
+          "resolution": "fixed",
+          "rationale": "Validated clean and diffed to confirm no AC text was altered while making the document valid."
+        },
+        {
+          "id": "v11",
+          "finding": "#findings/R1-Q1",
+          "resolution": "deferred",
+          "rationale": "OVERALL VERDICT: APPROVE WITH MINOR FOLLOW-UPS. Both r1 MAJORs are fixed, each with a regression proven RED on the pre-fix tree and, for F1, re-proven by reverting the fix. All four MINORs and the NIT are resolved or explicitly deferred. Two new MINOR findings (F8, F9), neither blocking: F8 is a narrower failure than the one it replaced; F9 is a missing witness for behaviour that is correct today. AC1-AC5 remain judged TRUE."
+        }
+      ]
+    }
+  ]
+}

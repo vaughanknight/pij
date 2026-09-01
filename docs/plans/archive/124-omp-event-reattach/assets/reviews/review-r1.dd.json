@@ -1,0 +1,135 @@
+{
+  "dd": {
+    "schema": "builder/review"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Cross-model review — 124 omp-event-reattach",
+        "reviewer": "pij-thoughtful-manatee",
+        "model": "claude-opus-5",
+        "round": "r1",
+        "date": "2026-09-02",
+        "plan": "../../plan.dd.json#meta",
+        "note": "Read-only review of branch 124-omp-event-reattach against base 54fb7e95. Verified by re-derivation, not by the author's prose: I re-ran the changed suites (24/24 green), `npx tsc --noEmit` (exit 0) and the full .pi/extensions/pij suite (169 files, 4006 tests, exit 0); I independently reproduced the RED-first witness by checking base 54fb7e95 into a throwaway worktree, copying in ONLY the three new test files, and observing 6 failed / 18 passed; and I read the Rust daemon's `since` contract directly rather than trusting the TypeScript fake. Two probes written for this review are preserved beside this document (assets/reviews/probe-storm.mts, probe-skew.mts) so the MAJOR findings stay reproducible after this seat is gone. Known-open items from packet i8 (isolated-restart safety brake, flowspace3 .pi indexing, npm ci min-release-age, Biome schema info, pane-observer noise) are excluded and cost zero findings. AC-by-AC judgements (done-bar d1), the five composition seams (done-bar d2), interface drift, and flowspace3 friction are in the companion assets/reviews/review-r1-ac-and-seams.md."
+      }
+    },
+    {
+      "name": "findings",
+      "value": [
+        {
+          "id": "F1",
+          "kind": "defect",
+          "severity": "MAJOR",
+          "address": ".pi/extensions/pij/adapters/daemon-http.ts:207",
+          "finding": "PLAN PROMISE FALSE — the reconnect backoff is not bounded on the path that matters. `attempt = 0` is reset after a successful ATTACH, not after a successful STREAM. Whenever the daemon accepts the connection but the stream ends or throws immediately, every cycle re-enters the inner loop at attempt 0, so the delay is 250 ms forever and the 250ms->5s ramp promised by G1 and claimed as the mitigation for risk r2 never happens.\n\nPROOF (my probe, not the author's): assets/reviews/probe-storm.mts drives the real PijDaemonClient against a fake whose every attach returns HTTP 200 + a valid hello line and then closes. Result: 184 attaches and 367 notices in 300 ms; every backoff value chosen was 250 (distinct delays: [250]). assets/reviews/probe-skew.mts repeats it with a hello line carrying v:99 - a daemon that bumped PIJ_EVENT_VERSION - and gets 244 attaches and 487 notices in 300 ms, also all 250.\n\nWHY IT MATTERS HERE: the trigger is a daemon deploy, which is the exact event this plan exists to survive. A version-bumping deploy would put every open omp into a permanent ~4 attach/sec hot loop against the daemon while writing ~8 `ctx.ui.notify` lines per second into the operator's pane (index.ts:316 wires notice -> ctx.ui.notify), which also makes G5's 'one short notice line' false. The 'caps reconnect backoff' test passes because its fake THROWS on attach, so the reset line is never reached - the test proves the ramp only on the branch where the ramp already works.\n\nSMALLEST FIX: reset `attempt` from evidence that the stream lived, not that the attach returned. Set a flag inside the onFrame wrapper at daemon-http.ts:188 (or record the attach timestamp and only reset once the pump has run beyond a threshold) and move the two `attempt = 0` assignments to that condition.",
+          "receipt": "docs/plans/124-omp-event-reattach/assets/reviews/probe-storm.mts"
+        },
+        {
+          "id": "F2",
+          "kind": "defect",
+          "severity": "MAJOR",
+          "address": ".pi/extensions/pij/adapters/daemon-http.ts:192",
+          "finding": "INTERFACE DRIFT + LOST DIAGNOSTIC — `onError` is now unreachable for every stream and decode error. `pumpEventStream(...).catch(() => undefined)` swallows all of them, and the abort path returns at daemon-http.ts:194/213 without calling onError. The only way to reach the onError wired at daemon-http.ts:167-171 is for the consumer's own onNotice callback to throw. The impl-guide states 'onError is now called only for terminal conditions (abort)'; the code calls it for none, including abort.\n\nCONSEQUENCE: PijWireSkewError, 'pij events frame arrived before Hello', 'pij events sent a second Hello line' and invalid-JSON errors previously reached onError and were recorded by rust-runtime.ts:125 as `daemon_event_error`. They are now invisible - the seat's own event log no longer contains any evidence that its stream is failing. This composes with F1: the unbounded loop is also a silent loop, and a permanently unusable stream reports only 'reconnecting.../re-attached' forever.\n\nPROOF: assets/reviews/probe-skew.mts (hello v:99) prints no `onError:` line across 244 attaches. The only test touching `daemon_event_error` (rust-runtime.test.ts:340) covers the consumePushed failure path, not the stream path - so nothing guards this.\n\nSMALLEST FIX: capture the pump's rejection instead of discarding it - carry the reason into the 'stream lost' notice, and treat a PijWireSkewError as terminal (call onError and stop) rather than as another retry, since no amount of reconnecting fixes a version skew.",
+          "receipt": "docs/plans/124-omp-event-reattach/assets/reviews/probe-skew.mts"
+        },
+        {
+          "id": "F3",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": ".pi/extensions/pij/adapters/daemon-http.ts:189",
+          "finding": "CURSOR RECORDS 'SEEN', NOT 'CONSUMED'. `cursors.set(frame.machine, frame.cursor)` runs synchronously as soon as `onFrame` returns, but the u2 consumer's onFrame (rust-runtime.ts:110-121) only ENQUEUES the frame onto `pushedChain`. If `consumePushed` later rejects, the rejection is caught and logged (rust-runtime.ts:115-120) while the cursor has already advanced past that frame - so a subsequent re-attach sends since=<that cursor> and the daemon, whose replay is strictly exclusive, will never resend it. The body is then recoverable only through the daemon's unacked-queue behaviour, i.e. the pointer path this plan's own ruling retires for omp/pi.\n\nREACHABILITY IS ALREADY PROVEN IN-TREE: rust-runtime.test.ts:333-343 drives exactly this state with FailingPiRuntime and asserts that no ack is sent. That test predates the plan; what is new is that the cursor now moves anyway.\n\nORDERING NOTE (the good half): the ordering is correct in the ordinary case - onFrame is called BEFORE cursors.set, so a frame whose onFrame throws synchronously does not advance the cursor and is correctly replayed.\n\nSMALLEST FIX: advance the cursor from inside the consumption chain (on ack success) rather than at frame receipt, or hold the cursor at the highest frame whose chain entry has settled successfully."
+        },
+        {
+          "id": "F4",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": ".pi/extensions/pij/adapters/daemon-http.ts:238",
+          "finding": "REMOVED BACKSTOP. The pre-change code was `if (!response.ok) { decodeEnvelope(...); throw new Error(`pij events failed with HTTP ${response.status}`) }`. The new attachEvents keeps the decodeEnvelope call and drops the throw. decodeEnvelope only throws when the body parses as an envelope with ok:false; a non-ok response whose body decodes as an ok:true envelope therefore falls through to `return response.body` - a body already drained by `await response.text()`, so `getReader()` throws inside the pump and is then swallowed by F2's catch. A clear HTTP failure degrades into a silent reconnect with no status ever named. (A non-ok body that is not JSON at all still throws, but only as a generic parse error that never names the status — so no path on this endpoint reports the HTTP code any more.)\n\nSMALLEST FIX: restore the explicit `throw new Error(\\\"pij events failed with HTTP \\\" + response.status)` immediately after the decodeEnvelope call."
+        },
+        {
+          "id": "F5",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": ".pi/extensions/pij/adapters/rust-runtime.test.ts:369",
+          "finding": "TEST GAP ON THE G4 CONTRACT - only the positive half is proven. In the new re-attach test the fake answers /v1/seats with `{seats: [], unavailable: []}` on EVERY call, so `ensureRegistration` finds the seat unknown every time and always re-registers. Nothing in the suite proves the negative half of G4 - that a seat the daemon still knows is NOT re-registered. The assertion `expect(registrations).toHaveLength(2)` is equally satisfied by a correct guard and by an unconditional re-register, so the `seats.some(...)` check at rust-runtime.ts:210 is a condition with no witness and is one refactor from deletion.\n\nSMALLEST FIX: one more case where /v1/seats returns the registered seat after the re-attach, asserting registrations stays at 1 while the seat check still ran."
+        },
+        {
+          "id": "F6",
+          "kind": "defect",
+          "severity": "NIT",
+          "address": ".pi/extensions/pij/adapters/daemon-http.ts:205",
+          "finding": "Two cosmetic imprecisions, neither worth a round on their own. (a) `pij: re-attached at cursor N` reports Math.max across ALL machine aliases, so under federation (risk r4, explicitly in scope) N belongs to no particular machine; the live transcript's 'cursor 8' is the max, not the local seq. (b) The jitter multiplier spans [0.8, 1.2), so a capped delay can be up to 6000 ms, slightly above the 5s cap the plan names."
+        },
+        {
+          "id": "F7",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": "docs/plans/124-omp-event-reattach/plan.dd.json",
+          "finding": "NOTE FOR PRIME, NOT THE PM (packet w2) - the plan document itself does not validate. `ddocs validate docs/plans/124-omp-event-reattach/plan.dd.json` exits with 10 errors: every one of the five acceptance_criteria rows is missing the required `claim` and `state` fields, carrying only `text`. The file is new on this branch (it does not exist at base 54fb7e95), so this is not inherited.\n\nCONSEQUENCE: no AC in plan 124 can ever be moved to `checked` in the document, so the plan's own state machine is inert and 'AC5 proven' can only ever be prose. It also means any ddoc that links to this plan - including this review - reports the plan's errors in its outbound neighbourhood, which is how I found it.\n\nSMALLEST FIX: add `claim` and `state` to the five AC rows and re-run ddocs build. Authorship of plans is prime's, so I am naming it rather than expanding the review into it."
+        },
+        {
+          "id": "Q1",
+          "kind": "question",
+          "severity": "NA",
+          "address": "docs/plans/124-omp-event-reattach/assets/live-restart-transcript.md",
+          "finding": "COVERAGE QUESTION, NOT A DEFECT - G2's replay-across-the-gap has no live witness. Every message in the live transcript was sent AFTER the re-attach; the transcript itself records that the first restart happened 'before any isolated messages existed'. So the live run proves reconnect + key rotation + seat continuity + inline delivery, but never exercises a frame emitted WHILE the stream was down. The unit coverage does not close this either: the fake in daemon-http.test.ts returns preset frames and does not implement `since` at all, so it cannot detect an off-by-one in the cursor.\n\nI closed it myself by reading the authority instead: crates/store/src/spine.rs:74-82 selects `WHERE seq > ?1`, i.e. replay is STRICTLY EXCLUSIVE of the cursor, and crates/daemon/src/events/mod.rs:85-110 refuses `since > newest` with CursorBeyondSpine -> 409 ErrorKind::CursorReset. Storing the LAST SEEN cursor is therefore exactly right against the real daemon and no duplicate injection is expected. Recording it so the PM knows the guarantee rests on my read of the Rust contract plus F3's caveat, not on a test."
+        }
+      ]
+    },
+    {
+      "name": "verdict",
+      "value": [
+        {
+          "id": "v1",
+          "finding": "#findings/F1",
+          "resolution": "confirmed",
+          "rationale": "Reproduced twice with the real client under two independent triggers (stream closes immediately; wire skew). A plan promise (G1 bounded backoff) and its named risk mitigation (r2) are false on the branch. Fix is a two-line move of the reset condition. This is the one finding I would block the PR on."
+        },
+        {
+          "id": "v2",
+          "finding": "#findings/F2",
+          "resolution": "confirmed",
+          "rationale": "Drift from the impl-guide's stated onError contract, and a real loss of the seat's only diagnostic for stream failure. Independently reproduced; no test guards it. Should land with F1 since they share a trigger and the combined behaviour is an infinite silent loop."
+        },
+        {
+          "id": "v3",
+          "finding": "#findings/F3",
+          "resolution": "confirmed",
+          "rationale": "Derived from the code and corroborated by an existing in-tree test that already drives the failing-inject state. Narrow window (only when consumePushed rejects), so MINOR, but it sits directly on AC3's exactly-once claim and is cheap to close."
+        },
+        {
+          "id": "v4",
+          "finding": "#findings/F4",
+          "resolution": "confirmed",
+          "rationale": "A guard that existed on the base tree and is gone on the branch. Low likelihood, but it removes the only place an HTTP status was ever named on this path."
+        },
+        {
+          "id": "v5",
+          "finding": "#findings/F5",
+          "resolution": "confirmed",
+          "rationale": "The assertion cannot distinguish the guarded from the unguarded implementation, so G4's negative half is unproven. Test-only change."
+        },
+        {
+          "id": "v6",
+          "finding": "#findings/F6",
+          "resolution": "deferred",
+          "rationale": "Cosmetic. Raise only if the PM is touching these lines for F1 anyway."
+        },
+        {
+          "id": "v7",
+          "finding": "#findings/Q1",
+          "resolution": "confirmed",
+          "rationale": "Answered by me against the Rust authority rather than left open: replay is exclusive, so the client's last-seen-cursor bookkeeping is correct. Logged as a coverage note - the guarantee currently has no test and no live witness on this side of the seam."
+        },
+        {
+          "id": "v8",
+          "finding": "#findings/F7",
+          "resolution": "confirmed",
+          "rationale": "Reproduced with a single command; the file is new on this branch. Filed as a note for prime rather than a change request against the PM's implementation."
+        }
+      ]
+    }
+  ]
+}

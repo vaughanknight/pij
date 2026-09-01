@@ -313,6 +313,7 @@ export default function (pi: ExtensionAPI): void {
 				...(gitCommonDir !== null ? { gitCommonDir } : {}),
 				...(process.env.PIJ_PLAN_ID !== undefined ? { planId: process.env.PIJ_PLAN_ID } : {}),
 				resetRuntimeState: event.reason !== "reload",
+				notice: (text) => ctx.ui.notify(text, "info"),
 				reason: event.reason,
 			});
 			session = rustRuntime;

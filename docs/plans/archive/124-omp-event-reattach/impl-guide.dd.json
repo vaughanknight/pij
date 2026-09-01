@@ -1,0 +1,98 @@
+{
+  "dd": {
+    "schema": "pij-team/impl-guide"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Implementation guide — omp-event-reattach",
+        "plan": "docs/plans/124-omp-event-reattach/plan.dd.json",
+        "mode": "build",
+        "updated": "2026-09-02"
+      }
+    },
+    {
+      "name": "architecture",
+      "value": "Doctrine: .agents/skills/pij-team/TENETS.md. This plan is TypeScript-only, inside the pi/omp extension: `.pi/extensions/pij/adapters/daemon-http.ts` (PijDaemonClient: key read, watchEvents, pumpEventStream ~L130-230) and `.pi/extensions/pij/adapters/rust-runtime.ts` (RustRuntimeSession.boot attaches ONCE at ~L105; #342 added the pushedChain + consumePushed inject→ack path — REUSE it verbatim for replayed frames). Daemon contract you consume, do not change: `GET /v1/events?since=<json {alias:cursor}>` (crates/daemon/src/http/mod.rs ~L1082-1175): absent since = live-only; a cursor beyond the spine or an unknown alias is REFUSED with a 4xx naming it; every frame carries a cursor (~L1163). The per-boot bearer key lives at <state-dir>/daemon.key (daemonLocation(), daemon-http.ts ~L54-64). Boundaries: NO Rust changes. If you find /health lacks a boot identifier you need, ask the PM/prime for ONE additive field — do not add it yourself. Fakes: the extension suites already use an in-process fake daemon (see rust-runtime.test.ts); extend that fake with: drop-stream, rotate-key, refuse-cursor, replay-from-cursor."
+    },
+    {
+      "name": "fan_out",
+      "value": {
+        "decision": "solo-pm",
+        "rationale": "Two files, one seam, ~300 lines. The PM codes u1 then u2 in its own worktree, proves AC1/AC2 live in a hand-started omp in tmux (done-bar ruling 2026-09-01-done-means-run-it-in-a-real-client.md), then dispatches the cross-model reviewer."
+      }
+    },
+    {
+      "name": "units",
+      "value": [
+        {
+          "id": "u1",
+          "name": "reconnecting event client",
+          "paths": ".pi/extensions/pij/adapters/daemon-http.ts, .pi/extensions/pij/adapters/daemon-http.test.ts (create if absent)",
+          "responsibility": "watchEvents becomes a supervised subscription: tracks the last cursor per machine alias from each frame; on end/error waits backoff (250ms doubling to 5s, ±20% jitter) and re-attaches with since={alias:cursor}; on a refused cursor re-attaches live-only and calls onNotice(reason); before every attach and on any 401/403 from ANY client request, re-reads daemon.key once and retries that request once.",
+          "interface": "watchEvents(onFrame, onError, onNotice?: (text:string)=>void): Promise<() => void> — SAME signature plus optional onNotice; onError is now called only for terminal conditions (abort). New: client.refreshKey(): Promise<void>. Frame type gains cursor: {alias:string, seq:number}. No other public change.",
+          "test_strategy": "vitest with the fake daemon: (1) drop stream mid-run → reconnect carries since with the last cursor; frames emitted during the gap arrive exactly once; (2) refused cursor → live-only attach + onNotice called with the daemon reason; (3) key rotation → next request 401 → re-read → retry succeeds; two consecutive 401s → error surfaced, no loop; (4) backoff bounded. Each test proven RED on the pre-fix tree and the red output pasted in the done report.",
+          "depends_on": "none",
+          "wave": 1,
+          "note": "Keep pumpEventStream pure; put the supervision loop around it. Do not persist cursors to disk."
+        },
+        {
+          "id": "u2",
+          "name": "runtime re-attach wiring",
+          "paths": ".pi/extensions/pij/adapters/rust-runtime.ts, .pi/extensions/pij/adapters/rust-runtime.test.ts",
+          "responsibility": "RustRuntimeSession consumes u1: passes onNotice → one short session line (`pij: daemon stream lost, reconnecting…` / `pij: re-attached at cursor N` / the refusal reason); after each re-attach confirms the seat is still known (existing seat lookup); if unknown, re-registers with the same id+pane (never a new id). Replayed message.pushed frames go through the existing pushedChain/consumePushed so inject→ack stays exactly-once.",
+          "interface": "No public change. Session notices via the existing mechanism used for `pij: detected Rust daemon…`.",
+          "test_strategy": "vitest: fake daemon restart (drop + rotate key) → runtime re-attaches, seat check runs, a message pushed after restart is injected once and acked (assert the fake saw /v1/inbox/ack once). RED-first as u1.",
+          "depends_on": "u1",
+          "wave": 2,
+          "note": "Live proof AC1/AC2 is done HERE by the PM in a hand-started omp: restart the rs daemon (pkill -f 'pij-rs daemon'; then nohup ~/.npm-global/bin/pij-rs daemon >> ~/.pij-rs/daemon.log 2>&1 & — macOS has no setsid), send from another seat, paste pane transcript + spine rows (sqlite3 ~/.pij-rs/pij.sqlite spine_events) into assets/. TELL THE PRIME BEFORE restarting the daemon: it drops every open omp's stream fleet-wide (that is the defect under repair)."
+        }
+      ]
+    },
+    {
+      "name": "isolation",
+      "value": {
+        "mode": "solo-pm in the plan worktree (~/pi-hacking/fs3-omp-event-reattach, branch 124-omp-event-reattach)",
+        "note": "Default: each coder gets its own worktree, branching off the PM's plan branch; unit lands back onto the plan branch (PM merges — coders never merge). Shared-tree work is the retro-proven #1 hazard (staged sweeps, untrustworthy greens) — only choose it for trivially disjoint single-wave work, and then file-scoped `git add` only, never -A. REMEMBER: fences partition WRITE intent, not the build — a mid-refactor sibling can still break your compile, so waves must respect build dependencies, and a broken workspace build is a PM composition concern, not a coder's to fix cross-fence."
+      }
+    },
+    {
+      "name": "composition",
+      "value": {
+        "composer": "pm",
+        "steps": "u1 then u2 on the plan branch; `just typecheck`, extension vitest, `harness checks` green (a fresh worktree without node_modules makes checks red with exit 127 — run npm ci first; that is not a product failure); then the live AC1/AC2 run.",
+        "integration_proof": "assets/live-restart-transcript.md: pane capture of the omp before/during/after the daemon restart showing the notice lines and the inline body, plus the spine rows for that msg_id (pushed → inbox-ack, no pointer-announced), plus the pij_send tool call succeeding post-restart."
+      }
+    },
+    {
+      "name": "review",
+      "value": {
+        "when": "after composition (or after solo-pm coding), before the PR into main",
+        "inputs": "plan.dd.md + this impl-guide + full branch diff; priority = plan promises, composition seams, interface drift, correctness, contract-test gaps",
+        "model_override": "cross-model: not the PM model; prime picks at packet time"
+      }
+    },
+    {
+      "name": "risks",
+      "value": [
+        {
+          "id": "r1",
+          "text": "Replay after a gap double-injects a message the pointer worker already announced. Check: #342 inject→ack is idempotent on the queue row; the pointer line may already be in the pane (pre-existing), but the BODY must appear once."
+        },
+        {
+          "id": "r2",
+          "text": "Reconnect storm when the daemon is down for long: bounded backoff capped at 5s, single in-flight attach, abort on session end."
+        },
+        {
+          "id": "r3",
+          "text": "Key file read before the new daemon has written it → transient auth failure: one retry per backoff cycle, not a tight loop."
+        },
+        {
+          "id": "r4",
+          "text": "Cursor is per machine alias; a federation daemon may hand cursors for several aliases. Track a map, send the whole map."
+        }
+      ]
+    }
+  ]
+}

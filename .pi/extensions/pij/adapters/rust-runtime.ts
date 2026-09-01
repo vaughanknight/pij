@@ -32,6 +32,7 @@ interface RustBootInput extends Omit<BootInput, "id"> {
 	readonly runtimeBin: "pi" | "omp";
 	readonly piSessionId?: string;
 	readonly reason: SessionShutdownReason | "startup";
+	readonly notice?: (text: string) => void;
 }
 
 export class RustRuntimeSession {
@@ -93,6 +94,7 @@ export class RustRuntimeSession {
 			input,
 			replacing ? previousSelf : undefined,
 		);
+		const continuityRegistration = registrationFor(id, procStart, input);
 		const accepted = await this.client.register(registration);
 		for (const seat of seats) this.registry.seed(fromRustDescriptor(seat));
 		if (replacing && previousSelf) this.registry.dissolve(previousSelf);
@@ -110,16 +112,27 @@ export class RustRuntimeSession {
 					this.session.capture("daemon_event", frame);
 					return;
 				}
+				const consumed = this.pushedChain.then(() =>
+					this.consumePushed(frame.event.payload, seat, client),
+				);
+				this.pushedChain = consumed.catch(() => undefined);
+				return consumed;
+			},
+			(error) => this.session.capture("daemon_event_error", { message: error.message }),
+			(notice) => {
+				input.notice?.(notice);
+				if (!notice.startsWith("pij: re-attached")) return;
+				const seat = this.self;
+				const client = this.client;
 				this.pushedChain = this.pushedChain
-					.then(() => this.consumePushed(frame.event.payload, seat, client))
+					.then(() => this.ensureRegistration(seat, client, continuityRegistration))
 					.catch((error: unknown) => {
 						this.session.capture("daemon_event_error", {
 							message: error instanceof Error ? error.message : String(error),
-							frame,
+							stage: "reattach-registration",
 						});
 					});
 			},
-			(error) => this.session.capture("daemon_event_error", { message: error.message }),
 		);
 		return { id: boot.id, role: boot.role };
 	}
@@ -181,6 +194,18 @@ export class RustRuntimeSession {
 
 	eventCount(type?: string): number {
 		return type === undefined ? this.eventLog.count() : this.eventLog.read({ type }).length;
+	}
+
+	private async ensureRegistration(
+		seat: string,
+		client: PijDaemonClient,
+		registration: Registration,
+	): Promise<void> {
+		if (this.self !== seat) return;
+		const seats = await client.seats();
+		if (this.self !== seat || seats.some((candidate) => candidate.id === seat)) return;
+		const accepted = await client.register(registration);
+		if (this.self === seat) this.registry.writeExact(fromRustDescriptor(accepted));
 	}
 
 	private async consumePushed(
