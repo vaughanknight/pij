@@ -99,3 +99,24 @@ wiring showing register's explicit-id path preserved · phonehome served by rs f
 an rs seat, never legacy · gate VERDICT BLOCK · and anything in the contract you
 find wrong. Every unit on this plan so far has returned a real contract flaw —
 u-route found two, one of which was the PM's. It is wanted, not tolerated.
+
+## 7. ADDENDUM — what wave 1 shipped (read this; the packet above predates it)
+
+Read `assets/composition-wave1.md`. Three things change for you:
+
+1. **The shim ASKS rs what it serves.** Your handler goes live with ZERO shim
+   edits — do NOT touch `.pi/extensions/pij/**`; wave 1 owns it. The `adopt`,
+   `whoami` and `phonehome` rows already exist and are waiting for you.
+2. **rs checks auth BEFORE matching the route**, so a 401 can MASK a route that
+   does not exist. Expect that while testing a brand-new endpoint: a missing key
+   looks exactly like a missing handler.
+3. **ac-1141's end-to-end arm is RED and it is YOURS to close.** u-route declared
+   it honestly rather than laundering it. Cite that declared red and show it going
+   green — that is the plan's headline row.
+
+Gate note: read the exit code ADJACENT to the bare command with NO pipe. I made
+this exact mistake composing wave 1 — piping to `tail` reports `tail`'s status,
+not the gate's. Redirect to a file instead.
+Known repo property: `tsc --noEmit` EXCLUDES `**/*.test.ts`, so a green typecheck
+does NOT cover your tests. Known pre-existing red, NOT yours:
+`npm-resolution-policy.integration.test.ts` (npm 11.5.1 vs `.npmrc` min-release-age).
