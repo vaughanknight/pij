@@ -6,6 +6,7 @@
 mod auth;
 mod client;
 mod exposure;
+mod report;
 mod types;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -27,7 +28,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
-use pij_core::model::{Envelope, ErrorKind, Event, Harness, Msg, SeatDescriptor, SeatId, Seq};
+use pij_core::model::{
+    Envelope, ErrorKind, Event, Harness, Msg, SeatDescriptor, SeatId, SemanticState, Seq,
+};
 use pij_core::names::memorable_pij_id_candidates;
 use pij_core::ports::{LaunchCommand, Registry, SeatFilter};
 use pij_core::wire;
@@ -93,10 +96,16 @@ enum Endpoint {
     /// only producer would be hand-written SQL, which proves nothing about the
     /// shipped surface.
     Sidecar,
+    /// The whole `report` family, on one path.
+    ///
+    /// One endpoint rather than six because the shim routes by VERB and hands
+    /// the daemon the caller's `argv` untouched; the leaf is the second token of
+    /// that argv, not a second path.
+    Report,
 }
 
 impl Endpoint {
-    const ALL: [Self; 10] = [
+    const ALL: [Self; 11] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -107,6 +116,7 @@ impl Endpoint {
         Self::Seats,
         Self::Events,
         Self::Sidecar,
+        Self::Report,
     ];
 
     const fn path(self) -> &'static str {
@@ -121,6 +131,7 @@ impl Endpoint {
             Self::Seats => "/v1/seats",
             Self::Events => "/v1/events",
             Self::Sidecar => "/v1/sidecar",
+            Self::Report => "/v1/report",
         }
     }
 
@@ -131,7 +142,8 @@ impl Endpoint {
             | Self::Revive
             | Self::Send
             | Self::InboxAck
-            | Self::Sidecar => Method::POST,
+            | Self::Sidecar
+            | Self::Report => Method::POST,
             Self::Health | Self::Inbox | Self::Seats | Self::Events => Method::GET,
         }
     }
@@ -192,6 +204,7 @@ fn router_with_optional_federation(
                     | Endpoint::Send
                     | Endpoint::InboxAck
                     | Endpoint::Sidecar
+                    | Endpoint::Report
             ) {
                 Method::POST
             } else {
@@ -209,6 +222,7 @@ fn router_with_optional_federation(
             Endpoint::Seats => router.route(endpoint.path(), get(seats)),
             Endpoint::Events => router.route(endpoint.path(), get(events)),
             Endpoint::Sidecar => router.route(endpoint.path(), post(sidecar)),
+            Endpoint::Report => router.route(endpoint.path(), post(report)),
         };
     }
     router
@@ -943,6 +957,270 @@ fn system_time_ms() -> Result<u64> {
         message: "system clock exceeds the supported millisecond range".to_string(),
     })
 }
+/// What the shim and the rs CLI send to `/v1/report`.
+///
+/// `argv` is the caller's own `process.argv.slice(2)`, verb included and
+/// otherwise untouched. The SEAT is a separate field because `report` is
+/// FIRST-PERSON testimony and its subject is never typed: the TypeScript
+/// generation resolves the reporting seat from the caller's environment
+/// (`resolveReportingSelf`, `.pi/extensions/pij/core/cli.ts:1992`), which is a
+/// place the daemon cannot see. So the caller forwards it, and this handler
+/// treats it as a CLAIM to check against the registry, never as an identity to
+/// trust.
+#[derive(Debug, Deserialize)]
+struct ReportRequest {
+    /// The reporting seat, sent explicitly. This is what `pij-rs report …` uses:
+    /// the CLI resolves the seat client-side, where the environment actually is.
+    #[serde(default)]
+    seat: Option<String>,
+    /// The forwarded caller context. The shim sends an allowlisted set of
+    /// environment facts rather than a blanket dump; only the session id
+    /// identifies the seat, so only it is read here — a field this handler does
+    /// not consult is a field it cannot be misled by.
+    #[serde(default)]
+    caller: Option<CallerContext>,
+    argv: Vec<String>,
+}
+
+/// The forwarded caller facts this handler reads.
+///
+/// The alias exists because the field crosses a runtime boundary by NAME: the
+/// TypeScript side writes the key, Rust reads it, and nothing but agreement
+/// between two files keeps them matching. Accepting both spellings is not
+/// tolerance of drift — it is one field with the wire name pinned beside the
+/// Rust name where a reader of either can see the other.
+#[derive(Debug, Deserialize)]
+struct CallerContext {
+    #[serde(default, alias = "PIJ_SESSION_ID", alias = "pijSessionId")]
+    pij_session_id: Option<String>,
+}
+
+/// What a successful report answers with.
+///
+/// `line` is the human sentence the TypeScript CLI prints today
+/// (`reported by <seat>: "<did>" → "<next>" (spine <n>)`). It travels in the
+/// payload because the ANSWER is half of "the same shapes callers already type",
+/// and the routed path is not in this unit's hands: giving the shim a rendered
+/// line means it can print one without re-deriving the wording from fields, and
+/// without a second copy of the sentence living on the far side of the wire.
+#[derive(Debug, serde::Serialize)]
+struct ReportReceipt {
+    seat: String,
+    seq: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    did: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state: Option<SemanticState>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
+    line: String,
+}
+
+/// `POST /v1/report` — the whole report family (ac-1142, ac-1144).
+///
+/// Every refusal below answers 400 with an envelope. None answers a bare 404:
+/// wave 1's shim reads that shape as ROUTE ABSENCE and falls back to legacy, so
+/// a refusal wearing it would not refuse anything — it would write the caller's
+/// report into the other generation's store while reporting success.
+async fn report(State(state): State<AppState>, Json(request): Json<ReportRequest>) -> Response {
+    let command = "pij report";
+
+    // Identity first: nothing else is meaningful without a subject, and a report
+    // attributed by guess is worse than no report at all.
+    let Some(claimed) = request
+        .seat
+        .or_else(|| request.caller.and_then(|caller| caller.pij_session_id))
+        .filter(|id| !id.trim().is_empty())
+    else {
+        return refused(
+            command,
+            "no reporting seat was supplied. `report` is first-person and its subject is never \
+             typed, so the caller must forward it: send `seat`, or a `caller` carrying \
+             PIJ_SESSION_ID. Refusing rather than attributing this card by guess.",
+        );
+    };
+    let seat = SeatId::from(claimed.trim());
+
+    // The claim, checked. `ReportService::now` appends to the spine WITHOUT
+    // consulting the registry — correct for a service whose caller has already
+    // resolved the seat, and the reason this check cannot be skipped here: a card
+    // for a seat rs does not hold would otherwise land in the rs spine under a
+    // name rs has never heard of, invisible to the store the seat really lives
+    // in, with every surface reporting success. That is the split-brain this
+    // plan exists to prevent.
+    match state.services.registry.get(&seat).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return refused(
+                command,
+                format!(
+                    "reporting seat '{seat}' is not registered in this rs store, so rs has no \
+                     card to write for it. If the seat lives in the legacy store, its report \
+                     belongs there: PIJ_DAEMON_GENERATION=legacy pij report …"
+                ),
+            );
+        }
+        Err(error) => return internal(command, error),
+    }
+
+    let call = match report::parse_report(&request.argv) {
+        Ok(call) => call,
+        Err(refusal) => return refused(command, refusal),
+    };
+
+    let clock = match system_time_ms() {
+        Ok(now) => now,
+        Err(error) => return internal(command, error),
+    };
+    let reports = pij_core::report::ReportService::new(
+        state.services.registry.as_ref(),
+        state.services.spine.as_ref(),
+        move || clock,
+        pij_core::report::ReportConfig::default(),
+    );
+
+    match call {
+        report::ReportCall::Now {
+            did,
+            next,
+            state: declared,
+            note,
+        } => {
+            // TypeScript writes the state THEN the status, under one lock
+            // (`core/cli.ts:1631`). rs's two ports offer no cross-port
+            // transaction, so the order is kept and a partial result is reported
+            // as the partial result it is — `pij_core::report` makes the same
+            // choice for the same reason, and inventing a rollback story here
+            // would be a second, false account of the same failure.
+            if let Some(declared) = declared
+                && let Err(error) = reports
+                    .declare(&seat, Some(declared), note.as_deref())
+                    .await
+            {
+                return report_failure(command, error);
+            }
+            match reports.now(&seat, &did, &next).await {
+                Ok(seq) => {
+                    let line = format!(
+                        "reported by {seat}: \"{did}\" → \"{next}\" (spine {})",
+                        seq.0
+                    );
+                    envelope(
+                        StatusCode::OK,
+                        &Envelope::ok(
+                            command,
+                            ReportReceipt {
+                                seat: seat.to_string(),
+                                seq: seq.0,
+                                did: Some(did),
+                                next: Some(next),
+                                state: declared,
+                                note,
+                                line,
+                            },
+                        ),
+                    )
+                }
+                Err(error) => report_failure(command, error),
+            }
+        }
+        report::ReportCall::State(declared) => {
+            declaration_response(command, &reports, &seat, Some(declared), None).await
+        }
+        report::ReportCall::Blocked(note) => {
+            declaration_response(
+                command,
+                &reports,
+                &seat,
+                Some(SemanticState::Blocked),
+                Some(note),
+            )
+            .await
+        }
+        report::ReportCall::Question(note) => {
+            declaration_response(
+                command,
+                &reports,
+                &seat,
+                Some(SemanticState::Question),
+                Some(note),
+            )
+            .await
+        }
+        report::ReportCall::Clear => {
+            declaration_response(command, &reports, &seat, None, None).await
+        }
+    }
+}
+
+/// One answer shape for every state declaration, `clear` included — `clear` is a
+/// declaration of `None`, not a different operation, and giving it its own arm
+/// would be a second place for the same sentence to be written.
+async fn declaration_response<R, S, C>(
+    command: &str,
+    reports: &pij_core::report::ReportService<'_, R, S, C>,
+    seat: &SeatId,
+    declared: Option<SemanticState>,
+    note: Option<String>,
+) -> Response
+where
+    R: Registry + ?Sized,
+    S: pij_core::ports::Spine + ?Sized,
+    C: Fn() -> u64,
+{
+    match reports.declare(seat, declared, note.as_deref()).await {
+        Ok(seq) => {
+            let line = match declared {
+                Some(state) => match &note {
+                    Some(note) => format!("{seat} is {state:?}: {note} (spine {})", seq.0),
+                    None => format!("{seat} is {state:?} (spine {})", seq.0),
+                },
+                None => format!("{seat} cleared its declared state (spine {})", seq.0),
+            };
+            envelope(
+                StatusCode::OK,
+                &Envelope::ok(
+                    command,
+                    ReportReceipt {
+                        seat: seat.to_string(),
+                        seq: seq.0,
+                        did: None,
+                        next: None,
+                        state: declared,
+                        note,
+                        line,
+                    },
+                ),
+            )
+        }
+        Err(error) => report_failure(command, error),
+    }
+}
+
+/// Refusal or adapter fault — told apart, because only one of them is a bug.
+///
+/// `ReportTooLong` is the caller's mistake and answers 400 with the limit named;
+/// a storage failure is ours and answers 500. Collapsing them would either blame
+/// the caller for our fault or hide our fault as their mistake.
+fn report_failure(command: &str, error: PijError) -> Response {
+    match error {
+        PijError::ReportTooLong { len, limit } => refused(
+            command,
+            format!(
+                "report text is {len} characters, over the {limit}-character limit after \
+                 whitespace collapsing"
+            ),
+        ),
+        PijError::NoRegistryEntry { seat, store } => refused(
+            command,
+            format!("reporting seat '{seat}' is not registered in {store}"),
+        ),
+        other => internal(command, other),
+    }
+}
+
 fn refused(command: &str, reason: impl std::fmt::Display) -> Response {
     envelope(
         StatusCode::BAD_REQUEST,

@@ -182,6 +182,25 @@ enum Command {
         #[command(subcommand)]
         action: SidecarAction,
     },
+    /// Record this seat's now/next card, or declare its semantic state.
+    ///
+    /// The arguments are passed to the daemon UNPARSED, verb included, so the
+    /// grammar has exactly one implementation and the two surfaces cannot drift:
+    ///
+    ///   pij-rs report now "<did>" "<next>" [--state <word>] [--note <text>]
+    ///   pij-rs report state <ready|waiting|hold|blocked|question|done>
+    ///   pij-rs report blocked|question "<text>"
+    ///   pij-rs report clear
+    Report {
+        /// The reporting seat. Defaults to `PIJ_SESSION_ID`, which is where a
+        /// seat's own identity lives; it is a CLAIM the daemon checks against
+        /// its registry, never an identity the daemon takes on trust.
+        #[arg(long)]
+        seat: Option<String>,
+        /// The report arguments, exactly as they would be typed.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// List registered seats.
     List,
     /// Follow daemon event and peer-state frames until interrupted.
@@ -479,6 +498,34 @@ async fn run(cli: Cli) -> ExitCode {
                 .await,
             cli.json,
         ),
+        Command::Report { seat, args } => {
+            let Some(seat) = seat
+                .or_else(|| std::env::var("PIJ_SESSION_ID").ok())
+                .map(|id| id.trim().to_string())
+                .filter(|id| !id.is_empty())
+            else {
+                return emit(
+                    &setup_refusal::<Value>(
+                        "pij report",
+                        PijError::Adapter {
+                            adapter: "pij report".to_string(),
+                            message: "no reporting seat: `report` is first-person and its \
+                                      subject is never typed. Pass --seat <id>, or run where \
+                                      PIJ_SESSION_ID is set."
+                                .to_string(),
+                        },
+                    ),
+                    cli.json,
+                );
+            };
+            // The verb the caller typed is re-attached, because the daemon's
+            // grammar parses the same argv the TypeScript CLI receives — verb
+            // included — and stripping it here would make this surface a second,
+            // subtly different dialect of the same command.
+            let mut argv = vec!["report".to_string()];
+            argv.extend(args);
+            emit(&client.report(&SeatId::from(seat), &argv).await, cli.json)
+        }
         Command::List => emit(&client.list().await, cli.json),
         Command::Tail { since } => {
             let since = match cursor_map(since) {
@@ -905,6 +952,7 @@ impl Command {
             Command::Spawn { .. } => "pij spawn",
             Command::Revive { .. } => "pij revive",
             Command::Inbox { .. } => "pij inbox",
+            Command::Report { .. } => "pij report",
             Command::List => "pij list",
             Command::Tail { .. } => "pij tail",
         }
@@ -934,7 +982,10 @@ mod tests {
             names,
             [
                 "daemon", "ping", "register", "spawn", "revive", "send", "inbox", "sidecar",
-                "list", "tail"
+                // `report` (plan 114, u-report). Adding a verb to this roster is
+                // meant to be a DELIBERATE act that fails this test first — which
+                // is exactly what it did.
+                "report", "list", "tail"
             ]
         );
     }

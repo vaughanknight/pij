@@ -149,6 +149,25 @@ impl DaemonClient {
         self.post("pij sidecar", "/v1/sidecar", request).await
     }
 
+    /// Report this seat's card or declared state.
+    ///
+    /// The CLI FORWARDS `argv` rather than parsing it: the daemon owns the
+    /// grammar, so there is exactly one implementation of the argument shapes
+    /// and the two surfaces cannot drift into disagreeing about what
+    /// `pij report now` means.
+    ///
+    /// The seat is resolved HERE, client-side, because that is where the
+    /// environment is. The daemon sees a claim and checks it against the
+    /// registry; it never derives identity from what it was told.
+    pub async fn report(&self, seat: &SeatId, argv: &[String]) -> Envelope<Value> {
+        self.post(
+            "pij report",
+            "/v1/report",
+            &serde_json::json!({ "seat": seat.to_string(), "argv": argv }),
+        )
+        .await
+    }
+
     /// List the local authority plus typed remote availability.
     pub async fn list(&self) -> Envelope<FederatedRoster> {
         self.get("pij list", "/v1/seats").await
