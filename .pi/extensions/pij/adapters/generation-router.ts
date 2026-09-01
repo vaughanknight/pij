@@ -16,7 +16,12 @@
 import { readFile as fsReadFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { DaemonRefusalError, decodeEnvelope, PijNoDaemonError } from "../core/daemon-wire.js";
+import {
+	DaemonRefusalError,
+	decodeEnvelope,
+	PijNoDaemonError,
+	PijWireSkewError,
+} from "../core/daemon-wire.js";
 import {
 	buildCallerContext,
 	classifyRsResponse,
@@ -50,7 +55,9 @@ export interface GenerationRouterDeps {
 	readonly seatInLegacy?: ((id: string) => boolean) | undefined;
 	/** Does the rs store hold this seat? Absent = the question was not asked;
 	 *  absence is never read as "no". */
-	readonly seatInRs?: ((id: string) => Promise<boolean> | boolean) | undefined;
+	readonly seatInRs?:
+		| ((id: string) => Promise<boolean | "unreadable"> | boolean | "unreadable")
+		| undefined;
 	/** Where the caller is running. */
 	readonly cwd?: (() => string) | undefined;
 	/** The caller's own pid, and when that process started. The pair matters:
@@ -95,7 +102,13 @@ export type RsProbe =
 	| { readonly kind: "auth-rejected"; readonly location: DaemonLocation }
 	/** rs is live, but we hold no key at all — a different fact from "rs
 	 *  refused our key", and it must stay different. */
-	| { readonly kind: "no-credentials"; readonly location: DaemonLocation };
+	| { readonly kind: "no-credentials"; readonly location: DaemonLocation }
+	/** Something answered at the addr and we could not interpret it. */
+	| {
+			readonly kind: "unreadable";
+			readonly location: DaemonLocation;
+			readonly detail: string;
+	  };
 
 /** Probe rs THROUGH the shipped detector, and translate its three shipped
  *  outcomes into ours.
@@ -118,6 +131,9 @@ export async function probeRs(deps: GenerationRouterDeps): Promise<RsProbe> {
 		return generation.kind === "rust" ? { kind: "live", location } : { kind: "absent", location };
 	} catch (error) {
 		if (error instanceof PijNoDaemonError) return { kind: "absent", location };
+		if (error instanceof PijWireSkewError) {
+			return { kind: "unreadable", location, detail: error.message };
+		}
 		if (error instanceof DaemonRefusalError && error.kind === "auth") {
 			// Which auth failure? The detector raises the same error for "rs
 			// refused the key we sent" and "we had no key to send", and those
@@ -126,7 +142,14 @@ export async function probeRs(deps: GenerationRouterDeps): Promise<RsProbe> {
 				? { kind: "auth-rejected", location }
 				: { kind: "no-credentials", location };
 		}
-		throw error;
+		// NEVER rethrow. This used to `throw error`, and the entrypoint launched
+		// routing with `void`, so anything unclassifiable here — a non-pij body,
+		// a truncated response — killed the command as an unhandled rejection.
+		return {
+			kind: "unreadable",
+			location,
+			detail: error instanceof Error ? error.message : String(error),
+		};
 	}
 }
 
@@ -193,6 +216,11 @@ export async function routeVerb(
 	const probe = await probeRs(deps);
 	const addr = probe.location.addr;
 
+	if (probe.kind === "unreadable") {
+		return {
+			outcome: { kind: "rs-unreadable", verb, addr, detail: probe.detail },
+		};
+	}
 	if (probe.kind === "no-credentials") {
 		return {
 			outcome: {
@@ -437,8 +465,8 @@ export async function probeDecisionOnly(
 export function rsSeatLookup(
 	location: DaemonLocation,
 	deps: GenerationRouterDeps,
-): (id: string) => Promise<boolean> {
-	let roster: Promise<ReadonlySet<string>> | undefined;
+): (id: string) => Promise<boolean | "unreadable"> {
+	let roster: Promise<ReadonlySet<string> | undefined> | undefined;
 	return async (id: string) => {
 		roster ??= (async () => {
 			try {
@@ -455,13 +483,13 @@ export function rsSeatLookup(
 						.filter((seatId): seatId is string => seatId !== undefined),
 				);
 			} catch {
-				// Unanswerable. Returning an empty roster here would assert "rs
-				// does not have this seat", which is a claim we cannot make — so
-				// the caller sees `false` only for a roster we actually read.
-				return undefined as unknown as ReadonlySet<string>;
+				// Unanswerable. An empty roster would assert "rs does not have
+				// this seat" — a VERIFIED NEGATIVE we never verified, and the
+				// route that turns it into a silent legacy follow.
+				return undefined;
 			}
 		})();
 		const resolved = await roster;
-		return resolved === undefined ? false : resolved.has(id);
+		return resolved === undefined ? "unreadable" : resolved.has(id);
 	};
 }
