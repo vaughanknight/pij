@@ -42,6 +42,11 @@ pub struct InboxClaim {
 
 type Clock = dyn Fn() -> Result<u64> + Send + Sync;
 
+struct DeliverySources {
+    id_prefix: u64,
+    clock: Arc<Clock>,
+}
+
 /// Routes messages immediately when possible and durably queues temporary failures.
 ///
 /// A `Queued` receipt is created only after [`Queue::enqueue`] succeeds. Every
@@ -92,8 +97,10 @@ impl DeliveryService {
             tmux,
             interaction,
             event_bus,
-            u64::from_be_bytes(prefix),
-            Arc::new(system_time_ms),
+            DeliverySources {
+                id_prefix: u64::from_be_bytes(prefix),
+                clock: Arc::new(system_time_ms),
+            },
         ))
     }
 
@@ -104,8 +111,7 @@ impl DeliveryService {
         tmux: Arc<dyn TmuxPort>,
         interaction: Arc<InteractionGate>,
         event_bus: Arc<EventBus>,
-        id_prefix: u64,
-        clock: Arc<Clock>,
+        sources: DeliverySources,
     ) -> Self {
         Self {
             registry,
@@ -114,9 +120,9 @@ impl DeliveryService {
             tmux,
             interaction,
             event_bus,
-            id_prefix,
+            id_prefix: sources.id_prefix,
             next_id: AtomicU64::new(0),
-            clock,
+            clock: sources.clock,
         }
     }
 
@@ -223,12 +229,15 @@ impl DeliveryService {
                 }
             }
             DeliveryRoute::Transport => {
-                // Fresh at the send boundary: the gate discharges both pane-facing
-                // inputs to `select_rung`. A veto queues; it never falls through to
-                // either socket or tmux delivery.
-                let interaction_permits = match recipient.pane.as_deref() {
-                    Some(pane) => self.interaction.permits_injection_fresh(pane).await?,
-                    None => true,
+                // One fresh verdict supplies policy permission and the actual
+                // composer state. A policy veto queues every pane path; an
+                // expired non-empty draft may still use a socket, never tmux.
+                let (interaction_permits, composer_idle) = match recipient.pane.as_deref() {
+                    Some(pane) => {
+                        let verdict = self.interaction.fresh_injection_verdict(pane).await?;
+                        (verdict.permitted, verdict.composer_idle)
+                    }
+                    None => (true, true),
                 };
                 let socket_available = if interaction_permits {
                     self.transport.can_deliver(&recipient, &msg).await?
@@ -247,7 +256,7 @@ impl DeliveryService {
                         &msg,
                         socket_available,
                         !interaction_permits,
-                        interaction_permits,
+                        composer_idle,
                     )
                 };
 
@@ -516,10 +525,16 @@ impl DeliveryService {
     }
 
     async fn publish_outcome(&self, seat: &SeatId, receipt: &Receipt) -> Result<()> {
+        let transport = match &receipt.outcome {
+            DeliveryOutcome::Delivered {
+                origin: DeliveryOrigin::TypedToPane,
+            } => "tmux",
+            _ => self.transport.name(),
+        };
         let payload = serde_json::to_string(&OutcomeEvent {
             msg_id: &receipt.msg_id,
             outcome: &receipt.outcome,
-            transport: self.transport.name(),
+            transport,
         })
         .map_err(|error| PijError::Adapter {
             adapter: "daemon/delivery".to_string(),
@@ -648,7 +663,9 @@ mod tests {
     use serde_json::Value;
     use tokio_stream::StreamExt;
 
-    use super::{DeliveryService, OUTCOME_EVENT_KIND, PUSHED_EVENT_KIND, delivery_job};
+    use super::{
+        DeliveryService, DeliverySources, OUTCOME_EVENT_KIND, PUSHED_EVENT_KIND, delivery_job,
+    };
     use crate::events::EventBus;
     use crate::pointer::{POINTER_PARKED_EVENT_KIND, POINTER_UNPARKED_EVENT_KIND};
 
@@ -730,8 +747,10 @@ mod tests {
             tmux,
             interaction,
             bus,
-            1,
-            Arc::new(|| Ok(1_002)),
+            DeliverySources {
+                id_prefix: 1,
+                clock: Arc::new(|| Ok(1_002)),
+            },
         );
 
         let claims = service
@@ -777,8 +796,10 @@ mod tests {
             Arc::clone(&tmux) as Arc<dyn TmuxPort>,
             Arc::clone(&interaction),
             bus,
-            0xfeed,
-            Arc::new(|| Ok(1_234)),
+            DeliverySources {
+                id_prefix: 0xfeed,
+                clock: Arc::new(|| Ok(1_234)),
+            },
         ));
         Fixture {
             service,
@@ -897,7 +918,7 @@ mod tests {
 
         let receipt = fixture
             .service
-            .send("pij-from".into(), recipient.id, "complete body")
+            .send("pij-from".into(), recipient.id.clone(), "complete body")
             .await
             .expect("socketless pane delivery");
 
@@ -922,6 +943,17 @@ mod tests {
             "the immediate path must submit the canonical full frame: {:?}",
             fixture.tmux.calls()
         );
+        let events = fixture
+            .spine
+            .tail(Some(&recipient.id), Seq(0))
+            .await
+            .expect("typed audit events");
+        let outcome = events
+            .iter()
+            .find(|event| event.kind == OUTCOME_EVENT_KIND)
+            .expect("typed outcome event");
+        let outcome: Value = serde_json::from_str(&outcome.payload).expect("outcome json");
+        assert_eq!(outcome["transport"], "tmux");
     }
 
     /// A pane presenting a composer with CONTENT, cursor parked at its end.
@@ -983,6 +1015,41 @@ mod tests {
                 origin: DeliveryOrigin::InjectedToTransport
             },
             "a parked draft must DELAY delivery, never block it forever"
+        );
+    }
+
+    #[tokio::test]
+    async fn expired_nonempty_draft_still_vetoes_typed_body_delivery() {
+        let idle = Duration::from_millis(30);
+        let fixture =
+            fixture_with_gate_and_idle(FakeTransport::unreachable(), typing_pane("%typed"), idle);
+        let mut recipient = bound("pij-typed-draft");
+        recipient.pane = Some("%typed".to_string());
+        register(&fixture, recipient.clone()).await;
+
+        let first = fixture
+            .service
+            .send("pij-from".into(), recipient.id.clone(), "wait first")
+            .await
+            .expect("fresh draft queues");
+        assert_eq!(first.outcome, DeliveryOutcome::Queued);
+
+        tokio::time::sleep(idle * 3).await;
+        let second = fixture
+            .service
+            .send("pij-from".into(), recipient.id, "wait after expiry")
+            .await
+            .expect("stale draft still queues typed body");
+
+        assert_eq!(second.outcome, DeliveryOutcome::Queued);
+        assert_eq!(fixture.queue.live_len(), 2);
+        assert!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .all(|call| !call.starts_with("submit:")),
+            "policy expiry may permit sockets but must not type into non-empty composer"
         );
     }
 

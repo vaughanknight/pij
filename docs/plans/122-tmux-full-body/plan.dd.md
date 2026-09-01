@@ -53,12 +53,12 @@ Ruling rulings/2026-09-01-tmux-types-full-bodies.md (vendored in assets/inputs/)
 
 | id | claim | state | note | receipt | pressure | proven_by | text |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| ac-1 | — | [ ] unchecked | — | — | — | — | Live witness: a hand-started copilot or codex CLI pane seat registered in rs receives a pij send as the FULL framed body typed+submitted into its pane — witnessed in the pane, no pij inbox involved |
-| ac-2 | — | [ ] unchecked | — | — | — | — | A 3000+ byte body arrives byte-intact in the pane (proven against the 1022-byte pty hazard; test red first on naive send-keys) |
-| ac-3 | — | [ ] unchecked | — | — | — | — | Typing veto still wins: with the pane's composer holding human keystrokes, delivery queues and retries — the body is never spliced into a human's draft (test from a composer with content) |
-| ac-4 | — | [ ] unchecked | — | — | — | — | Framing: head and tail markers present exactly once, from framing.rs — no second formatter minted |
-| ac-5 | — | [ ] unchecked | — | — | — | — | Claude socket delivery unaffected: existing socket tests green unmodified; a socket-available seat never falls to typing |
-| ac-6 | — | [ ] unchecked | — | — | — | — | pij-gate green, typecheck green, vitest green modulo known npm-resolution pre-existing failure |
+| ac-1 | — | [x] checked | — | assets/live-pane-witnesses-2026-09-01.md — hand-run OMP and Copilot sections | — | — | Live witness: a hand-started copilot or codex CLI pane seat registered in rs receives a pij send as the FULL framed body typed+submitted into its pane — witnessed in the pane, no pij inbox involved |
+| ac-2 | — | [x] checked | — | assets/live-pane-witnesses-2026-09-01.md — 6647-byte OMP SHA-256 match; tmux regression green | — | — | A 3000+ byte body arrives byte-intact in the pane (proven against the 1022-byte pty hazard; test red first on naive send-keys) |
+| ac-3 | — | [x] checked | — | assets/live-pane-witnesses-2026-09-01.md — live Codex clobber red; final Copilot draft preserved beyond 60s; mutation tests red then green | — | — | Typing veto still wins: with the pane's composer holding human keystrokes, delivery queues and retries — the body is never spliced into a human's draft (test from a composer with content) |
+| ac-4 | — | [x] checked | — | frame_message consumed by direct and drain tests; OMP/Copilot live frames each show one head and one tail | — | — | Framing: head and tail markers present exactly once, from framing.rs — no second formatter minted |
+| ac-5 | — | [x] checked | — | pij-gate all green; socket_body_is_delivered_and_acked_without_pointer_or_retry green; parked-draft socket policy green unmodified | — | — | Claude socket delivery unaffected: existing socket tests green unmodified; a socket-available seat never falls to typing |
+| ac-6 | — | [x] checked | — | ~/.cargo/bin/cargo run --locked -p pij-testkit --bin pij-gate: all six stages green; harness checks attempted with ruled pre-existing npm-resolution failure | — | — | pij-gate green, typecheck green, vitest green modulo known npm-resolution pre-existing failure |
 
 <a id="phases"></a>
 
@@ -66,4 +66,4 @@ Ruling rulings/2026-09-01-tmux-types-full-bodies.md (vendored in assets/inputs/)
 
 | id | title | brief | state | note | receipt | depends_on | tasks | objective | delivers | key_risks |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ph-9c5e | Phase 1 — body rung + hazard proof + live witness | Single unit; PM codes it itself, reviewer after. | [ ] unchecked | — | — | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
+| ph-9c5e | Phase 1 — body rung + hazard proof + live witness | Single unit; PM codes it itself, reviewer after. | [x] checked | — | assets/live-pane-witnesses-2026-09-01.md + pij-gate all stages green | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |

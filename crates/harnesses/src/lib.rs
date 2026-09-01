@@ -21,6 +21,6 @@ pub use claude_settings::{
     plan_claude_session_start_hook, plan_inbound_accept,
 };
 pub use composer::{ComposerRegion, composer_region};
-pub use interaction::InteractionGate;
+pub use interaction::{InjectionVerdict, InteractionGate};
 pub use models::ModelCatalog;
 pub use spawn::{SpawnPlan, SpawnPlanInput, build_spawn_plan};

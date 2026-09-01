@@ -58,6 +58,15 @@ fn collapsed_eq(left: &str, right: &str) -> bool {
     left.split_whitespace().eq(right.split_whitespace())
 }
 
+/// Fresh pane facts used by one delivery decision.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InjectionVerdict {
+    /// Existing interaction policy permits an injection now.
+    pub permitted: bool,
+    /// The freshly captured composer contains no non-whitespace text.
+    pub composer_idle: bool,
+}
+
 /// Injection safety gate combining tmux mode with stateful composer interaction.
 /// `TmuxPort::user_typing` reports only `pane_in_mode`. This gate owns the other
 /// half: tap activity and recent changes to captured composer content. A recent
@@ -206,20 +215,48 @@ impl InteractionGate {
     /// non-destructive state. Cursor discovery enumerates all panes, so this adds
     /// one fleet-wide listing and one capture round-trip per gated send.
     pub async fn permits_injection_fresh(&self, pane: &str) -> Result<bool> {
+        Ok(self.fresh_injection_verdict(pane).await?.permitted)
+    }
+
+    /// Re-capture once and expose both policy permission and actual composer state.
+    ///
+    /// Socket delivery uses `permitted`: it cannot splice text into the composer.
+    /// Pane typing additionally requires `composer_idle`, even after the parked-
+    /// draft policy veto has expired. Both facts come from this one capture.
+    pub async fn fresh_injection_verdict(&self, pane: &str) -> Result<InjectionVerdict> {
         let listed = self.tmux.list_panes().await?;
         let Some(listed) = listed.into_iter().find(|listed| listed.id == pane) else {
-            return self.permits_with_additional_veto(pane, true).await;
+            let permitted = self.permits_with_additional_veto(pane, true).await?;
+            return Ok(InjectionVerdict {
+                permitted,
+                composer_idle: false,
+            });
         };
         let (Some(cursor_x), Some(cursor_y)) = (listed.cursor_x, listed.cursor_y) else {
-            return self.permits_with_additional_veto(pane, true).await;
+            let permitted = self.permits_with_additional_veto(pane, true).await?;
+            return Ok(InjectionVerdict {
+                permitted,
+                composer_idle: false,
+            });
         };
         let capture = self.tmux.capture(pane, CAPTURE_LINES).await?;
         match composer_region(&capture, cursor_x, cursor_y) {
             ComposerRegion::Recognized(content) => {
+                let composer_idle = content.chars().all(char::is_whitespace);
                 self.observe_composer_at(pane, &content, true);
-                self.permits_with_additional_veto(pane, false).await
+                let permitted = self.permits_with_additional_veto(pane, false).await?;
+                Ok(InjectionVerdict {
+                    permitted,
+                    composer_idle,
+                })
             }
-            ComposerRegion::Unrecognized => self.permits_with_additional_veto(pane, true).await,
+            ComposerRegion::Unrecognized => {
+                let permitted = self.permits_with_additional_veto(pane, true).await?;
+                Ok(InjectionVerdict {
+                    permitted,
+                    composer_idle: false,
+                })
+            }
         }
     }
 
@@ -538,6 +575,40 @@ mod tests {
         let gate = InteractionGate::new(tmux);
 
         assert!(block_on(gate.permits_injection_fresh("%108")).expect("blank permits"));
+    }
+
+    #[test]
+    fn fresh_verdict_keeps_nonempty_composer_fact_after_policy_expiry() {
+        let elapsed_ms = Arc::new(AtomicU64::new(0));
+        let started_at = Instant::now();
+        let clock_ms = Arc::clone(&elapsed_ms);
+        let capture = format!("output\n{RULE}\n❯ parked draft\n{RULE}");
+        let tmux = Arc::new(
+            FakeTmux::new()
+                .with_pane(pane(14, 2))
+                .script_capture(capture.clone())
+                .script_capture(capture),
+        );
+        let gate = InteractionGate::with_clock(
+            tmux,
+            Duration::from_secs(60),
+            Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
+        );
+
+        let fresh = block_on(gate.fresh_injection_verdict("%108")).expect("fresh draft");
+        assert!(!fresh.permitted);
+        assert!(!fresh.composer_idle);
+
+        elapsed_ms.store(60_000, Ordering::Relaxed);
+        let stale = block_on(gate.fresh_injection_verdict("%108")).expect("stale draft");
+        assert!(
+            stale.permitted,
+            "socket policy still permits an expired draft"
+        );
+        assert!(
+            !stale.composer_idle,
+            "pane typing must retain the actual non-empty composer fact"
+        );
     }
 
     #[test]

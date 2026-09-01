@@ -205,8 +205,8 @@ impl DrainWorker {
         // Fresh capture at the boundary, same reasoning as first-attempt delivery:
         // a queued retry is a real injection, so it is authorized by an observation
         // taken now rather than by the last observer tick.
-        let permits = match self.interaction.permits_injection_fresh(pane).await {
-            Ok(permits) => permits,
+        let verdict = match self.interaction.fresh_injection_verdict(pane).await {
+            Ok(verdict) => verdict,
             Err(error) => {
                 // An ERROR, not a veto, and the distinction is the whole fix.
                 // `release_or_backoff` picks ZERO delay for a body, which is
@@ -217,7 +217,7 @@ impl DrainWorker {
                 return Err(error);
             }
         };
-        if !permits {
+        if !verdict.permitted {
             return self.release_or_backoff(job_id, &job, &msg).await;
         }
 
@@ -234,9 +234,16 @@ impl DrainWorker {
                 return Err(error);
             }
         };
-        // `permits_injection_fresh` above already discharged both pane-facing
-        // guards: no typing veto and an idle composer. Do not add a second gate.
-        match select_rung(&recipient, &msg, socket_available, false, true) {
+        // The one fresh verdict above supplies both gate permission and actual
+        // composer state. Socket delivery needs only permission; pane typing also
+        // requires the composer to be blank.
+        match select_rung(
+            &recipient,
+            &msg,
+            socket_available,
+            false,
+            verdict.composer_idle,
+        ) {
             DeliveryRung::Socket => match self.transport.deliver(&recipient, &msg).await {
                 Ok(DeliveryOutcome::Delivered { origin }) => {
                     self.queue.ack_delivery(job_id, origin).await.map(|_| ())
@@ -372,8 +379,8 @@ mod tests {
     use pij_core::config::Config;
     use pij_core::delivery::delivery_kind;
     use pij_core::model::{
-        DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, ProcIdentity,
-        SeatDescriptor, SeatId,
+        DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, Pane,
+        ProcIdentity, SeatDescriptor, SeatId,
     };
     use pij_core::ports::{DeliveryEnqueue, Queue, Registry, Spine, TmuxPort, Transport};
     use pij_harnesses::InteractionGate;
@@ -420,11 +427,30 @@ mod tests {
         pointer_limit: u32,
         arrange_composers: bool,
     ) -> Fixture {
+        fixture_inner_with_idle(
+            transport,
+            tmux,
+            pointer_limit,
+            arrange_composers,
+            Duration::from_millis(60_000),
+        )
+    }
+
+    fn fixture_inner_with_idle(
+        transport: FakeTransport,
+        tmux: FakeTmux,
+        pointer_limit: u32,
+        arrange_composers: bool,
+        idle: Duration,
+    ) -> Fixture {
         let registry = Arc::new(FakeRegistry::new());
         let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
         let transport = Arc::new(transport);
         let tmux = Arc::new(tmux);
-        let interaction = Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>));
+        let interaction = Arc::new(InteractionGate::with_idle_window(
+            Arc::clone(&tmux) as Arc<dyn TmuxPort>,
+            idle,
+        ));
         let spine = Arc::new(FakeSpine::new());
         let event_bus =
             Arc::new(EventBus::new(Arc::clone(&spine) as Arc<dyn Spine>, 16).expect("event bus"));
@@ -709,6 +735,48 @@ mod tests {
                 "{label}: no pointer"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn expired_nonempty_composer_still_retries_typed_body() {
+        let idle = Duration::from_millis(30);
+        let pane = "%typed-draft";
+        let tmux = FakeTmux::new()
+            .with_pane(Pane {
+                id: pane.to_string(),
+                session: "s".to_string(),
+                window: "w".to_string(),
+                title: "t".to_string(),
+                cursor_x: Some(11),
+                cursor_y: Some(0),
+            })
+            .with_standing_capture(
+                "\u{2570}\u{2500}\u{2500}\u{2500}\u{2500} hello \u{2500}\u{256f}",
+            );
+        let fixture = fixture_inner_with_idle(FakeTransport::unreachable(), tmux, 3, false, idle);
+        register(&fixture, seat("pij-typed-draft", Some(pane))).await;
+        fixture.interaction.observe_composer(pane, "");
+        let id = enqueue(
+            &fixture,
+            &message("pij-typed-draft", "must not splice", None),
+        )
+        .await;
+
+        assert_eq!(fixture.worker.drain_once().await.expect("fresh draft"), 1);
+        tokio::time::sleep(idle * 3).await;
+        assert_eq!(fixture.worker.drain_once().await.expect("stale draft"), 1);
+
+        assert_eq!(fixture.queue.retried().len(), 2);
+        assert_eq!(fixture.queue.live_len(), 1);
+        assert_eq!(fixture.queue.attempts(id), 2);
+        assert!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .all(|call| !call.starts_with("submit:")),
+            "policy expiry may permit sockets but must not type into non-empty composer"
+        );
     }
 
     #[tokio::test]

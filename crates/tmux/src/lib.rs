@@ -406,7 +406,7 @@ impl TmuxPort for TmuxAdapter {
             while !text.is_char_boundary(end) {
                 end -= 1;
             }
-            if let Err(error) = self.paste_bytes(pane, &buffer, text[start..end].as_bytes()) {
+            if let Err(error) = self.paste_bytes(pane, &buffer, &text.as_bytes()[start..end]) {
                 let _ = self.paste_bytes(pane, &buffer, b"\x1b[201~");
                 return Err(error);
             }
