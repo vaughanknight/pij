@@ -10,7 +10,10 @@ use pij_core::model::{
 };
 use pij_daemon::delivery::InboxClaim;
 use pij_daemon::http::InboxAckRequest;
-pub use pij_daemon::http::{FederatedRoster, ReviveRequest, SpawnRequest, StreamFrame};
+pub use pij_daemon::http::{
+    CallerContext, FederatedRoster, IdentityRequest, Phonehome, ReviveRequest, SpawnRequest,
+    StreamFrame,
+};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -123,6 +126,26 @@ impl DaemonClient {
     pub async fn register(&self, registration: &Registration) -> Envelope<SeatDescriptor> {
         self.post("pij register", "/v1/register", registration)
             .await
+    }
+
+    /// Adopt this seat: the DAEMON mints the name and derives the identity.
+    ///
+    /// The body carries the argv this CLI would have typed, so the `pij-rs`
+    /// caller and the generation shim reach the daemon's parser by the same
+    /// path. Two parsers for one command line is how the two surfaces come to
+    /// disagree about what `--parent` means.
+    pub async fn adopt(&self, request: &IdentityRequest) -> Envelope<SeatDescriptor> {
+        self.post("pij adopt", "/v1/adopt", request).await
+    }
+
+    /// Ask the daemon which seat this caller is.
+    pub async fn whoami(&self, request: &IdentityRequest) -> Envelope<SeatDescriptor> {
+        self.post("pij whoami", "/v1/whoami", request).await
+    }
+
+    /// Confirm the binding `adopt` already made.
+    pub async fn phonehome(&self, request: &IdentityRequest) -> Envelope<Phonehome> {
+        self.post("pij phonehome", "/v1/phonehome", request).await
     }
 
     /// Ask the daemon to launch and record one pre-bind seat.

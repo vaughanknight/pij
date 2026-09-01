@@ -7,6 +7,7 @@ mod auth;
 mod client;
 mod exposure;
 mod report;
+mod identity;
 mod types;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -44,6 +45,7 @@ use crate::{BUILD, Services};
 pub use auth::AuthRing;
 pub use client::{PeerEndpoint, get_from_peer, post_to_peer, stream_from_peer};
 pub use exposure::{Exposure, boot_banner, exposure};
+pub use identity::{CallerContext, IdentityQuery, IdentityRequest, Phonehome};
 pub use types::{
     CursorResetDetail, FederatedRoster, InboxAckRequest, PeerStreamState, Registration,
     ReviveRequest, SendRequest, SpawnRequest, StreamFrame, UnavailablePeer,
@@ -102,10 +104,16 @@ enum Endpoint {
     /// the daemon the caller's `argv` untouched; the leaf is the second token of
     /// that argv, not a second path.
     Report,
+    /// Register this seat, with rs minting the name (plan 114, ac-1147).
+    Adopt,
+    /// Name the calling seat from the store it registered into (ac-1142).
+    Whoami,
+    /// Confirm the binding adopt already made (ac-1148).
+    Phonehome,
 }
 
 impl Endpoint {
-    const ALL: [Self; 11] = [
+    const ALL: [Self; 14] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -117,6 +125,9 @@ impl Endpoint {
         Self::Events,
         Self::Sidecar,
         Self::Report,
+        Self::Adopt,
+        Self::Whoami,
+        Self::Phonehome,
     ];
 
     const fn path(self) -> &'static str {
@@ -132,6 +143,9 @@ impl Endpoint {
             Self::Events => "/v1/events",
             Self::Sidecar => "/v1/sidecar",
             Self::Report => "/v1/report",
+            Self::Adopt => "/v1/adopt",
+            Self::Whoami => "/v1/whoami",
+            Self::Phonehome => "/v1/phonehome",
         }
     }
 
@@ -144,6 +158,9 @@ impl Endpoint {
             | Self::InboxAck
             | Self::Sidecar
             | Self::Report => Method::POST,
+            | Self::Adopt
+            | Self::Whoami
+            | Self::Phonehome => Method::POST,
             Self::Health | Self::Inbox | Self::Seats | Self::Events => Method::GET,
         }
     }
@@ -205,6 +222,9 @@ fn router_with_optional_federation(
                     | Endpoint::InboxAck
                     | Endpoint::Sidecar
                     | Endpoint::Report
+                    | Endpoint::Adopt
+                    | Endpoint::Whoami
+                    | Endpoint::Phonehome
             ) {
                 Method::POST
             } else {
@@ -223,6 +243,17 @@ fn router_with_optional_federation(
             Endpoint::Events => router.route(endpoint.path(), get(events)),
             Endpoint::Sidecar => router.route(endpoint.path(), post(sidecar)),
             Endpoint::Report => router.route(endpoint.path(), post(report)),
+            Endpoint::Adopt => router.route(endpoint.path(), post(identity::adopt)),
+            // BOTH methods on purpose. The route table flips `whoami` to POST so
+            // it can carry caller context, but a shim that has not been updated
+            // still sends GET — and axum would answer that `405` with an EMPTY
+            // body, which the shim reads as route-absence and falls back to
+            // LEGACY. Serving both turns a silent re-homing into an answer.
+            Endpoint::Whoami => router.route(
+                endpoint.path(),
+                get(identity::whoami_get).post(identity::whoami_post),
+            ),
+            Endpoint::Phonehome => router.route(endpoint.path(), post(identity::phonehome)),
         };
     }
     router
@@ -1251,6 +1282,8 @@ fn envelope<T: serde::Serialize>(status: StatusCode, body: &Envelope<T>) -> Resp
     }
 }
 
+#[cfg(test)]
+mod identity_tests;
 #[cfg(test)]
 mod tests;
 

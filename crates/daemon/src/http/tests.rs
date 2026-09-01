@@ -95,7 +95,7 @@ impl Queue for CountingQueue {
     }
 }
 
-async fn test_services(
+pub(super) async fn test_services(
     registry: Arc<FakeRegistry>,
     queue: Arc<dyn Queue>,
     spine: Arc<FakeSpine>,
@@ -127,7 +127,7 @@ async fn test_services(
     services
 }
 
-async fn spawn(router: Router) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+pub(super) async fn spawn(router: Router) -> (SocketAddr, tokio::task::JoinHandle<()>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind");
@@ -138,7 +138,7 @@ async fn spawn(router: Router) -> (SocketAddr, tokio::task::JoinHandle<()>) {
     (addr, joined)
 }
 
-fn config(local_key: &str, peer_keys: &[&str]) -> HttpConfig {
+pub(super) fn config(local_key: &str, peer_keys: &[&str]) -> HttpConfig {
     HttpConfig {
         local_key: local_key.to_string(),
         peer_keys: peer_keys.iter().map(ToString::to_string).collect(),
