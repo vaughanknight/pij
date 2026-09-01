@@ -6,58 +6,59 @@
     {
       "name": "meta",
       "value": {
-        "title": "Reviewer packet — <plan slug>",
+        "title": "Reviewer packet \u2014 s123 one-message-one-delivery",
         "role": "reviewer",
-        "plan": "docs/plans/<ord>-<slug>/plan.dd.json",
-        "seat": "<pij seat name once spawned>",
-        "updated": "<date>"
+        "plan": "docs/plans/123-one-message-one-delivery/plan.dd.json",
+        "seat": "(filled at spawn)",
+        "updated": "2026-09-01"
       }
     },
     {
       "name": "mission",
-      "value": "You are the cross-model reviewer for plan <ord>-<slug>. The composed implementation is complete on the branch below. Judge whether the code makes the plan's promises TRUE — plan fidelity, correctness, and composition seams (where units meet is where it breaks) — and return findings the PM can act on. You are read-only on the code."
+      "value": "Cross-model review of s123: a message is delivered exactly once to a pi/omp seat. READ-ONLY. Your question is the MECHANISM, not whether the coder applied it neatly. The coder already killed one prime-approved design by testing it (daemon claim-before-publish stole rows from waiting inbox readers) \u2014 assume the same rigour and go after what it could not see from inside its own fix."
     },
     {
       "name": "instructions",
       "value": [
-        { "id": "i1", "text": "Orient: read the plan (rendered .dd.md), the impl-guide (the intended decomposition + interfaces), and then the full diff of the branch against its base. DOGFOOD FLOWSPACE: use `flowspace3 search` to locate consumers/related code by meaning while reviewing; report misses as friction." },
-        { "id": "i2", "text": "Review with the /builder review discipline: verify claims against fresh evidence — run targeted tests yourself, read exit status, never trust a green claim you did not see." },
-        { "id": "i2b", "text": "Your dispatcher OWES you three lists in this packet, and you should refuse to start without them: (1) WHERE THE AUTHOR IS LEAST CONFIDENT (hunt there first), (2) an instruction to DISBELIEVE THE AUTHOR'S OWN RECEIPTS (re-derive, don't audit prose), (3) WHAT IS ALREADY KNOWN-OPEN (spend zero findings re-reporting it). Proven 2026-08-28: this brief shape bought a 4-for-4 all-confirmed zero-noise review, including a defect the author hunted for in writing and could not see from inside." },
-        { "id": "i3", "text": "Priority order: (1) plan promises that are not actually true, (2) composition-seam defects between units, (3) interface drift from the impl-guide, (4) correctness/safety in the changed code, (5) test gaps on the contract. Style noise is unwanted." },
-        { "id": "i4", "text": "Findings: at most the material ones, each with severity (CRITICAL/HIGH/MEDIUM), exact location, the claim, the proof, and the smallest fix. `no_material_findings` is a valid verdict." },
-        { "id": "i5", "text": "Deliver as a ddoc review record in the plan folder (assets/reviews/), build it, and send the PM the path + a one-line verdict." }
+        "Read plan.dd.md, impl-guide.dd.md, assets/live-delivery-transcripts.md, assets/ac-2-prefx-red.md, then the branch diff",
+        "PRIORITY 1 \u2014 ordering and failure paths: claim\u2192inject\u2192ack. Prove for yourself that a FAILED inject cannot ack (body must redeliver), and that an empty claim suppresses injection rather than injecting stale or nothing-shaped data",
+        "PRIORITY 2 \u2014 the six daemon inbox guards that killed design #1 must still be green AND still meaningful: check they were not weakened to fit the new design",
+        "PRIORITY 3 \u2014 cross-runtime seam: inbox-claim.wire.json is meant to stop the field-spelling drift that has bitten this repo repeatedly. Verify BOTH sides actually consume it rather than restating the shape; a wire artifact nobody reads is worse than none",
+        "PRIORITY 4 \u2014 version skew both directions (old extension/new daemon, new extension/old daemon): no silent body loss, no double-ack, and the failure that does occur must be LOUD",
+        "The live transcripts are evidence: check they show what they claim (one rendering, queue row terminal-acked), not merely that something arrived",
+        "Report findings to the PRIME (pij-still-weasel), never sideways to the coder. Verdict: APPROVE or findings with severity."
       ]
     },
     {
       "name": "working_with",
       "value": [
-        { "id": "w1", "text": "The PM is your counterpart: verdict and findings go to the PM; the PM may refute findings with evidence — re-judge refutations on the evidence, not on rank." },
-        { "id": "w2", "text": "You do not fix code, commit, or open PRs. If you find something outside the plan's scope, name it as a note for prime rather than expanding the review." }
+        "prime pij-still-weasel \u2014 pane %2081; pij send pij-still-weasel",
+        "coder pij-obedient-marmot \u2014 all traffic via prime"
       ]
     },
     {
       "name": "scope",
       "value": {
-        "worktree": "<read-only checkout or the pm's worktree path>",
-        "branch": "<branch under review>",
-        "fence": "read-only on code; write only assets/reviews/ in the plan folder",
-        "forbidden_note": "No code edits, no merges, no government files."
+        "worktree": "/Users/jordanknight/pi-hacking/pij-worktrees/s123-one-message-one-delivery",
+        "branch": "s123/one-message-one-delivery",
+        "fence": "READ-ONLY \u2014 review only, write nothing except your own findings file under assets/reviews/",
+        "forbidden_note": "Do not edit source, tests, or plan docs. Do not contact the coder directly."
       }
     },
     {
       "name": "done_bar",
       "value": [
-        { "id": "d1", "text": "Every plan AC judged true/false with evidence cited." },
-        { "id": "d2", "text": "Composition seams between units explicitly examined and reported." },
-        { "id": "d3", "text": "Review record ddoc written, built, and path delivered to the PM with a verdict line." }
+        "A verdict (APPROVE or findings with severity) sent to the prime",
+        "Each finding carries a concrete failure scenario, not a style preference",
+        "Say explicitly which claims you verified yourself vs took on the coder's evidence"
       ]
     },
     {
       "name": "refs",
       "value": [
-        { "id": "r0", "path": ".agents/skills/pij-team/TENETS.md", "note": "the doctrine — tenet 5: you judge diffs against contracts, not philosophy" },
-        { "id": "r1", "path": "docs/plans/<ord>-<slug>/impl-guide.dd.json", "note": "intended units + interfaces — drift from this is a finding" },
-        { "id": "r2", "path": "docs/plans/<ord>-<slug>/plan.dd.md", "note": "the promises under judgment" }
+        "assets/live-delivery-transcripts.md (ac-1 live omp witness)",
+        "assets/ac-2-prefx-red.md (pre-fix duplicate reproduced)",
+        "governance PRD req-0023"
       ]
     }
   ]
