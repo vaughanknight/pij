@@ -1163,8 +1163,8 @@ mod tests {
     fn rendered_pointer_advertises_a_verb_the_real_cli_exposes() {
         let line = pij_daemon::pointer::render_pointer(&SeatId::from("pij-sender"), None);
         let action = line
-            .split_once("run: ")
-            .map(|(_, action)| action)
+            .lines()
+            .find_map(|line| line.strip_prefix("message waiting — run: "))
             .expect("pointer must carry a runnable action");
         let mut words = action.split_whitespace();
         assert_eq!(

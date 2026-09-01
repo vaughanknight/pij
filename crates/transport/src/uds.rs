@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
+use pij_core::framing::frame_message;
 use pij_core::model::{DeliveryOrigin, DeliveryOutcome, Harness, Msg, SeatDescriptor};
 use pij_core::ports::Transport;
 use serde::{Deserialize, Serialize};
@@ -305,9 +306,9 @@ struct UserMessage<'a> {
 fn build_peer_frame(msg: &Msg, origin: &str) -> Result<String> {
     let sender = xml_attribute(msg.from.as_str());
     let from = xml_attribute(origin);
+    let framed = frame_message(&msg.from, msg.from_machine.as_deref(), &msg.body);
     let content = format!(
-        "<cross-session-message from=\"{from}\" from-name=\"{sender}\">\n[pij from {}] {}\n</cross-session-message>",
-        msg.from, msg.body
+        "<cross-session-message from=\"{from}\" from-name=\"{sender}\">\n{framed}\n</cross-session-message>"
     );
     serde_json::to_string(&PeerFrame {
         msg_v: 1,
@@ -927,6 +928,36 @@ mod tests {
         escaped.from = SeatId::from("a&b\"<c>");
         let escaped = build_peer_frame(&escaped, FIXTURE_ORIGIN).expect("escaped frame");
         assert!(escaped.contains("from-name=\\\"a&amp;b&quot;&lt;c&gt;\\\""));
+    }
+
+    #[test]
+    fn back_to_back_messages_have_two_explicit_body_boundaries() {
+        let first = build_peer_frame(&message(None), FIXTURE_ORIGIN).expect("first frame");
+        let mut second = message(None);
+        second.msg_id = "msg-uds-002".to_string();
+        second.body = "third line".to_string();
+        let second = build_peer_frame(&second, FIXTURE_ORIGIN).expect("second frame");
+        let transcript = [first, second]
+            .into_iter()
+            .map(|frame| {
+                serde_json::from_str::<Value>(&frame).expect("peer frame")["message"]["content"]
+                    .as_str()
+                    .expect("user content")
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert_eq!(
+            transcript.matches("[/pij]").count(),
+            2,
+            "each body has its own closing boundary: {transcript}"
+        );
+        assert_eq!(
+            transcript.matches("[pij-rs from pij-sender]").count(),
+            2,
+            "each body identifies the delivering generation: {transcript}"
+        );
     }
 
     #[test]

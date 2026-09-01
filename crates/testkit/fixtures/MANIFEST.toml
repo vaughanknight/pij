@@ -263,10 +263,10 @@ answer = "Authentication capability exists only when procStart and pidDomain equ
 
 [[fixture]]
 path = "uds/user-frame.ndjson"
-sha256 = "e47f50bc29a7d7f283ddcec2d7ddf8c69113b66228aec55520b50b4bed58339f"
-bytes = 322
+sha256 = "af2656728d4da0291852c86cb25e8718ee6bcdd67bd69bd9e623fd141b8a78f6"
+bytes = 334
 note = "Byte-exact frame the transport emits, with the reply address that the recipient CLI must connect back to; sender, message id and body are stable fixture values and the socket path is a fixture path."
-answer = "Exactly one newline-terminated JSON user frame carrying a ROUTABLE uds: reply address in from=, the sender name, and the ordinary pij body wrapper; no invented from-mode assertion."
+answer = "Exactly one newline-terminated JSON user frame carrying a ROUTABLE uds: reply address in from=, the sender name, and the pij-rs body wrapper closed by [/pij]; no invented from-mode assertion."
 
 [[fixture]]
 path = "uds/status-dropped.ndjson"

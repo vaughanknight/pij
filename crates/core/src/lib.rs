@@ -16,6 +16,7 @@ pub mod config;
 pub mod delivery;
 pub mod error;
 pub mod events;
+pub mod framing;
 pub mod liveness;
 pub mod model;
 pub mod names;

@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use pij_core::error::Result;
+use pij_core::framing::self_injection_matches;
 use pij_core::ports::TmuxPort;
 
 use crate::composer::{ComposerRegion, composer_region};
@@ -100,8 +101,8 @@ impl InteractionGate {
         state.last_interaction_at = Some(now);
     }
 
-    /// Record a payload about to be injected by pij. An exact, whitespace-collapsed
-    /// echo is exempt from acquiring a hold; any existing human hold survives.
+    /// Record a payload about to be injected by pij. The same message across the
+    /// legacy-to-pij-rs frame transition is exempt; any human change still holds.
     pub fn record_self_injection(&self, pane: &str, payload: &str) {
         let now = (self.clock)();
         let mut panes = self.panes.lock().expect("interaction gate mutex");
@@ -149,7 +150,7 @@ impl InteractionGate {
             let injection = state.self_injection.take();
             let explained = injection.as_ref().is_some_and(|injection| {
                 injection.payload.chars().any(|ch| !ch.is_whitespace())
-                    && (collapsed_eq(content, &injection.payload)
+                    && (self_injection_matches(&injection.payload, content)
                         || injection
                             .baseline
                             .as_deref()
@@ -357,6 +358,31 @@ mod tests {
         gate.observe_composer("%108", " [pij   from boss]\nstatus please ");
 
         assert!(block_on(gate.permits_injection("%108")).expect("self echo is exempt"));
+    }
+
+    #[test]
+    fn legacy_frame_observed_as_pij_rs_frame_remains_a_self_echo() {
+        let gate = InteractionGate::new(Arc::new(FakeTmux::new()));
+        gate.observe_composer("%108", "");
+        gate.record_self_injection("%108", "[pij from boss] status please");
+        gate.record_tap("%108");
+        gate.observe_composer("%108", "[pij-rs from boss]\nstatus please\n[/pij]");
+
+        assert!(block_on(gate.permits_injection("%108")).expect("generation transition is exempt"));
+    }
+
+    #[test]
+    fn generation_transition_with_adjacent_human_text_acquires_a_hold() {
+        let gate = InteractionGate::new(Arc::new(FakeTmux::new()));
+        gate.observe_composer("%108", "");
+        gate.record_self_injection("%108", "[pij from boss] status please");
+        gate.record_tap("%108");
+        gate.observe_composer(
+            "%108",
+            "[pij-rs from boss]\nstatus please and my reply\n[/pij]",
+        );
+
+        assert!(!block_on(gate.permits_injection("%108")).expect("adjacent human text must hold"));
     }
 
     #[test]
