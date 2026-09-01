@@ -103,6 +103,10 @@
           "kind": null
         },
         {
+          "name": "getrandom",
+          "kind": null
+        },
+        {
           "name": "pij-core",
           "kind": null
         },
