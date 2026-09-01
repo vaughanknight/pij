@@ -161,6 +161,9 @@ impl DrainWorker {
             .collect();
 
         let mut handled = 0;
+        // The first failure of the pass, surfaced only after every other
+        // recipient has had their turn.
+        let mut deferred: Option<pij_core::error::PijError> = None;
         while !kinds.is_empty() {
             let Some((job_id, job)) = self.queue.claim(&kinds, WORKER_ID).await? else {
                 break;
@@ -170,9 +173,50 @@ impl DrainWorker {
             // this pass immediately reclaim it.
             kinds.retain(|kind| kind != &job.kind);
             handled += 1;
-            self.handle_claim(job_id, job).await?;
+            // ONE RECIPIENT'S FAILURE IS NOT THE PASS'S FAILURE (plan 117).
+            //
+            // This was `self.handle_claim(job_id, job).await?`, and the `?` is
+            // the whole defect. A recipient whose pane has vanished makes
+            // `permits_injection_fresh` return Err — tmux answers `can't find
+            // pane: %N` — and that Err ended the pass before the loop could
+            // reach anyone else. Because the failing release is
+            // `Duration::ZERO`, the same job was the lowest id again on the very
+            // next tick, so the pass ended at the same place forever: observed
+            // live at attempt 20,168 while five other recipients' messages sat
+            // at attempt 0, never claimed once, for twenty-nine hours. Their
+            // senders all held a receipt reading `queued`, and it was TRUE — a
+            // durable row for a worker that would never arrive.
+            //
+            // `start_resilient_delivery_drain` already makes the TICK LOOP
+            // survive this error, with a comment naming this exact outcome. It
+            // was half the fix: the loop survived and the PASS still gave up, so
+            // the recovery hid the surrender. The `kinds.retain` two lines above
+            // was always written for a pass that CONTINUES past a recipient —
+            // suppressing this one and moving to the next is what it is for.
+            //
+            // THE ERROR IS DEFERRED, NOT SWALLOWED, and the difference is the
+            // whole safety of this change. `handle_claim` fails for two very
+            // different reasons: a per-recipient one (this pane is gone) and a
+            // systemic one (the spine will not accept an append, the transport
+            // is broken). Catching and discarding would fix the starvation and
+            // silently delete the daemon's only report that its shared
+            // dependencies are down — trading a visible outage for an invisible
+            // one, which is the trade this whole plan exists to refuse.
+            //
+            // So the pass CONTINUES past the failing recipient and still
+            // RETURNS the failure. `start_resilient_delivery_drain` logs it and
+            // ticks again, exactly as before; what changes is that the
+            // recipients behind the failure were served first. The first error
+            // is kept rather than the last: it is the one with a cause, and a
+            // later error is often its consequence.
+            if let Err(error) = self.handle_claim(job_id, job).await {
+                deferred.get_or_insert(error);
+            }
         }
-        Ok(handled)
+        match deferred {
+            Some(error) => Err(error),
+            None => Ok(handled),
+        }
     }
 
     async fn handle_claim(&self, job_id: JobId, job: Job) -> Result<()> {
@@ -1768,26 +1812,67 @@ mod tests {
         tokio::task::yield_now().await;
         tokio::time::advance(Duration::from_secs(1)).await;
         queue.ack_called.notified().await;
-        assert_eq!(
-            queue.ack_calls.load(Ordering::SeqCst),
-            1,
-            "first ack failed"
-        );
-
-        tokio::time::advance(Duration::from_secs(1)).await;
-        queue.ack_called.notified().await;
+        while queue.ack_calls.load(Ordering::SeqCst) < 2 {
+            queue.ack_called.notified().await;
+        }
+        // PLAN 117 CHANGED WHEN, NOT WHETHER. This used to assert 1 here and 2
+        // after a SECOND tick, because a failing recipient ended the pass and
+        // the next message waited for the next tick. That tick-granularity was
+        // the head-of-line block in miniature — harmless with two messages a
+        // second apart, fatal on the live fleet where the failing recipient was
+        // never going to succeed, so "the next tick" never came for anybody.
+        // The claim in the test's name is unchanged and better met: the next
+        // item IS processed after one dependency error, now in the same pass.
         assert_eq!(
             queue.ack_calls.load(Ordering::SeqCst),
             2,
-            "the production loop must process the next item after one dependency error"
+            "one dependency error must not defer the next recipient to a later tick"
+        );
+
+        // AND THE LOOP STILL SURVIVES THE ERROR — the property this test was
+        // written for (review F2), which must NOT be lost to the change above.
+        // `drain_once` still RETURNS the failure (it is deferred, not
+        // swallowed), so a TickLoop that terminated on Err would be dead by now.
+        // A THIRD message, enqueued after the failing pass, is the witness: it
+        // can only be delivered by a loop that is still ticking. Without this,
+        // the change above would have quietly deleted F2's coverage — the guard
+        // still present, no longer load-bearing.
+        registry
+            .put(seat("pij-after-error", Some("%23")))
+            .await
+            .expect("register recipient");
+        interaction.observe_composer("%23", "");
+        let later = message("pij-after-error", "after the failure", None);
+        queue
+            .enqueue(Job {
+                kind: delivery_kind(&later.to),
+                serial_key: later.to.0.clone(),
+                payload: serde_json::to_string(&later).expect("message json"),
+                dedupe_key: later.msg_id.clone(),
+                attempt: 0,
+            })
+            .await
+            .expect("enqueue after the failing pass");
+        tokio::time::advance(Duration::from_secs(1)).await;
+        while queue.ack_calls.load(Ordering::SeqCst) < 3 {
+            queue.ack_called.notified().await;
+        }
+        assert!(
+            transport
+                .delivered()
+                .iter()
+                .any(|msg| msg.to == SeatId::from("pij-after-error")),
+            "the tick loop must still be running after drain_once returned the deferred error"
         );
         assert_eq!(
             transport
                 .delivered()
                 .iter()
                 .map(|msg| msg.to.0.as_str())
+                .take(2)
                 .collect::<Vec<_>>(),
-            ["pij-first", "pij-next"]
+            ["pij-first", "pij-next"],
+            "both recipients are served, in queue order, from the pass that met the error"
         );
         loop_.shutdown().await.expect("shutdown drain loop");
     }
@@ -1878,6 +1963,73 @@ mod tests {
         assert!(
             matches!(fixture.queue.acked().as_slice(), [(_, Outcome::Done)]),
             "refused is DONE — nothing malfunctioned, and it was not delivered"
+        );
+    }
+    /// ONE DEAD RECIPIENT MUST NOT STARVE EVERY OTHER RECIPIENT (plan 117).
+    ///
+    /// Observed on the live fleet, 2026-09-01. `pij-mammoth-ostrich` held job id
+    /// 2 — the lowest-id claimable delivery job — with a pane (`%1861`) that no
+    /// longer existed and a pid (94202) that was dead, and it was not
+    /// tombstoned. So it passed `drain_once`'s kinds filter (`pane.is_some()`,
+    /// which tests whether the pane FIELD is set, never whether the pane
+    /// EXISTS) and passed `recipient.proc.is_none()` (its proc was PRESENT,
+    /// merely stale — an absence check standing where a liveness check belongs).
+    /// It then reached `permits_injection_fresh`, tmux answered `can't find
+    /// pane: %1861`, and the `?` on `handle_claim` ended the pass.
+    ///
+    /// Every pass. The failing release is `Duration::ZERO`, so the job was the
+    /// lowest id again on the very next tick: attempt 20165 -> 20168 in sixteen
+    /// seconds, while EVERY job enqueued behind it — five other recipients, nine
+    /// messages, twenty-nine hours — sat at attempt 0 with `claimed_at` NULL,
+    /// never claimed once. The senders all held a receipt saying `queued`, and
+    /// the receipts were TRUE: the rows were durably enqueued for a worker that
+    /// would never reach them.
+    ///
+    /// `start_resilient_delivery_drain` already carries a comment describing
+    /// this exact outcome — "one dead pane ... would have ended all below-socket
+    /// delivery for the daemon's lifetime". That fix made the TICK LOOP survive
+    /// the error. It did not make the PASS survive it, so the loop lived and
+    /// re-entered the same poisoned job forever. The outer layer's recovery is
+    /// what hid the inner layer's surrender.
+    ///
+    /// The test asserts DELIVERY, not the return count: `handled` counts claims,
+    /// and a pass that claimed both and delivered to neither would satisfy a
+    /// count. What must be true is that the healthy recipient's message actually
+    /// went to their pane in the SAME pass that met the dead one.
+    #[tokio::test]
+    async fn a_recipient_whose_pane_has_vanished_does_not_starve_the_queue_behind_it() {
+        let fixture = fixture(
+            FakeTransport::reachable(),
+            FakeTmux::new().with_vanished_pane("%1861"),
+        );
+        // The dead seat is registered FIRST so its job takes the lower id and is
+        // claimed first — head-of-line is the whole subject, and a test whose
+        // ordering is incidental would pass for the wrong reason.
+        register(&fixture, seat("pij-mammoth-ostrich", Some("%1861"))).await;
+        register(&fixture, seat("pij-live-recipient", Some("%2129"))).await;
+        fixture.interaction.observe_composer("%2129", "   ");
+        enqueue(
+            &fixture,
+            &message("pij-mammoth-ostrich", "never lands", None),
+        )
+        .await;
+        let alive = message("pij-live-recipient", "must land anyway", None);
+        enqueue(&fixture, &alive).await;
+
+        // The pass MAY report the dead recipient's failure. It may not swallow
+        // the live one's message.
+        let _ = fixture.worker.drain_once().await;
+
+        assert!(
+            fixture
+                .transport
+                .delivered()
+                .iter()
+                .any(|msg| msg.to == SeatId::from("pij-live-recipient")
+                    && msg.body == "must land anyway"),
+            "a recipient whose pane vanished must not end the pass: the message \
+             queued behind it was never even claimed. delivered = {:?}",
+            fixture.transport.delivered()
         );
     }
 }
