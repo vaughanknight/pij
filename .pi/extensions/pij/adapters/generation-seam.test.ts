@@ -211,6 +211,7 @@ describe("`inbox` is DENIED, and the paneless form stays on legacy (F-U5)", () =
 				leaf: "register",
 				rsPath: "/v1/inbox/register",
 				method: "POST",
+				humanOutput: "render",
 				why: "someone re-added it",
 			},
 		]);
@@ -299,7 +300,14 @@ describe("follow-the-seat keys on the RIGHT seat (finding 5)", () => {
 });
 
 describe("rs output keeps the CLI's surface (finding 7)", () => {
-	const bare: RsRouteRow = { verb: "report", leaf: "now", rsPath: "/x", method: "POST", why: "t" };
+	const bare: RsRouteRow = {
+		verb: "report",
+		leaf: "now",
+		rsPath: "/x",
+		method: "POST",
+		humanOutput: "rs-line",
+		why: "t",
+	};
 
 	it("--json gets JSON", () => {
 		expect(renderRsAnswer(bare, { a: 1 }, ["report", "now", "--json"])).toEqual({
@@ -309,7 +317,11 @@ describe("rs output keeps the CLI's surface (finding 7)", () => {
 	});
 
 	it("a human gets the row's rendering", () => {
-		const withRender: RsRouteRow = { ...bare, render: () => "reported by pij-x" };
+		const withRender: RsRouteRow = {
+			...bare,
+			humanOutput: "render",
+			render: () => "reported by pij-x",
+		};
 		expect(renderRsAnswer(withRender, {}, ["report", "now"])).toEqual({
 			kind: "rendered",
 			text: "reported by pij-x",
@@ -508,7 +520,14 @@ describe("cross-runtime caller-key seam (item 8)", () => {
 });
 
 describe("item 7 uses u-report's `line` rather than re-deriving the sentence", () => {
-	const row: RsRouteRow = { verb: "report", leaf: "now", rsPath: "/x", method: "POST", why: "t" };
+	const row: RsRouteRow = {
+		verb: "report",
+		leaf: "now",
+		rsPath: "/x",
+		method: "POST",
+		humanOutput: "rs-line",
+		why: "t",
+	};
 
 	it("prints the payload's own line for a human caller", () => {
 		const payload = { line: 'reported by pij-x: "did" -> "next" (spine 42)' };
@@ -579,5 +598,130 @@ describe("every routed path is a path rs registers", () => {
 		const reportRows = RS_ROUTE_TABLE.filter((row) => row.verb === "report");
 		expect(reportRows).toHaveLength(5);
 		expect([...new Set(reportRows.map((row) => row.rsPath))]).toEqual(["/v1/report"]);
+	});
+});
+
+/** F-U8 — a routed row that rs SERVES but no human can read.
+ *
+ *  The shipped table had ZERO renderers, so every routed row carried this
+ *  latently and `adopt` was simply the first one anybody typed: rs minted the
+ *  seat and PERSISTED IT, and the CLI printed `E-RS: … no human renderer …` and
+ *  exited 4. The operator was told it failed; sqlite disagreed. `/pij ready`
+ *  tells a seat to verify the WRITE and never the PRINT, so a seat following the
+ *  guidance concluded adopt had failed and retried — we shipped the guidance and
+ *  then built the surface that punishes obeying it.
+ *
+ *  A failure line that persisted everything: the exact inverse of the
+ *  success-line-that-persists-nothing this plan exists to close.
+ *
+ *  These tests close the CLASS, not the instance. `humanOutput` is REQUIRED on
+ *  every row, so a future row cannot be added without saying how a human reads
+ *  it — the latency is what made this dangerous, not the missing function. */
+describe("every routed row can be read by a human (F-U8)", () => {
+	const human = (verb: string, leaf: string | undefined, payload: unknown) =>
+		renderRsAnswer(findRoute(verb, leaf), payload, leaf === undefined ? [verb] : [verb, leaf]);
+
+	it("EVERY routed row declares how a human sees it", () => {
+		const undeclared = RS_ROUTE_TABLE.filter(
+			(row) => row.humanOutput !== "render" && row.humanOutput !== "rs-line",
+		);
+		expect(undeclared).toEqual([]);
+	});
+
+	it("every row declaring `render` actually carries one", () => {
+		const promised = RS_ROUTE_TABLE.filter((row) => row.humanOutput === "render");
+		expect(promised.length).toBeGreaterThan(0);
+		expect(promised.filter((row) => row.render === undefined)).toEqual([]);
+	});
+
+	// The instance. rs adopt returns a SeatDescriptor; a human must get a
+	// sentence, and exit 0.
+	it("adopt renders instead of refusing — the write and the print now agree", () => {
+		const result = human("adopt", undefined, {
+			id: "pij-sensitive-kabe",
+			harness: "claude",
+			pane: "%2099",
+			proc: { pid: 4197, proc_start: 20260901130939 },
+			folder: "/w",
+			state: "idle",
+		});
+		expect(result.kind).toBe("rendered");
+		if (result.kind !== "rendered") throw new Error("unreachable");
+		expect(result.text).toContain("adopted pij-sensitive-kabe");
+		expect(result.text).toContain("%2099");
+		expect(result.text).toContain('pij send pij-sensitive-kabe "<text>"');
+	});
+
+	// rs has NO column for the harness session id that TS's bound form prints.
+	// Rendering it would mean inventing one, which is the split-brain in
+	// miniature — so the renderer must say what rs actually did instead.
+	it("adopt does not fabricate the harness session id rs has no column for", () => {
+		const result = human("adopt", undefined, {
+			id: "pij-x",
+			harness: "claude",
+			pane: "%1",
+			proc: { pid: 7, proc_start: 1 },
+		});
+		if (result.kind !== "rendered") throw new Error("unreachable");
+		expect(result.text).toContain("process identity");
+		expect(result.text).not.toMatch(/session\s+[0-9a-f-]{8}/);
+	});
+
+	it("a paneless adopt says so rather than printing an empty pane", () => {
+		const result = human("adopt", undefined, { id: "pij-x", proc: { pid: 7 } });
+		if (result.kind !== "rendered") throw new Error("unreachable");
+		expect(result.text).toContain("no pane");
+	});
+
+	it("whoami, phonehome and state all render for a human", () => {
+		expect(human("whoami", undefined, { id: "pij-x", folder: "/w", state: "working" }).kind).toBe(
+			"rendered",
+		);
+		expect(
+			human("phonehome", undefined, { seat: "pij-x", harness: "claude", bound: true }).kind,
+		).toBe("rendered");
+		expect(
+			human("state", undefined, { id: "pij-x", state: "working", liveness: "active" }).kind,
+		).toBe("rendered");
+	});
+
+	// NOT bound is the answer a seat most needs to act on, so it must say why
+	// rather than leaving the seat to guess whether it exists.
+	it("an unbound phonehome explains itself", () => {
+		const result = human("phonehome", undefined, {
+			seat: "pij-x",
+			harness: "claude",
+			bound: false,
+			resolved_by: "asserted seat id (existence checked only)",
+		});
+		if (result.kind !== "rendered") throw new Error("unreachable");
+		expect(result.text).toContain("NOT bound");
+		expect(result.text).toContain("asserted seat id");
+	});
+
+	it("report rows still take rs's own sentence, not a second copy here", () => {
+		const row = findRoute("report", "now");
+		expect(row?.humanOutput).toBe("rs-line");
+		expect(row?.render).toBeUndefined();
+		const result = human("report", "now", { line: 'reported by pij-x: "a" → "b" (spine 9)' });
+		expect(result).toEqual({
+			kind: "rendered",
+			text: 'reported by pij-x: "a" → "b" (spine 9)',
+		});
+	});
+
+	// The refusal is still correct and must survive: it is the thing that stops
+	// a raw blob replacing the CLI's own output. It just must not be reachable
+	// from a row rs serves.
+	it("the refusal still fires for a row that promises rs-line and gets none", () => {
+		const result = human("report", "now", { no: "line here" });
+		expect(result.kind).toBe("no-renderer");
+	});
+
+	it("--json still wins for every row", () => {
+		for (const row of RS_ROUTE_TABLE) {
+			const argv = row.leaf === undefined ? [row.verb, "--json"] : [row.verb, row.leaf, "--json"];
+			expect(renderRsAnswer(row, { id: "x" }, argv).kind).toBe("json");
+		}
 	});
 });
