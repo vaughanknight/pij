@@ -42,6 +42,7 @@ import { FsEventLog } from "./adapters/event-log.js";
 import { FsFenceStore } from "./adapters/fence-store.js";
 import { FsFocusStore } from "./adapters/focus-store.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
+import { probeDecisionOnly, routeVerb } from "./adapters/generation-router.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
 import { FsOpJournal } from "./adapters/op-journal.js";
 import { FsPlatformWriteLock } from "./adapters/platform-write-lock.js";
@@ -126,6 +127,12 @@ import {
 	resolveSelf,
 } from "./core/discovery.js";
 import { formatFocusList, launchFocus, listFocuses, saveFocus } from "./core/focus.js";
+import {
+	describeOutcome,
+	findRoute,
+	NEVER_ROUTED,
+	servedByLegacy,
+} from "./core/generation-routing.js";
 import {
 	summarizeTranscriptLine,
 	transcriptDir,
@@ -348,6 +355,7 @@ Messaging:
   pij watchdog status|pause|resume|exempt|reset|interval|watch|unwatch|list|disable-all|enable-all …   supervise peers
   pij watchdog watch|unwatch <id> [--for <seat>]     bind/unbind a watcher, or repair one on its behalf
   pij phonehome [--json]                             confirm a pending binding
+  pij generation [<verb>]                            which daemon generation (and ADDR) would serve a verb, and why
   pij path <id> [--events|--state|--dir]             resolve on-disk paths`;
 
 const WATCHDOG_USAGE = `pij watchdog — supervise peer progress
@@ -4573,11 +4581,79 @@ function main(): void {
 	process.exitCode = res.exitCode;
 }
 
+/** Generation-aware entry (plan 114, u-route).
+ *
+ *  One `pij` command, two daemon generations. This is the ONLY place routing
+ *  happens, and it contains no per-verb logic: it asks the route table whether
+ *  the typed verb has anywhere else to go, and if the answer is no — which it
+ *  is for the overwhelming majority of verbs — it calls `main()` exactly as
+ *  before, synchronously, on the same stack. An unrouted verb cannot tell that
+ *  this function exists, which is the point: the CLI's external surface is
+ *  unchanged.
+ *
+ *  When the answer is yes, the outcome decides:
+ *    served by rs      -> rs's answer is printed here; legacy never runs.
+ *    served by legacy  -> `main()` runs, and WHY it ran is available.
+ *    rs failed         -> we STOP. An rs error must never fall through to
+ *                         legacy: that would answer from the other store while
+ *                         reporting success, which is the split-brain this
+ *                         whole plan exists to prevent. */
+async function bootThroughGenerationRouting(): Promise<void> {
+	const verb = process.argv[2] ?? "";
+	if (verb === "generation") {
+		await runGenerationDiagnostic(process.argv.slice(3));
+		return;
+	}
+	// A table lookup, not a branch on the verb: `findRoute` and the deny list
+	// own the answer, and both are data.
+	const leaf = process.argv[3]?.startsWith("-") ? undefined : process.argv[3];
+	const denied = NEVER_ROUTED.some((entry) => entry.verb === verb);
+	if (denied || findRoute(verb, leaf) === undefined) {
+		main();
+		return;
+	}
+	const { outcome, payload } = await routeVerb(verb, leaf, process.argv.slice(2));
+	// Opt-in per-call trace. Always on stderr, so it can never corrupt a
+	// `--json` stdout that a caller is parsing.
+	if (process.env.PIJ_ROUTE_DIAGNOSTIC === "1") {
+		process.stderr.write(`pij route: ${describeOutcome(outcome)}\n`);
+	}
+	if (servedByLegacy(outcome)) {
+		main();
+		return;
+	}
+	if (outcome.kind === "rs") {
+		process.stdout.write(`${JSON.stringify(payload)}\n`);
+		return;
+	}
+	// rs-error / rs-auth-rejected. Loud, named, and NOT a fallback.
+	process.stderr.write(`E-RS: ${describeOutcome(outcome)}\n`);
+	process.exitCode = 4;
+}
+
+/** `pij generation [<verb>]` — the answer to "who served that, and from where".
+ *
+ *  DECIDES ONLY; it never performs the verb's own call. A diagnostic that had
+ *  to POST /v1/adopt to tell you where adopt would go would adopt you. The cost
+ *  is that it cannot report the not-implemented fallback, because only rs's
+ *  answer settles that — so it says so in as many words rather than implying a
+ *  certainty it does not have. */
+async function runGenerationDiagnostic(argv: readonly string[]): Promise<void> {
+	const json = argv.includes("--json");
+	const verbs = argv.filter((token) => !token.startsWith("-"));
+	const decisions = await probeDecisionOnly(verbs.length > 0 ? verbs : undefined);
+	if (json) {
+		process.stdout.write(`${JSON.stringify(decisions, null, 2)}\n`);
+		return;
+	}
+	for (const decision of decisions) process.stdout.write(`${decision.line}\n`);
+}
+
 if (
 	process.argv[1] !== undefined &&
 	realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
 ) {
-	main();
+	void bootThroughGenerationRouting();
 }
 
 /** How the detached `pij bg` wrapper re-enters this CLI to deliver its result.
