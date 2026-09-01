@@ -126,3 +126,59 @@ not_before: 0
 ```
 
 The composed suites were also green: focused Vitest 12/12 and `cargo test -p pij-daemon` 211/211. The terminal row means s122's drain worker had no body left to type: extension consumption produced exactly one rendering and zero additional tmux typings.
+
+## AC-4 — pinned runtime skew pairs
+
+### New extension `cd0223ef` against old daemon `a93f8f23`
+
+The OMP client loaded the clean `cd0223ef` extension while the isolated daemon binary was built and run from `a93f8f23` at `127.0.0.1:7565`. Seat `pij-functional-salmon`, pane `%2248`, rendered one body:
+
+```text
+[pij from pij-obedient-marmot] AC4-PINNED-NEWEXT-OLDDAEMON exactly-once witness
+```
+
+Queue and spine receipts:
+
+```text
+id: 2
+dedupe_key: ac4-pinned-newext-olddaemon
+state: done
+worker: pij-functional-salmon
+claimed_at: 1788255671
+acked_at: 1788255671
+attempt: 0
+
+spine: one message.pushed · one delivery.outcome · one delivery.inbox-ack
+```
+
+Result: one rendering, one acknowledgement, no retained row. The new extension interoperates with the pinned old daemon because event, claim, and ack routes were already present.
+
+### Old extension `a93f8f23` against new daemon `cd0223ef`
+
+The OMP client loaded the clean `a93f8f23` extension while the isolated daemon binary was built and run from `cd0223ef` at `127.0.0.1:7567`. Seat `pij-subtle-gamefowl`, pane `%2249`, first rendered the pushed body:
+
+```text
+[pij from pij-obedient-marmot] AC4-PINNED-OLDEXT-NEWDAEMON loud-skew witness
+```
+
+At that point queue job 1 remained `pending`, with `claimed_at: NULL` and `acked_at: NULL`: the body was retained, not silently lost or falsely acknowledged. The operator then ran the daemon inbox recovery in the same real pane and visibly received the same body again:
+
+```text
+pij inbox: ok — [{"from":"pij-obedient-marmot","to":"pij-subtle-gamefowl","body":"AC4-PINNED-OLDEXT-NEWDAEMON loud-skew witness","msg_id":"ac4-pinned-oldext-newdaemon"}]
+```
+
+Final receipts:
+
+```text
+id: 1
+dedupe_key: ac4-pinned-oldext-newdaemon
+state: done
+worker: pij-subtle-gamefowl
+claimed_at: 1788255768
+acked_at: 1788255768
+attempt: 4
+
+spine: one message.pushed · one delivery.outcome · one delivery.inbox-ack
+```
+
+Result: this unsupported direction fails loudly as a visible duplicate body, retains the queue body until explicit recovery, and records exactly one acknowledgement. It neither loses the body nor double-acks.
