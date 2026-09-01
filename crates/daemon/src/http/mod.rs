@@ -6,8 +6,8 @@
 mod auth;
 mod client;
 mod exposure;
-mod report;
 mod identity;
+mod report;
 mod types;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -169,10 +169,8 @@ impl Endpoint {
             | Self::InboxAck
             | Self::Sidecar
             | Self::Report => Method::POST,
-            | Self::Adopt
-            | Self::Whoami
-            | Self::Phonehome => Method::POST,
-            | Self::State => Method::POST,
+            Self::Adopt | Self::Whoami | Self::Phonehome => Method::POST,
+            Self::State => Method::POST,
             Self::Health | Self::Inbox | Self::Seats | Self::Events => Method::GET,
         }
     }
@@ -1169,13 +1167,12 @@ struct ReportRequest {
     argv: Vec<String>,
 }
 
-/// The forwarded caller facts this handler reads.
-/// NOTE (composition, plan 114): u-report and u-identity each defined a
-/// `CallerContext` for the SAME wire object. Unified onto `identity::CallerContext`
-/// rather than renaming one — two names for one concept is split-brain by
-/// construction, which is the defect this plan exists to remove. The richer
-/// definition wins because it documents every field as a CLAIM and carries the
-/// wire spellings beside the Rust names.
+// NOTE (composition, plan 114): u-report and u-identity each defined a
+// `CallerContext` for the SAME wire object. Unified onto `identity::CallerContext`
+// rather than renaming one — two names for one concept is split-brain by
+// construction, which is the defect this plan exists to remove. The richer
+// definition wins because it documents every field as a CLAIM and carries the
+// wire spellings beside the Rust names.
 
 /// What a successful report answers with.
 ///
