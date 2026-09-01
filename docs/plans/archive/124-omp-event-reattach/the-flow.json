@@ -8,7 +8,7 @@
     "intent": "omp/pi extension survives an rs daemon restart and resumes full-body delivery",
     "bag": {
       "mode": "Simple",
-      "status": "archived"
+      "status": "complete"
     }
   },
   "created_at": "2026-09-01T21:19:05.403Z",
@@ -326,6 +326,27 @@
         "from": "post-flight",
         "to": "ship"
       }
+    },
+    {
+      "id": "STA-016",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-01T23:11:53.558Z",
+      "details": {
+        "node": "ship",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "CUR-006",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-09-01T23:11:53.710Z",
+      "details": {
+        "from": "ship",
+        "to": "ship"
+      }
     }
   ],
   "nodes": [
@@ -454,7 +475,7 @@
       "id": "ship",
       "type": "ship",
       "label": "Ship",
-      "status": "in_progress",
+      "status": "done",
       "command": "/builder 8 ship",
       "next": [],
       "instructions": [
@@ -462,7 +483,8 @@
         "Run /builder 8 ship --plan \"<plan path>\" — the plan folder was archived at post-flight, so resolve --plan under docs/plans/archive/<ord>-<slug>/; push and PR-open each pause for a separate confirm, and any merge waits for a typed PROCEED.",
         "Done when the PR is open and its checks are green (or the failures are reported with a fix-loop offer); a diverged base hands off to 8c reconcile."
       ],
-      "modified_at": "2026-09-01T23:08:14.205Z"
+      "modified_at": "2026-09-01T23:11:53.557Z",
+      "ran_at": "2026-09-01T23:11:53.557Z"
     },
     {
       "id": "backpressure",
