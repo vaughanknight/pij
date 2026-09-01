@@ -47,7 +47,7 @@ Deliver plan 122: full-body tmux delivery (pointer rung retired for pane seats).
 | --- | --- |
 | worktree | /Users/jordanknight/pi-hacking/pij-worktrees/s122-tmux-full-body |
 | branch | s122/tmux-full-body |
-| fence | crates/core/src/delivery.rs · crates/daemon/src/pointer/** · crates/tmux/src/lib.rs (submit/chunking only) · their tests · docs/plans/122-tmux-full-body/** |
+| fence | crates/core/src/delivery.rs · crates/core/src/model.rs (DeliveryOrigin variant ONLY) · crates/daemon/src/delivery/mod.rs · crates/daemon/src/pointer/** · crates/daemon/src/lib.rs (TmuxPort threading at DeliveryService construction ONLY) · crates/store/src/queue.rs (TypedToPane codec ONLY) · crates/tmux/src/lib.rs (submit/chunking only) · constructor fixtures: crates/daemon/src/http/tests.rs, crates/cli/tests/spawn.rs · all named files' tests · docs/plans/122-tmux-full-body/** |
 | forbidden_note | Never write .the-flow-state.json, the-flow.json, the-flow.md. No uds.rs, no shim routing, no framing.rs edits (consume it, do not fork it). Outside the fence = stop and ask the prime. |
 
 <a id="done-bar"></a>

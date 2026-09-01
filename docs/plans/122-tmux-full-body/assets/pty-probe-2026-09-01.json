@@ -1,0 +1,39 @@
+{
+  "date": "2026-09-01",
+  "host": "darwin-arm64",
+  "tmux": "3.6a",
+  "method": {
+    "canonical": "isolated tmux server; pane shell disabled echo, read one newline-terminated line, printed it between OUT markers; tmux send-keys -l supplied payload and a separate named Enter submitted it",
+    "raw": "isolated tmux server; pane ran stty raw -echo and dd count=<payload bytes>; compared tmux send-keys -l with load-buffer from stdin plus paste-buffer"
+  },
+  "canonical_results": [
+    { "payload_bytes": 1000, "exact": true },
+    { "payload_bytes": 1020, "exact": true },
+    { "payload_bytes": 1021, "exact": true },
+    { "payload_bytes": 1022, "exact": true },
+    { "payload_bytes": 1023, "exact": true },
+    { "payload_bytes": 1024, "captured_bytes": 0, "exact": false },
+    { "payload_bytes": 1500, "captured_bytes": 0, "exact": false },
+    { "payload_bytes": 3000, "captured_bytes": 0, "exact": false }
+  ],
+  "raw_results": [
+    {
+      "method": "send-keys",
+      "payload_bytes": 3028,
+      "captured_bytes": 3028,
+      "exact": true,
+      "prefix": "BEGIN-S122-0123456789abc",
+      "suffix": "123456789abcdef-END-S122"
+    },
+    {
+      "method": "load-buffer+paste-buffer",
+      "payload_bytes": 3028,
+      "captured_bytes": 3028,
+      "exact": true,
+      "prefix": "BEGIN-S122-0123456789abc",
+      "suffix": "123456789abcdef-END-S122"
+    }
+  ],
+  "decision": "Use a uniquely named tmux buffer loaded through stdin, paste it into the target pane, delete it as part of paste-buffer, then submit a separate named Enter.",
+  "rationale": "The live probe confirms a hard 1023-byte canonical-line boundary while a raw TUI consumes 3028 bytes intact. load-buffer avoids placing the full framed body in the tmux send-keys argv and uses tmux's native paste path; the separate Enter preserves the existing no-smuggled-submit invariant. The implementation still requires a real 3000+ byte adapter regression and live OMP witness."
+}
