@@ -16,7 +16,7 @@
 //! Doubles come from here or they do not exist: mocking frameworks are refused
 //! workspace-wide by the arch gate (tenet 5).
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -759,6 +759,17 @@ struct TmuxState {
     pane_processes: BTreeMap<String, PaneProcess>,
     taps: BTreeMap<String, PathBuf>,
     tap_drains: VecDeque<std::result::Result<Vec<u8>, String>>,
+    /// Panes whose `capture` FAILS, as real tmux does for a pane that is gone:
+    /// `can't find pane: %N`, exit 1.
+    ///
+    /// Scriptable because "the pane vanished" is the state that starved this
+    /// fleet's whole delivery queue, and the fake could not express it: an
+    /// unscripted capture returns an empty string, which the composer parser
+    /// reads as Unrecognized and VETOES — a refusal, not an error. Those two
+    /// take different branches (a veto releases the job and the pass continues;
+    /// an error propagates), so a fake that can only produce the first cannot
+    /// test the second, and the untestable branch is the one that broke.
+    capture_failures: BTreeSet<String>,
     recorder: Recorder,
 }
 
@@ -771,6 +782,18 @@ impl FakeTmux {
     /// Arrange a pane.
     pub fn with_pane(self, pane: Pane) -> Self {
         self.state.lock().expect("fake tmux mutex").panes.push(pane);
+        self
+    }
+
+    /// Make `capture` FAIL for this pane, the way tmux fails for a pane that no
+    /// longer exists. See [`TmuxState::capture_failures`].
+    #[must_use]
+    pub fn with_vanished_pane(self, pane: &str) -> Self {
+        self.state
+            .lock()
+            .expect("fake tmux mutex")
+            .capture_failures
+            .insert(pane.to_string());
         self
     }
 
@@ -916,6 +939,12 @@ impl TmuxPort for FakeTmux {
     async fn capture(&self, pane: &str, lines: u32) -> Result<String> {
         let mut state = self.state.lock().expect("fake tmux mutex");
         state.recorder.record(format!("capture:{pane}:{lines}"));
+        if state.capture_failures.contains(pane) {
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message: format!("can't find pane: {pane}"),
+            });
+        }
         // An unscripted capture is an empty pane, not a panic: a fake that
         // explodes on an unexpected call makes tests about the fake.
         Ok(state

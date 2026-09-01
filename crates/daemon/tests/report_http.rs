@@ -1027,3 +1027,160 @@ async fn state_reads_back_the_declared_state_and_its_note() {
 
     server.abort();
 }
+
+// ─── THE PANE-DERIVED SUBJECT (plan 117) ────────────────────────────────────
+
+/// A hand-started seat forwards a PANE and no session id. `report` must name it.
+///
+/// THE RED THIS PINS, observed live on 2026-09-01 against the running daemon at
+/// 127.0.0.1:7461 for seat `pij-dominant-vicuna` (pane `%255`, a live rs row):
+/// two POSTs, byte-identical caller context — one pane, no session id — answered
+/// differently by the same daemon in the same instant.
+///
+///   POST /v1/whoami {"caller":{"tmuxPane":"%255"}} -> 200, `pij-dominant-vicuna`
+///   POST /v1/report {"caller":{"tmuxPane":"%255"}} -> 400, "no reporting seat
+///                                                     was supplied"
+///
+/// The cause is not a routing fault and not a forwarding fault: the shim sent
+/// everything it had, and the pane it sent identifies the seat unambiguously in
+/// rs's OWN roster. `whoami`/`state`/`phonehome` resolve through the shared
+/// identity ladder (`identity::resolve_seat`), which takes a pane as its
+/// STRICTEST evidence; `report` had its own private resolution that read an
+/// asserted id and nothing else. So `report` was the one routed verb with no
+/// derivation path — it could only be ASSERTED. `PIJ_SESSION_ID` is unset on
+/// every hand-started seat, which is the normal case on this fleet and not an
+/// edge one, so the whole report family was refused for every rs-resident seat a
+/// human started by hand — precisely the population that owes status cards.
+///
+/// This test asserts BOTH halves on purpose. The `whoami` half is the control:
+/// without it, a future change that broke pane resolution everywhere would leave
+/// this test failing for a reason it does not name, and a one-ended assertion
+/// cannot tell "report ignores the pane" from "the pane never identified
+/// anything". The two calls must agree, and the test says so in those terms.
+#[tokio::test]
+async fn a_pane_only_caller_is_named_by_report_exactly_as_it_is_by_whoami() {
+    let (addr, server, _store, config) = daemon().await;
+
+    // Seed a seat that owns a pane — the hand-started shape. Fresh id so this
+    // test never leans on SEAT's paneless row.
+    const PANED: &str = "pij-report-pane-witness";
+    const PANE: &str = "%255";
+    let services = pij_daemon::build_services(
+        &config,
+        std::path::Path::new("/tmp/pij-test-pane-signals-report"),
+    )
+    .await
+    .expect("services");
+    let mut descriptor = SeatDescriptor::new(PANED, Harness::Claude, "/abs/tree");
+    descriptor.pane = Some(PANE.to_string());
+    services
+        .registry
+        .put(descriptor)
+        .await
+        .expect("seed the paned seat");
+
+    let caller = serde_json::json!({ "tmuxPane": PANE });
+
+    // CONTROL: the ladder resolves this exact caller today.
+    let whoami: Envelope<serde_json::Value> = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/whoami"))
+        .bearer_auth(KEY)
+        .json(&serde_json::json!({ "caller": caller, "argv": ["whoami"] }))
+        .send()
+        .await
+        .expect("post /v1/whoami")
+        .json()
+        .await
+        .expect("whoami envelope");
+    assert_eq!(
+        whoami.data.expect("whoami data")["id"],
+        PANED,
+        "control: the pane must identify the seat through the shared ladder"
+    );
+
+    // THE CLAIM: report is handed the same evidence and must reach the same seat.
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/report"))
+        .bearer_auth(KEY)
+        .json(&serde_json::json!({
+            "caller": caller,
+            "argv": ["report", "now", "derived from the pane", "next"],
+        }))
+        .send()
+        .await
+        .expect("post /v1/report");
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::OK,
+        "report must derive its subject from the pane the caller forwarded, as \
+         whoami already does with the very same caller context"
+    );
+
+    let payload: Envelope<serde_json::Value> = response.json().await.expect("report envelope");
+    assert_eq!(
+        payload.data.expect("report data")["seat"],
+        PANED,
+        "the card must be attributed to the seat the pane names"
+    );
+
+    server.abort();
+}
+
+/// An asserted id that CONTRADICTS the observable pane is refused — both of them.
+///
+/// The pane-derived fix must not become a wider door. The ladder's rule is that
+/// an asserted id never outranks an observable one, and that a disagreement is
+/// refused rather than resolved in either direction; a card is the one artifact
+/// where attributing to the wrong seat is worse than not writing it. This is the
+/// guard that stops "derive from the pane" being read as "prefer whichever
+/// identity answers", so it is pinned rather than left to the ladder's own
+/// tests: the ladder could keep this property while `report` stopped calling it,
+/// and nothing here would notice.
+#[tokio::test]
+async fn report_refuses_when_the_asserted_seat_and_the_pane_disagree() {
+    let (addr, server, _store, config) = daemon().await;
+
+    const PANED: &str = "pij-report-pane-owner";
+    const PANE: &str = "%909";
+    let services = pij_daemon::build_services(
+        &config,
+        std::path::Path::new("/tmp/pij-test-pane-signals-report"),
+    )
+    .await
+    .expect("services");
+    let mut descriptor = SeatDescriptor::new(PANED, Harness::Claude, "/abs/tree");
+    descriptor.pane = Some(PANE.to_string());
+    services
+        .registry
+        .put(descriptor)
+        .await
+        .expect("seed the paned seat");
+
+    // SEAT exists in this store too, so this is a live-vs-live disagreement and
+    // not merely an unknown id.
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/report"))
+        .bearer_auth(KEY)
+        .json(&serde_json::json!({
+            "seat": SEAT,
+            "caller": { "tmuxPane": PANE },
+            "argv": ["report", "now", "should not land", "anywhere"],
+        }))
+        .send()
+        .await
+        .expect("post /v1/report");
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::BAD_REQUEST,
+        "a claim contradicting an observable pane must refuse, never pick a side"
+    );
+
+    // And the refusal is REAL: neither candidate got a card.
+    assert_eq!(
+        read_card_back(&config).await,
+        None,
+        "the refused report must not have been written to the asserted seat"
+    );
+
+    server.abort();
+}

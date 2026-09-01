@@ -1252,50 +1252,72 @@ async fn report(State(state): State<AppState>, Json(request): Json<ReportRequest
 
     // Identity first: nothing else is meaningful without a subject, and a report
     // attributed by guess is worse than no report at all.
-    let Some(claimed) = request
+    //
+    // PLAN 117. This block used to resolve `request.seat`, else
+    // `caller.session_id`, and nothing else — so `report` was the ONLY routed
+    // verb whose subject could not be DERIVED, only ASSERTED. `PIJ_SESSION_ID`
+    // is unset in every hand-started seat's shell, which is the normal case on
+    // this fleet, so the whole report family refused for every rs-resident seat
+    // a human started by hand — exactly the population that owes status cards.
+    // Observed live: the same daemon, in the same instant, answered a
+    // pane-only caller with `pij-dominant-vicuna` for `/v1/whoami` and "no
+    // reporting seat was supplied" for `/v1/report`.
+    //
+    // The fix is to call the ladder the identity verbs already call rather than
+    // to grow a second one here. It resolves a pane against the LIVE roster,
+    // and when a pane and an asserted id disagree it refuses both rather than
+    // preferring the claim — so this is strictly stronger than what it replaces,
+    // which accepted a bare asserted id on an existence check alone.
+    let asserted = request
         .seat
-        .or_else(|| request.caller.and_then(|caller| caller.session_id))
-        .filter(|id| !id.trim().is_empty())
-    else {
+        .or_else(|| request.caller.as_ref().and_then(|c| c.session_id.clone()))
+        .filter(|id| !id.trim().is_empty());
+    let pane = request
+        .caller
+        .as_ref()
+        .and_then(|c| c.pane.clone())
+        .filter(|pane| !pane.trim().is_empty());
+
+    // The both-absent case keeps its own wording rather than the ladder's,
+    // because the ladder speaks for routes that also accept `?pane=`/`?seat=`
+    // query forms and this one does not — naming a door that is not there is
+    // how the previous message misled.
+    //
+    // AND BECAUSE THE PREVIOUS MESSAGE NAMED THE WRONG SIDE OF THE WIRE. It
+    // said "the caller must forward it", which reads as a caller-side omission
+    // and sends every investigator to the shim. The caller HAD forwarded its
+    // pane; this handler was the side that never looked. An error message is a
+    // diagnostic instrument, and that one was miscalibrated toward
+    // self-exculpation: it cost a fleet-wide misdiagnosis before anyone read
+    // this function. So it now says what rs actually looked at.
+    if asserted.is_none() && pane.is_none() {
         return refused(
             command,
-            "no reporting seat was supplied. `report` is first-person and its subject is never \
-             typed, so the caller must forward it: send `seat`, or a `caller` carrying \
-             PIJ_SESSION_ID. Refusing rather than attributing this card by guess.",
+            "no reporting seat could be resolved. `report` is first-person and its subject is \
+             never typed, so rs must derive it. rs looked at two things and found neither: a \
+             pane (`caller.TMUX_PANE`), which it checks against its own live roster, and a \
+             seat id (`seat`, or `caller.PIJ_SESSION_ID`), which it checks for existence. \
+             Send either. Refusing rather than attributing this card by guess.",
         );
-    };
-    let seat = SeatId::from(claimed.trim());
-
-    // The claim, checked. `ReportService::now` appends to the spine WITHOUT
-    // consulting the registry — correct for a service whose caller has already
-    // resolved the seat, and the reason this check cannot be skipped here: a card
-    // for a seat rs does not hold would otherwise land in the rs spine under a
-    // name rs has never heard of, invisible to the store the seat really lives
-    // in, with every surface reporting success. That is the split-brain this
-    // plan exists to prevent.
-    match state.services.registry.get(&seat).await {
-        // EXISTENCE IS NOT ENOUGH — the row must be LIVE (F004). A tombstoned
-        // seat still has a row, so an existence check writes cards and success
-        // receipts for a recipient DELIVERY already refuses. Identity, reporting
-        // and delivery have to agree about who is addressable, or the fleet gets
-        // a card it can read and a seat it cannot reach.
-        Ok(Some(descriptor)) => {
-            if let Some(refusal) = identity::refuse_tombstoned(command, &descriptor) {
-                return refusal;
-            }
-        }
-        Ok(None) => {
-            return refused(
-                command,
-                format!(
-                    "reporting seat '{seat}' is not registered in this rs store, so rs has no \
-                     card to write for it. If the seat lives in the legacy store, its report \
-                     belongs there: PIJ_DAEMON_GENERATION=legacy pij report …"
-                ),
-            );
-        }
-        Err(error) => return internal(command, error),
     }
+
+    // The claim, checked — by the shared ladder, which also refuses a tombstoned
+    // row and a seat this store does not hold. EXISTENCE IS NOT ENOUGH (F004): a
+    // tombstoned seat still has a row, so an existence check writes cards and
+    // success receipts for a recipient DELIVERY already refuses. Identity,
+    // reporting and delivery have to agree about who is addressable, or the fleet
+    // gets a card it can read and a seat it cannot reach.
+    //
+    // `ReportService::now` appends to the spine WITHOUT consulting the registry —
+    // correct for a service whose caller has already resolved the seat, and the
+    // reason this check cannot be skipped here: a card for a seat rs does not
+    // hold would otherwise land in the rs spine under a name rs has never heard
+    // of, invisible to the store the seat really lives in, with every surface
+    // reporting success. That is the split-brain this plan exists to prevent.
+    let seat = match identity::resolve_seat(&state, command, asserted, pane).await {
+        identity::Resolved::Seat(descriptor, _) => descriptor.id,
+        identity::Resolved::Refusal(response) => return response,
+    };
 
     let call = match report::parse_report(&request.argv) {
         Ok(call) => call,
