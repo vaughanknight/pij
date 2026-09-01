@@ -12,7 +12,7 @@ use pij_daemon::delivery::InboxClaim;
 use pij_daemon::http::InboxAckRequest;
 pub use pij_daemon::http::{
     CallerContext, FederatedRoster, IdentityRequest, Phonehome, ReviveRequest, SpawnRequest,
-    StreamFrame,
+    StateCard, StreamFrame,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -194,6 +194,19 @@ impl DaemonClient {
     /// List the local authority plus typed remote availability.
     pub async fn list(&self) -> Envelope<FederatedRoster> {
         self.get("pij list", "/v1/seats").await
+    }
+
+    /// Read one seat's card back — `pij state <id>` (plan 114, u-readback).
+    ///
+    /// POSTs the NATIVE body shape, `{ "id": "<seat>" }`. The route is POST even
+    /// though it reads nothing, because the TS routing shim forwards the
+    /// operator's argv only on its POST branch: a GET row would arrive with the
+    /// `<id>` dropped at the seam
+    /// (`.pi/extensions/pij/adapters/generation-router.ts:199-207`). The handler
+    /// accepts both shapes so neither caller has to speak the other's.
+    pub async fn state(&self, seat: &SeatId) -> Envelope<StateCard> {
+        self.post("pij state", "/v1/state", &serde_json::json!({ "id": seat }))
+            .await
     }
 
     /// Claim one inbox message, then acknowledge only after the complete response

@@ -237,6 +237,11 @@ enum Command {
     },
     /// List registered seats.
     List,
+    /// Read one seat's state card back.
+    State {
+        /// The seat to read.
+        id: SeatId,
+    },
     /// Follow daemon event and peer-state frames until interrupted.
     Tail {
         /// Replay after `MACHINE=CURSOR`; repeat once per machine.
@@ -588,6 +593,7 @@ async fn run(cli: Cli) -> ExitCode {
             emit(&client.report(&SeatId::from(seat), &argv).await, cli.json)
         }
         Command::List => emit(&client.list().await, cli.json),
+        Command::State { id } => emit(&client.state(&id).await, cli.json),
         Command::Tail { since } => {
             let since = match cursor_map(since) {
                 Ok(since) => since,
@@ -1081,6 +1087,7 @@ impl Command {
             Command::Inbox { .. } => "pij inbox",
             Command::Report { .. } => "pij report",
             Command::List => "pij list",
+            Command::State { .. } => "pij state",
             Command::Tail { .. } => "pij tail",
         }
     }
@@ -1115,7 +1122,8 @@ mod tests {
             [
                 // Adding a verb to this roster is meant to be a DELIBERATE act
                 // that fails this test first — which is exactly what it did for
-                // `report` (u-report) and adopt/whoami/phonehome (u-identity).
+                // `report` (u-report), adopt/whoami/phonehome (u-identity) and
+                // `state` (u-readback).
                 "daemon",
                 "ping",
                 "register",
@@ -1129,6 +1137,7 @@ mod tests {
                 "sidecar",
                 "report",
                 "list",
+                "state",
                 "tail"
             ]
         );

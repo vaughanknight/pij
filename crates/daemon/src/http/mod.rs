@@ -48,7 +48,8 @@ pub use exposure::{Exposure, boot_banner, exposure};
 pub use identity::{CallerContext, IdentityQuery, IdentityRequest, Phonehome};
 pub use types::{
     CursorResetDetail, FederatedRoster, InboxAckRequest, PeerStreamState, Registration,
-    ReviveRequest, SendRequest, SpawnRequest, StreamFrame, UnavailablePeer,
+    ReviveRequest, SendRequest, SpawnRequest, StateCard, StateRequest, StreamFrame,
+    UnavailablePeer, UnsupportedField,
 };
 
 #[derive(Clone)]
@@ -110,10 +111,18 @@ enum Endpoint {
     Whoami,
     /// Confirm the binding adopt already made (ac-1148).
     Phonehome,
+    /// `pij state <id>` — read one seat's card back (plan 114, u-readback).
+    ///
+    /// POST rather than GET even though it reads nothing: wave 1's routing shim
+    /// forwards the operator's argv ONLY on its POST branch
+    /// (`.pi/extensions/pij/adapters/generation-router.ts:199-207`), so a GET row
+    /// would reach this daemon as a bare URL with the `<id>` — this verb's only
+    /// argument — dropped at the seam. Ruled POST-canonical by the plan-114 PM.
+    State,
 }
 
 impl Endpoint {
-    const ALL: [Self; 14] = [
+    const ALL: [Self; 15] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -128,6 +137,7 @@ impl Endpoint {
         Self::Adopt,
         Self::Whoami,
         Self::Phonehome,
+        Self::State,
     ];
 
     const fn path(self) -> &'static str {
@@ -146,6 +156,7 @@ impl Endpoint {
             Self::Adopt => "/v1/adopt",
             Self::Whoami => "/v1/whoami",
             Self::Phonehome => "/v1/phonehome",
+            Self::State => "/v1/state",
         }
     }
 
@@ -161,6 +172,7 @@ impl Endpoint {
             | Self::Adopt
             | Self::Whoami
             | Self::Phonehome => Method::POST,
+            | Self::State => Method::POST,
             Self::Health | Self::Inbox | Self::Seats | Self::Events => Method::GET,
         }
     }
@@ -225,6 +237,7 @@ fn router_with_optional_federation(
                     | Endpoint::Adopt
                     | Endpoint::Whoami
                     | Endpoint::Phonehome
+                    | Endpoint::State
             ) {
                 Method::POST
             } else {
@@ -254,6 +267,7 @@ fn router_with_optional_federation(
                 get(identity::whoami_get).post(identity::whoami_post),
             ),
             Endpoint::Phonehome => router.route(endpoint.path(), post(identity::phonehome)),
+            Endpoint::State => router.route(endpoint.path(), post(seat_state)),
         };
     }
     router
@@ -787,6 +801,145 @@ async fn ack_inbox(
     }
 
     envelope(StatusCode::OK, &Envelope::ok("pij inbox", request.job_id))
+}
+
+/// `pij state <id>` — read one seat's card back from the store it lives in.
+///
+/// The readback half of ac-1142: `report now` writes a card where the seat
+/// lives, and this reads it back from the same place. Its answer is a
+/// projection of the registry row plus one liveness observation; it writes
+/// nothing and enqueues nothing.
+///
+/// # Every refusal carries an envelope
+///
+/// A bare 404 is not available to this route. Wave 1's shim classifies
+/// `404/405 with an undecodable body` as ROUTE-ABSENCE and falls back to legacy
+/// (`.pi/extensions/pij/core/generation-routing.ts:353-363`), so a bare 404 here
+/// would not read as "no such seat" — it would read as "rs does not implement
+/// `state`", and the caller would be silently served from the OTHER store. That
+/// is the split-brain this plan exists to prevent, arriving through the error
+/// path. Both refusals below are `Envelope::refused`, and
+/// `state_refusal_is_not_classifiable_as_route_absence` pins it.
+async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequest>) -> Response {
+    let Some(id) = request.seat() else {
+        return envelope(
+            StatusCode::BAD_REQUEST,
+            &Envelope::<StateCard>::refused(
+                "pij state",
+                ErrorKind::Refused,
+                "state names no seat: send `{\"id\":\"<seat>\"}` or an argv carrying one",
+            ),
+        );
+    };
+    let seat = match state.services.registry.get(&id).await {
+        Ok(Some(seat)) => seat,
+        Ok(None) => {
+            return envelope(
+                StatusCode::NOT_FOUND,
+                &Envelope::<StateCard>::refused(
+                    "pij state",
+                    ErrorKind::NotFound,
+                    format!("no seat `{id}` in this store"),
+                ),
+            );
+        }
+        Err(error) => return internal("pij state", error),
+    };
+
+    // Liveness is OBSERVED, never inferred from the row. `pij_core::liveness`
+    // owns the three-way verdict (active / dead / recycled); re-deriving it here
+    // from `proc_start` would be a second implementation of the one rule that
+    // stops a recycled pid reading as a live seat.
+    let liveness = match seat.proc {
+        Some(proc) => match pij_core::liveness::alive(proc, state.services.liveness.as_ref()).await
+        {
+            Ok(verdict) => Some(verdict),
+            Err(error) => return internal("pij state", error),
+        },
+        None => None,
+    };
+
+    envelope(
+        StatusCode::OK,
+        &Envelope::ok("pij state", state_card(seat, liveness, &state.machine_alias)),
+    )
+}
+
+/// Project a registry row into the `state` card. Pure: no IO, no clock.
+fn state_card(
+    seat: SeatDescriptor,
+    liveness: Option<pij_core::model::Liveness>,
+    machine_alias: &str,
+) -> StateCard {
+    use pij_core::model::{Liveness, SystemState};
+    StateCard {
+        id: seat.id,
+        state: match seat.state {
+            SystemState::Working => "working",
+            SystemState::Idle => "idle",
+        }
+        .to_string(),
+        // A seat that was never bound to a process has no process to observe, so
+        // it gets its own word rather than borrowing `dead` — "never had one" and
+        // "had one and it is gone" are different facts about a seat.
+        liveness: match liveness {
+            Some(Liveness::Active) => "active",
+            Some(Liveness::Dead { .. }) => "dead",
+            Some(Liveness::Recycled { .. }) => "recycled",
+            None => "unbound",
+        }
+        .to_string(),
+        pid: seat.proc.map(|proc| proc.pid),
+        proc_start: seat.proc.map(|proc| proc.proc_start),
+        cwd: seat.folder,
+        harness: seat.harness,
+        role: seat.role,
+        parent: seat.parent,
+        bound_model: seat.model,
+        effort: seat.effort,
+        pane: seat.pane,
+        provider: seat.provider,
+        semantic_state: seat.semantic_state,
+        machine: Some(seat.machine.unwrap_or_else(|| machine_alias.to_string())),
+        tombstoned_at: seat.tombstoned_at,
+        tombstone_reason: seat.tombstone_reason,
+        unsupported: unsupported_state_fields(),
+    }
+}
+
+/// The TS `state --json` fields this store cannot answer, each with its reason.
+///
+/// Every entry is a field a legacy consumer parses today
+/// (`.pi/extensions/pij/core/cli.ts:3630-3684`). They are NAMED rather than
+/// emitted as `null` because `null` is itself an answer — "we looked and this
+/// seat has none" — and a caller cannot tell that from "this store has no such
+/// concept". Two of them, `activity` and `liveness: "stale"`, would be
+/// answerable by scanning this seat's spine for its newest event; that is a
+/// full per-seat scan on a single-row read, so it is named here as a known gap
+/// rather than paid for on every call.
+fn unsupported_state_fields() -> Vec<UnsupportedField> {
+    [
+        ("lifecycle", "rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"),
+        ("activity", "the done-vs-idle split needs `lastEventAt`, which the rs descriptor does not carry; `state` reports the working/idle half"),
+        ("lastEventAt", "not on the rs descriptor — deriving it needs a full spine scan per read"),
+        ("ageMs", "derived from `lastEventAt`, which rs does not carry"),
+        ("liveness:stale", "TS reports `stale` for a seat that claims to be working and has gone quiet; that needs event age. An rs `active` therefore covers BOTH the TS `active` and the TS `stale` case — it is a weaker claim, not the same one"),
+        ("daemonLastTickAt", "no per-seat daemon tick is recorded in the rs store"),
+        ("daemonTickAgeMs", "derived from the tick rs does not record"),
+        ("daemonTickStale", "derived from the tick rs does not record"),
+        ("failureReason", "rs records no per-seat failure reason on the descriptor"),
+        ("bindHealth", "the TS pre-bind health classifier has no rs counterpart"),
+        ("degraded", "derived from `bindHealth`"),
+        ("degradedReason", "derived from `bindHealth`"),
+        ("terminal", "rs records termination as `tombstonedAt` + `tombstoneReason`, which this card DOES carry — a different shape, not a missing fact"),
+        ("watchdog", "rs has no watchdog block on the seat row"),
+    ]
+    .into_iter()
+    .map(|(field, why)| UnsupportedField {
+        field: field.to_string(),
+        why: why.to_string(),
+    })
+    .collect()
 }
 
 #[derive(Default, Deserialize)]
