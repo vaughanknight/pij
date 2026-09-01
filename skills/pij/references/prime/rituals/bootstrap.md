@@ -62,7 +62,7 @@ Create a `.harness/government/` tree in durable, committable repo space. **Keep
 it off main on a standing `prime-governance` branch with a permanent worktree**,
 so product history and governance history do not interleave; in
 `AI-Substrate/pij` that worktree is
-`/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government`
+`$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government`
 (branch `prime-governance`). Every path below is relative to that root:
 
 - Instantiate [`../templates/spine.md`](../templates/spine.md): thesis, stamp,
@@ -104,7 +104,7 @@ pattern from live registry rows.
 
 **Do not follow a summary of the recipe — follow the recipe.** It is maintained against live
 defects and changes daily:
-**`/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/briefs/pa-standup-recipe.md`**
+**`$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/briefs/pa-standup-recipe.md`**
 in the `pij` repo (`AI-Substrate/pij`), on its `prime-governance` branch — not main.
 Only the parts a bootstrapping prime cannot discover are restated here:
 

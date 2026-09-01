@@ -42,7 +42,7 @@ The o-prime is the single writer of, under this repo's government root:
 - `prime-flow.json` — portfolio state;
 - briefs, canary records, local orient, and encode candidates.
 
-**Government root for `AI-Substrate/pij`**: `/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/`
+**Government root for `AI-Substrate/pij`**: `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/`
 — the standing worktree of the `prime-governance` branch. It is **not** on main
 and not in your stream worktree; read and write it there by absolute path.
 

@@ -23,7 +23,7 @@ went on to designate itself prime over the top.
 | Probe | Role | Load exactly this next |
 |---|---|---|
 | My current id appears in `pij list --prime --here --json` | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
-| Fallback: the prose spine names my pij id as the o-prime seat, or the human explicitly seats me (in `AI-Substrate/pij` the spine is `/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/spine.md`, on the `prime-governance` branch — not main) | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
+| Fallback: the prose spine names my pij id as the o-prime seat, or the human explicitly seats me (in `AI-Substrate/pij` the spine is `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/spine.md`, on the `prime-governance` branch — not main) | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
 | The spine roster names my pij id as a stream, or I hold an adoption brief | stream | [`../prime/orchestrator.md`](../prime/orchestrator.md), then stop |
 | **No prime for this repo after BOTH the scoped and the unscoped probe**, and `pij project list` names no project here | bootstrapper | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md), then stop |
 | I am a fleet worker with a bounded packet | worker | Stop here; use `/pij pair` for a fleet or `/pij peer` for one colleague. |
@@ -35,7 +35,7 @@ evidence of an ungoverned repo, and its presence is not evidence of a governed
 one. Store-native governance is the ruled default
 ([`../prime/rituals/store-native.md`](../prime/rituals/store-native.md)), and a
 repo that still keeps a prose tree may keep it off main: `AI-Substrate/pij`
-keeps its at `/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/`
+keeps its at `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/`
 on the standing `prime-governance` branch, so main shows no such directory while
 the repo is fully governed. Never widen a silent store into "ungoverned" on a
 directory listing.
@@ -48,7 +48,7 @@ government rows with `pij whoami`, `pij state <id>`, and the human ruling.
 | Need | Load exactly this |
 |---|---|
 | Stand up the seat and government | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md) |
-| **Stand up your PA** (a bootstrap deliverable, not optional — Jordan, 2026-08-01) | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md) § 5 → the maintained recipe in `AI-Substrate/pij`, on its `prime-governance` branch: `/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/briefs/pa-standup-recipe.md` |
+| **Stand up your PA** (a bootstrap deliverable, not optional — Jordan, 2026-08-01) | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md) § 5 → the maintained recipe in `AI-Substrate/pij`, on its `prime-governance` branch: `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/briefs/pa-standup-recipe.md` |
 | Record governance in the platform store (ruled default; lazy self-migration) | [`../prime/rituals/store-native.md`](../prime/rituals/store-native.md) |
 | Spawn, adopt, canary, brief, or tear down a stream | [`../prime/rituals/kickoff.md`](../prime/rituals/kickoff.md) |
 | Request, grant, return, reclaim, or audit a baton | [`../prime/rituals/batons.md`](../prime/rituals/batons.md) |

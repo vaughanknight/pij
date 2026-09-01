@@ -55,7 +55,7 @@ orientation/preamble:
 
 ## Current portfolio context
 
-- Prime-flow: `<government-root>/prime-flow.json` (in `AI-Substrate/pij`: `/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/prime-flow.json`, on the `prime-governance` branch, not main)
+- Prime-flow: `<government-root>/prime-flow.json` (in `AI-Substrate/pij`: `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/prime-flow.json`, on the `prime-governance` branch, not main)
 - <in-flight item, owner, important seam>
 - <known hazard or sequencing watch>
 

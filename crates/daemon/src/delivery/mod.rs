@@ -620,6 +620,8 @@ mod tests {
     use crate::events::EventBus;
     use crate::pointer::{POINTER_PARKED_EVENT_KIND, POINTER_UNPARKED_EVENT_KIND};
 
+    const INBOX_CLAIM_WIRE: &str = include_str!("../../tests/fixtures/inbox-claim.wire.json");
+
     struct Fixture {
         service: Arc<DeliveryService>,
         registry: Arc<FakeRegistry>,
@@ -1026,6 +1028,12 @@ mod tests {
             .claim_inbox(&SeatId::from("pij-prebind"), false)
             .await
             .expect("prebind inbox");
+        let expected: Value = serde_json::from_str(INBOX_CLAIM_WIRE).expect("inbox-claim fixture");
+        assert_eq!(
+            serde_json::to_value(&inbox).expect("serialize inbox claim"),
+            expected,
+            "daemon emits the shared cross-runtime claim contract"
+        );
         assert_eq!(inbox.len(), 1);
         assert_eq!(inbox[0].message.body, "before bind");
         assert_audit(&prebind, &SeatId::from("pij-prebind"), "queued").await;
@@ -1241,6 +1249,54 @@ mod tests {
             3,
             "every sender attempt retains an outcome audit"
         );
+    }
+
+    #[tokio::test]
+    async fn inbox_reader_yields_when_announcer_claimed_after_event_publication() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let msg = Msg {
+            from: SeatId::from("pij-origin"),
+            to: SeatId::from("pij-race"),
+            body: "already handed to announcer".to_string(),
+            msg_id: "m-announcer-race".to_string(),
+            from_machine: None,
+            in_reply_to: None,
+            command: None,
+        };
+        register(
+            &fixture,
+            SeatDescriptor::new(msg.to.clone(), Harness::Omp, "/abs/tree"),
+        )
+        .await;
+        fixture
+            .service
+            .accept_forwarded(msg.clone())
+            .await
+            .expect("publish queued event");
+
+        let (job_id, handed_to_announcer) = fixture
+            .queue
+            .claim(&[delivery_kind(&msg.to)], "pre-s122-announcer")
+            .await
+            .expect("claim succeeds")
+            .expect("queued row");
+        assert!(
+            fixture
+                .service
+                .claim_inbox(&msg.to, false)
+                .await
+                .expect("reader observes ownership")
+                .is_empty(),
+            "the extension must suppress injection when another worker owns the row"
+        );
+        let handed_out: Msg =
+            serde_json::from_str(&handed_to_announcer.payload).expect("delivery payload");
+        assert_eq!(handed_out, msg, "the winning daemon rung retains the body");
+        fixture
+            .queue
+            .ack_delivery(job_id, DeliveryOrigin::InjectedToTransport)
+            .await
+            .expect("winning daemon rung finishes delivery");
     }
 
     #[tokio::test]

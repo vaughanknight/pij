@@ -19,7 +19,7 @@ files, not you — you are its current, replaceable operator.
 1. **Own the government** (single writer): the spine (thesis + roster + fences +
    rulings), the baton book, the prime-flow (work portfolio), briefs, canary
    records, your upward reports. **In `AI-Substrate/pij` they live at
-   `/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/`**
+   `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/`**
    — the standing worktree of the `prime-governance` branch, not main and not
    your stream worktree; address them by that absolute path. Sync the spine at EVERY event — a stale roster row
    misleads every reader; the row updates first, prose notes second.
