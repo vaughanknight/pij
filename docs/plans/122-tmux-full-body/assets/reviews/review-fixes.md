@@ -41,7 +41,7 @@ Bound and recovery:
 Load-bearing proofs:
 
 - `staged_submit_excludes_human_input_mid_body_and_before_enter`: real tmux; sends repeated real `send-keys` input during chunking and once after bracket-close/before commit; captured PTY bytes contain only the automated body and Enter.
-- `daemon_death_mid_stage_restores_input_within_bound`: a helper process acquires/stages, is killed, and tmux restores input plus clears the marker within the watchdog bound.
+- `daemon_death_mid_stage_restores_input_within_bound`: a helper process acquires/stages, is killed, and tmux restores input plus clears the marker within the asserted 2-second watchdog bound.
 - `stage_deadline_aborts_and_restores_input`: a 200,000-byte transaction crosses the 1-second limit, aborts, restores input, clears the marker.
 - `abort_leaves_recovery_notice_unsent_and_restores_input`: recovery text is present, no CR/Enter is emitted, input is restored.
 - `expired_nonempty_draft_still_vetoes_typed_body_delivery` and `expired_nonempty_composer_still_retries_typed_body`: direct and drain paths defer typed bodies; forcing the guarded composer fact true was mutation-proved red before repair.

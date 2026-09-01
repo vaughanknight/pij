@@ -447,7 +447,7 @@ fn daemon_death_mid_stage_restores_input_within_bound() {
 
     helper.kill().expect("kill staged daemon process");
     helper.wait().expect("reap staged daemon process");
-    wait_for_pane_input(&session, &pane.id, false, Duration::from_secs(4));
+    wait_for_pane_input(&session, &pane.id, false, Duration::from_secs(2));
 
     wait_for_submit_marker_clear(&session, &pane.id, Duration::from_secs(1));
     let title = session.run(["display-message", "-p", "-t", &pane.id, "#{pane_title}"]);
