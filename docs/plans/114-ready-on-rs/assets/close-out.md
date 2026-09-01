@@ -89,3 +89,33 @@ skill unmodified. Stage A is witnessed under a per-seat `pij`-entry override —
 *the skill is unmodified; the `pij` resolution is overridden*, which is not
 "unmodified environment", and it is recorded in those words. Stage B is the real
 gesture on canonical, and it is deliberately not ours to claim.
+
+## The last instance — the defect, in the act of shipping its own fix
+
+After the reviewer's REJECT, PR #336 was merged early and then reverted. The
+branch kept moving correctly and I kept verifying it correctly:
+`git ls-remote origin s114/ready-on-rs` = `783555a8`, divergence `0 0` — all true.
+Meanwhile the PR had been **merged and closed at 03:40**, frozen at `baeef4d8`.
+Four of my actions over several hours — a retitle, an APPROVE comment, a scope
+note, a close-out link — landed on a closed pull request. `ls-remote` verifies the
+BRANCH; it is silent about the PR. **The earlier failure was checking the wrong
+source; this one was checking the right source about the wrong object, which is
+harder to catch precisely because the verification is impeccable.**
+
+Then the number that ends this plan properly. A plain re-merge of the branch would
+have carried:
+
+> **7 commits — all five review fixes and the docs — and ZERO routing code.**
+
+The original work was already an ancestor of `main` and the revert stood, so every
+reverted file would have stayed reverted. Clean merge. Green CI. Feature absent.
+
+That is the exact defect this plan spent itself documenting — every surface
+reporting success over an effect that did not land — occurring one layer above the
+code, in the act of shipping the fix for it, to the two people most primed to
+catch it. It was caught by noticing that a verification answered a different
+question than the one being asked.
+
+Re-landing requires reverting the revert and merging on top, so the original work
+and the fixes arrive together as a real diff. A bare re-merge would have shipped
+nothing, loudly reported as success.
