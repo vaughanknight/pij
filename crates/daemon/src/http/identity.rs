@@ -209,7 +209,7 @@ const BOUND_BY: &str = "process identity (pid paired with proc_start), observed 
 
 /// How a seat was identified for a read verb.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ResolvedBy {
+pub(crate) enum ResolvedBy {
     /// Matched against a pane, which the daemon can check.
     Pane,
     /// Matched a caller-asserted id that exists. Existence is all that was proven.
@@ -598,7 +598,7 @@ async fn whoami_resolved(
 /// A plain enum rather than `Result<_, Response>`: an axum `Response` is a large
 /// error variant, and the two arms are not success-and-failure anyway — "no seat
 /// resolved" is an answer this route gives on purpose.
-enum Resolved {
+pub(crate) enum Resolved {
     /// The seat, and what identified it.
     Seat(SeatDescriptor, ResolvedBy),
     /// The refusal to send back, already an envelope.
@@ -662,14 +662,23 @@ pub(crate) async fn phonehome(
     envelope(StatusCode::OK, &answer)
 }
 
-/// The identity ladder, shared by the read verbs.
+/// The identity ladder, shared by the read verbs AND by `report` (plan 117).
+///
+/// It stopped being read-only when `report` began calling it, and that is
+/// deliberate: `report` previously carried its own private resolution that read
+/// an asserted id and nothing else, so it was the one routed verb whose subject
+/// could not be DERIVED. Two ladders would be two places for the
+/// anti-impersonation posture below to drift apart, which this repo has already
+/// paid for elsewhere. A caller reaching this from a WRITE verb gets the same
+/// rule the read verbs get — an asserted id never outranks an observable pane —
+/// which makes the write STRICTER than it was, not looser.
 ///
 /// Strictest evidence first. A pane can be checked against tmux and the roster;
 /// an asserted id can only be checked for EXISTENCE. When both are present and
 /// they disagree, the assertion loses — that disagreement is what impersonation
 /// looks like, and preferring the claim is how one seat comes to answer as
 /// another.
-async fn resolve_seat(
+pub(crate) async fn resolve_seat(
     state: &AppState,
     command: &str,
     asserted: Option<String>,
