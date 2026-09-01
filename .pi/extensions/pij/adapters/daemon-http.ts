@@ -242,7 +242,10 @@ function assertDaemonAddr(value: string): void {
 function invalidEnvironment(name: string, value: string, detail: string): Error {
 	return new Error(`${name} has malformed value ${JSON.stringify(value)}: ${detail}`);
 }
-function observedProcessStart(pid: number): number {
+/** Exported so the generation router can stamp a caller's process start
+ *  without minting a second answer to "when did this process begin". A pid is
+ *  recycled at boot; the start time is what makes it identifying. */
+export function observedProcessStart(pid: number): number {
 	const row = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], {
 		encoding: "utf8",
 		env: { ...process.env, LC_ALL: "C" },

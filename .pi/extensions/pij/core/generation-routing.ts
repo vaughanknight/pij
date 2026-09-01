@@ -38,8 +38,31 @@ export interface RsRouteRow {
 	/** Path on the rs daemon this row dispatches to. */
 	readonly rsPath: string;
 	readonly method: "GET" | "POST";
+	/** WHICH seat the follow-the-seat check is about.
+	 *
+	 *  "ambient" (the default) is right for the identity verbs — adopt, whoami,
+	 *  phonehome, report — which are about ME. It is WRONG for a verb that takes
+	 *  a seat id, because `pij state <id>` is about SOMEONE ELSE: keying that on
+	 *  the ambient seat means an rs-resident caller asking about a legacy-only
+	 *  peer routes to rs, gets a decoded "no such seat", classifies as rs-error
+	 *  and exits 4 — follow-the-seat defeated by following the wrong seat, and a
+	 *  verb that works today broken for every legacy-resident peer.
+	 *
+	 *  It lives on the ROW because it is per-verb knowledge, and per-verb
+	 *  knowledge belongs in the table rather than in the dispatcher. */
+	readonly seatFrom?: "ambient" | "argument";
 	/** Why this row exists — read by humans, never by code. */
 	readonly why: string;
+	/** How to render an rs payload for a HUMAN caller.
+	 *
+	 *  ac-1143 says the CLI's external surface is unchanged, and output shape is
+	 *  half of that. A row that rs actually serves needs one of these, or a
+	 *  human typing `pij report now "a" "b"` gets a JSON blob where a sentence
+	 *  belongs. Wave 1 supplies none, because no rs handler exists to render;
+	 *  the row that goes live is the row that must bring its renderer. Absent +
+	 *  a human caller is a LOUD refusal, never a silent JSON blob — see
+	 *  `cli.ts`. */
+	readonly render?: (payload: unknown) => string;
 }
 
 /** THE ROUTE TABLE. Data, consumed by a dispatcher with no per-verb logic.
@@ -63,7 +86,10 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	{
 		verb: "whoami",
 		rsPath: "/v1/whoami",
-		method: "GET",
+		// POST, not GET: a GET carried no caller context, and rs cannot answer
+		// "who am I" for a caller it cannot see. Reading verbs that must
+		// TRANSMIT are POSTs here for that reason alone.
+		method: "POST",
 		why: "ready gesture step 2 — identity must answer from the store the seat registered into",
 	},
 	{
@@ -74,14 +100,45 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	},
 	{
 		verb: "report",
-		rsPath: "/v1/report",
+		leaf: "now",
+		rsPath: "/v1/report/now",
 		method: "POST",
 		why: "ac-1142 — the card must be written where the seat lives",
 	},
 	{
+		verb: "report",
+		leaf: "state",
+		rsPath: "/v1/report/state",
+		method: "POST",
+		why: "ac-1144 — report family parity",
+	},
+	{
+		verb: "report",
+		leaf: "blocked",
+		rsPath: "/v1/report/blocked",
+		method: "POST",
+		why: "ac-1144 — report family parity",
+	},
+	{
+		verb: "report",
+		leaf: "clear",
+		rsPath: "/v1/report/clear",
+		method: "POST",
+		why: "ac-1144 — report family parity",
+	},
+	{
+		verb: "report",
+		leaf: "question",
+		rsPath: "/v1/report/question",
+		method: "POST",
+		why: "ac-1144 — report family parity",
+	},
+	{
 		verb: "state",
 		rsPath: "/v1/state",
-		method: "GET",
+		method: "POST",
+		// `pij state <id>` asks about ANOTHER seat.
+		seatFrom: "argument",
 		why: "ac-1142 — the card must be read back from the store that holds it",
 	},
 ];
@@ -106,6 +163,10 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
  *  happily with this list deleted. */
 export const NEVER_ROUTED: readonly { readonly verb: string; readonly why: string }[] = [
 	{
+		verb: "inbox",
+		why: "PANELESS ADMISSION IS UNSOLVED, and routing this breaks registration fleet-wide. Every rs registration requires BIND EVIDENCE — a (pid, proc_start) pair the daemon corroborates (crates/core/src/admission.rs:143, NoBindEvidence). It is an anti-impersonation control: a subagent inherits its parent's environment and can CLAIM anything, but cannot manufacture evidence for a session that is not its own. The paneless ready form `pij inbox register --json` names no pane and no process, so there is nothing to derive evidence from and rs must refuse. Under the never-bare-404 rule that refusal arrives WITH an envelope, which classifies as rs-error and never falls back — so a routed `inbox` would stop paneless seats registering ANYWHERE, where today they register in legacy and work. Forwarding the pij CLI's own pid is NOT the fix: it corroborates for the instant the process lives and then exits, binding the seat to a dead process so every later phonehome reports unbound — a worse lie than the refusal, and persisted. A designed admission path for pull-mode seats is its own row, not this plan's.",
+	},
+	{
 		verb: "tail",
 		why: "FALSE FRIEND (ac-1145, ruled — NO RENAME): TS `tail` follows a peer TRANSCRIPT, rs `tail` follows daemon EVENT frames. Same spelling, different objects. A caller asking for the transcript must never silently receive the event stream.",
 	},
@@ -123,6 +184,101 @@ export function findRoute(
 		if (exact !== undefined) return exact;
 	}
 	return table.find((row) => row.verb === verb && row.leaf === undefined);
+}
+
+/** What the shim tells rs about who is asking.
+ *
+ *  Every routed verb needs this and none of it reaches rs on its own. The
+ *  bearer key is MACHINE-granularity, so it names no seat; and the TS verbs
+ *  derive identity from the CLI PROCESS's ambient environment — a process that
+ *  is the shim, not the daemon. Without transmitting it, rs is asked "who am
+ *  I?" by a caller it cannot see.
+ *
+ *  A CLAIM, NOT AN IDENTITY. The daemon must validate every field of this
+ *  against what it can observe; nothing here is evidence of anything, and the
+ *  shim deliberately does no validation of its own (an unvalidated
+ *  PIJ_SESSION_ID is how a phantom seat gets minted, and the fence for that
+ *  lives on the rs side, not here). The shim's whole job is faithful
+ *  transmission. */
+export interface CallerContext {
+	readonly pijSessionId?: string;
+	readonly tmuxPane?: string;
+	readonly pijParentId?: string;
+	readonly claudeCodeSessionId?: string;
+	readonly copilotAgentSessionId?: string;
+	readonly codexThreadId?: string;
+	readonly cwd?: string;
+	readonly pid?: number;
+	readonly procStart?: number;
+}
+
+/** The ONE allowlist of environment a routed call may carry.
+ *
+ *  An allowlist and never a blanket env dump: `process.env` on this fleet holds
+ *  tokens and keys, and a generic passthrough would ship them to a daemon that
+ *  never asked. Adding a field here is a deliberate act, which is the point.
+ *  Absent stays ABSENT — a missing key is omitted rather than sent as null, so
+ *  rs can tell "the caller had none" from "the caller sent an empty one". */
+export const CALLER_ENV_ALLOWLIST = [
+	["PIJ_SESSION_ID", "pijSessionId"],
+	["TMUX_PANE", "tmuxPane"],
+	["PIJ_PARENT_ID", "pijParentId"],
+	["CLAUDE_CODE_SESSION_ID", "claudeCodeSessionId"],
+	["COPILOT_AGENT_SESSION_ID", "copilotAgentSessionId"],
+	["CODEX_THREAD_ID", "codexThreadId"],
+] as const satisfies readonly (readonly [string, keyof CallerContext])[];
+
+/** THE WIRE SPELLING — the single TS-side source of the key names that cross to
+ *  Rust. Derived from the allowlist, never hand-written beside it: a second
+ *  hand-maintained list is a third thing to keep in agreement, when the whole
+ *  problem is that two things already drift.
+ *
+ *  CROSS-RUNTIME SEAM. The Rust reader matches these by literal. A rename on
+ *  either side presents as a GREEN SUITE ON BOTH and a fleet that silently
+ *  stops being attributable — both test suites pass, and every seat's report
+ *  goes nowhere. This repo has been bitten by exactly this before, with
+ *  PIJ_SPAWN_ID, where the Rust->TS match was human-verified only.
+ *  `generation-seam.test.ts` holds the guard. */
+export const CALLER_WIRE_KEYS: readonly string[] = [
+	...CALLER_ENV_ALLOWLIST.map(([, field]) => field as string),
+	"cwd",
+	"pid",
+	"procStart",
+];
+
+export function buildCallerContext(
+	env: NodeJS.ProcessEnv,
+	process: { readonly cwd?: string; readonly pid?: number; readonly procStart?: number },
+): CallerContext {
+	const caller: Record<string, string | number> = {};
+	for (const [envName, field] of CALLER_ENV_ALLOWLIST) {
+		const value = env[envName];
+		if (value !== undefined && value !== "") caller[field] = value;
+	}
+	if (process.cwd !== undefined) caller.cwd = process.cwd;
+	if (process.pid !== undefined) caller.pid = process.pid;
+	// pid alone is not identifying — it is recycled at boot. The start time is
+	// the tiebreaker, and rs's own register already requires the pair.
+	if (process.procStart !== undefined) caller.procStart = process.procStart;
+	return caller as CallerContext;
+}
+
+/** The seat id a routed call is ABOUT, given the row and the typed argv.
+ *
+ *  Pure and table-driven: the row says whether this verb speaks about the
+ *  caller or about a named seat, and this reads the name out of argv when it
+ *  does. Returns undefined when there is no positional to read — which stays
+ *  "not known" rather than silently falling back to the ambient seat, because
+ *  falling back is precisely the bug this exists to fix. */
+export function subjectSeatFromArgv(
+	row: RsRouteRow,
+	argv: readonly string[],
+	ambient: string | undefined,
+): string | undefined {
+	if (row.seatFrom !== "argument") return ambient;
+	// argv[0] is the verb; a leaf row consumes one more token.
+	const positionals = argv.slice(row.leaf === undefined ? 1 : 2).filter((t) => !t.startsWith("-"));
+	return positionals[0];
 }
 
 export type GenerationForce = "rs" | "legacy" | undefined;
@@ -380,4 +536,42 @@ export function classifyRsResponse(
 		};
 	}
 	return { kind: "rs", verb, addr, forced };
+}
+
+/** How an rs-served answer should be printed.
+ *
+ *  Pure, so it can be tested without a daemon. ac-1143's promise is that the
+ *  CLI's external surface does not change, and output SHAPE is half of that
+ *  promise — a human typing `pij report now "a" "b"` must not receive a JSON
+ *  blob where a sentence belongs.
+ *
+ *  So a row rs actually serves must bring its own renderer. When it has none
+ *  and the caller did not ask for JSON, this REFUSES rather than printing raw
+ *  JSON: changing the output shape silently is the failure this plan exists to
+ *  remove, and a loud refusal is the only answer that cannot be mistaken for
+ *  normal output. Unreachable today — no rs handler exists — which is precisely
+ *  why now is the cheap time for it to be strict. */
+export type RsRenderResult =
+	| { readonly kind: "json"; readonly text: string }
+	| { readonly kind: "rendered"; readonly text: string }
+	| { readonly kind: "no-renderer"; readonly message: string };
+
+export function renderRsAnswer(
+	row: RsRouteRow | undefined,
+	payload: unknown,
+	argv: readonly string[],
+): RsRenderResult {
+	if (argv.includes("--json")) return { kind: "json", text: JSON.stringify(payload) };
+	if (row?.render !== undefined) return { kind: "rendered", text: row.render(payload) };
+	// An rs handler may carry the exact sentence the TS CLI prints, in `line`.
+	// Printing it beats re-deriving the wording here, which would put a second
+	// copy of that sentence on this side of the wire — the thing that drifts.
+	const line = (payload as { readonly line?: unknown } | null | undefined)?.line;
+	if (typeof line === "string") return { kind: "rendered", text: line };
+	const name =
+		row === undefined ? "?" : row.leaf === undefined ? row.verb : `${row.verb} ${row.leaf}`;
+	return {
+		kind: "no-renderer",
+		message: `rs served \`${name}\` but the route table has no human renderer for it — refusing to print raw JSON where the CLI's own output belongs (re-run with --json, or give the row a \`render\`)`,
+	};
 }
