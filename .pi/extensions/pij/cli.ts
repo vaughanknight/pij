@@ -136,7 +136,9 @@ import { formatFocusList, launchFocus, listFocuses, saveFocus } from "./core/foc
 import {
 	describeOutcome,
 	findRoute,
+	isDirectPanelessAdopt,
 	NEVER_ROUTED,
+	PANELESS_ADOPT_REFUSAL,
 	type RsRouteRow,
 	renderRsAnswer,
 	servedByLegacy,
@@ -4612,6 +4614,13 @@ async function bootThroughGenerationRouting(): Promise<void> {
 		await runGenerationDiagnostic(process.argv.slice(3));
 		return;
 	}
+	// F005 — the direct paneless `adopt` door. The decision and the wording are
+	// both in core (pure, behaviourally tested); this only performs them.
+	if (isDirectPanelessAdopt(verb, process.argv.slice(3))) {
+		process.stderr.write(PANELESS_ADOPT_REFUSAL);
+		process.exitCode = 2;
+		return;
+	}
 	// A table lookup, not a branch on the verb: `findRoute` and the deny list
 	// own the answer, and both are data.
 	const leaf = process.argv[3]?.startsWith("-") ? undefined : process.argv[3];
@@ -4700,7 +4709,7 @@ function emitRsPayload(
 	argv: readonly string[],
 ): void {
 	const result = renderRsAnswer(row, payload, argv);
-	if (result.kind === "no-renderer") {
+	if (result.kind === "no-renderer" || result.kind === "json-refused") {
 		process.stderr.write(`E-RS: ${result.message}\n`);
 		process.exitCode = 4;
 		return;
@@ -4733,7 +4742,17 @@ if (
 	process.argv[1] !== undefined &&
 	realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
 ) {
-	void bootThroughGenerationRouting();
+	// The promise is CAUGHT, not `void`ed. Routing is async, so an unobserved
+	// rejection terminated the command with a raw stack instead of a named
+	// error — and every routing fault is now a named outcome precisely so the
+	// operator never sees one. A last-resort net: if anything still escapes,
+	// it is reported as an rs failure and never as a legacy answer.
+	bootThroughGenerationRouting().catch((error: unknown) => {
+		process.stderr.write(
+			`E-RS: routing failed before any generation could answer — not falling back to legacy (${error instanceof Error ? error.message : String(error)})\n`,
+		);
+		process.exitCode = 4;
+	});
 }
 
 /** How the detached `pij bg` wrapper re-enters this CLI to deliver its result.
