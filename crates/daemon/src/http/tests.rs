@@ -1034,6 +1034,69 @@ async fn spawn_stamps_only_the_argv_that_reached_the_observed_launch() {
     server.abort();
 }
 
+/// Plan 116's "Claude seats accept inbound by default" is a CLI default
+/// (`prepare_spawn_request`), not a daemon one. `accept_inbound` on the wire
+/// is a plain `bool`, which cannot distinguish "the caller said no" from "the
+/// caller never considered it" — so this handler applies no default of its
+/// own and never could without a tri-state field (a follow-up, not built
+/// here). A direct `/v1/spawn` caller — another client, or a routing shim
+/// that does not go through the CLI — gets pre-116 behaviour: no consent
+/// unless the request says so. This test pins that boundary so it stays a
+/// named, scoped fact instead of a silently-assumed one.
+#[tokio::test]
+async fn direct_http_spawn_carries_no_claude_default_the_cli_owns_it() {
+    let registry = Arc::new(FakeRegistry::new());
+    let tmux = Arc::new(FakeTmux::new().with_pane(Pane {
+        id: "%caller".to_string(),
+        session: "fleet".to_string(),
+        window: "orchestrator".to_string(),
+        title: String::new(),
+        cursor_x: None,
+        cursor_y: None,
+    }));
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.tmux = tmux.clone();
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{addr}/v1/spawn"))
+        .bearer_auth("key")
+        .json(&SpawnRequest {
+            id: Some("pij-plan116-direct".into()),
+            harness: Harness::Claude,
+            executable: Some("claude".to_string()),
+            model: None,
+            effort: None,
+            cwd: "/abs/tree".to_string(),
+            session: Some("fleet".to_string()),
+            caller_pane: None,
+            name: None,
+            parent: None,
+            accept_inbound: false,
+        })
+        .send()
+        .await
+        .expect("spawn request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let envelope: Envelope<SeatDescriptor> = response.json().await.expect("spawn envelope");
+    let descriptor = envelope.data.expect("descriptor");
+    assert_eq!(
+        descriptor.cross_session_inbound_accept,
+        Some(false),
+        "a direct /v1/spawn caller sending accept_inbound:false gets no consent — \
+         the plan 116 default lives only in the CLI, and the daemon must never \
+         invent one behind a bool it cannot tell 'unset' from"
+    );
+
+    server.abort();
+}
+
 #[tokio::test]
 async fn send_enqueues_exactly_once_and_refuses_remote_without_federation() {
     let queue = Arc::new(CountingQueue::default());
