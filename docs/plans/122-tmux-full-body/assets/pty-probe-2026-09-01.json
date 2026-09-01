@@ -4,7 +4,7 @@
   "tmux": "3.6a",
   "method": {
     "canonical": "isolated tmux server; pane shell disabled echo, read one newline-terminated line, printed it between OUT markers; tmux send-keys -l supplied payload and a separate named Enter submitted it",
-    "raw": "isolated tmux server; pane ran stty raw -echo and dd count=<payload bytes>; compared tmux send-keys -l with load-buffer from stdin plus paste-buffer"
+    "raw": "isolated tmux server; pane ran stty raw -echo and dd count=<payload bytes>; compared tmux send-keys -l with load-buffer from stdin plus paste-buffer; a second raw probe enabled bracketed-paste mode and verified -p -r framing"
   },
   "canonical_results": [
     { "payload_bytes": 1000, "exact": true },
@@ -34,6 +34,13 @@
       "suffix": "123456789abcdef-END-S122"
     }
   ],
-  "decision": "Use a uniquely named tmux buffer loaded through stdin, paste it into the target pane, delete it as part of paste-buffer, then submit a separate named Enter.",
-  "rationale": "The live probe confirms a hard 1023-byte canonical-line boundary while a raw TUI consumes 3028 bytes intact. load-buffer avoids placing the full framed body in the tmux send-keys argv and uses tmux's native paste path; the separate Enter preserves the existing no-smuggled-submit invariant. The implementation still requires a real 3000+ byte adapter regression and live OMP witness."
+  "bracketed_multiline_result": {
+    "method": "load-buffer + paste-buffer -p -r + named Enter",
+    "body_bytes": 3019,
+    "wire_bytes": 3032,
+    "exact": true,
+    "wire_shape": "ESC[200~ + body with literal LF bytes + ESC[201~ + CR"
+  },
+  "decision": "Use a uniquely named tmux buffer loaded through stdin, paste it with -p -r so bracketed-paste and literal newline semantics are preserved, delete it as part of paste-buffer, then submit a separate named Enter.",
+  "rationale": "The live probe confirms a hard 1023-byte canonical-line boundary while a raw TUI consumes 3028 bytes intact. load-buffer avoids placing the full framed body in the tmux send-keys argv; -p makes the body one bracketed paste, -r preserves framing newlines as LF, and the separate Enter preserves the no-smuggled-submit invariant. The permanent real-tmux regression now covers a 3000+ byte multiline body; the live OMP witness remains required."
 }

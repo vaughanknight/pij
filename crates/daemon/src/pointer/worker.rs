@@ -1,26 +1,16 @@
-use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use pij_core::delivery::{DeliveryRung, delivery_kind, select_rung};
 use pij_core::error::{PijError, Result};
-use pij_core::events::EventFilter;
-use pij_core::model::{
-    DeliveryOrigin, DeliveryOutcome, Event, Job, JobId, Msg, Outcome, SeatId, SemanticState, Seq,
-};
+use pij_core::framing::frame_message;
+use pij_core::model::{DeliveryOrigin, DeliveryOutcome, Job, JobId, Msg, Outcome, SemanticState};
 use pij_core::ports::{Queue, Registry, SeatFilter, TmuxPort, Transport};
 use pij_harnesses::InteractionGate;
-use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
-use tokio::time::timeout;
-use tokio_stream::StreamExt;
 
-use crate::events::{EventBus, Subscription};
+use crate::events::EventBus;
 
-use super::{
-    POINTER_ANNOUNCED_EVENT_KIND, POINTER_PARKED_EVENT_KIND, POINTER_UNPARKED_EVENT_KIND,
-    PointerPolicy, render_final_pointer, render_pointer, retry_delay, submit_command,
-};
+use super::{PointerPolicy, retry_delay, submit_command};
 
 /// How many times a held delivery is re-offered before the job is parked.
 ///
@@ -29,83 +19,42 @@ use super::{
 const HELD_ATTEMPT_LIMIT: u32 = 4;
 
 const WORKER_ID: &str = "pointer-drain";
-type Clock = dyn Fn() -> Result<u64> + Send + Sync;
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct PointerState {
-    announcements: u32,
-    last_announced_at: Option<u64>,
-    parked: bool,
-    latest_seq: Option<Seq>,
-}
-
-#[derive(Clone, Debug)]
-struct PendingPointer {
-    event: Event,
-    announcement: u32,
-    final_announcement: bool,
-}
-
-struct CadenceState {
-    live: Option<Subscription>,
-    seats: BTreeMap<SeatId, PointerState>,
-    hydrated: bool,
-    pending: BTreeMap<SeatId, PendingPointer>,
-}
 
 /// One delivery-queue drain pass below the socket transport.
 ///
 /// The worker claims only pane-bound recipients, so paneless pull consumers keep
 /// ownership of their own rows. A failed command uses durable exponential
-/// backoff. A body is always released with zero delay: pointer cadence may delay
-/// the announcer, but it must never delay the reader the pointer directs to the
-/// inbox.
-///
-/// Pointer cadence and parking are durable spine policy, not process residue.
-/// The announcer records that it POINTED, not that anyone will ever come. Each
-/// announcement event carries its seat-level ordinal; parked/unparked events make
-/// the stop visible and reconstruct the budget after restart. Queue `attempt` is
-/// deliberately not consulted: it counts every claim/release, not what a seat was
-/// actually told.
-///
-/// `delivery.pointer-announced` means the seat experienced the physical line, so
-/// submission precedes publication. If publication fails, a process-local pending
-/// fact is retried before any further submit. A crash may lose that pending fact
-/// and duplicate one pointer after restart; duplicate-over-lie is the deliberate
-/// residual. The event is never redefined as a pre-submit decision.
+/// backoff. A socketless body is framed once, submitted to the pane, and then
+/// acknowledged with the distinct typed-to-pane evidence class.
 ///
 /// # Composition recipe
 ///
 /// In `crates/daemon/src/lib.rs`, import `pij_daemon::pointer::DrainWorker`,
 /// construct one from the composed registry, queue, transport, tmux,
-/// `InteractionGate`, event bus, `pointer_announce_cadence_secs`, and
-/// `pointer_announce_limit`, then call `drain_once` from the injected delivery
-/// cadence. The same event bus must be shared with `DeliveryService`, whose inbox
-/// read publishes the only automatic unpark trigger.
+/// `InteractionGate`, event bus, and the validated pointer policy, then call
+/// `drain_once` from the injected delivery cadence. The event bus and pointer
+/// policy remain constructor inputs for the module-level pointer API, but no
+/// pane-bound body path consults pointer cadence after the full-body cutover.
 pub struct DrainWorker {
     registry: Arc<dyn Registry>,
     queue: Arc<dyn Queue>,
     transport: Arc<dyn Transport>,
     tmux: Arc<dyn TmuxPort>,
     interaction: Arc<InteractionGate>,
-    event_bus: Arc<EventBus>,
-    policy: PointerPolicy,
-    cadence: Mutex<CadenceState>,
-    clock: Arc<Clock>,
 }
 
 impl DrainWorker {
-    /// Construct a worker using the system clock for pointer cadence and events.
+    /// Construct a worker and validate the retained pointer-policy configuration.
     ///
     /// # Errors
-    /// Returns [`PijError::Adapter`] when `pointer_cadence` is zero.
+    /// Returns [`PijError::Adapter`] when pointer cadence or limit is zero.
     pub fn new(
         registry: Arc<dyn Registry>,
         queue: Arc<dyn Queue>,
         transport: Arc<dyn Transport>,
         tmux: Arc<dyn TmuxPort>,
         interaction: Arc<InteractionGate>,
-        event_bus: Arc<EventBus>,
+        _event_bus: Arc<EventBus>,
         policy: PointerPolicy,
     ) -> Result<Self> {
         if policy.cadence.is_zero() {
@@ -126,15 +75,6 @@ impl DrainWorker {
             transport,
             tmux,
             interaction,
-            event_bus,
-            policy,
-            cadence: Mutex::new(CadenceState {
-                live: None,
-                seats: BTreeMap::new(),
-                hydrated: false,
-                pending: BTreeMap::new(),
-            }),
-            clock: Arc::new(system_time_ms),
         })
     }
 
@@ -149,8 +89,6 @@ impl DrainWorker {
     /// failures. A fallible delivery action is returned to pending before its
     /// error is surfaced.
     pub async fn drain_once(&self) -> Result<usize> {
-        self.flush_pending_pointers().await?;
-        self.refresh_cadence().await?;
         let mut kinds: Vec<String> = self
             .registry
             .list(SeatFilter::default())
@@ -296,6 +234,8 @@ impl DrainWorker {
                 return Err(error);
             }
         };
+        // `permits_injection_fresh` above already discharged both pane-facing
+        // guards: no typing veto and an idle composer. Do not add a second gate.
         match select_rung(&recipient, &msg, socket_available, false, true) {
             DeliveryRung::Socket => match self.transport.deliver(&recipient, &msg).await {
                 Ok(DeliveryOutcome::Delivered { origin }) => {
@@ -323,7 +263,7 @@ impl DrainWorker {
                     Err(error)
                 }
             },
-            DeliveryRung::Pointer => self.announce_pointer(job_id, pane, &msg).await,
+            DeliveryRung::TypedBody => self.submit_body_claim(job_id, pane, &msg).await,
             DeliveryRung::Observe | DeliveryRung::Queue => self.release_body(job_id).await,
             DeliveryRung::Pty => unreachable!("commands are handled before socket capability"),
         }
@@ -350,176 +290,16 @@ impl DrainWorker {
             .map(|_| ())
     }
 
-    async fn announce_pointer(&self, job_id: JobId, pane: &str, msg: &Msg) -> Result<()> {
-        match self.persist_pending_pointer(&msg.to).await {
-            Ok(true) => return self.release_body(job_id).await,
-            Ok(false) => {}
-            Err(error) => {
-                self.release_body(job_id).await?;
-                return Err(error);
-            }
-        }
-        let at = match (self.clock)() {
-            Ok(at) => at,
-            Err(error) => {
-                self.release_body(job_id).await?;
-                return Err(error);
-            }
-        };
-        let (announcement, final_announcement) = match self.pointer_decision(&msg.to, at).await {
-            PointerDecision::Announce {
-                announcement,
-                final_announcement,
-            } => (announcement, final_announcement),
-            PointerDecision::ParkNow {
-                announcements,
-                decision_seq,
-            } => {
-                if let Err(error) = self
-                    .publish_parked(&msg.to, at, announcements, decision_seq)
-                    .await
-                {
-                    self.release_body(job_id).await?;
-                    return Err(error);
-                }
-                return self.release_body(job_id).await;
-            }
-            PointerDecision::Wait | PointerDecision::Parked => {
-                return self.release_body(job_id).await;
-            }
-        };
-
-        let payload = match serde_json::to_string(&PointerEvent {
-            msg_id: &msg.msg_id,
-            from: &msg.from,
-            announcement,
-        }) {
-            Ok(payload) => payload,
-            Err(error) => {
-                self.release_body(job_id).await?;
-                return Err(PijError::Adapter {
-                    adapter: "daemon/pointer".to_string(),
-                    message: format!("could not encode pointer event {}: {error}", msg.msg_id),
-                });
-            }
-        };
-        let pointer = if final_announcement {
-            render_final_pointer(
-                &msg.from,
-                msg.from_machine.as_deref(),
-                self.policy.announcement_limit,
-            )
-        } else {
-            render_pointer(&msg.from, msg.from_machine.as_deref())
-        };
-        if let Err(error) = self.tmux.submit(pane, &pointer).await {
+    async fn submit_body_claim(&self, job_id: JobId, pane: &str, msg: &Msg) -> Result<()> {
+        let framed = frame_message(&msg.from, msg.from_machine.as_deref(), &msg.body);
+        if let Err(error) = self.tmux.submit(pane, &framed).await {
             self.release_body(job_id).await?;
             return Err(error);
         }
-        let event = Event {
-            seq: None,
-            v: 1,
-            at,
-            kind: POINTER_ANNOUNCED_EVENT_KIND.to_string(),
-            seat: Some(msg.to.clone()),
-            payload,
-        };
-        self.cadence.lock().await.pending.insert(
-            msg.to.clone(),
-            PendingPointer {
-                event,
-                announcement,
-                final_announcement,
-            },
-        );
-        if let Err(error) = self.persist_pending_pointer(&msg.to).await {
-            self.release_body(job_id).await?;
-            return Err(error);
-        }
-        self.release_body(job_id).await
-    }
-
-    async fn flush_pending_pointers(&self) -> Result<()> {
-        let seats: Vec<SeatId> = self.cadence.lock().await.pending.keys().cloned().collect();
-        for seat in seats {
-            self.persist_pending_pointer(&seat).await?;
-        }
-        Ok(())
-    }
-
-    async fn persist_pending_pointer(&self, seat: &SeatId) -> Result<bool> {
-        let Some(pending) = self.cadence.lock().await.pending.get(seat).cloned() else {
-            return Ok(false);
-        };
-        let at = pending.event.at;
-        let announced_seq = self.event_bus.publish(pending.event).await?;
-        {
-            let mut cadence = self.cadence.lock().await;
-            cadence.pending.remove(seat);
-            let state = cadence.seats.entry(seat.clone()).or_default();
-            state.announcements = pending.announcement;
-            state.last_announced_at = Some(at);
-            state.latest_seq = Some(announced_seq);
-        }
-        if pending.final_announcement {
-            self.publish_parked(seat, at, pending.announcement, Some(announced_seq))
-                .await?;
-        }
-        Ok(true)
-    }
-
-    async fn publish_parked(
-        &self,
-        seat: &SeatId,
-        at: u64,
-        announcements: u32,
-        decision_seq: Option<Seq>,
-    ) -> Result<()> {
-        if let Some(latest) = self
-            .event_bus
-            .latest_matching(
-                seat,
-                &[
-                    POINTER_ANNOUNCED_EVENT_KIND,
-                    POINTER_PARKED_EVENT_KIND,
-                    POINTER_UNPARKED_EVENT_KIND,
-                ],
-            )
-            .await?
-            && latest.kind == POINTER_UNPARKED_EVENT_KIND
-            && latest
-                .seq
-                .is_some_and(|seq| decision_seq.is_none_or(|decided| seq > decided))
-        {
-            let mut cadence = self.cadence.lock().await;
-            apply_pointer_event(&mut cadence.seats, latest)?;
-            return Ok(());
-        }
-        let payload = serde_json::to_string(&PointerParkedEvent {
-            announcements,
-            reason: "announcement-limit",
-        })
-        .map_err(|error| PijError::Adapter {
-            adapter: "daemon/pointer".to_string(),
-            message: format!("could not encode pointer parked event for {seat}: {error}"),
-        })?;
-        let seq = self
-            .event_bus
-            .publish(Event {
-                seq: None,
-                v: 1,
-                at,
-                kind: POINTER_PARKED_EVENT_KIND.to_string(),
-                seat: Some(seat.clone()),
-                payload,
-            })
-            .await?;
-        let mut cadence = self.cadence.lock().await;
-        let state = cadence.seats.entry(seat.clone()).or_default();
-        state.announcements = state.announcements.max(announcements);
-        state.parked = true;
-        state.latest_seq = Some(seq);
-        Ok(())
+        self.queue
+            .ack_delivery(job_id, DeliveryOrigin::TypedToPane)
+            .await
+            .map(|_| ())
     }
 
     async fn release_or_backoff(&self, job_id: JobId, job: &Job, msg: &Msg) -> Result<()> {
@@ -534,43 +314,12 @@ impl DrainWorker {
         self.queue.retry(job_id, Duration::ZERO).await
     }
 
-    /// Release a body whose RECIPIENT could not be observed, on the shared
-    /// backoff curve.
+    /// Back off a body whose recipient could not be observed.
     ///
-    /// `release_body` is `retry(job, Duration::ZERO)` — immediately claimable
-    /// again — and that is right for a release the worker CHOSE: a vetoed
-    /// composer, a parked pointer, a recipient that is simply not ready yet.
-    ///
-    /// It is wrong when the recipient's pane could not be CAPTURED AT ALL, and
-    /// the live fleet measured how wrong. `pij-mammoth-ostrich` carried pane
-    /// `%1861`, which no longer existed; every claim failed the capture,
-    /// released at zero delay, and was the lowest claimable id again on the very
-    /// next tick — TWENTY THOUSAND ONE HUNDRED AND SIXTY-EIGHT attempts, one
-    /// failed `tmux capture-pane` every five seconds, indefinitely, for a pane
-    /// that was never coming back. Nothing about that failure was transient and
-    /// nothing in the retry schedule ever said so.
-    ///
-    /// The starvation fix does not close this on its own. With the pass
-    /// continuing, the queue drains regardless — so the spin stops being fatal
-    /// and becomes INVISIBLE, which is the worse of the two: load and log noise
-    /// in exactly the place anyone would look for a real signal.
-    ///
-    /// SCOPED DELIBERATELY NARROWLY, and the scope is the interesting part. It
-    /// covers only the failure that says something about THE RECIPIENT. It does
-    /// NOT cover `announce_pointer`'s internal failures — a spine append, the
-    /// clock, an encode, a submit — because those are WORKER-side, say nothing
-    /// about whether the seat can collect its own mail, and `not_before` gates
-    /// the READER's claim as well as this worker's. Backing those off would make
-    /// a push-side fault delay the recipient's own `pij inbox`, removing the
-    /// fallback that exists precisely for when push is broken.
-    /// `pending_pointer_fact_retries_without_resubmitting_experienced_line`
-    /// holds that line: it claims the body as a reader immediately after a spine
-    /// failure, and it caught the first, wider version of this change.
-    ///
-    /// THE RULE: a release the worker chose stays immediate; a release forced by
-    /// a recipient we could not observe backs off. The curve is [`retry_delay`],
-    /// the same one `backoff_command` and `backoff_held` (plan 110) already use
-    /// — reused rather than re-minted.
+    /// An authorization veto is immediately retryable because the next tick may
+    /// observe an idle composer. A capture error says the recipient itself could
+    /// not be observed, so it uses the durable shared backoff curve instead of
+    /// spinning on the same vanished pane every tick.
     async fn backoff_unobservable(&self, job_id: JobId, attempt: u32) -> Result<()> {
         self.queue.retry(job_id, retry_delay(attempt)).await
     }
@@ -611,178 +360,12 @@ impl DrainWorker {
     async fn fail_claim(&self, job_id: JobId, reason: String) -> Result<()> {
         self.queue.ack(job_id, Outcome::Failed { reason }).await
     }
-
-    async fn pointer_decision(&self, seat: &SeatId, now: u64) -> PointerDecision {
-        let cadence_ms = u64::try_from(self.policy.cadence.as_millis()).unwrap_or(u64::MAX);
-        let cadence = self.cadence.lock().await;
-        let state = cadence.seats.get(seat).copied().unwrap_or_default();
-        if state.parked {
-            return PointerDecision::Parked;
-        }
-        if state.announcements >= self.policy.announcement_limit {
-            return PointerDecision::ParkNow {
-                announcements: state.announcements,
-                decision_seq: state.latest_seq,
-            };
-        }
-        if state
-            .last_announced_at
-            .is_some_and(|last| now.saturating_sub(last) < cadence_ms)
-        {
-            return PointerDecision::Wait;
-        }
-        let announcement = state.announcements.saturating_add(1);
-        PointerDecision::Announce {
-            announcement,
-            final_announcement: announcement == self.policy.announcement_limit,
-        }
-    }
-
-    async fn refresh_cadence(&self) -> Result<()> {
-        let mut cadence = self.cadence.lock().await;
-        loop {
-            if !cadence.hydrated {
-                // Intentionally unbounded only on cold hydration and lossy-live
-                // recovery: `EventBus::subscribe(None, ..)` calls `Spine::tail`
-                // from sequence zero, which materializes EVERY spine row before
-                // filtering pointer kinds in Rust. Reconstructing the complete
-                // since-unpark budget requires that durable history. This must
-                // never move onto the per-inbox or per-claim hot path; those use
-                // mandatory-seat `latest_matching` instead.
-                cadence.live = Some(
-                    self.event_bus
-                        .subscribe(
-                            None,
-                            EventFilter::kinds([
-                                POINTER_ANNOUNCED_EVENT_KIND,
-                                POINTER_PARKED_EVENT_KIND,
-                                POINTER_UNPARKED_EVENT_KIND,
-                            ]),
-                        )
-                        .await?,
-                );
-                cadence.hydrated = true;
-            }
-            loop {
-                let next = timeout(
-                    Duration::ZERO,
-                    cadence.live.as_mut().expect("hydrated subscription").next(),
-                )
-                .await;
-                let Ok(Some(event)) = next else {
-                    break;
-                };
-                apply_pointer_event(&mut cadence.seats, event)?;
-            }
-            let dropped = cadence
-                .live
-                .as_ref()
-                .expect("hydrated subscription")
-                .dropped_count();
-            if dropped == 0 {
-                return Ok(());
-            }
-            eprintln!(
-                "pij-rs pointer drain: live policy subscription dropped {dropped} event(s); reconciling from durable spine"
-            );
-            cadence.seats.clear();
-            cadence.live = None;
-            cadence.hydrated = false;
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum PointerDecision {
-    Wait,
-    Parked,
-    ParkNow {
-        announcements: u32,
-        decision_seq: Option<Seq>,
-    },
-    Announce {
-        announcement: u32,
-        final_announcement: bool,
-    },
-}
-
-fn apply_pointer_event(states: &mut BTreeMap<SeatId, PointerState>, event: Event) -> Result<()> {
-    let seq = event.seq;
-    let seat = event.seat.ok_or_else(|| PijError::Adapter {
-        adapter: "daemon/pointer".to_string(),
-        message: format!("{} event has no seat", event.kind),
-    })?;
-    let state = states.entry(seat).or_default();
-    match event.kind.as_str() {
-        POINTER_ANNOUNCED_EVENT_KIND => {
-            let payload: PointerEventRecord =
-                serde_json::from_str(&event.payload).map_err(|error| PijError::Adapter {
-                    adapter: "daemon/pointer".to_string(),
-                    message: format!("invalid pointer announcement event: {error}"),
-                })?;
-            state.announcements = payload
-                .announcement
-                .unwrap_or_else(|| state.announcements.saturating_add(1));
-            state.last_announced_at = Some(event.at);
-        }
-        POINTER_PARKED_EVENT_KIND => {
-            let payload: PointerParkedRecord =
-                serde_json::from_str(&event.payload).map_err(|error| PijError::Adapter {
-                    adapter: "daemon/pointer".to_string(),
-                    message: format!("invalid pointer parked event: {error}"),
-                })?;
-            state.announcements = state.announcements.max(payload.announcements);
-            state.parked = true;
-        }
-        POINTER_UNPARKED_EVENT_KIND => *state = PointerState::default(),
-        _ => unreachable!("subscription filters pointer policy kinds"),
-    }
-    state.latest_seq = seq;
-    Ok(())
-}
-
-#[derive(Serialize)]
-struct PointerEvent<'a> {
-    msg_id: &'a str,
-    from: &'a SeatId,
-    announcement: u32,
-}
-
-#[derive(Deserialize)]
-struct PointerEventRecord {
-    #[serde(default)]
-    announcement: Option<u32>,
-}
-
-#[derive(Serialize)]
-struct PointerParkedEvent {
-    announcements: u32,
-    reason: &'static str,
-}
-
-#[derive(Deserialize)]
-struct PointerParkedRecord {
-    announcements: u32,
-}
-
-fn system_time_ms() -> Result<u64> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| PijError::Adapter {
-            adapter: "daemon/pointer".to_string(),
-            message: format!("system clock is before the Unix epoch: {error}"),
-        })?
-        .as_millis();
-    u64::try_from(millis).map_err(|_| PijError::Adapter {
-        adapter: "daemon/pointer".to_string(),
-        message: "system time does not fit in the pointer event timestamp".to_string(),
-    })
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::time::Duration;
 
     use async_trait::async_trait;
@@ -790,20 +373,17 @@ mod tests {
     use pij_core::delivery::delivery_kind;
     use pij_core::model::{
         DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, ProcIdentity,
-        SeatDescriptor, SeatId, Seq,
+        SeatDescriptor, SeatId,
     };
     use pij_core::ports::{DeliveryEnqueue, Queue, Registry, Spine, TmuxPort, Transport};
     use pij_harnesses::InteractionGate;
     use pij_store::SqliteQueue;
     use pij_testkit::FreshStore;
     use pij_testkit::fakes::{FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport};
-    use serde_json::Value;
     use tokio::sync::Notify;
 
-    use super::{
-        DrainWorker, EventBus, POINTER_ANNOUNCED_EVENT_KIND, POINTER_PARKED_EVENT_KIND,
-        POINTER_UNPARKED_EVENT_KIND, PointerPolicy, retry_delay,
-    };
+    use super::{DrainWorker, EventBus, PointerPolicy, retry_delay};
+    use crate::pointer::POINTER_ANNOUNCED_EVENT_KIND;
 
     const CADENCE: Duration = Duration::from_secs(90);
 
@@ -814,7 +394,6 @@ mod tests {
         transport: Arc<FakeTransport>,
         tmux: Arc<FakeTmux>,
         interaction: Arc<InteractionGate>,
-        spine: Arc<FakeSpine>,
         event_bus: Arc<EventBus>,
         arrange_composers: bool,
     }
@@ -849,7 +428,7 @@ mod tests {
         let spine = Arc::new(FakeSpine::new());
         let event_bus =
             Arc::new(EventBus::new(Arc::clone(&spine) as Arc<dyn Spine>, 16).expect("event bus"));
-        let mut worker = DrainWorker::new(
+        let worker = DrainWorker::new(
             Arc::clone(&registry) as Arc<dyn Registry>,
             Arc::clone(&queue) as Arc<dyn Queue>,
             Arc::clone(&transport) as Arc<dyn Transport>,
@@ -862,7 +441,6 @@ mod tests {
             },
         )
         .expect("worker");
-        worker.clock = Arc::new(|| Ok(777));
         Fixture {
             worker,
             registry,
@@ -870,7 +448,6 @@ mod tests {
             transport,
             tmux,
             interaction,
-            spine,
             event_bus,
             arrange_composers,
         }
@@ -958,157 +535,57 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pointer_announces_once_per_pass_and_zero_delay_keeps_body_reader_claimable() {
+    async fn socketless_body_retry_types_the_full_shared_frame_and_acks_it() {
         let fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
-        register(&fixture, seat("pij-body", Some("%8"))).await;
-        fixture.interaction.observe_composer("%8", "");
-        let msg = message("pij-body", "SECRET BODY", None);
-        let id = enqueue(&fixture, &msg).await;
-
-        assert_eq!(fixture.worker.drain_once().await.expect("first drain"), 1);
-        assert_eq!(
-            fixture.tmux.calls(),
-            [
-                "list_panes",
-                "capture:%8:4294967295",
-                "user_typing:%8",
-                "submit:%8:[pij-rs from pij-sender]\nmessage waiting — run: pij inbox\n[/pij]"
-            ]
-        );
-        assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)]);
-        assert_eq!(
-            fixture.queue.live_len(),
-            1,
-            "release preserves the body row"
-        );
-
-        let (claimed_id, claimed) = fixture
-            .queue
-            .claim(&[delivery_kind(&msg.to)], "reader")
-            .await
-            .expect("reader claim")
-            .expect("pointer promise is immediately true");
-        assert_eq!(claimed_id, id);
-        assert_eq!(
-            claimed.payload,
-            serde_json::to_string(&msg).expect("message json")
-        );
-        fixture
-            .queue
-            .retry(claimed_id, Duration::ZERO)
-            .await
-            .expect("release reader witness");
-
-        let events = fixture
-            .spine
-            .tail(Some(&SeatId::from("pij-body")), Seq(0))
-            .await
-            .expect("pointer events");
-        assert_eq!(events.len(), 1, "one pointer event for the pass");
-        let payload: Value = serde_json::from_str(&events[0].payload).expect("event json");
-        assert_eq!(
-            payload,
-            serde_json::json!({"msg_id":"m-pij-body","from":"pij-sender","announcement":1})
-        );
-        assert!(!events[0].payload.contains("SECRET BODY"));
-    }
-
-    #[tokio::test]
-    async fn cadence_suppresses_repeat_without_delaying_the_body() {
-        let fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
-        register(&fixture, seat("pij-cadence", Some("%12"))).await;
-        fixture.interaction.observe_composer("%12", "");
-        let msg = message("pij-cadence", "still waiting", None);
+        register(&fixture, seat("pij-body-typed", Some("%typed"))).await;
+        fixture.interaction.observe_composer("%typed", "");
+        let msg = message("pij-body-typed", "SECRET BODY", None);
         enqueue(&fixture, &msg).await;
 
-        assert_eq!(fixture.worker.drain_once().await.expect("announce"), 1);
-        assert_eq!(fixture.worker.drain_once().await.expect("suppress"), 1);
-        assert_eq!(
-            fixture
-                .tmux
-                .calls()
-                .iter()
-                .filter(|call| call.starts_with("submit:"))
-                .count(),
-            1
+        assert_eq!(fixture.worker.drain_once().await.expect("drain"), 1);
+        assert!(
+            fixture.queue.retried().is_empty(),
+            "typed body is terminal for the row"
         );
         assert_eq!(
-            fixture.queue.retried(),
-            [(pij_core::model::JobId(1), Duration::ZERO); 2]
-        );
-    }
-
-    #[tokio::test]
-    async fn pending_pointer_fact_retries_without_resubmitting_experienced_line() {
-        let fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
-        register(&fixture, seat("pij-persist-first", Some("%persist"))).await;
-        fixture.interaction.observe_composer("%persist", "");
-        enqueue(&fixture, &message("pij-persist-first", "waiting", None)).await;
-        fixture.spine.script_append_error("injected spine failure");
-
-        let error = fixture
-            .worker
-            .drain_once()
-            .await
-            .expect_err("publish fails");
-        assert!(error.to_string().contains("injected spine failure"));
-        assert_eq!(
-            fixture
-                .tmux
-                .calls()
-                .iter()
-                .filter(|call| call.starts_with("submit:"))
-                .count(),
-            1,
-            "the seat experienced the pointer before its fact failed"
-        );
-
-        let claimed = fixture
-            .queue
-            .claim(
-                &[delivery_kind(&SeatId::from("pij-persist-first"))],
-                "reader",
-            )
-            .await
-            .expect("reader claim")
-            .expect("body remains claimable");
-        assert_eq!(claimed.1.serial_key, "pij-persist-first");
-        assert_eq!(
-            fixture
-                .worker
-                .drain_once()
-                .await
-                .expect("claimless retry after spine recovers"),
+            fixture.queue.live_len(),
             0,
-            "pending fact retries before queue claims even after reader takes the row"
+            "typed body is no longer inbox work"
         );
-        assert_eq!(
+        assert!(
             fixture
                 .tmux
                 .calls()
                 .iter()
-                .filter(|call| call.starts_with("submit:"))
-                .count(),
-            1,
-            "pending fact retry must not submit the experienced line again"
+                .any(|call| call == "submit:%typed:[pij-rs from pij-sender]\nSECRET BODY\n[/pij]"),
+            "retry path must submit the canonical full frame: {:?}",
+            fixture.tmux.calls()
         );
+        let replay = fixture
+            .queue
+            .enqueue_delivery(Job {
+                kind: delivery_kind(&msg.to),
+                serial_key: msg.to.0.clone(),
+                payload: serde_json::to_string(&msg).expect("message json"),
+                dedupe_key: msg.msg_id.clone(),
+                attempt: 0,
+            })
+            .await
+            .expect("query durable delivery ledger");
+        let DeliveryEnqueue::AlreadyDelivered(origin) = replay else {
+            panic!("a completed typed delivery must replay its receipt, got {replay:?}");
+        };
         assert_eq!(
-            fixture
-                .spine
-                .tail(Some(&SeatId::from("pij-persist-first")), Seq(0))
-                .await
-                .expect("persisted retry")
-                .iter()
-                .filter(|event| event.kind == POINTER_ANNOUNCED_EVENT_KIND)
-                .count(),
-            1
+            serde_json::to_value(origin).expect("origin json"),
+            "typed-to-pane",
+            "typed delivery records its weaker, distinct evidence class"
         );
     }
 
     #[tokio::test]
-    async fn legacy_history_counts_every_announcement_since_the_last_unpark() {
+    async fn legacy_pointer_history_does_not_suppress_typed_body_delivery() {
         let fixture = fixture_with_limit(FakeTransport::unreachable(), FakeTmux::new(), 3);
-        let recipient = SeatId::from("pij-legacy-parked");
+        let recipient = SeatId::from("pij-legacy-pointer");
         register(&fixture, seat(recipient.as_str(), Some("%legacy"))).await;
         fixture.interaction.observe_composer("%legacy", "");
         for announcement in 1..=18 {
@@ -1120,8 +597,6 @@ mod tests {
                     at: announcement,
                     kind: POINTER_ANNOUNCED_EVENT_KIND.to_string(),
                     seat: Some(recipient.clone()),
-                    // Pre-policy events had no ordinal; replay must count each
-                    // durable fact rather than resetting at deployment.
                     payload: serde_json::json!({
                         "msg_id": format!("legacy-{announcement}"),
                         "from": "pij-sender"
@@ -1131,336 +606,22 @@ mod tests {
                 .await
                 .expect("historical pointer");
         }
-        enqueue(
-            &fixture,
-            &message(recipient.as_str(), "legacy unread body", None),
-        )
-        .await;
-
-        fixture.worker.drain_once().await.expect("park legacy seat");
-        assert!(
-            fixture
-                .tmux
-                .calls()
-                .iter()
-                .all(|call| !call.starts_with("submit:")),
-            "legacy seat is already over budget; no unexplained extra pointer"
+        let msg = message(
+            recipient.as_str(),
+            "legacy history cannot hide this body",
+            None,
         );
-        let events = fixture
-            .spine
-            .tail(Some(&recipient), Seq(0))
-            .await
-            .expect("legacy parking event");
-        let parked = events
-            .iter()
-            .find(|event| event.kind == POINTER_PARKED_EVENT_KIND)
-            .expect("parked transition");
-        assert_eq!(
-            serde_json::from_str::<Value>(&parked.payload).expect("parked payload"),
-            serde_json::json!({"announcements":18,"reason":"announcement-limit"}),
-            "announcements means what the seat experienced, not the policy limit"
-        );
-        assert_eq!(
-            fixture.queue.live_len(),
-            1,
-            "legacy parking keeps mail readable"
-        );
-    }
-
-    #[tokio::test]
-    async fn lagged_policy_subscription_reconciles_from_durable_spine() {
-        let registry = Arc::new(FakeRegistry::new());
-        let recipient = SeatId::from("pij-lagged-policy");
-        registry
-            .put(seat(recipient.as_str(), Some("%lagged")))
-            .await
-            .expect("register recipient");
-        let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
-        let transport = Arc::new(FakeTransport::unreachable());
-        // Arranged: this test is about pointer-budget reconciliation, so the
-        // send-boundary gate must permit rather than veto for an unrelated reason.
-        let tmux = Arc::new(FakeTmux::new().with_clear_composer("%lagged"));
-        let interaction = Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>));
-        interaction.observe_composer("%lagged", "");
-        let spine = Arc::new(FakeSpine::new());
-        let event_bus = Arc::new(
-            EventBus::new(Arc::clone(&spine) as Arc<dyn Spine>, 1).expect("one-event buffer"),
-        );
-        let worker = DrainWorker::new(
-            Arc::clone(&registry) as Arc<dyn Registry>,
-            Arc::clone(&queue) as Arc<dyn Queue>,
-            Arc::clone(&transport) as Arc<dyn Transport>,
-            Arc::clone(&tmux) as Arc<dyn TmuxPort>,
-            interaction,
-            Arc::clone(&event_bus),
-            PointerPolicy {
-                cadence: CADENCE,
-                announcement_limit: 3,
-            },
-        )
-        .expect("worker");
-        assert_eq!(
-            worker
-                .drain_once()
-                .await
-                .expect("hydrate live subscription"),
-            0
-        );
-        for announcement in 1..=5 {
-            event_bus
-                .publish(Event {
-                    seq: None,
-                    v: 1,
-                    at: announcement,
-                    kind: POINTER_ANNOUNCED_EVENT_KIND.to_string(),
-                    seat: Some(recipient.clone()),
-                    payload: serde_json::json!({
-                        "msg_id": format!("pre-ordinal-{announcement}"),
-                        "from": "pij-sender"
-                    })
-                    .to_string(),
-                })
-                .await
-                .expect("overflow live buffer");
-        }
-        queue
-            .enqueue(Job {
-                kind: delivery_kind(&recipient),
-                serial_key: recipient.to_string(),
-                payload: serde_json::to_string(&message(
-                    recipient.as_str(),
-                    "lagged unread body",
-                    None,
-                ))
-                .expect("message"),
-                dedupe_key: "lagged-policy-body".to_string(),
-                attempt: 0,
-            })
-            .await
-            .expect("enqueue body");
-
-        worker.drain_once().await.expect("reconcile and park");
-        assert!(
-            tmux.calls().iter().all(|call| !call.starts_with("submit:")),
-            "lossy live state must not reopen an exhausted pointer budget"
-        );
-        let parked = spine
-            .tail(Some(&recipient), Seq(0))
-            .await
-            .expect("parked event")
-            .into_iter()
-            .find(|event| event.kind == POINTER_PARKED_EVENT_KIND)
-            .expect("durable reconciliation parks");
-        assert_eq!(
-            serde_json::from_str::<Value>(&parked.payload).expect("parked payload"),
-            serde_json::json!({"announcements":5,"reason":"announcement-limit"})
-        );
-    }
-    #[tokio::test]
-    async fn newer_unpark_fact_wins_over_stale_park_decision() {
-        let fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
-        let recipient = SeatId::from("pij-read-race");
-        let decision_seq = fixture
-            .event_bus
-            .publish(Event {
-                seq: None,
-                v: 1,
-                at: 1,
-                kind: POINTER_ANNOUNCED_EVENT_KIND.to_string(),
-                seat: Some(recipient.clone()),
-                payload: serde_json::json!({
-                    "msg_id":"race",
-                    "from":"pij-sender",
-                    "announcement":3
-                })
-                .to_string(),
-            })
-            .await
-            .expect("decision fact");
-        fixture
-            .event_bus
-            .publish(Event {
-                seq: None,
-                v: 1,
-                at: 2,
-                kind: POINTER_UNPARKED_EVENT_KIND.to_string(),
-                seat: Some(recipient.clone()),
-                payload: serde_json::json!({"reason":"reader-read","messages":1}).to_string(),
-            })
-            .await
-            .expect("concurrent read");
-
-        fixture
-            .worker
-            .publish_parked(&recipient, 3, 3, Some(decision_seq))
-            .await
-            .expect("compare before park");
-        assert!(
-            fixture
-                .spine
-                .tail(Some(&recipient), Seq(0))
-                .await
-                .expect("race history")
-                .iter()
-                .all(|event| event.kind != POINTER_PARKED_EVENT_KIND),
-            "a read newer than the decision must not lose to stale parking"
-        );
-    }
-
-    #[tokio::test]
-    async fn third_pointer_explains_parking_row_stays_readable_and_read_unparks() {
-        let mut fixture = fixture_with_limit(FakeTransport::unreachable(), FakeTmux::new(), 3);
-        register(&fixture, seat("pij-parked", Some("%park"))).await;
-        fixture.interaction.observe_composer("%park", "");
-        let now = Arc::new(AtomicU64::new(0));
-        let clock = Arc::clone(&now);
-        fixture.worker.clock = Arc::new(move || Ok(clock.load(Ordering::Relaxed)));
-        let msg = message("pij-parked", "READ THIS BODY", None);
         enqueue(&fixture, &msg).await;
 
-        for announcement in 1_u32..=3 {
-            now.store(u64::from(announcement - 1) * 90_000, Ordering::Relaxed);
-            assert_eq!(fixture.worker.drain_once().await.expect("announcement"), 1);
-        }
-        now.store(270_000, Ordering::Relaxed);
-        assert_eq!(fixture.worker.drain_once().await.expect("parked pass"), 1);
+        fixture.worker.drain_once().await.expect("typed delivery");
 
-        let submits: Vec<_> = fixture
-            .tmux
-            .calls()
-            .into_iter()
-            .filter(|call| call.starts_with("submit:"))
-            .collect();
-        assert_eq!(submits.len(), 3, "N+1 must not announce");
-        assert_eq!(
-            submits[2],
-            "submit:%park:[pij-rs from pij-sender]\nmessage waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox when ready\n[/pij]"
-        );
-        assert_eq!(fixture.queue.live_len(), 1, "parking never consumes mail");
-
-        let parked_events = fixture
-            .spine
-            .tail(Some(&SeatId::from("pij-parked")), Seq(0))
-            .await
-            .expect("pointer policy events");
-        assert_eq!(
-            parked_events
-                .iter()
-                .filter(|event| event.kind == POINTER_PARKED_EVENT_KIND)
-                .count(),
-            1,
-            "parking transition is visible once"
-        );
-        let parked = parked_events
-            .iter()
-            .find(|event| event.kind == POINTER_PARKED_EVENT_KIND)
-            .expect("parked event");
-        assert_eq!(
-            serde_json::from_str::<Value>(&parked.payload).expect("parked json"),
-            serde_json::json!({"announcements":3,"reason":"announcement-limit"})
-        );
-
-        let mut restarted = DrainWorker::new(
-            Arc::clone(&fixture.registry) as Arc<dyn Registry>,
-            Arc::clone(&fixture.queue) as Arc<dyn Queue>,
-            Arc::clone(&fixture.transport) as Arc<dyn Transport>,
-            Arc::clone(&fixture.tmux) as Arc<dyn TmuxPort>,
-            Arc::clone(&fixture.interaction),
-            Arc::clone(&fixture.event_bus),
-            PointerPolicy {
-                cadence: CADENCE,
-                announcement_limit: 3,
-            },
-        )
-        .expect("restarted worker");
-        restarted.clock = Arc::new(|| Ok(360_000));
-        restarted.drain_once().await.expect("replayed parking");
-        assert_eq!(
-            fixture
-                .tmux
-                .calls()
-                .iter()
-                .filter(|call| call.starts_with("submit:"))
-                .count(),
-            3,
-            "cold replay must preserve the exhausted seat budget"
-        );
-
-        let delivery = crate::delivery::DeliveryService::new(
-            Arc::clone(&fixture.registry) as Arc<dyn Registry>,
-            Arc::clone(&fixture.queue) as Arc<dyn Queue>,
-            Arc::clone(&fixture.transport) as Arc<dyn Transport>,
-            Arc::clone(&fixture.interaction),
-            Arc::clone(&fixture.event_bus),
-        )
-        .expect("delivery service");
-        // Two-step now (u-inbox): the reader CLAIMS, and acks separately. The
-        // unpark rides on the claim, because the seat has been GIVEN its message
-        // at that point whether or not the client survives to ack.
-        let read = delivery
-            .claim_inbox(&SeatId::from("pij-parked"), false)
-            .await
-            .expect("parked mail stays readable");
-        assert_eq!(
-            read.iter()
-                .map(|claim| claim.message.clone())
-                .collect::<Vec<_>>(),
-            [msg]
-        );
-        let before_ack = fixture
-            .spine
-            .tail(Some(&SeatId::from("pij-parked")), Seq(0))
-            .await
-            .expect("unpark at claim");
         assert!(
-            before_ack
-                .iter()
-                .any(|event| event.kind == POINTER_UNPARKED_EVENT_KIND),
-            "claiming without acking must already publish unpark"
+            fixture.tmux.calls().iter().any(|call| call
+                == "submit:%legacy:[pij-rs from pij-sender]\nlegacy history cannot hide this body\n[/pij]"),
+            "retired pointer history must not suppress full-body delivery: {:?}",
+            fixture.tmux.calls()
         );
-        assert!(
-            fixture.queue.acked().is_empty(),
-            "placement witness must inspect the interval before acknowledgement"
-        );
-        for claim in &read {
-            delivery
-                .acknowledge_inbox(claim.job_id)
-                .await
-                .expect("ack the claim the reader received");
-        }
         assert_eq!(fixture.queue.live_len(), 0);
-        let events = fixture
-            .spine
-            .tail(Some(&SeatId::from("pij-parked")), Seq(0))
-            .await
-            .expect("unpark event");
-        let unparked = events
-            .iter()
-            .find(|event| event.kind == POINTER_UNPARKED_EVENT_KIND)
-            .expect("read visibly unparks");
-        assert_eq!(
-            serde_json::from_str::<Value>(&unparked.payload).expect("unparked json"),
-            serde_json::json!({"reason":"reader-read","messages":1})
-        );
-
-        let next = message("pij-parked", "NEW MAIL", None);
-        enqueue(&fixture, &next).await;
-        now.store(360_000, Ordering::Relaxed);
-        fixture
-            .worker
-            .drain_once()
-            .await
-            .expect("post-read announce");
-        assert_eq!(
-            fixture
-                .tmux
-                .calls()
-                .iter()
-                .filter(|call| call.starts_with("submit:"))
-                .count(),
-            4,
-            "a successful read resets the seat-level budget"
-        );
     }
 
     #[test]
@@ -1486,55 +647,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn one_pass_announces_at_most_once_for_a_recipient_with_multiple_rows() {
+    async fn one_pass_delivers_at_most_one_body_for_each_recipient() {
         let fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
         register(&fixture, seat("pij-batch", Some("%15"))).await;
         fixture.interaction.observe_composer("%15", "");
         let first = message("pij-batch", "first", None);
         let mut second = message("pij-batch", "second", None);
         second.msg_id = "m-pij-batch-2".to_string();
-        let first_id = enqueue(&fixture, &first).await;
+        enqueue(&fixture, &first).await;
         let second_id = enqueue(&fixture, &second).await;
 
         assert_eq!(fixture.worker.drain_once().await.expect("one pass"), 1);
-        assert_eq!(fixture.queue.attempts(first_id), 1);
         assert_eq!(fixture.queue.attempts(second_id), 0);
         assert_eq!(
-            fixture
-                .tmux
-                .calls()
-                .iter()
-                .filter(|call| call.starts_with("submit:"))
-                .count(),
+            fixture.queue.live_len(),
             1,
-            "removing the recipient kind after its first claim is the in-pass suppression"
+            "the second body waits for the next pass"
         );
-    }
-
-    #[tokio::test]
-    async fn live_pointer_event_suppresses_a_second_running_worker() {
-        let fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
-        register(&fixture, seat("pij-shared", Some("%16"))).await;
-        fixture.interaction.observe_composer("%16", "");
-        enqueue(&fixture, &message("pij-shared", "waiting", None)).await;
-
-        let mut second = DrainWorker::new(
-            Arc::clone(&fixture.registry) as Arc<dyn Registry>,
-            Arc::clone(&fixture.queue) as Arc<dyn Queue>,
-            Arc::clone(&fixture.transport) as Arc<dyn Transport>,
-            Arc::clone(&fixture.tmux) as Arc<dyn TmuxPort>,
-            Arc::clone(&fixture.interaction),
-            Arc::clone(&fixture.event_bus),
-            PointerPolicy {
-                cadence: CADENCE,
-                announcement_limit: 3,
-            },
-        )
-        .expect("second worker");
-        second.clock = Arc::new(|| Ok(778));
-
-        fixture.worker.drain_once().await.expect("first worker");
-        second.drain_once().await.expect("second worker");
         assert_eq!(
             fixture
                 .tmux
@@ -1543,43 +672,15 @@ mod tests {
                 .filter(|call| call.starts_with("submit:"))
                 .count(),
             1,
-            "the second live subscriber observes the first worker's pointer event"
+            "recipient suppression remains one delivery per pass"
         );
-    }
-
-    #[tokio::test]
-    async fn fresh_worker_replays_pointer_budget_and_cadence_after_restart() {
-        let fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
-        register(&fixture, seat("pij-restart", Some("%13"))).await;
-        fixture.interaction.observe_composer("%13", "");
-        enqueue(&fixture, &message("pij-restart", "still waiting", None)).await;
-        fixture.worker.drain_once().await.expect("first process");
-
-        let mut restarted = DrainWorker::new(
-            Arc::clone(&fixture.registry) as Arc<dyn Registry>,
-            Arc::clone(&fixture.queue) as Arc<dyn Queue>,
-            Arc::clone(&fixture.transport) as Arc<dyn Transport>,
-            Arc::clone(&fixture.tmux) as Arc<dyn TmuxPort>,
-            Arc::clone(&fixture.interaction),
-            Arc::clone(&fixture.event_bus),
-            PointerPolicy {
-                cadence: CADENCE,
-                announcement_limit: 3,
-            },
-        )
-        .expect("restarted worker");
-        restarted.clock = Arc::new(|| Ok(778));
-        restarted.drain_once().await.expect("restart pass");
-
-        assert_eq!(
+        assert!(
             fixture
                 .tmux
                 .calls()
                 .iter()
-                .filter(|call| call.starts_with("submit:"))
-                .count(),
-            1,
-            "restart replays the durable announcement instead of repeating process residue"
+                .any(|call| call.contains("\nfirst\n[/pij]")),
+            "queue order remains first-in first-out"
         );
     }
 

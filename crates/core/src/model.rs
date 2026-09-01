@@ -558,9 +558,11 @@ pub struct Msg {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DeliveryOrigin {
-    /// Bytes accepted by a socket, RPC or pane — and nothing more. No recipient
-    /// confirmation exists. This is what a Claude UDS write can honestly claim,
-    /// and the fork's mistake was calling it `acked`.
+    /// Bytes submitted into a tmux pane — and nothing more. The pane accepted
+    /// the write, but no recipient process acknowledged or decoded it.
+    TypedToPane,
+    /// Bytes accepted by a socket or RPC endpoint — and nothing more. The
+    /// recipient process observed the write, but did not acknowledge the message.
     InjectedToTransport,
     /// A positive transport-level acknowledgement came back: Copilot RPC returns
     /// a message id, the Telegram bridge confirms.
@@ -578,9 +580,10 @@ impl DeliveryOrigin {
     /// describe one delivery and a consumer must render only one.
     pub const fn strength(self) -> u8 {
         match self {
-            DeliveryOrigin::InjectedToTransport => 0,
-            DeliveryOrigin::VerifiedArrival => 1,
-            DeliveryOrigin::ReaderRead => 2,
+            DeliveryOrigin::TypedToPane => 0,
+            DeliveryOrigin::InjectedToTransport => 1,
+            DeliveryOrigin::VerifiedArrival => 2,
+            DeliveryOrigin::ReaderRead => 3,
         }
     }
 

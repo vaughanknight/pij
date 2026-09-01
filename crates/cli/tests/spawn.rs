@@ -465,6 +465,7 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
             Arc::clone(&services.registry),
             Arc::clone(&services.queue),
             Arc::clone(&services.transport),
+            Arc::clone(&services.tmux),
             // The politeness gate now sits on the DIRECT path too, so rebuilding
             // the service carries it — a rebuild that dropped it would test a
             // delivery service the daemon does not compose.

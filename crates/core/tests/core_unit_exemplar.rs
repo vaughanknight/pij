@@ -226,6 +226,9 @@ fn a_delivery_claim_cannot_exist_without_saying_what_was_observed() {
     // constructed at all.
     use pij_core::model::{DeliveryOrigin, DeliveryOutcome};
 
+    let typed = DeliveryOutcome::Delivered {
+        origin: DeliveryOrigin::TypedToPane,
+    };
     let injected = DeliveryOutcome::Delivered {
         origin: DeliveryOrigin::InjectedToTransport,
     };
@@ -233,12 +236,19 @@ fn a_delivery_claim_cannot_exist_without_saying_what_was_observed() {
         origin: DeliveryOrigin::ReaderRead,
     };
     assert_ne!(
+        typed, injected,
+        "bytes typed into a pane and bytes accepted by a recipient process are different facts"
+    );
+    assert_ne!(
         injected, read,
         "bytes accepted by a socket and a recipient having read them are different facts"
     );
 
-    // Strength order: what a Claude UDS write can claim is the weakest, what the
-    // recipient itself says is the strongest.
+    // Strength order: pane typing is weaker than a recipient process accepting
+    // socket bytes; explicit acknowledgements remain stronger than both.
+    assert!(
+        DeliveryOrigin::TypedToPane.strength() < DeliveryOrigin::InjectedToTransport.strength()
+    );
     assert!(
         DeliveryOrigin::InjectedToTransport.strength() < DeliveryOrigin::VerifiedArrival.strength()
     );

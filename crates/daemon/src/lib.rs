@@ -351,6 +351,7 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         Arc::clone(&registry),
         Arc::clone(&queue),
         Arc::clone(&transport),
+        Arc::clone(&tmux),
         Arc::clone(&interaction),
         Arc::clone(&event_bus),
     )?);

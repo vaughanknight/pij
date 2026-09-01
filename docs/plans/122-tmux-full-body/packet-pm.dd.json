@@ -40,7 +40,7 @@
       "value": {
         "worktree": "/Users/jordanknight/pi-hacking/pij-worktrees/s122-tmux-full-body",
         "branch": "s122/tmux-full-body",
-        "fence": "crates/core/src/delivery.rs \u00b7 crates/core/src/model.rs (DeliveryOrigin variant ONLY) \u00b7 crates/daemon/src/delivery/mod.rs \u00b7 crates/daemon/src/pointer/** \u00b7 crates/daemon/src/lib.rs (TmuxPort threading at DeliveryService construction ONLY) \u00b7 crates/store/src/queue.rs (TypedToPane codec ONLY) \u00b7 crates/tmux/src/lib.rs (submit/chunking only) \u00b7 constructor fixtures: crates/daemon/src/http/tests.rs, crates/cli/tests/spawn.rs \u00b7 all named files' tests \u00b7 docs/plans/122-tmux-full-body/**",
+        "fence": "crates/core/src/delivery.rs \u00b7 crates/core/src/model.rs (DeliveryOrigin variant ONLY) \u00b7 crates/daemon/src/delivery/mod.rs \u00b7 crates/daemon/src/pointer/** \u00b7 crates/daemon/src/lib.rs (TmuxPort threading at DeliveryService construction ONLY) \u00b7 crates/store/src/queue.rs (TypedToPane codec ONLY) \u00b7 crates/tmux/src/lib.rs (submit/chunking only) \u00b7 constructor fixtures: crates/daemon/src/http/tests.rs, crates/cli/tests/spawn.rs \u00b7 all named files' tests \u00b7 docs/plans/122-tmux-full-body/** \u00b7 crates/store/migrations/0011_typed_to_pane.sql (NEW \u2014 this ordinal reserved to s122) \u00b7 crates/store/src/migrate.rs (SCHEMA_VERSION line only; s121 holds 9\u219210, you take 10\u219211) \u00b7 that migration test",
         "forbidden_note": "Never write .the-flow-state.json, the-flow.json, the-flow.md. No uds.rs, no shim routing, no framing.rs edits (consume it, do not fork it). Outside the fence = stop and ask the prime."
       }
     },

@@ -4,13 +4,16 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use pij_core::delivery::{DeliveryRoute, QueueReason, delivery_kind, route};
+use pij_core::delivery::{
+    DeliveryRoute, DeliveryRung, QueueReason, delivery_kind, route, select_rung,
+};
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
+use pij_core::framing::frame_message;
 use pij_core::model::{
     DeliveryOrigin, DeliveryOutcome, Event, Job, JobId, Msg, Outcome, Receipt, SeatId,
 };
-use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, Transport};
+use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, TmuxPort, Transport};
 use pij_harnesses::InteractionGate;
 use serde::{Deserialize, Serialize};
 use tokio_stream::StreamExt;
@@ -47,15 +50,16 @@ type Clock = dyn Fn() -> Result<u64> + Send + Sync;
 ///
 /// # Composition recipe
 ///
-/// Construct one `Arc<InteractionGate>` from the composed tmux port before
-/// `DeliveryService`, pass the same instance to this service and `DrainWorker`,
-/// and feed it from `PaneObserver`. This makes the human-typing veto apply to
-/// both first-attempt socket delivery and queued retries. No task starts here,
-/// so the daemon's shutdown contract is unchanged.
+/// Construct one tmux port and one `Arc<InteractionGate>` over that port before
+/// `DeliveryService`; pass both to this service and `DrainWorker`, then feed the
+/// gate from `PaneObserver`. This makes the human-typing veto apply to both
+/// first-attempt delivery and queued retries. No task starts here, so the
+/// daemon's shutdown contract is unchanged.
 pub struct DeliveryService {
     registry: Arc<dyn Registry>,
     queue: Arc<dyn Queue>,
     transport: Arc<dyn Transport>,
+    tmux: Arc<dyn TmuxPort>,
     interaction: Arc<InteractionGate>,
     event_bus: Arc<EventBus>,
     id_prefix: u64,
@@ -72,6 +76,7 @@ impl DeliveryService {
         registry: Arc<dyn Registry>,
         queue: Arc<dyn Queue>,
         transport: Arc<dyn Transport>,
+        tmux: Arc<dyn TmuxPort>,
         interaction: Arc<InteractionGate>,
         event_bus: Arc<EventBus>,
     ) -> Result<Self> {
@@ -84,6 +89,7 @@ impl DeliveryService {
             registry,
             queue,
             transport,
+            tmux,
             interaction,
             event_bus,
             u64::from_be_bytes(prefix),
@@ -95,6 +101,7 @@ impl DeliveryService {
         registry: Arc<dyn Registry>,
         queue: Arc<dyn Queue>,
         transport: Arc<dyn Transport>,
+        tmux: Arc<dyn TmuxPort>,
         interaction: Arc<InteractionGate>,
         event_bus: Arc<EventBus>,
         id_prefix: u64,
@@ -104,6 +111,7 @@ impl DeliveryService {
             registry,
             queue,
             transport,
+            tmux,
             interaction,
             event_bus,
             id_prefix,
@@ -215,83 +223,104 @@ impl DeliveryService {
                 }
             }
             DeliveryRoute::Transport => {
-                // Socket capability is not permission to interrupt a person.
-                // The same gate protects queued retries in `DrainWorker`; the
-                // first-attempt path is the common path and must consult it too.
-                //
-                // FRESH, not the last observer tick: the verdict that AUTHORIZES
-                // an injection is derived from a capture taken here, at the send
-                // boundary. The tick cadence can be up to `pane_observer_interval_ms`
-                // stale, which is exactly long enough for a human to start typing
-                // between the observation and the write.
-                //
-                // Fresh in its COMPOSER half only. The tap half stays tick-derived:
-                // `drain_pane_tap` is destructive and owned by the observer loop,
-                // so draining here would steal its bytes. The residual window
-                // shrinks from the observer interval to capture-to-inject; it is
-                // bounded, not eliminated (plan 111 findings F-1112).
-                //
-                // A paneless pull consumer has no composer to gate.
+                // Fresh at the send boundary: the gate discharges both pane-facing
+                // inputs to `select_rung`. A veto queues; it never falls through to
+                // either socket or tmux delivery.
                 let interaction_permits = match recipient.pane.as_deref() {
                     Some(pane) => self.interaction.permits_injection_fresh(pane).await?,
                     None => true,
                 };
-                if !interaction_permits || !self.transport.can_deliver(&recipient, &msg).await? {
-                    debug_assert_eq!(
-                        route(&from, msg.from_machine.as_deref(), &recipient, false)?,
-                        DeliveryRoute::Queue(QueueReason::Unreachable)
-                    );
-                    match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
-                        DeliveryEnqueue::Queued(_) => DeliveryOutcome::Queued,
-                        DeliveryEnqueue::AlreadyDelivered(origin) => {
-                            publish_to_recipient = false;
-                            DeliveryOutcome::Delivered { origin }
+                let socket_available = if interaction_permits {
+                    self.transport.can_deliver(&recipient, &msg).await?
+                } else {
+                    false
+                };
+
+                // Paneless socket consumers remain transport-owned. The rung
+                // selector governs pane fallbacks and deliberately returns
+                // `Observe` before consulting socket capability.
+                let rung = if recipient.pane.is_none() && socket_available {
+                    DeliveryRung::Socket
+                } else {
+                    select_rung(
+                        &recipient,
+                        &msg,
+                        socket_available,
+                        !interaction_permits,
+                        interaction_permits,
+                    )
+                };
+
+                match rung {
+                    DeliveryRung::Socket => {
+                        // Claim before injecting. A retry after an ambiguous caller
+                        // failure replays the recorded origin instead of delivering
+                        // the same message twice.
+                        match self
+                            .queue
+                            .note_delivered(&to, &msg.msg_id, DeliveryOrigin::InjectedToTransport)
+                            .await?
+                        {
+                            Some(origin) => {
+                                publish_to_recipient = false;
+                                DeliveryOutcome::Delivered { origin }
+                            }
+                            None => match self.transport.deliver(&recipient, &msg).await {
+                                Ok(DeliveryOutcome::Queued) => {
+                                    self.queue.forget_delivered(&to, &msg.msg_id).await?;
+                                    self.enqueue(&msg).await?;
+                                    DeliveryOutcome::Queued
+                                }
+                                Ok(outcome) => outcome,
+                                Err(error) => {
+                                    self.queue.forget_delivered(&to, &msg.msg_id).await?;
+                                    return Err(error);
+                                }
+                            },
                         }
                     }
-                } else {
-                    // CLAIM BEFORE INJECTING (R4-AMEND-4). The direct path claims
-                    // no job, so it never reached ack_delivery's ledger write —
-                    // and first-attempt-online is the COMMON case for a local
-                    // send, so the duplicate window was open on its likeliest
-                    // path: deliver, caller's HTTP dies, retry delivers again.
-                    match self
-                        .queue
-                        .note_delivered(&to, &msg.msg_id, DeliveryOrigin::InjectedToTransport)
-                        .await?
-                    {
-                        Some(origin) => {
-                            publish_to_recipient = false;
-                            DeliveryOutcome::Delivered { origin }
+                    DeliveryRung::TypedBody => {
+                        let pane = recipient
+                            .pane
+                            .as_deref()
+                            .expect("typed-body rung requires a pane");
+                        match self
+                            .queue
+                            .note_delivered(&to, &msg.msg_id, DeliveryOrigin::TypedToPane)
+                            .await?
+                        {
+                            Some(origin) => {
+                                publish_to_recipient = false;
+                                DeliveryOutcome::Delivered { origin }
+                            }
+                            None => {
+                                let framed = frame_message(
+                                    &msg.from,
+                                    msg.from_machine.as_deref(),
+                                    &msg.body,
+                                );
+                                if let Err(error) = self.tmux.submit(pane, &framed).await {
+                                    // Match the direct socket path: compensate the
+                                    // claim and let the caller retry. Enqueuing here
+                                    // would leave a live row that a successful caller
+                                    // retry could also deliver a second time.
+                                    self.queue.forget_delivered(&to, &msg.msg_id).await?;
+                                    return Err(error);
+                                }
+                                DeliveryOutcome::Delivered {
+                                    origin: DeliveryOrigin::TypedToPane,
+                                }
+                            }
                         }
-                        None => match self.transport.deliver(&recipient, &msg).await {
-                            Ok(DeliveryOutcome::Queued) => {
-                                // The transport declined after we claimed. Release
-                                // the claim and queue: the message has NOT been
-                                // delivered, and a ledger entry saying otherwise
-                                // would suppress the retry of a message nobody got.
-                                self.queue.forget_delivered(&to, &msg.msg_id).await?;
-                                self.enqueue(&msg).await?;
-                                DeliveryOutcome::Queued
+                    }
+                    DeliveryRung::Observe | DeliveryRung::Queue | DeliveryRung::Pty => {
+                        match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
+                            DeliveryEnqueue::Queued(_) => DeliveryOutcome::Queued,
+                            DeliveryEnqueue::AlreadyDelivered(origin) => {
+                                publish_to_recipient = false;
+                                DeliveryOutcome::Delivered { origin }
                             }
-                            Ok(outcome) => outcome,
-                            Err(error) => {
-                                // COMPENSATE, then report. The inverse window is
-                                // the worse one: a claim that lands while the
-                                // delivery does not turns the retry into a
-                                // replayed Delivered for a message that never
-                                // arrived — a lost message wearing our most
-                                // confident receipt.
-                                //
-                                // RESIDUAL WINDOW, NAMED: a hard crash between the
-                                // claim and this compensation leaves the claim
-                                // standing, and the retry is suppressed. It is
-                                // bounded by the same eviction that bounds the
-                                // ledger, and it is the honest cost of claiming
-                                // before injecting rather than after.
-                                self.queue.forget_delivered(&to, &msg.msg_id).await?;
-                                return Err(error);
-                            }
-                        },
+                        }
                     }
                 }
             }
@@ -561,6 +590,9 @@ enum Arrival {
 fn outcome_name(outcome: &DeliveryOutcome) -> &'static str {
     match outcome {
         DeliveryOutcome::Delivered {
+            origin: DeliveryOrigin::TypedToPane,
+        } => "delivered:typed-to-pane",
+        DeliveryOutcome::Delivered {
             origin: DeliveryOrigin::InjectedToTransport,
         } => "delivered:injected-to-transport",
         DeliveryOutcome::Delivered {
@@ -689,11 +721,13 @@ mod tests {
             .await
             .expect("enqueue mail");
         let transport = Arc::new(FakeTransport::unreachable());
-        let interaction = Arc::new(InteractionGate::new(Arc::new(FakeTmux::new())));
+        let tmux = Arc::new(FakeTmux::new());
+        let interaction = Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>));
         let service = DeliveryService::with_sources(
             Arc::clone(&registry) as Arc<dyn Registry>,
             Arc::clone(&queue) as Arc<dyn Queue>,
             transport,
+            tmux,
             interaction,
             bus,
             1,
@@ -740,6 +774,7 @@ mod tests {
             Arc::clone(&registry) as Arc<dyn Registry>,
             Arc::clone(&queue) as Arc<dyn Queue>,
             Arc::clone(&transport) as Arc<dyn pij_core::ports::Transport>,
+            Arc::clone(&tmux) as Arc<dyn TmuxPort>,
             Arc::clone(&interaction),
             bus,
             0xfeed,
@@ -847,6 +882,46 @@ mod tests {
             }
         );
         assert_eq!(clear.transport.delivered().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn first_attempt_socketless_pane_types_the_full_shared_frame() {
+        let fixture = fixture_with_gate(
+            FakeTransport::unreachable(),
+            FakeTmux::new().with_clear_composer("%typed"),
+        );
+        fixture.interaction.observe_composer("%typed", "");
+        let mut recipient = bound("pij-typed");
+        recipient.pane = Some("%typed".to_string());
+        register(&fixture, recipient.clone()).await;
+
+        let receipt = fixture
+            .service
+            .send("pij-from".into(), recipient.id, "complete body")
+            .await
+            .expect("socketless pane delivery");
+
+        let receipt_json = serde_json::to_value(&receipt.outcome).expect("receipt json");
+        assert_eq!(receipt_json["outcome"], "delivered");
+        assert_eq!(receipt_json["origin"], "typed-to-pane");
+        assert_eq!(
+            fixture.queue.live_len(),
+            0,
+            "typed delivery consumes no inbox row"
+        );
+        assert!(
+            fixture.transport.delivered().is_empty(),
+            "socket was unavailable"
+        );
+        assert!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .any(|call| call == "submit:%typed:[pij-rs from pij-from]\ncomplete body\n[/pij]"),
+            "the immediate path must submit the canonical full frame: {:?}",
+            fixture.tmux.calls()
+        );
     }
 
     /// A pane presenting a composer with CONTENT, cursor parked at its end.

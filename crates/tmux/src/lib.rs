@@ -5,10 +5,11 @@ mod parse;
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -61,6 +62,7 @@ pub struct TmuxAdapter {
     server: Option<String>,
     session: Option<String>,
     tap_root: PathBuf,
+    next_submit: Arc<AtomicU64>,
     taps: Arc<Mutex<BTreeMap<String, TapState>>>,
 }
 
@@ -78,6 +80,7 @@ impl TmuxAdapter {
             server: None,
             session: None,
             tap_root: tap_root.into(),
+            next_submit: Arc::new(AtomicU64::new(0)),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -89,6 +92,7 @@ impl TmuxAdapter {
             server: None,
             session: Some(session.into()),
             tap_root: tap_root.into(),
+            next_submit: Arc::new(AtomicU64::new(0)),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -100,6 +104,7 @@ impl TmuxAdapter {
             server: None,
             session: None,
             tap_root: tap_root.into(),
+            next_submit: Arc::new(AtomicU64::new(0)),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -114,6 +119,7 @@ impl TmuxAdapter {
             server: Some(server.into()),
             session: None,
             tap_root: tap_root.into(),
+            next_submit: Arc::new(AtomicU64::new(0)),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -133,15 +139,48 @@ impl TmuxAdapter {
         args
     }
 
-    fn run(&self, operation: &str, args: &[OsString]) -> Result<Output> {
+    fn command(&self) -> Command {
         let mut command = Command::new(&self.binary);
         if let Some(server) = &self.server {
             command.args(["-L", server]);
         }
-        let output = command
+        command
+    }
+
+    fn run(&self, operation: &str, args: &[OsString]) -> Result<Output> {
+        let output = self
+            .command()
             .args(args)
             .output()
             .map_err(|error| self.spawn_error(operation, error))?;
+        self.finish(operation, output)
+    }
+
+    fn run_with_stdin(&self, operation: &str, args: &[OsString], input: &[u8]) -> Result<Output> {
+        let mut child = self
+            .command()
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| self.spawn_error(operation, error))?;
+        let mut stdin = child.stdin.take().expect("piped tmux stdin");
+        if let Err(error) = stdin.write_all(input) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(self.error(format!(
+                "could not write tmux stdin for {operation}: {error}"
+            )));
+        }
+        drop(stdin);
+        let output = child
+            .wait_with_output()
+            .map_err(|error| self.spawn_error(operation, error))?;
+        self.finish(operation, output)
+    }
+
+    fn finish(&self, operation: &str, output: Output) -> Result<Output> {
         if output.status.success() {
             return Ok(output);
         }
@@ -324,12 +363,29 @@ impl TmuxPort for TmuxAdapter {
     }
 
     async fn submit(&self, pane: &str, text: &str) -> Result<()> {
-        // Two calls, deliberately: the literal text, then Enter as a NAMED key.
-        // `-l` makes tmux treat everything as literal, so an Enter cannot be
-        // smuggled inside the text — which is the property that keeps a body
-        // containing a newline from submitting itself halfway through.
-        self.run("send-keys", &os_args(["send-keys", "-t", pane, "-l", text]))?;
-        self.run("send-keys", &os_args(["send-keys", "-t", pane, "Enter"]))?;
+        let sequence = self.next_submit.fetch_add(1, Ordering::Relaxed);
+        let buffer = format!("pij-submit-{}-{sequence}", std::process::id());
+        self.run_with_stdin(
+            "load submit buffer",
+            &os_args(["load-buffer", "-b", &buffer, "-"]),
+            text.as_bytes(),
+        )?;
+        if let Err(error) = self.run(
+            "paste submit buffer",
+            &os_args(["paste-buffer", "-d", "-p", "-r", "-b", &buffer, "-t", pane]),
+        ) {
+            let _ = self.run(
+                "delete failed submit buffer",
+                &os_args(["delete-buffer", "-b", &buffer]),
+            );
+            return Err(error);
+        }
+        // The body is one bracketed, newline-preserving paste. Enter remains a
+        // named key, so an embedded newline cannot impersonate submission.
+        self.run(
+            "send submit key",
+            &os_args(["send-keys", "-t", pane, "Enter"]),
+        )?;
         Ok(())
     }
 

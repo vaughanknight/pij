@@ -517,6 +517,7 @@ fn require_delivery_job(job: &Job) -> Result<()> {
 
 const fn encode_origin(origin: DeliveryOrigin) -> &'static str {
     match origin {
+        DeliveryOrigin::TypedToPane => "typed-to-pane",
         DeliveryOrigin::InjectedToTransport => "injected-to-transport",
         DeliveryOrigin::VerifiedArrival => "verified-arrival",
         DeliveryOrigin::ReaderRead => "reader-read",
@@ -525,6 +526,7 @@ const fn encode_origin(origin: DeliveryOrigin) -> &'static str {
 
 fn decode_origin(origin: &str) -> Result<DeliveryOrigin> {
     match origin {
+        "typed-to-pane" => Ok(DeliveryOrigin::TypedToPane),
         "injected-to-transport" => Ok(DeliveryOrigin::InjectedToTransport),
         "verified-arrival" => Ok(DeliveryOrigin::VerifiedArrival),
         "reader-read" => Ok(DeliveryOrigin::ReaderRead),

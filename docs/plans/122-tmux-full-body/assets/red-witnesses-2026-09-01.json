@@ -1,0 +1,37 @@
+{
+  "date": "2026-09-01",
+  "base": "df1ab5d6",
+  "live_pre_fix": [
+    {
+      "criterion": "ac-1",
+      "evidence": "Prime operator repro: OMP pane received `[pij-rs from pij-still-weasel]message waiting — run: pij inbox[/pij]` instead of the full body.",
+      "source": "assets/inputs/tmux-audit-2026-09-01.md#operator-repro"
+    },
+    {
+      "criterion": "ac-2",
+      "evidence": "Isolated live tmux pty probe: newline-terminated payloads were exact through 1023 bytes; 1024, 1500, and 3000 byte payloads captured 0 bytes.",
+      "source": "assets/pty-probe-2026-09-01.json"
+    }
+  ],
+  "automated_pre_fix": [
+    {
+      "command": "CARGO_INCREMENTAL=0 cargo test -p pij-core socketless_idle_pane_selects_typed_body",
+      "result": "RED",
+      "failure": "left Pointer, right TypedBody"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 cargo test -p pij-daemon first_attempt_socketless_pane_types_the_full_shared_frame",
+      "result": "RED",
+      "failure": "left queued, right delivered"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 cargo test -p pij-daemon socketless_body_retry_types_the_full_shared_frame_and_acks_it",
+      "result": "RED",
+      "failure": "typed body is terminal for the row"
+    }
+  ],
+  "preservation_baseline": {
+    "criterion": "ac-3",
+    "evidence": "Existing direct and drain tests already pin the fresh composer/user-typing veto; the required post-fix live pane witness remains outstanding."
+  }
+}
