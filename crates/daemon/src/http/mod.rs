@@ -1167,17 +1167,12 @@ struct ReportRequest {
 }
 
 /// The forwarded caller facts this handler reads.
-///
-/// The alias exists because the field crosses a runtime boundary by NAME: the
-/// TypeScript side writes the key, Rust reads it, and nothing but agreement
-/// between two files keeps them matching. Accepting both spellings is not
-/// tolerance of drift — it is one field with the wire name pinned beside the
-/// Rust name where a reader of either can see the other.
-#[derive(Debug, Deserialize)]
-struct CallerContext {
-    #[serde(default, alias = "PIJ_SESSION_ID", alias = "pijSessionId")]
-    pij_session_id: Option<String>,
-}
+/// NOTE (composition, plan 114): u-report and u-identity each defined a
+/// `CallerContext` for the SAME wire object. Unified onto `identity::CallerContext`
+/// rather than renaming one — two names for one concept is split-brain by
+/// construction, which is the defect this plan exists to remove. The richer
+/// definition wins because it documents every field as a CLAIM and carries the
+/// wire spellings beside the Rust names.
 
 /// What a successful report answers with.
 ///
@@ -1215,7 +1210,7 @@ async fn report(State(state): State<AppState>, Json(request): Json<ReportRequest
     // attributed by guess is worse than no report at all.
     let Some(claimed) = request
         .seat
-        .or_else(|| request.caller.and_then(|caller| caller.pij_session_id))
+        .or_else(|| request.caller.and_then(|caller| caller.session_id))
         .filter(|id| !id.trim().is_empty())
     else {
         return refused(
