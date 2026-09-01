@@ -36,22 +36,44 @@ use crate::registration::{RegistrationError, RegistrationService};
 
 /// The caller's environment, forwarded by the shim as a FIXED ALLOWLIST.
 ///
-/// Field spellings are the wire's, not Rust's: these are the exact keys the
-/// generation shim puts on `caller`. Snake-case aliases exist so the `pij-rs`
-/// CLI — which runs where the environment actually is — can send the same shape
-/// in its own idiom.
+/// THREE SPELLINGS, and the third one is a scar. The shim sends camelCase
+/// (`CALLER_WIRE_KEYS`, generation-routing.ts:242); the env NAMES are
+/// SCREAMING_SNAKE; the `pij-rs` CLI uses snake_case. All three are accepted.
+///
+/// This reader originally accepted only the last two, because the wire contract
+/// was distributed as PROSE — a flat list of the ENV names — while the TS source
+/// held PAIRS of (env name, wire name). Six of nine keys never met. The block
+/// deserialized to ALL-NONE, `whoami` and `phonehome` could not name a seat, and
+/// BOTH SUITES STAYED GREEN because each side asserted its own spelling. serde
+/// drops unknown fields in silence, so nothing anywhere failed.
+///
+/// The lesson is not "add an alias". It is that a cross-runtime contract living
+/// in prose has one definition per reader, each self-consistent. The contract now
+/// lives in `crates/daemon/tests/fixtures/caller-context.wire.json`, which both
+/// runtimes read, and both halves assert on POPULATED values so neither can pass
+/// vacuously.
 ///
 /// Every field is a CLAIM. None of them is trusted on its own.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CallerContext {
     /// The seat the caller believes it is. LOCATES a row; never creates one.
-    #[serde(default, rename = "PIJ_SESSION_ID", alias = "pij_session_id")]
+    #[serde(
+        default,
+        rename = "PIJ_SESSION_ID",
+        alias = "pij_session_id",
+        alias = "pijSessionId"
+    )]
     pub session_id: Option<String>,
     /// The pane the caller believes it occupies. CHECKED against tmux.
-    #[serde(default, rename = "TMUX_PANE", alias = "tmux_pane")]
+    #[serde(default, rename = "TMUX_PANE", alias = "tmux_pane", alias = "tmuxPane")]
     pub pane: Option<String>,
     /// The governing seat, self-declared at adoption.
-    #[serde(default, rename = "PIJ_PARENT_ID", alias = "pij_parent_id")]
+    #[serde(
+        default,
+        rename = "PIJ_PARENT_ID",
+        alias = "pij_parent_id",
+        alias = "pijParentId"
+    )]
     pub parent: Option<String>,
     /// Harness-native session ids.
     ///
@@ -64,18 +86,25 @@ pub struct CallerContext {
     #[serde(
         default,
         rename = "CLAUDE_CODE_SESSION_ID",
-        alias = "claude_code_session_id"
+        alias = "claude_code_session_id",
+        alias = "claudeCodeSessionId"
     )]
     pub claude_session: Option<String>,
     /// See `claude_session`.
     #[serde(
         default,
         rename = "COPILOT_AGENT_SESSION_ID",
-        alias = "copilot_agent_session_id"
+        alias = "copilot_agent_session_id",
+        alias = "copilotAgentSessionId"
     )]
     pub copilot_session: Option<String>,
     /// See `claude_session`.
-    #[serde(default, rename = "CODEX_THREAD_ID", alias = "codex_thread_id")]
+    #[serde(
+        default,
+        rename = "CODEX_THREAD_ID",
+        alias = "codex_thread_id",
+        alias = "codexThreadId"
+    )]
     pub codex_session: Option<String>,
     /// The caller's working folder. Used only when no pane can supply one.
     #[serde(default)]

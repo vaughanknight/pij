@@ -784,3 +784,80 @@ async fn adopt_hands_back_the_line_that_fixes_the_callers_environment() {
 
     world.server.abort();
 }
+
+/// 8b — THE READER ACCEPTS ALL THREE SPELLINGS, named for the wire one.
+///
+/// Deliberately NOT a duplicate of the fixture round-trip. The fixture proves
+/// the CAMELCASE wire shape, because that is what the shim sends. This proves
+/// the other two still work, which is what stops the fix for one caller from
+/// silently breaking the others:
+///
+///   camelCase        — the generation shim's wire spelling (`CALLER_WIRE_KEYS`)
+///   SCREAMING_SNAKE  — the env NAMES, which is what the contract was
+///                      distributed as and what this reader was first built to
+///   snake_case       — the `pij-rs` CLI's own idiom
+///
+/// It lives beside the reader on purpose: a developer editing `CallerContext`
+/// sees the contract in the same file, rather than in a fixture two directories
+/// away that they have no reason to open.
+#[test]
+fn caller_context_accepts_all_three_wire_spellings() {
+    let spellings = [
+        (
+            "camelCase (what the shim actually sends)",
+            serde_json::json!({
+                "pijSessionId": "pij-seat",
+                "tmuxPane": "%77",
+                "pijParentId": "pij-governor",
+                "claudeCodeSessionId": "claude-1",
+                "copilotAgentSessionId": "copilot-1",
+                "codexThreadId": "codex-1"
+            }),
+        ),
+        (
+            "SCREAMING_SNAKE (the env names)",
+            serde_json::json!({
+                "PIJ_SESSION_ID": "pij-seat",
+                "TMUX_PANE": "%77",
+                "PIJ_PARENT_ID": "pij-governor",
+                "CLAUDE_CODE_SESSION_ID": "claude-1",
+                "COPILOT_AGENT_SESSION_ID": "copilot-1",
+                "CODEX_THREAD_ID": "codex-1"
+            }),
+        ),
+        (
+            "snake_case (the pij-rs CLI's idiom)",
+            serde_json::json!({
+                "pij_session_id": "pij-seat",
+                "tmux_pane": "%77",
+                "pij_parent_id": "pij-governor",
+                "claude_code_session_id": "claude-1",
+                "copilot_agent_session_id": "copilot-1",
+                "codex_thread_id": "codex-1"
+            }),
+        ),
+    ];
+
+    for (spelling, body) in spellings {
+        let caller: super::identity::CallerContext =
+            serde_json::from_value(body).expect("caller context deserializes");
+        // Asserted field by field, not as a count: a failure has to name WHICH
+        // key this reader threw away, because "one of six is missing" is the
+        // report that sends someone reading all six.
+        for (key, read) in [
+            ("session id", caller.session_id.is_some()),
+            ("pane", caller.pane.is_some()),
+            ("parent", caller.parent.is_some()),
+            ("claude session", caller.claude_session.is_some()),
+            ("copilot session", caller.copilot_session.is_some()),
+            ("codex session", caller.codex_session.is_some()),
+        ] {
+            assert!(
+                read,
+                "{spelling}: the reader DROPPED `{key}`. serde ignores what it does not \
+                 recognise, so this is silent in production — the block arrives, deserializes, \
+                 and names no seat."
+            );
+        }
+    }
+}
