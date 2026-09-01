@@ -49,12 +49,12 @@ Diagnosis (pij-upset-anglerfish, 2026-09-01, .harness/temp/omp-statusline-fix.md
 
 ## Acceptance criteria
 
-| id | claim | state | note | receipt | pressure | proven_by | text |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| AC1 | — | — | — | — | — | — | LIVE: 10 hand-started `omp` sessions in tmux, back to back; every status bar shows the pij id (tmux capture of each footer pasted). Pre-fix census rate was roughly 1 in 4 missing, so 10/10 is the bar. |
-| AC2 | — | — | — | — | — | — | LIVE forced miss: with the native set stubbed/forced to fail (e.g. temporarily make setSessionName return false via a test hook or run with the name pre-set to source:user), the setStatus row shows the id AND the notice line appears. Transcript pasted. |
-| AC3 | — | — | — | — | — | — | Unit: fake pi API whose setSessionName fails N times then succeeds → helper retries per schedule, stops once the readback matches, sets status regardless; fails forever → notice emitted exactly once. RED-first on the pre-fix tree. |
-| AC4 | — | — | — | — | — | — | `just typecheck`, extension vitest, `harness checks` green (npm ci first in a fresh worktree). |
+| id | claim | state | note | receipt | pressure | proven_by |
+| --- | --- | --- | --- | --- | --- | --- |
+| AC1 | LIVE: 10 hand-started `omp` sessions in tmux, back to back; every status bar shows the pij id (tmux capture of each footer pasted). Pre-fix census rate was roughly 1 in 4 missing, so 10/10 is the bar. | [ ] unchecked | — | — | — | — |
+| AC2 | LIVE forced miss: with the native set stubbed/forced to fail (e.g. temporarily make setSessionName return false via a test hook or run with the name pre-set to source:user), the setStatus row shows the id AND the notice line appears. Transcript pasted. | [ ] unchecked | — | — | — | — |
+| AC3 | Unit: fake pi API whose setSessionName fails N times then succeeds → helper retries per schedule, stops once the readback matches, sets status regardless; fails forever → notice emitted exactly once. RED-first on the pre-fix tree. | [ ] unchecked | — | — | — | — |
+| AC4 | `just typecheck`, extension vitest, `harness checks` green (npm ci first in a fresh worktree). | [ ] unchecked | — | — | — | — |
 
 <a id="phases"></a>
 

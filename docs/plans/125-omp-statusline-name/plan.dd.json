@@ -38,19 +38,23 @@
       "value": [
         {
           "id": "AC1",
-          "text": "LIVE: 10 hand-started `omp` sessions in tmux, back to back; every status bar shows the pij id (tmux capture of each footer pasted). Pre-fix census rate was roughly 1 in 4 missing, so 10/10 is the bar."
+          "claim": "LIVE: 10 hand-started `omp` sessions in tmux, back to back; every status bar shows the pij id (tmux capture of each footer pasted). Pre-fix census rate was roughly 1 in 4 missing, so 10/10 is the bar.",
+          "state": "unchecked"
         },
         {
           "id": "AC2",
-          "text": "LIVE forced miss: with the native set stubbed/forced to fail (e.g. temporarily make setSessionName return false via a test hook or run with the name pre-set to source:user), the setStatus row shows the id AND the notice line appears. Transcript pasted."
+          "claim": "LIVE forced miss: with the native set stubbed/forced to fail (e.g. temporarily make setSessionName return false via a test hook or run with the name pre-set to source:user), the setStatus row shows the id AND the notice line appears. Transcript pasted.",
+          "state": "unchecked"
         },
         {
           "id": "AC3",
-          "text": "Unit: fake pi API whose setSessionName fails N times then succeeds → helper retries per schedule, stops once the readback matches, sets status regardless; fails forever → notice emitted exactly once. RED-first on the pre-fix tree."
+          "claim": "Unit: fake pi API whose setSessionName fails N times then succeeds → helper retries per schedule, stops once the readback matches, sets status regardless; fails forever → notice emitted exactly once. RED-first on the pre-fix tree.",
+          "state": "unchecked"
         },
         {
           "id": "AC4",
-          "text": "`just typecheck`, extension vitest, `harness checks` green (npm ci first in a fresh worktree)."
+          "claim": "`just typecheck`, extension vitest, `harness checks` green (npm ci first in a fresh worktree).",
+          "state": "unchecked"
         }
       ]
     },
@@ -66,6 +70,5 @@
         }
       ]
     }
-  ],
-  "references": []
+  ]
 }

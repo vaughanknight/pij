@@ -31,15 +31,17 @@ import {
 import { guardInvariantNineModal } from "./core/invariant-guard.js";
 import { loadModels } from "./core/models/registry.js";
 import { PijSession } from "./core/session.js";
+import {
+	PIJ_STATUS_KEY,
+	publishSeatName,
+	type SessionNamePublisherDeps,
+} from "./core/session-name.js";
 import type { Role, SessionDescriptor } from "./core/types.js";
 
 // pij — peer session messaging + observability.
 //
 // Thin pi-event -> coordinator translator (Patterns P2/P8/P10): owns NO logic.
 
-/** Footer status key — shows the session's pij id (e.g. `pij-arbitrary-locust`) in pi's
- *  bottom bar so the operator knows which peer this terminal is at a glance. */
-const PIJ_STATUS_KEY = "pij";
 // All boot/announce/capture/inject/command/receipt/shutdown behaviour lives in
 // the pure, fakes-tested PijSession (./core/session.ts); this file only adapts
 // pi events into coordinator calls and wires the fs adapters. The single
@@ -158,6 +160,47 @@ export default function (pi: ExtensionAPI): void {
 	// instant pi exposes newSession/reload). The receive watcher re-routes remote
 	// new|reload onto this; undefined until armed / after a consuming op.
 	let commandControl: CommandControl | undefined;
+	let ompSessionNameGeneration = 0;
+	let ompSessionNamePublication:
+		| {
+				deps: SessionNamePublisherDeps;
+				self: string;
+				result: Promise<{ took: boolean; attempts: number }>;
+				reasserted: boolean;
+		  }
+		| undefined;
+
+	const startOmpSessionNamePublication = (
+		ctx: ExtensionContext,
+		name: string,
+		generation: number,
+	): void => {
+		if (generation !== ompSessionNameGeneration) return;
+		let noticeShown = false;
+		const deps: SessionNamePublisherDeps = {
+			setSessionName: async (sessionName) => {
+				if (generation !== ompSessionNameGeneration) return;
+				pi.setSessionName(sessionName);
+			},
+			getSessionName: () =>
+				generation === ompSessionNameGeneration ? pi.getSessionName() : undefined,
+			setStatus: (key, text) => {
+				if (generation === ompSessionNameGeneration) ctx.ui.setStatus(key, text);
+			},
+			notice: (text) => {
+				if (generation !== ompSessionNameGeneration || noticeShown) return;
+				noticeShown = true;
+				ctx.ui.notify(text, "warning");
+			},
+			sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+		};
+		ompSessionNamePublication = {
+			deps,
+			self: name,
+			result: publishSeatName(deps, name),
+			reasserted: false,
+		};
+	};
 
 	// pij_spawn — open a new tmux window running a pij worker (T206).
 	// Parameters: {task?, model?}; cwd from ctx.cwd (§M6). Thin pass-through of
@@ -263,6 +306,8 @@ export default function (pi: ExtensionAPI): void {
 		// OS pid when pi does not surface a session id (SDK/test). The extension is
 		// the *producer* of PIJ_SESSION_ID; resolveSelf is the CLI's "which am I".
 		const previousSelf = self; // module-scoped; holds the prior id across reload/new
+		const sessionNameGeneration = ++ompSessionNameGeneration;
+		ompSessionNamePublication = undefined;
 		let piSessionId: string | undefined;
 		try {
 			piSessionId = ctx.sessionManager?.getSessionId();
@@ -318,7 +363,7 @@ export default function (pi: ExtensionAPI): void {
 			session = rustRuntime;
 			self = boot.id;
 			role = boot.role === "parent" || boot.role === "worker" ? boot.role : undefined;
-			if (runtimeBin === "omp") await pi.setSessionName(self);
+			if (runtimeBin === "omp") startOmpSessionNamePublication(ctx, self, sessionNameGeneration);
 			else ctx.ui.setStatus(PIJ_STATUS_KEY, `${self} · rs-v1`);
 			ctx.ui.notify(
 				`pij: detected Rust daemon v1 at ${generation.location.addr}; registered ${self}`,
@@ -361,14 +406,10 @@ export default function (pi: ExtensionAPI): void {
 			}
 			self = reserved.value.id;
 		}
-		// OMP's default status line includes the session_name segment but renders
-		// extension statuses on a separate row. Mirror the pij identity into that
-		// native segment so the peer id remains visible in the actual bar.
-		if (runtimeBin === "omp") {
-			await pi.setSessionName(self);
-		} else {
-			ctx.ui.setStatus(PIJ_STATUS_KEY, self);
-		}
+		// OMP's native session-name segment can miss during startup. Publish through
+		// the shared retry helper and always retain the extension-status fallback.
+		if (runtimeBin === "omp") startOmpSessionNamePublication(ctx, self, sessionNameGeneration);
+		else ctx.ui.setStatus(PIJ_STATUS_KEY, self);
 		const dataDir = join(pijHome, self);
 		const eventsPath = join(dataDir, "events.ndjson");
 		// /new and /fork mint a fresh id => drop the prior session's descriptor so it
@@ -479,13 +520,25 @@ export default function (pi: ExtensionAPI): void {
 
 	// turn_start resolves any queued (steered) delivery receipt -> delivered
 	// (finding 08). timestamp is epoch ms; the coordinator speaks ISO.
-	pi.on("turn_start", (event) => session?.onTurnStart(new Date(event.timestamp).toISOString()));
+	pi.on("turn_start", (event) => {
+		const publication = ompSessionNamePublication;
+		if (publication && !publication.reasserted) {
+			publication.reasserted = true;
+			void publication.result.then((result) => {
+				if (result.took || ompSessionNamePublication !== publication) return;
+				publication.result = publishSeatName(publication.deps, publication.self, [0]);
+			});
+		}
+		session?.onTurnStart(new Date(event.timestamp).toISOString());
+	});
 
 	// turn_end flips the descriptor back to idle (D-A) so `pij state` reads
 	// working/idle without parsing the stream.
 	pi.on("turn_end", () => session?.onTurnEnd());
 
 	pi.on("session_shutdown", async (event, ctx: ExtensionContext) => {
+		ompSessionNameGeneration += 1;
+		ompSessionNamePublication = undefined;
 		disposeWatch?.();
 		disposeWatch = undefined;
 		// Pi guarantees this closed union (extensions.md, session_shutdown): only

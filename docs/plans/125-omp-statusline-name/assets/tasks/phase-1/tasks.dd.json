@@ -8,22 +8,117 @@
       "value": {
         "title": "Phase 1",
         "slug": "phase-1",
-        "status": "draft",
+        "status": "ready",
         "summary": ""
       }
     },
     {
       "name": "summary",
-      "value": ""
+      "value": "Implement u1 from the binding impl-guide: prove the helper red-first, implement bounded publication, wire both generation paths, then collect deterministic and live evidence."
     },
     {
       "name": "tasks",
-      "value": []
+      "value": [
+        {
+          "id": "tk-1251",
+          "title": "Add RED session-name publisher tests",
+          "domain": "pij extension",
+          "phase": "ph-d726",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1251",
+          "success": "Vitest covers retry success, already-equal readback, permanent failure, status fallback, and one notice.",
+          "notes": "Run the new file before adding the helper and retain the failing receipt.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC3"
+          ],
+          "receipt": "RED suite failed at missing helper import before implementation; artifact://54."
+        },
+        {
+          "id": "tk-1252",
+          "title": "Implement bounded session-name publisher",
+          "domain": "pij extension",
+          "phase": "ph-d726",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1252",
+          "success": "A pi-free helper retries on the declared schedule, verifies readback when exposed, always publishes status, and reports honest failure.",
+          "notes": "Frozen deps and return type come from impl-guide u1.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC3"
+          ],
+          "receipt": "just test session-name.test.ts: 4 passed; just typecheck: pass."
+        },
+        {
+          "id": "tk-1253",
+          "title": "Wire both daemon generation paths",
+          "domain": "pij extension",
+          "phase": "ph-d726",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1253",
+          "success": "Rust and legacy session_start paths share the helper; a failed startup gets one extra first-inbound attempt.",
+          "notes": "Keep index.ts changes to the two setSessionName call sites and their shared local state; plan 124 converges nearby.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2"
+          ],
+          "receipt": "Both call sites migrated; just typecheck passed."
+        },
+        {
+          "id": "tk-1254",
+          "title": "Prove deterministic and live acceptance",
+          "domain": "pij extension",
+          "phase": "ph-d726",
+          "state": "unchecked",
+          "done": "tasks.dd.json#done_when/tk-1254",
+          "success": "AC1-AC4 have command or tmux-capture receipts in the plan assets and every witness window is closed.",
+          "notes": "Hand-start OMP witnesses; never substitute pij-spawned clients.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC4"
+          ]
+        }
+      ]
     },
     {
       "name": "done_when",
-      "value": {}
+      "value": {
+        "tk-1251": [
+          {
+            "id": "as-1251",
+            "assertion": "Focused helper tests fail before implementation and cover retry success, already-equal readback, permanent failure, unconditional status, and exactly-once notice.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "RED: just test .pi/extensions/pij/core/session-name.test.ts failed because session-name.js did not exist (artifact://54)."
+          }
+        ],
+        "tk-1252": [
+          {
+            "id": "as-1252",
+            "assertion": "publishSeatName uses only the frozen narrow deps, bounded attempts, and returns took plus attempts without importing pi APIs.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "session-name.ts: pi-free narrow deps, bounded absolute schedule, readback verification, tagged result; focused Vitest 4/4 passed."
+          }
+        ],
+        "tk-1253": [
+          {
+            "id": "as-1253",
+            "assertion": "Both daemon generations publish through the shared helper on OMP and perform only one extra first-inbound attempt after startup failure.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "index.ts rust and legacy paths call startOmpSessionNamePublication; first turn schedules one [0] reassert after startup failure."
+          }
+        ],
+        "tk-1254": [
+          {
+            "id": "as-1254",
+            "assertion": "Focused tests, typecheck, harness checks, forced-miss transcript, and ten hand-started OMP footer captures satisfy AC1-AC4.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ]
+      }
     }
-  ],
-  "references": []
+  ]
 }

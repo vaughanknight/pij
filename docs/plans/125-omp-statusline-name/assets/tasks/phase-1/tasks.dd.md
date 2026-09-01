@@ -12,7 +12,7 @@
 | title | Phase 1 |
 | slug | phase-1 |
 | ordinal | — |
-| status | draft |
+| status | ready |
 | complexity | — |
 | summary | — |
 | backpressure | — |
@@ -27,16 +27,43 @@
 
 ## Summary
 
-_Empty._
+Implement u1 from the binding impl-guide: prove the helper red-first, implement bounded publication, wire both generation paths, then collect deterministic and live evidence.
 
 <a id="tasks"></a>
 
 ## Tasks
 
-_No entries._
+| id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| tk-1251 | Add RED session-name publisher tests | pij extension | ph-d726 | [x] checked | — | RED suite failed at missing helper import before implementation; artifact://54. | [tk-1251](tasks.dd.md#done-when) | Vitest covers retry success, already-equal readback, permanent failure, status fallback, and one notice. | Run the new file before adding the helper and retain the failing receipt. | [AC3](../../../plan.dd.md#acceptance-criteria) |
+| tk-1252 | Implement bounded session-name publisher | pij extension | ph-d726 | [x] checked | — | just test session-name.test.ts: 4 passed; just typecheck: pass. | [tk-1252](tasks.dd.md#done-when) | A pi-free helper retries on the declared schedule, verifies readback when exposed, always publishes status, and reports honest failure. | Frozen deps and return type come from impl-guide u1. | [AC3](../../../plan.dd.md#acceptance-criteria) |
+| tk-1253 | Wire both daemon generation paths | pij extension | ph-d726 | [x] checked | — | Both call sites migrated; just typecheck passed. | [tk-1253](tasks.dd.md#done-when) | Rust and legacy session_start paths share the helper; a failed startup gets one extra first-inbound attempt. | Keep index.ts changes to the two setSessionName call sites and their shared local state; plan 124 converges nearby. | [AC1](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria) |
+| tk-1254 | Prove deterministic and live acceptance | pij extension | ph-d726 | [ ] unchecked | — | — | [tk-1254](tasks.dd.md#done-when) | AC1-AC4 have command or tmux-capture receipts in the plan assets and every witness window is closed. | Hand-start OMP witnesses; never substitute pij-spawned clients. | [AC1](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria), [AC3](../../../plan.dd.md#acceptance-criteria), [AC4](../../../plan.dd.md#acceptance-criteria) |
 
 <a id="done-when"></a>
 
 ## Done when
 
-_No fields._
+### tk-1251
+
+| id | assertion | state | pressure | receipt |
+| --- | --- | --- | --- | --- |
+| as-1251 | Focused helper tests fail before implementation and cover retry success, already-equal readback, permanent failure, unconditional status, and exactly-once notice. | [x] checked | not-applicable | RED: just test .pi/extensions/pij/core/session-name.test.ts failed because session-name.js did not exist (artifact://54). |
+
+### tk-1252
+
+| id | assertion | state | pressure | receipt |
+| --- | --- | --- | --- | --- |
+| as-1252 | publishSeatName uses only the frozen narrow deps, bounded attempts, and returns took plus attempts without importing pi APIs. | [x] checked | not-applicable | session-name.ts: pi-free narrow deps, bounded absolute schedule, readback verification, tagged result; focused Vitest 4/4 passed. |
+
+### tk-1253
+
+| id | assertion | state | pressure | receipt |
+| --- | --- | --- | --- | --- |
+| as-1253 | Both daemon generations publish through the shared helper on OMP and perform only one extra first-inbound attempt after startup failure. | [x] checked | not-applicable | index.ts rust and legacy paths call startOmpSessionNamePublication; first turn schedules one [0] reassert after startup failure. |
+
+### tk-1254
+
+| id | assertion | state | pressure |
+| --- | --- | --- | --- |
+| as-1254 | Focused tests, typecheck, harness checks, forced-miss transcript, and ten hand-started OMP footer captures satisfy AC1-AC4. | [ ] unchecked | not-applicable |
