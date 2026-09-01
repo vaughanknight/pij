@@ -7,3 +7,10 @@
 - Politeness gate WIRED upstream: permits_injection_fresh (worker.rs:270, delivery/mod.rs:236) composes user_typing + tap activity + fresh composer capture (plan 111 F-1112). select_rung's (false,true) at worker.rs:299 are discharged preconditions — invisible at the call site; thread or comment while there.
 - Hazard: >1022-byte pty chunk on macOS — send-keys silently keeps only the tail (measured, plan 110 #330). Probe live; chunk-with-verify or load-buffer+paste-buffer.
 - Copilot/codex CAN register/bind/spawn in rs today (model.rs:42-53, admission.rs:133-135, adapter.rs:169-284, spawn.rs:139-141).
+
+## Operator repro, 2026-09-01 (screenshot in prime's session)
+An OMP pane received `[pij-rs from pij-still-weasel]message waiting — run: pij inbox`. Jordan:
+omp seats "should never need to get that — they just get messages via the extension". rs has no
+pi-extension transport (uds is the only Transport impl), so pi/omp seats fall to the pointer rung.
+s122 REQUIREMENT SHARPENED: the live witness set must include an OMP pane receiving a typed full
+body (in addition to copilot/codex). The pi-extension transport itself is a separate follow-on unit.
