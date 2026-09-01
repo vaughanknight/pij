@@ -135,6 +135,14 @@ export class PijDaemonClient {
 		return this.post<QueueReceipt>("/v1/send", request);
 	}
 
+	claimInbox(seat: string): Promise<unknown> {
+		return this.get<unknown>(`/v1/inbox?seat=${encodeURIComponent(seat)}`);
+	}
+
+	ackInbox(seat: string, jobId: number): Promise<number> {
+		return this.post<number>("/v1/inbox/ack", { seat, job_id: jobId });
+	}
+
 	async watchEvents(
 		onFrame: (frame: EventFrame) => void,
 		onError: (error: Error) => void,

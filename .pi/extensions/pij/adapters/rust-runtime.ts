@@ -44,6 +44,7 @@ export class RustRuntimeSession {
 	private self = "";
 	private stopEvents: (() => void) | undefined;
 	private flushChain: Promise<void> = Promise.resolve();
+	private pushedChain: Promise<void> = Promise.resolve();
 	private readonly lastInbound = new Map<string, string>();
 
 	constructor(client: PijDaemonClient, tmux: TmuxPort, models: readonly ModelEntry[]) {
@@ -107,17 +108,14 @@ export class RustRuntimeSession {
 					this.session.capture("daemon_event", frame);
 					return;
 				}
-				try {
-					const message = pushedMessage(frame.event.payload, this.self);
-					this.lastInbound.set(message.from, message.messageId);
-					this.session.onInbound(message, message.messageId);
-					void this.flush();
-				} catch (error) {
-					this.session.capture("daemon_event_error", {
-						message: error instanceof Error ? error.message : String(error),
-						frame,
+				this.pushedChain = this.pushedChain
+					.then(() => this.consumePushed(frame.event.payload))
+					.catch((error: unknown) => {
+						this.session.capture("daemon_event_error", {
+							message: error instanceof Error ? error.message : String(error),
+							frame,
+						});
 					});
-				}
 			},
 			(error) => this.session.capture("daemon_event_error", { message: error.message }),
 		);
@@ -179,8 +177,37 @@ export class RustRuntimeSession {
 		return this.registry.list().filter((seat) => seat.id !== this.self).length;
 	}
 
-	eventCount(): number {
-		return this.eventLog.count();
+	eventCount(type?: string): number {
+		return type === undefined ? this.eventLog.count() : this.eventLog.read({ type }).length;
+	}
+
+	private async consumePushed(payload: string): Promise<void> {
+		const announced = pushedMessage(payload, this.self);
+		const claim = pushedInboxClaim(await this.client.claimInbox(this.self), this.self);
+		if (claim === undefined) {
+			this.session.capture("daemon_event_claim_unavailable", {
+				messageId: announced.messageId,
+			});
+			return;
+		}
+		if (claim.message.messageId !== announced.messageId) {
+			this.session.capture("daemon_event_claim_mismatch", {
+				announcedMessageId: announced.messageId,
+				claimedMessageId: claim.message.messageId,
+			});
+		}
+		this.lastInbound.set(claim.message.from, claim.message.messageId);
+		this.session.onInbound(claim.message, claim.message.messageId);
+		try {
+			await this.client.ackInbox(this.self, claim.jobId);
+		} catch (error) {
+			this.session.capture("daemon_event_ack_error", {
+				jobId: claim.jobId,
+				messageId: claim.message.messageId,
+				message: error instanceof Error ? error.message : String(error),
+			});
+		}
+		await this.flush();
 	}
 
 	private chooseIdentity(
@@ -272,9 +299,44 @@ function fromRustDescriptor(seat: RustSeatDescriptor): SessionDescriptor {
 }
 
 function pushedMessage(payload: string, to: string): PijMessage & { readonly messageId: string } {
-	const value: unknown = JSON.parse(payload);
+	return pushedMessageValue(JSON.parse(payload) as unknown, to, "message.pushed payload");
+}
+
+function pushedInboxClaim(
+	value: unknown,
+	to: string,
+):
+	| { readonly jobId: number; readonly message: PijMessage & { readonly messageId: string } }
+	| undefined {
+	if (!Array.isArray(value) || value.length > 1) {
+		throw new Error("pij inbox response must be an array with at most one claim");
+	}
+	if (value.length === 0) return undefined;
+	const claim: unknown = value[0];
+	if (typeof claim !== "object" || claim === null || Array.isArray(claim)) {
+		throw new Error("pij inbox claim must be an object");
+	}
+	const record = claim as Record<string, unknown>;
+	if (
+		typeof record.job_id !== "number" ||
+		!Number.isSafeInteger(record.job_id) ||
+		record.job_id <= 0
+	) {
+		throw new Error("pij inbox claim job_id must be a positive safe integer");
+	}
+	return {
+		jobId: record.job_id,
+		message: pushedMessageValue(record.message, to, "pij inbox claim message"),
+	};
+}
+
+function pushedMessageValue(
+	value: unknown,
+	to: string,
+	label: string,
+): PijMessage & { readonly messageId: string } {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		throw new Error("message.pushed payload must be an object");
+		throw new Error(`${label} must be an object`);
 	}
 	const record = value as Record<string, unknown>;
 	if (
@@ -282,7 +344,7 @@ function pushedMessage(payload: string, to: string): PijMessage & { readonly mes
 		typeof record.from !== "string" ||
 		typeof record.body !== "string"
 	) {
-		throw new Error("message.pushed payload needs string msg_id, from, and body");
+		throw new Error(`${label} needs string msg_id, from, and body`);
 	}
 	return {
 		messageId: record.msg_id,
