@@ -1,7 +1,13 @@
 export const PIJ_ENVELOPE_VERSION = 1;
 export const PIJ_EVENT_VERSION = 1;
 
-export type DaemonErrorKind = "refused" | "not_found" | "auth" | "skew" | "adapter";
+export type DaemonErrorKind =
+	| "refused"
+	| "not_found"
+	| "auth"
+	| "skew"
+	| "adapter"
+	| "cursor_reset";
 
 export interface DaemonEnvelope<T> {
 	readonly ok: boolean;
@@ -165,7 +171,8 @@ export function decodeEnvelope<T>(text: string): SuccessfulDaemonEnvelope<T> {
 		kind !== "not_found" &&
 		kind !== "auth" &&
 		kind !== "skew" &&
-		kind !== "adapter"
+		kind !== "adapter" &&
+		kind !== "cursor_reset"
 	) {
 		throw new Error("daemon envelope error must be a known ErrorKind");
 	}

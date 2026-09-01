@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type DaemonHttpDeps, PijDaemonClient } from "./daemon-http.js";
 import { FakePiRuntime, FakeTmux } from "./fakes.js";
@@ -7,6 +6,18 @@ import { RustRuntimeSession } from "./rust-runtime.js";
 
 function envelope(command: string, data: unknown): Response {
 	return new Response(JSON.stringify({ ok: true, command, v: 1, data }));
+}
+
+function eventResponse(text: string, keepOpen = true): Response {
+	const encoder = new TextEncoder();
+	return new Response(
+		new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(encoder.encode(text));
+				if (!keepOpen) controller.close();
+			},
+		}),
+	);
 }
 afterEach(() => vi.unstubAllEnvs());
 
@@ -71,7 +82,7 @@ async function bootPushedEvent(
 				eventStreams === 1
 					? `${JSON.stringify({ machine: "test", cursor: 1, event: { v: 1, at: 1, kind: "message.pushed", seat: registeredId, payload } })}\n`
 					: "";
-			return new Response(
+			return eventResponse(
 				`${JSON.stringify({ hello: true, v: 1, build: "pij-rs test" })}\n${pushed}`,
 			);
 		}
@@ -88,8 +99,7 @@ async function bootPushedEvent(
 	});
 	const deps: DaemonHttpDeps = {
 		fetch: fetchMock as typeof fetch,
-		readFile,
-		readdir,
+		readFile: async () => "secret",
 		processStart: () => 20260829103052,
 	};
 	const runtime = new RustRuntimeSession(
@@ -142,7 +152,7 @@ describe("RustRuntimeSession", () => {
 				});
 			}
 			if (path === "/v1/events") {
-				return new Response(
+				return eventResponse(
 					`${JSON.stringify({ hello: true, v: 1, build: "pij-rs test" })}\n` +
 						`${JSON.stringify({ machine: "test", cursor: 1, event: { v: 1, at: 1, kind: "future.kind", seat: registeredId, payload: '{"opaque":true}' } })}\n` +
 						`${JSON.stringify({ machine: "test", cursor: 2, event: { v: 1, at: 2, kind: "message.pushed", seat: registeredId, payload: PUSHED_EVENT_WIRE } })}\n`,
@@ -176,8 +186,7 @@ describe("RustRuntimeSession", () => {
 		});
 		const deps: DaemonHttpDeps = {
 			fetch: fetchMock as typeof fetch,
-			readFile,
-			readdir,
+			readFile: async () => "secret",
 			processStart: () => 20260829103052,
 		};
 		const client = new PijDaemonClient(
@@ -331,5 +340,108 @@ describe("RustRuntimeSession", () => {
 			expect(runtime.eventCount("daemon_event_error")).toBe(1);
 		});
 		expect(acknowledgements).toEqual([]);
+	});
+
+	it("re-attaches after key rotation, restores the same seat, and consumes replay once", async () => {
+		vi.stubEnv("PIJ_ANNOUNCE_TO", "");
+		vi.stubEnv("PIJ_SPAWN_ID", "");
+		vi.stubEnv("PIJ_SPAWN_MODEL", "");
+		vi.stubEnv("PIJ_SPAWN_TASK", "");
+		let key = "old-key";
+		let registeredId = "";
+		let eventAttach = 0;
+		let seatReads = 0;
+		const registrations: Array<Record<string, unknown>> = [];
+		const acknowledgements: Array<Record<string, unknown>> = [];
+		const eventUrls: URL[] = [];
+		const eventAuthorizations: string[] = [];
+		const notices: string[] = [];
+		const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+			const parsed = new URL(String(url));
+			if (parsed.pathname === "/v1/seats") {
+				seatReads += 1;
+				return envelope("pij seats", { seats: [], unavailable: [] });
+			}
+			if (parsed.pathname === "/v1/register") {
+				const claim = JSON.parse(String(init?.body)) as Record<string, unknown>;
+				registrations.push(claim);
+				registeredId = String(claim.id);
+				return envelope("pij register", {
+					id: registeredId,
+					harness: claim.harness,
+					pane: claim.pane,
+					proc: { pid: claim.pid, proc_start: claim.proc_start },
+					folder: claim.folder,
+					state: "idle",
+					parent: null,
+				});
+			}
+			if (parsed.pathname === "/v1/events") {
+				eventAttach += 1;
+				eventUrls.push(parsed);
+				eventAuthorizations.push(String((init?.headers as Record<string, string>).Authorization));
+				if (eventAttach === 1) {
+					key = "new-key";
+					return eventResponse(
+						`${JSON.stringify({ hello: true, v: 1, build: "pij-rs test" })}\n` +
+							`${JSON.stringify({ machine: "test", cursor: 1, event: { v: 1, at: 1, kind: "future.kind", payload: "{}" } })}\n`,
+						false,
+					);
+				}
+				return eventResponse(
+					`${JSON.stringify({ hello: true, v: 1, build: "pij-rs test" })}\n` +
+						`${JSON.stringify({ machine: "test", cursor: 2, event: { v: 1, at: 2, kind: "message.pushed", seat: registeredId, payload: PUSHED_EVENT_WIRE } })}\n`,
+				);
+			}
+			if (parsed.pathname === "/v1/inbox") return envelope("pij inbox", inboxClaimFixture());
+			if (parsed.pathname === "/v1/inbox/ack") {
+				const acknowledgement = JSON.parse(String(init?.body)) as Record<string, unknown>;
+				acknowledgements.push(acknowledgement);
+				return envelope("pij inbox", acknowledgement.job_id);
+			}
+			throw new Error(`unexpected path ${parsed.pathname}`);
+		});
+		const client = new PijDaemonClient(
+			{ addr: "127.0.0.1:7461", stateDir: "/tmp/state" },
+			"old-key",
+			{
+				fetch: fetchMock as typeof fetch,
+				readFile: async () => key,
+				processStart: () => 20260829103052,
+			},
+		);
+		const runtime = new RustRuntimeSession(client, new FakeTmux(), []);
+		const pi = new FakePiRuntime();
+		runtime.setPi(pi);
+		const boot = await runtime.boot({
+			folder: "/abs/tree",
+			dataDir: "",
+			eventsPath: "",
+			harness: "pi",
+			harnessSessionId: "native-session",
+			piSessionId: "native-session",
+			runtimeBin: "omp",
+			paneId: "%42",
+			resetRuntimeState: true,
+			reason: "startup",
+			notice: (text) => notices.push(text),
+		});
+
+		await vi.waitFor(() => {
+			expect(acknowledgements).toEqual([{ seat: boot.id, job_id: 1 }]);
+			expect(registrations).toHaveLength(2);
+		});
+		expect(registrations[1]).toMatchObject({ id: boot.id, pane: "%42" });
+		expect(seatReads).toBeGreaterThanOrEqual(2);
+		expect(JSON.parse(eventUrls[1]?.searchParams.get("since") ?? "null")).toEqual({ test: 1 });
+		expect(eventAuthorizations).toEqual(["Bearer old-key", "Bearer new-key"]);
+		expect(notices).toEqual([
+			"pij: daemon stream lost, reconnecting…",
+			"pij: re-attached at cursor 1",
+		]);
+		expect(
+			pi.injects.filter((item) => item.text === "[pij from pij-from] before bind"),
+		).toHaveLength(1);
+		runtime.shutdown("quit");
 	});
 });

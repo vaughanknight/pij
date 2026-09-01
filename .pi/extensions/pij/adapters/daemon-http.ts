@@ -41,8 +41,10 @@ export type DaemonGeneration =
 
 export interface DaemonHttpDeps {
 	readonly fetch: typeof fetch;
-	readonly readFile: typeof readFile;
+	readonly readFile: (path: string, encoding: "utf8") => Promise<string>;
 	readonly processStart: (pid: number) => number;
+	readonly random?: () => number;
+	readonly sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
 }
 
 const DEFAULT_DEPS: DaemonHttpDeps = {
@@ -50,6 +52,10 @@ const DEFAULT_DEPS: DaemonHttpDeps = {
 	readFile,
 	processStart: observedProcessStart,
 };
+
+const INITIAL_RECONNECT_MS = 250;
+const MAX_RECONNECT_MS = 5_000;
+const RECONNECT_JITTER = 0.2;
 
 /** Resolve extension transport controls: explicit environment, then Rust defaults. */
 export function daemonLocation(
@@ -115,12 +121,19 @@ export async function detectDaemonGeneration(
 export class PijDaemonClient {
 	constructor(
 		readonly location: DaemonLocation,
-		private readonly key: string,
+		private key: string,
 		private readonly deps: DaemonHttpDeps = DEFAULT_DEPS,
 	) {}
 
 	processStart(pid: number): number {
 		return this.deps.processStart(pid);
+	}
+
+	async refreshKey(): Promise<void> {
+		const path = join(this.location.stateDir, "daemon.key");
+		const key = (await this.deps.readFile(path, "utf8")).trim();
+		if (key === "") throw new Error(`pij daemon key is empty: ${path}`);
+		this.key = key;
 	}
 
 	register(claim: Registration): Promise<RustSeatDescriptor> {
@@ -146,35 +159,118 @@ export class PijDaemonClient {
 	async watchEvents(
 		onFrame: (frame: EventFrame) => void,
 		onError: (error: Error) => void,
+		onNotice?: (text: string) => void,
 	): Promise<() => void> {
 		const controller = new AbortController();
-		const response = await this.deps.fetch(`http://${this.location.addr}/v1/events`, {
-			headers: this.headers(),
-			signal: controller.signal,
-		});
-		if (!response.ok) {
-			decodeEnvelope<unknown>(await response.text());
-			throw new Error(`pij events failed with HTTP ${response.status}`);
-		}
-		if (!response.body) throw new Error("pij events returned no response body");
-		void pumpEventStream(response.body, onFrame, onError, controller.signal);
+		const cursors = new Map<string, number>();
+		const initial = await this.attachEvents(cursors, controller.signal);
+		void this.superviseEvents(initial, cursors, onFrame, onNotice, controller.signal).catch(
+			(error: unknown) => {
+				if (!controller.signal.aborted) onError(asError(error));
+			},
+		);
 		return () => controller.abort();
 	}
 
+	private async superviseEvents(
+		initial: ReadableStream<Uint8Array>,
+		cursors: Map<string, number>,
+		onFrame: (frame: EventFrame) => void,
+		onNotice: ((text: string) => void) | undefined,
+		signal: AbortSignal,
+	): Promise<void> {
+		let stream = initial;
+		let attempt = 0;
+		while (!signal.aborted) {
+			await pumpEventStream(
+				stream,
+				(frame) => {
+					onFrame(frame);
+					cursors.set(frame.machine, frame.cursor);
+				},
+				signal,
+			).catch(() => undefined);
+			if (signal.aborted) return;
+
+			onNotice?.("pij: daemon stream lost, reconnecting…");
+			while (!signal.aborted) {
+				const base = Math.min(INITIAL_RECONNECT_MS * 2 ** Math.min(attempt, 5), MAX_RECONNECT_MS);
+				const random = this.deps.random?.() ?? Math.random();
+				const delay = Math.round(base * (1 - RECONNECT_JITTER + random * RECONNECT_JITTER * 2));
+				await (this.deps.sleep ?? sleep)(delay, signal);
+				if (signal.aborted) return;
+				try {
+					stream = await this.attachEvents(cursors, signal);
+					let cursor = 0;
+					for (const value of cursors.values()) cursor = Math.max(cursor, value);
+					onNotice?.(`pij: re-attached at cursor ${cursor}`);
+					attempt = 0;
+					break;
+				} catch (error) {
+					if (isCursorRefusal(error) && cursors.size > 0) {
+						onNotice?.(`pij: ${asError(error).message}; re-attaching live-only`);
+						cursors.clear();
+						try {
+							stream = await this.attachEvents(cursors, signal);
+							onNotice?.("pij: re-attached live-only");
+							attempt = 0;
+							break;
+						} catch {
+							// The live-only retry joins the same bounded reconnect loop.
+						}
+					}
+					attempt += 1;
+				}
+			}
+		}
+	}
+
+	private async attachEvents(
+		cursors: ReadonlyMap<string, number>,
+		signal: AbortSignal,
+	): Promise<ReadableStream<Uint8Array>> {
+		await this.refreshKey();
+		const since =
+			cursors.size === 0
+				? ""
+				: `?since=${encodeURIComponent(JSON.stringify(Object.fromEntries(cursors)))}`;
+		const response = await this.request(`/v1/events${since}`, { signal });
+		if (!response.ok) decodeEnvelope<unknown>(await response.text());
+		if (!response.body) throw new Error("pij events returned no response body");
+		return response.body;
+	}
+
 	private async get<T>(path: string): Promise<T> {
-		const response = await this.deps.fetch(`http://${this.location.addr}${path}`, {
-			headers: this.headers(),
-		});
+		const response = await this.request(path);
 		return decodeEnvelope<T>(await response.text()).data;
 	}
 
 	private async post<T>(path: string, body: unknown): Promise<T> {
-		const response = await this.deps.fetch(`http://${this.location.addr}${path}`, {
-			method: "POST",
-			headers: { ...this.headers(), "Content-Type": "application/json" },
-			body: JSON.stringify(body),
-		});
+		const response = await this.request(
+			path,
+			{ method: "POST", body: JSON.stringify(body) },
+			{ "Content-Type": "application/json" },
+		);
 		return decodeEnvelope<T>(await response.text()).data;
+	}
+
+	private async request(
+		path: string,
+		init: RequestInit = {},
+		extraHeaders: Readonly<Record<string, string>> = {},
+	): Promise<Response> {
+		const request = (): Promise<Response> =>
+			this.deps.fetch(`http://${this.location.addr}${path}`, {
+				...init,
+				headers: { ...this.headers(), ...extraHeaders },
+			});
+		let response = await request();
+		if (response.status === 401 || response.status === 403) {
+			await response.body?.cancel();
+			await this.refreshKey();
+			response = await request();
+		}
+		return response;
 	}
 
 	private headers(): { readonly Authorization: string } {
@@ -185,13 +281,16 @@ export class PijDaemonClient {
 async function pumpEventStream(
 	stream: ReadableStream<Uint8Array>,
 	onFrame: (frame: EventFrame) => void,
-	onError: (error: Error) => void,
 	signal: AbortSignal,
 ): Promise<void> {
 	const reader = stream.getReader();
 	const decoder = new TextDecoder();
 	let buffered = "";
 	let sawHello = false;
+	const abort = (): void => {
+		void reader.cancel();
+	};
+	signal.addEventListener("abort", abort, { once: true });
 	try {
 		while (!signal.aborted) {
 			const { done, value } = await reader.read();
@@ -201,36 +300,50 @@ async function pumpEventStream(
 			buffered = lines.pop() ?? "";
 			for (const line of lines) {
 				if (line.trim() === "") continue;
-				try {
-					const decoded = decodeStreamLine(line);
-					if ("hello" in decoded) {
-						if (sawHello) throw new Error("pij events sent a second Hello line");
-						sawHello = true;
-						continue;
-					}
-					if (!sawHello) throw new Error("pij events frame arrived before Hello");
-					onFrame(decoded);
-				} catch (error) {
-					onError(asError(error));
+				const decoded = decodeStreamLine(line);
+				if ("hello" in decoded) {
+					if (sawHello) throw new Error("pij events sent a second Hello line");
+					sawHello = true;
+					continue;
 				}
+				if (!sawHello) throw new Error("pij events frame arrived before Hello");
+				onFrame(decoded);
 			}
 		}
 		if (buffered.trim() !== "") {
-			try {
-				const decoded = decodeStreamLine(buffered);
-				if (!("hello" in decoded)) {
-					if (!sawHello) throw new Error("pij events frame arrived before Hello");
-					onFrame(decoded);
-				}
-			} catch (error) {
-				onError(asError(error));
+			const decoded = decodeStreamLine(buffered);
+			if (!("hello" in decoded)) {
+				if (!sawHello) throw new Error("pij events frame arrived before Hello");
+				onFrame(decoded);
 			}
 		}
-	} catch (error) {
-		if (!signal.aborted) onError(asError(error));
 	} finally {
+		signal.removeEventListener("abort", abort);
 		reader.releaseLock();
 	}
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+	if (signal.aborted) return Promise.resolve();
+	return new Promise((resolveSleep) => {
+		let settled = false;
+		const finish = (): void => {
+			if (settled) return;
+			settled = true;
+			signal.removeEventListener("abort", finish);
+			clearTimeout(timer);
+			resolveSleep();
+		};
+		const timer = setTimeout(finish, ms);
+		signal.addEventListener("abort", finish, { once: true });
+	});
+}
+
+function isCursorRefusal(error: unknown): boolean {
+	return (
+		error instanceof DaemonRefusalError &&
+		(error.kind === "cursor_reset" || error.kind === "refused")
+	);
 }
 
 function configuredValue(name: string, value: string | undefined, fallback: string): string {

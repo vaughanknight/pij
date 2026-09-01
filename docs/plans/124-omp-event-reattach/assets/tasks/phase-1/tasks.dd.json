@@ -6,24 +6,115 @@
     {
       "name": "meta",
       "value": {
-        "title": "Phase 1",
+        "title": "Reconnect, key refresh, runtime continuity, and live proof",
         "slug": "phase-1",
-        "status": "draft",
-        "summary": ""
+        "status": "ready",
+        "summary": "Implement plan 124 serially as u1 then u2, prove the real-client restart contract, and close through cross-model review."
       }
     },
     {
       "name": "summary",
-      "value": ""
+      "value": "RED-first extension tests precede each implementation. Prime grants the daemon restart window; reviewer is Claude Opus."
     },
     {
       "name": "tasks",
-      "value": []
+      "value": [
+        {
+          "id": "tk-1241",
+          "title": "Add RED-first daemon client tests for reconnect cursors, refusal fallback, key rotation, bounded retry, and backoff.",
+          "state": "checked",
+          "note": "u1 / AC3-AC5",
+          "done": "#done_when/tk-1241"
+        },
+        {
+          "id": "tk-1242",
+          "title": "Implement the supervised reconnecting daemon event client and transparent key refresh without daemon changes.",
+          "state": "checked",
+          "note": "u1 / G1-G3",
+          "done": "#done_when/tk-1242"
+        },
+        {
+          "id": "tk-1243",
+          "title": "Add RED-first runtime restart tests for notices, seat continuity, replayed injection, and one inbox acknowledgement.",
+          "state": "checked",
+          "note": "u2 / AC3-AC5",
+          "done": "#done_when/tk-1243"
+        },
+        {
+          "id": "tk-1244",
+          "title": "Wire runtime re-attach through existing pushedChain and consumePushed, preserving the same seat id and pane.",
+          "state": "checked",
+          "note": "u2 / G4-G5",
+          "done": "#done_when/tk-1244"
+        },
+        {
+          "id": "tk-1245",
+          "title": "Run focused tests, typecheck, harness checks, then the prime-granted hand-started omp daemon-restart proof and capture evidence.",
+          "state": "unchecked",
+          "note": "AC1-AC5",
+          "done": "#done_when/tk-1245"
+        },
+        {
+          "id": "tk-1246",
+          "title": "Complete Claude Opus review, resolve findings, close ddoc evidence, post-flight, archive, and ship through governed gates.",
+          "state": "unchecked",
+          "note": "done bar d1-d5",
+          "done": "#done_when/tk-1246"
+        }
+      ]
     },
     {
       "name": "done_when",
-      "value": {}
+      "value": {
+        "tk-1241": [
+          {
+            "id": "dw-1241",
+            "assertion": "Every new client case is witnessed failing on the pre-fix implementation and the RED output is retained in the done report.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1242": [
+          {
+            "id": "dw-1242",
+            "assertion": "Client reconnects with the complete per-alias cursor map, falls back live-only on cursor refusal with the daemon reason, refreshes the key before attach, retries any 401/403 once, and caps jittered backoff at 5s.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1243": [
+          {
+            "id": "dw-1243",
+            "assertion": "Runtime restart case fails before the fix and then proves one inline injection, one inbox acknowledgement, reconnect notices, and same-id seat re-registration.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1244": [
+          {
+            "id": "dw-1244",
+            "assertion": "All replayed message.pushed frames use the existing pushedChain and consumePushed path; no second injection or acknowledgement path exists.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1245": [
+          {
+            "id": "dw-1245",
+            "assertion": "Focused vitest, just typecheck, and harness checks are green; after prime replies GRANTED, a hand-started omp survives the restart, receives the body inline, shows pushed to inbox-ack with no pointer, and pij_send succeeds.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1246": [
+          {
+            "id": "dw-1246",
+            "assertion": "Claude Opus review verdict is recorded, findings are fixed or evidence-refuted, every AC carries a receipt, post-flight archives the plan, and ship opens the governed PR.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ]
+      }
     }
-  ],
-  "references": []
+  ]
 }

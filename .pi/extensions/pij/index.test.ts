@@ -9,7 +9,6 @@
 // corresponding assertion.
 
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -116,7 +115,7 @@ function fakeRustGeneration(): daemonHttp.DaemonGeneration {
 		health: { status: "healthy", build: "pij-rs test", offline: true, machine: "test" },
 		client: new daemonHttp.PijDaemonClient(location, "secret", {
 			fetch: fetchMock as typeof fetch,
-			readFile,
+			readFile: async () => "secret",
 			processStart: () => 20260831134200,
 		}),
 	};
