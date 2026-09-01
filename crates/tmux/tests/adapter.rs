@@ -157,8 +157,8 @@ fn capture_proves_zero_and_more_than_the_pane_contains() {
     );
 }
 
-#[test]
-fn submit_pastes_a_3000_byte_multiline_body_intact() {
+#[tokio::test]
+async fn submit_pastes_a_3000_byte_multiline_body_intact() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock after epoch")
@@ -167,8 +167,11 @@ fn submit_pastes_a_3000_byte_multiline_body_intact() {
         "pij-rs-submit-large-{}-{nonce}.bin",
         std::process::id()
     ));
-    let body = format!("BEGIN-S122\n{}\nEND-S122", "0123456789abcdef".repeat(188));
-    let expected = format!("\u{1b}[200~{body}\u{1b}[201~\r").into_bytes();
+    let body = format!("BEGIN-S122\n{}\nEND-S122", "0123456789abcdef".repeat(190));
+    let mut expected = Vec::with_capacity(body.len() + 13);
+    expected.extend_from_slice(b"\x1b[200~");
+    expected.extend_from_slice(body.as_bytes());
+    expected.extend_from_slice(b"\x1b[201~\r");
     let command = format!(
         "stty raw -echo; printf '\\033[?2004h'; dd bs=1 count={} of={} 2>/dev/null; sleep 10",
         expected.len(),
@@ -178,14 +181,18 @@ fn submit_pastes_a_3000_byte_multiline_body_intact() {
         return;
     };
     let tmux = TmuxAdapter::for_server(&session.server, &session.tap_root);
-    let pane = block_on(tmux.list_panes())
+    let pane = tmux
+        .list_panes()
+        .await
         .expect("list isolated panes")
         .into_iter()
         .next()
         .expect("isolated session pane");
     std::thread::sleep(Duration::from_millis(100));
 
-    block_on(tmux.submit(&pane.id, &body)).expect("submit large body");
+    tmux.submit(&pane.id, &body)
+        .await
+        .expect("submit large body");
 
     let deadline = Instant::now() + Duration::from_secs(10);
     let observed = loop {
@@ -202,7 +209,7 @@ fn submit_pastes_a_3000_byte_multiline_body_intact() {
     };
     assert_eq!(
         observed, expected,
-        "bracketed paste preserves every body byte"
+        "chunked bracketed paste preserves every body byte"
     );
     fs::remove_file(&output_path).expect("remove large-submit capture");
 }

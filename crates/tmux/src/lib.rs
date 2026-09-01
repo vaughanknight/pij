@@ -17,6 +17,7 @@ use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
 use pij_core::model::{Pane, PaneProcess};
 use pij_core::ports::{LaunchCommand, TmuxPort};
+use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::{Instant, sleep};
 
 use crate::parse::{LIST_FORMAT, parse_one_pane, parse_panes};
@@ -38,6 +39,8 @@ pub fn tap_sink_path(root: &Path, pane: &str) -> PathBuf {
 }
 
 const TAP_SINK_OPTION: &str = "@pij-tap-sink";
+const SUBMIT_CHUNK_BYTES: usize = 1_000;
+const SUBMIT_CHUNK_PAUSE: Duration = Duration::from_millis(10);
 
 /// The real [`TmuxPort`] implementation.
 ///
@@ -63,6 +66,7 @@ pub struct TmuxAdapter {
     session: Option<String>,
     tap_root: PathBuf,
     next_submit: Arc<AtomicU64>,
+    submit_lock: Arc<AsyncMutex<()>>,
     taps: Arc<Mutex<BTreeMap<String, TapState>>>,
 }
 
@@ -81,6 +85,7 @@ impl TmuxAdapter {
             session: None,
             tap_root: tap_root.into(),
             next_submit: Arc::new(AtomicU64::new(0)),
+            submit_lock: Arc::new(AsyncMutex::new(())),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -93,6 +98,7 @@ impl TmuxAdapter {
             session: Some(session.into()),
             tap_root: tap_root.into(),
             next_submit: Arc::new(AtomicU64::new(0)),
+            submit_lock: Arc::new(AsyncMutex::new(())),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -105,6 +111,7 @@ impl TmuxAdapter {
             session: None,
             tap_root: tap_root.into(),
             next_submit: Arc::new(AtomicU64::new(0)),
+            submit_lock: Arc::new(AsyncMutex::new(())),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -120,6 +127,7 @@ impl TmuxAdapter {
             session: None,
             tap_root: tap_root.into(),
             next_submit: Arc::new(AtomicU64::new(0)),
+            submit_lock: Arc::new(AsyncMutex::new(())),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -178,6 +186,25 @@ impl TmuxAdapter {
             .wait_with_output()
             .map_err(|error| self.spawn_error(operation, error))?;
         self.finish(operation, output)
+    }
+
+    fn paste_bytes(&self, pane: &str, buffer: &str, bytes: &[u8]) -> Result<()> {
+        self.run_with_stdin(
+            "load submit buffer",
+            &os_args(["load-buffer", "-b", buffer, "-"]),
+            bytes,
+        )?;
+        if let Err(error) = self.run(
+            "paste submit buffer",
+            &os_args(["paste-buffer", "-d", "-r", "-b", buffer, "-t", pane]),
+        ) {
+            let _ = self.run(
+                "delete failed submit buffer",
+                &os_args(["delete-buffer", "-b", buffer]),
+            );
+            return Err(error);
+        }
+        Ok(())
     }
 
     fn finish(&self, operation: &str, output: Output) -> Result<Output> {
@@ -363,25 +390,35 @@ impl TmuxPort for TmuxAdapter {
     }
 
     async fn submit(&self, pane: &str, text: &str) -> Result<()> {
+        // One body at a time. Without this lock, two concurrent submissions can
+        // interleave their chunks in a shared pane composer.
+        let _submit = self.submit_lock.lock().await;
         let sequence = self.next_submit.fetch_add(1, Ordering::Relaxed);
         let buffer = format!("pij-submit-{}-{sequence}", std::process::id());
-        self.run_with_stdin(
-            "load submit buffer",
-            &os_args(["load-buffer", "-b", &buffer, "-"]),
-            text.as_bytes(),
-        )?;
-        if let Err(error) = self.run(
-            "paste submit buffer",
-            &os_args(["paste-buffer", "-d", "-p", "-r", "-b", &buffer, "-t", pane]),
-        ) {
-            let _ = self.run(
-                "delete failed submit buffer",
-                &os_args(["delete-buffer", "-b", &buffer]),
-            );
-            return Err(error);
+
+        // Hold one bracketed-paste transaction open while pacing its bytes.
+        // Starting a fresh paste for every chunk makes some editors insert a
+        // separator at chunk boundaries, corrupting the body.
+        self.paste_bytes(pane, &buffer, b"\x1b[200~")?;
+        let mut start = 0;
+        while start < text.len() {
+            let mut end = text.len().min(start + SUBMIT_CHUNK_BYTES);
+            while !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            if let Err(error) = self.paste_bytes(pane, &buffer, text[start..end].as_bytes()) {
+                let _ = self.paste_bytes(pane, &buffer, b"\x1b[201~");
+                return Err(error);
+            }
+            start = end;
+            if start < text.len() {
+                sleep(SUBMIT_CHUNK_PAUSE).await;
+            }
         }
-        // The body is one bracketed, newline-preserving paste. Enter remains a
-        // named key, so an embedded newline cannot impersonate submission.
+        self.paste_bytes(pane, &buffer, b"\x1b[201~")?;
+
+        // Enter remains one named key after every byte, so embedded newlines
+        // cannot impersonate submission.
         self.run(
             "send submit key",
             &os_args(["send-keys", "-t", pane, "Enter"]),
