@@ -582,3 +582,105 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
     server.abort();
     drop(dir);
 }
+
+/// The SHIPPED `pij-rs state <id>` reads back a seat the SHIPPED `pij-rs
+/// register` wrote — through the real sqlite store, the real router, and the
+/// real binary (plan 114, u-readback; ac-1142's readback half).
+///
+/// The in-crate HTTP tests prove the handler. This proves the parts nothing else
+/// exercises: `Client::state`, the clap subcommand, and the fact that what the
+/// registry actually persisted is what comes back — not what a fake was handed.
+#[tokio::test]
+async fn shipped_cli_reads_one_seat_state_back_from_the_real_store() {
+    let dir = fresh_dir("pij-state-e2e");
+    std::fs::write(dir.join("daemon.key"), "state-test-key").expect("write client key");
+    let config = Config {
+        adapters: Adapters {
+            registry: AdapterChoice::Real,
+            spine: AdapterChoice::Real,
+            queue: AdapterChoice::Real,
+            ..Adapters::default()
+        },
+        store_path: dir.join("pij.sqlite").display().to_string(),
+        ..Config::default()
+    };
+    let mut services =
+        pij_daemon::build_services(&config, std::path::Path::new("/tmp/pij-test-pane-signals"))
+            .await
+            .expect("build real state services");
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(ProcIdentity {
+        pid: 5150,
+        proc_start: 20260901090000,
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind server");
+    let addr = listener.local_addr().expect("server address");
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            router_with_config(
+                services,
+                HttpConfig {
+                    local_key: "state-test-key".to_string(),
+                    peer_keys: Vec::new(),
+                    machine_alias: "test-machine".to_string(),
+                },
+            ),
+        )
+        .await
+        .expect("serve router");
+    });
+    let addr = addr.to_string();
+
+    let registered = run_cli(
+        &dir,
+        &addr,
+        &[
+            "register",
+            "pij-readback",
+            "--harness",
+            "claude",
+            "--folder",
+            "/abs/tree",
+            "--pid",
+            "5150",
+            "--proc-start",
+            "20260901090000",
+        ],
+    );
+    assert!(
+        registered.status.success(),
+        "register failed: {}",
+        String::from_utf8_lossy(&registered.stderr)
+    );
+
+    let read = run_cli(&dir, &addr, &["state", "pij-readback"]);
+    assert!(
+        read.status.success(),
+        "state failed: {}",
+        String::from_utf8_lossy(&read.stderr)
+    );
+    let envelope: Envelope<serde_json::Value> =
+        serde_json::from_slice(&read.stdout).expect("state envelope on stdout");
+    assert!(envelope.ok, "state envelope not ok: {envelope:?}");
+    let card = envelope.data.expect("state card");
+    assert_eq!(card["id"], "pij-readback");
+    assert_eq!(card["cwd"], "/abs/tree");
+    assert_eq!(card["harness"], "claude");
+    assert_eq!(card["pid"], 5150);
+    assert_eq!(card["procStart"], 20260901090000u64);
+    assert_eq!(card["liveness"], "active");
+    assert_eq!(card["machine"], "test-machine");
+
+    // A seat nobody registered is REFUSED, and the refusal carries an envelope —
+    // never a bare 404, which wave 1's shim reads as route-absence and answers
+    // from the other store.
+    let missing = run_cli(&dir, &addr, &["state", "pij-never-registered"]);
+    let refusal: Envelope<serde_json::Value> =
+        serde_json::from_slice(&missing.stdout).expect("refusal envelope on stdout");
+    assert!(!refusal.ok);
+    assert_eq!(refusal.command, "pij state");
+
+    server.abort();
+}

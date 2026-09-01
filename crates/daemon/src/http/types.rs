@@ -243,3 +243,127 @@ pub enum PeerStreamState {
     /// still reads `Connected` (review F1, wave 5).
     Reset,
 }
+
+/// Ask for one seat's state card: `pij state <id>` (plan 114, u-readback).
+///
+/// Two accepted shapes, because two callers speak to this route and neither
+/// should have to pretend to be the other:
+///
+/// * `{ "id": "pij-b" }` — the NATIVE shape, used by `pij-rs state <id>`.
+/// * `{ "argv": ["state", "pij-b"] }` — the SHIM shape. Wave 1's generic call
+///   path forwards the operator's argv untouched
+///   (`.pi/extensions/pij/adapters/generation-router.ts:203-206`) and has no
+///   per-verb knowledge to turn it into a field; giving the verb's own handler
+///   that knowledge is correct, because the handler is where verb semantics
+///   belong.
+///
+/// Unknown fields are IGNORED on purpose: the seam unit in flight adds a
+/// `caller` block to every routed body, and a `deny_unknown_fields` here would
+/// turn that additive change into a fleet-wide 400.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct StateRequest {
+    /// The seat asked about, when the caller can name it directly.
+    #[serde(default)]
+    pub id: Option<SeatId>,
+    /// The operator's argv, forwarded verbatim by the routing shim.
+    #[serde(default)]
+    pub argv: Option<Vec<String>>,
+}
+
+impl StateRequest {
+    /// The seat this request is about, or `None` when it names none.
+    ///
+    /// `id` wins. Otherwise the first argv token that is neither the verb itself
+    /// nor a flag — the shim forwards `process.argv.slice(2)`, so the leading
+    /// token is the verb as typed.
+    pub fn seat(&self) -> Option<SeatId> {
+        if let Some(id) = &self.id {
+            return Some(id.clone());
+        }
+        self.argv.as_ref()?.iter().find_map(|token| {
+            if token.starts_with('-') || token == "state" {
+                None
+            } else {
+                Some(SeatId::from(token.as_str()))
+            }
+        })
+    }
+}
+
+/// A TS field this store cannot answer, and why.
+///
+/// The alternative was emitting it as `null`, which is how a read surface comes
+/// to lie: `null` says "we looked and this seat has none", and a caller cannot
+/// tell that from "this store has no such concept". Naming the gap is ac-1144's
+/// refuse-by-name rule applied to a READ — a shape rs cannot honour is refused
+/// by name rather than silently differing.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnsupportedField {
+    /// The TS field name, so a caller can match it against what it parses.
+    pub field: String,
+    /// Why rs cannot answer it.
+    pub why: String,
+}
+
+/// One seat's state, projected for `pij state <id>`.
+///
+/// Field names are the TS surface's, taken from
+/// `.pi/extensions/pij/core/cli.ts:3630-3684` (the `--json` object every caller
+/// parses today), so a consumer that reads the legacy shape reads this one.
+/// What rs cannot honour is listed in [`Self::unsupported`] rather than nulled.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StateCard {
+    /// TS `id` (cli.ts:3632).
+    pub id: SeatId,
+    /// TS `state` (cli.ts:3634) — `idle` or `working`, observed.
+    pub state: String,
+    /// TS `liveness` (cli.ts:3636).
+    ///
+    /// rs answers `active`, `dead` or **`recycled`**. That last word is NOT in
+    /// the TS vocabulary (`core/state.ts:48-57` yields active/stale/dead, plus
+    /// `dissolved` at cli.ts:6073) and it is emitted anyway, deliberately: a pid
+    /// whose process start time no longer matches the recorded one is a
+    /// DIFFERENT process, and rs separates that case
+    /// (`pij_core::liveness::alive`). Spelling it `dead` would be the nearest
+    /// existing word for a claim it does not make, and spelling it `active`
+    /// would be the recycled-pid bug. A caller that does not know the word gets
+    /// something it must handle; a caller told `dead` would get something it
+    /// would wrongly trust.
+    pub liveness: String,
+    /// TS `pid` (cli.ts:3638). `None` for a seat never bound to a process.
+    pub pid: Option<u32>,
+    /// The recorded process start time — the other half of the identity that
+    /// makes `liveness` mean anything. A pid alone cannot be corroborated.
+    pub proc_start: Option<u64>,
+    /// TS `cwd` (cli.ts:3643), from the descriptor's `folder`.
+    pub cwd: String,
+    /// TS `harness` (cli.ts:3644).
+    pub harness: Harness,
+    /// TS `orchestrationRole` (cli.ts:3662), which rs stores as `role`.
+    pub role: Option<String>,
+    /// TS `parent` (cli.ts:3663).
+    pub parent: Option<SeatId>,
+    /// TS `boundModel` (cli.ts:3666).
+    pub bound_model: Option<String>,
+    /// TS `effort` (cli.ts:3667).
+    pub effort: Option<String>,
+    /// The tmux pane, which the TS card does not carry and rs holds.
+    ///
+    /// `None` means PANELESS (external pull mode) — a real state, distinct from
+    /// "we have not looked", which is the absence of the seat itself.
+    pub pane: Option<String>,
+    /// The model's provider, which rs records and TS's card does not.
+    pub provider: Option<String>,
+    /// The seat's DECLARED state, where it has declared one. Observation and
+    /// declaration are different facts and are reported separately.
+    pub semantic_state: Option<pij_core::model::SemanticState>,
+    /// The serving daemon's machine alias, stamped on read like `/v1/seats`.
+    pub machine: Option<String>,
+    /// When the seat was tombstoned. A live seat has `None`.
+    pub tombstoned_at: Option<u64>,
+    /// Why it was tombstoned — the row IS the post-mortem.
+    pub tombstone_reason: Option<String>,
+    /// Every TS field this store cannot answer, named with its reason.
+    pub unsupported: Vec<UnsupportedField>,
+}

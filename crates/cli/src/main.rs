@@ -184,6 +184,11 @@ enum Command {
     },
     /// List registered seats.
     List,
+    /// Read one seat's state card back.
+    State {
+        /// The seat to read.
+        id: SeatId,
+    },
     /// Follow daemon event and peer-state frames until interrupted.
     Tail {
         /// Replay after `MACHINE=CURSOR`; repeat once per machine.
@@ -480,6 +485,7 @@ async fn run(cli: Cli) -> ExitCode {
             cli.json,
         ),
         Command::List => emit(&client.list().await, cli.json),
+        Command::State { id } => emit(&client.state(&id).await, cli.json),
         Command::Tail { since } => {
             let since = match cursor_map(since) {
                 Ok(since) => since,
@@ -906,6 +912,7 @@ impl Command {
             Command::Revive { .. } => "pij revive",
             Command::Inbox { .. } => "pij inbox",
             Command::List => "pij list",
+            Command::State { .. } => "pij state",
             Command::Tail { .. } => "pij tail",
         }
     }
@@ -934,7 +941,7 @@ mod tests {
             names,
             [
                 "daemon", "ping", "register", "spawn", "revive", "send", "inbox", "sidecar",
-                "list", "tail"
+                "list", "state", "tail"
             ]
         );
     }

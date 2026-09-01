@@ -2468,3 +2468,348 @@ async fn a_reraised_cursor_refusal_carries_the_peers_own_numbers() {
 
     server.abort();
 }
+
+// ---------------------------------------------------------------------------
+// `state <id>` readback (plan 114, u-readback)
+// ---------------------------------------------------------------------------
+//
+// Shape derived from the TS surface, not from the packet:
+//   `.pi/extensions/pij/core/cli.ts:3615` — the `case "state"` handler,
+//   `:3630-3684` — the `--json` object every caller parses today,
+//   `:3713` — the human line, headlined "liveness + working/idle" (`cli.ts:354`).
+//
+// Deliberately NOT mirrored field-for-field. TS emits `lifecycle`, `bindHealth`,
+// `degraded`, `daemonTickStale` and `watchdog`; rs models none of them. Emitting
+// them as `null` would answer a question rs never asked — the caller could not
+// tell "this seat has no watchdog" from "this store has no such concept", which
+// is exactly the collapse that makes a read surface lie. So rs names what it
+// cannot honour in `unsupported[]` instead, which is ac-1144's refuse-by-name
+// rule applied to a READ.
+
+/// The seat every readback test reads back.
+fn readback_seat() -> SeatDescriptor {
+    let mut seat = SeatDescriptor::new("pij-b", Harness::Claude, "/abs/tree");
+    seat.pane = Some("%7".to_string());
+    seat.proc = Some(ProcIdentity {
+        pid: 4242,
+        proc_start: 99,
+    });
+    seat.state = pij_core::model::SystemState::Working;
+    seat.model = Some("claude-opus-5".to_string());
+    seat.parent = Some("pij-parent".into());
+    seat
+}
+
+/// RED WITNESS for u-readback: a `state <id>` round-trip through rs.
+///
+/// Impossible before this unit — `/v1/state` is not a route, so the request dies
+/// in axum's fallback with a bare 404 and no envelope. That is the whole point of
+/// the unit, and it is a chronological red: it fails on the tree as merged, for
+/// the reason the plan says it fails (rs cannot read a card back), not because
+/// something did not compile.
+#[tokio::test]
+async fn state_reads_one_seat_back_by_id() {
+    let registry = Arc::new(FakeRegistry::new().with_seat(readback_seat()));
+    let mut services = test_services(
+        registry,
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(ProcIdentity {
+        pid: 4242,
+        proc_start: 99,
+    }));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+
+    // POST with the shim's own body shape. RULED (PM, S1): the route table's
+    // `state` row is POST, because wave 1's generic call path sends `{ argv }`
+    // ONLY on the POST branch — a GET row reaches rs as a bare
+    // `fetch(url, { headers })` (adapters/generation-router.ts:199-207) and the
+    // `<id>`, this verb's only argument, never crosses the seam.
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/state"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({ "argv": ["state", "pij-b"] }))
+        .send()
+        .await
+        .expect("state request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body: Envelope<serde_json::Value> = response.json().await.expect("state envelope");
+    let card = body.data.expect("state data");
+
+    assert_eq!(card["id"], "pij-b");
+    assert_eq!(card["state"], "working");
+    assert_eq!(card["cwd"], "/abs/tree");
+    assert_eq!(card["harness"], "claude");
+    assert_eq!(card["pid"], 4242);
+    assert_eq!(card["parent"], "pij-parent");
+    assert_eq!(card["boundModel"], "claude-opus-5");
+    assert_eq!(card["liveness"], "active");
+
+    server.abort();
+}
+
+/// THE BINDING RULE, pinned: a genuine refusal must never wear route-absence's
+/// clothes.
+///
+/// Wave 1's shim reads `404/405 with an undecodable body` as "rs does not
+/// implement this verb" and falls back to legacy
+/// (`.pi/extensions/pij/core/generation-routing.ts:353-363`). So if this route
+/// answered an unknown seat with a bare 404, the caller would not be told the
+/// seat is absent — it would be silently served from the OTHER store, which is
+/// the split-brain the plan exists to prevent, arriving through the error path.
+///
+/// This test therefore asserts what the SHIM asserts, in the shim's own terms:
+/// the status is a 404 AND the body decodes as a pij envelope. Asserting only
+/// "status is 404" would pass just as happily with an empty body, which is
+/// exactly the failure.
+#[tokio::test]
+async fn state_refusal_is_not_classifiable_as_route_absence() {
+    let services = test_services(
+        Arc::new(FakeRegistry::new()),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/state"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({ "argv": ["state", "pij-absent"] }))
+        .send()
+        .await
+        .expect("state request");
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+
+    let body = response.text().await.expect("body");
+    assert!(
+        !body.trim().is_empty(),
+        "an empty-bodied 404 is what the shim reads as route-absence"
+    );
+    let decoded: Envelope<serde_json::Value> =
+        serde_json::from_str(&body).expect("refusal must decode as a pij envelope");
+    assert!(!decoded.ok);
+    assert_eq!(decoded.error, Some(ErrorKind::NotFound));
+    assert_eq!(decoded.command, "pij state");
+    assert!(decoded.data.is_none());
+
+    server.abort();
+}
+
+/// A body naming no seat is refused BY NAME, not answered with a guess.
+///
+/// The tempting alternative — defaulting to some ambient or first seat — would
+/// answer a question nobody asked and look like a success.
+#[tokio::test]
+async fn state_without_a_seat_refuses_by_name() {
+    let services = test_services(
+        Arc::new(FakeRegistry::new().with_seat(readback_seat())),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/state"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({ "argv": ["state", "--json"] }))
+        .send()
+        .await
+        .expect("state request");
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let decoded: Envelope<serde_json::Value> = response.json().await.expect("refusal envelope");
+    assert!(!decoded.ok);
+    assert_eq!(decoded.error, Some(ErrorKind::Refused));
+
+    server.abort();
+}
+
+/// A RECYCLED pid must not read as a live seat — and must not read as `dead`
+/// either.
+///
+/// The pid is alive; it just belongs to a different process now. `active` is the
+/// original bug; `dead` is the nearest existing TS word for a claim rs does not
+/// make. rs emits a fifth word instead, and this pins that it does.
+#[tokio::test]
+async fn state_reports_a_recycled_pid_as_neither_active_nor_dead() {
+    let mut services = test_services(
+        Arc::new(FakeRegistry::new().with_seat(readback_seat())),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    // Same pid, DIFFERENT start time: the OS reused 4242.
+    services.liveness = Arc::new(FakeLiveness::new().with_recycled(4242, 12_345));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/state"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({ "id": "pij-b" }))
+        .send()
+        .await
+        .expect("state request");
+    let body: Envelope<serde_json::Value> = response.json().await.expect("state envelope");
+    let card = body.data.expect("state data");
+    assert_eq!(card["liveness"], "recycled");
+    // The recorded half of the identity is on the card, so a reader can see WHY.
+    assert_eq!(card["procStart"], 99);
+
+    server.abort();
+}
+
+/// A seat that never had a process is `unbound`, not `dead`.
+#[tokio::test]
+async fn state_reports_a_seat_with_no_process_as_unbound() {
+    let mut seat = readback_seat();
+    seat.proc = None;
+    let services = test_services(
+        Arc::new(FakeRegistry::new().with_seat(seat)),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/state"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({ "id": "pij-b" }))
+        .send()
+        .await
+        .expect("state request");
+    let body: Envelope<serde_json::Value> = response.json().await.expect("state envelope");
+    let card = body.data.expect("state data");
+    assert_eq!(card["liveness"], "unbound");
+    assert!(card["pid"].is_null());
+
+    server.abort();
+}
+
+/// A field rs cannot answer is NAMED, never nulled.
+///
+/// The discriminating arm is the second assertion, and it is the whole point: a
+/// card carrying `"bindHealth": null` would satisfy any test that merely looked
+/// for the key, while telling a caller "we looked and this seat has none" —
+/// which rs never looked for and cannot say. Absent-from-the-card AND
+/// present-in-`unsupported` is the only shape that separates the two states.
+#[tokio::test]
+async fn state_names_what_it_cannot_answer_instead_of_nulling_it() {
+    let services = test_services(
+        Arc::new(FakeRegistry::new().with_seat(readback_seat())),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/state"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({ "id": "pij-b" }))
+        .send()
+        .await
+        .expect("state request");
+    let body: Envelope<serde_json::Value> = response.json().await.expect("state envelope");
+    let card = body.data.expect("state data");
+
+    let named: Vec<&str> = card["unsupported"]
+        .as_array()
+        .expect("unsupported list")
+        .iter()
+        .map(|entry| entry["field"].as_str().expect("field name"))
+        .collect();
+
+    for field in [
+        "lifecycle",
+        "activity",
+        "lastEventAt",
+        "ageMs",
+        "liveness:stale",
+        "bindHealth",
+        "degraded",
+        "watchdog",
+        "terminal",
+        "failureReason",
+    ] {
+        assert!(named.contains(&field), "{field} must be named as unsupported");
+        assert!(
+            card.get(field).is_none(),
+            "{field} must be ABSENT from the card — emitting it as null answers a question rs never asked"
+        );
+    }
+    // Every named gap carries a reason; a bare list of names is not an answer.
+    for entry in card["unsupported"].as_array().expect("unsupported list") {
+        assert!(
+            !entry["why"].as_str().expect("why").trim().is_empty(),
+            "an unsupported field with no reason is a gap nobody can act on"
+        );
+    }
+
+    server.abort();
+}
+
+/// The shim forwards `process.argv.slice(2)` verbatim, so the leading token is
+/// the verb and flags ride along. The seat is the first token that is neither.
+#[test]
+fn state_request_takes_the_seat_from_shim_argv_and_prefers_an_explicit_id() {
+    let from_argv = StateRequest {
+        id: None,
+        argv: Some(vec![
+            "state".to_string(),
+            "--json".to_string(),
+            "pij-b".to_string(),
+        ]),
+    };
+    assert_eq!(from_argv.seat(), Some(SeatId::from("pij-b")));
+
+    let explicit = StateRequest {
+        id: Some(SeatId::from("pij-native")),
+        argv: Some(vec!["state".to_string(), "pij-shim".to_string()]),
+    };
+    assert_eq!(explicit.seat(), Some(SeatId::from("pij-native")));
+
+    assert_eq!(StateRequest::default().seat(), None);
+    assert_eq!(
+        StateRequest {
+            id: None,
+            argv: Some(vec!["state".to_string(), "--json".to_string()]),
+        }
+        .seat(),
+        None
+    );
+}
+
+/// An additive body field must not 400 the fleet.
+///
+/// The seam unit in flight adds a `caller` block to every routed body. A handler
+/// with `deny_unknown_fields` would turn that additive change into a fleet-wide
+/// refusal on a verb that was working — so the tolerance is pinned here rather
+/// than left to serde's default staying put.
+#[tokio::test]
+async fn state_tolerates_a_body_field_it_does_not_know() {
+    let services = test_services(
+        Arc::new(FakeRegistry::new().with_seat(readback_seat())),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/state"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({
+            "argv": ["state", "pij-b"],
+            "caller": { "PIJ_SESSION_ID": "pij-caller", "pid": 11, "procStart": 22 }
+        }))
+        .send()
+        .await
+        .expect("state request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+    server.abort();
+}
