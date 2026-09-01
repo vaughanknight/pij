@@ -10,7 +10,10 @@ use pij_core::model::{
 };
 use pij_daemon::delivery::InboxClaim;
 use pij_daemon::http::InboxAckRequest;
-pub use pij_daemon::http::{FederatedRoster, ReviveRequest, SpawnRequest, StreamFrame};
+pub use pij_daemon::http::{
+    CallerContext, FederatedRoster, IdentityRequest, Phonehome, ReviveRequest, SpawnRequest,
+    StateCard, StreamFrame,
+};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -125,6 +128,26 @@ impl DaemonClient {
             .await
     }
 
+    /// Adopt this seat: the DAEMON mints the name and derives the identity.
+    ///
+    /// The body carries the argv this CLI would have typed, so the `pij-rs`
+    /// caller and the generation shim reach the daemon's parser by the same
+    /// path. Two parsers for one command line is how the two surfaces come to
+    /// disagree about what `--parent` means.
+    pub async fn adopt(&self, request: &IdentityRequest) -> Envelope<SeatDescriptor> {
+        self.post("pij adopt", "/v1/adopt", request).await
+    }
+
+    /// Ask the daemon which seat this caller is.
+    pub async fn whoami(&self, request: &IdentityRequest) -> Envelope<SeatDescriptor> {
+        self.post("pij whoami", "/v1/whoami", request).await
+    }
+
+    /// Confirm the binding `adopt` already made.
+    pub async fn phonehome(&self, request: &IdentityRequest) -> Envelope<Phonehome> {
+        self.post("pij phonehome", "/v1/phonehome", request).await
+    }
+
     /// Ask the daemon to launch and record one pre-bind seat.
     pub async fn spawn(&self, request: &SpawnRequest) -> Envelope<SeatDescriptor> {
         self.post("pij spawn", "/v1/spawn", request).await
@@ -149,9 +172,41 @@ impl DaemonClient {
         self.post("pij sidecar", "/v1/sidecar", request).await
     }
 
+    /// Report this seat's card or declared state.
+    ///
+    /// The CLI FORWARDS `argv` rather than parsing it: the daemon owns the
+    /// grammar, so there is exactly one implementation of the argument shapes
+    /// and the two surfaces cannot drift into disagreeing about what
+    /// `pij report now` means.
+    ///
+    /// The seat is resolved HERE, client-side, because that is where the
+    /// environment is. The daemon sees a claim and checks it against the
+    /// registry; it never derives identity from what it was told.
+    pub async fn report(&self, seat: &SeatId, argv: &[String]) -> Envelope<Value> {
+        self.post(
+            "pij report",
+            "/v1/report",
+            &serde_json::json!({ "seat": seat.to_string(), "argv": argv }),
+        )
+        .await
+    }
+
     /// List the local authority plus typed remote availability.
     pub async fn list(&self) -> Envelope<FederatedRoster> {
         self.get("pij list", "/v1/seats").await
+    }
+
+    /// Read one seat's card back — `pij state <id>` (plan 114, u-readback).
+    ///
+    /// POSTs the NATIVE body shape, `{ "id": "<seat>" }`. The route is POST even
+    /// though it reads nothing, because the TS routing shim forwards the
+    /// operator's argv only on its POST branch: a GET row would arrive with the
+    /// `<id>` dropped at the seam
+    /// (`.pi/extensions/pij/adapters/generation-router.ts:199-207`). The handler
+    /// accepts both shapes so neither caller has to speak the other's.
+    pub async fn state(&self, seat: &SeatId) -> Envelope<StateCard> {
+        self.post("pij state", "/v1/state", &serde_json::json!({ "id": seat }))
+            .await
     }
 
     /// Claim one inbox message, then acknowledge only after the complete response
