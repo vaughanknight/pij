@@ -882,7 +882,7 @@ mod tests {
                 "list_panes",
                 "capture:%8:4294967295",
                 "user_typing:%8",
-                "submit:%8:[pij from pij-sender] message waiting — run: pij inbox"
+                "submit:%8:[pij-rs from pij-sender]\nmessage waiting — run: pij inbox\n[/pij]"
             ]
         );
         assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)]);
@@ -1244,7 +1244,7 @@ mod tests {
         assert_eq!(submits.len(), 3, "N+1 must not announce");
         assert_eq!(
             submits[2],
-            "submit:%park:[pij from pij-sender] message waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox when ready"
+            "submit:%park:[pij-rs from pij-sender]\nmessage waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox when ready\n[/pij]"
         );
         assert_eq!(fixture.queue.live_len(), 1, "parking never consumes mail");
 

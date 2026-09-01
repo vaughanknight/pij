@@ -6,6 +6,7 @@
 use std::time::Duration;
 
 use pij_core::error::Result;
+use pij_core::framing::frame_message;
 use pij_core::model::SeatId;
 use pij_core::ports::TmuxPort;
 
@@ -29,20 +30,18 @@ pub struct PointerPolicy {
     pub announcement_limit: u32,
 }
 
-/// Render the single line submitted to a pane when a message is waiting.
+/// Render the framed pointer submitted to a pane when a message is waiting.
 ///
 /// The pointer deliberately carries no count: queue cardinality is not exposed
 /// at this boundary, and an announce-time count would immediately become stale.
+/// It still gets the standard tail even though it carries no body: one uniform
+/// frame means readers never need to distinguish pointers from body messages.
 #[must_use]
 pub fn render_pointer(from: &SeatId, from_machine: Option<&str>) -> String {
-    match from_machine {
-        // A remote sender is named by ADDRESS. Two machines may hold seats with
-        // the same name, and a pane line reading "[pij from bob]" leaves the
-        // recipient unable to tell WHICH bob paged them — while the event they
-        // would read instead already carries the machine (review F8).
-        Some(machine) => format!("[pij from {from}@{machine}] message waiting — run: pij inbox"),
-        None => format!("[pij from {from}] message waiting — run: pij inbox"),
-    }
+    // A remote sender is named by ADDRESS. Two machines may hold seats with the
+    // same name, and a frame naming only "bob" leaves the recipient unable to
+    // tell WHICH bob paged them — while the event already carries the machine.
+    frame_message(from, from_machine, "message waiting — run: pij inbox")
 }
 
 /// Render the final pointer that explains why future reminders will stop.
@@ -56,13 +55,10 @@ pub fn render_final_pointer(
     from_machine: Option<&str>,
     announcements: u32,
 ) -> String {
-    let sender = match from_machine {
-        Some(machine) => format!("{from}@{machine}"),
-        None => from.to_string(),
-    };
-    format!(
-        "[pij from {sender}] message waiting — final reminder; parked after {announcements} announcements — message remains queued; run: pij inbox when ready"
-    )
+    let payload = format!(
+        "message waiting — final reminder; parked after {announcements} announcements — message remains queued; run: pij inbox when ready"
+    );
+    frame_message(from, from_machine, &payload)
 }
 
 /// Render an explicitly tagged remote-control command for PTY submission.
@@ -117,18 +113,19 @@ mod tests {
         let line = render_pointer(&SeatId::from("pij-sender"), None);
         assert_eq!(
             render_pointer(&SeatId::from("bob"), Some("desktop")),
-            "[pij from bob@desktop] message waiting — run: pij inbox",
+            "[pij-rs from bob@desktop]\nmessage waiting — run: pij inbox\n[/pij]",
             "a remote sender is named by ADDRESS: two machines may both hold a bob"
         );
 
         assert_eq!(
             line,
-            "[pij from pij-sender] message waiting — run: pij inbox"
+            "[pij-rs from pij-sender]\nmessage waiting — run: pij inbox\n[/pij]"
         );
         assert!(!line.contains(body), "a pointer must never carry the body");
-        assert!(
-            !line.contains(['\n', '\r']),
-            "a pointer is exactly one line"
+        assert_eq!(
+            line.lines().count(),
+            3,
+            "a pointer uses the same explicit frame as every pij-rs injection"
         );
         assert_eq!(POINTER_ANNOUNCED_EVENT_KIND, "delivery.pointer-announced");
         assert_eq!(POINTER_PARKED_EVENT_KIND, "delivery.pointer-parked");
@@ -139,11 +136,11 @@ mod tests {
     fn final_pointer_explains_the_silence_to_the_recipient() {
         assert_eq!(
             render_final_pointer(&SeatId::from("pij-sender"), None, 3),
-            "[pij from pij-sender] message waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox when ready"
+            "[pij-rs from pij-sender]\nmessage waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox when ready\n[/pij]"
         );
         assert_eq!(
             render_final_pointer(&SeatId::from("bob"), Some("desktop"), 3),
-            "[pij from bob@desktop] message waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox when ready"
+            "[pij-rs from bob@desktop]\nmessage waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox when ready\n[/pij]"
         );
     }
 
@@ -151,7 +148,7 @@ mod tests {
     fn every_pointer_uses_the_same_truthful_singular_line() {
         assert_eq!(
             render_pointer(&SeatId::from("pij-one"), None),
-            "[pij from pij-one] message waiting — run: pij inbox"
+            "[pij-rs from pij-one]\nmessage waiting — run: pij inbox\n[/pij]"
         );
     }
 
