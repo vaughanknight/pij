@@ -104,12 +104,14 @@ export class RustRuntimeSession {
 		this.stopEvents?.();
 		this.stopEvents = await this.client.watchEvents(
 			(frame) => {
-				if (frame.event.kind !== "message.pushed" || frame.event.seat !== this.self) {
+				const seat = this.self;
+				const client = this.client;
+				if (frame.event.kind !== "message.pushed" || frame.event.seat !== seat) {
 					this.session.capture("daemon_event", frame);
 					return;
 				}
 				this.pushedChain = this.pushedChain
-					.then(() => this.consumePushed(frame.event.payload))
+					.then(() => this.consumePushed(frame.event.payload, seat, client))
 					.catch((error: unknown) => {
 						this.session.capture("daemon_event_error", {
 							message: error instanceof Error ? error.message : String(error),
@@ -181,9 +183,32 @@ export class RustRuntimeSession {
 		return type === undefined ? this.eventLog.count() : this.eventLog.read({ type }).length;
 	}
 
-	private async consumePushed(payload: string): Promise<void> {
-		const announced = pushedMessage(payload, this.self);
-		const claim = pushedInboxClaim(await this.client.claimInbox(this.self), this.self);
+	private async consumePushed(
+		payload: string,
+		seat: string,
+		client: PijDaemonClient,
+	): Promise<void> {
+		const announced = pushedMessage(payload, seat);
+		if (this.self !== seat) {
+			this.session.capture("daemon_event_claim_stale", {
+				currentSeat: this.self,
+				messageId: announced.messageId,
+				seat,
+				stage: "before-claim",
+			});
+			return;
+		}
+		const response = await client.claimInbox(seat);
+		if (this.self !== seat) {
+			this.session.capture("daemon_event_claim_stale", {
+				currentSeat: this.self,
+				messageId: announced.messageId,
+				seat,
+				stage: "after-claim",
+			});
+			return;
+		}
+		const claim = pushedInboxClaim(response, seat);
 		if (claim === undefined) {
 			this.session.capture("daemon_event_claim_unavailable", {
 				messageId: announced.messageId,
@@ -198,8 +223,17 @@ export class RustRuntimeSession {
 		}
 		this.lastInbound.set(claim.message.from, claim.message.messageId);
 		this.session.onInbound(claim.message, claim.message.messageId);
+		if (this.self !== seat) {
+			this.session.capture("daemon_event_claim_stale", {
+				currentSeat: this.self,
+				messageId: claim.message.messageId,
+				seat,
+				stage: "before-ack",
+			});
+			return;
+		}
 		try {
-			await this.client.ackInbox(this.self, claim.jobId);
+			await client.ackInbox(seat, claim.jobId);
 		} catch (error) {
 			this.session.capture("daemon_event_ack_error", {
 				jobId: claim.jobId,
@@ -207,7 +241,7 @@ export class RustRuntimeSession {
 				message: error instanceof Error ? error.message : String(error),
 			});
 		}
-		await this.flush();
+		if (this.self === seat) await this.flush();
 	}
 
 	private chooseIdentity(

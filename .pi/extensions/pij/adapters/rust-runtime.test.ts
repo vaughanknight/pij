@@ -39,7 +39,7 @@ class FailingPiRuntime extends FakePiRuntime {
 async function bootPushedEvent(
 	payload: string,
 	pi: FakePiRuntime,
-	claimResponse: unknown = inboxClaimFixture(),
+	claimResponse: unknown | Promise<unknown> = inboxClaimFixture(),
 ) {
 	vi.stubEnv("PIJ_ANNOUNCE_TO", "");
 	vi.stubEnv("PIJ_SPAWN_ID", "");
@@ -48,6 +48,7 @@ async function bootPushedEvent(
 	let registeredId = "";
 	const acknowledgements: Array<Record<string, unknown>> = [];
 	const claimRequests: string[] = [];
+	let eventStreams = 0;
 	const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 		const path = new URL(String(url)).pathname;
 		if (path === "/v1/seats") return envelope("pij seats", { seats: [], unavailable: [] });
@@ -65,14 +66,18 @@ async function bootPushedEvent(
 			});
 		}
 		if (path === "/v1/events") {
+			eventStreams += 1;
+			const pushed =
+				eventStreams === 1
+					? `${JSON.stringify({ machine: "test", cursor: 1, event: { v: 1, at: 1, kind: "message.pushed", seat: registeredId, payload } })}\n`
+					: "";
 			return new Response(
-				`${JSON.stringify({ hello: true, v: 1, build: "pij-rs test" })}\n` +
-					`${JSON.stringify({ machine: "test", cursor: 1, event: { v: 1, at: 1, kind: "message.pushed", seat: registeredId, payload } })}\n`,
+				`${JSON.stringify({ hello: true, v: 1, build: "pij-rs test" })}\n${pushed}`,
 			);
 		}
 		if (path === "/v1/inbox") {
 			claimRequests.push(String(url));
-			return envelope("pij inbox", claimResponse);
+			return envelope("pij inbox", await claimResponse);
 		}
 		if (path === "/v1/inbox/ack") {
 			const acknowledgement = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -258,6 +263,45 @@ describe("RustRuntimeSession", () => {
 			expect(runtime.eventCount("daemon_event_claim_unavailable")).toBe(1);
 		});
 		expect(claimRequests).toHaveLength(1);
+		expect(pi.injects.some((item) => item.text === "[pij from pij-from] before bind")).toBe(false);
+		expect(acknowledgements).toEqual([]);
+	});
+
+	it("leaves an in-flight claim unacked when a new session replaces its seat", async () => {
+		let resolveClaim: (value: unknown) => void = () => {
+			throw new Error("claim resolver was not installed");
+		};
+		const delayedClaim = new Promise<unknown>((resolve) => {
+			resolveClaim = resolve;
+		});
+		const pi = new FakePiRuntime();
+		const { acknowledgements, claimRequests, runtime } = await bootPushedEvent(
+			PUSHED_EVENT_WIRE,
+			pi,
+			delayedClaim,
+		);
+		await vi.waitFor(() => expect(claimRequests).toHaveLength(1));
+		const previous = runtime.readSelf()?.id;
+
+		const successor = await runtime.boot({
+			folder: "/abs/tree",
+			dataDir: "",
+			eventsPath: "",
+			harness: "pi",
+			harnessSessionId: "new-native-session",
+			piSessionId: "new-native-session",
+			runtimeBin: "omp",
+			paneId: "%42",
+			resetRuntimeState: true,
+			reason: "new",
+		});
+		expect(previous).toBeDefined();
+		expect(successor.id).not.toBe(previous);
+
+		resolveClaim(inboxClaimFixture());
+		await vi.waitFor(() => {
+			expect(runtime.eventCount("daemon_event_claim_stale")).toBe(1);
+		});
 		expect(pi.injects.some((item) => item.text === "[pij from pij-from] before bind")).toBe(false);
 		expect(acknowledgements).toEqual([]);
 	});
