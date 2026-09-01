@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
-use pij_core::model::Pane;
+use pij_core::model::{Pane, PaneProcess};
 use pij_core::ports::{LaunchCommand, TmuxPort};
 use tokio::time::{Instant, sleep};
 
@@ -274,6 +274,53 @@ impl TmuxPort for TmuxAdapter {
     async fn list_panes(&self) -> Result<Vec<Pane>> {
         let output = self.stdout("list-panes", &self.list_args())?;
         parse_panes(&output)
+    }
+
+    async fn pane_process(&self, pane: &str) -> Result<Option<PaneProcess>> {
+        // ONE tmux call for both facts, so pid and cwd cannot describe two
+        // different moments of the same pane.
+        let Ok(output) = self.stdout(
+            "display-message pane_pid/pane_current_path",
+            &os_args([
+                "display-message",
+                "-p",
+                "-t",
+                pane,
+                "#{pane_pid}\t#{pane_current_path}",
+            ]),
+        ) else {
+            // tmux failed. Ask the ONE question that separates the two causes: is
+            // the pane gone (an answer adoption needs, and a refusal it must make)
+            // or did tmux itself fail (an error nothing should swallow)? Same
+            // pattern the detach path already uses.
+            return if self
+                .list_panes()
+                .await?
+                .iter()
+                .any(|listed| listed.id == pane)
+            {
+                Err(self.error(format!(
+                    "could not read pane_pid/pane_current_path for {pane:?} though tmux still lists it"
+                )))
+            } else {
+                Ok(None)
+            };
+        };
+        let line = output.trim_end_matches('\n');
+        let Some((pid, cwd)) = line.split_once('\t') else {
+            return Err(self.error(format!(
+                "display-message for {pane:?} returned {line:?}, expected `<pid>\\t<path>` — update pij-tmux for this tmux wire shape"
+            )));
+        };
+        let pid = pid.trim().parse::<u32>().map_err(|error| {
+            self.error(format!(
+                "pane_pid for {pane:?} was {pid:?}, which is not a pid: {error}"
+            ))
+        })?;
+        Ok(Some(PaneProcess {
+            pid,
+            cwd: cwd.to_string(),
+        }))
     }
 
     async fn submit(&self, pane: &str, text: &str) -> Result<()> {

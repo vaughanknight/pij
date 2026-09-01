@@ -744,6 +744,24 @@ pub struct Pane {
     pub cursor_y: Option<u32>,
 }
 
+/// The process a tmux pane is running, as the daemon DERIVES it from tmux.
+///
+/// Deliberately NOT a field a caller supplies. Adoption's identity facts have to
+/// be observed by the daemon itself: a caller-asserted pid is a claim, and this
+/// platform has already paid for treating an asserted identity as a derived one
+/// (an unvalidated `PIJ_SESSION_ID` minting a phantom seat). The pair that
+/// matters is `(pid, proc_start)` — the pid alone is recycled at boot — and the
+/// start time is read from the liveness port, never from tmux, so the two facts
+/// come from two different observers.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaneProcess {
+    /// `#{pane_pid}` — the pane's foreground process, which is exactly the pid
+    /// the TS CLI records at adopt time.
+    pub pid: u32,
+    /// `#{pane_current_path}` — the folder the seat is working in.
+    pub cwd: String,
+}
+
 /// Whether a harness session is ready to receive a turn.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "readiness")]

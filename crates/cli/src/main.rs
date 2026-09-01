@@ -8,8 +8,9 @@ use std::process::{Command as ProcessCommand, ExitCode};
 
 use clap::{Parser, Subcommand};
 use pij_cli::{
-    DaemonClient, Registration, ReviveRequest, SendRequest, SpawnRequest, bounce, daemon_config,
-    default_state_dir, exit_code, parse_destination, render, render_frame, setup_refusal,
+    CallerContext, DaemonClient, IdentityRequest, Registration, ReviveRequest, SendRequest,
+    SpawnRequest, bounce, daemon_config, default_state_dir, exit_code, parse_destination, render,
+    render_frame, setup_refusal,
 };
 use pij_core::error::PijError;
 use pij_core::model::{Envelope, ErrorKind, Harness, SeatId};
@@ -100,6 +101,39 @@ enum Command {
         /// Delivery uses a relay.
         #[arg(long)]
         relay: bool,
+    },
+    /// Register this seat, with the DAEMON minting its name.
+    ///
+    /// The pane form is the one `/pij ready` types. Identity is derived from the
+    /// pane by the daemon, never asserted here: this process is a short-lived
+    /// child of the seat, so its own pid is not the seat's.
+    Adopt {
+        /// Pane to adopt. Defaults to `$TMUX_PANE`.
+        pane: Option<String>,
+        /// Host harness.
+        #[arg(long)]
+        harness: String,
+        /// Governing seat. Omitted means UNSAID — an existing parent survives.
+        #[arg(long)]
+        parent: Option<String>,
+    },
+    /// Name the seat this caller is, from the store it registered into.
+    Whoami {
+        /// Asserted seat id. Defaults to `$PIJ_SESSION_ID`.
+        #[arg(long)]
+        seat: Option<String>,
+        /// Pane to derive from. Defaults to `$TMUX_PANE`.
+        #[arg(long)]
+        pane: Option<String>,
+    },
+    /// Confirm the binding `adopt` already made.
+    Phonehome {
+        /// Asserted seat id. Defaults to `$PIJ_SESSION_ID`.
+        #[arg(long)]
+        seat: Option<String>,
+        /// Pane to derive from. Defaults to `$TMUX_PANE`.
+        #[arg(long)]
+        pane: Option<String>,
     },
     /// Launch one pre-bind seat through the daemon.
     Spawn {
@@ -436,6 +470,33 @@ async fn run(cli: Cli) -> ExitCode {
             debug_assert!(registration.validate().is_ok());
             emit(&client.register(&registration).await, cli.json)
         }
+        Command::Adopt {
+            pane,
+            harness,
+            parent,
+        } => {
+            let argv = adopt_argv(
+                pane.or_else(|| std::env::var("TMUX_PANE").ok()).as_deref(),
+                &harness,
+                parent
+                    .or_else(|| std::env::var("PIJ_PARENT_ID").ok())
+                    .as_deref(),
+            );
+            let request = IdentityRequest {
+                argv,
+                caller: Some(caller_context()),
+                ..IdentityRequest::default()
+            };
+            emit(&client.adopt(&request).await, cli.json)
+        }
+        Command::Whoami { seat, pane } => emit(
+            &client.whoami(&identity_request(seat, pane)).await,
+            cli.json,
+        ),
+        Command::Phonehome { seat, pane } => emit(
+            &client.phonehome(&identity_request(seat, pane)).await,
+            cli.json,
+        ),
         Command::Spawn { .. } => emit(
             &client
                 .spawn(prepared_spawn.as_ref().expect("spawn request was prepared"))
@@ -636,6 +697,69 @@ fn emit_config_error(cli: &Cli, message: String) -> ExitCode {
         ),
         cli.json,
     )
+}
+
+/// Build the command line the daemon will parse.
+///
+/// Synthesised rather than hand-built into a struct SO THAT there is exactly one
+/// parser. The generation shim forwards the operator's literal argv; this CLI
+/// sends the argv it would have typed. One parser cannot drift from itself.
+///
+/// With no pane this becomes the PANELESS form — which the daemon refuses unless
+/// a corroborable process identity travels with it. That refusal is deliberate
+/// (rs admits no seat without bind evidence), and building the form anyway is
+/// what makes the refusal say so, instead of this CLI inventing its own message.
+fn adopt_argv(pane: Option<&str>, harness: &str, parent: Option<&str>) -> Vec<String> {
+    let mut argv = match pane {
+        Some(pane) => vec!["adopt".to_string(), pane.to_string()],
+        None => vec!["inbox".to_string(), "register".to_string()],
+    };
+    argv.push("--harness".to_string());
+    argv.push(harness.to_string());
+    if let Some(parent) = parent {
+        argv.push("--parent".to_string());
+        argv.push(parent.to_string());
+    }
+    argv
+}
+
+/// The caller's environment, read WHERE IT IS.
+///
+/// This is the whole reason the `pij-rs` verbs exist alongside the routed ones:
+/// the daemon is a different process and can see none of this. Every field is a
+/// CLAIM that the daemon validates or refuses — nothing here is trusted by being
+/// sent.
+///
+/// `pid`/`proc_start` are deliberately NOT filled from this process. It is a
+/// short-lived child of the seat, so its pid would corroborate for an instant and
+/// then name a dead process forever after — a worse answer than no answer.
+fn caller_context() -> CallerContext {
+    let read = |key: &str| std::env::var(key).ok().filter(|value| !value.is_empty());
+    CallerContext {
+        session_id: read("PIJ_SESSION_ID"),
+        pane: read("TMUX_PANE"),
+        parent: read("PIJ_PARENT_ID"),
+        claude_session: read("CLAUDE_CODE_SESSION_ID"),
+        copilot_session: read("COPILOT_AGENT_SESSION_ID"),
+        codex_session: read("CODEX_THREAD_ID"),
+        cwd: std::env::current_dir()
+            .ok()
+            .map(|cwd| cwd.display().to_string()),
+        pid: None,
+        proc_start: None,
+    }
+}
+
+/// The body the read verbs send. Explicit flags win over the ambient
+/// environment, so an operator can always ask about a seat that is not theirs —
+/// and the daemon still refuses if the answer would be an impersonation.
+fn identity_request(seat: Option<String>, pane: Option<String>) -> IdentityRequest {
+    IdentityRequest {
+        seat,
+        pane,
+        caller: Some(caller_context()),
+        ..IdentityRequest::default()
+    }
 }
 
 async fn run_daemon(bind: &str, state_dir: PathBuf, offline: bool) -> ExitCode {
@@ -901,6 +1025,9 @@ impl Command {
             Command::Ping => "pij ping",
             Command::Sidecar { .. } => "pij sidecar",
             Command::Register { .. } => "pij register",
+            Command::Adopt { .. } => "pij adopt",
+            Command::Whoami { .. } => "pij whoami",
+            Command::Phonehome { .. } => "pij phonehome",
             Command::Send { .. } => "pij send",
             Command::Spawn { .. } => "pij spawn",
             Command::Revive { .. } => "pij revive",
@@ -930,11 +1057,27 @@ mod tests {
             .map(|command| command.get_name().to_string())
             .collect();
 
+        // The roster is PINNED, so adding a verb is a deliberate act that fails
+        // this test first. `adopt`, `whoami` and `phonehome` are plan 114's
+        // identity verbs (ac-1142, ac-1147, ac-1148); `tail` stays exactly where
+        // it was — it is the FALSE FRIEND the generation shim denies from routing,
+        // and nothing here changes what it follows.
         assert_eq!(
             names,
             [
-                "daemon", "ping", "register", "spawn", "revive", "send", "inbox", "sidecar",
-                "list", "tail"
+                "daemon",
+                "ping",
+                "register",
+                "adopt",
+                "whoami",
+                "phonehome",
+                "spawn",
+                "revive",
+                "send",
+                "inbox",
+                "sidecar",
+                "list",
+                "tail"
             ]
         );
     }
@@ -1188,5 +1331,46 @@ mod tests {
         assert!(git_dir_is_linked(cwd, "/repo/main/.git/worktrees/linked"));
         assert!(!git_dir_is_linked(cwd, "/repo/main/.git"));
         assert!(!git_dir_is_linked(cwd, ".git"));
+    }
+}
+
+#[cfg(test)]
+mod identity_cli_tests {
+    use super::adopt_argv;
+
+    /// The pane form reproduces `/pij ready`'s own command line exactly, so the
+    /// daemon parses one shape whether the caller was the shim or this binary.
+    #[test]
+    fn the_pane_form_is_the_ready_gestures_command_line() {
+        assert_eq!(
+            adopt_argv(Some("%77"), "claude", Some("pij-governor")),
+            [
+                "adopt",
+                "%77",
+                "--harness",
+                "claude",
+                "--parent",
+                "pij-governor"
+            ]
+        );
+    }
+
+    /// An omitted parent is UNSAID, not cleared — it must not reach the wire at
+    /// all, because the daemon carries the incumbent's value forward only when
+    /// the command line was silent (req-0008).
+    #[test]
+    fn an_omitted_parent_is_absent_from_the_wire() {
+        let argv = adopt_argv(Some("%77"), "claude", None);
+        assert!(!argv.iter().any(|token| token == "--parent"), "{argv:?}");
+    }
+
+    /// No pane means the paneless form, which the daemon refuses by name unless
+    /// a corroborable process identity travels with it.
+    #[test]
+    fn no_pane_builds_the_paneless_form() {
+        assert_eq!(
+            adopt_argv(None, "claude", None),
+            ["inbox", "register", "--harness", "claude"]
+        );
     }
 }
