@@ -16,7 +16,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
 use pij_core::model::{Pane, PaneProcess};
-use pij_core::ports::{LaunchCommand, TmuxPort};
+use pij_core::ports::{LaunchCommand, STAGED_SUBMIT_RECOVERY, StagedSubmit, TmuxPort};
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::{Instant, sleep};
 
@@ -41,6 +41,14 @@ pub fn tap_sink_path(root: &Path, pane: &str) -> PathBuf {
 const TAP_SINK_OPTION: &str = "@pij-tap-sink";
 const SUBMIT_CHUNK_BYTES: usize = 1_000;
 const SUBMIT_CHUNK_PAUSE: Duration = Duration::from_millis(10);
+const SUBMIT_STAGE_LIMIT: Duration = Duration::from_secs(1);
+const SUBMIT_RECOVERY_LIMIT_SECS: u64 = 2;
+const SUBMIT_OWNER_OPTION: &str = "@pij-submit-owner";
+
+fn unsupported_terminal_control(text: &str) -> Option<(usize, char)> {
+    text.char_indices()
+        .find(|(_, ch)| ch.is_control() && *ch != '\n')
+}
 
 /// The real [`TmuxPort`] implementation.
 ///
@@ -188,21 +196,75 @@ impl TmuxAdapter {
         self.finish(operation, output)
     }
 
-    fn paste_bytes(&self, pane: &str, buffer: &str, bytes: &[u8]) -> Result<()> {
+    fn paste_bytes_owned(&self, pane: &str, buffer: &str, bytes: &[u8]) -> Result<()> {
         self.run_with_stdin(
             "load submit buffer",
             &os_args(["load-buffer", "-b", buffer, "-"]),
             bytes,
         )?;
         if let Err(error) = self.run(
-            "paste submit buffer",
-            &os_args(["paste-buffer", "-d", "-r", "-b", buffer, "-t", pane]),
+            "paste owned submit buffer",
+            &os_args([
+                "select-pane",
+                "-e",
+                "-t",
+                pane,
+                ";",
+                "paste-buffer",
+                "-d",
+                "-r",
+                "-b",
+                buffer,
+                "-t",
+                pane,
+                ";",
+                "select-pane",
+                "-d",
+                "-t",
+                pane,
+            ]),
         ) {
             let _ = self.run(
                 "delete failed submit buffer",
                 &os_args(["delete-buffer", "-b", buffer]),
             );
             return Err(error);
+        }
+        if !self.pane_input_disabled(pane)? {
+            return Err(self.error(format!(
+                "pane {pane:?} input ownership was lost during staged paste — staged text was not submitted"
+            )));
+        }
+        Ok(())
+    }
+
+    async fn stage_body_owned(&self, staged: &StagedSubmit, text: &str) -> Result<()> {
+        let started = Instant::now();
+        self.paste_bytes_owned(&staged.pane, &staged.token, b"\x1b[200~")?;
+        let mut start = 0;
+        while start < text.len() {
+            if started.elapsed() >= SUBMIT_STAGE_LIMIT {
+                return Err(self.error(format!(
+                    "staging for pane {:?} exceeded {:?}; body was not submitted",
+                    staged.pane, SUBMIT_STAGE_LIMIT
+                )));
+            }
+            let mut end = text.len().min(start + SUBMIT_CHUNK_BYTES);
+            while !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            self.paste_bytes_owned(&staged.pane, &staged.token, &text.as_bytes()[start..end])?;
+            start = end;
+            if start < text.len() {
+                sleep(SUBMIT_CHUNK_PAUSE).await;
+            }
+        }
+        self.paste_bytes_owned(&staged.pane, &staged.token, b"\x1b[201~")?;
+        if started.elapsed() >= SUBMIT_STAGE_LIMIT {
+            return Err(self.error(format!(
+                "staging for pane {:?} exceeded {:?}; body was not submitted",
+                staged.pane, SUBMIT_STAGE_LIMIT
+            )));
         }
         Ok(())
     }
@@ -333,6 +395,128 @@ impl TmuxAdapter {
         )?;
         Ok(())
     }
+
+    fn submit_marker(&self, pane: &str) -> Result<Option<String>> {
+        let value = self.stdout(
+            "show-options submit owner",
+            &os_args([
+                "show-options",
+                "-p",
+                "-v",
+                "-q",
+                "-t",
+                pane,
+                SUBMIT_OWNER_OPTION,
+            ]),
+        )?;
+        let value = value.trim_end();
+        Ok((!value.is_empty()).then(|| value.to_string()))
+    }
+
+    fn set_submit_marker(&self, staged: &StagedSubmit) -> Result<()> {
+        self.run(
+            "set-options submit owner",
+            &os_args([
+                "set-option",
+                "-p",
+                "-t",
+                &staged.pane,
+                SUBMIT_OWNER_OPTION,
+                &staged.token,
+            ]),
+        )?;
+        Ok(())
+    }
+
+    fn clear_submit_marker(&self, pane: &str) -> Result<()> {
+        self.run(
+            "clear-options submit owner",
+            &os_args(["set-option", "-p", "-u", "-t", pane, SUBMIT_OWNER_OPTION]),
+        )?;
+        Ok(())
+    }
+
+    fn pane_input_disabled(&self, pane: &str) -> Result<bool> {
+        match self
+            .stdout(
+                "display-message pane_input_off",
+                &os_args(["display-message", "-p", "-t", pane, "#{pane_input_off}"]),
+            )?
+            .trim()
+        {
+            "1" => Ok(true),
+            "0" => Ok(false),
+            other => Err(self.error(format!(
+                "pane_input_off for {pane:?} was {other:?}, expected 0 or 1"
+            ))),
+        }
+    }
+
+    fn require_staged(&self, staged: &StagedSubmit) -> Result<()> {
+        if self.submit_marker(&staged.pane)?.as_deref() != Some(&staged.token) {
+            return Err(self.error(format!(
+                "staged submit ownership for pane {:?} no longer matches token {:?}",
+                staged.pane, staged.token
+            )));
+        }
+        if !self.pane_input_disabled(&staged.pane)? {
+            return Err(self.error(format!(
+                "pane {:?} input was restored before its staged submit completed",
+                staged.pane
+            )));
+        }
+        Ok(())
+    }
+
+    fn restore_staged_input(&self, staged: &StagedSubmit) -> Result<()> {
+        self.run(
+            "restore pane input",
+            &os_args(["select-pane", "-e", "-t", &staged.pane]),
+        )?;
+        self.clear_submit_marker(&staged.pane)
+    }
+
+    fn schedule_submit_recovery(&self, staged: &StagedSubmit) -> Result<()> {
+        let mut tmux = shell_quote(&self.binary.to_string_lossy());
+        if let Some(server) = &self.server {
+            tmux.push_str(" -L ");
+            tmux.push_str(&shell_quote(server));
+        }
+        let pane = shell_quote(&staged.pane);
+        let token = shell_quote(&staged.token);
+        let title = shell_quote("PIJ STAGED UNSENT — inspect composer; Ctrl-C clears");
+        let script = format!(
+            "sleep {SUBMIT_RECOVERY_LIMIT_SECS}; owner=$({tmux} show-options -p -v -q -t {pane} {SUBMIT_OWNER_OPTION}); \
+             if [ \"$owner\" = {token} ]; then \
+               {tmux} select-pane -e -t {pane}; \
+               {tmux} select-pane -T {title} -t {pane}; \
+               {tmux} set-option -p -u -t {pane} {SUBMIT_OWNER_OPTION}; \
+             fi"
+        );
+        self.run(
+            "schedule staged submit recovery",
+            &os_args(["run-shell", "-b", &script]),
+        )?;
+        Ok(())
+    }
+
+    fn abort_staged_inner(&self, staged: &StagedSubmit) -> Result<()> {
+        self.require_staged(staged)?;
+        let notice_result = if staged.staged {
+            let notice = format!("\x1b[200~\n{STAGED_SUBMIT_RECOVERY}\x1b[201~");
+            self.paste_bytes_owned(&staged.pane, &staged.token, notice.as_bytes())
+        } else {
+            Ok(())
+        };
+        let restore_result = self.restore_staged_input(staged);
+        match (notice_result, restore_result) {
+            (Ok(()), Ok(())) => Ok(()),
+            (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+            (Err(error), Err(restore)) => Err(self.error(format!(
+                "{error}; additionally failed to restore pane input: {restore}"
+            ))),
+        }
+    }
 }
 
 #[async_trait]
@@ -389,41 +573,133 @@ impl TmuxPort for TmuxAdapter {
         }))
     }
 
-    async fn submit(&self, pane: &str, text: &str) -> Result<()> {
-        // One body at a time. Without this lock, two concurrent submissions can
-        // interleave their chunks in a shared pane composer.
+    async fn acquire_submit(&self, pane: &str) -> Result<StagedSubmit> {
         let _submit = self.submit_lock.lock().await;
-        let sequence = self.next_submit.fetch_add(1, Ordering::Relaxed);
-        let buffer = format!("pij-submit-{}-{sequence}", std::process::id());
-
-        // Hold one bracketed-paste transaction open while pacing its bytes.
-        // Starting a fresh paste for every chunk makes some editors insert a
-        // separator at chunk boundaries, corrupting the body.
-        self.paste_bytes(pane, &buffer, b"\x1b[200~")?;
-        let mut start = 0;
-        while start < text.len() {
-            let mut end = text.len().min(start + SUBMIT_CHUNK_BYTES);
-            while !text.is_char_boundary(end) {
-                end -= 1;
-            }
-            if let Err(error) = self.paste_bytes(pane, &buffer, &text.as_bytes()[start..end]) {
-                let _ = self.paste_bytes(pane, &buffer, b"\x1b[201~");
-                return Err(error);
-            }
-            start = end;
-            if start < text.len() {
-                sleep(SUBMIT_CHUNK_PAUSE).await;
-            }
+        if let Some(owner) = self.submit_marker(pane)? {
+            return Err(self.error(format!(
+                "pane {pane:?} already has staged submit {owner:?}; inspect the composer and press Ctrl-C to clear it before removing {SUBMIT_OWNER_OPTION}"
+            )));
         }
-        self.paste_bytes(pane, &buffer, b"\x1b[201~")?;
+        if self.pane_input_disabled(pane)? {
+            return Err(self.error(format!(
+                "pane {pane:?} input is already disabled by its operator; refusing to take ownership"
+            )));
+        }
+        let sequence = self.next_submit.fetch_add(1, Ordering::Relaxed);
+        let staged = StagedSubmit {
+            pane: pane.to_string(),
+            token: format!("pij-submit-{}-{sequence}", std::process::id()),
+            staged: false,
+        };
 
-        // Enter remains one named key after every byte, so embedded newlines
-        // cannot impersonate submission.
-        self.run(
-            "send submit key",
-            &os_args(["send-keys", "-t", pane, "Enter"]),
-        )?;
+        // Schedule the tmux-server-owned deadline before disabling input. The
+        // watchdog survives panic, SIGKILL, and daemon death, so input can be off
+        // for at most two seconds even when this process never runs cleanup.
+        self.schedule_submit_recovery(&staged)?;
+        self.set_submit_marker(&staged)?;
+        if let Err(error) = self.run(
+            "disable pane input for staged submit",
+            &os_args(["select-pane", "-d", "-t", pane]),
+        ) {
+            let _ = self.clear_submit_marker(pane);
+            return Err(error);
+        }
+        if !self.pane_input_disabled(pane)? {
+            let _ = self.restore_staged_input(&staged);
+            return Err(self.error(format!(
+                "tmux did not disable input for pane {pane:?}; body was not staged"
+            )));
+        }
+        Ok(staged)
+    }
+
+    async fn stage_submit(&self, staged: &mut StagedSubmit, text: &str) -> Result<()> {
+        if let Some((offset, control)) = unsupported_terminal_control(text) {
+            let error = self.error(format!(
+                "cannot type terminal control U+{:04X} at byte {offset} losslessly — use socket delivery or keep the body queued for inbox pull",
+                u32::from(control)
+            ));
+            return match self.abort_submit(staged).await {
+                Ok(()) => Err(error),
+                Err(recovery) => {
+                    Err(self.error(format!("{error}; failed to restore pane input: {recovery}")))
+                }
+            };
+        }
+        let _submit = self.submit_lock.lock().await;
+        self.require_staged(staged)?;
+        if staged.staged {
+            let error = self.error(format!(
+                "staged submit {:?} already contains composer text",
+                staged.token
+            ));
+            return match self.abort_staged_inner(staged) {
+                Ok(()) => Err(error),
+                Err(recovery) => {
+                    Err(self.error(format!("{error}; failed to restore pane input: {recovery}")))
+                }
+            };
+        }
+        staged.staged = true;
+        if let Err(error) = self.stage_body_owned(staged, text).await {
+            return match self.abort_staged_inner(staged) {
+                Ok(()) => Err(error),
+                Err(recovery) => Err(self.error(format!(
+                    "{error}; staged-submit recovery also failed: {recovery}"
+                ))),
+            };
+        }
         Ok(())
+    }
+
+    async fn commit_submit(&self, staged: &StagedSubmit) -> Result<()> {
+        let _submit = self.submit_lock.lock().await;
+        self.require_staged(staged)?;
+        if !staged.staged {
+            let error = self.error(format!(
+                "staged submit {:?} has no composer text to commit",
+                staged.token
+            ));
+            return match self.abort_staged_inner(staged) {
+                Ok(()) => Err(error),
+                Err(recovery) => {
+                    Err(self.error(format!("{error}; failed to restore pane input: {recovery}")))
+                }
+            };
+        }
+        if let Err(error) = self.run(
+            "commit staged submit",
+            &os_args([
+                "select-pane",
+                "-e",
+                "-t",
+                &staged.pane,
+                ";",
+                "send-keys",
+                "-t",
+                &staged.pane,
+                "Enter",
+            ]),
+        ) {
+            return match self.restore_staged_input(staged) {
+                Ok(()) => Err(error),
+                Err(recovery) => Err(self.error(format!(
+                    "{error}; failed to restore pane input after commit error: {recovery}"
+                ))),
+            };
+        }
+        self.clear_submit_marker(&staged.pane)
+    }
+
+    async fn abort_submit(&self, staged: &StagedSubmit) -> Result<()> {
+        let _submit = self.submit_lock.lock().await;
+        self.abort_staged_inner(staged)
+    }
+
+    async fn submit(&self, pane: &str, text: &str) -> Result<()> {
+        let mut staged = self.acquire_submit(pane).await?;
+        self.stage_submit(&mut staged, text).await?;
+        self.commit_submit(&staged).await
     }
 
     async fn send_keys(&self, pane: &str, keys: &str) -> Result<()> {
@@ -435,10 +711,9 @@ impl TmuxPort for TmuxAdapter {
         if lines == 0 {
             return Ok(String::new());
         }
-        let output = self.stdout(
-            "capture-pane",
-            &os_args(["capture-pane", "-p", "-J", "-t", pane]),
-        )?;
+        // Preserve physical rows: tmux cursor_y is physical, while `-J` joins
+        // soft-wrapped rows and makes composer extraction compare different axes.
+        let output = self.stdout("capture-pane", &os_args(["capture-pane", "-p", "-t", pane]))?;
         let rows: Vec<&str> = output.lines().collect();
         let keep = usize::try_from(lines).unwrap_or(usize::MAX).min(rows.len());
         Ok(rows[rows.len() - keep..].join("\n"))

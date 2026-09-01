@@ -13,8 +13,8 @@ use pij_core::framing::frame_message;
 use pij_core::model::{
     DeliveryOrigin, DeliveryOutcome, Event, Job, JobId, Msg, Outcome, Receipt, SeatId,
 };
-use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, TmuxPort, Transport};
-use pij_harnesses::InteractionGate;
+use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, Transport};
+use pij_harnesses::{InteractionGate, StagedSubmission};
 use serde::{Deserialize, Serialize};
 use tokio_stream::StreamExt;
 
@@ -55,16 +55,14 @@ struct DeliverySources {
 ///
 /// # Composition recipe
 ///
-/// Construct one tmux port and one `Arc<InteractionGate>` over that port before
-/// `DeliveryService`; pass both to this service and `DrainWorker`, then feed the
-/// gate from `PaneObserver`. This makes the human-typing veto apply to both
-/// first-attempt delivery and queued retries. No task starts here, so the
-/// daemon's shutdown contract is unchanged.
+/// Construct one `Arc<InteractionGate>` from the composed tmux port before
+/// `DeliveryService`, pass the same instance to this service and `DrainWorker`,
+/// and feed it from `PaneObserver`. The gate owns staged pane transactions;
+/// socket delivery retains its existing permission-only policy.
 pub struct DeliveryService {
     registry: Arc<dyn Registry>,
     queue: Arc<dyn Queue>,
     transport: Arc<dyn Transport>,
-    tmux: Arc<dyn TmuxPort>,
     interaction: Arc<InteractionGate>,
     event_bus: Arc<EventBus>,
     id_prefix: u64,
@@ -81,7 +79,6 @@ impl DeliveryService {
         registry: Arc<dyn Registry>,
         queue: Arc<dyn Queue>,
         transport: Arc<dyn Transport>,
-        tmux: Arc<dyn TmuxPort>,
         interaction: Arc<InteractionGate>,
         event_bus: Arc<EventBus>,
     ) -> Result<Self> {
@@ -94,7 +91,6 @@ impl DeliveryService {
             registry,
             queue,
             transport,
-            tmux,
             interaction,
             event_bus,
             DeliverySources {
@@ -108,7 +104,6 @@ impl DeliveryService {
         registry: Arc<dyn Registry>,
         queue: Arc<dyn Queue>,
         transport: Arc<dyn Transport>,
-        tmux: Arc<dyn TmuxPort>,
         interaction: Arc<InteractionGate>,
         event_bus: Arc<EventBus>,
         sources: DeliverySources,
@@ -117,7 +112,6 @@ impl DeliveryService {
             registry,
             queue,
             transport,
-            tmux,
             interaction,
             event_bus,
             id_prefix: sources.id_prefix,
@@ -229,20 +223,17 @@ impl DeliveryService {
                 }
             }
             DeliveryRoute::Transport => {
-                // One fresh verdict supplies policy permission and the actual
-                // composer state. A policy veto queues every pane path; an
-                // expired non-empty draft may still use a socket, never tmux.
+                let socket_available = self.transport.can_deliver(&recipient, &msg).await?;
+                // Socket delivery keeps the fresh permission policy. Pane-body
+                // permission is checked once, after input ownership is acquired,
+                // inside `submit_with_owned_input`.
                 let (interaction_permits, composer_idle) = match recipient.pane.as_deref() {
-                    Some(pane) => {
+                    None => (true, true),
+                    Some(pane) if socket_available => {
                         let verdict = self.interaction.fresh_injection_verdict(pane).await?;
                         (verdict.permitted, verdict.composer_idle)
                     }
-                    None => (true, true),
-                };
-                let socket_available = if interaction_permits {
-                    self.transport.can_deliver(&recipient, &msg).await?
-                } else {
-                    false
+                    Some(_) => (true, true),
                 };
 
                 // Paneless socket consumers remain transport-owned. The rung
@@ -308,21 +299,31 @@ impl DeliveryService {
                                     msg.from_machine.as_deref(),
                                     &msg.body,
                                 );
-                                if let Err(error) = self.tmux.submit(pane, &framed).await {
-                                    // Match the direct socket path: compensate the
-                                    // claim and let the caller retry. Enqueuing here
-                                    // would leave a live row that a successful caller
-                                    // retry could also deliver a second time.
-                                    self.queue.forget_delivered(&to, &msg.msg_id).await?;
-                                    return Err(error);
-                                }
-                                DeliveryOutcome::Delivered {
-                                    origin: DeliveryOrigin::TypedToPane,
+                                match self
+                                    .interaction
+                                    .submit_with_owned_input(pane, &framed)
+                                    .await
+                                {
+                                    Ok(StagedSubmission::Submitted) => DeliveryOutcome::Delivered {
+                                        origin: DeliveryOrigin::TypedToPane,
+                                    },
+                                    Ok(StagedSubmission::Deferred) => {
+                                        self.queue.forget_delivered(&to, &msg.msg_id).await?;
+                                        self.enqueue(&msg).await?;
+                                        DeliveryOutcome::Queued
+                                    }
+                                    Err(error) => {
+                                        self.queue.forget_delivered(&to, &msg.msg_id).await?;
+                                        return Err(error);
+                                    }
                                 }
                             }
                         }
                     }
-                    DeliveryRung::Observe | DeliveryRung::Queue | DeliveryRung::Pty => {
+                    DeliveryRung::Observe
+                    | DeliveryRung::Queue
+                    | DeliveryRung::Pty
+                    | DeliveryRung::ControlBodyPull => {
                         match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
                             DeliveryEnqueue::Queued(_) => DeliveryOutcome::Queued,
                             DeliveryEnqueue::AlreadyDelivered(origin) => {
@@ -744,7 +745,6 @@ mod tests {
             Arc::clone(&registry) as Arc<dyn Registry>,
             Arc::clone(&queue) as Arc<dyn Queue>,
             transport,
-            tmux,
             interaction,
             bus,
             DeliverySources {
@@ -793,7 +793,6 @@ mod tests {
             Arc::clone(&registry) as Arc<dyn Registry>,
             Arc::clone(&queue) as Arc<dyn Queue>,
             Arc::clone(&transport) as Arc<dyn pij_core::ports::Transport>,
-            Arc::clone(&tmux) as Arc<dyn TmuxPort>,
             Arc::clone(&interaction),
             bus,
             DeliverySources {

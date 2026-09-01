@@ -42,7 +42,9 @@ fn rendered_composer(capture: &str, cursor_x: u32, cursor_y: u32) -> Option<Stri
                 return Some(String::new());
             }
             let first_column = leading + 1 + left_rules + spacing;
-            return clip_payload(&payload, row, first_column, cursor_x, cursor_y);
+            if let Some(clipped) = clip_payload(&payload, row, first_column, cursor_x, cursor_y) {
+                return Some(clipped);
+            }
         }
     }
 
@@ -191,14 +193,14 @@ mod tests {
     }
 
     #[test]
-    fn unchanged_live_recorded_layouts_match_pre_move_parser_byte_for_byte() {
+    fn live_recorded_layouts_recognize_the_cursor_composer() {
         let fixtures = [
             (
                 "OMP recorded 2026-08-31 from pane %1985",
                 include_str!("../tests/fixtures/2026-08-31-omp-pane-1985.txt"),
                 2,
                 43,
-                ComposerRegion::Unrecognized,
+                ComposerRegion::Recognized(String::new()),
             ),
             (
                 "Claude recorded 2026-08-31 from pane %1973",
@@ -275,6 +277,22 @@ mod tests {
         assert_eq!(
             composer_region("╰─     ─╯", 3, 0),
             ComposerRegion::Recognized(String::new())
+        );
+    }
+
+    #[test]
+    fn rounded_border_above_cursor_does_not_hide_later_composer() {
+        let capture = concat!(
+            "╰──────────┴──────────╯\n",
+            "status text\n",
+            "────────────────\n",
+            "❯ \n",
+            "────────────────",
+        );
+        assert_eq!(
+            composer_region(capture, 2, 3),
+            ComposerRegion::Recognized(String::new()),
+            "a non-composer rounded border must not stop the scan before the cursor's composer"
         );
     }
 

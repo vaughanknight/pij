@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -212,6 +213,299 @@ async fn submit_pastes_a_3000_byte_multiline_body_intact() {
         "chunked bracketed paste preserves every body byte"
     );
     fs::remove_file(&output_path).expect("remove large-submit capture");
+}
+
+#[tokio::test]
+async fn submit_rejects_bracket_terminator_before_touching_real_pane() {
+    let Some(session) = TestSession::start_or_skip("control-body") else {
+        return;
+    };
+    let tmux = TmuxAdapter::for_server(&session.server, &session.tap_root);
+    let pane = tmux
+        .list_panes()
+        .await
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    let before = tmux
+        .capture(&pane.id, u32::MAX)
+        .await
+        .expect("capture before");
+
+    let error = tmux
+        .submit(&pane.id, "before\u{1b}[201~after")
+        .await
+        .expect_err("terminal control must be refused before paste");
+
+    let message = error.to_string();
+    assert!(message.contains("U+001B"), "{message}");
+    assert!(message.contains("inbox pull"), "{message}");
+    assert_eq!(
+        tmux.capture(&pane.id, u32::MAX)
+            .await
+            .expect("capture after"),
+        before,
+        "refusal must not write any fragment into the pane"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn staged_submit_excludes_human_input_mid_body_and_before_enter() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let output_path = std::env::temp_dir().join(format!(
+        "pij-rs-submit-owned-{}-{nonce}.bin",
+        std::process::id()
+    ));
+    let body = "0123456789abcdef".repeat(1_250);
+    let mut expected = Vec::with_capacity(body.len() + 13);
+    expected.extend_from_slice(b"\x1b[200~");
+    expected.extend_from_slice(body.as_bytes());
+    expected.extend_from_slice(b"\x1b[201~\r");
+    let command = format!(
+        "stty raw -echo; dd bs=1 count={} of={} 2>/dev/null; sleep 10",
+        expected.len(),
+        output_path.display()
+    );
+    let Some(session) = TestSession::start_or_skip_with_command("submit-owned", &command) else {
+        return;
+    };
+    let tmux = Arc::new(TmuxAdapter::for_server(&session.server, &session.tap_root));
+    let pane = tmux
+        .list_panes()
+        .await
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    let mut staged = tmux
+        .acquire_submit(&pane.id)
+        .await
+        .expect("acquire pane input");
+    assert!(pane_input_off(&session, &pane.id));
+    let staging_tmux = Arc::clone(&tmux);
+    let staging_body = body.clone();
+    let staging = tokio::spawn(async move {
+        let result = staging_tmux.stage_submit(&mut staged, &staging_body).await;
+        (result, staged)
+    });
+
+    for _ in 0..8 {
+        session.run(["send-keys", "-t", &pane.id, "-l", "MID-HUMAN"]);
+        std::thread::sleep(Duration::from_millis(15));
+    }
+    let (result, staged) = staging.await.expect("stage task");
+    result.expect("stage body");
+    session.run(["send-keys", "-t", &pane.id, "-l", "BETWEEN-CLOSE-ENTER"]);
+    assert!(pane_input_off(&session, &pane.id));
+
+    tmux.commit_submit(&staged)
+        .await
+        .expect("commit staged body");
+    wait_for_pane_input(&session, &pane.id, false, Duration::from_secs(1));
+
+    let observed = wait_for_file(&output_path, expected.len(), Duration::from_secs(10));
+    assert_eq!(
+        observed, expected,
+        "human input must not join the owned transaction"
+    );
+    fs::remove_file(&output_path).expect("remove owned-submit capture");
+}
+
+#[tokio::test]
+async fn abort_leaves_recovery_notice_unsent_and_restores_input() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let output_path = std::env::temp_dir().join(format!(
+        "pij-rs-submit-abort-{}-{nonce}.bin",
+        std::process::id()
+    ));
+    let body = "AUTOMATED-BODY";
+    let recovery = pij_core::ports::STAGED_SUBMIT_RECOVERY;
+    let mut expected = Vec::new();
+    expected.extend_from_slice(b"\x1b[200~");
+    expected.extend_from_slice(body.as_bytes());
+    expected.extend_from_slice(b"\x1b[201~");
+    expected.extend_from_slice(b"\x1b[200~\n");
+    expected.extend_from_slice(recovery.as_bytes());
+    expected.extend_from_slice(b"\x1b[201~");
+    let command = format!(
+        "stty raw -echo; dd bs=1 count={} of={} 2>/dev/null; sleep 10",
+        expected.len(),
+        output_path.display()
+    );
+    let Some(session) = TestSession::start_or_skip_with_command("submit-abort", &command) else {
+        return;
+    };
+    let tmux = TmuxAdapter::for_server(&session.server, &session.tap_root);
+    let pane = tmux
+        .list_panes()
+        .await
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+
+    let mut staged = tmux
+        .acquire_submit(&pane.id)
+        .await
+        .expect("acquire pane input");
+    tmux.stage_submit(&mut staged, body)
+        .await
+        .expect("stage body");
+    assert!(pane_input_off(&session, &pane.id));
+    tmux.abort_submit(&staged).await.expect("abort staged body");
+    wait_for_pane_input(&session, &pane.id, false, Duration::from_secs(1));
+
+    let observed = wait_for_file(&output_path, expected.len(), Duration::from_secs(10));
+    assert_eq!(observed, expected);
+    assert_ne!(
+        observed.last(),
+        Some(&b'\r'),
+        "abort must never press Enter"
+    );
+    fs::remove_file(&output_path).expect("remove abort capture");
+}
+
+#[tokio::test]
+async fn stage_deadline_aborts_and_restores_input() {
+    let Some(session) = TestSession::start_or_skip("submit-deadline") else {
+        return;
+    };
+    let tmux = TmuxAdapter::for_server(&session.server, &session.tap_root);
+    let pane = tmux
+        .list_panes()
+        .await
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    let body = "x".repeat(200_000);
+    let mut staged = tmux
+        .acquire_submit(&pane.id)
+        .await
+        .expect("acquire pane input");
+    let error = tmux
+        .stage_submit(&mut staged, &body)
+        .await
+        .expect_err("staging beyond the transaction bound must abort");
+
+    assert!(error.to_string().contains("exceeded 1s"), "{error}");
+    wait_for_pane_input(&session, &pane.id, false, Duration::from_secs(1));
+    let marker = session.run([
+        "show-options",
+        "-p",
+        "-v",
+        "-q",
+        "-t",
+        &pane.id,
+        "@pij-submit-owner",
+    ]);
+    assert!(String::from_utf8_lossy(&marker.stdout).trim().is_empty());
+}
+
+#[test]
+fn stage_helper_process() {
+    let Ok(server) = std::env::var("PIJ_STAGE_HELPER_SERVER") else {
+        return;
+    };
+    let pane = std::env::var("PIJ_STAGE_HELPER_PANE").expect("helper pane");
+    let ready = PathBuf::from(std::env::var("PIJ_STAGE_HELPER_READY").expect("helper ready"));
+    let tmux = TmuxAdapter::for_server(&server, std::env::temp_dir());
+    let mut staged = block_on(tmux.acquire_submit(&pane)).expect("helper acquires pane input");
+    block_on(tmux.stage_submit(&mut staged, "DAEMON-DIES-MID-STAGE")).expect("helper stages body");
+    fs::write(ready, staged.token).expect("signal staged ownership");
+    std::thread::sleep(Duration::from_secs(30));
+}
+
+#[test]
+fn daemon_death_mid_stage_restores_input_within_bound() {
+    let Some(session) = TestSession::start_or_skip("submit-death") else {
+        return;
+    };
+    let pane = block_on(TmuxAdapter::for_server(&session.server, &session.tap_root).list_panes())
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    let ready = session.tap_root.join("stage-ready");
+    fs::create_dir_all(&session.tap_root).expect("create helper signal directory");
+    let mut helper = Command::new(std::env::current_exe().expect("current test binary"))
+        .args(["--exact", "stage_helper_process", "--nocapture"])
+        .env("PIJ_STAGE_HELPER_SERVER", &session.server)
+        .env("PIJ_STAGE_HELPER_PANE", &pane.id)
+        .env("PIJ_STAGE_HELPER_READY", &ready)
+        .spawn()
+        .expect("spawn stage helper");
+    wait_for_file(&ready, 1, Duration::from_secs(2));
+    assert!(pane_input_off(&session, &pane.id));
+
+    helper.kill().expect("kill staged daemon process");
+    helper.wait().expect("reap staged daemon process");
+    wait_for_pane_input(&session, &pane.id, false, Duration::from_secs(4));
+
+    wait_for_submit_marker_clear(&session, &pane.id, Duration::from_secs(1));
+    let title = session.run(["display-message", "-p", "-t", &pane.id, "#{pane_title}"]);
+    assert!(
+        String::from_utf8_lossy(&title.stdout).contains("PIJ STAGED UNSENT"),
+        "watchdog must leave visible recovery guidance"
+    );
+    fs::remove_file(ready).expect("remove helper ready file");
+}
+
+fn pane_input_off(session: &TestSession, pane: &str) -> bool {
+    let output = session.run(["display-message", "-p", "-t", pane, "#{pane_input_off}"]);
+    String::from_utf8_lossy(&output.stdout).trim() == "1"
+}
+
+fn submit_marker(session: &TestSession, pane: &str) -> String {
+    let output = session.run([
+        "show-options",
+        "-p",
+        "-v",
+        "-q",
+        "-t",
+        pane,
+        "@pij-submit-owner",
+    ]);
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+fn wait_for_submit_marker_clear(session: &TestSession, pane: &str, timeout: Duration) {
+    let deadline = Instant::now() + timeout;
+    while !submit_marker(session, pane).is_empty() {
+        assert!(Instant::now() < deadline, "submit marker did not clear");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn wait_for_pane_input(session: &TestSession, pane: &str, off: bool, timeout: Duration) {
+    let deadline = Instant::now() + timeout;
+    while pane_input_off(session, pane) != off {
+        assert!(
+            Instant::now() < deadline,
+            "pane input state did not converge"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn wait_for_file(path: &Path, bytes: usize, timeout: Duration) -> Vec<u8> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match fs::read(path) {
+            Ok(content) if content.len() >= bytes => return content,
+            result if Instant::now() >= deadline => {
+                panic!("file {path:?} did not reach {bytes} bytes: {result:?}");
+            }
+            _ => std::thread::sleep(Duration::from_millis(10)),
+        }
+    }
 }
 fn drain_until_quiet(tmux: &TmuxAdapter, server: &str, pane: &str, needle: &str) -> Vec<u8> {
     let started = Instant::now();

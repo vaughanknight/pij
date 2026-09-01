@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use pij_core::error::Result;
+use pij_core::error::{PijError, Result};
 use pij_core::framing::self_injection_matches;
 use pij_core::ports::TmuxPort;
 
@@ -65,6 +65,15 @@ pub struct InjectionVerdict {
     pub permitted: bool,
     /// The freshly captured composer contains no non-whitespace text.
     pub composer_idle: bool,
+}
+
+/// Outcome of a pane transaction whose input was owned before observation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StagedSubmission {
+    /// The owned composer was empty, then the staged text was committed.
+    Submitted,
+    /// The owned composer was not safe to type into; nothing was staged.
+    Deferred,
 }
 
 /// Injection safety gate combining tmux mode with stateful composer interaction.
@@ -258,6 +267,41 @@ impl InteractionGate {
                 })
             }
         }
+    }
+
+    /// Own pane input before observing, then stage and commit only into a blank composer.
+    ///
+    /// Ordering makes external-input races impossible: acquisition happens before
+    /// the one fresh permission capture, and ownership lasts through Enter. This
+    /// deliberately replaces the rejected post-stage rendered-pixel comparison.
+    pub async fn submit_with_owned_input(
+        &self,
+        pane: &str,
+        text: &str,
+    ) -> Result<StagedSubmission> {
+        let mut staged = self.tmux.acquire_submit(pane).await?;
+        let verdict = match self.fresh_injection_verdict(pane).await {
+            Ok(verdict) => verdict,
+            Err(error) => {
+                return match self.tmux.abort_submit(&staged).await {
+                    Ok(()) => Err(error),
+                    Err(recovery) => Err(PijError::Adapter {
+                        adapter: "interaction-gate".to_string(),
+                        message: format!(
+                            "{error}; pane input acquisition was not released: {recovery}"
+                        ),
+                    }),
+                };
+            }
+        };
+        if !verdict.permitted || !verdict.composer_idle {
+            self.tmux.abort_submit(&staged).await?;
+            return Ok(StagedSubmission::Deferred);
+        }
+        self.record_self_injection(pane, text);
+        self.tmux.stage_submit(&mut staged, text).await?;
+        self.tmux.commit_submit(&staged).await?;
+        Ok(StagedSubmission::Submitted)
     }
 
     /// True only when both independent gates report clear.

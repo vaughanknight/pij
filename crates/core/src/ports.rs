@@ -222,6 +222,20 @@ pub struct LaunchCommand {
     pub args: Vec<String>,
 }
 
+/// Notice appended to an aborted composer transaction before input is restored.
+pub const STAGED_SUBMIT_RECOVERY: &str = "[pij: delivery staged but not submitted; inspect the staged text and press Ctrl-C to clear it]";
+
+/// Opaque ownership of one pane composer staged for explicit commit or abort.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StagedSubmit {
+    /// Pane whose human input is suspended for this transaction.
+    pub pane: String,
+    /// Adapter-minted ownership token; commit and abort must match it.
+    pub token: String,
+    /// Whether any composer bytes have been staged under this ownership token.
+    pub staged: bool,
+}
+
 /// Every tmux syscall in the workspace.
 #[async_trait]
 pub trait TmuxPort: Send + Sync {
@@ -241,6 +255,22 @@ pub trait TmuxPort: Send + Sync {
     /// would make every fake answer "no process" and every adoption test pass
     /// without ever observing one — a witness that cannot fail.
     async fn pane_process(&self, pane: &str) -> Result<Option<PaneProcess>>;
+
+    /// Suspend external pane input before observing the composer.
+    ///
+    /// The returned token owns a bounded transaction. Implementations must
+    /// restore human input on commit, abort, every error path, panic, and process
+    /// death.
+    async fn acquire_submit(&self, pane: &str) -> Result<StagedSubmit>;
+
+    /// Stage `text` without submitting it while external pane input is suspended.
+    async fn stage_submit(&self, staged: &mut StagedSubmit, text: &str) -> Result<()>;
+
+    /// Submit the staged composer and restore human input.
+    async fn commit_submit(&self, staged: &StagedSubmit) -> Result<()>;
+
+    /// Leave staged text unsent, show recovery when needed, and restore input.
+    async fn abort_submit(&self, staged: &StagedSubmit) -> Result<()>;
 
     /// SUBMIT `text` to a pane as a turn: type it AND send it.
     ///

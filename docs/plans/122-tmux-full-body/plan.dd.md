@@ -37,6 +37,7 @@ Ruling rulings/2026-09-01-tmux-types-full-bodies.md (vendored in assets/inputs/)
 - Body framed by the ONE shared formatter (crates/core/src/framing.rs, plan 118) — head [pij-rs from X] and tail [/pij] intact
 - Bodies >1022 bytes arrive INTACT (the macOS pty chunk hazard woodpecker measured: send-keys silently keeps only the tail) — chunked typing or tmux load-buffer/paste-buffer, coder probes and picks with evidence
 - Delivery outcome recorded honestly: typed-to-pane is its own receipt class, distinct from socket InjectedToTransport and from any reader-read ack
+- Terminal-control bodies are never typed: socket carries them when available; otherwise the pane gets a named pull notice and the intact body remains immediately readable in inbox
 
 <a id="non-goals"></a>
 
@@ -54,11 +55,12 @@ Ruling rulings/2026-09-01-tmux-types-full-bodies.md (vendored in assets/inputs/)
 | id | claim | state | note | receipt | pressure | proven_by | text |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ac-0a01 | Hand-started pane clients receive full framed bodies without inbox pull | [x] checked | — | assets/live-pane-witnesses-2026-09-01.md — hand-run OMP and Copilot sections | — | — | Live witness: a hand-started copilot or codex CLI pane seat registered in rs receives a pij send as the FULL framed body typed+submitted into its pane — witnessed in the pane, no pij inbox involved |
-| ac-0a02 | Bodies larger than 3000 bytes arrive byte-intact | [x] checked | — | assets/live-pane-witnesses-2026-09-01.md — 6647-byte OMP SHA-256 match; tmux regression green | — | — | A 3000+ byte body arrives byte-intact in the pane (proven against the 1022-byte pty hazard; test red first on naive send-keys) |
+| ac-0a02 | Representable bodies larger than 3000 bytes arrive byte-intact | [x] checked | — | assets/live-pane-witnesses-2026-09-01.md — 6647-byte OMP SHA-256 match; tmux regression green | — | — | A 3000+ byte body with no terminal control other than LF arrives byte-intact in the pane; other control-bearing bodies take the named pull exception |
 | ac-0a03 | Non-empty composers defer typed delivery without clobbering drafts | [x] checked | — | assets/live-pane-witnesses-2026-09-01.md — live Codex clobber red; final Copilot draft preserved beyond 60s; mutation tests red then green | — | — | Typing veto still wins: with the pane's composer holding human keystrokes, delivery queues and retries — the body is never spliced into a human's draft (test from a composer with content) |
 | ac-0a04 | Shared framing emits exactly one head and one tail | [x] checked | — | frame_message consumed by direct and drain tests; OMP/Copilot live frames each show one head and one tail | — | — | Framing: head and tail markers present exactly once, from framing.rs — no second formatter minted |
 | ac-0a05 | Socket-capable seats continue using socket delivery | [x] checked | — | pij-gate all green; socket_body_is_delivered_and_acked_without_pointer_or_retry green; parked-draft socket policy green unmodified | — | — | Claude socket delivery unaffected: existing socket tests green unmodified; a socket-available seat never falls to typing |
 | ac-0a06 | Required validation gates are green or covered by the ruled npm-resolution exception | [x] checked | — | ~/.cargo/bin/cargo run --locked -p pij-testkit --bin pij-gate: all six stages green; harness checks attempted with ruled pre-existing npm-resolution failure | — | — | pij-gate green, typecheck green, vitest green modulo known npm-resolution pre-existing failure |
+| ac-0a07 | Terminal-control bodies are never typed and remain immediately readable after a named pull notice | [x] checked | — | assets/terminal-control-measurement-2026-09-01.md + assets/reviews/review-fixes.md | — | — | With no socket, a body containing terminal controls other than LF remains queued; the pane receives one explanation naming inbox pull, and pij inbox returns the original bytes |
 
 <a id="phases"></a>
 

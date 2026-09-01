@@ -20,6 +20,8 @@ pub const POINTER_ANNOUNCED_EVENT_KIND: &str = "delivery.pointer-announced";
 pub const POINTER_PARKED_EVENT_KIND: &str = "delivery.pointer-parked";
 /// Event emitted when a successful inbox read resets a parked seat's budget.
 pub const POINTER_UNPARKED_EVENT_KIND: &str = "delivery.pointer-unparked";
+/// Event proving the narrow control-body pull exception was explained in-pane.
+pub const CONTROL_BODY_POINTER_EVENT_KIND: &str = "delivery.control-body-pointer";
 
 /// Injected pointer cadence and seat-level announcement budget.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +44,17 @@ pub fn render_pointer(from: &SeatId, from_machine: Option<&str>) -> String {
     // same name, and a frame naming only "bob" leaves the recipient unable to
     // tell WHICH bob paged them — while the event already carries the machine.
     frame_message(from, from_machine, "message waiting — run: pij inbox")
+}
+
+/// Render the only retained pull exception: a body that a stock terminal
+/// composer cannot represent without interpreting its control bytes.
+#[must_use]
+pub(super) fn render_control_body_pointer(from: &SeatId, from_machine: Option<&str>) -> String {
+    frame_message(
+        from,
+        from_machine,
+        "message contains terminal control bytes that cannot be typed safely — body remains queued; run: pij inbox",
+    )
 }
 
 /// Render the final pointer that explains why future reminders will stop.

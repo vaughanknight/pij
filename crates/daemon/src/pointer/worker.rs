@@ -1,16 +1,21 @@
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pij_core::delivery::{DeliveryRung, delivery_kind, select_rung};
 use pij_core::error::{PijError, Result};
 use pij_core::framing::frame_message;
-use pij_core::model::{DeliveryOrigin, DeliveryOutcome, Job, JobId, Msg, Outcome, SemanticState};
+use pij_core::model::{
+    DeliveryOrigin, DeliveryOutcome, Event, Job, JobId, Msg, Outcome, SemanticState,
+};
 use pij_core::ports::{Queue, Registry, SeatFilter, TmuxPort, Transport};
-use pij_harnesses::InteractionGate;
+use pij_harnesses::{InteractionGate, StagedSubmission};
 
 use crate::events::EventBus;
 
-use super::{PointerPolicy, retry_delay, submit_command};
+use super::{
+    CONTROL_BODY_POINTER_EVENT_KIND, PointerPolicy, render_control_body_pointer, retry_delay,
+    submit_command,
+};
 
 /// How many times a held delivery is re-offered before the job is parked.
 ///
@@ -41,6 +46,7 @@ pub struct DrainWorker {
     transport: Arc<dyn Transport>,
     tmux: Arc<dyn TmuxPort>,
     interaction: Arc<InteractionGate>,
+    event_bus: Arc<EventBus>,
 }
 
 impl DrainWorker {
@@ -54,7 +60,7 @@ impl DrainWorker {
         transport: Arc<dyn Transport>,
         tmux: Arc<dyn TmuxPort>,
         interaction: Arc<InteractionGate>,
-        _event_bus: Arc<EventBus>,
+        event_bus: Arc<EventBus>,
         policy: PointerPolicy,
     ) -> Result<Self> {
         if policy.cadence.is_zero() {
@@ -75,6 +81,7 @@ impl DrainWorker {
             transport,
             tmux,
             interaction,
+            event_bus,
         })
     }
 
@@ -202,26 +209,17 @@ impl DrainWorker {
             return self.release_or_backoff(job_id, &job, &msg).await;
         }
 
-        // Fresh capture at the boundary, same reasoning as first-attempt delivery:
-        // a queued retry is a real injection, so it is authorized by an observation
-        // taken now rather than by the last observer tick.
-        let verdict = match self.interaction.fresh_injection_verdict(pane).await {
-            Ok(verdict) => verdict,
-            Err(error) => {
-                // An ERROR, not a veto, and the distinction is the whole fix.
-                // `release_or_backoff` picks ZERO delay for a body, which is
-                // right when the gate merely said no and wrong when the capture
-                // itself FAILED — this is the exact call that spun 20,168 times
-                // against a pane that no longer existed.
-                self.backoff_unobservable(job_id, job.attempt).await?;
-                return Err(error);
-            }
-        };
-        if !verdict.permitted {
-            return self.release_or_backoff(job_id, &job, &msg).await;
-        }
-
         if msg.command.is_some() {
+            let verdict = match self.interaction.fresh_injection_verdict(pane).await {
+                Ok(verdict) => verdict,
+                Err(error) => {
+                    self.backoff_unobservable(job_id, job.attempt).await?;
+                    return Err(error);
+                }
+            };
+            if !verdict.permitted {
+                return self.release_or_backoff(job_id, &job, &msg).await;
+            }
             return self
                 .submit_command_claim(job_id, job.attempt, pane, &msg)
                 .await;
@@ -234,16 +232,23 @@ impl DrainWorker {
                 return Err(error);
             }
         };
-        // The one fresh verdict above supplies both gate permission and actual
-        // composer state. Socket delivery needs only permission; pane typing also
-        // requires the composer to be blank.
-        match select_rung(
-            &recipient,
-            &msg,
-            socket_available,
-            false,
-            verdict.composer_idle,
-        ) {
+        let (interaction_permits, composer_idle) = if socket_available {
+            match self.interaction.fresh_injection_verdict(pane).await {
+                Ok(verdict) => (verdict.permitted, verdict.composer_idle),
+                Err(error) => {
+                    self.backoff_unobservable(job_id, job.attempt).await?;
+                    return Err(error);
+                }
+            }
+        } else {
+            // Pane-body permission is checked once, after input ownership is
+            // acquired, inside `submit_with_owned_input`.
+            (true, true)
+        };
+        if !interaction_permits {
+            return self.release_body(job_id).await;
+        }
+        match select_rung(&recipient, &msg, socket_available, false, composer_idle) {
             DeliveryRung::Socket => match self.transport.deliver(&recipient, &msg).await {
                 Ok(DeliveryOutcome::Delivered { origin }) => {
                     self.queue.ack_delivery(job_id, origin).await.map(|_| ())
@@ -270,7 +275,14 @@ impl DrainWorker {
                     Err(error)
                 }
             },
-            DeliveryRung::TypedBody => self.submit_body_claim(job_id, pane, &msg).await,
+            DeliveryRung::ControlBodyPull => {
+                self.announce_control_body_claim(job_id, job.attempt, pane, &msg)
+                    .await
+            }
+            DeliveryRung::TypedBody => {
+                self.submit_body_claim(job_id, job.attempt, pane, &msg)
+                    .await
+            }
             DeliveryRung::Observe | DeliveryRung::Queue => self.release_body(job_id).await,
             DeliveryRung::Pty => unreachable!("commands are handled before socket capability"),
         }
@@ -297,16 +309,95 @@ impl DrainWorker {
             .map(|_| ())
     }
 
-    async fn submit_body_claim(&self, job_id: JobId, pane: &str, msg: &Msg) -> Result<()> {
+    async fn submit_body_claim(
+        &self,
+        job_id: JobId,
+        attempt: u32,
+        pane: &str,
+        msg: &Msg,
+    ) -> Result<()> {
         let framed = frame_message(&msg.from, msg.from_machine.as_deref(), &msg.body);
-        if let Err(error) = self.tmux.submit(pane, &framed).await {
-            self.release_body(job_id).await?;
-            return Err(error);
-        }
-        self.queue
-            .ack_delivery(job_id, DeliveryOrigin::TypedToPane)
+        match self
+            .interaction
+            .submit_with_owned_input(pane, &framed)
             .await
-            .map(|_| ())
+        {
+            Ok(StagedSubmission::Submitted) => self
+                .queue
+                .ack_delivery(job_id, DeliveryOrigin::TypedToPane)
+                .await
+                .map(|_| ()),
+            Ok(StagedSubmission::Deferred) => self.release_body(job_id).await,
+            Err(error) => {
+                self.backoff_command(job_id, attempt).await?;
+                Err(error)
+            }
+        }
+    }
+
+    async fn announce_control_body_claim(
+        &self,
+        job_id: JobId,
+        _attempt: u32,
+        pane: &str,
+        msg: &Msg,
+    ) -> Result<()> {
+        if self.control_body_pointer_announced(msg).await? {
+            return self.release_body(job_id).await;
+        }
+        let pointer = render_control_body_pointer(&msg.from, msg.from_machine.as_deref());
+        match self
+            .interaction
+            .submit_with_owned_input(pane, &pointer)
+            .await
+        {
+            Ok(StagedSubmission::Submitted) => {
+                let payload = serde_json::json!({
+                    "msg_id": msg.msg_id,
+                    "from": msg.from,
+                    "reason": "terminal-control",
+                })
+                .to_string();
+                if let Err(error) = self
+                    .event_bus
+                    .publish(Event {
+                        seq: None,
+                        v: 1,
+                        at: system_time_ms()?,
+                        kind: CONTROL_BODY_POINTER_EVENT_KIND.to_string(),
+                        seat: Some(msg.to.clone()),
+                        payload,
+                    })
+                    .await
+                {
+                    self.release_body(job_id).await?;
+                    return Err(error);
+                }
+                self.release_body(job_id).await
+            }
+            Ok(StagedSubmission::Deferred) => self.release_body(job_id).await,
+            Err(error) => {
+                self.release_body(job_id).await?;
+                Err(error)
+            }
+        }
+    }
+
+    async fn control_body_pointer_announced(&self, msg: &Msg) -> Result<bool> {
+        let Some(event) = self
+            .event_bus
+            .latest_matching(&msg.to, &[CONTROL_BODY_POINTER_EVENT_KIND])
+            .await?
+        else {
+            return Ok(false);
+        };
+        let payload: serde_json::Value =
+            serde_json::from_str(&event.payload).map_err(|error| PijError::Adapter {
+                adapter: "daemon/pointer".to_string(),
+                message: format!("invalid control-body pointer event: {error}"),
+            })?;
+        Ok(payload["msg_id"].as_str() == Some(&msg.msg_id)
+            && payload["reason"] == "terminal-control")
     }
 
     async fn release_or_backoff(&self, job_id: JobId, job: &Job, msg: &Msg) -> Result<()> {
@@ -367,6 +458,19 @@ impl DrainWorker {
     async fn fail_claim(&self, job_id: JobId, reason: String) -> Result<()> {
         self.queue.ack(job_id, Outcome::Failed { reason }).await
     }
+}
+fn system_time_ms() -> Result<u64> {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| PijError::Adapter {
+            adapter: "daemon/pointer".to_string(),
+            message: format!("system clock is before the Unix epoch: {error}"),
+        })?
+        .as_millis();
+    u64::try_from(millis).map_err(|_| PijError::Adapter {
+        adapter: "daemon/pointer".to_string(),
+        message: "system time does not fit in the pointer event timestamp".to_string(),
+    })
 }
 
 #[cfg(test)]
@@ -609,6 +713,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn terminal_control_body_is_announced_and_remains_readable_in_inbox() {
+        let fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
+        register(&fixture, seat("pij-control", Some("%control"))).await;
+        fixture.interaction.observe_composer("%control", "");
+        let msg = message("pij-control", "before\u{1b}[201~after", None);
+        let id = enqueue(&fixture, &msg).await;
+
+        assert_eq!(fixture.worker.drain_once().await.expect("announce pull"), 1);
+        assert_eq!(fixture.queue.live_len(), 1, "body remains queued");
+        assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)]);
+        assert!(
+            fixture.tmux.calls().iter().any(|call| call
+                .contains("message contains terminal control bytes that cannot be typed safely")),
+            "the seat is told why it must pull: {:?}",
+            fixture.tmux.calls()
+        );
+        assert!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .all(|call| !call.contains("before\u{1b}[201~after")),
+            "the control-bearing body is never typed"
+        );
+        assert_eq!(
+            fixture
+                .worker
+                .drain_once()
+                .await
+                .expect("suppress repeat notice"),
+            1
+        );
+        assert_eq!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .filter(|call| call.starts_with("submit:"))
+                .count(),
+            1,
+            "the durable control-pointer fact suppresses repeat notices"
+        );
+        let claimed = fixture
+            .queue
+            .claim(&[delivery_kind(&msg.to)], "reader")
+            .await
+            .expect("claim inbox")
+            .expect("body remains immediately readable");
+        assert_eq!(claimed.0, id);
+        assert_eq!(
+            serde_json::from_str::<Msg>(&claimed.1.payload).expect("queued message"),
+            msg
+        );
+    }
+
+    #[tokio::test]
     async fn legacy_pointer_history_does_not_suppress_typed_body_delivery() {
         let fixture = fixture_with_limit(FakeTransport::unreachable(), FakeTmux::new(), 3);
         let recipient = SeatId::from("pij-legacy-pointer");
@@ -725,7 +885,10 @@ mod tests {
 
             assert_eq!(fixture.worker.drain_once().await.expect(label), 1);
             assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)], "{label}");
-            assert!(fixture.transport.calls().is_empty(), "{label}: no socket");
+            assert!(
+                fixture.transport.delivered().is_empty(),
+                "{label}: capability may be read, but no socket delivery occurs"
+            );
             assert!(
                 fixture
                     .tmux
@@ -763,6 +926,7 @@ mod tests {
         .await;
 
         assert_eq!(fixture.worker.drain_once().await.expect("fresh draft"), 1);
+        fixture.queue.advance(retry_delay(0));
         tokio::time::sleep(idle * 3).await;
         assert_eq!(fixture.worker.drain_once().await.expect("stale draft"), 1);
 

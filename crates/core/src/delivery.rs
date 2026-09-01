@@ -43,6 +43,13 @@ pub fn delivery_kind(seat: &SeatId) -> String {
     format!("delivery:{seat}")
 }
 
+/// Whether a body contains a terminal control character that a stock composer
+/// cannot represent losslessly. Linefeed remains ordinary body text.
+#[must_use]
+pub fn body_requires_pull(body: &str) -> bool {
+    body.chars().any(|ch| ch.is_control() && ch != '\n')
+}
+
 /// The mechanism selected for one durably accepted message.
 ///
 /// This is deliberately above [`crate::ports::Transport`]: a transport can
@@ -56,6 +63,8 @@ pub enum DeliveryRung {
     Pty,
     /// Carry a body through the selected transport.
     Socket,
+    /// Keep an unrepresentable control-bearing body queued and tell the pane to pull it.
+    ControlBodyPull,
     /// Submit the full framed body to an idle pane.
     TypedBody,
     /// No safe delivery mechanism is available; leave the row queued.
@@ -67,7 +76,8 @@ pub enum DeliveryRung {
 /// `human_typing` is a veto on every pane-facing mechanism, including a socket:
 /// sockets do not corrupt composers, but interrupting a person remains rude.
 /// A command is identified only by [`Msg::command`]; a body beginning with `/`
-/// remains a body. Typed-body delivery is available only when the composer is idle.
+/// remains a body. Typed-body delivery and the named control-body pull exception
+/// are available only when the composer is idle.
 #[must_use]
 pub fn select_rung(
     recipient: &SeatDescriptor,
@@ -88,10 +98,13 @@ pub fn select_rung(
     if socket_available {
         return DeliveryRung::Socket;
     }
-    if composer_idle {
-        return DeliveryRung::TypedBody;
+    if !composer_idle {
+        return DeliveryRung::Queue;
     }
-    DeliveryRung::Queue
+    if body_requires_pull(&msg.body) {
+        return DeliveryRung::ControlBodyPull;
+    }
+    DeliveryRung::TypedBody
 }
 
 /// Select a route without performing IO.
@@ -268,6 +281,45 @@ mod tests {
             select_rung(&paned, &body, false, false, false),
             DeliveryRung::Queue,
             "without a socket or an idle composer, the body stays queued"
+        );
+    }
+
+    #[test]
+    fn terminal_control_body_uses_socket_or_named_pull_never_typing() {
+        let mut recipient = bound_recipient();
+        recipient.pane = Some("%control".to_string());
+        let body = message("before\u{1b}[201~after", None);
+
+        assert_eq!(
+            select_rung(&recipient, &body, true, false, true),
+            DeliveryRung::Socket,
+            "a socket can carry the original control bytes"
+        );
+        assert_eq!(
+            select_rung(&recipient, &body, false, false, true),
+            DeliveryRung::ControlBodyPull,
+            "a stock composer cannot represent the bracketed-paste terminator"
+        );
+        assert_eq!(
+            select_rung(&recipient, &body, false, false, false),
+            DeliveryRung::Queue,
+            "even the safe pointer waits for an idle composer"
+        );
+        assert_eq!(
+            select_rung(
+                &recipient,
+                &message("line one\nline two", None),
+                false,
+                false,
+                true,
+            ),
+            DeliveryRung::TypedBody,
+            "linefeed remains representable body text"
+        );
+        assert_eq!(
+            select_rung(&recipient, &message("tab\tvalue", None), false, false, true,),
+            DeliveryRung::ControlBodyPull,
+            "OMP expands tab bytes, so tab takes the lossless pull exception"
         );
     }
 
