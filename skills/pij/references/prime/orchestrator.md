@@ -33,7 +33,7 @@ Run these steps in order. A later step never retroactively satisfies an earlier 
 1. Read portable [`orient-global.md`](./orient-global.md).
 2. Read the consuming repo's `.harness/government/orient-local.md` — in
    `AI-Substrate/pij` that tree is on the standing `prime-governance` branch, not main:
-   `/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/orient-local.md`.
+   `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/orient-local.md`.
 3. Read the assigned item brief and verify its role, fences, and structure tree.
 4. Invoke `/thesis` against the ask and nearest authoritative artifacts.
 5. Use the host skill mechanism. A plausible thesis written from memory does not satisfy this step.

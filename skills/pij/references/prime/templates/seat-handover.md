@@ -16,7 +16,7 @@
    the outgoing marker, both seats are intentionally prime; this bounded overlap
    prevents a discovery gap during writer transfer.
 2. Read (from this repo's government root — in `AI-Substrate/pij`,
-   `/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/`, on the
+   `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/`, on the
    `prime-governance` branch, not main; write this pack there too):
    spine → baton book → prime-flow (CLI-only) → briefs → THIS PACK →
    local orient. Check the spine `Seq:` counter against this pack's

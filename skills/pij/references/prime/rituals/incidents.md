@@ -21,7 +21,7 @@ every one shipped a standing rule the same hour.
    (numbered, never recycled) with: what was observed · when · who/what was affected ·
    current containment state. Write it while it is happening — pass-time
    records, same law as canaries. In `AI-Substrate/pij` the government root is
-   `/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/`
+   `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/`
    — the standing worktree of the `prime-governance` branch, NOT main and NOT
    your stream worktree.
 3. **Self-report is CREDITED, never punished.** The run's traceability worked

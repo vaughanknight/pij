@@ -67,7 +67,7 @@ Mechanical command details and the manifest example live in
 
 Write `<government-root>/canaries/s<ord>.md` while the evidence is fresh — in
 `AI-Substrate/pij` that is
-`/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/canaries/s<ord>.md`,
+`$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/canaries/s<ord>.md`,
 on the `prime-governance` branch, not main:
 
 | Leg | Mechanical proof |
