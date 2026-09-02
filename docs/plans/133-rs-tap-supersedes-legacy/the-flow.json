@@ -265,6 +265,47 @@
         "from": "phase-1",
         "to": "review-1"
       }
+    },
+    {
+      "id": "NOD-002",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-09-02T06:27:09.082Z",
+      "details": {
+        "node": "backpressure-f8499738aa34",
+        "type": "backpressure",
+        "chore": {
+          "kind": "command",
+          "importance": "optional"
+        }
+      }
+    },
+    {
+      "id": "UPD-006",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-02T06:27:09.312Z",
+      "details": {
+        "node": "backpressure-f8499738aa34",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-011",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-02T06:27:09.472Z",
+      "details": {
+        "node": "backpressure-f8499738aa34",
+        "from": "known",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "optional"
+        }
+      }
     }
   ],
   "nodes": [
@@ -562,6 +603,32 @@
         }
       ],
       "ran_at": "2026-09-02T05:07:34.445Z"
+    },
+    {
+      "id": "backpressure-f8499738aa34",
+      "type": "backpressure",
+      "label": "Backpressure survey (completed plan)",
+      "status": "done",
+      "next": [
+        "plan"
+      ],
+      "created_at": "2026-09-02T06:27:09.081Z",
+      "modified_at": "2026-09-02T06:27:09.472Z",
+      "command": "run /eng-harness-flow --hook pre-coding --json",
+      "chore": {
+        "kind": "command",
+        "importance": "optional"
+      },
+      "branch_of": "plan",
+      "comments": [
+        {
+          "at": "2026-09-02T06:27:09.312Z",
+          "text": "decision:route verdict:Weak final-proof-complete ci-clippy-aligned time:2026-09-02T06:26:24Z basis_sha256:f8499738aa341dbdce6d277da0837caea6d588c024ce1a215f03da3140d0af38",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "ran_at": "2026-09-02T06:27:09.472Z"
     }
   ],
   "plan_dir": "docs/plans/133-rs-tap-supersedes-legacy",

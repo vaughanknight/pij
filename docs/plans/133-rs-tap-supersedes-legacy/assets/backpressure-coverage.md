@@ -1,7 +1,7 @@
 # Backpressure Coverage — rs tap supersedes legacy
 
 **Plan**: [plan.dd.md](../plan.dd.md)
-**Basis (plan SHA-256)**: 9b4ccecbf3acb5c055438208540b21cf85ddd8deae8434a3dc58f057425b5dfa
+**Basis (plan SHA-256)**: f8499738aa341dbdce6d277da0837caea6d588c024ce1a215f03da3140d0af38
 **Generated**: 2026-09-02
 **Certainty**: Weak
 
@@ -25,7 +25,7 @@
 | Pre-fix witness is red (AC2) | 1 | Run the historical control at `dd450381` and retain its transcript; no current-tree command can prove historical failure | ABSENT | human-judgement | inspected root `justfile`, `.harness/extensions/checks/`, Cargo workspace, and plan assets; no historical-control scenario exists |
 | Foreign pipe remains untouched and refusal logs once (AC3) | 1 | BUILD→RUN: focused tmux/observer tests plus isolated daemon foreign-pipe log-count transcript | BUILDABLE | computational | — |
 | Tap deferral names `tap-unowned` and drains after claim (AC4) | 1 | BUILD→RUN: delivery integration test covering queued receipt and one-send queued→delivered transition | BUILDABLE | computational | — |
-| Gates and blast radius (AC5) | 1 | RUN: `harness checks`; RUN by explicit ruling: `~/.cargo/bin/cargo test --workspace`, `~/.cargo/bin/cargo clippy --workspace -- -D warnings`, `~/.cargo/bin/cargo fmt --check`; inspect the scoped diff and operator-home mtimes | BUILDABLE | computational | — |
+| Gates and blast radius (AC5) | 1 | RUN: `harness checks`; RUN by explicit ruling: `~/.cargo/bin/cargo test --workspace`, `~/.cargo/bin/cargo clippy --workspace --all-targets -- -D warnings`, `~/.cargo/bin/cargo fmt --check`; inspect the scoped diff and operator-home mtimes | BUILDABLE | computational | — |
 | Human-typing veto is bounded, observable, and exactly-once (AC6) | 1 | BUILD→RUN: fake gate veto→clear integration test and state/receipt assertion; retain isolated socket live transcript | BUILDABLE | computational + human-judgement | — |
 
 ## Proof Plan (selected)
