@@ -307,10 +307,21 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         AdapterChoice::Fake => Arc::new(FakeTransport::reachable()),
         AdapterChoice::Real => Arc::new(UdsTransport::new()?),
     };
-    // WIRED, wave 1 (u-tmux).
+    // Legacy and Rust daemons intentionally coexist during migration. Resolve the
+    // legacy signature at the composition root and inject it; the tmux adapter
+    // never reads process-global HOME on its own.
+    let legacy_pane_signal_dir = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|home| home.join(".pij/pane-signals"));
     let tmux: Arc<dyn TmuxPort> = match config.adapters.tmux {
         AdapterChoice::Fake => Arc::new(FakeTmux::new()),
-        AdapterChoice::Real => Arc::new(TmuxAdapter::new(pane_signal_dir)),
+        AdapterChoice::Real => match legacy_pane_signal_dir {
+            Some(legacy_root) => Arc::new(TmuxAdapter::with_legacy_tap_root(
+                pane_signal_dir,
+                legacy_root,
+            )),
+            None => Arc::new(TmuxAdapter::new(pane_signal_dir)),
+        },
     };
     // One politeness gate, shared by direct delivery, queued retries, and the
     // pane observer that supplies its composer evidence.
@@ -353,6 +364,7 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         Arc::clone(&transport),
         Arc::clone(&interaction),
         Arc::clone(&event_bus),
+        Duration::from_secs(config.delivery_interval_secs),
     )?);
 
     Ok(Services {

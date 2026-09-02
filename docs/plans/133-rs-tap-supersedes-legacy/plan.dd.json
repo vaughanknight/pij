@@ -73,7 +73,7 @@
           "id": "AC6",
           "claim": "vetoed socket deliveries are retried when the veto lifts and the receipt names why",
           "state": "unchecked",
-          "note": "LIVE: a socket-reachable Claude seat (witness: pij-still-weasel %2081 — direct lookup misses because row proc.pid=6624 is the pane SHELL, but UDS discovery matches ~/.claude/sessions/82124.json via its `tmux` field ending in .%2081, and a send while the composer is blank arrives as a turn) receives a message that was `queued` because the operator had a NON-BLANK composer at send time: once the composer is blank again the daemon retries and the turn arrives WITHOUT a second send. Receipt for the veto case reads `{outcome:queued, reason:\"human-typing\"}` (additive). Control on pre-fix tree pasted. CORRECTION 14:45: a retry DOES exist — the keech selftest drained by socket ~4 min after being queued, and opossum's note ~30 min after — but worm F22 (msg 55C220EB, sent ~02:50Z) sat ~12 h until weasel read the inbox by hand. Find what distinguishes the 12 h row from the 4 min row (daemon restarts at 14:22? the row predating the boot? pane observer state?) and make the retry bounded and observable: `pij-rs state <seat>` or the receipt must show queued rows with reason and next-retry; no row may outlive a live, blank-composer recipient by more than one cadence."
+          "note": "LIVE: a socket-reachable Claude seat receives a message queued because the operator had a non-blank composer; once blank, the daemon retries on the next drain tick without a second send. Receipt reads {outcome:queued, reason:\"human-typing\", next_retry_at:<timestamp>} (additive). Measured destination fact for witness message 55C220EB: jobs row 926 entered the delivery queue at 1788323412, was claimed/acked at 1788323581, and reached attempt 34 — 169 seconds in queue, not 12 hours. Separate provenance note: the sender claimed ~02:50Z while destination enqueued_at was ~14:30 local, so the 12-hour gap preceded admission (sender side, or a send that never reached this daemon) and is out of scope for this plan. No row already admitted to a live recipient with a blank composer may outlive one delivery_interval_secs cadence."
         }
       ]
     },
@@ -83,8 +83,9 @@
         {
           "id": "p1",
           "title": "Build + prove",
-          "state": "unchecked",
-          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
+          "state": "checked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks",
+          "receipt": "All five task rows checked; live proof and final deterministic gates recorded in assets/live-proof.md."
         }
       ]
     }

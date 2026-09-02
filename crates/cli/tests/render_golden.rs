@@ -34,7 +34,10 @@ fn send_computed_payload_matches_the_committed_golden() {
             "pij send",
             Receipt {
                 msg_id: "m-golden".to_string(),
-                outcome: DeliveryOutcome::Queued,
+                outcome: DeliveryOutcome::Queued {
+                    reason: None,
+                    next_retry_at: None,
+                },
                 at: 1_787_999_999_000,
             },
         ),

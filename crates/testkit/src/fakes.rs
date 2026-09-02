@@ -784,7 +784,10 @@ impl Transport for FakeTransport {
             return Ok(outcome);
         }
         if !state.reachable {
-            return Ok(DeliveryOutcome::Queued);
+            return Ok(DeliveryOutcome::Queued {
+                reason: None,
+                next_retry_at: None,
+            });
         }
         state.delivered.push(msg.clone());
         // A fake transport observes only that it accepted the bytes — the
@@ -982,6 +985,11 @@ impl FakeTmux {
     pub fn with_user_typing(self) -> Self {
         self.state.lock().expect("fake tmux mutex").typing = true;
         self
+    }
+
+    /// Change the observed typing mode for a later delivery attempt.
+    pub fn set_user_typing(&self, typing: bool) {
+        self.state.lock().expect("fake tmux mutex").typing = typing;
     }
 
     /// Every call made, in order.

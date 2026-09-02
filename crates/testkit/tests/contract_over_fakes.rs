@@ -118,7 +118,13 @@ fn an_unreachable_transport_queues_rather_than_claiming_delivery() {
 
     let outcome = block_on(transport.deliver(&seat, &msg)).expect("deliver");
 
-    assert_eq!(outcome, DeliveryOutcome::Queued);
+    assert_eq!(
+        outcome,
+        DeliveryOutcome::Queued {
+            reason: None,
+            next_retry_at: None
+        }
+    );
     assert!(
         transport.delivered().is_empty(),
         "a queued message must not be counted as delivered"

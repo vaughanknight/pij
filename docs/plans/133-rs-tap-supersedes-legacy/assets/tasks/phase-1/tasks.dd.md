@@ -12,7 +12,7 @@
 | title | Phase 1 |
 | slug | phase-1 |
 | ordinal | — |
-| status | draft |
+| status | ready |
 | complexity | — |
 | summary | — |
 | backpressure | — |
@@ -27,16 +27,50 @@
 
 ## Summary
 
-_Empty._
+Implement impl-guide units u1 and u2 in one serial Rust phase: preserve red controls, supersede only legacy taps, carry typed queue reasons, bound retries, and prove the live dev-daemon path.
 
 <a id="tasks"></a>
 
 ## Tasks
 
-_No entries._
+| id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| tk-1331 | Capture red controls and retry distinction | pij-rs delivery | p1 | [x] checked | — | RED artifacts 64 and 70; read-only production SQLite row 926 diagnosis. | [tk-1331](tasks.dd.md#done-when) | Pre-fix evidence proves legacy-tap refusal and the 12-hour versus cadence-scale queued-row distinction, with focused tests failing for each intended behavior. | Use FlowSpace before meaning-shaped searches; retain exact RED output and do not change production daemons. | [AC2](../../../plan.dd.md#acceptance-criteria), [AC6](../../../plan.dd.md#acceptance-criteria) |
+| tk-1332 | Supersede legacy taps and deduplicate refusals | pij-rs tmux observer | p1 | [x] checked | — | Narrow three-fact legacy signature; foreign pipe preserved; identical refusal surfaced once per pane/error per boot. | [tk-1332](tasks.dd.md#done-when) | The observer claims only legacy-generation pipes and logs a genuinely foreign unowned pipe once per pane per daemon boot. | Legacy signature is pane_pipe=1, empty marker, and ~/.pij/pane-signals/_N.raw present; unknown foreign pipes remain untouched. | [AC1](../../../plan.dd.md#acceptance-criteria), [AC3](../../../plan.dd.md#acceptance-criteria) |
+| tk-1333 | Carry reasoned tap deferral through delivery | pij-rs delivery | p1 | [x] checked | — | Typed deferral enum, additive queued reason/next_retry_at, and one-send retry after tap claim. | [tk-1333](tasks.dd.md#done-when) | Injection verdicts distinguish tap ownership from composer vetoes, queued receipts add reason tap-unowned, and the existing drain delivers after tap claim without another send. | Wire stays v2; reason is additive and no legacy extension paths change. | [AC4](../../../plan.dd.md#acceptance-criteria) |
+| tk-1334 | Bound and expose vetoed socket retries | pij-rs delivery | p1 | [x] checked | — | Configured cadence is shared by receipt schedule and drain loop; local witness row 926 retried 34 times in 169s. | [tk-1334](tasks.dd.md#done-when) | A human-typing/composer veto queues with reason human-typing, is re-evaluated within one cadence, delivers once when clear, and exposes queued reason plus next retry. | First diagnose why one witness row lived 12 hours while others drained in minutes; preserve ledger dedupe and policy. | [AC6](../../../plan.dd.md#acceptance-criteria) |
+| tk-1335 | Prove deterministic and live acceptance | pij-rs delivery | p1 | [x] checked | — | assets/live-proof.md; Cargo artifact://142; final full harness checks green. | [tk-1335](tasks.dd.md#done-when) | Focused Rust tests, harness checks, foreign-pipe log count, and isolated dev-daemon real-client transcripts close AC1-AC6 without operator-home or production-daemon mutation. | Production rs daemon is not restarted; legacy daemon stays running; live proof uses its own state dir and port. | [AC1](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria), [AC3](../../../plan.dd.md#acceptance-criteria), [AC4](../../../plan.dd.md#acceptance-criteria), [AC5](../../../plan.dd.md#acceptance-criteria), [AC6](../../../plan.dd.md#acceptance-criteria) |
 
 <a id="done-when"></a>
 
 ## Done when
 
-_No fields._
+### tk-1331
+
+| id | assertion | state | pressure | receipt |
+| --- | --- | --- | --- | --- |
+| dw-1331 | Every changed observable contract has a retained pre-fix failing witness, including the long-lived queued-row case. | [x] checked | not-applicable | Legacy refusal RED artifact://64; repeated-refusal RED artifact://70; production row 926 shows 34 attempts and 169s in the destination queue; the original receipt lacked reason/next_retry_at. |
+
+### tk-1332
+
+| id | assertion | state | pressure | receipt |
+| --- | --- | --- | --- | --- |
+| dw-1332 | Tests distinguish legacy, owned, and foreign pipes; only the legacy pipe is superseded and repeated observer ticks emit one foreign refusal. | [x] checked | not-applicable | RED artifact://64 and artifact://70; GREEN pij-tmux adapter 33/33 artifact://68, focused supersede artifact://73, pij-daemon lib 153/153 artifact://79. |
+
+### tk-1333
+
+| id | assertion | state | pressure | receipt |
+| --- | --- | --- | --- | --- |
+| dw-1333 | Tests prove typed veto reasons, additive queued receipt serialization, and queued-to-delivered transition after tap claim without a second send. | [x] checked | not-applicable | Reasoned receipt test artifact://75; tap-unowned queued-to-delivered transition artifact://93; workspace 586 passed artifact://88. |
+
+### tk-1334
+
+| id | assertion | state | pressure | receipt |
+| --- | --- | --- | --- | --- |
+| dw-1334 | Tests prove reason human-typing, retry no later than one configured cadence after the veto clears, exactly-once delivery, and observable next-retry state. | [x] checked | not-applicable | Queued wire reason + next_retry_at and human-typing veto to next clear tick exactly-once tests passed artifact://96; workspace 586 passed artifact://88. |
+
+### tk-1335
+
+| id | assertion | state | pressure | receipt |
+| --- | --- | --- | --- | --- |
+| dw-1335 | All focused and full gates pass and assets/live-proof.md contains the required control and isolated live transcripts with production daemons untouched. | [x] checked | not-applicable | Focused artifact://100; Cargo workspace/clippy/fmt artifact://142; harness checks all eight pass 2026-09-02T05:41:22.062Z; assets/live-proof.md. |

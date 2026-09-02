@@ -121,6 +121,7 @@ pub(super) async fn test_services(
             Arc::clone(&services.transport),
             Arc::clone(&services.interaction),
             Arc::clone(&services.event_bus),
+            Duration::from_secs(1),
         )
         .expect("delivery service"),
     );
@@ -1140,10 +1141,13 @@ async fn send_enqueues_exactly_once_and_refuses_remote_without_federation() {
         .expect("send");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let receipt: Envelope<Receipt> = response.json().await.expect("receipt envelope");
-    assert_eq!(
+    assert!(matches!(
         receipt.data.expect("receipt").outcome,
-        pij_core::model::DeliveryOutcome::Queued
-    );
+        pij_core::model::DeliveryOutcome::Queued {
+            reason: Some(reason),
+            next_retry_at: None,
+        } if reason == "pre-bind"
+    ));
 
     let jobs = queue.jobs();
     assert_eq!(jobs.len(), 1, "the request path performs one enqueue");
@@ -1736,7 +1740,10 @@ async fn two_daemons_forward_remote_send_into_destination_queue_and_spine() {
     let admitted: Envelope<Receipt> = response.json().await.expect("queued receipt");
     assert_eq!(
         admitted.data.expect("receipt").outcome,
-        pij_core::model::DeliveryOutcome::Queued,
+        pij_core::model::DeliveryOutcome::Queued {
+            reason: None,
+            next_retry_at: None
+        },
         "the origin observed only its own durable queue"
     );
     let origin_events_before = a_spine

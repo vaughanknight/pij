@@ -1372,6 +1372,51 @@ fn matching_marker_adopts_restart_pipe_and_detach_clears_ownership() {
 }
 
 #[test]
+fn unmarked_legacy_pipe_is_superseded_without_touching_a_foreign_pipe() {
+    let Some(session) = TestSession::start_or_skip("tap-legacy") else {
+        return;
+    };
+    let pane = block_on(TmuxAdapter::for_server(&session.server, &session.tap_root).list_panes())
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    let legacy_root = session.tap_root.with_extension("legacy");
+    let legacy_sink = tap_sink_path(&legacy_root, &pane.id);
+    fs::create_dir_all(&legacy_root).expect("create isolated legacy tap root");
+    fs::write(&legacy_sink, b"").expect("create legacy sink signature");
+    let legacy_command = format!("cat >> '{}'", legacy_sink.display());
+    session.run(["pipe-pane", "-O", "-o", "-t", &pane.id, &legacy_command]);
+    let marker = session.run([
+        "show-options",
+        "-p",
+        "-v",
+        "-q",
+        "-t",
+        &pane.id,
+        "@pij-tap-sink",
+    ]);
+    assert!(
+        marker.stdout.is_empty(),
+        "legacy daemon sets no ownership marker"
+    );
+
+    let tmux = TmuxAdapter::for_server_with_legacy_tap_root(
+        &session.server,
+        &session.tap_root,
+        &legacy_root,
+    );
+    let sink = tap_sink_path(&session.tap_root, &pane.id);
+    block_on(tmux.attach_pane_tap(&pane.id, &sink)).expect("supersede legacy tap");
+    block_on(tmux.send_keys(&pane.id, "after-legacy")).expect("emit after supersede");
+    let bytes = drain_until_quiet(&tmux, &session.server, &pane.id, "after-legacy");
+    assert!(String::from_utf8_lossy(&bytes).contains("after-legacy"));
+
+    block_on(tmux.detach_pane_tap(&pane.id)).expect("detach superseding tap");
+    fs::remove_dir_all(legacy_root).expect("remove isolated legacy tap root");
+}
+
+#[test]
 fn mismatched_marker_refuses_to_replace_a_foreign_pipe() {
     let Some(session) = TestSession::start_or_skip("tap-foreign") else {
         return;

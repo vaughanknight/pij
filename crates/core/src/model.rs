@@ -617,7 +617,14 @@ pub enum DeliveryOutcome {
         origin: DeliveryOrigin,
     },
     /// Durably queued; will be delivered when the seat can receive.
-    Queued,
+    Queued {
+        /// Why immediate delivery was deferred, when the deciding layer knows.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+        /// Earliest scheduled retry, in milliseconds since the Unix epoch.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        next_retry_at: Option<u64>,
+    },
     /// Withheld pending an approval step. PENDING, not final — a held message may
     /// still become delivered, or refused.
     Held {
