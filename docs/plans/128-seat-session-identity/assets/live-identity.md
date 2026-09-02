@@ -108,6 +108,12 @@ $ flowspace3 conversation ingest --pij pij-enthusiastic-barnacle --json
 
 $ flowspace3 conversation ingest --pij pij-just-read-the-instructions --json
 {"ok":true,"command":"conversation ingest","v":1,"data":{"accepted":true,"address":"pij/pij-just-read-the-instructions","dedupe_key":"ingest:pij/pij-just-read-the-instructions@/Users/jordanknight/pi-hacking/fs3-seat-session-identity"}}
+
+$ flowspace3 conversation verify --session 01a05fca-6a76-7000-b6fa-4a565da19330 --harness omp --json
+{"ok":true,"command":"conversation verify","v":1,"data":{"address":"conv:bbffa69e-49b7-84bf-a577-5c4435e31b68","turns":11,"repo":"git:github.com/AI-Substrate/pij","worktree":"/Users/jordanknight/pi-hacking/fs3-seat-session-identity"}}
+
+$ flowspace3 conversation verify --session 5dfaefc5-a406-4935-912b-1f7d7ff06457 --harness claude --json
+{"ok":true,"command":"conversation verify","v":1,"data":{"address":"conv:17a77c18-84d8-80ba-a0a1-ad1a74d00061","turns":2,"repo":"git:github.com/AI-Substrate/pij","worktree":"/Users/jordanknight/pi-hacking/fs3-seat-session-identity"}}
 ```
 
-Both commands resolved through `pij sessions`; neither read `pij.sqlite` directly.
+The two `--pij` commands accepted and queued addresses only after resolving the rs seats through this branch's `pij sessions`; direct native-identity verification then confirmed 11 OMP turns and 2 Claude turns reached the index. Neither consumer command read `pij.sqlite` directly.

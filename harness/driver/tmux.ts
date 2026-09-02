@@ -90,6 +90,9 @@ const TMUX_OPTS: ExecFileSyncOptions = {
 };
 
 const PIJ_IDENTITY_ENV_KEYS = [
+	"CLAUDE_CODE_SESSION_ID",
+	"CODEX_THREAD_ID",
+	"COPILOT_AGENT_SESSION_ID",
 	"PIJ_ANNOUNCE_TO",
 	"PIJ_PARENT_ID",
 	"PIJ_ROLE",
@@ -107,7 +110,9 @@ const PIJ_ROUTING_ENV_KEYS = ["PIJ_DAEMON_GENERATION", "PIJ_RS_ADDR", "PIJ_RS_ST
  * fleet. Explicit safe routing follows the invoking check into a tmux server
  * that an earlier test may already have created; scenario values still win. */
 function childEnvironment(explicit: Record<string, string> = {}): Record<string, string> {
-	const scrubbed: Record<string, string> = {};
+	const scrubbed: Record<string, string> = {
+		PIJ_DAEMON_GENERATION: process.env.PIJ_DAEMON_GENERATION ?? "legacy",
+	};
 	for (const key of PIJ_ROUTING_ENV_KEYS) {
 		const value = process.env[key];
 		if (value !== undefined) scrubbed[key] = value;

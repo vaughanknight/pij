@@ -88,8 +88,25 @@ describe("driver/tmux primitives", () => {
 		expect(newSession).toContain("50");
 	});
 
+	it("boot() defaults fixture children away from the live rs daemon", async () => {
+		const previous = process.env.PIJ_DAEMON_GENERATION;
+		delete process.env.PIJ_DAEMON_GENERATION;
+		try {
+			const { boot } = await import("./driver/tmux.js");
+			boot({ session: "safe-default", cwd: "/tmp", cmd: "pi" });
+			const newSession = calls.find((call) => call[1] === "new-session");
+			expect(newSession).toContain("PIJ_DAEMON_GENERATION=legacy");
+		} finally {
+			if (previous === undefined) delete process.env.PIJ_DAEMON_GENERATION;
+			else process.env.PIJ_DAEMON_GENERATION = previous;
+		}
+	});
+
 	it("boot() scrubs ambient identity and preserves routing plus scenario env", async () => {
 		vi.stubEnv("PIJ_ANNOUNCE_TO", "pij-real-prime");
+		vi.stubEnv("CLAUDE_CODE_SESSION_ID", "real-claude-session");
+		vi.stubEnv("CODEX_THREAD_ID", "real-codex-session");
+		vi.stubEnv("COPILOT_AGENT_SESSION_ID", "real-copilot-session");
 		vi.stubEnv("PIJ_PARENT_ID", "pij-real-prime");
 		vi.stubEnv("PIJ_SESSION_ID", "pij-real-worker");
 		vi.stubEnv("PIJ_SPAWN_ID", "spawn-real");
@@ -107,6 +124,9 @@ describe("driver/tmux primitives", () => {
 			expect(newSession).toContain("PIJ_RS_ADDR=127.0.0.1:17600");
 			expect(newSession).toContain("PIJ_RS_STATE_DIR=/tmp/isolated-rs");
 			for (const key of [
+				"CLAUDE_CODE_SESSION_ID",
+				"CODEX_THREAD_ID",
+				"COPILOT_AGENT_SESSION_ID",
 				"PIJ_ANNOUNCE_TO",
 				"PIJ_PARENT_ID",
 				"PIJ_SESSION_ID",

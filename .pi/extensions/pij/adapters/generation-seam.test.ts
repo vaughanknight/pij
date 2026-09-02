@@ -663,12 +663,8 @@ describe("every routed path is a path rs registers", () => {
 		return paths;
 	};
 
-	it("the daemon registers every live path plus the frozen u1 sessions dependency", () => {
+	it("the daemon registers every live routed path", () => {
 		const registered = new Set(registeredPaths(readFileSync(MOD_RS, "utf8")));
-		// u2 builds against the PM-frozen u1 fake while that migration unit is
-		// composed separately. The composed-tree proof replaces this dependency
-		// with the real `/v1/shim/sessions` endpoint.
-		registered.add("/v1/shim/sessions");
 		const missing = RS_ROUTE_TABLE.filter((row) => !registered.has(row.rsPath)).map((row) => ({
 			verb: row.leaf === undefined ? row.verb : `${row.verb} ${row.leaf}`,
 			rsPath: row.rsPath,
