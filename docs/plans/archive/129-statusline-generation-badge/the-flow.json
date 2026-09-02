@@ -8,7 +8,7 @@
     "intent": "Show the rs-preferred seat id and generation badge in Claude and omp statuslines",
     "bag": {
       "mode": "Simple",
-      "status": "archived"
+      "status": "complete"
     }
   },
   "created_at": "2026-09-02T01:55:12.810Z",
@@ -301,6 +301,41 @@
         "from": "post-flight",
         "to": "ship"
       }
+    },
+    {
+      "id": "UPD-008",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-02T04:29:29.821Z",
+      "details": {
+        "node": "ship",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-013",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-02T04:29:29.978Z",
+      "details": {
+        "node": "ship",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-009",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-02T04:30:03.507Z",
+      "details": {
+        "node": "ship",
+        "fields": [
+          "comments"
+        ]
+      }
     }
   ],
   "nodes": [
@@ -429,14 +464,30 @@
       "id": "ship",
       "type": "ship",
       "label": "Ship",
-      "status": "assumed",
+      "status": "done",
       "command": "/builder 8 ship",
       "next": [],
       "instructions": [
         "Get the work out — push the branch, open a PR (using the repo's PR guidance), watch its CI checks, and report problems; the merge itself is optional.",
         "Run /builder 8 ship --plan \"<plan path>\" — the plan folder was archived at post-flight, so resolve --plan under docs/plans/archive/<ord>-<slug>/; push and PR-open each pause for a separate confirm, and any merge waits for a typed PROCEED.",
         "Done when the PR is open and its checks are green (or the failures are reported with a fix-loop offer); a diverged base hands off to 8c reconcile."
-      ]
+      ],
+      "comments": [
+        {
+          "at": "2026-09-02T04:29:29.821Z",
+          "text": "verdict:all-green pr:https://github.com/AI-Substrate/pij/pull/353 checks:4-pass report:assets/ship/2026-09-02/ship-report.md time:2026-09-02T04:14:00Z",
+          "source": "agent",
+          "kind": "validation"
+        },
+        {
+          "at": "2026-09-02T04:30:03.507Z",
+          "text": "correction:prior-receipt-time-was-prefilled actual_completion_time:2026-09-02T04:29:42Z",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "modified_at": "2026-09-02T04:30:03.507Z",
+      "ran_at": "2026-09-02T04:29:29.978Z"
     },
     {
       "id": "backpressure",
