@@ -2,7 +2,7 @@
 
 **Generated**: 2026-09-02
 **Branch**: `127-claude-session-start-adopt` → **Base**: `main`
-**PR**: https://github.com/AI-Substrate/pij/pull/349 (#349) · **State**: open
+**PR**: https://github.com/AI-Substrate/pij/pull/349 (#349) · **State**: merged
 
 ## Checks
 
@@ -27,5 +27,5 @@ Nothing deferred — all acceptance criteria met, no open review findings, no op
 
 ## Resume
 
-- Merge intentionally left to prime; no auto-merge armed.
-- Re-check checks: `gh pr checks 349`
+- PR #349 was merged by prime after all four checks passed.
+- This ship report and terminal flow-state commit follow on a closeout-only PR because the merge completed while the report was being written.
