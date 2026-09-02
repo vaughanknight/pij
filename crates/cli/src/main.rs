@@ -387,11 +387,14 @@ enum DaemonAction {
 #[derive(Clone, Debug, Subcommand)]
 enum DoctorAction {
     /// Report cross-session inbound state for every discovered Claude home.
-    ClaudeInbound,
+    #[command(name = "claude-inbound")]
+    Inbound,
     /// Report pij SessionStart hook state for every discovered Claude home.
-    ClaudeHook,
+    #[command(name = "claude-hook")]
+    Hook,
     /// Report pij's managed Claude statusline state for every discovered home.
-    ClaudeStatusline,
+    #[command(name = "claude-statusline")]
+    Statusline,
 }
 
 #[tokio::main]
@@ -459,9 +462,9 @@ async fn run(cli: Cli) -> ExitCode {
 
     if let Command::Doctor { action } = &cli.command {
         return match action {
-            DoctorAction::ClaudeInbound => run_claude_inbound_doctor(cli.json),
-            DoctorAction::ClaudeHook => run_claude_hook_doctor(cli.json, &hook_dir),
-            DoctorAction::ClaudeStatusline => run_claude_statusline_doctor(cli.json, &hook_dir),
+            DoctorAction::Inbound => run_claude_inbound_doctor(cli.json),
+            DoctorAction::Hook => run_claude_hook_doctor(cli.json, &hook_dir),
+            DoctorAction::Statusline => run_claude_statusline_doctor(cli.json, &hook_dir),
         };
     }
 
