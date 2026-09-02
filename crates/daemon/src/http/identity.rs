@@ -515,8 +515,6 @@ pub(crate) async fn adopt(
             "codex" => caller.codex_session.clone(),
             _ => None,
         });
-    let resolves_from_pane = pane.is_some();
-
     let claim = Registration {
         supersedes: None,
         id: seat_id.0.clone(),
@@ -554,16 +552,11 @@ pub(crate) async fn adopt(
     match state.services.registry.get(&seat_id).await {
         Ok(Some(persisted)) => {
             let mut answer = Envelope::ok(ADOPT, persisted);
-            answer.meta = Some(if resolves_from_pane {
-                format!(
-                    "adopted {seat_id}; identity resolves from pane {} on each command — no PIJ_SESSION_ID export is required for this harness",
-                    pane.as_deref().unwrap_or("<none>")
-                )
-            } else {
-                format!(
-                    "export PIJ_SESSION_ID={seat_id} — this shell still carries whatever id it had before, and an id that contradicts the pane is refused, not preferred"
-                )
-            });
+            answer.meta = Some(format!(
+                "adopted {seat_id}; identity resolves from pane {} on each command — no PIJ_SESSION_ID export is required for this harness",
+                pane.as_deref()
+                    .expect("paneless adopt returned before registration")
+            ));
             envelope(StatusCode::OK, &answer)
         }
         Ok(None) => internal(
@@ -742,7 +735,7 @@ pub(crate) async fn resolve_seat(
                 format!(
                     "the caller claims to be `{asserted}` but pane `{pane}` belongs to `{}` — \
                      refusing rather than answering for either. An asserted id never outranks an \
-                     observable one.",
+                     observable one. Retry with `env -u PIJ_SESSION_ID` so the pane-derived identity can be used.",
                     seat.id
                 ),
             ));

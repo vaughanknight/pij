@@ -387,7 +387,18 @@ async fn register(
         .register_with_harness_session(request.claim, request.harness_session)
         .await
     {
-        Ok(descriptor) => envelope(StatusCode::OK, &Envelope::ok("pij register", descriptor)),
+        Ok(descriptor) => {
+            let meta = descriptor.pane.is_none().then(|| {
+                format!(
+                    "export PIJ_SESSION_ID={} — this paneless seat has no observable pane, so subsequent commands require the registered id",
+                    descriptor.id
+                )
+            });
+            let mut answer = Envelope::ok("pij register", descriptor);
+            answer.meta = meta;
+            envelope(StatusCode::OK, &answer)
+        }
+
         Err(RegistrationError::Refused(reason)) => refused("pij register", reason),
         Err(RegistrationError::Runtime(error)) => internal("pij register", error),
     }

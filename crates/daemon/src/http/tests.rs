@@ -367,6 +367,57 @@ async fn registration_corroborates_process_and_refuses_shared_process_aliases() 
 
     server.abort();
 }
+
+#[tokio::test]
+async fn paneless_registration_returns_the_identity_export_it_requires() {
+    let identity = ProcIdentity {
+        pid: 43,
+        proc_start: 20260902152500,
+    };
+    let registry = Arc::new(FakeRegistry::new());
+    let mut services = test_services(
+        registry,
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(identity));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&Registration {
+            supersedes: None,
+            id: "pij-paneless".to_string(),
+            harness: "omp".to_string(),
+            folder: "/abs/tree".to_string(),
+            pane: None,
+            pid: Some(identity.pid),
+            proc_start: Some(identity.proc_start),
+            spawn_id: None,
+            model: None,
+            provider: None,
+            effort: None,
+            parent: None,
+            relay: false,
+        })
+        .send()
+        .await
+        .expect("register paneless seat");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let registered: Envelope<SeatDescriptor> = response.json().await.expect("register envelope");
+    assert_eq!(registered.data.expect("descriptor").pane, None);
+    assert_eq!(
+        registered.meta.as_deref(),
+        Some(
+            "export PIJ_SESSION_ID=pij-paneless — this paneless seat has no observable pane, so subsequent commands require the registered id"
+        )
+    );
+
+    server.abort();
+}
+
 #[tokio::test]
 async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
     let registry = Arc::new(FakeRegistry::new());

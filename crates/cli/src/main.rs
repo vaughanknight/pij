@@ -286,15 +286,15 @@ enum Command {
 enum SidecarAction {
     /// Send one outbound Telegram message and bind this seat as the reply target.
     Telegram {
-        /// Sending seat, which the inbound reply will route back to.
+        /// Assert the derived sending seat, which inbound replies route back to.
         #[arg(long)]
-        from: String,
+        from: Option<String>,
         /// Message text.
         #[arg(long)]
         body: String,
-        /// Caller-supplied correlation id.
+        /// Correlation id. Omit to mint a UUIDv7.
         #[arg(long)]
-        msg_id: String,
+        msg_id: Option<String>,
         /// Conversation override; absent uses the credential file's chat id.
         #[arg(long)]
         chat_id: Option<String>,
@@ -354,14 +354,17 @@ enum SidecarAction {
 
 impl SidecarAction {
     /// Render the wire request the daemon's `/v1/sidecar` route decodes.
-    fn request(self) -> Value {
-        match self {
+    async fn request(self, client: &DaemonClient) -> Result<Value, PijError> {
+        Ok(match self {
             Self::Telegram {
                 from,
                 body,
                 msg_id,
                 chat_id,
             } => {
+                let from =
+                    resolve_command_seat(client, "pij sidecar telegram", from.as_deref()).await?;
+                let msg_id = msg_id.unwrap_or_else(|| uuid::Uuid::now_v7().to_string());
                 json!({"sidecar": "telegram", "request": {"from": from, "body": body, "msg_id": msg_id, "chat_id": chat_id}})
             }
             Self::BgStart {
@@ -388,7 +391,7 @@ impl SidecarAction {
             Self::ChoreAck { name, target } => {
                 json!({"sidecar": "chore", "request": {"action": "ack", "name": name, "target": target}})
             }
-        }
+        })
     }
 }
 
@@ -509,7 +512,15 @@ async fn run(cli: Cli) -> ExitCode {
         Command::Daemon { .. } => unreachable!("daemon returned before client construction"),
         Command::Doctor { .. } => unreachable!("doctor returned before client construction"),
         Command::Ping => emit(&client.ping().await, cli.json),
-        Command::Sidecar { action } => emit(&client.sidecar(&action.request()).await, cli.json),
+        Command::Sidecar { action } => {
+            let request = match action.request(&client).await {
+                Ok(request) => request,
+                Err(error) => {
+                    return emit(&setup_refusal::<Value>("pij sidecar", error), cli.json);
+                }
+            };
+            emit(&client.sidecar(&request).await, cli.json)
+        }
         Command::Register {
             supersedes,
             id,
@@ -1598,6 +1609,12 @@ mod tests {
             panic!("expected send");
         };
         assert_eq!(body_file.as_deref(), Some("-"));
+    }
+
+    #[test]
+    fn telegram_short_form_leaves_identity_and_message_id_for_runtime_resolution() {
+        let _ = Cli::try_parse_from(["pij-rs", "sidecar", "telegram", "--body", "hello"])
+            .expect("short Telegram form parses");
     }
 
     #[test]

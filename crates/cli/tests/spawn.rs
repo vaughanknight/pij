@@ -663,6 +663,27 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
     let reason = contradiction.meta.expect("report identity refusal reason");
     assert!(reason.contains("pij-sender"), "{reason}");
     assert!(reason.contains("pij-reader"), "{reason}");
+    let contradictory_telegram = run_cli_with_env(
+        &dir,
+        &addr,
+        &["sidecar", "telegram", "--body", "must not send"],
+        [("PIJ_SESSION_ID", "pij-sender"), ("TMUX_PANE", "%77")],
+    );
+    assert!(
+        !contradictory_telegram.status.success(),
+        "Telegram replies must not bind to an asserted foreign seat"
+    );
+    assert!(
+        contradictory_telegram.stderr.is_empty(),
+        "identity refusal must not be replaced by a usage dump"
+    );
+    let contradiction: Envelope<serde_json::Value> =
+        serde_json::from_slice(&contradictory_telegram.stdout).expect("Telegram identity refusal");
+    let reason = contradiction
+        .meta
+        .expect("Telegram identity refusal reason");
+    assert!(reason.contains("pij-sender"), "{reason}");
+    assert!(reason.contains("pij-reader"), "{reason}");
 
     let sent = run_cli_with_env(
         &dir,

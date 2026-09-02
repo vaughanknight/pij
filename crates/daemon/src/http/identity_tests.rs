@@ -394,7 +394,9 @@ async fn whoami_refuses_an_asserted_seat_that_contradicts_the_derived_pane() {
         reqwest::StatusCode::OK,
         "a claim that contradicts what the daemon can observe is refused, never preferred"
     );
-    refusal_envelope(response).await;
+    let refusal = refusal_envelope(response).await;
+    let reason = refusal.meta.expect("contradiction reason");
+    assert!(reason.contains("env -u PIJ_SESSION_ID"), "{reason}");
 
     world.server.abort();
 }
