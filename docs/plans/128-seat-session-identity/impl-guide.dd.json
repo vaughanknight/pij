@@ -31,7 +31,7 @@
           "name": "rs persists and exposes harness_session",
           "paths": "crates/store/migrations/0012_*.sql, crates/store/src/migrate.rs (SCHEMA_VERSION only), crates/store/src/** (row mapping), crates/core/src/model.rs (SeatDescriptor field), crates/daemon/src/registration.rs, crates/daemon/src/http/identity.rs (caller struct alias), crates/daemon/src/http/mod.rs (/v1/seats + state projection), crates/daemon/src/http/shim.rs (/v1/shim/sessions GET returning rs rows), tests",
           "responsibility": "Store the inner harness session id at registration when supplied; expose it on every seat projection; serve rs session rows on the shim.",
-          "interface": "SeatDescriptor.harness_session: Option<String>; wire aliases HARNESS_SESSION_ID|harness_session|harnessSession (generic) + existing CLAUDE_CODE_SESSION_ID / COPILOT_AGENT_SESSION_ID map into it; /v1/shim/sessions → {rows:[{id,harness,session,folder,generation:\"rs\",lifecycle:null,transcriptPath:null}]}; /v1/seats rows gain session + generation.",
+          "interface": "SeatDescriptor.harness_session: Option<String>; wire aliases HARNESS_SESSION_ID|harness_session|harnessSession (generic) + existing CLAUDE_CODE_SESSION_ID / COPILOT_AGENT_SESSION_ID map into it; /v1/shim/sessions → {rows:[{pijId, harness, harnessSessionId, gitCommonDir, lifecycle:null, boundModel, spawnedBy:<parent>, transcriptPath:null, generation:\"rs\"}]} — the LEGACY field names, emitted directly by rs (no rs-native row, no u2 translation); /v1/seats rows gain session + generation.",
           "test_strategy": "cargo test -p pij-store (migration, row roundtrip), -p pij-daemon (register with/without field, projection, shim rows). RED-first.",
           "depends_on": "none",
           "wave": 1,
