@@ -11,11 +11,11 @@
 
 - Preserved the compiling inherited spawn implementation after focused Rust/TypeScript tests and workspace checks.
 - Jordan expanded the retry policy after production measured 72 dead-recipient pending rows, worst attempt 15,933.
-- `DrainWorker` now takes one authoritative all-server tmux pane snapshot per non-empty pass, claims tombstoned recipients, and drains every dead recipient's rows in the same cadence. Live recipients retain one-claim-per-pass suppression; listed panes and systemic tmux failures retain their retry behavior.
+- `DrainWorker` uses one successful all-server tmux pane snapshot per non-empty pass, claims tombstoned recipients, and drains every proven-dead recipient's rows in the same cadence. If inventory fails, absence remains unknown: the systemic error is deferred and returned after per-recipient work continues.
 - Production-copy proof: 72 dead pending before, 0 after the first cadence; evidence in `assets/prod-copy-proof.md`.
 - Opus R001 fixed with additive `actual_model_observed`: unavailable model evidence preserves the requested model, while an observed absence remains a mismatch.
 - Opus R002 fixed by grouping `spawn_failure` evidence; CI-equivalent clippy is green.
-- GREEN: 26 pointer-worker tests, 9 spawn tests, Claude/model truth tests, TS runtime test 8/8, `cargo check --workspace`, and `cargo clippy --workspace --all-targets -- -D warnings`.
+- GREEN: 27 pointer-worker tests, 9 spawn tests, Claude/model truth tests, TS runtime test 8/8, `cargo check --workspace`, and `cargo clippy --workspace --all-targets -- -D warnings`.
 
 ## tk-c132 — composed proof and review
 
@@ -23,7 +23,7 @@
 - `cargo clippy --workspace --all-targets -- -D warnings`: pass.
 - Final `harness checks --json`: all eight sensors passed (`local-paths`, `typecheck`, `lint`, `test`, `windows-compat`, `smoke`, `pkg-audit`, `snapshots`).
 - Final real-client tmux proof: `assets/live-proof.md`; production-copy one-cadence proof: `assets/prod-copy-proof.md`.
-- Claude Opus R1 paused on the scope change after recording R001–R010; R001/R002 fixed, full re-review pending.
+- Claude Opus R1 found R001/R002; R2 verified those closed and found N1. N1 RED/GREEN is recorded in `assets/red-witness.md`; R3 pending.
 
 ## Discoveries & learnings
 

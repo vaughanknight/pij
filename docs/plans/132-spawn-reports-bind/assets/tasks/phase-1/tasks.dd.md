@@ -36,7 +36,7 @@ Solo PM delivery for plan 132: RED witnesses, additive spawn bind reporting, par
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | tk-a132 | Establish RED-first spawn and dead-recipient witnesses | — | — | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/red-witness.md | [x] 1/1 [tk-a132](#tk-a132) | Child-exit, parent-loss, bound missing-pane, and tombstoned-recipient behavior fail before implementation. | — | — |
-| tk-b132 | Implement bind reporting and full dead-recipient terminalization | — | — | [x] checked | — | assets/live-proof.md; assets/red-witness.md#dead-recipients-retained-pending-rows; assets/prod-copy-proof.md | [x] 1/1 [tk-b132](#tk-b132) | Spawn reports bind or named failure; every tombstoned or tmux-absent recipient leaves named terminal queue state on the next drain tick; parent is preserved. | — | — |
+| tk-b132 | Implement bind reporting and full dead-recipient terminalization | — | — | [x] checked | — | assets/live-proof.md; assets/red-witness.md; assets/prod-copy-proof.md; assets/reviews/review-opus-r2.dd.md | [x] 1/1 [tk-b132](#tk-b132) | Spawn reports bind or named failure; every tombstoned or tmux-absent recipient leaves named terminal queue state on the next drain tick; parent is preserved. | — | — |
 | tk-c132 | Prove and review composed behavior | — | — | [ ] unchecked | — | — | [ ] 0/1 [tk-c132](#tk-c132) | Deterministic checks, live proof, and cross-model review are complete. | — | — |
 
 <a id="done-when"></a>
@@ -53,7 +53,7 @@ Solo PM delivery for plan 132: RED witnesses, additive spawn bind reporting, par
 
 | id | assertion | state | pressure | receipt |
 | --- | --- | --- | --- | --- |
-| dw-b132 | Spawn separates dispatched from bound, returns early-exit evidence, emits spawn.bound/spawn.failed, preserves parent, and terminalizes every pending row for a tombstoned or tmux-absent recipient with a named failed outcome and no retry. | [x] checked | not-applicable | cargo test -p pij-daemon pointer::worker::tests: 26 passed; assets/prod-copy-proof.md: 72 dead pending before, 0 after one cadence |
+| dw-b132 | Spawn separates dispatched from bound, returns early-exit evidence, emits spawn.bound/spawn.failed, preserves parent, and terminalizes every pending row for a tombstoned or tmux-absent recipient with a named failed outcome and no retry. | [x] checked | not-applicable | pointer worker: 27 passed including global inventory failure RED/GREEN; production copy: 72 dead pending before, 0 after one cadence; R2 R001/R002/R006/R009 closed, N1 fixed for R3 |
 
 ### tk-c132
 

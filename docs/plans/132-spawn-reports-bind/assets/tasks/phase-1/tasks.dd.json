@@ -33,7 +33,7 @@
           "state": "checked",
           "done": "#done_when/tk-b132",
           "success": "Spawn reports bind or named failure; every tombstoned or tmux-absent recipient leaves named terminal queue state on the next drain tick; parent is preserved.",
-          "receipt": "assets/live-proof.md; assets/red-witness.md#dead-recipients-retained-pending-rows; assets/prod-copy-proof.md"
+          "receipt": "assets/live-proof.md; assets/red-witness.md; assets/prod-copy-proof.md; assets/reviews/review-opus-r2.dd.md"
         },
         {
           "id": "tk-c132",
@@ -62,7 +62,7 @@
             "assertion": "Spawn separates dispatched from bound, returns early-exit evidence, emits spawn.bound/spawn.failed, preserves parent, and terminalizes every pending row for a tombstoned or tmux-absent recipient with a named failed outcome and no retry.",
             "state": "checked",
             "pressure": "not-applicable",
-            "receipt": "cargo test -p pij-daemon pointer::worker::tests: 26 passed; assets/prod-copy-proof.md: 72 dead pending before, 0 after one cadence"
+            "receipt": "pointer worker: 27 passed including global inventory failure RED/GREEN; production copy: 72 dead pending before, 0 after one cadence; R2 R001/R002/R006/R009 closed, N1 fixed for R3"
           }
         ],
         "tk-c132": [

@@ -107,23 +107,26 @@ impl DrainWorker {
         if kinds.is_empty() || self.queue.peek(&kinds).await?.is_none() {
             return Ok(0);
         }
-        let live_panes = self.tmux.list_panes().await?;
+        let (live_panes, mut deferred) = match self.tmux.list_panes().await {
+            Ok(panes) => (Some(panes), None),
+            Err(error) => (None, Some(error)),
+        };
         let dead_serial_keys: Vec<&str> = seats
             .iter()
             .filter(|seat| {
                 seat.tombstoned_at.is_some()
-                    || seat
-                        .pane
-                        .as_deref()
-                        .is_some_and(|pane| !live_panes.iter().any(|listed| listed.id == pane))
+                    || live_panes.as_deref().is_some_and(|panes| {
+                        seat.pane
+                            .as_deref()
+                            .is_some_and(|pane| !panes.iter().any(|listed| listed.id == pane))
+                    })
             })
             .map(|seat| seat.id.as_str())
             .collect();
 
         let mut handled = 0;
-        // The first failure of the pass, surfaced only after every other
-        // recipient has had their turn.
-        let mut deferred: Option<pij_core::error::PijError> = None;
+        // A failed global inventory cannot prove pane absence. Defer the error,
+        // skip that terminal policy for this pass, and preserve per-recipient work.
         while !kinds.is_empty() {
             let Some((job_id, job)) = self.queue.claim(&kinds, WORKER_ID).await? else {
                 break;
@@ -139,7 +142,7 @@ impl DrainWorker {
             // success for this claim. Other errors remain retryable: defer the
             // first one so every recipient still gets a turn, then surface it
             // to the resilient outer loop after the pass.
-            if let Err(error) = self.handle_claim(job_id, job, &live_panes).await {
+            if let Err(error) = self.handle_claim(job_id, job, live_panes.as_deref()).await {
                 deferred.get_or_insert(error);
             }
         }
@@ -153,7 +156,7 @@ impl DrainWorker {
         &self,
         job_id: JobId,
         job: Job,
-        live_panes: &[pij_core::model::Pane],
+        live_panes: Option<&[pij_core::model::Pane]>,
     ) -> Result<()> {
         let msg: Msg = match serde_json::from_str(&job.payload) {
             Ok(msg) => msg,
@@ -205,7 +208,7 @@ impl DrainWorker {
         // POLICY, not a brake: the all-server tmux pane roster decides whether
         // this recipient can still receive a queued delivery. Removing this
         // check changes terminal failure into retry; it does not merely spare.
-        if !live_panes.iter().any(|listed| listed.id == pane) {
+        if live_panes.is_some_and(|panes| !panes.iter().any(|listed| listed.id == pane)) {
             return self
                 .fail_claim(
                     job_id,
@@ -1696,6 +1699,41 @@ mod tests {
             "refused is DONE — nothing malfunctioned, and it was not delivered"
         );
     }
+    #[tokio::test]
+    async fn pane_inventory_failure_is_deferred_while_recipient_work_continues() {
+        let fixture = fixture(
+            FakeTransport::reachable(),
+            FakeTmux::new().with_list_pane_failures(1),
+        );
+        register(&fixture, seat("pij-first-live", Some("%70"))).await;
+        register(&fixture, seat("pij-second-live", Some("%71"))).await;
+        enqueue(&fixture, &message("pij-first-live", "first survives", None)).await;
+        enqueue(
+            &fixture,
+            &message("pij-second-live", "second survives", None),
+        )
+        .await;
+
+        let error = fixture
+            .worker
+            .drain_once()
+            .await
+            .expect_err("the systemic inventory error remains visible");
+        assert!(error.to_string().contains("scripted list-panes failure"));
+        let delivered = fixture.transport.delivered();
+        assert_eq!(delivered.len(), 2, "inventory failure cannot halt the pass");
+        assert!(
+            delivered
+                .iter()
+                .any(|msg| msg.to == SeatId::from("pij-first-live"))
+        );
+        assert!(
+            delivered
+                .iter()
+                .any(|msg| msg.to == SeatId::from("pij-second-live"))
+        );
+    }
+
     /// ONE DEAD RECIPIENT MUST NOT STARVE EVERY OTHER RECIPIENT (plan 117).
     ///
     /// Observed on the live fleet, 2026-09-01. `pij-mammoth-ostrich` held job id

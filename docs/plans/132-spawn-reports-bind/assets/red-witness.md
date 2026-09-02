@@ -85,3 +85,27 @@ cargo test: 1 passed (absent_actual_model_is_unknown_while_explicit_no_model_is_
 Claude/CLI binders now preserve the requested model and publish `spawn.bound`
 when actual model evidence is unavailable. Pi/OMP explicitly reports whether it
 observed a model, so an observed absence remains a real mismatch.
+
+## Global tmux inventory failure does not halt delivery
+
+RED from Opus R2 blocker N1:
+
+```text
+pane_inventory_failure_is_deferred_while_recipient_work_continues panicked:
+inventory failure cannot halt the pass
+left: 0
+right: 2
+```
+
+GREEN after preserving unknown inventory as a separate state:
+
+```text
+cargo test -p pij-daemon pane_inventory_failure_is_deferred_while_recipient_work_continues
+cargo test: 1 passed
+cargo test -p pij-daemon pointer::worker::tests
+cargo test: 27 passed
+```
+
+The fake fails only the first all-server pane inventory. The pass then delivers
+both live recipients' messages and still returns the scripted systemic error.
+Pane absence is terminal only when a successful inventory proves it.

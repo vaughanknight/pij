@@ -833,6 +833,7 @@ pub struct FakeTmux {
 #[derive(Default)]
 struct TmuxState {
     panes: Vec<Pane>,
+    list_pane_failures: usize,
     captures: VecDeque<String>,
     /// Served when the scripted queue is empty, so a test whose subject makes
     /// MANY captures does not have to script one per call.
@@ -900,6 +901,16 @@ impl FakeTmux {
             .expect("fake tmux mutex")
             .capture_failures
             .insert(pane.to_string());
+        self
+    }
+
+    /// Fail the next `count` pane inventory calls, then resume normal answers.
+    #[must_use]
+    pub fn with_list_pane_failures(self, count: usize) -> Self {
+        self.state
+            .lock()
+            .expect("fake tmux mutex")
+            .list_pane_failures = count;
         self
     }
 
@@ -1092,6 +1103,13 @@ impl TmuxPort for FakeTmux {
     async fn list_panes(&self) -> Result<Vec<Pane>> {
         let mut state = self.state.lock().expect("fake tmux mutex");
         state.recorder.record("list_panes".to_string());
+        if state.list_pane_failures > 0 {
+            state.list_pane_failures -= 1;
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message: "scripted list-panes failure".to_string(),
+            });
+        }
         Ok(state.panes.clone())
     }
 
