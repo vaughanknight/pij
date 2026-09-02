@@ -47,3 +47,26 @@ no-retry decision. The isolated daemon was then stopped.
 
 Production contained no tombstoned pending rows, so production proves the
 pane-absent/unreachable case; the tombstone and unknown states are unit-proven.
+
+## Final socket-aware binary rerun
+
+R4 correctly noted that the first cadence preceded the socket-reachability
+qualifier. The source copy was copied again to
+`/tmp/pij-plan132-prod-proof-final/pij.sqlite`; the final branch binary ran on
+`127.0.0.1:60502`.
+
+Baseline:
+
+```json
+{"max_attempt":15933,"pending":73,"prior_named_failures":3,"proven_dead":72,"running_delivery":2}
+```
+
+After the first cadence:
+
+```json
+{"max_dead_attempt":0,"pending":1,"proven_dead_pending":0,"reason_samples":[["delivery recipient pij-impressive-gopher pane %2164 is absent from tmux list-panes -a and no socket is reachable; not retried",21],["delivery recipient pij-chosen-arach pane %2811 is absent from tmux list-panes -a and no socket is reachable; not retried",12],["delivery recipient pij-elaborate-koala pane %3147 is absent from tmux list-panes -a and no socket is reachable; not retried",10]]}
+```
+
+The final reason text proves the socket-aware code path executed. All 72
+pane-absent, socket-unreachable pending rows left pending state; the one live
+recipient row remained. The isolated daemon was stopped after the readback.

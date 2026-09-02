@@ -39,6 +39,25 @@ we hand the pattern to pij and the harness. Also `harness observe` each one.
 
 ## Frictions / open issues
 
+- 2026-09-02 (ferret, PM 132): A WORKER-STARTED FLOWSPACE3 DAEMON IS NOT
+  ISOLATED BY USING THE DEV DATABASE. The daemon still rewrites the
+  machine-global `daemon.key`; this broke search for every seat until prime
+  restored production. The packet's old "dev DB + free port" rule was unsafe.
+  Worker/reviewer packets must say never start `flowspace3 daemon`; if prod is
+  down, report it to prime. A future safe worker daemon needs an isolated
+  config/key path as well as an isolated database and port.
+- 2026-09-02 (ferret + Opus R1-R4, PM 132): THREE DEFECTS HAD THE SAME MISSING
+  STATE: unreported model vs observed no-model, unavailable tmux inventory vs
+  observed missing pane, and socket probe error vs observed unreachable. A
+  boolean decision table silently turns UNKNOWN into a destructive negative.
+  Least-confidence lists and reviewer packets should explicitly ask for
+  `positive / negative / unknown` whenever an observation authorizes loss.
+- 2026-09-02 (ferret, PM 132): TMUX-DRIVING GATES MUST RUN SERIALLY. Running
+  `cargo test --workspace` beside `harness checks` smoke caused one tmux input
+  convergence failure; the isolated test and full 612-test serial rerun passed.
+  The PM composition template should serialize terminal-driving proofs even
+  when their build systems are otherwise independent.
+
 - 2026-09-02 (ferret, PM 133): CROSS-MODEL REVIEW CONFIRMED TENETS 5/11
   AND ADDED THE MISSING CONFIGURATION-SYMMETRY RULE. Every local gate was
   green and the live happy path worked, yet the Opus reviewer measured that

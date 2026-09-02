@@ -38,7 +38,7 @@
           "state": "checked",
           "done": "#done_when/tk-b132",
           "success": "Spawn reports bind or machine-readable named failure; tombstoned recipients terminalize; observed pane absence terminalizes only when socket-unreachable; inventory/reachability unknowns retry visibly; parent is preserved.",
-          "receipt": "assets/live-proof.md; assets/red-witness.md; assets/prod-copy-proof.md; assets/reviews/review-opus-r3.dd.md",
+          "receipt": "assets/live-proof.md; assets/red-witness.md; assets/prod-copy-proof.md; assets/reviews/review-opus-r4.dd.md",
           "satisfies": [
             "../../../plan.dd.json#acceptance_criteria/AC1a",
             "../../../plan.dd.json#acceptance_criteria/AC1b",
@@ -84,7 +84,7 @@
             "assertion": "Spawn separates dispatched from bound, exposes structured refusal details, emits spawn.bound/spawn.failed, preserves parent, and applies the tombstone/pane/socket/unknown delivery decision table without retry churn or unproven loss.",
             "state": "checked",
             "pressure": "not-applicable",
-            "receipt": "pointer worker: 27 passed including global inventory failure RED/GREEN; production copy: 72 dead pending before, 0 after one cadence; R2 R001/R002/R006/R009 closed, N1 fixed for R3"
+            "receipt": "pointer worker: 30 passed including inventory/socket/prebind decision witnesses; final production copy: 72 proven-dead pending before, 0 after socket-aware cadence; R4 approved prime fixes"
           }
         ],
         "tk-c132": [

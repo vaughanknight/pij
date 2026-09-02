@@ -15,15 +15,15 @@
 - Production-copy proof: 72 dead pending before, 0 after the first cadence; evidence in `assets/prod-copy-proof.md`.
 - Opus R001 fixed with additive `actual_model_observed`: unavailable model evidence preserves the requested model, while an observed absence remains a mismatch.
 - Opus R002 fixed by grouping `spawn_failure` evidence; CI-equivalent clippy is green.
-- GREEN: 29 pointer-worker tests, 9 spawn tests, structured refusal-shape test, Claude/model truth tests, TS runtime test 8/8, and `cargo clippy --workspace --all-targets -- -D warnings`.
+- GREEN: 30 pointer-worker tests, 9 spawn tests, structured refusal-shape test, Claude/model truth tests, TS runtime test 8/8, and `cargo clippy --workspace --all-targets -- -D warnings`.
 
 ## tk-c132 — composed proof and review
 
 - `cargo test --workspace --quiet`: 612 passed across 63 suites; 6 ignored.
 - `cargo clippy --workspace --all-targets -- -D warnings`: pass.
 - Terminal `harness checks --json`: all eight sensors passed (`local-paths`, `typecheck`, `lint`, `test`, `windows-compat`, `smoke`, `pkg-audit`, `snapshots`).
-- Final real-client tmux proof: `assets/live-proof.md`; production-copy decision-table proof: `assets/prod-copy-proof.md`.
-- Claude Opus R1 found R001/R002; R2 found N1; R3 approved all fixes. Prime-required G1 refusal shape and socket-aware pane absence have RED/GREEN + live receipts; R4 pending.
+- Final real-client tmux proof: `assets/live-proof.md`; final socket-aware production-copy rerun: `assets/prod-copy-proof.md#final-socket-aware-binary-rerun`.
+- Claude Opus R1–R4 found three blocking defects, all fixed and approved. R4 N9 restored prebind command deferral with RED/GREEN; N10 reran the 72→0 proof on final socket-aware code; N11/N12 wording/panic nits fixed. Focused R5 pending.
 
 ## Discoveries & learnings
 

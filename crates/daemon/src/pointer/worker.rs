@@ -223,6 +223,9 @@ impl DrainWorker {
                 )
                 .await;
         }
+        if recipient.proc.is_none() {
+            return self.release_or_backoff(job_id, job, &msg).await;
+        }
         if msg.command.is_some() {
             let verdict = match self.interaction.fresh_injection_verdict(pane).await {
                 Ok(verdict) => verdict,
@@ -238,10 +241,9 @@ impl DrainWorker {
                 .submit_command_claim(job_id, job.attempt, pane, &msg)
                 .await;
         }
-        if recipient.proc.is_none() {
-            return self.release_or_backoff(job_id, job, &msg).await;
-        }
-        let socket_available = socket_available.expect("bound body probes socket reachability");
+        let Some(socket_available) = socket_available else {
+            return self.release_body(job_id).await;
+        };
         let (interaction_permits, composer_idle) = if socket_available && !pane_absent {
             match self.interaction.fresh_injection_verdict(pane).await {
                 Ok(verdict) => (verdict.permitted, verdict.composer_idle),
@@ -1316,6 +1318,31 @@ mod tests {
                 "capture:%10:4294967295",
                 "user_typing:%10"
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn unbound_recipient_defers_command_even_when_pane_is_ready() {
+        let fixture = fixture(FakeTransport::reachable(), FakeTmux::new());
+        let mut recipient = seat("pij-command-prebind", Some("%prebind"));
+        recipient.proc = None;
+        register(&fixture, recipient).await;
+        let id = enqueue(
+            &fixture,
+            &message("pij-command-prebind", "", Some("compact")),
+        )
+        .await;
+
+        assert_eq!(fixture.worker.drain_once().await.expect("prebind drain"), 1);
+        assert_eq!(fixture.queue.retried(), [(id, Duration::from_secs(1))]);
+        assert!(fixture.queue.acked().is_empty());
+        assert!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .all(|call| !call.starts_with("submit:")),
+            "a prebind command cannot be typed before registration"
         );
     }
 

@@ -152,3 +152,24 @@ cargo test: 29 passed
 
 `Ok(true)` delivers over the socket despite pane absence; `Ok(false)` permits
 terminalization; `Err` retries the row and remains visible as the pass error.
+
+## Prebind commands remain deferred
+
+RED from R4 N9:
+
+```text
+unbound_recipient_defers_command_even_when_pane_is_ready panicked:
+left retries []
+right [(JobId(1), 1s)]
+```
+
+GREEN after restoring the binding check above command submission:
+
+```text
+cargo test: 1 passed (unbound_recipient_defers_command_even_when_pane_is_ready)
+cargo test -p pij-daemon pointer::worker::tests
+cargo test: 30 passed
+```
+
+The test arranges a recognized ready pane, so composer politeness cannot hide
+the binding rule; no `submit:` call occurs before registration.
