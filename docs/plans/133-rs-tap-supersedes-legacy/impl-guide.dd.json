@@ -1,0 +1,75 @@
+{
+  "dd": {
+    "schema": "pij-team/impl-guide"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Implementation guide",
+        "plan": "docs/plans/133-rs-tap-supersedes-legacy/plan.dd.json",
+        "mode": "build",
+        "updated": "2026-09-02"
+      }
+    },
+    {
+      "name": "architecture",
+      "value": "Rust only. Tap ownership: crates/tmux/src/lib.rs (~L835-900, `pane_pipe`/@pij-tap-sink marker logic; TAP_SINK_OPTION L42). Observer loop: crates/daemon/src/pane_observer.rs (where the refusal is logged per tick). Gate: crates/harnesses/src/interaction.rs refresh_live_tap/fresh_injection_verdict/submit_with_owned_input (L283-378) — add a verdict reason enum (TapUnowned | ComposerBusy | HumanTyping | Unrecognized) instead of a bare bool pair. Delivery: crates/daemon/src/delivery/mod.rs ~L231-330 (TypedBody rung → Deferred → enqueue) — carry the reason into the queued receipt (additive `reason` field in DeliveryOutcome::Queued, types.rs) and make the drain re-attempt after tap claim. Legacy tap signature: pane_pipe=1 AND marker empty AND ~/.pij/pane-signals/_<N>.raw exists (legacy sets no marker; it uses `pipe-pane -O -o` so it will NOT clobber a pipe rs owns — verify and cite). Supersede = close pipe (`tmux pipe-pane -t %N`), then claim as today. Do not touch .pi/extensions."
+    },
+    {
+      "name": "fan_out",
+      "value": {
+        "decision": "solo-pm",
+        "rationale": "three small edits on one seam; PM codes, Claude opus reviews"
+      }
+    },
+    {
+      "name": "units",
+      "value": [
+        {
+          "id": "u1",
+          "name": "supersede legacy tap + reasoned deferral",
+          "paths": "crates/tmux/src/lib.rs, crates/daemon/src/pane_observer.rs, crates/harnesses/src/interaction.rs, crates/daemon/src/delivery/mod.rs, crates/daemon/src/http/types.rs (additive only), crates/core/src/delivery.rs (reason enum), tests",
+          "responsibility": "AC1-AC5",
+          "interface": "InjectionVerdict gains `reason`; DeliveryOutcome::Queued gains optional `reason` string (additive on the wire)",
+          "test_strategy": "RED-first on main dd450381; fake tmux port fixtures for legacy-marker/foreign-marker/no-pipe; one integration test queued→drained after tap claim",
+          "depends_on": "none",
+          "wave": 1,
+          "note": "live proof uses a dev daemon (own --state-dir + port) with production legacy daemon left running"
+        }
+      ]
+    },
+    {
+      "name": "isolation",
+      "value": {
+        "mode": "solo-pm in the plan worktree",
+        "note": "Default: each coder gets its own worktree, branching off the PM's plan branch; unit lands back onto the plan branch (PM merges — coders never merge). Shared-tree work is the retro-proven #1 hazard (staged sweeps, untrustworthy greens) — only choose it for trivially disjoint single-wave work, and then file-scoped `git add` only, never -A. REMEMBER: fences partition WRITE intent, not the build — a mid-refactor sibling can still break your compile, so waves must respect build dependencies, and a broken workspace build is a PM composition concern, not a coder's to fix cross-fence."
+      }
+    },
+    {
+      "name": "composition",
+      "value": {
+        "composer": "pm",
+        "steps": "build; tests; just checks; live proof (AC1/AC2 control/AC3/AC4) in assets/live-proof.md; PR into main",
+        "integration_proof": "assets/live-proof.md"
+      }
+    },
+    {
+      "name": "review",
+      "value": {
+        "when": "after composition (or after solo-pm coding), before the PR into main",
+        "inputs": "plan.dd.md + this impl-guide + full branch diff; priority = plan promises, composition seams, interface drift, correctness, contract-test gaps",
+        "model_override": "cross-model: Claude opus seat"
+      }
+    },
+    {
+      "name": "risks",
+      "value": [
+        {
+          "id": "r1",
+          "text": "Keep to the named paths; ask prime before widening."
+        }
+      ]
+    }
+  ]
+}

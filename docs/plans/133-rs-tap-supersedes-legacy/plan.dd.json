@@ -1,0 +1,103 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "133 — rs pane observer supersedes legacy taps; deferred pane delivery names its reason and retries",
+        "slug": "spawn-reports-bind",
+        "ordinal": 132,
+        "status": "draft",
+        "summary": "pij-rs spawn distinguishes dispatched from bound and surfaces a named failure with the child's last log lines when the pane dies before the seat binds.",
+        "updated": "2026-09-02",
+        "plan_id": "133"
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Witness 2026-09-02 (weasel): a hand-started Copilot CLI in tmux, adopted into pij-rs (pij-accused-keech, %3136), received NOTHING from `pij-rs send` — receipt said `queued`, no pointer, no body, no daemon log line for the pane. Cause: the HELD legacy TS daemon pipe-panes every pane on the machine into ~/.pij/pane-signals/_N.raw and sets no @pij-tap-sink marker; crates/tmux/src/lib.rs ~L868 sees pane_pipe=1 with no matching marker and refuses (`already has an output pipe not owned by this sink`), so InteractionGate::refresh_live_tap returns false, fresh_injection_verdict returns permitted=false/composer_idle=false, submit_with_owned_input returns Deferred, and the row sits queued forever with no reason. Proof: `tmux pipe-pane -t %3136` (close legacy pipe) → rs observer claimed the tap within 20s → second send returned delivered/typed-to-pane and Copilot answered `seen`. Same refusal is spamming ~25k daemon.log lines for %3112 (CPU + disk). The legacy daemon stays running until seat migration (req-0039) lands, so rs must coexist: supersede legacy-generation taps, still refuse genuinely foreign pipes, log once per pane, and make the queued receipt say WHY and retry once the tap is owned. This is the s122 full-body delivery (PR #355, merged dd450381) being blocked at the tap, not at the typing."
+    },
+    {
+      "name": "goals",
+      "value": [
+        {
+          "id": "g1",
+          "text": "Hand-started Copilot/Codex panes get full-body typed delivery even when the legacy daemon tapped the pane first."
+        },
+        {
+          "id": "g2",
+          "text": "rs pane observer adopts a legacy-generation tap (pane_pipe=1, no @pij-tap-sink marker, legacy sink ~/.pij/pane-signals/_N.raw present) instead of refusing; genuinely unknown pipes are still refused."
+        },
+        {
+          "id": "g3",
+          "text": "A pane delivery deferred for want of a tap sink returns `queued` WITH a reason (`tap-unowned`), is logged once per pane not per tick, and the drain retries it after the tap is claimed (req-0042 partial)."
+        }
+      ]
+    },
+    {
+      "name": "non_goals",
+      "value": [
+        {
+          "id": "n1",
+          "text": "Killing or modifying the legacy TS daemon (held by ruling 2026-09-02-legacy-shutdown-held-for-129.md)."
+        },
+        {
+          "id": "n2",
+          "text": "Composer-busy / human-typing deferral policy (req-0042 remainder) beyond naming the reason."
+        },
+        {
+          "id": "n3",
+          "text": "Any write to the operator homes (~/.claude, ~/.claude-alt, ~/.pij, ~/.pij-rs) before merge; live proof runs a dev daemon on its own state dir/port with the production legacy daemon left RUNNING."
+        }
+      ]
+    },
+    {
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "AC1",
+          "text": "LIVE: hand-start `copilot --yolo` in a new tmux window; confirm the legacy tap is present (`ps` shows `cat >> ~/.pij/pane-signals/_N.raw`, `tmux display -p -t %N #{pane_pipe}` = 1, no @pij-tap-sink marker); adopt into the DEV rs daemon; `pij-rs send` returns delivered/typed-to-pane and the FULL body is visible in the pane with Copilot replying; transcript pasted.",
+          "claim": "legacy-tapped panes receive typed bodies",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC2",
+          "text": "CONTROL on the pre-fix tree (main dd450381): the same gesture returns `queued`, nothing appears in the pane; pasted. Red-first for every new unit test, pre-fix output pasted.",
+          "claim": "the witness was red before the fix",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC3",
+          "text": "A pane whose pipe has a FOREIGN non-legacy owner (test: pipe-pane a scratch pane to /tmp/foreign.raw with no marker and no legacy sink file) is still refused, and the refusal is logged ONCE per pane per daemon boot (rate-limited), not every observer tick; unit test + `grep -c` on the dev daemon log pasted.",
+          "claim": "supersede is narrow and refusal stops spamming",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC4",
+          "text": "`pij-rs send` to a pane seat with no owned tap returns `{outcome:queued, reason:\"tap-unowned\"}` (additive field, wire stays v2), and once the observer claims the tap the drain delivers the queued row without a second send; integration test + live transcript pasted.",
+          "claim": "queued names its reason and retries",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC5",
+          "text": "`just checks` green on the rebased tree (req-0044 baseline reds excluded by name only); no changes under .pi/extensions (legacy) and no operator-home writes (`git diff --stat` + `ls -la ~/.pij ~/.pij-rs` mtimes pasted).",
+          "claim": "gates and blast radius",
+          "state": "unchecked"
+        }
+      ]
+    },
+    {
+      "name": "phases",
+      "value": [
+        {
+          "id": "p1",
+          "name": "Build + prove",
+          "tasks": "docs/plans/133-rs-tap-supersedes-legacy/assets/tasks/phase-1/tasks.dd.json",
+          "status": "pending"
+        }
+      ]
+    }
+  ]
+}
