@@ -428,7 +428,7 @@ async fn an_expired_inbox_claim_retries_instead_of_losing_the_unacked_message() 
         .enqueue_delivery(job(kind, "pij-reader", "m-1"))
         .await
         .expect("enqueue delivery");
-    let DeliveryEnqueue::Queued(id) = id else {
+    let DeliveryEnqueue::Queued { job_id: id, .. } = id else {
         panic!("new delivery must queue");
     };
     let first = queue
@@ -458,6 +458,48 @@ async fn an_expired_inbox_claim_retries_instead_of_losing_the_unacked_message() 
         .await
         .expect("replacement client acknowledges what it read");
     assert_eq!(queue.live_len().await.expect("live count"), 0);
+}
+
+#[tokio::test]
+async fn delivery_enqueue_returns_the_persisted_not_before_after_backoff() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("valid queue policy");
+    let delivery = job("delivery:pij-scheduled", "pij-scheduled", "m-scheduled");
+    let DeliveryEnqueue::Queued { job_id, .. } = queue
+        .enqueue_delivery(delivery.clone())
+        .await
+        .expect("enqueue delivery")
+    else {
+        panic!("new delivery must queue");
+    };
+    queue
+        .claim(&[delivery.kind.clone()], "schedule-worker")
+        .await
+        .expect("claim delivery")
+        .expect("delivery row");
+    queue
+        .retry(job_id, std::time::Duration::from_secs(17))
+        .await
+        .expect("persist backoff");
+    let persisted: i64 = sqlx::query_scalar("SELECT not_before FROM jobs WHERE id = ?1")
+        .bind(job_id.0 as i64)
+        .fetch_one(&pool)
+        .await
+        .expect("read persisted eligibility");
+
+    let DeliveryEnqueue::Queued {
+        job_id: collapsed,
+        not_before_ms,
+    } = queue
+        .enqueue_delivery(delivery)
+        .await
+        .expect("collapse scheduled delivery")
+    else {
+        panic!("live delivery must stay queued");
+    };
+    assert_eq!(collapsed, job_id);
+    assert_eq!(not_before_ms, (persisted as u64).saturating_mul(1_000));
 }
 
 #[tokio::test]
@@ -571,7 +613,7 @@ async fn deliver(queue: &SqliteQueue, recipient: &str, msg_id: &str, origin: Del
         .enqueue_delivery(delivered_job(recipient, msg_id))
         .await
         .expect("enqueue delivery");
-    let DeliveryEnqueue::Queued(id) = queued else {
+    let DeliveryEnqueue::Queued { job_id: id, .. } = queued else {
         panic!("new message {msg_id} must queue");
     };
     let claimed = queue
@@ -640,7 +682,7 @@ async fn concurrent_delivery_ack_and_duplicate_enqueue_never_create_a_second_row
         .enqueue_delivery(delivered_job("pij-race", "m-race"))
         .await
         .expect("enqueue first");
-    let DeliveryEnqueue::Queued(first) = first else {
+    let DeliveryEnqueue::Queued { job_id: first, .. } = first else {
         panic!("first delivery must queue");
     };
     queue
@@ -675,7 +717,7 @@ async fn concurrent_delivery_ack_and_duplicate_enqueue_never_create_a_second_row
         .expect("duplicate task")
         .expect("duplicate result");
     assert!(
-        duplicate == DeliveryEnqueue::Queued(first)
+        matches!(duplicate, DeliveryEnqueue::Queued { job_id, .. } if job_id == first)
             || duplicate == DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::ReaderRead),
         "the race may observe the live row or its delivered record, never a fresh row: {duplicate:?}"
     );
@@ -697,7 +739,7 @@ async fn per_recipient_bound_evicts_oldest_without_weakening_other_recipients() 
             .enqueue_delivery(delivered_job("pij-a", "a-1"))
             .await
             .expect("oldest id was forgotten"),
-        DeliveryEnqueue::Queued(_)
+        DeliveryEnqueue::Queued { .. }
     ));
     assert_eq!(
         queue

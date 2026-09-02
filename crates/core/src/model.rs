@@ -621,7 +621,7 @@ pub enum DeliveryOutcome {
         /// Why immediate delivery was deferred, when the deciding layer knows.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
-        /// Earliest scheduled retry, in milliseconds since the Unix epoch.
+        /// Persisted queue eligibility (`jobs.not_before`), in Unix milliseconds.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         next_retry_at: Option<u64>,
     },

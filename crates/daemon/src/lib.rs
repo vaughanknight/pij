@@ -364,7 +364,6 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         Arc::clone(&transport),
         Arc::clone(&interaction),
         Arc::clone(&event_bus),
-        Duration::from_secs(config.delivery_interval_secs),
     )?);
 
     Ok(Services {

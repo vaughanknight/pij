@@ -370,18 +370,44 @@ impl TmuxAdapter {
         tap_sink_path(&self.tap_root, pane)
     }
 
-    fn has_legacy_tap_sink(&self, pane: &str) -> Result<bool> {
+    fn has_live_legacy_tap_writer(&self, pane: &str) -> Result<bool> {
         let Some(root) = &self.legacy_tap_root else {
             return Ok(false);
         };
         let sink = tap_sink_path(root, pane);
-        match fs::symlink_metadata(&sink) {
-            Ok(metadata) => Ok(metadata.file_type().is_file()),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
-            Err(error) => Err(self.error(format!(
-                "could not inspect legacy tap signature {sink:?} for pane {pane:?}: {error}"
-            ))),
+        let metadata = match fs::symlink_metadata(&sink) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => {
+                return Err(self.error(format!(
+                    "could not inspect legacy tap signature {sink:?} for pane {pane:?}: {error}"
+                )));
+            }
+        };
+        if !metadata.file_type().is_file() {
+            return Ok(false);
         }
+        let sink_text = sink.to_str().ok_or_else(|| {
+            self.error(format!(
+                "legacy tap sink {sink:?} is not valid Unicode — refusing to replace pane {pane:?}"
+            ))
+        })?;
+        let output = Command::new("ps")
+            .args(["-axo", "command="])
+            .output()
+            .map_err(|error| {
+                self.error(format!("could not inspect legacy tap writers: {error}"))
+            })?;
+        if !output.status.success() {
+            return Err(self.error(format!(
+                "could not inspect legacy tap writers: ps exited {} ({})",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|command| command.contains("cat >>") && command.contains(sink_text)))
     }
 
     fn tap_marker(&self, pane: &str) -> Result<Option<String>> {
@@ -903,10 +929,10 @@ impl TmuxPort for TmuxAdapter {
             // A matching pane-scoped marker is durable ownership evidence from a
             // prior daemon. Replacing that orphan is adoption, not clobbering.
             "1" if marker_matches => {}
-            "1" if marker.is_none() && self.has_legacy_tap_sink(pane)? => {
-                // This is a one-directional safety interlock, not retention policy:
-                // the absent marker and regular legacy sink can only spare a pipe.
-                // Removing either check would close the same set or more.
+            "1" if marker.is_none() && self.has_live_legacy_tap_writer(pane)? => {
+                // These are one-directional safety interlocks, not retention policy:
+                // the absent marker, regular sink, and live associated writer can
+                // only spare a pipe. Removing any check would close the same set or more.
                 self.run(
                     "pipe-pane detach legacy",
                     &os_args(["pipe-pane", "-t", pane]),

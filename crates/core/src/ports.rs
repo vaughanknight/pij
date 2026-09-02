@@ -111,7 +111,12 @@ pub struct DeliveryAck {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DeliveryEnqueue {
     /// A live queue row now owns the message, whether newly inserted or collapsed.
-    Queued(JobId),
+    Queued {
+        /// Durable row identity.
+        job_id: JobId,
+        /// Persisted `not_before` eligibility in Unix milliseconds.
+        not_before_ms: u64,
+    },
     /// This destination already delivered the message with the recorded evidence.
     AlreadyDelivered(DeliveryOrigin),
 }

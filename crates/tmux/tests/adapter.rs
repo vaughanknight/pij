@@ -1372,7 +1372,7 @@ fn matching_marker_adopts_restart_pipe_and_detach_clears_ownership() {
 }
 
 #[test]
-fn unmarked_legacy_pipe_is_superseded_without_touching_a_foreign_pipe() {
+fn unmarked_legacy_pipe_with_live_writer_is_superseded() {
     let Some(session) = TestSession::start_or_skip("tap-legacy") else {
         return;
     };
@@ -1414,6 +1414,60 @@ fn unmarked_legacy_pipe_is_superseded_without_touching_a_foreign_pipe() {
 
     block_on(tmux.detach_pane_tap(&pane.id)).expect("detach superseding tap");
     fs::remove_dir_all(legacy_root).expect("remove isolated legacy tap root");
+}
+
+fn assert_unmarked_foreign_pipe_refused(label: &str, stale_legacy_sink: bool) {
+    let Some(session) = TestSession::start_or_skip(label) else {
+        return;
+    };
+    let pane = block_on(TmuxAdapter::for_server(&session.server, &session.tap_root).list_panes())
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    let legacy_root = session.tap_root.with_extension("legacy");
+    fs::create_dir_all(&legacy_root).expect("create isolated legacy root");
+    if stale_legacy_sink {
+        fs::write(tap_sink_path(&legacy_root, &pane.id), b"")
+            .expect("create stale legacy sink without a writer");
+    }
+    let foreign = std::env::temp_dir().join(format!("{}-unmarked-foreign.raw", session.name));
+    fs::write(&foreign, b"FOREIGN").expect("create foreign sink");
+    let foreign_command = format!("cat >> '{}'", foreign.display());
+    session.run(["pipe-pane", "-O", "-t", &pane.id, &foreign_command]);
+
+    let tmux = TmuxAdapter::for_server_with_legacy_tap_root(
+        &session.server,
+        &session.tap_root,
+        &legacy_root,
+    );
+    let sink = tap_sink_path(&session.tap_root, &pane.id);
+    let error = block_on(tmux.attach_pane_tap(&pane.id, &sink))
+        .expect_err("an unmarked foreign writer must not be superseded");
+    assert!(
+        error.to_string().contains("not owned by this sink"),
+        "{error}"
+    );
+    let pipe = session.run(["display-message", "-p", "-t", &pane.id, "#{pane_pipe}"]);
+    assert_eq!(String::from_utf8_lossy(&pipe.stdout).trim(), "1");
+    assert_eq!(
+        fs::read(&foreign).expect("foreign sink survives"),
+        b"FOREIGN"
+    );
+
+    session.run(["pipe-pane", "-t", &pane.id]);
+    fs::remove_file(foreign).expect("remove foreign sink");
+    fs::remove_dir_all(legacy_root).expect("remove isolated legacy root");
+}
+
+#[test]
+fn unmarked_foreign_pipe_without_legacy_sink_is_refused() {
+    assert_unmarked_foreign_pipe_refused("tap-foreign-no-legacy", false);
+}
+
+#[test]
+fn stale_legacy_sink_without_live_writer_does_not_authorize_takeover() {
+    assert_unmarked_foreign_pipe_refused("tap-foreign-stale-legacy", true);
 }
 
 #[test]

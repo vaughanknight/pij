@@ -65,7 +65,10 @@ impl Queue for CountingQueue {
         // AlreadyDelivered — and saying so by delegating is honest, where
         // refusing would make the request path 500 on its own success case.
         let id = self.enqueue(job).await?;
-        Ok(DeliveryEnqueue::Queued(id))
+        Ok(DeliveryEnqueue::Queued {
+            job_id: id,
+            not_before_ms: 0,
+        })
     }
 
     async fn claim(&self, _kinds: &[String], _worker: &str) -> Result<Option<(JobId, Job)>> {
@@ -121,7 +124,6 @@ pub(super) async fn test_services(
             Arc::clone(&services.transport),
             Arc::clone(&services.interaction),
             Arc::clone(&services.event_bus),
-            Duration::from_secs(1),
         )
         .expect("delivery service"),
     );
@@ -1145,7 +1147,7 @@ async fn send_enqueues_exactly_once_and_refuses_remote_without_federation() {
         receipt.data.expect("receipt").outcome,
         pij_core::model::DeliveryOutcome::Queued {
             reason: Some(reason),
-            next_retry_at: None,
+            next_retry_at: Some(0),
         } if reason == "pre-bind"
     ));
 

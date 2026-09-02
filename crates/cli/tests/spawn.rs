@@ -472,7 +472,6 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
                 &services.tmux,
             ))),
             Arc::clone(&services.event_bus),
-            std::time::Duration::from_secs(config.delivery_interval_secs),
         )
         .expect("rebuild delivery from pull-only transport"),
     );

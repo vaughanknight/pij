@@ -17,12 +17,12 @@
 ## tk-1333 — Carry reasoned tap deferral through delivery
 
 - Added `DeliveryDeferralReason` (`tap-unowned`, `composer-busy`, `human-typing`, `unrecognized`) to the pure core contract and propagated it through `InjectionVerdict` and `StagedSubmission`.
-- `DeliveryOutcome::Queued` now serializes additive optional `reason` and `next_retry_at`; `DeliveryService` derives the latter from the configured delivery interval and names all known queue paths.
+- `DeliveryOutcome::Queued` serializes additive optional `reason` and `next_retry_at`; after R1, `DeliveryService` copies persisted `DeliveryEnqueue::Queued.not_before_ms` rather than predicting cadence.
 - GREEN: reasoned first-attempt receipt test (`artifact://75`); tap-unowned row delivers on the next tick after tap claim without a second send (`artifact://93`); workspace test run 586 passed (`artifact://88`).
 
 ## tk-1334 — Bound and expose vetoed socket retries
 
-- `DeliveryService` receives the configured `delivery_interval_secs` and reports `next_retry_at` from the same schedule used by the drain loop.
+- R1 replaced the config echo: Queue implementations now return persisted `not_before_ms`, and the receipt copies it without pane/cadence inference.
 - A fake human-typing veto releases the durable row at zero delay; clearing the veto makes the next drain tick deliver exactly once. The destination witness row confirms 34 local retries over 169 seconds; the separate pre-admission 12-hour gap is not chased in this plan by prime ruling.
 - GREEN: queued wire fields and veto reasons plus veto→clear next-tick delivery (`artifact://96`); workspace run 586 passed (`artifact://88`).
 
@@ -33,9 +33,19 @@
 - Real hand-started Copilot on `%3169` received the full legacy-tap body and replied `LIVE133-SEEN`; a real `human-typing` receipt carried `next_retry_at` and delivered on the next drain tick without a second send. Full transcript: `assets/live-proof.md`.
 - Final `harness checks` passed all eight sensors at `2026-09-02T05:41:22.062Z`. `.pi/extensions` diff is empty; production rs runtime remained pid 46147/start 20260902144720.
 
+## R1 review fixes
+
+- R1 verdict: REQUEST CHANGES (`assets/reviews/r1-cross-model.dd.json`).
+- f1 CRITICAL: legacy sink existence was inventory, not ownership. Fixed by requiring a live process command containing `cat >>` and the exact sink before closing the unmarked pipe.
+- f2 HIGH: production-injected refusal cases were absent. Added mirror tests for no legacy sink and stale legacy sink/no writer; renamed the success test to its actual claim. Adapter suite 35/35 (`artifact://185`).
+- f3 MEDIUM: `next_retry_at` was a config echo. Prime ruled persisted readback; `DeliveryEnqueue::Queued` now carries `not_before_ms` from SQLite/FakeQueue. Fake 17-second backoff and SQLite query tests prevent cadence-echo regression (`artifact://189`).
+- Final review-fix live run: legacy writer PID 73684 authorized `%3252` takeover; Copilot replied `LIVE133-R2-SEEN`; a real `human-typing` receipt carried persisted `next_retry_at=0` and delivered without a second send (`assets/live-proof.md`).
+
 ## Discoveries & Learnings
 
 | Tag | Finding | Evidence |
 |---|---|---|
 | Noteworthy | The canonical `harness checks` inventory has no Rust sensor; prime ruled explicit Cargo test/clippy/fmt receipts for this plan and no harness widening. | `assets/backpressure-coverage.md`; ruling 2026-09-02 |
 | Noteworthy | `flowspace3 ask` twice failed to synthesize the cross-file retry answer; direct element reads exposed the queue predicates. | `harness observe` DL-004 and follow-up timeout |
+| Noteworthy | R1 measured that legacy sink files describe pane inventory, not pipe ownership; live writer association is the required discriminator. | `assets/reviews/r1-cross-model.dd.json#findings/f1` |
+| Noteworthy | A timestamp field must read persisted schedule state, never echo configuration under a measurement-shaped name. | `assets/reviews/r1-cross-model.dd.json#findings/f3` |
