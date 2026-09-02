@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
-use std::sync::{Arc, Barrier, Mutex, MutexGuard};
+use std::sync::{Arc, Barrier};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use pij_core::delivery::MAX_TYPED_FRAME_BYTES;
@@ -17,7 +17,7 @@ use pij_testkit::fakes::FakeTmux;
 use pij_tmux::{TmuxAdapter, tap_sink_path};
 
 static SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
-static TRANSACTION_TEST_LOCK: Mutex<()> = Mutex::new(());
+static TRANSACTION_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn framed_text_of_size(bytes: usize) -> String {
     let sender = SeatId::from("pij-size-probe");
@@ -131,7 +131,7 @@ fn missing_tmux_names_the_installation_fix() {
 
 #[test]
 fn real_tmux_honours_the_shared_contract_inside_its_own_session() {
-    let _serial = transaction_test_guard();
+    let _serial = blocking_transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("contract") else {
         return;
     };
@@ -181,7 +181,7 @@ fn capture_proves_zero_and_more_than_the_pane_contains() {
 
 #[tokio::test]
 async fn submit_pastes_maximum_supported_body_intact() {
-    let _serial = transaction_test_guard();
+    let _serial = transaction_test_guard().await;
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock after epoch")
@@ -239,7 +239,7 @@ async fn submit_pastes_maximum_supported_body_intact() {
 
 #[tokio::test]
 async fn submit_refuses_one_byte_above_supported_maximum_without_writing() {
-    let _serial = transaction_test_guard();
+    let _serial = transaction_test_guard().await;
     let Some(session) = TestSession::start_or_skip("submit-over-max") else {
         return;
     };
@@ -279,7 +279,7 @@ async fn submit_refuses_one_byte_above_supported_maximum_without_writing() {
 
 #[tokio::test]
 async fn submit_rejects_bracket_terminator_before_touching_real_pane() {
-    let _serial = transaction_test_guard();
+    let _serial = transaction_test_guard().await;
     let Some(session) = TestSession::start_or_skip("control-body") else {
         return;
     };
@@ -315,7 +315,7 @@ async fn submit_rejects_bracket_terminator_before_touching_real_pane() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn staged_submit_excludes_human_input_mid_body_and_before_enter() {
-    let _serial = transaction_test_guard();
+    let _serial = transaction_test_guard().await;
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock after epoch")
@@ -381,7 +381,7 @@ async fn staged_submit_excludes_human_input_mid_body_and_before_enter() {
 
 #[tokio::test]
 async fn abort_leaves_recovery_notice_unsent_and_restores_input() {
-    let _serial = transaction_test_guard();
+    let _serial = transaction_test_guard().await;
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock after epoch")
@@ -439,7 +439,7 @@ async fn abort_leaves_recovery_notice_unsent_and_restores_input() {
 
 #[tokio::test]
 async fn dropped_staged_submit_restores_input_without_enter() {
-    let _serial = transaction_test_guard();
+    let _serial = transaction_test_guard().await;
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock after epoch")
@@ -494,7 +494,7 @@ async fn dropped_staged_submit_restores_input_without_enter() {
 
 #[tokio::test]
 async fn stage_deadline_aborts_and_restores_input() {
-    let _serial = transaction_test_guard();
+    let _serial = transaction_test_guard().await;
     let Some(session) = TestSession::start_or_skip("submit-deadline") else {
         return;
     };
@@ -544,7 +544,7 @@ fn stage_helper_process() {
 
 #[test]
 fn daemon_death_mid_stage_restores_input_within_bound() {
-    let _serial = transaction_test_guard();
+    let _serial = blocking_transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("submit-death") else {
         return;
     };
@@ -599,7 +599,7 @@ fn acquire_watchdog_race_helper_process() {
 
 #[test]
 fn watchdog_expiry_before_disable_cannot_strand_input() {
-    let _serial = transaction_test_guard();
+    let _serial = blocking_transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("submit-acquire-race") else {
         return;
     };
@@ -682,7 +682,7 @@ fn watchdog_expiry_before_disable_cannot_strand_input() {
 
 #[test]
 fn separate_adapters_cannot_both_reserve_one_pane() {
-    let _serial = transaction_test_guard();
+    let _serial = blocking_transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("submit-adapter-cas") else {
         return;
     };
@@ -732,7 +732,7 @@ fn separate_adapters_cannot_both_reserve_one_pane() {
 
 #[test]
 fn forced_old_read_write_interleaving_allows_only_one_adapter() {
-    let _serial = transaction_test_guard();
+    let _serial = blocking_transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("submit-forced-adapter-cas") else {
         return;
     };
@@ -791,7 +791,7 @@ fn forced_old_read_write_interleaving_allows_only_one_adapter() {
 
 #[test]
 fn ownership_tokens_do_not_recycle_across_adapters() {
-    let _serial = transaction_test_guard();
+    let _serial = blocking_transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("submit-unique-token") else {
         return;
     };
@@ -813,7 +813,7 @@ fn ownership_tokens_do_not_recycle_across_adapters() {
 
 #[test]
 fn stale_watchdog_cannot_release_a_later_adapter_transaction() {
-    let _serial = transaction_test_guard();
+    let _serial = blocking_transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("submit-stale-watchdog") else {
         return;
     };
@@ -900,7 +900,7 @@ fn submit_cas_process_helper_process() {
 
 #[test]
 fn separate_processes_cannot_both_reserve_one_pane() {
-    let _serial = transaction_test_guard();
+    let _serial = blocking_transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("submit-process-cas") else {
         return;
     };
@@ -997,7 +997,7 @@ fn separate_processes_cannot_both_reserve_one_pane() {
 
 #[tokio::test]
 async fn committed_marker_transition_failure_never_sends_enter() {
-    let _serial = transaction_test_guard();
+    let _serial = transaction_test_guard().await;
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock after epoch")
@@ -1068,7 +1068,7 @@ async fn committed_marker_transition_failure_never_sends_enter() {
 
 #[tokio::test]
 async fn post_enter_cleanup_failure_remains_success_and_submits_once() {
-    let _serial = transaction_test_guard();
+    let _serial = transaction_test_guard().await;
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock after epoch")
@@ -1141,10 +1141,12 @@ fn write_executable(path: &Path, content: &str) {
     fs::set_permissions(path, permissions).expect("make fixture executable");
 }
 
-fn transaction_test_guard() -> MutexGuard<'static, ()> {
-    TRANSACTION_TEST_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+async fn transaction_test_guard() -> tokio::sync::MutexGuard<'static, ()> {
+    TRANSACTION_TEST_LOCK.lock().await
+}
+
+fn blocking_transaction_test_guard() -> tokio::sync::MutexGuard<'static, ()> {
+    TRANSACTION_TEST_LOCK.blocking_lock()
 }
 fn reservation_wrapper_script(
     server: &str,

@@ -45,3 +45,17 @@ The coder's uncommitted S001–S005 fixes were re-read and exercised. Verdict ta
 
 Fresh re-review commands: updated real-tmux adapter suite **29 passed**; updated harness suite **65 passed, 2 ignored**; targeted socketless and stale-draft daemon regressions **1 passed each**; `cargo fmt --check` passed. Full `cargo test -p pij-daemon` did not complete because of S006.
 The fresh Rust gate invocation with bare `cargo` also failed its toolchain stage: this worktree resolved `/opt/homebrew/bin/cargo`, which ran rustc 1.95.0 against the pinned 1.98.0 toolchain; lock, fmt, clippy, tests, and architecture passed. The coder's green receipt used `~/.cargo/bin/cargo` and remains coder-provided rather than independently reproduced.
+
+## R3 re-review — coder handback `0006f4b8`
+
+| Finding | Verdict | Fresh evidence |
+| --- | --- | --- |
+| S001 post-Enter marker transition | **CLOSED** | Marker authorization now occurs before Enter; real-tmux `committed_marker_transition_failure_never_sends_enter` and `post_enter_cleanup_failure_remains_success_and_submits_once` passed. |
+| S002 drop without commit | **CLOSED** | Real-tmux `dropped_staged_submit_restores_input_without_enter` passed; the interaction exit table includes `DropWithoutCommit`. |
+| S003 deterministic concurrency witness | **CLOSED** | Real-tmux adapter suite passed the forced old read/write adapter race and forced process race; coder's mutation-red receipts are accepted as coder evidence. |
+| S004 body-size ceiling and above-bound behavior | **CLOSED** | `MAX_TYPED_FRAME_BYTES` is shared by direct and worker routing; exact over-limit frames now queue/pull with a named notice. Full daemon suite passed the direct and worker oversized-frame tests; real-tmux max/max+1 tests passed. |
+| S005 live tap and stale draft hard veto | **CLOSED for s122 typed-body delivery** | Fresh tap drain precedes capture, and `owned_submit_hard_vetoes_stale_draft_and_fresh_tap` passed with no stage/submit calls. |
+| S006 missing-tap daemon fixture | **CLOSED** | Final `~/.cargo/bin/cargo test -p pij-daemon` passed **216 tests**; the formerly hanging drain-loop test now completes. |
+| S007 clippy gate regression | **OPEN — HIGH** | Final `~/.cargo/bin/cargo run --locked -p pij-testkit --bin pij-gate` passes toolchain/lock/fmt/test/arch but clippy fails on nine `await_holding_lock` errors in `crates/tmux/tests/adapter.rs` (the `std::sync::MutexGuard` from `transaction_test_guard` is held across async awaits). Replace the async-test guard with an async-aware lock or scope it before every await; do not suppress the lint. |
+
+**R3 verdict: REQUEST_CHANGES** until S007 is fixed and the Rust gate is green. Fresh `harness plan validate ... --complete` remains status ok with zero errors/warnings/orphans/contradictions. Inbox was polled after the handback and was empty; no live-client claims were independently reproduced.

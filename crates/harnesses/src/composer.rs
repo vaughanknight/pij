@@ -65,6 +65,18 @@ fn rendered_composer(capture: &str, cursor_x: u32, cursor_y: u32) -> Option<Stri
         }
     }
 
+    if let Some(prompt) = lines
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, line)| line.trim_start().starts_with('›'))
+    {
+        let trailing = &lines[prompt.0 + 1..];
+        if trailing.iter().any(|line| is_codex_footer(line)) {
+            return clip_multiline(&lines[prompt.0..prompt.0 + 1], prompt.0, cursor_x, cursor_y);
+        }
+    }
+
     let prompt = lines
         .iter()
         .enumerate()
@@ -156,8 +168,9 @@ fn take_chars(text: &str, count: usize) -> String {
 
 fn strip_prompt(line: &str) -> String {
     let trimmed = line.trim_start();
-    trimmed
-        .strip_prefix('❯')
+    ['❯', '›']
+        .into_iter()
+        .find_map(|prompt| trimmed.strip_prefix(prompt))
         .map_or_else(|| line.to_string(), |rest| rest.trim_start().to_string())
 }
 
@@ -175,6 +188,12 @@ fn is_plain_rule(line: &str) -> bool {
 fn is_copilot_footer(line: &str) -> bool {
     let lower = line.trim().to_lowercase();
     lower.starts_with("/ commands") || lower.contains("esc interrupt") || lower.contains("context")
+}
+
+fn is_codex_footer(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.contains(" · ")
+        && (trimmed.contains("~/") || trimmed.contains(" context") || trimmed.contains(" tokens"))
 }
 
 #[cfg(test)]
@@ -307,6 +326,29 @@ mod tests {
             composer_region(capture, 2, 4),
             ComposerRegion::Unrecognized,
             "blank decoration without a prompt or harness footer cannot authorize staging"
+        );
+    }
+
+    #[test]
+    fn current_codex_prompt_and_footer_identify_the_composer() {
+        let blank = concat!(
+            "╭─ OpenAI Codex ─╮\n",
+            "│ model: gpt-5.6 │\n",
+            "╰────────────────╯\n",
+            "\n",
+            "› Use /skills to list available skills\n",
+            "\n",
+            "  gpt-5.6-sol xhigh · ~/pi-hacking/pij",
+        );
+        assert_eq!(
+            composer_region(blank, 2, 4),
+            ComposerRegion::Recognized(String::new())
+        );
+
+        let draft = blank.replace("› Use /skills to list available skills", "› human draft");
+        assert_eq!(
+            composer_region(&draft, 13, 4),
+            ComposerRegion::Recognized("human draft".to_string())
         );
     }
 
