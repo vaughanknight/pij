@@ -9,7 +9,7 @@
         "title": "claude-session-start-adopt",
         "slug": "claude-session-start-adopt",
         "ordinal": 127,
-        "status": "in-progress",
+        "status": "shipped",
         "summary": "A hand-started Claude gets its pij seat automatically at session start — no `/pij ready` — via a once-per-session Claude SessionStart hook that pij installs; the statusline stays read-only."
       }
     },
