@@ -12,7 +12,7 @@
 | title | PM packet |
 | role | pm |
 | plan | docs/plans/133-rs-tap-supersedes-legacy/plan.dd.json |
-| seat | &lt;pij seat once spawned&gt; |
+| seat | pij-payable-ferret |
 | updated | 2026-09-02 |
 
 <a id="mission"></a>
