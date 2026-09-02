@@ -1,0 +1,87 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "seat-session-identity",
+        "slug": "seat-session-identity",
+        "ordinal": 128,
+        "status": "ready",
+        "summary": "One generation-agnostic identity contract: rs persists each seat's inner harness session id, `pij sessions --json` unions legacy + rs rows with a generation field, and `pij whoami --json` answers under rs — so conversation ingest (flowspace3, harness-engineering) resolves every seat without reading pij's stores."
+      }
+    },
+    {
+      "name": "summary",
+      "value": "req-0033 (governance PRD), consumer-driven by TWO governments: flowspace3 (lynx) measured 2 of 252 rs seats resolvable to a transcript; harness-engineering (meadowlark) measured 245/248 unresolvable. Cause: (1) the rs seat row stores NO inner harness session id (seats columns: id harness pane pid proc_start folder state semantic_state role parent relay tombstoned_at tombstone_reason seq), although the wire already carries CLAUDE_CODE_SESSION_ID / COPILOT_AGENT_SESSION_ID (crates/daemon/src/http/identity.rs:84-100) and the omp/pi extension has ctx.sessionManager.getSessionId() at boot (.pi/extensions/pij/index.ts:328) — a persist, not a discovery; (2) legacy `pij sessions --json` (cli.ts:2926-2960, buildSessionJoinRows over ~/.pij descriptors: pijId, harness, harnessSessionId, lifecycle, boundModel, spawnedBy, transcriptPath) reads only the legacy store; (3) `pij whoami --json` under rs refuses (E-RS) because rs cannot honour the legacy verbs/capabilitySchema gate. Both consumers have ruled they will NOT build a second store reader; this contract is the single thing gating both. Live count 2026-09-02: 231 pi + 40 omp + 16 claude rs seats."
+    },
+    {
+      "name": "goals",
+      "value": [
+        "G1 Persist: rs registration/adopt/spawn stores `harness_session` (the inner harness session id) on the seat row when the caller supplies it — claude from CLAUDE_CODE_SESSION_ID, copilot from COPILOT_AGENT_SESSION_ID, pi/omp from a new registration field the extension fills from getSessionId(). Migration 0012 adds the nullable column; SCHEMA_VERSION 11→12 (s122 owns 0011 / 10→11 — declared convergence: whoever lands second reconciles migrate.rs).",
+        "G2 Expose: `pij-rs list` / `pij-rs state` rows carry `session` (null when unknown) and `generation:\"rs\"`; `/v1/seats` likewise.",
+        "G3 Union: `pij sessions --json` routes through the generation shim to a new rs endpoint `/v1/shim/sessions` whose rows are the UNION of rs rows and legacy rows (the rs handler does not read ~/.pij; the TS shim merges the legacy join rows it already builds with the rs rows, dedupes by id, and tags each row generation:\"legacy\"|\"rs\"). Row shape (frozen): {id, harness, session, folder, generation, lifecycle?, transcriptPath?}. Human rendering keeps the existing table plus a generation column.",
+        "G4 whoami --json under rs: answer with {id, harness, pane, folder, session, generation:\"rs\", capabilityGate:\"absent\"} — the absent gate is NAMED, never a missing field (the refusal text at generation-routing explains why); legacy shape unchanged for legacy seats.",
+        "G5 Consumer floor: a versioned marker in the envelope (`v`) bumps so fs3/harness can pin a floor + one test."
+      ]
+    },
+    {
+      "name": "non_goals",
+      "value": [
+        "No transcript path derivation inside rs (consumers derive from harness+session).",
+        "No change to the delivery or typing paths.",
+        "No legacy store migration."
+      ]
+    },
+    {
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "AC1",
+          "text": "LIVE: hand-start an omp in tmux; `pij-rs list` shows its row with session = the id in its ~/.omp/agent/sessions file name; hand-start a claude, `/pij ready`; its row shows session = CLAUDE_CODE_SESSION_ID of that shell. Captures pasted.",
+          "claim": "rs persists and exposes the inner harness session id for omp and claude seats registered live",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC2",
+          "text": "`pij sessions --json` from any pane returns rows for BOTH a legacy seat (e.g. pij-massive-meadowlark) and an rs seat, each with generation and session; no duplicates for a seat present in both.",
+          "claim": "pij sessions --json is a deduplicated union of both stores with a generation tag",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC3",
+          "text": "`pij whoami --json` from an rs-only pane returns the frozen shape with capabilityGate:\"absent\" and exit 0; from a legacy-only pane returns the legacy shape unchanged.",
+          "claim": "whoami --json answers under rs with a named absent gate",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC4",
+          "text": "CONSUMER PROOF: `flowspace3 conversation ingest --pij <rs omp seat>` (which shells out to `pij sessions`) resolves and queues the transcript for one rs omp seat and one rs claude seat — run by the PM, output pasted; if fs3 needs its version floor first, the PM pastes the raw `pij sessions --json` rows instead and prime relays to lynx.",
+          "claim": "an external consumer resolves rs seats through pij sessions without reading pij.sqlite",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC5",
+          "text": "Rust + TS tests: migration up/down, persist on register with/without the field, list/state projection, shim union dedupe, whoami shape; RED-first; cargo/typecheck/harness checks green.",
+          "claim": "every new behaviour has a witness that failed on the pre-fix tree",
+          "state": "unchecked"
+        }
+      ]
+    },
+    {
+      "name": "phases",
+      "value": [
+        {
+          "id": "ph-3452",
+          "title": "Persist + expose + union + consumer proof",
+          "brief": "u1 rs persist/expose (Rust), u2 shim union + whoami json (TS), compose, AC1-AC5, PR.",
+          "state": "unchecked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
+        }
+      ]
+    }
+  ],
+  "references": []
+}
