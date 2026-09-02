@@ -69,7 +69,7 @@
         },
         {
           "id": "AC5",
-          "text": "RED-first unit tests plus a dev daemon against a writable production-database copy show zero pending delivery rows to tombstoned or pane-absent recipients within one drain cadence; failed rows retain named reasons.",
+          "text": "RED-first decision-table tests plus a final dev daemon against a writable production-database copy show every tombstoned or pane-absent socket-unreachable delivery terminalizes within one drain cadence; reachable sockets deliver and unknown observations retry visibly.",
           "claim": "tombstoned and pane-absent socket-unreachable deliveries terminalize next tick",
           "state": "checked",
           "receipt": "docs/plans/132-spawn-reports-bind/assets/prod-copy-proof.md#final-socket-aware-binary-rerun; docs/plans/132-spawn-reports-bind/assets/red-witness.md#pane-absence-respects-socket-reachability"
