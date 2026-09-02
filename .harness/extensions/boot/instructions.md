@@ -6,13 +6,17 @@
 
 `harness boot` runs pij's readiness proof, in order, with no shell:
 
-1. `just typecheck` — the whole TypeScript surface (extensions + harness) compiles.
-2. `just test` — the vitest suite (targets `store.ts`/`core/` per pij's P8) passes.
+1. `just typecheck` — the whole TypeScript surface (extensions + harness) compiles (60 s deadline).
+2. `just smoke` — the bounded smoke proof (~45 s, 90 s deadline). Pass `--full` to run
+   `just test` (the whole vitest suite, minutes, 600 s deadline) instead — that is the
+   merge gate's job (`just self-check`), not boot's.
 
-Envelope `data` carries `{ ready, stages[], orientation }`. Each `stages[]` entry is
-`{ name, cmd, ok, code }`. `status: ok` means both stages passed; `status: error`
-means a stage exited non-zero and `data.details.output` holds the last ~20 lines of
-that stage's output. It short-circuits: a failed typecheck does not run tests.
+Envelope `data` carries `{ ready, mode, stages[], orientation }`. Each `stages[]` entry is
+`{ name, cmd, ok, code, elapsed_ms, timed_out }`. `status: ok` means both stages passed;
+`status: error` means a stage exited non-zero (`boot-<stage>-failed`) or hit its deadline
+(`boot-<stage>-timeout`, exit 124) and `data.details.output` holds the last ~30 lines of
+that stage's STDOUT and STDERR combined (tsc reports on stdout). It short-circuits: a
+failed typecheck does not run the second stage.
 
 ## Your role (the inference part)
 
