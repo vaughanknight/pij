@@ -39,7 +39,7 @@ _Empty._
 | t2 | Implement session-start hook installer | — | — | [x] checked | — | cargo test -p pij-harnesses: pass; installed script behavior covered | — | — | — | — |
 | t3 | Wire daemon boot and doctor | — | — | [x] checked | — | cargo test -p pij-cli: pass; doctor claude-hook emitted structured state | — | — | — | — |
 | t4 | Document statusline and operator behavior | — | — | [x] checked | — | docs/how/claude-auto-seat.md | — | — | — | — |
-| t5 | Run targeted and full checks | — | — | [x] checked | — | harness checks: all 8 sensors pass; cargo test: 128 pass | — | — | — | — |
+| t5 | Run targeted and full checks | — | — | [x] checked | — | harness checks: all 8 sensors pass; cargo test: 133 pass; clippy -D warnings: pass | — | — | — | — |
 | t6 | Capture isolated live acceptance proof | — | — | [x] checked | — | docs/plans/127-claude-session-start-adopt/assets/live-auto-seat.md | — | — | — | — |
 
 <a id="done-when"></a>

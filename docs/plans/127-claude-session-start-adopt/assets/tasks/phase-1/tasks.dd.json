@@ -47,7 +47,7 @@
           "id": "t5",
           "title": "Run targeted and full checks",
           "state": "checked",
-          "receipt": "harness checks: all 8 sensors pass; cargo test: 128 pass"
+          "receipt": "harness checks: all 8 sensors pass; cargo test: 133 pass; clippy -D warnings: pass"
         },
         {
           "id": "t6",

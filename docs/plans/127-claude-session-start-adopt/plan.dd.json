@@ -20,7 +20,7 @@
     {
       "name": "goals",
       "value": [
-        "G1 Hook script shipped in the repo (e.g. harness/scripts/claude-session-start-pij.sh or a `pij-rs hook session-start` verb): if $TMUX_PANE is set and the rs daemon answers, run `pij adopt \"$TMUX_PANE\" --harness claude` (idempotent); print nothing on success except what Claude's hook contract allows; on refusal/no-tmux/no-daemon exit 0 silently with one line to a log, never block session start.",
+        "G1 Hook script shipped in the repo: if $TMUX_PANE is set and the rs daemon answers, run `pij-rs adopt \"$TMUX_PANE\" --harness claude` idempotently; on success emit only contract-valid SessionStart context JSON so the initial statusline refreshes after adoption; on refusal/no-tmux/no-daemon exit 0 with empty stderr and one diagnostic log line, never block session start.",
         "G2 Installer: extend plan 126's ensure path (crates/harnesses/src/claude_settings.rs, same backup + additive-JSON discipline) to ALSO ensure a SessionStart hook entry pointing at the shipped script in every Claude home; idempotent; `pij-rs doctor claude-hook` reports state; run at daemon boot alongside the accept ensure.",
         "G3 Statusline stays read-only; guard its pij block with `[ -n \"$TMUX_PANE\" ]` so non-tmux sessions skip the node spawn (the statusline script lives in ~/.claude; the installer may patch ONLY that guard, with backup, or the plan documents the one-line operator edit — PM decides and records).",
         "G4 The adopted seat gets consent stamped (s121) so the very first inbound message lands as a real turn."
@@ -63,14 +63,14 @@
           "claim": "The installer additively preserves hooks, backs up changes, is idempotent, and refuses malformed settings.",
           "state": "checked",
           "text": "Unit: installer adds the SessionStart hook entry without disturbing existing hooks (Notification/PreToolUse/PostToolUse preserved byte-for-byte), backup written, second run no-op; malformed settings refused. RED-first.",
-          "receipt": "cargo test -p pij-harnesses -p pij-cli: 127 passed"
+          "receipt": "cargo test -p pij-harnesses -p pij-cli: 133 passed; round-3 review"
         },
         {
           "id": "AC5",
           "claim": "Manual ready after auto-adopt reuses the seat and all repository gates pass.",
           "state": "checked",
           "text": "`/pij ready` typed after auto-adopt reports the existing id (no second seat). cargo/typecheck/harness checks green.",
-          "receipt": "harness checks 2026-09-02T00:50:10Z; assets/live-auto-seat.md"
+          "receipt": "harness checks 2026-09-02T01:28:20Z; cargo clippy -D warnings; assets/live-auto-seat.md"
         }
       ]
     },

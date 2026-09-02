@@ -304,6 +304,7 @@ fn reconcile_managed_hook_commands(entries: &[Value], command: &str) -> Vec<Valu
             reconciled.push(entry);
             continue;
         };
+        let was_empty = hooks.is_empty();
         hooks.retain_mut(|hook| {
             let managed = hook
                 .get("command")
@@ -319,7 +320,7 @@ fn reconcile_managed_hook_commands(entries: &[Value], command: &str) -> Vec<Valu
             kept = true;
             true
         });
-        if !hooks.is_empty() {
+        if was_empty || !hooks.is_empty() {
             reconciled.push(entry);
         }
     }
@@ -1214,6 +1215,33 @@ mod tests {
         let entries = written["hooks"]["SessionStart"].as_array().expect("array");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0]["hooks"][0]["command"], desired);
+    }
+
+    #[test]
+    fn foreign_empty_hook_entry_survives_reconciliation() {
+        let root = TestDir::new();
+        let home = root.path().join(".claude");
+        fs::create_dir_all(&home).expect("home");
+        let original = r#"{"hooks":{"SessionStart":[{"matcher":"resume","hooks":[]},{"matcher":"","hooks":[{"type":"command","command":"/tmp/stale/claude-session-start-pij.sh"}]}]}}"#;
+        fs::write(home.join("settings.json"), original).expect("seed settings");
+
+        let report = ensure_claude_session_start_hook(
+            std::slice::from_ref(&home),
+            Path::new("/Users/test/.pij-rs/claude-session-start-pij.sh"),
+        )
+        .into_iter()
+        .next()
+        .expect("report");
+
+        assert!(report.changed);
+        let written: Value = serde_json::from_str(
+            &fs::read_to_string(home.join("settings.json")).expect("settings"),
+        )
+        .expect("valid settings");
+        let entries = written["hooks"]["SessionStart"].as_array().expect("array");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0]["matcher"], "resume");
+        assert_eq!(entries[0]["hooks"], serde_json::json!([]));
     }
 
     #[test]
