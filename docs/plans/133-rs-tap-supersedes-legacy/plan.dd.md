@@ -40,6 +40,7 @@ Witness 2026-09-02 (weasel): a hand-started Copilot CLI in tmux, adopted into pi
 | g1 | Hand-started Copilot/Codex panes get full-body typed delivery even when the legacy daemon tapped the pane first. |
 | g2 | rs pane observer adopts a legacy-generation tap (pane_pipe=1, no @pij-tap-sink marker, legacy sink ~/.pij/pane-signals/_N.raw present) instead of refusing; genuinely unknown pipes are still refused. |
 | g3 | A pane delivery deferred for want of a tap sink returns `queued` WITH a reason (`tap-unowned`), is logged once per pane not per tick, and the drain retries it after the tap is claimed (req-0042 partial). |
+| g4 | Adopt/register records the harness process, not the pane shell, when a harness was started from an interactive shell; UDS discovery falls back to the session record pane match. |
 
 <a id="non-goals"></a>
 
@@ -62,6 +63,7 @@ Witness 2026-09-02 (weasel): a hand-started Copilot CLI in tmux, adopted into pi
 | AC3 | supersede is narrow and refusal stops spamming | [ ] unchecked | — | — | — | — | A pane whose pipe has a FOREIGN non-legacy owner (test: pipe-pane a scratch pane to /tmp/foreign.raw with no marker and no legacy sink file) is still refused, and the refusal is logged ONCE per pane per daemon boot (rate-limited), not every observer tick; unit test + `grep -c` on the dev daemon log pasted. |
 | AC4 | queued names its reason and retries | [ ] unchecked | — | — | — | — | `pij-rs send` to a pane seat with no owned tap returns `{outcome:queued, reason:"tap-unowned"}` (additive field, wire stays v2), and once the observer claims the tap the drain delivers the queued row without a second send; integration test + live transcript pasted. |
 | AC5 | gates and blast radius | [ ] unchecked | — | — | — | — | `just checks` green on the rebased tree (req-0044 baseline reds excluded by name only); no changes under .pi/extensions (legacy) and no operator-home writes (`git diff --stat` + `ls -la ~/.pij ~/.pij-rs` mtimes pasted). |
+| AC6 | hand-started-in-a-shell seats are socket-reachable | [ ] unchecked | — | — | — | — | LIVE: a Claude Code hand-started INSIDE an existing zsh pane (pane_pid = the shell, claude is its child; witness: pij-still-weasel %2081, row proc.pid=6624 shell while /tmp/cc-socks/82124.sock + ~/.claude/sessions/82124.json belong to the live claude) is reachable by socket: after adopt/auto-adopt the row proc names the HARNESS process (or UDS discovery matches the pane via the session record `tmux` field), `pij-rs send` returns delivered/injected-to-transport and the turn arrives in Claude; before the fix the same send returns queued with nothing shown (control pasted). |
 
 <a id="phases"></a>
 

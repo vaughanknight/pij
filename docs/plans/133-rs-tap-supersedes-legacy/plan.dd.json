@@ -33,6 +33,10 @@
         {
           "id": "g3",
           "text": "A pane delivery deferred for want of a tap sink returns `queued` WITH a reason (`tap-unowned`), is logged once per pane not per tick, and the drain retries it after the tap is claimed (req-0042 partial)."
+        },
+        {
+          "id": "g4",
+          "text": "Adopt/register records the harness process, not the pane shell, when a harness was started from an interactive shell; UDS discovery falls back to the session record pane match."
         }
       ]
     },
@@ -84,6 +88,12 @@
           "id": "AC5",
           "text": "`just checks` green on the rebased tree (req-0044 baseline reds excluded by name only); no changes under .pi/extensions (legacy) and no operator-home writes (`git diff --stat` + `ls -la ~/.pij ~/.pij-rs` mtimes pasted).",
           "claim": "gates and blast radius",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC6",
+          "text": "LIVE: a Claude Code hand-started INSIDE an existing zsh pane (pane_pid = the shell, claude is its child; witness: pij-still-weasel %2081, row proc.pid=6624 shell while /tmp/cc-socks/82124.sock + ~/.claude/sessions/82124.json belong to the live claude) is reachable by socket: after adopt/auto-adopt the row proc names the HARNESS process (or UDS discovery matches the pane via the session record `tmux` field), `pij-rs send` returns delivered/injected-to-transport and the turn arrives in Claude; before the fix the same send returns queued with nothing shown (control pasted).",
+          "claim": "hand-started-in-a-shell seats are socket-reachable",
           "state": "unchecked"
         }
       ]

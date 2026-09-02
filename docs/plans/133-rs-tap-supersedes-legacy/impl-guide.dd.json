@@ -20,7 +20,7 @@
       "name": "fan_out",
       "value": {
         "decision": "solo-pm",
-        "rationale": "three small edits on one seam; PM codes, Claude opus reviews"
+        "rationale": "two small units on adjacent seams; PM codes both, Claude opus reviews"
       }
     },
     {
@@ -36,6 +36,17 @@
           "depends_on": "none",
           "wave": 1,
           "note": "live proof uses a dev daemon (own --state-dir + port) with production legacy daemon left running"
+        },
+        {
+          "id": "u2",
+          "name": "bind the harness process, not the shell",
+          "paths": "crates/tmux/src/lib.rs (pane_pid → harness descendant), crates/daemon/src/registration.rs (adopt/register proc), crates/transport/src/uds.rs discover() (~L120-150: record `tmux` field match), tests",
+          "responsibility": "AC6",
+          "interface": "ProcIdentity for a pane = the first descendant of pane_pid whose comm is the harness binary (claude/copilot/codex/pi/omp), else pane_pid",
+          "test_strategy": "RED-first: fixture pane whose pane_pid is a shell with a claude child; discovery fixture with <pid>.json whose tmux field names the pane",
+          "depends_on": "none",
+          "wave": 1,
+          "note": "repro: weasel %2081 — `tmux display -p -t %2081 #{pane_pid}` = 6624 (zsh), `pgrep -P 6624` = 82124 (claude)"
         }
       ]
     },

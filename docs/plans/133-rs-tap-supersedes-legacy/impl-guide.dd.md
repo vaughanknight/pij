@@ -27,7 +27,7 @@ Rust only. Tap ownership: crates/tmux/src/lib.rs (~L835-900, `pane_pipe`/@pij-ta
 | Field | Value |
 | --- | --- |
 | decision | solo-pm |
-| rationale | three small edits on one seam; PM codes, Claude opus reviews |
+| rationale | two small units on adjacent seams; PM codes both, Claude opus reviews |
 
 <a id="units"></a>
 
@@ -36,6 +36,7 @@ Rust only. Tap ownership: crates/tmux/src/lib.rs (~L835-900, `pane_pipe`/@pij-ta
 | id | name | paths | responsibility | interface | test_strategy | depends_on | wave | note |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | u1 | supersede legacy tap + reasoned deferral | crates/tmux/src/lib.rs, crates/daemon/src/pane_observer.rs, crates/harnesses/src/interaction.rs, crates/daemon/src/delivery/mod.rs, crates/daemon/src/http/types.rs (additive only), crates/core/src/delivery.rs (reason enum), tests | AC1-AC5 | InjectionVerdict gains `reason`; DeliveryOutcome::Queued gains optional `reason` string (additive on the wire) | RED-first on main dd450381; fake tmux port fixtures for legacy-marker/foreign-marker/no-pipe; one integration test queued→drained after tap claim | none | 1 | live proof uses a dev daemon (own --state-dir + port) with production legacy daemon left running |
+| u2 | bind the harness process, not the shell | crates/tmux/src/lib.rs (pane_pid → harness descendant), crates/daemon/src/registration.rs (adopt/register proc), crates/transport/src/uds.rs discover() (~L120-150: record `tmux` field match), tests | AC6 | ProcIdentity for a pane = the first descendant of pane_pid whose comm is the harness binary (claude/copilot/codex/pi/omp), else pane_pid | RED-first: fixture pane whose pane_pid is a shell with a claude child; discovery fixture with &lt;pid&gt;.json whose tmux field names the pane | none | 1 | repro: weasel %2081 — `tmux display -p -t %2081 #{pane_pid}` = 6624 (zsh), `pgrep -P 6624` = 82124 (claude) |
 
 <a id="isolation"></a>
 
