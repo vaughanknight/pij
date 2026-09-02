@@ -70,7 +70,7 @@ Two live failures preceded the final mechanism and prevented false acceptance:
 1. One unpaced paste lost one 16-byte repeated block: sender 3040 payload chars, receiver 3024.
 2. One bracketed paste per 1000-byte chunk inserted spaces at framed offsets 1000 and 6000 in the same 6647-byte file.
 
-Final mechanism: one bracketed-paste transaction, UTF-8-safe chunks of at most 1000 bytes paced inside it, one named Enter after the closing marker. The permanent real-tmux regression is `submit_pastes_a_3000_byte_multiline_body_intact`.
+Final mechanism: one bracketed-paste transaction, UTF-8-safe chunks of at most 1000 bytes paced inside it, one named Enter after the closing marker. The permanent real-tmux boundary regressions are `submit_pastes_maximum_supported_body_intact` and `submit_refuses_one_byte_above_supported_maximum_without_writing`.
 
 ## AC-3 — non-empty composer vetoes typed body: RED then PASS
 
@@ -128,5 +128,14 @@ Migration convergence is explicit: s121 owns ordinal 0010 and schema 10; s122 ow
 - `cargo test -p pij-daemon expired_nonempty` — 2 passed after both guards were mutation-proved red.
 - `cargo test -p pij-daemon a_parked_draft_delays_delivery_and_then_stops_blocking_it` — 1 passed; socket delivery retains the 60-second parked-draft policy.
 - `cargo test -p pij-harnesses fresh_verdict_keeps_nonempty_composer_fact_after_policy_expiry` — 1 passed; one capture returns policy permission and actual composer state separately.
-- `cargo test -p pij-tmux submit_pastes_a_3000_byte_multiline_body_intact` — 1 passed against a real isolated tmux server.
+- `cargo test -p pij-tmux submit_pastes_maximum_supported_body_intact` — exact 8,192-byte complete frame passed against a real isolated tmux server; the 8,193-byte refusal test wrote nothing.
 - `harness checks` was attempted as the repository-wide gate. Its TypeScript/tooling sensors remain unavailable in this worktree: `typecheck` reports missing `@types/node`; the other Node-backed sensors exit 127. This is the packet's ruled pre-existing npm-resolution exception, not a green claim. Prime reports the separate portability fix at `prime/govpath-portability@4225e920`; it is not folded into s122.
+
+## Current-build Copilot and Codex rerun — `2491c7cf`
+
+Final source-built `target/debug/pij-rs`; isolated daemon `127.0.0.1:27463`; state `/tmp/pij-s122-live-isolated-2491c7cf`; isolated tmux server `pij-s122-current`. Both clients were hand-started, then adopted into the source daemon after their composers were visible.
+
+- **Copilot v1.0.83-1**, pane `%1`, seat `pij-zealot`: message `s122-final-copilot-2491c7cf-v2` returned `delivered / typed-to-pane`. The pane displayed one turn containing `[pij-rs from pij-unaware-tiglon]`, `S122-FINAL-COPILOT-2491c7cf`, the full second body line, and `[/pij]`.
+- **Codex v0.146.0**, pane `%2`, seat `pij-unusual-partridge`: message `s122-final-codex-2491c7cf` returned `delivered / typed-to-pane`. The pane displayed one turn containing `[pij-rs from pij-unaware-tiglon]`, `S122-FINAL-CODEX-2491c7cf`, the full second body line, and `[/pij]`.
+
+The Codex run uses the measured `›` prompt plus model/path footer recognizer added at this commit. Both panes had source-daemon-owned taps before send; no inbox command was involved.
