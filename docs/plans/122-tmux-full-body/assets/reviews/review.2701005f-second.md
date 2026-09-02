@@ -59,3 +59,28 @@ The fresh Rust gate invocation with bare `cargo` also failed its toolchain stage
 | S007 clippy gate regression | **OPEN — HIGH** | Final `~/.cargo/bin/cargo run --locked -p pij-testkit --bin pij-gate` passes toolchain/lock/fmt/test/arch but clippy fails on nine `await_holding_lock` errors in `crates/tmux/tests/adapter.rs` (the `std::sync::MutexGuard` from `transaction_test_guard` is held across async awaits). Replace the async-test guard with an async-aware lock or scope it before every await; do not suppress the lint. |
 
 **R3 verdict: REQUEST_CHANGES** until S007 is fixed and the Rust gate is green. Fresh `harness plan validate ... --complete` remains status ok with zero errors/warnings/orphans/contradictions. Inbox was polled after the handback and was empty; no live-client claims were independently reproduced.
+
+## R4 re-review — handback target `3e973f4b`
+
+**Verdict: APPROVE — no open findings.**
+
+| Finding | Verdict | Fresh evidence |
+| --- | --- | --- |
+| S001 post-Enter marker transition | **CLOSED** | Commit authorization transitions ownership before Enter; the real-tmux transition-failure and post-Enter cleanup tests pass. |
+| S002 drop without commit | **CLOSED** | The real-tmux drop-after-stage test and expanded exit table pass. |
+| S003 deterministic concurrency witness | **CLOSED** | Forced adapter and process interleavings pass; the coder's mutation-red receipts are recorded as coder evidence. |
+| S004 body-size ceiling and above-bound behavior | **CLOSED** | The complete framed 8,192-byte ceiling is shared by direct and worker routing; exact over-limit direct/worker pull behavior and real-tmux max/max+1 tests pass. |
+| S005 live tap and stale draft hard veto | **CLOSED** | Fresh tap drain precedes capture; the stale nonblank draft and unread-tap arms both defer without staging or submitting. |
+| S006 missing-tap daemon fixture | **CLOSED** | Final `~/.cargo/bin/cargo test -p pij-daemon` passes 216 tests, including the previously hanging drain-loop test. |
+| S007 clippy gate regression | **CLOSED** | `tokio::sync::Mutex` separates async and blocking test guards; the isolated Rust gate reports toolchain, lock, fmt, clippy, test, and architecture all green. |
+
+## R4 proof
+
+- `~/.cargo/bin/cargo test -p pij-tmux --test adapter`: **29 passed**.
+- `~/.cargo/bin/cargo test -p pij-harnesses`: **67 passed, 2 ignored**.
+- `~/.cargo/bin/cargo test -p pij-daemon`: **216 passed**.
+- `~/.cargo/bin/cargo run --locked -p pij-testkit --bin pij-gate`: **all six stages green** on Rust 1.98.0.
+- `harness checks`: **all eight sensors green** — local paths, typecheck, lint, test, Windows compatibility, smoke, package audit, snapshots.
+- `harness plan validate docs/plans/122-tmux-full-body/plan.dd.json --complete`: **0 errors, 0 warnings, 0 orphans, 0 contradictions**.
+
+Live Copilot/Codex typed-to-pane witnesses are read from the coder-authored current-build evidence at `assets/live-pane-witnesses-2026-09-01.md:134-141`; they were not independently hand-reproduced in this review. All source, test, and plan claims above are otherwise fresh against `3e973f4b`.
