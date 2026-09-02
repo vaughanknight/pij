@@ -7,6 +7,7 @@ import { loadScenario, runScenario } from "../driver/index.js";
 import { findProjectExtensionEntries, resolveSmokeCommand } from "./smoke.js";
 
 vi.mock("../driver/index.js", () => ({
+	isolatedChildEnvironment: vi.fn(() => ({})),
 	loadScenario: vi.fn(),
 	runScenario: vi.fn(),
 }));

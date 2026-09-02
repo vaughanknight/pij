@@ -20,7 +20,12 @@ import { join, resolve } from "node:path";
 import { FsDispatchStore } from "../../.pi/extensions/pij/adapters/dispatch-store.js";
 import { FsRegistry } from "../../.pi/extensions/pij/adapters/fs-registry.js";
 import type { SessionDescriptor } from "../../.pi/extensions/pij/core/types.js";
-import { loadScenario, runScenario, type Scenario } from "../driver/index.js";
+import {
+	isolatedChildEnvironment,
+	loadScenario,
+	runScenario,
+	type Scenario,
+} from "../driver/index.js";
 
 const PIJ_ROOT = join(import.meta.dirname, "..", "..");
 const EXTENSIONS_ROOT = join(PIJ_ROOT, ".pi", "extensions");
@@ -314,6 +319,7 @@ export function runWatchdogSmoke(): WatchdogSmokeResult {
 		cwd: PIJ_ROOT,
 		encoding: "utf8",
 		timeout: 60_000,
+		env: { ...process.env, ...isolatedChildEnvironment() },
 	});
 	if (result.error) return { verdict: "FAIL", reason: result.error.message };
 	if (result.status !== 0) {

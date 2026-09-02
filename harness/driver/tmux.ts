@@ -109,7 +109,9 @@ const PIJ_ROUTING_ENV_KEYS = ["PIJ_DAEMON_GENERATION", "PIJ_RS_ADDR", "PIJ_RS_ST
  * Empty tmux overrides prevent ambient spawn identity from reaching the live
  * fleet. Explicit safe routing follows the invoking check into a tmux server
  * that an earlier test may already have created; scenario values still win. */
-function childEnvironment(explicit: Record<string, string> = {}): Record<string, string> {
+export function isolatedChildEnvironment(
+	explicit: Record<string, string> = {},
+): Record<string, string> {
 	const scrubbed: Record<string, string> = {
 		PIJ_DAEMON_GENERATION: process.env.PIJ_DAEMON_GENERATION ?? "legacy",
 	};
@@ -167,7 +169,7 @@ export function boot(opts: BootOpts): Target {
 		"-c",
 		opts.cwd,
 	];
-	for (const [key, value] of Object.entries(childEnvironment(opts.env))) {
+	for (const [key, value] of Object.entries(isolatedChildEnvironment(opts.env))) {
 		args.push("-e", `${key}=${value}`); // tmux 3.0+ supports repeated -e
 	}
 	args.push(opts.cmd);
