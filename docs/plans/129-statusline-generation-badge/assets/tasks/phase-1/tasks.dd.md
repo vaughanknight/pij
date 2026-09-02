@@ -12,9 +12,9 @@
 | title | Phase 1 |
 | slug | phase-1 |
 | ordinal | — |
-| status | draft |
+| status | in-progress |
 | complexity | — |
-| summary | — |
+| summary | Plan 129 implementation, live proof, gates, and review |
 | backpressure | — |
 | log | — |
 | mode | — |
@@ -33,7 +33,13 @@ _Empty._
 
 ## Tasks
 
-_No entries._
+| id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| t1 | Implement rs-first Claude statusline and installer | — | — | [x] checked | — | cargo test -p pij-harnesses statusline_: 4 passed; cargo test -p pij-harnesses -p pij-cli: 137 passed; shellcheck pass | — | — | — | [AC1](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria), [AC5](../../../plan.dd.md#acceptance-criteria) |
+| t2 | Label omp native and status generation | — | — | [x] checked | — | session-name.test.ts 8/8; index generation wiring 2/2; just typecheck pass | — | — | — | [AC3](../../../plan.dd.md#acceptance-criteria) |
+| t3 | Capture real clients and comparative timing | — | — | [x] checked | — | assets/live-statusline.md: real Claude rs/legacy/unregistered footers, real omp footer, non-pij byte parity; median 92.10ms and 28.52x speedup | — | — | — | [AC1](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria), [AC3](../../../plan.dd.md#acceptance-criteria), [AC4](../../../plan.dd.md#acceptance-criteria) |
+| t4 | Run deterministic repository gates | — | — | [x] checked | — | harness checks: 7/8 sensors pass; test sensor contains two prime-ruled main baselines; all other cases green across excluded suite and focused timeout reruns | — | — | — | [AC5](../../../plan.dd.md#acceptance-criteria) |
+| t5 | Obtain cross-model Claude Opus review | — | — | [ ] unchecked | — | — | — | — | — | — |
 
 <a id="done-when"></a>
 
