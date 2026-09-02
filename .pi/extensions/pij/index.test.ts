@@ -286,6 +286,7 @@ describe("pij index — footer status bar", () => {
 
 		handlers.get("turn_start")?.({ timestamp: Date.now() });
 		expect(sessionNames).toHaveLength(2);
+		expect(sessionNames.at(-1)).toMatch(/^legacy·pij-/);
 
 		await new Promise((resolve) => setTimeout(resolve, 300));
 		expect(notices.filter((message) => message.includes("omp session name"))).toEqual([]);

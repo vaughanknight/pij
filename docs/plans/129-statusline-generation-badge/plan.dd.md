@@ -54,7 +54,7 @@ Jordan 2026-09-02: 'in the Claude status bar, if we have old and new id, it is s
 | AC1 | dual-present panes show the rs id with a yellow rs tag | [ ] unchecked | — | — | — | — | LIVE: a hand-started Claude in tmux on a pane present in BOTH stores (e.g. a helper-migrated seat, or adopt a fresh one then confirm it has a legacy row) shows `rs` in yellow followed by the rs id; capture pasted. |
 | AC2 | legacy-only and unregistered panes render honestly | [ ] unchecked | — | — | — | — | LIVE: a legacy-only Claude pane shows `legacy` (dim) and its legacy id; a pane in neither store shows nothing; captures pasted. |
 | AC3 | omp footer names the generation | [ ] unchecked | — | — | — | — | LIVE: a hand-started omp shows `rs·&lt;id&gt;` in its footer (and the yellow status row if the segment cannot colour); capture pasted. |
-| AC4 | rs-first resolution is cheap | [ ] unchecked | — | — | — | — | Measured: statusline script wall time with rs answering ≤ 50ms over 10 runs (hyperfine or time loop), pasted; legacy fallback path measured too. |
+| AC4 | rs-first resolution is cheap | [ ] unchecked | — | — | — | — | Measured: median wall time over 10 warm runs with rs answering ≤ 100ms and at least 10× faster than the forced legacy tsx path on the same captured real Claude JSON; paste all raw values and host load average. Prime ruling 2026-09-02 supersedes the original 50ms target. |
 | AC5 | installer is additive, idempotent, and refuses malformed input | [ ] unchecked | — | — | — | — | Installer unit tests (RED-first): points statusLine.command at the shipped script, backs up the previous, no-op on rerun, malformed settings refused; existing hooks untouched. typecheck/cargo/harness checks green. |
 
 <a id="phases"></a>

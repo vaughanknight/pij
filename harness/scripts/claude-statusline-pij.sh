@@ -75,7 +75,7 @@ PIJID=""
 PIJ_RS_BIN=$(command -v pij-rs 2>/dev/null || :)
 [ -z "$PIJ_RS_BIN" ] && [ -x "${HOME:-}/.npm-global/bin/pij-rs" ] && PIJ_RS_BIN=${HOME:-}/.npm-global/bin/pij-rs
 if [ -n "${TMUX_PANE:-}" ] && [ -n "$PIJ_RS_BIN" ]; then
-  RS_OUTPUT=$("$PIJ_RS_BIN" --json whoami --pane "$TMUX_PANE" 2>/dev/null)
+  RS_OUTPUT=$(unset PIJ_SESSION_ID; "$PIJ_RS_BIN" --json whoami --pane "$TMUX_PANE" 2>/dev/null)
   case "$RS_OUTPUT" in
     *'"id":"'*)
       PIJID=${RS_OUTPUT#*'"id":"'}

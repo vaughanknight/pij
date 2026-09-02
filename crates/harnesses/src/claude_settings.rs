@@ -1588,7 +1588,14 @@ mod tests {
         let legacy_marker = root.path().join("legacy-called");
         fs::write(
             &rs,
-            "#!/bin/sh\nprintf '{\"ok\":true,\"data\":{\"id\":\"pij-rs-seat\"}}\\n'\n",
+            concat!(
+                "#!/bin/sh\n",
+                "if [ -n \"${PIJ_SESSION_ID:-}\" ]; then\n",
+                "  printf '{\"ok\":false,\"error\":\"refused\"}\\n'\n",
+                "  exit 2\n",
+                "fi\n",
+                "printf '{\"ok\":true,\"data\":{\"id\":\"pij-rs-seat\"}}\\n'\n"
+            ),
         )
         .expect("fake rs");
         fs::write(
@@ -1619,6 +1626,7 @@ mod tests {
                 .env("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()))
                 .env("HOME", root.path())
                 .env("TMUX_PANE", "%42")
+                .env("PIJ_SESSION_ID", "pij-other-seat")
                 .env("LEGACY_MARKER", &legacy_marker)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())

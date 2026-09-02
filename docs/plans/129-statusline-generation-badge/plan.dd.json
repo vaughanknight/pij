@@ -56,7 +56,7 @@
         },
         {
           "id": "AC4",
-          "text": "Measured: statusline script wall time with rs answering ≤ 50ms over 10 runs (hyperfine or time loop), pasted; legacy fallback path measured too.",
+          "text": "Measured: median wall time over 10 warm runs with rs answering ≤ 100ms and at least 10× faster than the forced legacy tsx path on the same captured real Claude JSON; paste all raw values and host load average. Prime ruling 2026-09-02 supersedes the original 50ms target.",
           "claim": "rs-first resolution is cheap",
           "state": "unchecked"
         },
@@ -80,6 +80,5 @@
         }
       ]
     }
-  ],
-  "references": []
+  ]
 }
