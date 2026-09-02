@@ -610,9 +610,10 @@ async fn whoami_resolved(
 
 /// The identity ladder's answer.
 ///
-/// A plain enum rather than `Result<_, Response>`: an axum `Response` is a large
-/// error variant, and the two arms are not success-and-failure anyway — "no seat
-/// resolved" is an answer this route gives on purpose.
+/// Kept inline deliberately: boxing [`SeatDescriptor`] would allocate on every
+/// successful identity resolution, which is the hot path. The size imbalance is
+/// cheaper than adding that per-request heap allocation.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Resolved {
     /// The seat, and what identified it.
     Seat(SeatDescriptor, ResolvedBy),
