@@ -1,0 +1,86 @@
+{
+ "dd": {
+  "schema": "builder/review"
+ },
+ "sections": [
+  {
+   "name": "meta",
+   "value": {
+    "title": "Cross-model review r2 \u2014 133 rs tap supersedes legacy",
+    "reviewer": "pij-obnoxious-primate",
+    "model": "claude-opus-5",
+    "round": "r2",
+    "date": "2026-09-02",
+    "plan": "../../plan.dd.json#meta",
+    "note": "SUBJECT: commit 1257c32f only, judged against r1 findings f1-f3. Scoped re-review as dispatched \u2014 no broad re-review of AC1-AC6.\n\nMETHOD: read the fix diff (6e33cf4c..1257c32f); re-measured f1's discriminator against this operator's live tmux server rather than accepting the fix by inspection; proved f2's new witness actually RED on the pre-fix tree by running the new test file against the old adapter in a throwaway worktree; confirmed the f3 config-echo path was DELETED rather than bypassed by grepping the symbol to zero; re-ran the gates myself at BOTH the plan's gate scope and CI's scope.\n\nVERDICT: REQUEST CHANGES \u2014 one line. f1, f2 and f3 are all genuinely closed and I verified each independently. A NEW blocking defect (f4) entered with this commit: it fails the clippy gate that CI actually runs, while passing the narrower clippy gate the live-proof receipt cites. The fix is a one-line change in the new test.\n\nf1 CLOSED \u2014 VERIFIED LIVE, NOT BY INSPECTION. The discriminator now proves association instead of existence. Re-measured just now on the same server that produced r1's 69/69:\n  live panes: 69\n  panes with a ~/.pij/pane-signals/_<N>.raw file: 69   (unchanged \u2014 the file still means nothing)\n  live legacy WRITERS under ~/.pij/pane-signals: 15\nThe predicate went from constant-true (69/69) to selective (15/69), which is the property r1 said was missing. I confirmed the writer shape the check keys on is the real one: every one of the 40 live tap writers on this machine is literally `sh -c cat >> '<sink>'`, so `contains(\"cat >>\") && contains(sink)` matches production, not a guess. Per-pane sweep: 13 panes are piped-and-unmarked; all 13 have a live legacy writer, so the fix supersedes the same 13 \u2014 that is the CORRECT answer for this machine, not an unchanged predicate. The counterexample class r1 feared (piped, unmarked, sink file present, no live writer) is now spared by construction; it does not exist in ambient state right now, which is exactly why it needs the test in f2 rather than a live check.\n\nf2 CLOSED \u2014 AND THE WITNESS IS A REAL WITNESS. Two mirror tests added, both constructing the adapter WITH the production legacy root injected (the configuration r1 showed no refusal test used) and both building a real foreign pipe with real bytes. I did not accept 'test added' as proof it can fail. I checked out 6e33cf4c into a scratch worktree, dropped in ONLY the new tests/adapter.rs from 1257c32f, and ran the load-bearing one:\n  stale_legacy_sink_without_live_writer_does_not_authorize_takeover ... FAILED\n  panicked: an unmarked foreign writer must not be superseded\nGreen on 1257c32f, red on 6e33cf4c with the fix absent. That is a witness observed to fail, not a claim. All three legacy/foreign tests RAN on the fix commit (3 passed, 0 ignored, no skips). The over-claiming name r1 flagged was also corrected: the success test is now `unmarked_legacy_pipe_with_live_writer_is_superseded`, which is what it proves.\n\nf3 CLOSED \u2014 ECHO DELETED, NOT BYPASSED. `grep -rn retry_interval_ms crates/` now returns NOTHING: the cadence field was removed, so the echo cannot be reintroduced by a caller. All three sub-defects are addressed: the wrong predicate is gone (queued_outcome no longer takes `recipient` at all, so paneless bound socket rows now report a value instead of null); the value is read back from the persisted row inside the same transaction that resolves the job; and the doc comment was corrected from 'Earliest scheduled retry' to 'Persisted queue eligibility (jobs.not_before)', which is what the value is. The non-echo test is the right shape \u2014 `delivery_enqueue_returns_the_persisted_not_before_after_backoff` pushes not_before 17s out via a real backoff and asserts the reported value equals a value read independently by direct SQL. 17s cannot be produced by any config echo, so config and persisted value are forced to differ. This is the 'add one test where they must differ' control r1 asked for.\n\nGATES, re-derived at both scopes: cargo test --workspace 591 passed / 0 failed / 6 ignored; cargo fmt --check exit 0; `.pi/extensions` diff empty. clippy is where the two scopes disagree \u2014 see f4."
+   }
+  },
+  {
+   "name": "findings",
+   "value": [
+    {
+     "id": "f4",
+     "kind": "defect",
+     "severity": "BLOCKING",
+     "address": "crates/store/tests/queue.rs:477, .github/workflows/ci.yml:102, assets/live-proof.md deterministic-receipts bullet",
+     "finding": "A CLEAN GATE RECEIPT FROM A NARROWER GATE THAN THE ONE THAT GOVERNS.\n\nCLAIM: live-proof.md records `cargo clippy --workspace -- -D warnings` passing. I reproduced that: it exits 0. But .github/workflows/ci.yml:102 runs a DIFFERENT command:\n\n    run: cargo clippy --workspace --all-targets -- -D warnings\n\n`--all-targets` is what lints test targets. Without it, clippy never looks at crates/store/tests/queue.rs \u2014 which is where this commit's new code lives. At CI's scope the build fails:\n\n    error: unnecessary use of `clone` to create a slice from a reference\n       --> crates/store/tests/queue.rs:477:16\n        |\n    477 |         .claim(&[delivery.kind.clone()], \"schedule-worker\")\n        |                ^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `std::slice::from_ref(&delivery.kind)`\n        = note: `-D clippy::cloned-ref-to-slice-refs` implied by `-D warnings`\n    error: could not compile `pij-store` (test \"queue\") due to 1 previous error\n\nINTRODUCED BY THIS COMMIT, not pre-existing. I ran the same --all-targets command on 6e33cf4c in a clean worktree: exit 0. So the pre-fix tree was green at CI scope and this commit turns it red.\n\nWHY IT WASN'T CAUGHT: both the plan's stated gate and `harness checks` (PASS 06:11:47) are green, because neither exercises the scope CI does. This is a green that lies in the ordinary way \u2014 the receipt is truthful about the command it ran, and the command is not the one that decides whether the PR into main can land. The tell was available without running anything: the gate cited in the proof doc is not the gate written in ci.yml.\n\nFAILURE SCENARIO: the PR into main is opened on the strength of a PASS receipt and the CI clippy job fails on first run, on a line no reviewer flagged because no local gate reads it.\n\nSMALLEST FIX: apply clippy's own suggestion at crates/store/tests/queue.rs:477 \u2014 `.claim(std::slice::from_ref(&delivery.kind), \"schedule-worker\")` \u2014 then re-run `cargo clippy --workspace --all-targets -- -D warnings` and cite THAT command in live-proof.md. Worth also making the plan's gate line match ci.yml so the two cannot drift again."
+    }
+   ]
+  },
+  {
+   "name": "notes",
+   "value": [
+    {
+     "id": "n1",
+     "address": "crates/core/src/model.rs:624 and the live-proof AC6 receipt",
+     "note": "NOT A DEFECT, RECORDED SO IT IS A DECISION RATHER THAN AN ACCIDENT. The live receipt now reads `\"next_retry_at\": 0`, which is correct under the new definition (a fresh row's persisted not_before is 0 = eligible immediately) and the doc comment says so. But the field NAME still spells a wall-clock instant ('_at'), and 0 as Unix milliseconds renders as 1970-01-01 in any consumer that does the obvious thing with it. Absent-vs-0 is decodable on the wire because skip_serializing_if drops the None case, so nothing is ambiguous \u2014 the risk is purely that a downstream renderer shows an epoch date for 'now'. Cheap options if it ever bites: report max(not_before_ms, now) so the value is always a real instant, or name the field for the eligibility it now carries. No action needed for plan 133."
+    },
+    {
+     "id": "n2",
+     "address": "crates/tmux/src/lib.rs:395-410",
+     "note": "TWO PROPERTIES OF THE NEW WRITER PROBE WORTH KNOWING, NEITHER BLOCKING. (1) It shells out to `ps -axo command=` on every adoption of a piped unmarked pane. macOS ps can truncate long command lines; the sinks here are ~57 characters and well clear, but a deeply nested HOME would fail the substring match and the check fails CLOSED (refuse to supersede), so the failure direction is the safe one \u2014 it would break AC1 loudly, never AC3 silently. (2) The match is a substring test, which is safe against pane-id prefix collisions only because of the `.raw` suffix: `_31.raw` is not a substring of `_317.raw`. That is load-bearing and undocumented; if the sink naming ever loses its extension the probe starts matching the wrong pane."
+    },
+    {
+     "id": "n3",
+     "address": "docs/plans/133-rs-tap-supersedes-legacy/assets/reviews/r1-cross-model.dd.json",
+     "note": "The r1 record was committed by the PM in 1257c32f byte-for-byte as I wrote it \u2014 I diffed it. No reviewer findings were softened or edited by the author on the way in. Recording this because an author committing the reviewer's own record is a place where that could happen unnoticed."
+    }
+   ]
+  },
+  {
+   "name": "verdict",
+   "value": [
+    {
+     "id": "v1",
+     "finding": "r1 f1 \u2014 AC3 false; legacy discriminator constant-true in production",
+     "resolution": "RESOLVED",
+     "rationale": "Verified by live re-measurement, not by reading the patch. The predicate now requires a live process whose command line names the exact sink, and on this server it separates 15 real writers from 69 inventory files. I confirmed the real writer command shape is `sh -c cat >> '<sink>'` for all 40 live taps, so the string the check keys on is production's, not an assumption. AC3 is now true."
+    },
+    {
+     "id": "v2",
+     "finding": "r1 f2 \u2014 the narrowness guard has no witness; live-proof claimed it did",
+     "resolution": "RESOLVED",
+     "rationale": "Two mirror tests inject the legacy root and build a real foreign pipe. I proved the load-bearing one (stale legacy sink, no live writer) FAILS on 6e33cf4c and passes on 1257c32f, so it is a witness that has been observed to fail rather than a test green from birth. The over-claiming test name was corrected and the false live-proof sentence was rewritten to describe what the tests now actually pin."
+    },
+    {
+     "id": "v3",
+     "finding": "r1 f3 \u2014 next_retry_at was a config echo on the wrong predicate",
+     "resolution": "RESOLVED",
+     "rationale": "All three sub-defects closed and the echo path is deleted rather than bypassed \u2014 retry_interval_ms greps to zero across crates/. The value is read back from jobs.not_before in the enqueue transaction, the pane predicate is gone so paneless rows report honestly, the doc comment now names what the value is, and the 17-second backoff test forces config and persisted value to differ so the assertion cannot pass by coincidence."
+    },
+    {
+     "id": "v4",
+     "finding": "f4 \u2014 new: fails CI's clippy scope while passing the cited one",
+     "resolution": "OPEN \u2014 BLOCKING",
+     "rationale": "Introduced by 1257c32f; 6e33cf4c is clean at the same scope, so this is a regression not an inheritance. It blocks only because it will fail the PR into main on first CI run, and it is one line to fix. Everything else in this commit is sound."
+    },
+    {
+     "id": "v5",
+     "finding": "commit 1257c32f overall",
+     "resolution": "REQUEST CHANGES",
+     "rationale": "The substantive work is done and done well: all three r1 findings are genuinely closed, each verified by an independent measurement rather than by inspection of the patch, and the f1 fix uses the exact instrument r1 recommended. Fix f4's one line, re-run clippy at --all-targets scope, cite that command in live-proof.md, and this is approvable without a further round."
+    }
+   ]
+  }
+ ]
+}

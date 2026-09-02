@@ -322,7 +322,10 @@ impl FederationService {
 
         let receipt = Receipt {
             msg_id: request.msg_id.clone(),
-            outcome: DeliveryOutcome::Queued,
+            outcome: DeliveryOutcome::Queued {
+                reason: None,
+                next_retry_at: None,
+            },
             at: (self.clock)().map_err(FederationSendError::Runtime)?,
         };
         self.publish_outcome(&request.from, alias, &receipt)
@@ -830,7 +833,13 @@ mod tests {
             .enqueue_remote(&request("laptop"))
             .await
             .expect("enqueue");
-        assert_eq!(receipt.outcome, pij_core::model::DeliveryOutcome::Queued);
+        assert_eq!(
+            receipt.outcome,
+            pij_core::model::DeliveryOutcome::Queued {
+                reason: None,
+                next_retry_at: None
+            }
+        );
         assert_eq!(queue.live_len(), 1);
         let events = spine
             .tail(None, pij_core::model::Seq(0))

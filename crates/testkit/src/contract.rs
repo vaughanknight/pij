@@ -388,16 +388,28 @@ pub async fn queue_contract(queue: &dyn Queue) {
         .enqueue_delivery(delivery.clone())
         .await
         .expect("enqueue delivery");
-    let DeliveryEnqueue::Queued(first) = first else {
+    let DeliveryEnqueue::Queued {
+        job_id: first,
+        not_before_ms: first_not_before,
+    } = first
+    else {
         panic!("a new delivery must queue");
     };
+    let collapsed = queue
+        .enqueue_delivery(delivery.clone())
+        .await
+        .expect("collapse live delivery");
+    let DeliveryEnqueue::Queued {
+        job_id: collapsed,
+        not_before_ms: collapsed_not_before,
+    } = collapsed
+    else {
+        panic!("a live delivery must remain queued");
+    };
+    assert_eq!(collapsed, first, "live-row collapse keeps the same id");
     assert_eq!(
-        queue
-            .enqueue_delivery(delivery.clone())
-            .await
-            .expect("collapse live delivery"),
-        DeliveryEnqueue::Queued(first),
-        "the durable ledger must not weaken live-row collapse"
+        collapsed_not_before, first_not_before,
+        "live-row collapse keeps the persisted schedule"
     );
     let claimed = queue
         .claim(std::slice::from_ref(&delivery.kind), "delivery-worker")

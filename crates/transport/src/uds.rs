@@ -182,10 +182,16 @@ impl Transport for UdsTransport {
             || msg.command.is_some()
             || seat.cross_session_inbound_accept != Some(true)
         {
-            return Ok(DeliveryOutcome::Queued);
+            return Ok(DeliveryOutcome::Queued {
+                reason: None,
+                next_retry_at: None,
+            });
         }
         let Some(endpoint) = self.discover(seat) else {
-            return Ok(DeliveryOutcome::Queued);
+            return Ok(DeliveryOutcome::Queued {
+                reason: None,
+                next_retry_at: None,
+            });
         };
         // The receiver delivers `peer_message_status` by connecting BACK to the
         // address we advertise in `from=`. The previous literal `uds:pij-daemon`
@@ -197,7 +203,10 @@ impl Transport for UdsTransport {
             // No reply address means no way to observe Held. Refusing to send is
             // the honest outcome: delivering blind would resurrect the very
             // defect this unit exists to remove.
-            return Ok(DeliveryOutcome::Queued);
+            return Ok(DeliveryOutcome::Queued {
+                reason: None,
+                next_retry_at: None,
+            });
         };
         let frame = build_peer_frame(msg, &inbox.origin())?;
         send_frame(
@@ -483,7 +492,10 @@ async fn send_frame(
     let Ok(Ok(mut stream)) =
         timeout(connect_timeout, UnixStream::connect(&endpoint.socket_path)).await
     else {
-        return Ok(DeliveryOutcome::Queued);
+        return Ok(DeliveryOutcome::Queued {
+            reason: None,
+            next_retry_at: None,
+        });
     };
 
     let auth = serde_json::to_string(&AuthFrame {
@@ -499,7 +511,10 @@ async fn send_frame(
         timeout(connect_timeout, stream.write_all(payload.as_bytes())).await,
         Ok(Ok(()))
     ) {
-        return Ok(DeliveryOutcome::Queued);
+        return Ok(DeliveryOutcome::Queued {
+            reason: None,
+            next_retry_at: None,
+        });
     }
 
     let deadline = Instant::now() + ack_wait;
@@ -526,7 +541,10 @@ async fn send_frame(
     };
 
     Ok(match status {
-        Some(Status::Dropped | Status::Malformed) => DeliveryOutcome::Queued,
+        Some(Status::Dropped | Status::Malformed) => DeliveryOutcome::Queued {
+            reason: None,
+            next_retry_at: None,
+        },
         Some(Status::Held) => DeliveryOutcome::Held {
             reason: "recipient approval pending".to_string(),
         },
@@ -842,7 +860,10 @@ mod tests {
             );
             assert_eq!(
                 transport.deliver(&target, &message(None)).await.unwrap(),
-                DeliveryOutcome::Queued
+                DeliveryOutcome::Queued {
+                    reason: None,
+                    next_retry_at: None
+                }
             );
         }
         assert!(
@@ -910,7 +931,10 @@ mod tests {
         );
         assert_eq!(
             transport.deliver(&target, &message(None)).await.unwrap(),
-            DeliveryOutcome::Queued,
+            DeliveryOutcome::Queued {
+                reason: None,
+                next_retry_at: None
+            },
             "an unauthenticated write must never become delivered on a silent timer"
         );
     }
@@ -1406,7 +1430,10 @@ mod tests {
     async fn losing_the_ack_channel_before_the_timer_cannot_confirm_delivery() {
         assert_eq!(
             socket_case(None, true, Reply::Never).await.outcome,
-            DeliveryOutcome::Queued
+            DeliveryOutcome::Queued {
+                reason: None,
+                next_retry_at: None
+            }
         );
     }
 

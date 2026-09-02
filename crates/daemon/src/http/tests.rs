@@ -65,7 +65,10 @@ impl Queue for CountingQueue {
         // AlreadyDelivered — and saying so by delegating is honest, where
         // refusing would make the request path 500 on its own success case.
         let id = self.enqueue(job).await?;
-        Ok(DeliveryEnqueue::Queued(id))
+        Ok(DeliveryEnqueue::Queued {
+            job_id: id,
+            not_before_ms: 0,
+        })
     }
 
     async fn claim(&self, _kinds: &[String], _worker: &str) -> Result<Option<(JobId, Job)>> {
@@ -1195,10 +1198,13 @@ async fn send_enqueues_exactly_once_and_refuses_remote_without_federation() {
         .expect("send");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let receipt: Envelope<Receipt> = response.json().await.expect("receipt envelope");
-    assert_eq!(
+    assert!(matches!(
         receipt.data.expect("receipt").outcome,
-        pij_core::model::DeliveryOutcome::Queued
-    );
+        pij_core::model::DeliveryOutcome::Queued {
+            reason: Some(reason),
+            next_retry_at: Some(0),
+        } if reason == "pre-bind"
+    ));
 
     let jobs = queue.jobs();
     assert_eq!(jobs.len(), 1, "the request path performs one enqueue");
@@ -1814,7 +1820,10 @@ async fn two_daemons_forward_remote_send_into_destination_queue_and_spine() {
     let admitted: Envelope<Receipt> = response.json().await.expect("queued receipt");
     assert_eq!(
         admitted.data.expect("receipt").outcome,
-        pij_core::model::DeliveryOutcome::Queued,
+        pij_core::model::DeliveryOutcome::Queued {
+            reason: None,
+            next_retry_at: None
+        },
         "the origin observed only its own durable queue"
     );
     let origin_events_before = a_spine

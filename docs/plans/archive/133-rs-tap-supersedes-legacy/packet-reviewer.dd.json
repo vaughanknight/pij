@@ -1,0 +1,126 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Reviewer packet — plan 133 rs tap supersedes legacy",
+        "role": "reviewer",
+        "plan": "docs/plans/133-rs-tap-supersedes-legacy/plan.dd.json",
+        "seat": "pij-obnoxious-primate",
+        "updated": "2026-09-02"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "You are the cross-model reviewer for plan 133-rs-tap-supersedes-legacy. The composed Rust implementation is complete on branch 133-rs-tap-supersedes-legacy. Judge whether the code makes AC1-AC6 true, especially the tmux ownership and delivery-queue composition seams. You are read-only on code."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        {
+          "id": "i1",
+          "text": "Orient: read plan.dd.md, impl-guide.dd.md, assets/tasks/phase-1/tasks.dd.md, assets/live-proof.md, and the full branch diff against main. DOGFOOD FLOWSPACE: use flowspace3 search for meaning-shaped review questions and report misses as friction."
+        },
+        {
+          "id": "i2",
+          "text": "Review with /builder review discipline. Run targeted tests yourself and re-derive behavior; do not trust PM receipts or prose."
+        },
+        {
+          "id": "i2b",
+          "text": "Dispatcher lists follow: least-confidence, disbelieve, and known-open. Refuse to start if any is unclear."
+        },
+        {
+          "id": "i3",
+          "text": "Priority: false plan promises; composition seams; impl-guide interface drift; correctness/safety; missing contract tests. Ignore style noise."
+        },
+        {
+          "id": "i4",
+          "text": "At most material findings, each CRITICAL/HIGH/MEDIUM with exact location, claim, proof, and smallest fix. no_material_findings is valid."
+        },
+        {
+          "id": "i5",
+          "text": "Write a ddoc review record under docs/plans/133-rs-tap-supersedes-legacy/assets/reviews/, build it, then send pij-payable-ferret the path and one-line verdict via pij tooling."
+        },
+        {
+          "id": "i6",
+          "text": "WHERE PM IS LEAST CONFIDENT: next_retry_at predicts the scheduler cadence rather than reading persisted jobs.not_before; legacy recognition uses injected ~/.pij/pane-signals file existence plus an empty marker; audit every DeliveryOutcome::Queued constructor and match after the enum cutover."
+        },
+        {
+          "id": "i7",
+          "text": "DISBELIEVE THE AUTHOR: independently inspect every changed code path and re-run the smallest tests that could falsify AC1, AC3, AC4, and AC6. Treat assets/live-proof.md as claims to verify against code, not authority."
+        },
+        {
+          "id": "i8",
+          "text": "KNOWN OPEN, DO NOT RE-REPORT: the 12-hour witness gap preceded destination admission and is sender-side/out of plan; Rust sensors are absent from harness checks and out of scope; production rs was intentionally not restarted; canary exposed a legacy/rs split identity for this reviewer, who must communicate and review under observable-derived rs id pij-obnoxious-primate."
+        }
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        {
+          "id": "w1",
+          "text": "The PM is your counterpart: verdict and findings go to the PM; the PM may refute findings with evidence — re-judge refutations on the evidence, not on rank."
+        },
+        {
+          "id": "w2",
+          "text": "You do not fix code, commit, or open PRs. If you find something outside the plan's scope, name it as a note for prime rather than expanding the review."
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-tap-supersedes-legacy",
+        "branch": "133-rs-tap-supersedes-legacy",
+        "fence": "read-only on code; write only assets/reviews/ in the plan folder",
+        "forbidden_note": "No code edits, no merges, no government files, no production daemon restart."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        {
+          "id": "d1",
+          "text": "Every plan AC judged true/false with evidence cited."
+        },
+        {
+          "id": "d2",
+          "text": "Composition seams between units explicitly examined and reported."
+        },
+        {
+          "id": "d3",
+          "text": "Review record ddoc written, built, and path delivered to the PM with a verdict line."
+        }
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        {
+          "id": "r0",
+          "path": ".agents-skills-port/pij-team/TENETS.md",
+          "note": "tenet 5: judge diffs against contracts"
+        },
+        {
+          "id": "r1",
+          "path": "docs/plans/133-rs-tap-supersedes-legacy/impl-guide.dd.json",
+          "note": "intended units and interfaces"
+        },
+        {
+          "id": "r2",
+          "path": "docs/plans/133-rs-tap-supersedes-legacy/plan.dd.md",
+          "note": "promises under judgment"
+        },
+        {
+          "id": "r3",
+          "path": "docs/plans/133-rs-tap-supersedes-legacy/assets/live-proof.md",
+          "note": "PM evidence to disbelieve and re-derive"
+        }
+      ]
+    }
+  ]
+}

@@ -74,6 +74,7 @@ pub struct TmuxAdapter {
     server: Option<String>,
     session: Option<String>,
     tap_root: PathBuf,
+    legacy_tap_root: Option<PathBuf>,
     submit_lock: Arc<AsyncMutex<()>>,
     taps: Arc<Mutex<BTreeMap<String, TapState>>>,
 }
@@ -92,9 +93,19 @@ impl TmuxAdapter {
             server: None,
             session: None,
             tap_root: tap_root.into(),
+            legacy_tap_root: None,
             submit_lock: Arc::new(AsyncMutex::new(())),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
+    }
+    /// Use `tmux` with an explicitly injected legacy-generation tap root.
+    pub fn with_legacy_tap_root(
+        tap_root: impl Into<PathBuf>,
+        legacy_tap_root: impl Into<PathBuf>,
+    ) -> Self {
+        let mut adapter = Self::new(tap_root);
+        adapter.legacy_tap_root = Some(legacy_tap_root.into());
+        adapter
     }
 
     /// Limit listings, new windows, and destructive guards to `session`.
@@ -104,6 +115,7 @@ impl TmuxAdapter {
             server: None,
             session: Some(session.into()),
             tap_root: tap_root.into(),
+            legacy_tap_root: None,
             submit_lock: Arc::new(AsyncMutex::new(())),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
@@ -116,6 +128,7 @@ impl TmuxAdapter {
             server: None,
             session: None,
             tap_root: tap_root.into(),
+            legacy_tap_root: None,
             submit_lock: Arc::new(AsyncMutex::new(())),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
@@ -130,10 +143,22 @@ impl TmuxAdapter {
             binary: OsString::from("tmux"),
             server: Some(server.into()),
             session: None,
+            legacy_tap_root: None,
             tap_root: tap_root.into(),
             submit_lock: Arc::new(AsyncMutex::new(())),
             taps: Arc::new(Mutex::new(BTreeMap::new())),
         }
+    }
+
+    /// Use an isolated tmux server with an explicitly injected legacy tap root.
+    pub fn for_server_with_legacy_tap_root(
+        server: impl Into<String>,
+        tap_root: impl Into<PathBuf>,
+        legacy_tap_root: impl Into<PathBuf>,
+    ) -> Self {
+        let mut adapter = Self::for_server(server, tap_root);
+        adapter.legacy_tap_root = Some(legacy_tap_root.into());
+        adapter
     }
 
     fn list_args(&self) -> Vec<OsString> {
@@ -344,6 +369,47 @@ impl TmuxAdapter {
     fn expected_tap_sink(&self, pane: &str) -> PathBuf {
         tap_sink_path(&self.tap_root, pane)
     }
+
+    fn has_live_legacy_tap_writer(&self, pane: &str) -> Result<bool> {
+        let Some(root) = &self.legacy_tap_root else {
+            return Ok(false);
+        };
+        let sink = tap_sink_path(root, pane);
+        let metadata = match fs::symlink_metadata(&sink) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => {
+                return Err(self.error(format!(
+                    "could not inspect legacy tap signature {sink:?} for pane {pane:?}: {error}"
+                )));
+            }
+        };
+        if !metadata.file_type().is_file() {
+            return Ok(false);
+        }
+        let sink_text = sink.to_str().ok_or_else(|| {
+            self.error(format!(
+                "legacy tap sink {sink:?} is not valid Unicode — refusing to replace pane {pane:?}"
+            ))
+        })?;
+        let output = Command::new("ps")
+            .args(["-axo", "command="])
+            .output()
+            .map_err(|error| {
+                self.error(format!("could not inspect legacy tap writers: {error}"))
+            })?;
+        if !output.status.success() {
+            return Err(self.error(format!(
+                "could not inspect legacy tap writers: ps exited {} ({})",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|command| command.contains("cat >>") && command.contains(sink_text)))
+    }
+
     fn tap_marker(&self, pane: &str) -> Result<Option<String>> {
         let value = self.stdout(
             "show-options tap owner",
@@ -863,6 +929,22 @@ impl TmuxPort for TmuxAdapter {
             // A matching pane-scoped marker is durable ownership evidence from a
             // prior daemon. Replacing that orphan is adoption, not clobbering.
             "1" if marker_matches => {}
+            "1" if marker.is_none() && self.has_live_legacy_tap_writer(pane)? => {
+                // These are one-directional safety interlocks, not retention policy:
+                // the absent marker, regular sink, and live associated writer can
+                // only spare a pipe. Removing any check would close the same set or more.
+                self.run(
+                    "pipe-pane detach legacy",
+                    &os_args(["pipe-pane", "-t", pane]),
+                )?;
+                let legacy_sink = self
+                    .legacy_tap_root
+                    .as_ref()
+                    .map(|root| tap_sink_path(root, pane))
+                    .expect("legacy signature requires an injected root");
+                self.wait_for_pipe_state(pane, &legacy_sink, "0", "legacy supersede")
+                    .await?;
+            }
             "1" => {
                 return Err(self.error(format!(
                     "pane {pane:?} already has an output pipe not owned by this sink — refusing to replace it"

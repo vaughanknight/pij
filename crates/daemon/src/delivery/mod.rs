@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use pij_core::delivery::{
-    DeliveryRoute, DeliveryRung, MAX_TYPED_FRAME_BYTES, QueueReason, delivery_kind, route,
-    select_rung,
+    DeliveryDeferralReason, DeliveryRoute, DeliveryRung, MAX_TYPED_FRAME_BYTES, QueueReason,
+    delivery_kind, route, select_rung,
 };
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
@@ -121,6 +121,13 @@ impl DeliveryService {
         }
     }
 
+    fn queued_outcome(reason: Option<&str>, not_before_ms: u64) -> DeliveryOutcome {
+        DeliveryOutcome::Queued {
+            reason: reason.map(str::to_string),
+            next_retry_at: Some(not_before_ms),
+        }
+    }
+
     /// Send one message and report what actually happened.
     ///
     /// # Errors
@@ -214,9 +221,11 @@ impl DeliveryService {
             //
             // A duplicate is a duplicate. Where it entered from does not change
             // whether the recipient has already been given it.
-            DeliveryRoute::Queue(_reason) => {
+            DeliveryRoute::Queue(reason) => {
                 match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
-                    DeliveryEnqueue::Queued(_) => DeliveryOutcome::Queued,
+                    DeliveryEnqueue::Queued { not_before_ms, .. } => {
+                        Self::queued_outcome(Some(reason.as_str()), not_before_ms)
+                    }
                     DeliveryEnqueue::AlreadyDelivered(origin) => {
                         publish_to_recipient = false;
                         DeliveryOutcome::Delivered { origin }
@@ -228,14 +237,15 @@ impl DeliveryService {
                 // Socket delivery keeps the fresh permission policy. Pane-body
                 // permission is checked once, after input ownership is acquired,
                 // inside `submit_with_owned_input`.
-                let (interaction_permits, composer_idle) = match recipient.pane.as_deref() {
-                    None => (true, true),
-                    Some(pane) if socket_available => {
-                        let verdict = self.interaction.fresh_injection_verdict(pane).await?;
-                        (verdict.permitted, verdict.composer_idle)
-                    }
-                    Some(_) => (true, true),
-                };
+                let (interaction_permits, composer_idle, interaction_reason) =
+                    match recipient.pane.as_deref() {
+                        None => (true, true, None),
+                        Some(pane) if socket_available => {
+                            let verdict = self.interaction.fresh_injection_verdict(pane).await?;
+                            (verdict.permitted, verdict.composer_idle, verdict.reason)
+                        }
+                        Some(_) => (true, true, None),
+                    };
 
                 // Paneless socket consumers remain transport-owned. The rung
                 // selector governs pane fallbacks and deliberately returns
@@ -267,10 +277,20 @@ impl DeliveryService {
                                 DeliveryOutcome::Delivered { origin }
                             }
                             None => match self.transport.deliver(&recipient, &msg).await {
-                                Ok(DeliveryOutcome::Queued) => {
+                                Ok(DeliveryOutcome::Queued { reason, .. }) => {
                                     self.queue.forget_delivered(&to, &msg.msg_id).await?;
-                                    self.enqueue(&msg).await?;
-                                    DeliveryOutcome::Queued
+                                    match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
+                                        DeliveryEnqueue::Queued { not_before_ms, .. } => {
+                                            Self::queued_outcome(
+                                                reason.as_deref().or(Some("unreachable")),
+                                                not_before_ms,
+                                            )
+                                        }
+                                        DeliveryEnqueue::AlreadyDelivered(origin) => {
+                                            publish_to_recipient = false;
+                                            DeliveryOutcome::Delivered { origin }
+                                        }
+                                    }
                                 }
                                 Ok(outcome) => outcome,
                                 Err(error) => {
@@ -289,7 +309,9 @@ impl DeliveryService {
                             frame_message(&msg.from, msg.from_machine.as_deref(), &msg.body);
                         if framed.len() > MAX_TYPED_FRAME_BYTES {
                             match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
-                                DeliveryEnqueue::Queued(_) => DeliveryOutcome::Queued,
+                                DeliveryEnqueue::Queued { not_before_ms, .. } => {
+                                    Self::queued_outcome(Some("frame-too-large"), not_before_ms)
+                                }
                                 DeliveryEnqueue::AlreadyDelivered(origin) => {
                                     publish_to_recipient = false;
                                     DeliveryOutcome::Delivered { origin }
@@ -313,10 +335,24 @@ impl DeliveryService {
                                     Ok(StagedSubmission::Submitted) => DeliveryOutcome::Delivered {
                                         origin: DeliveryOrigin::TypedToPane,
                                     },
-                                    Ok(StagedSubmission::Deferred) => {
+                                    Ok(StagedSubmission::Deferred { reason }) => {
                                         self.queue.forget_delivered(&to, &msg.msg_id).await?;
-                                        self.enqueue(&msg).await?;
-                                        DeliveryOutcome::Queued
+                                        match self
+                                            .queue
+                                            .enqueue_delivery(delivery_job(&msg)?)
+                                            .await?
+                                        {
+                                            DeliveryEnqueue::Queued { not_before_ms, .. } => {
+                                                Self::queued_outcome(
+                                                    Some(reason.as_str()),
+                                                    not_before_ms,
+                                                )
+                                            }
+                                            DeliveryEnqueue::AlreadyDelivered(origin) => {
+                                                publish_to_recipient = false;
+                                                DeliveryOutcome::Delivered { origin }
+                                            }
+                                        }
                                     }
                                     Err(error) => {
                                         self.queue.forget_delivered(&to, &msg.msg_id).await?;
@@ -331,7 +367,16 @@ impl DeliveryService {
                     | DeliveryRung::Pty
                     | DeliveryRung::ControlBodyPull => {
                         match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
-                            DeliveryEnqueue::Queued(_) => DeliveryOutcome::Queued,
+                            DeliveryEnqueue::Queued { not_before_ms, .. } => {
+                                let reason = interaction_reason
+                                    .map(DeliveryDeferralReason::as_str)
+                                    .or(match rung {
+                                        DeliveryRung::Observe => Some("unreachable"),
+                                        DeliveryRung::ControlBodyPull => Some("terminal-control"),
+                                        _ => None,
+                                    });
+                                Self::queued_outcome(reason, not_before_ms)
+                            }
                             DeliveryEnqueue::AlreadyDelivered(origin) => {
                                 publish_to_recipient = false;
                                 DeliveryOutcome::Delivered { origin }
@@ -523,11 +568,6 @@ impl DeliveryService {
         format!("{:016x}-{sequence:016x}", self.id_prefix)
     }
 
-    async fn enqueue(&self, msg: &Msg) -> Result<()> {
-        self.queue.enqueue(delivery_job(msg)?).await?;
-        Ok(())
-    }
-
     /// Publish the recipient-facing turn: `{msg_id, from, body}`, keyed to the
     /// RECIPIENT's seat so a client filters the one stream by its own id.
     async fn publish_pushed(&self, msg: &Msg, at: u64) -> Result<()> {
@@ -647,7 +687,7 @@ fn outcome_name(outcome: &DeliveryOutcome) -> &'static str {
         DeliveryOutcome::Delivered {
             origin: DeliveryOrigin::ReaderRead,
         } => "delivered:reader-read",
-        DeliveryOutcome::Queued => "queued",
+        DeliveryOutcome::Queued { .. } => "queued",
         DeliveryOutcome::Held { .. } => "held",
         DeliveryOutcome::Refused { .. } => "refused",
     }
@@ -687,7 +727,7 @@ mod tests {
         DeliveryOrigin, DeliveryOutcome, Event, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId,
         SemanticState, Seq, SystemState,
     };
-    use pij_core::ports::{Queue, Registry, Spine, TmuxPort};
+    use pij_core::ports::{DeliveryEnqueue, Queue, Registry, Spine, TmuxPort};
     use pij_harnesses::InteractionGate;
     use pij_testkit::fakes::{
         CountingSpine, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
@@ -919,6 +959,13 @@ mod tests {
         seat
     }
 
+    fn queued_outcome(reason: &str, next_retry_at: u64) -> DeliveryOutcome {
+        DeliveryOutcome::Queued {
+            reason: Some(reason.to_string()),
+            next_retry_at: Some(next_retry_at),
+        }
+    }
+
     async fn register(fixture: &Fixture, seat: SeatDescriptor) {
         fixture.registry.put(seat).await.expect("register seat");
     }
@@ -948,15 +995,24 @@ mod tests {
 
     #[tokio::test]
     async fn first_attempt_socket_delivery_obeys_the_same_politeness_gate_as_retries() {
-        for (label, fixture, observe_clear) in [
-            ("unknown", fixture(FakeTransport::reachable()), false),
+        for (label, fixture, observe_clear, expected_reason) in [
+            (
+                "unknown",
+                fixture(FakeTransport::reachable()),
+                false,
+                "tap-unowned",
+            ),
             (
                 "tmux typing",
                 fixture_with_gate(
                     FakeTransport::reachable(),
-                    FakeTmux::new().with_user_typing(),
+                    FakeTmux::new()
+                        .with_clear_composer("%108")
+                        .with_attached_tap("%108")
+                        .with_user_typing(),
                 ),
                 true,
+                "human-typing",
             ),
         ] {
             let mut recipient = bound(&format!("pij-{label}"));
@@ -972,7 +1028,17 @@ mod tests {
                 .await
                 .expect("a politeness veto queues durably");
 
-            assert_eq!(receipt.outcome, DeliveryOutcome::Queued, "{label}");
+            let wire = serde_json::to_value(&receipt.outcome).expect("queued outcome wire");
+            assert_eq!(wire["reason"], expected_reason);
+            assert_eq!(wire["next_retry_at"], 0);
+            assert_eq!(
+                receipt.outcome,
+                DeliveryOutcome::Queued {
+                    reason: Some(expected_reason.to_string()),
+                    next_retry_at: Some(0),
+                },
+                "{label}"
+            );
             assert!(fixture.transport.delivered().is_empty(), "{label}");
         }
 
@@ -1001,6 +1067,55 @@ mod tests {
             }
         );
         assert_eq!(clear.transport.delivered().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn queued_receipt_reads_persisted_not_before_instead_of_echoing_service_clock() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let recipient = SeatDescriptor::new("pij-persisted-retry", Harness::Omp, "/abs/tree");
+        register(&fixture, recipient.clone()).await;
+        let msg = Msg {
+            from: SeatId::from("pij-from"),
+            to: recipient.id.clone(),
+            body: "persisted schedule".to_string(),
+            msg_id: "000000000000feed-0000000000000000".to_string(),
+            from_machine: None,
+            in_reply_to: None,
+            command: None,
+        };
+        let DeliveryEnqueue::Queued { job_id, .. } = fixture
+            .queue
+            .enqueue_delivery(delivery_job(&msg).expect("delivery job"))
+            .await
+            .expect("pre-enqueue delivery")
+        else {
+            panic!("fresh delivery must queue");
+        };
+        let claimed = fixture
+            .queue
+            .claim(&[delivery_kind(&recipient.id)], "schedule-test")
+            .await
+            .expect("claim pre-enqueued row")
+            .expect("scheduled row");
+        assert_eq!(claimed.0, job_id);
+        fixture
+            .queue
+            .retry(job_id, Duration::from_secs(17))
+            .await
+            .expect("persist backoff");
+
+        let receipt = fixture
+            .service
+            .send(msg.from, msg.to, msg.body)
+            .await
+            .expect("collapse onto scheduled row");
+        assert_eq!(receipt.at, 1_234);
+        assert_eq!(receipt.outcome, queued_outcome("pre-bind", 17_000));
+        assert_ne!(
+            17_000,
+            receipt.at + 1_000,
+            "schedule must not echo a cadence"
+        );
     }
 
     #[tokio::test]
@@ -1072,7 +1187,7 @@ mod tests {
             .send(from, recipient.id.clone(), &body)
             .await
             .expect("oversized direct frame queues");
-        assert_eq!(receipt.outcome, DeliveryOutcome::Queued);
+        assert_eq!(receipt.outcome, queued_outcome("frame-too-large", 0));
         assert_eq!(fixture.queue.live_len(), 1);
         assert!(
             fixture
@@ -1135,7 +1250,7 @@ mod tests {
             .send("pij-from".into(), recipient.id.clone(), "wait your turn")
             .await
             .expect("a live draft queues durably");
-        assert_eq!(held.outcome, DeliveryOutcome::Queued);
+        assert_eq!(held.outcome, queued_outcome("composer-busy", 0));
         assert!(fixture.transport.delivered().is_empty());
 
         // The draft is never touched again and never cleared.
@@ -1169,7 +1284,7 @@ mod tests {
             .send("pij-from".into(), recipient.id.clone(), "wait first")
             .await
             .expect("fresh draft queues");
-        assert_eq!(first.outcome, DeliveryOutcome::Queued);
+        assert_eq!(first.outcome, queued_outcome("composer-busy", 0));
 
         tokio::time::sleep(idle * 3).await;
         let second = fixture
@@ -1178,7 +1293,7 @@ mod tests {
             .await
             .expect("stale draft still queues typed body");
 
-        assert_eq!(second.outcome, DeliveryOutcome::Queued);
+        assert_eq!(second.outcome, queued_outcome("composer-busy", 0));
         assert_eq!(fixture.queue.live_len(), 2);
         assert!(
             fixture
@@ -1213,7 +1328,7 @@ mod tests {
 
         assert_eq!(
             receipt.outcome,
-            DeliveryOutcome::Queued,
+            queued_outcome("composer-busy", 0),
             "a stale CLEAR tick must not outrank a fresh capture showing a human typing"
         );
         assert!(fixture.transport.delivered().is_empty());
@@ -1300,7 +1415,7 @@ mod tests {
             .send("pij-from".into(), "pij-prebind".into(), "before bind")
             .await
             .expect("queued receipt");
-        assert_eq!(receipt.outcome, DeliveryOutcome::Queued);
+        assert_eq!(receipt.outcome, queued_outcome("pre-bind", 0));
         assert_eq!(prebind.queue.live_len(), 1);
         let inbox = prebind
             .service
@@ -1331,7 +1446,7 @@ mod tests {
             .send("pij-from".into(), "pij-hold".into(), "pij-hold")
             .await
             .expect("operator hold queues");
-        assert_eq!(receipt.outcome, DeliveryOutcome::Queued);
+        assert_eq!(receipt.outcome, queued_outcome("operator-hold", 0));
         assert!(queued.transport.calls().is_empty());
         assert_eq!(
             queued
@@ -1364,7 +1479,7 @@ mod tests {
             .send("pij-from".into(), "pij-busy".into(), "pij-busy")
             .await
             .expect("a declining transport queues");
-        assert_eq!(receipt.outcome, DeliveryOutcome::Queued);
+        assert_eq!(receipt.outcome, queued_outcome("unreachable", 0));
         assert_eq!(busy.transport.calls().len(), 1, "the transport was ASKED");
         assert_eq!(
             busy.service
@@ -1461,7 +1576,7 @@ mod tests {
             .accept_forwarded(msg.clone())
             .await
             .expect("first forward");
-        assert_eq!(first.outcome, DeliveryOutcome::Queued);
+        assert_eq!(first.outcome, queued_outcome("unreachable", 0));
         assert_eq!(
             fixture
                 .service
@@ -1469,7 +1584,7 @@ mod tests {
                 .await
                 .expect("live duplicate")
                 .outcome,
-            DeliveryOutcome::Queued
+            queued_outcome("unreachable", 0)
         );
         assert_eq!(
             fixture.queue.live_len(),

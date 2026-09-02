@@ -13,6 +13,32 @@ use crate::model::{Msg, SeatDescriptor, SeatId, SemanticState};
 /// queued for a named inbox pull instead of racing a machine-speed timeout.
 pub const MAX_TYPED_FRAME_BYTES: usize = 8 * 1024;
 
+/// Why the interaction gate deferred a pane-bound delivery.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeliveryDeferralReason {
+    /// No tap owned by this daemon exists yet.
+    TapUnowned,
+    /// A recognized composer contains non-whitespace text.
+    ComposerBusy,
+    /// Tmux mode or recent interaction evidence says a person is typing.
+    HumanTyping,
+    /// The pane or composer could not be recognized safely.
+    Unrecognized,
+}
+
+impl DeliveryDeferralReason {
+    /// Stable wire spelling for queued receipts and state.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::TapUnowned => "tap-unowned",
+            Self::ComposerBusy => "composer-busy",
+            Self::HumanTyping => "human-typing",
+            Self::Unrecognized => "unrecognized",
+        }
+    }
+}
+
 /// Why a message must be durably queued instead of attempted now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QueueReason {
@@ -24,6 +50,19 @@ pub enum QueueReason {
     OperatorHold,
     /// The selected transport cannot currently reach the recipient.
     Unreachable,
+}
+
+impl QueueReason {
+    /// Stable wire spelling for queued receipts.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Busy => "busy",
+            Self::PreBind => "pre-bind",
+            Self::OperatorHold => "operator-hold",
+            Self::Unreachable => "unreachable",
+        }
+    }
 }
 
 /// The route selected from registry and transport facts.

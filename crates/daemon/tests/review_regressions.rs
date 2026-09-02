@@ -298,7 +298,10 @@ async fn emitted_spawn_argv_is_the_stamp_that_opens_the_real_transport() {
             .deliver(&seat, &msg)
             .await
             .expect("closed delivery"),
-        pij_core::model::DeliveryOutcome::Queued
+        pij_core::model::DeliveryOutcome::Queued {
+            reason: None,
+            next_retry_at: None
+        }
     );
     assert!(
         tokio::time::timeout(Duration::from_millis(20), listener.accept())

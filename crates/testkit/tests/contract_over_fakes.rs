@@ -46,7 +46,7 @@ fn fake_queue_enforces_its_per_recipient_delivered_id_bound() {
             attempt: 0,
         };
         for msg_id in ["first", "second"] {
-            let DeliveryEnqueue::Queued(id) = queue
+            let DeliveryEnqueue::Queued { job_id: id, .. } = queue
                 .enqueue_delivery(job("pij-a", msg_id))
                 .await
                 .expect("enqueue")
@@ -70,7 +70,7 @@ fn fake_queue_enforces_its_per_recipient_delivered_id_bound() {
                 .enqueue_delivery(job("pij-a", "first"))
                 .await
                 .expect("oldest id evicted"),
-            DeliveryEnqueue::Queued(_)
+            DeliveryEnqueue::Queued { .. }
         ));
         assert_eq!(
             queue
@@ -118,7 +118,13 @@ fn an_unreachable_transport_queues_rather_than_claiming_delivery() {
 
     let outcome = block_on(transport.deliver(&seat, &msg)).expect("deliver");
 
-    assert_eq!(outcome, DeliveryOutcome::Queued);
+    assert_eq!(
+        outcome,
+        DeliveryOutcome::Queued {
+            reason: None,
+            next_retry_at: None
+        }
+    );
     assert!(
         transport.delivered().is_empty(),
         "a queued message must not be counted as delivered"

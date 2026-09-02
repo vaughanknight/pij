@@ -180,8 +180,8 @@ impl Queue for SqliteQueue {
         .await
         .map_err(adapter_error)?;
 
-        let id: i64 = sqlx::query_scalar(
-            "SELECT id FROM jobs WHERE kind = ?1 AND dedupe_key = ?2 \
+        let (id, not_before): (i64, i64) = sqlx::query_as(
+            "SELECT id, not_before FROM jobs WHERE kind = ?1 AND dedupe_key = ?2 \
                AND state IN ('pending', 'running') ORDER BY id LIMIT 1",
         )
         .bind(&job.kind)
@@ -191,7 +191,10 @@ impl Queue for SqliteQueue {
         .map_err(adapter_error)?;
 
         tx.commit().await.map_err(adapter_error)?;
-        Ok(DeliveryEnqueue::Queued(JobId(id as u64)))
+        Ok(DeliveryEnqueue::Queued {
+            job_id: JobId(id as u64),
+            not_before_ms: (not_before.max(0) as u64).saturating_mul(1_000),
+        })
     }
     async fn claim(&self, kinds: &[String], worker: &str) -> Result<Option<(JobId, Job)>> {
         require_current_schema(&self.pool).await?;

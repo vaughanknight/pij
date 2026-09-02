@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use pij_core::delivery::DeliveryDeferralReason;
 use pij_core::error::{PijError, Result};
 use pij_core::framing::self_injection_matches;
 use pij_core::ports::{StagedSubmit, TmuxPort};
@@ -65,6 +66,8 @@ pub struct InjectionVerdict {
     pub permitted: bool,
     /// The freshly captured composer contains no non-whitespace text.
     pub composer_idle: bool,
+    /// Named reason when either gate vetoes delivery.
+    pub reason: Option<DeliveryDeferralReason>,
 }
 
 /// Outcome of a pane transaction whose input was owned before observation.
@@ -73,7 +76,10 @@ pub enum StagedSubmission {
     /// The owned composer was empty, then the staged text was committed.
     Submitted,
     /// The owned composer was not safe to type into; nothing was staged.
-    Deferred,
+    Deferred {
+        /// Why input ownership could not safely be used.
+        reason: DeliveryDeferralReason,
+    },
 }
 
 /// Injection safety gate combining tmux mode with stateful composer interaction.
@@ -305,6 +311,7 @@ impl InteractionGate {
             return Ok(InjectionVerdict {
                 permitted: false,
                 composer_idle: false,
+                reason: Some(DeliveryDeferralReason::TapUnowned),
             });
         }
         let listed = self.tmux.list_panes().await?;
@@ -313,6 +320,7 @@ impl InteractionGate {
             return Ok(InjectionVerdict {
                 permitted,
                 composer_idle: false,
+                reason: Some(DeliveryDeferralReason::Unrecognized),
             });
         };
         let (Some(cursor_x), Some(cursor_y)) = (listed.cursor_x, listed.cursor_y) else {
@@ -320,6 +328,7 @@ impl InteractionGate {
             return Ok(InjectionVerdict {
                 permitted,
                 composer_idle: false,
+                reason: Some(DeliveryDeferralReason::Unrecognized),
             });
         };
         let capture = self.tmux.capture(pane, CAPTURE_LINES).await?;
@@ -328,9 +337,17 @@ impl InteractionGate {
                 let composer_idle = content.chars().all(char::is_whitespace);
                 self.observe_composer_at(pane, &content, true);
                 let permitted = self.permits_with_additional_veto(pane, false).await?;
+                let reason = if !composer_idle {
+                    Some(DeliveryDeferralReason::ComposerBusy)
+                } else if !permitted {
+                    Some(DeliveryDeferralReason::HumanTyping)
+                } else {
+                    None
+                };
                 Ok(InjectionVerdict {
                     permitted,
                     composer_idle,
+                    reason,
                 })
             }
             ComposerRegion::Unrecognized => {
@@ -338,6 +355,7 @@ impl InteractionGate {
                 Ok(InjectionVerdict {
                     permitted,
                     composer_idle: false,
+                    reason: Some(DeliveryDeferralReason::Unrecognized),
                 })
             }
         }
@@ -370,7 +388,11 @@ impl InteractionGate {
         };
         if !verdict.permitted || !verdict.composer_idle {
             transaction.abort().await?;
-            return Ok(StagedSubmission::Deferred);
+            return Ok(StagedSubmission::Deferred {
+                reason: verdict
+                    .reason
+                    .unwrap_or(DeliveryDeferralReason::Unrecognized),
+            });
         }
         transaction.stage_and_commit(text).await
     }
@@ -415,7 +437,7 @@ mod tests {
     use pij_testkit::block_on;
     use pij_testkit::fakes::FakeTmux;
 
-    use super::{InteractionGate, PaneTransaction, StagedSubmission};
+    use super::{DeliveryDeferralReason, InteractionGate, PaneTransaction, StagedSubmission};
 
     const RULE: &str = "────────────────────────────────";
 
@@ -826,7 +848,9 @@ mod tests {
         assert_eq!(
             block_on(draft_gate.submit_with_owned_input("%108", "AUTOMATED"))
                 .expect("stale draft decision"),
-            StagedSubmission::Deferred,
+            StagedSubmission::Deferred {
+                reason: DeliveryDeferralReason::ComposerBusy,
+            },
             "a non-blank composer is never a pane-typing target, regardless of age"
         );
         assert_eq!(draft_tmux.staged_len(), 0);
@@ -847,7 +871,9 @@ mod tests {
         assert_eq!(
             block_on(tap_gate.submit_with_owned_input("%108", "AUTOMATED"))
                 .expect("live tap decision"),
-            StagedSubmission::Deferred,
+            StagedSubmission::Deferred {
+                reason: DeliveryDeferralReason::HumanTyping,
+            },
             "fresh unread tap bytes veto even before the renderer catches up"
         );
         let calls = tap_tmux.calls();
@@ -905,8 +931,11 @@ mod tests {
             let result = match exit {
                 Exit::Abort => {
                     let staged = block_on(tmux.acquire_submit("%108")).expect("acquire abort row");
-                    block_on(PaneTransaction::new(&gate, staged).abort())
-                        .map(|()| StagedSubmission::Deferred)
+                    block_on(PaneTransaction::new(&gate, staged).abort()).map(|()| {
+                        StagedSubmission::Deferred {
+                            reason: DeliveryDeferralReason::Unrecognized,
+                        }
+                    })
                 }
                 Exit::DropWithoutCommit => {
                     let staged = block_on(tmux.acquire_submit("%108")).expect("acquire drop row");
@@ -915,8 +944,11 @@ mod tests {
                     transaction.self_injection =
                         Some(gate.self_injection_scope("%108", "MATCHING-HUMAN-TEXT"));
                     drop(transaction);
-                    block_on(tmux.abort_submit(&watchdog_recovery))
-                        .map(|()| StagedSubmission::Deferred)
+                    block_on(tmux.abort_submit(&watchdog_recovery)).map(|()| {
+                        StagedSubmission::Deferred {
+                            reason: DeliveryDeferralReason::Unrecognized,
+                        }
+                    })
                 }
                 _ => block_on(gate.submit_with_owned_input("%108", "MATCHING-HUMAN-TEXT")),
             };
@@ -926,7 +958,12 @@ mod tests {
                     StagedSubmission::Submitted
                 ),
                 Exit::Abort | Exit::DropWithoutCommit => {
-                    assert_eq!(result.expect("non-commit exit"), StagedSubmission::Deferred)
+                    assert_eq!(
+                        result.expect("non-commit exit"),
+                        StagedSubmission::Deferred {
+                            reason: DeliveryDeferralReason::Unrecognized,
+                        }
+                    )
                 }
                 Exit::StageFail | Exit::CommitFail | Exit::Deadline | Exit::Death => {
                     assert!(result.is_err(), "{exit:?} must not report submission")

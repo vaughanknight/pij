@@ -1,0 +1,63 @@
+{
+ "dd": {
+  "schema": "builder/review"
+ },
+ "sections": [
+  {
+   "name": "meta",
+   "value": {
+    "title": "Cross-model review r3 \u2014 133 rs tap supersedes legacy (terminal)",
+    "reviewer": "pij-obnoxious-primate",
+    "model": "claude-opus-5",
+    "round": "r3",
+    "date": "2026-09-02",
+    "plan": "../../plan.dd.json#meta",
+    "note": "SUBJECT: r2 finding f4 only, at HEAD (fix commit 8e6b580a, tree at 3e19217a). Terminal round as dispatched \u2014 no broad probes, no re-review of AC1-AC6 or of r1 f1-f3 (all closed and independently verified in r2).\n\nMETHOD: read the fix diff rather than accepting the report; re-ran CI's exact gate scope myself at HEAD and captured the bare exit code (not a piped one \u2014 exit-code laundering); forced a fresh recompile of the specific test target the defect lived in, so a cached clippy result could not stand in for a real lint; checked the second half of f4 (the plan's cited gate drifting from ci.yml) actually landed; and swept for the same defect CLASS elsewhere in the gate list.\n\nVERDICT: APPROVE \u2014 terminal. f4 is fixed, the fix is exactly the one-line change prescribed, the gate that exposed it is green at CI's scope, and the doc/AC drift that hid it has been closed.\n\nf4 RESOLVED \u2014 VERIFIED AT CI SCOPE, NOT BY RECEIPT. The code fix is the prescribed line and nothing else rode along with it: 8e6b580a touches exactly one line of Rust,\n\n    -        .claim(&[delivery.kind.clone()], \"schedule-worker\")\n    +        .claim(std::slice::from_ref(&delivery.kind), \"schedule-worker\")\n\nwith the remaining files in that commit being plan/review docs. I re-derived the gate at HEAD instead of reading the receipt:\n  cargo clippy --workspace --all-targets -- -D warnings   -> exit 0\n  cargo fmt --check                                       -> exit 0\n  cargo fmt --all --check (CI's exact form)                -> exit 0\n  cargo test --workspace                                  -> 591 passed, 0 failed, 6 ignored\n  cargo test -p pij-store --test queue                    -> 21 passed, 0 failed, 0 ignored\nThe first clippy run finished in under a second, which is a cached result and would prove nothing about whether the test target was actually linted. I touched crates/store/tests/queue.rs and re-ran `cargo clippy -p pij-store --all-targets -- -D warnings`: 13.66s, \"Checking pij-store\", exit 0, zero warnings. The lint genuinely read the line that used to fail.\n\nWITNESS: this gate is not green-from-birth. In r2 I observed the same command RED on 1257c32f at this exact scope, with the cloned-ref-to-slice-refs error on this exact line. Red before, green after, same command \u2014 the gate is a witness that has been observed to fail.\n\nDOC DRIFT CLOSED \u2014 the half of f4 that mattered more. The defect was survivable only because the plan's AC5 gate was narrower than the gate CI runs. AC5 now reads `cargo clippy --workspace --all-targets -- -D warnings`, matching .github/workflows/ci.yml:102 verbatim, and live-proof.md's deterministic-receipts bullet cites the same command. The proof doc and the governing gate now say the same string, so the drift that produced f4 cannot silently recur.\n\nThe test the defect lived in still does its job: `delivery_enqueue_returns_the_persisted_not_before_after_backoff` passes, and its 17-second forced backoff still makes the persisted value impossible to produce by config echo. The clippy fix changed the call's spelling, not its semantics \u2014 `std::slice::from_ref` borrows the same value the clone copied.\n\nNo new defects. Two r2 notes (n1, n2) remain open as non-blocking observations and are unchanged by this round."
+   }
+  },
+  {
+   "name": "findings",
+   "value": []
+  },
+  {
+   "name": "notes",
+   "value": [
+    {
+     "id": "n1",
+     "kind": "note",
+     "finding": "SAME-CLASS SWEEP, CLEAN. f4 was 'the receipt cites a narrower gate than the one that governs', so I checked the rest of the gate list for the same shape rather than only the one instance reported. One candidate: ci.yml:99 runs `cargo fmt --all --check` while live-proof.md cites `cargo fmt --check`. Different strings, so worth resolving rather than assuming. The workspace root is a virtual manifest (no [package] section), which makes bare `cargo fmt` already cover all members, so the two forms are equivalent here \u2014 and I ran both at HEAD, exit 0 each. Not a finding; recorded so a later reader does not have to re-derive that the difference is inert. `cargo test --workspace` matches ci.yml:105 exactly."
+    },
+    {
+     "id": "n2",
+     "kind": "note",
+     "finding": "R2 NOTES CARRIED FORWARD, UNCHANGED AND NON-BLOCKING. n1 of r2: the live receipt's `next_retry_at=0` is the honest persisted immediate-eligibility value, but a consumer rendering it as a timestamp shows 1970 \u2014 a presentation concern for whoever displays the field, not a defect in this plan. n2 of r2: the `ps`-based writer probe fails closed under command truncation, and its substring safety leans on the `.raw` sink suffix keeping sink paths distinctive. Neither was re-examined this round \u2014 out of scope for a terminal f4 check \u2014 and neither blocks the merge."
+    },
+    {
+     "id": "n3",
+     "kind": "note",
+     "finding": "TREE STATE AT REVIEW. HEAD is 3e19217a (docs: close acceptance criteria) sitting on 8e6b580a (the f4 fix); the dispatch named 8e6b580a, and the intervening commit is documentation only. Working tree carries three modified files \u2014 .agents-skills-port/pij-team/EXPERIENCES.md and the plan's the-flow.json/.md \u2014 none under crates/, so every gate result above is a property of the committed Rust. I made no edits outside assets/reviews/."
+    }
+   ]
+  },
+  {
+   "name": "verdict",
+   "value": [
+    {
+     "id": "v1",
+     "status": "RESOLVED",
+     "finding": "f4 (BLOCKING, r2) \u2014 cloned-ref-to-slice-refs at crates/store/tests/queue.rs:477. Fixed with the prescribed `std::slice::from_ref`. CI-scope clippy re-derived green at HEAD with a forced fresh lint of the affected test target; the same command was observed RED on 1257c32f in r2."
+    },
+    {
+     "id": "v2",
+     "status": "RESOLVED",
+     "finding": "f4's second half \u2014 gate drift. AC5 and live-proof.md now cite `cargo clippy --workspace --all-targets -- -D warnings`, matching ci.yml:102 verbatim."
+    },
+    {
+     "id": "v3",
+     "status": "APPROVE",
+     "finding": "TERMINAL VERDICT: APPROVE. r1 f1-f3 closed and independently verified in r2; r2 f4 closed and independently verified here. No open findings. All four CI gates re-derived green at HEAD by this reviewer, not accepted from a receipt. Approvable for the PR into main."
+    }
+   ]
+  }
+ ]
+}

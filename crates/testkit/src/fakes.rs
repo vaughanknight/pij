@@ -482,17 +482,27 @@ impl Queue for FakeQueue {
         }) {
             return Ok(DeliveryEnqueue::AlreadyDelivered(*origin));
         }
-        if let Some((id, _)) = state
+        if let Some(id) = state
             .live
             .iter()
             .find(|(_, live)| live.dedupe_key == job.dedupe_key && live.kind == job.kind)
+            .map(|(id, _)| *id)
         {
-            return Ok(DeliveryEnqueue::Queued(*id));
+            let not_before = state.not_before.get(&id.0).copied().unwrap_or(state.now);
+            return Ok(DeliveryEnqueue::Queued {
+                job_id: id,
+                not_before_ms: u64::try_from(not_before.as_millis()).unwrap_or(u64::MAX),
+            });
         }
         state.next_id += 1;
         let id = JobId(state.next_id);
+        let not_before = state.now;
         state.live.push((id, job));
-        Ok(DeliveryEnqueue::Queued(id))
+        state.not_before.insert(id.0, not_before);
+        Ok(DeliveryEnqueue::Queued {
+            job_id: id,
+            not_before_ms: u64::try_from(not_before.as_millis()).unwrap_or(u64::MAX),
+        })
     }
 
     async fn claim(&self, kinds: &[String], worker: &str) -> Result<Option<(JobId, Job)>> {
@@ -799,7 +809,10 @@ impl Transport for FakeTransport {
             return Ok(outcome);
         }
         if !state.reachable {
-            return Ok(DeliveryOutcome::Queued);
+            return Ok(DeliveryOutcome::Queued {
+                reason: None,
+                next_retry_at: None,
+            });
         }
         state.delivered.push(msg.clone());
         // A fake transport observes only that it accepted the bytes — the
@@ -997,6 +1010,11 @@ impl FakeTmux {
     pub fn with_user_typing(self) -> Self {
         self.state.lock().expect("fake tmux mutex").typing = true;
         self
+    }
+
+    /// Change the observed typing mode for a later delivery attempt.
+    pub fn set_user_typing(&self, typing: bool) {
+        self.state.lock().expect("fake tmux mutex").typing = typing;
     }
 
     /// Every call made, in order.

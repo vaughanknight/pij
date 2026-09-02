@@ -56,6 +56,7 @@ pub struct PaneObserver {
     world_reconciled: AtomicBool,
     interval: Duration,
     panes: Mutex<BTreeMap<String, PaneState>>,
+    reported_attach_failures: Mutex<BTreeSet<(String, String)>>,
 }
 
 impl PaneObserver {
@@ -82,6 +83,7 @@ impl PaneObserver {
             sink_dir,
             world_reconciled: AtomicBool::new(false),
             interval,
+            reported_attach_failures: Mutex::new(BTreeSet::new()),
             panes: Mutex::new(BTreeMap::new()),
         })
     }
@@ -218,7 +220,15 @@ impl PaneObserver {
                 Ok(()) => {}
                 Err(error) => {
                     self.gate.record_unknown(&pane.id);
-                    first_error.get_or_insert(error);
+                    let signature = (pane.id.clone(), error.to_string());
+                    if self
+                        .reported_attach_failures
+                        .lock()
+                        .expect("pane observer refusal mutex")
+                        .insert(signature)
+                    {
+                        first_error.get_or_insert(error);
+                    }
                     continue;
                 }
             }
@@ -808,6 +818,54 @@ mod tests {
         session.run(["pipe-pane", "-t", &pane.id]);
         session.run(["set-option", "-p", "-u", "-t", &pane.id, "@pij-tap-sink"]);
         std::fs::remove_file(victim).expect("remove decoy");
+    }
+
+    #[tokio::test]
+    async fn foreign_unmarked_pipe_refusal_is_reported_once_per_pane() {
+        let Some(session) = LiveTmuxSession::start() else {
+            eprintln!("SKIP real pane observer test: tmux unavailable");
+            return;
+        };
+        let tmux = Arc::new(TmuxAdapter::for_server(&session.server, &session.tap_root));
+        let pane = tmux
+            .list_panes()
+            .await
+            .expect("list isolated pane")
+            .into_iter()
+            .next()
+            .expect("isolated pane");
+        let victim = std::env::temp_dir().join(format!("{}-foreign.raw", session.name));
+        std::fs::write(&victim, b"FOREIGN").expect("create foreign sink");
+        let pipe_command = format!("cat >> '{}'", victim.display());
+        session.run(["pipe-pane", "-O", "-t", &pane.id, &pipe_command]);
+
+        let registry = registry(&[pane.id.as_str()]).await;
+        let observer = PaneObserver::new(
+            registry as Arc<dyn Registry>,
+            Arc::clone(&tmux) as Arc<dyn TmuxPort>,
+            Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>)),
+            session.tap_root.clone(),
+            Duration::from_millis(1),
+        )
+        .expect("observer");
+
+        observer
+            .observe_once()
+            .await
+            .expect_err("first foreign refusal is reported");
+        observer
+            .observe_once()
+            .await
+            .expect("same refusal is suppressed on later ticks");
+        let pipe = session.run(["display-message", "-p", "-t", &pane.id, "#{pane_pipe}"]);
+        assert_eq!(String::from_utf8_lossy(&pipe.stdout).trim(), "1");
+        assert_eq!(
+            std::fs::read(&victim).expect("foreign sink survives"),
+            b"FOREIGN"
+        );
+
+        session.run(["pipe-pane", "-t", &pane.id]);
+        std::fs::remove_file(victim).expect("remove foreign sink");
     }
 
     #[tokio::test]

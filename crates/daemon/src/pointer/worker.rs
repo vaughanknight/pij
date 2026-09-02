@@ -255,7 +255,7 @@ impl DrainWorker {
                 Ok(DeliveryOutcome::Delivered { origin }) => {
                     self.queue.ack_delivery(job_id, origin).await.map(|_| ())
                 }
-                Ok(DeliveryOutcome::Queued) => self.release_body(job_id).await,
+                Ok(DeliveryOutcome::Queued { .. }) => self.release_body(job_id).await,
                 // HELD IS NOT QUEUED. `release_body` is `retry(job, Duration::ZERO)`
                 // — an immediate re-delivery — and every re-delivery of a held
                 // message raises a FRESH APPROVAL DIALOG at the human who has not
@@ -347,7 +347,7 @@ impl DrainWorker {
                 .ack_delivery(job_id, DeliveryOrigin::TypedToPane)
                 .await
                 .map(|_| ()),
-            Ok(StagedSubmission::Deferred) => self.release_body(job_id).await,
+            Ok(StagedSubmission::Deferred { .. }) => self.release_body(job_id).await,
             Err(error) => {
                 self.backoff_command(job_id, attempt).await?;
                 Err(error)
@@ -422,7 +422,7 @@ impl DrainWorker {
                 .await?;
                 self.release_body(job_id).await
             }
-            Ok(StagedSubmission::Deferred) => self.release_body(job_id).await,
+            Ok(StagedSubmission::Deferred { .. }) => self.release_body(job_id).await,
             Err(error) => self.keep_body_pullable(job_id, Err(error)).await,
         }
     }
@@ -1181,6 +1181,53 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn human_typing_veto_retries_once_on_the_next_clear_tick() {
+        let pane = "%typing-clears";
+        let fixture = fixture(
+            FakeTransport::reachable(),
+            FakeTmux::new().with_user_typing(),
+        );
+        register(&fixture, seat("pij-typing-clears", Some(pane))).await;
+        fixture.interaction.observe_composer(pane, "");
+        let msg = message("pij-typing-clears", "deliver after clear", None);
+        let id = enqueue(&fixture, &msg).await;
+
+        assert_eq!(fixture.worker.drain_once().await.expect("vetoed tick"), 1);
+        assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)]);
+        assert!(fixture.transport.delivered().is_empty());
+
+        fixture.tmux.set_user_typing(false);
+        assert_eq!(fixture.worker.drain_once().await.expect("clear tick"), 1);
+        assert_eq!(fixture.transport.delivered(), [msg]);
+        assert_eq!(fixture.queue.live_len(), 0);
+        assert_eq!(fixture.worker.drain_once().await.expect("deduped tick"), 0);
+        assert_eq!(fixture.transport.delivered().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn tap_unowned_body_delivers_on_the_next_tick_after_tap_claim() {
+        let pane = "%tap-claimed";
+        let fixture = fixture_unarranged(FakeTransport::unreachable(), FakeTmux::new());
+        register(&fixture, seat("pij-tap-claimed", Some(pane))).await;
+        let msg = message("pij-tap-claimed", "deliver after tap claim", None);
+        let id = enqueue(&fixture, &msg).await;
+
+        assert_eq!(fixture.worker.drain_once().await.expect("unowned tick"), 1);
+        assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)]);
+        assert_eq!(fixture.queue.live_len(), 1);
+
+        fixture.tmux.arrange_clear_composer(pane);
+        fixture.interaction.observe_composer(pane, "");
+        assert_eq!(fixture.worker.drain_once().await.expect("owned tick"), 1);
+        assert_eq!(fixture.queue.live_len(), 0);
+        let submitted = format!(
+            "submit:{pane}:{}",
+            frame_message(&msg.from, None, &msg.body)
+        );
+        assert!(fixture.tmux.calls().iter().any(|call| call == &submitted));
+        assert_eq!(fixture.worker.drain_once().await.expect("deduped tick"), 0);
+    }
     #[tokio::test]
     async fn expired_nonempty_composer_still_retries_typed_body() {
         let idle = Duration::from_millis(30);

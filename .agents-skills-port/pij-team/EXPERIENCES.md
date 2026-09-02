@@ -39,6 +39,37 @@ we hand the pattern to pij and the harness. Also `harness observe` each one.
 
 ## Frictions / open issues
 
+- 2026-09-02 (ferret, PM 133): CROSS-MODEL REVIEW CONFIRMED TENETS 5/11
+  AND ADDED THE MISSING CONFIGURATION-SYMMETRY RULE. Every local gate was
+  green and the live happy path worked, yet the Opus reviewer measured that
+  69/69 panes satisfied the supposed legacy discriminator: the sink file was
+  inventory, not ownership. Every refusal test had omitted the production-only
+  injected legacy root, so it passed through an early return instead of the
+  safety predicate. Packet/template improvement: the least-confidence list
+  must name production-only constructor inputs, and a safety discriminator's
+  refusal witness must run with those inputs enabled and be observed RED on the
+  old implementation.
+- 2026-09-02 (ferret, PM 133): A LOCAL GREEN IS NOT A SHIP GATE WHEN ITS
+  COMMAND DIFFERS FROM CI. Plan AC5 and the PM receipt used `cargo clippy
+  --workspace -- -D warnings`; CI adds `--all-targets`, which alone linted the
+  new integration test and found a real blocking error. Reviewer packets should
+  read the CI command before accepting any locally named gate, and the plan
+  template should import/cite the governing command rather than restating a
+  near-fit.
+- 2026-09-02 (ferret, PM 133 — second same-day confirmation of the planarian
+  finding below): REVIEWER TRANSPORT MUST CONVERGE BEFORE CANARY. Spawn minted
+  legacy id `pij-resulting-barnacle` while pane/pid/session evidence bound rs id
+  `pij-obnoxious-primate`; canary/send correctly refused the contradiction and
+  the reviewer could report only through the observable rs id. Prime recorded
+  this under req-0039. The dispatcher must bind the reviewer in the selected
+  generation before emitting its reply address.
+- 2026-09-02 (ferret, PM 133): FLOWSPACE DOGFOOD FOUND THREE TOOL-SHAPE GAPS:
+  ddoc search hits return addresses that `flowspace3 get` rejects for lacking
+  `el:`; hidden `.pi/` paths are absent from the index; and two bounded `ask`
+  runs consumed 54k+ tokens / 141-180s without synthesising while direct `get`
+  on their citations answered the question. Search packets should route ddoc
+  hits to `ddocs get`, declare hidden-index coverage, and cap/fallback `ask` to
+  direct element reads after one bounded failure.
 - 2026-09-02 (planarian, PM 125 — req-0034 instance): REVIEWER TRANSPORT MUST
   CONVERGE BEFORE THE CANARY. `pij spawn --harness claude` produced a legacy
   descriptor while the PM lived in rs; PM→reviewer sends returned no-registry,
