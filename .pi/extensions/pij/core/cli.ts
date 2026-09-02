@@ -657,24 +657,34 @@ function fillRsSessionRow(rs: RsSessionJoinRow, legacy: JoinRow): RsSessionJoinR
 /** Merge the two generation projections without translating the frozen rs row.
  *  Legacy order is retained; an rs duplicate replaces that slot, remains tagged
  *  `rs`, and receives only the PM-ruled null fills. rs-only rows follow in their
- *  daemon order. */
+ *  daemon order. When `gitCommonDir` is supplied, the completed union is scoped
+ *  only after both generations have contributed. */
 export function mergeSessionRows(
 	legacyRows: readonly JoinRow[],
 	rsPayload: unknown,
+	gitCommonDir?: string | null,
 ): GenerationSessionJoinRow[] {
 	const rsRows = rsSessionRows(rsPayload);
 	const rsById = new Map(rsRows.map((row) => [row.pijId, row] as const));
 	const consumed = new Set<SessionId>();
 	const merged = legacyRows.map((legacy): GenerationSessionJoinRow => {
 		const rs = rsById.get(legacy.pijId);
-		if (rs === undefined) return { ...legacy, generation: "legacy" };
+		if (rs === undefined) {
+			return {
+				...legacy,
+				...(gitCommonDir === undefined || gitCommonDir === null ? {} : { gitCommonDir }),
+				generation: "legacy",
+			};
+		}
 		consumed.add(rs.pijId);
 		return fillRsSessionRow(rs, legacy);
 	});
 	for (const rs of rsRows) {
 		if (!consumed.has(rs.pijId)) merged.push(rs);
 	}
-	return merged;
+	if (gitCommonDir === undefined) return merged;
+	if (gitCommonDir === null) return [];
+	return merged.filter((row) => row.gitCommonDir === gitCommonDir);
 }
 
 export interface WaitTarget {
@@ -3014,8 +3024,17 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			// already-persisted harness↔pij join keys (Finding 01/05) — no daemon, a
 			// pure sibling of `list` decoupled from its human/live-state view.
 			let descs = deps.registry.list();
-			if (cmd.here) descs = filterByFolder(descs, deps.cwd);
-			const rows = mergeSessionRows(buildSessionJoinRows(descs), { rows: [] });
+			let gitCommonDir: string | null | undefined;
+			if (cmd.here) {
+				if (deps.repository === undefined) {
+					descs = filterByFolder(descs, deps.cwd);
+				} else {
+					const selection = selectByRepository(descs, deps.cwd, deps.repository);
+					descs = selection.descriptors;
+					gitCommonDir = selection.gitCommonDir;
+				}
+			}
+			const rows = mergeSessionRows(buildSessionJoinRows(descs), { rows: [] }, gitCommonDir);
 			if (cmd.json) return okOut(JSON.stringify(rows));
 			if (rows.length === 0)
 				return okOut(cmd.here ? "no pij sessions in this folder" : "no pij sessions");

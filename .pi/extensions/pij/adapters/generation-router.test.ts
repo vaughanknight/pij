@@ -263,6 +263,60 @@ describe("routeVerb end to end", () => {
 		]);
 	});
 
+	it("filters rs rows by caller git common dir only when --here is present", async () => {
+		const rows = [
+			{
+				pijId: "pij-local",
+				harness: "omp",
+				harnessSessionId: "local-session",
+				gitCommonDir: "/repo/.git",
+				lifecycle: "bound",
+				boundModel: null,
+				spawnedBy: null,
+				transcriptPath: null,
+				generation: "rs",
+			},
+			{
+				pijId: "pij-other",
+				harness: "omp",
+				harnessSessionId: "other-session",
+				gitCommonDir: "/other/.git",
+				lifecycle: "bound",
+				boundModel: null,
+				spawnedBy: null,
+				transcriptPath: null,
+				generation: "rs",
+			},
+		];
+		const handler = (url: string) =>
+			url.endsWith("/health")
+				? new Response(HEALTH, { status: 200 })
+				: new Response(
+						JSON.stringify({ ok: true, command: "pij sessions", v: 2, data: { rows } }),
+						{ status: 200 },
+					);
+		const over = {
+			legacySessionRows: () => [],
+			gitCommonDir: () => "/repo/.git",
+		} as Partial<GenerationRouterDeps>;
+
+		const all = await routeVerb("sessions", undefined, ["sessions", "--json"], deps(handler, over));
+		const here = await routeVerb(
+			"sessions",
+			undefined,
+			["sessions", "--here", "--json"],
+			deps(handler, over),
+		);
+
+		expect((all.payload as Array<{ pijId: string }>).map((row) => row.pijId)).toEqual([
+			"pij-local",
+			"pij-other",
+		]);
+		expect((here.payload as Array<{ pijId: string }>).map((row) => row.pijId)).toEqual([
+			"pij-local",
+		]);
+	});
+
 	// o-prime's binding condition 3: an UNANSWERABLE capability question is an
 	// ERROR, not "does not implement". rs answered the probe and then died on
 	// the call — treating that as not-implemented would re-home the verb on the
