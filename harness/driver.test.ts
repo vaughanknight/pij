@@ -88,18 +88,24 @@ describe("driver/tmux primitives", () => {
 		expect(newSession).toContain("50");
 	});
 
-	it("boot() scrubs ambient pij spawn identity while preserving scenario env", async () => {
+	it("boot() scrubs ambient identity and preserves routing plus scenario env", async () => {
 		vi.stubEnv("PIJ_ANNOUNCE_TO", "pij-real-prime");
 		vi.stubEnv("PIJ_PARENT_ID", "pij-real-prime");
 		vi.stubEnv("PIJ_SESSION_ID", "pij-real-worker");
 		vi.stubEnv("PIJ_SPAWN_ID", "spawn-real");
 		vi.stubEnv("PIJ_SPAWN_TASK", "real task");
 		vi.stubEnv("PIJ_SPAWNER_CUSTOM", "real pane");
+		vi.stubEnv("PIJ_DAEMON_GENERATION", "legacy");
+		vi.stubEnv("PIJ_RS_ADDR", "127.0.0.1:17600");
+		vi.stubEnv("PIJ_RS_STATE_DIR", "/tmp/isolated-rs");
 		try {
 			const { boot } = await import("./driver/tmux.js");
 			boot({ session: "isolated", cwd: "/tmp", cmd: "pi", env: { FIXTURE_ONLY: "yes" } });
 			const newSession = calls.find((call) => call[1] === "new-session");
 			expect(newSession).toContain("FIXTURE_ONLY=yes");
+			expect(newSession).toContain("PIJ_DAEMON_GENERATION=legacy");
+			expect(newSession).toContain("PIJ_RS_ADDR=127.0.0.1:17600");
+			expect(newSession).toContain("PIJ_RS_STATE_DIR=/tmp/isolated-rs");
 			for (const key of [
 				"PIJ_ANNOUNCE_TO",
 				"PIJ_PARENT_ID",

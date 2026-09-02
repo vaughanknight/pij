@@ -100,14 +100,22 @@ const PIJ_IDENTITY_ENV_KEYS = [
 	"PIJ_SPAWNER_PANE",
 ] as const;
 
+const PIJ_ROUTING_ENV_KEYS = ["PIJ_DAEMON_GENERATION", "PIJ_RS_ADDR", "PIJ_RS_STATE_DIR"] as const;
+
 /** A driver child is a fixture, never an incarnation of the agent running it.
- * Empty tmux environment overrides prevent ambient spawn identity from minting
- * live-fleet seats; an explicit scenario value still wins for identity tests. */
+ * Empty tmux overrides prevent ambient spawn identity from reaching the live
+ * fleet. Explicit safe routing follows the invoking check into a tmux server
+ * that an earlier test may already have created; scenario values still win. */
 function childEnvironment(explicit: Record<string, string> = {}): Record<string, string> {
+	const scrubbed: Record<string, string> = {};
+	for (const key of PIJ_ROUTING_ENV_KEYS) {
+		const value = process.env[key];
+		if (value !== undefined) scrubbed[key] = value;
+	}
+	Object.assign(scrubbed, explicit);
 	const inheritedSpawnKeys = Object.keys(process.env).filter(
 		(key) => key.startsWith("PIJ_SPAWN_") || key.startsWith("PIJ_SPAWNER"),
 	);
-	const scrubbed = { ...explicit };
 	for (const key of [...new Set([...PIJ_IDENTITY_ENV_KEYS, ...inheritedSpawnKeys])].sort()) {
 		if (!Object.hasOwn(scrubbed, key)) scrubbed[key] = "";
 	}
