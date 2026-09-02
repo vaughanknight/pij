@@ -515,6 +515,7 @@ pub(crate) async fn adopt(
             "codex" => caller.codex_session.clone(),
             _ => None,
         });
+    let resolves_from_pane = matches!(harness.as_str(), "claude" | "copilot" | "codex");
     let claim = Registration {
         supersedes: None,
         id: seat_id.0.clone(),
@@ -552,16 +553,16 @@ pub(crate) async fn adopt(
     match state.services.registry.get(&seat_id).await {
         Ok(Some(persisted)) => {
             let mut answer = Envelope::ok(ADOPT, persisted);
-            // Found by running the real gesture: the caller's environment still
-            // holds whatever id it had BEFORE this mint. A seat already
-            // registered elsewhere then asks `whoami`, its stale
-            // `PIJ_SESSION_ID` contradicts the pane, and the impersonation guard
-            // correctly refuses — leaving a seat that adopted successfully
-            // unable to name itself. The id is the one thing the caller cannot
-            // derive, so adopt hands it back with the line that fixes it.
-            answer.meta = Some(format!(
-                "export PIJ_SESSION_ID={seat_id} — this shell still carries whatever id it had                  before, and an id that contradicts the pane is refused, not preferred"
-            ));
+            answer.meta = Some(if resolves_from_pane {
+                format!(
+                    "adopted {seat_id}; identity resolves from pane {} on each command — no PIJ_SESSION_ID export is required for this harness",
+                    pane.as_deref().unwrap_or("<none>")
+                )
+            } else {
+                format!(
+                    "export PIJ_SESSION_ID={seat_id} — this shell still carries whatever id it had before, and an id that contradicts the pane is refused, not preferred"
+                )
+            });
             envelope(StatusCode::OK, &answer)
         }
         Ok(None) => internal(

@@ -77,6 +77,9 @@ impl Queue for FailFirstClaim {
         }
         self.inner.claim(kinds, worker).await
     }
+    async fn peek(&self, kinds: &[String]) -> Result<Option<(JobId, Job)>> {
+        self.inner.peek(kinds).await
+    }
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {
         self.inner.ack(job, outcome).await
     }
@@ -537,6 +540,9 @@ impl Queue for RefuseFirstDelivery {
     }
     async fn claim(&self, kinds: &[String], worker: &str) -> Result<Option<(JobId, Job)>> {
         self.inner.claim(kinds, worker).await
+    }
+    async fn peek(&self, kinds: &[String]) -> Result<Option<(JobId, Job)>> {
+        self.inner.peek(kinds).await
     }
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {
         self.inner.ack(job, outcome).await

@@ -209,11 +209,9 @@ impl DaemonClient {
             .await
     }
 
-    /// Claim one inbox message, then acknowledge only after the complete response
-    /// was received and decoded. An acknowledgement failure returns the decoded
-    /// message with a warning because a duplicate read is safer than hiding a
-    /// body the client already received.
-    pub async fn inbox(&self, seat: &SeatId, wait: bool) -> Envelope<Vec<Msg>> {
+    /// Read at most one inbox message. Normal reads claim then acknowledge only
+    /// after decoding; `peek` asks the daemon for an observation-only snapshot.
+    pub async fn inbox(&self, seat: &SeatId, wait: bool, peek: bool) -> Envelope<Vec<Msg>> {
         let claimed: Envelope<Vec<InboxClaim>> = self
             .execute(
                 "pij inbox",
@@ -222,6 +220,7 @@ impl DaemonClient {
                     .query(&[
                         ("seat", seat.as_str()),
                         ("wait", if wait { "true" } else { "false" }),
+                        ("peek", if peek { "true" } else { "false" }),
                     ]),
             )
             .await;
@@ -243,6 +242,9 @@ impl DaemonClient {
             );
         }
         let messages: Vec<Msg> = claims.iter().map(|claim| claim.message.clone()).collect();
+        if peek {
+            return Envelope::ok("pij inbox", messages);
+        }
         let Some(claim) = claims.first() else {
             return Envelope::ok("pij inbox", messages);
         };

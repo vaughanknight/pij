@@ -45,7 +45,7 @@ pub fn render_pointer(from: &SeatId, from_machine: Option<&str>) -> String {
     // A remote sender is named by ADDRESS. Two machines may hold seats with the
     // same name, and a frame naming only "bob" leaves the recipient unable to
     // tell WHICH bob paged them — while the event already carries the machine.
-    frame_message(from, from_machine, "message waiting — run: pij inbox")
+    frame_message(from, from_machine, "message waiting — run: pij inbox check")
 }
 
 /// Render the only retained pull exception: a body that a stock terminal
@@ -88,7 +88,7 @@ pub fn render_final_pointer(
     announcements: u32,
 ) -> String {
     let payload = format!(
-        "message waiting — final reminder; parked after {announcements} announcements — message remains queued; run: pij inbox when ready"
+        "message waiting — final reminder; parked after {announcements} announcements — message remains queued; run: pij inbox check when ready"
     );
     frame_message(from, from_machine, &payload)
 }
@@ -145,13 +145,13 @@ mod tests {
         let line = render_pointer(&SeatId::from("pij-sender"), None);
         assert_eq!(
             render_pointer(&SeatId::from("bob"), Some("desktop")),
-            "[pij-rs from bob@desktop]\nmessage waiting — run: pij inbox\n[/pij]",
+            "[pij-rs from bob@desktop]\nmessage waiting — run: pij inbox check\n[/pij]",
             "a remote sender is named by ADDRESS: two machines may both hold a bob"
         );
 
         assert_eq!(
             line,
-            "[pij-rs from pij-sender]\nmessage waiting — run: pij inbox\n[/pij]"
+            "[pij-rs from pij-sender]\nmessage waiting — run: pij inbox check\n[/pij]"
         );
         assert!(!line.contains(body), "a pointer must never carry the body");
         assert_eq!(
@@ -168,11 +168,11 @@ mod tests {
     fn final_pointer_explains_the_silence_to_the_recipient() {
         assert_eq!(
             render_final_pointer(&SeatId::from("pij-sender"), None, 3),
-            "[pij-rs from pij-sender]\nmessage waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox when ready\n[/pij]"
+            "[pij-rs from pij-sender]\nmessage waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox check when ready\n[/pij]"
         );
         assert_eq!(
             render_final_pointer(&SeatId::from("bob"), Some("desktop"), 3),
-            "[pij-rs from bob@desktop]\nmessage waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox when ready\n[/pij]"
+            "[pij-rs from bob@desktop]\nmessage waiting — final reminder; parked after 3 announcements — message remains queued; run: pij inbox check when ready\n[/pij]"
         );
     }
 
@@ -180,7 +180,7 @@ mod tests {
     fn every_pointer_uses_the_same_truthful_singular_line() {
         assert_eq!(
             render_pointer(&SeatId::from("pij-one"), None),
-            "[pij-rs from pij-one]\nmessage waiting — run: pij inbox\n[/pij]"
+            "[pij-rs from pij-one]\nmessage waiting — run: pij inbox check\n[/pij]"
         );
     }
 

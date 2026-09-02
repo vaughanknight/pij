@@ -448,6 +448,30 @@ impl DeliveryService {
         }
     }
 
+    /// Inspect at most one currently claimable message without changing queue
+    /// state, pointer cadence, or delivery evidence.
+    pub async fn peek_inbox(&self, seat: &SeatId) -> Result<Vec<InboxClaim>> {
+        let kinds = [delivery_kind(seat)];
+        let Some((job_id, job)) = self.queue.peek(&kinds).await? else {
+            return Ok(Vec::new());
+        };
+        let message: Msg =
+            serde_json::from_str(&job.payload).map_err(|error| PijError::Adapter {
+                adapter: "daemon/delivery".to_string(),
+                message: format!("invalid delivery payload: {error}"),
+            })?;
+        if &message.to != seat {
+            return Err(PijError::Adapter {
+                adapter: "daemon/delivery".to_string(),
+                message: format!(
+                    "delivery kind {} contained message for {}",
+                    kinds[0], message.to
+                ),
+            });
+        }
+        Ok(vec![InboxClaim { job_id, message }])
+    }
+
     /// Record `ReaderRead` and return the authority-owned job identity committed.
     ///
     /// # Errors

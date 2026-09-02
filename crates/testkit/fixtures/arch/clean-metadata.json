@@ -333,6 +333,10 @@
           "kind": null
         },
         {
+          "name": "uuid",
+          "kind": null
+        },
+        {
           "name": "axum",
           "kind": "dev"
         },

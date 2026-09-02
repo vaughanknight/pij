@@ -1,7 +1,10 @@
 //! `pij-rs` — one binary, two composition roots.
 
+mod identity;
+
 use std::collections::BTreeMap;
 use std::ffi::OsString;
+use std::io::Read;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitCode};
@@ -198,32 +201,43 @@ enum Command {
         #[arg(long)]
         name: Option<String>,
     },
-    /// Durably enqueue one message.
+    /// Durably enqueue one message as the acting seat.
+    #[command(
+        after_long_help = "Examples:\n  pij-rs send --to <id> --body 'hello'\n  pij-rs send --to <id> --body-file -"
+    )]
     Send {
-        /// Sending seat.
+        /// Assert the derived sending seat. Omit to use PIJ_SESSION_ID or TMUX_PANE.
         #[arg(long)]
-        from: String,
+        from: Option<String>,
         /// `<seat>` or `<seat>@<machine>`; use `@@` for a literal seat `@`.
         #[arg(long, value_parser = parse_destination)]
         to: pij_core::model::Destination,
-        /// Literal message body.
+        /// Literal message body, including values beginning with `-`.
+        #[arg(long, allow_hyphen_values = true, conflicts_with = "body_file")]
+        body: Option<String>,
+        /// Read the literal body from a path, or from stdin with `-`.
+        #[arg(long, conflicts_with = "body")]
+        body_file: Option<String>,
+        /// Correlation id. Omit to mint a UUIDv7.
         #[arg(long)]
-        body: String,
-        /// Caller-supplied correlation id.
-        #[arg(long)]
-        msg_id: String,
+        msg_id: Option<String>,
         /// Message id being answered.
         #[arg(long)]
         in_reply_to: Option<String>,
     },
-    /// Pull one bounded page for this seat and acknowledge it after decoding.
+    /// Destructively read and acknowledge this acting seat's inbox.
+    ///
+    /// `--peek` is the only cross-seat form and never claims or acknowledges.
     Inbox {
-        /// Recipient identity. Defaults to non-empty PIJ_SESSION_ID.
+        /// Inbox to read. Defaults to the derived acting seat.
         #[arg(long)]
         seat: Option<String>,
         /// Wait until at least one message is available.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "peek")]
         wait: bool,
+        /// Inspect without claiming or acknowledging; permits an explicit other seat.
+        #[arg(long)]
+        peek: bool,
     },
     /// Enqueue one sidecar job: telegram send, background command, or chore.
     ///
@@ -480,12 +494,6 @@ async fn run(cli: Cli) -> ExitCode {
             return emit(&setup_refusal::<Value>("pij revive", error), cli.json);
         }
     };
-    let prepared_inbox_seat = match prepare_inbox_seat(&cli.command) {
-        Ok(seat) => seat,
-        Err(error) => {
-            return emit(&setup_refusal::<Value>("pij inbox", error), cli.json);
-        }
-    };
 
     let command_name = cli.command.name();
     let addr = match resolve_client_addr(cli.addr.as_deref(), std::env::var_os("PIJ_RS_ADDR")) {
@@ -583,56 +591,63 @@ async fn run(cli: Cli) -> ExitCode {
             from,
             to,
             body,
+            body_file,
             msg_id,
             in_reply_to,
         } => {
+            let acting = match resolve_command_seat(&client, "pij send", from.as_deref()).await {
+                Ok(seat) => seat,
+                Err(error) => return emit(&setup_refusal::<Value>("pij send", error), cli.json),
+            };
+            let body = match resolve_send_body(body, body_file) {
+                Ok(body) => body,
+                Err(error) => return emit(&setup_refusal::<Value>("pij send", error), cli.json),
+            };
             let request = SendRequest {
-                from: from.into(),
+                from: acting,
                 to,
                 body,
-                msg_id,
+                msg_id: msg_id.unwrap_or_else(|| uuid::Uuid::now_v7().to_string()),
                 in_reply_to,
             };
-            emit(&client.send(&request).await, cli.json)
+            let mut response = client.send(&request).await;
+            if response.ok {
+                response.meta = Some(format!("from {}; msg_id {}", request.from, request.msg_id));
+            }
+            emit(&response, cli.json)
         }
-        Command::Inbox { wait, .. } => emit(
-            &client
-                .inbox(
-                    prepared_inbox_seat
-                        .as_ref()
-                        .expect("inbox identity was prepared"),
-                    wait,
-                )
-                .await,
-            cli.json,
-        ),
-        Command::Report { seat, args } => {
-            let Some(seat) = seat
-                .or_else(|| std::env::var("PIJ_SESSION_ID").ok())
-                .map(|id| id.trim().to_string())
-                .filter(|id| !id.is_empty())
-            else {
+        Command::Inbox { seat, wait, peek } => {
+            let acting = match resolve_command_seat(&client, "pij inbox", None).await {
+                Ok(seat) => seat,
+                Err(error) => return emit(&setup_refusal::<Value>("pij inbox", error), cli.json),
+            };
+            let target = seat.map_or_else(|| acting.clone(), SeatId::from);
+            if !peek && target != acting {
                 return emit(
                     &setup_refusal::<Value>(
-                        "pij report",
+                        "pij inbox",
                         PijError::Adapter {
-                            adapter: "pij report".to_string(),
-                            message: "no reporting seat: `report` is first-person and its \
-                                      subject is never typed. Pass --seat <id>, or run where \
-                                      PIJ_SESSION_ID is set."
-                                .to_string(),
+                            adapter: "pij inbox".to_string(),
+                            message: format!(
+                                "the acting seat is `{acting}` but --seat names `{target}`; destructive inbox reads cannot claim or acknowledge another seat's mail. Use --peek for a non-destructive cross-seat read"
+                            ),
                         },
                     ),
                     cli.json,
                 );
+            }
+            emit(&client.inbox(&target, wait, peek).await, cli.json)
+        }
+        Command::Report { seat, args } => {
+            let acting = match resolve_command_seat(&client, "pij report", seat.as_deref()).await {
+                Ok(seat) => seat,
+                Err(error) => return emit(&setup_refusal::<Value>("pij report", error), cli.json),
             };
             // The verb the caller typed is re-attached, because the daemon's
-            // grammar parses the same argv the TypeScript CLI receives — verb
-            // included — and stripping it here would make this surface a second,
-            // subtly different dialect of the same command.
+            // grammar parses the same argv the TypeScript CLI receives.
             let mut argv = vec!["report".to_string()];
             argv.extend(args);
-            emit(&client.report(&SeatId::from(seat), &argv).await, cli.json)
+            emit(&client.report(&acting, &argv).await, cli.json)
         }
         Command::List => emit(&client.list().await, cli.json),
         Command::State { id } => emit(&client.state(&id).await, cli.json),
@@ -880,6 +895,62 @@ fn identity_request(seat: Option<String>, pane: Option<String>) -> IdentityReque
         pane,
         caller: Some(caller_context()),
         ..IdentityRequest::default()
+    }
+}
+
+async fn resolve_command_seat(
+    client: &DaemonClient,
+    command: &str,
+    asserted: Option<&str>,
+) -> Result<SeatId, PijError> {
+    let derived = identity::resolve_acting_seat(
+        std::env::var_os("PIJ_SESSION_ID"),
+        std::env::var_os("TMUX_PANE"),
+        client,
+    )
+    .await
+    .map_err(|refusal| PijError::Adapter {
+        adapter: command.to_string(),
+        message: refusal.to_string(),
+    })?;
+    if let Some(asserted) = asserted
+        && asserted != derived.as_str()
+    {
+        return Err(PijError::Adapter {
+            adapter: command.to_string(),
+            message: format!(
+                "{command} asserts `{asserted}` but the acting seat resolves to `{derived}`; the assertion cannot override pane/environment identity"
+            ),
+        });
+    }
+    Ok(derived)
+}
+
+fn resolve_send_body(body: Option<String>, body_file: Option<String>) -> Result<String, PijError> {
+    match (body, body_file) {
+        (Some(body), None) => Ok(body),
+        (None, Some(path)) if path == "-" => {
+            let mut body = String::new();
+            std::io::stdin()
+                .read_to_string(&mut body)
+                .map_err(|error| PijError::Adapter {
+                    adapter: "pij send".to_string(),
+                    message: format!("could not read --body-file - from stdin: {error}"),
+                })?;
+            Ok(body)
+        }
+        (None, Some(path)) => std::fs::read_to_string(&path).map_err(|error| PijError::Adapter {
+            adapter: "pij send".to_string(),
+            message: format!("could not read --body-file `{path}`: {error}"),
+        }),
+        (None, None) => Err(PijError::Adapter {
+            adapter: "pij send".to_string(),
+            message: "missing message body: pass --body <text> or --body-file <path|->".to_string(),
+        }),
+        (Some(_), Some(_)) => Err(PijError::Adapter {
+            adapter: "pij send".to_string(),
+            message: "--body and --body-file are mutually exclusive".to_string(),
+        }),
     }
 }
 
@@ -1206,47 +1277,6 @@ fn parse_absolute_path_buf(value: &str) -> Result<PathBuf, String> {
     }
 }
 
-fn prepare_inbox_seat(command: &Command) -> Result<Option<SeatId>, PijError> {
-    let Command::Inbox { seat, .. } = command else {
-        return Ok(None);
-    };
-    resolve_inbox_seat(seat.clone(), std::env::var_os("PIJ_SESSION_ID")).map(Some)
-}
-
-fn resolve_inbox_seat(
-    explicit: Option<String>,
-    ambient: Option<OsString>,
-) -> Result<SeatId, PijError> {
-    let selected = match explicit {
-        Some(seat) if !seat.trim().is_empty() => seat,
-        Some(_) => {
-            return Err(PijError::Adapter {
-                adapter: "inbox".to_string(),
-                message: "no seat: set PIJ_SESSION_ID or pass --seat".to_string(),
-            });
-        }
-        None => match ambient {
-            Some(seat) => seat.into_string().map_err(|_| PijError::Adapter {
-                adapter: "inbox".to_string(),
-                message: "PIJ_SESSION_ID is not valid UTF-8; pass --seat".to_string(),
-            })?,
-            None => {
-                return Err(PijError::Adapter {
-                    adapter: "inbox".to_string(),
-                    message: "no seat: set PIJ_SESSION_ID or pass --seat".to_string(),
-                });
-            }
-        },
-    };
-    if selected.trim().is_empty() {
-        return Err(PijError::Adapter {
-            adapter: "inbox".to_string(),
-            message: "no seat: set PIJ_SESSION_ID or pass --seat".to_string(),
-        });
-    }
-    Ok(selected.into())
-}
-
 fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijError> {
     let Command::Spawn {
         id,
@@ -1414,7 +1444,7 @@ mod tests {
     use super::{
         Cli, Command, DaemonAction, caller_claude_warning, git_dir_is_linked,
         prepare_revive_request, prepare_spawn_request, resolve_bind_addr, resolve_client_addr,
-        resolve_inbox_seat, resolve_state_dir,
+        resolve_state_dir,
     };
 
     #[test]
@@ -1520,25 +1550,92 @@ mod tests {
     }
 
     #[test]
-    fn inbox_identity_prefers_explicit_then_ambient_and_never_guesses() {
-        assert_eq!(
-            resolve_inbox_seat(
-                Some("pij-explicit".to_string()),
-                Some(OsString::from("pij-ambient"))
-            )
-            .expect("explicit identity"),
-            SeatId::from("pij-explicit")
-        );
-        assert_eq!(
-            resolve_inbox_seat(None, Some(OsString::from("pij-ambient")))
-                .expect("ambient identity"),
-            SeatId::from("pij-ambient")
-        );
-        assert_eq!(
-            resolve_inbox_seat(None, None)
-                .expect_err("missing identity must refuse")
-                .to_string(),
-            "inbox: no seat: set PIJ_SESSION_ID or pass --seat"
+    fn send_short_forms_leave_identity_and_message_id_for_runtime_resolution() {
+        let cli = Cli::try_parse_from([
+            "pij-rs",
+            "send",
+            "--to",
+            "pij-peer",
+            "--body",
+            "--starts-with-a-hyphen",
+        ])
+        .expect("short send form parses");
+        let Command::Send {
+            from,
+            body,
+            body_file,
+            msg_id,
+            ..
+        } = cli.command
+        else {
+            panic!("expected send");
+        };
+        assert_eq!(from, None);
+        assert_eq!(body.as_deref(), Some("--starts-with-a-hyphen"));
+        assert_eq!(body_file, None);
+        assert_eq!(msg_id, None);
+
+        let stdin = Cli::try_parse_from(["pij-rs", "send", "--to", "pij-peer", "--body-file", "-"])
+            .expect("stdin body form parses");
+        let Command::Send { body_file, .. } = stdin.command else {
+            panic!("expected send");
+        };
+        assert_eq!(body_file.as_deref(), Some("-"));
+    }
+
+    #[test]
+    fn missing_send_body_reaches_the_named_runtime_refusal() {
+        let cli = Cli::try_parse_from(["pij-rs", "send", "--to", "pij-peer"])
+            .expect("clap must not replace the named refusal with a usage dump");
+        let Command::Send {
+            body, body_file, ..
+        } = cli.command
+        else {
+            panic!("expected send");
+        };
+        assert_eq!(body, None);
+        assert_eq!(body_file, None);
+    }
+
+    #[test]
+    fn inbox_peek_is_an_explicit_non_destructive_mode() {
+        let cli = Cli::try_parse_from(["pij-rs", "inbox", "--seat", "pij-other", "--peek"])
+            .expect("cross-seat peek parses");
+        let Command::Inbox {
+            seat, wait, peek, ..
+        } = cli.command
+        else {
+            panic!("expected inbox");
+        };
+        assert_eq!(seat.as_deref(), Some("pij-other"));
+        assert!(!wait);
+        assert!(peek);
+    }
+
+    #[test]
+    fn help_leads_with_short_send_and_destructive_inbox_forms() {
+        let mut command = Cli::command();
+        let send_help = command
+            .find_subcommand_mut("send")
+            .expect("send command")
+            .render_long_help()
+            .to_string();
+        let body = send_help
+            .find("pij-rs send --to <id> --body 'hello'")
+            .expect("short body example");
+        let stdin = send_help
+            .find("pij-rs send --to <id> --body-file -")
+            .expect("stdin body example");
+        assert!(body < stdin, "literal short form leads: {send_help}");
+
+        let inbox_help = command
+            .find_subcommand_mut("inbox")
+            .expect("inbox command")
+            .render_long_help()
+            .to_string();
+        assert!(
+            inbox_help.contains("Destructively read and acknowledge this acting seat's inbox"),
+            "{inbox_help}"
         );
     }
 

@@ -1082,6 +1082,7 @@ mod tests {
 
         fixture.worker.drain_once().await.expect("typed delivery");
 
+
         assert!(
             fixture.tmux.calls().iter().any(|call| call
                 == "submit:%legacy:[pij-rs from pij-sender]\nlegacy history cannot hide this body\n[/pij]"),
@@ -1403,6 +1404,10 @@ mod tests {
             worker: &str,
         ) -> pij_core::error::Result<Option<(JobId, Job)>> {
             self.inner.claim(kinds, worker).await
+        }
+
+        async fn peek(&self, kinds: &[String]) -> pij_core::error::Result<Option<(JobId, Job)>> {
+            self.inner.peek(kinds).await
         }
 
         async fn ack(&self, job: JobId, outcome: Outcome) -> pij_core::error::Result<()> {

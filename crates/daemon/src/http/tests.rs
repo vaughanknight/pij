@@ -72,6 +72,10 @@ impl Queue for CountingQueue {
         Ok(None)
     }
 
+    async fn peek(&self, _kinds: &[String]) -> Result<Option<(JobId, Job)>> {
+        Ok(None)
+    }
+
     async fn ack(&self, _job: JobId, _outcome: Outcome) -> Result<()> {
         Ok(())
     }

@@ -790,28 +790,26 @@ mod argv {
     }
 }
 
-/// The id is the ONE fact the caller cannot derive, so adopt hands it back with
-/// the line that fixes the caller's environment.
-///
-/// Found by running the real gesture rather than by reading: a seat that was
-/// already registered elsewhere adopts successfully, then asks `whoami`, and its
-/// STALE `PIJ_SESSION_ID` contradicts the pane — so the impersonation guard
-/// refuses and a seat that just adopted cannot name itself.
+/// Non-shell harnesses start each tool command in a fresh shell, so an export
+/// line is unusable advice. Their pane is the durable identity input.
 #[tokio::test]
-async fn adopt_hands_back_the_line_that_fixes_the_callers_environment() {
+async fn adopt_tells_non_shell_harnesses_that_the_pane_resolves_identity() {
     let registry = Arc::new(FakeRegistry::new());
     let world = world(registry.clone(), true).await;
 
     let response = adopt(world.addr, &["adopt", PANE, "--harness", "claude"]).await;
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let adopted: Envelope<SeatDescriptor> = response.json().await.expect("adopt envelope");
-    let meta = adopted
-        .meta
-        .expect("adopt states the id the caller must export");
+    let meta = adopted.meta.expect("adopt explains subsequent identity");
     let id = adopted.data.expect("descriptor").id;
+    assert!(!meta.contains("export PIJ_SESSION_ID"), "{meta}");
     assert!(
-        meta.contains(&format!("export PIJ_SESSION_ID={id}")),
-        "the note is the runnable line, not a description of one: {meta}"
+        meta.contains(PANE),
+        "the note names the durable pane: {meta}"
+    );
+    assert!(
+        meta.contains(id.as_str()),
+        "the note names the adopted seat: {meta}"
     );
 
     world.server.abort();

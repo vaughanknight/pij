@@ -42,31 +42,43 @@
           "id": "AC1",
           "text": "LIVE from a hand-started omp AND a hand-started claude pane in tmux: `pij-rs send --to <peer> --body hello` with NO --from/--msg-id, no PIJ_SESSION_ID exported → receipt shows the derived sender and a minted id; peer receives it; transcript pasted.",
           "claim": "send derives the sender from the pane and mints the id",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "assets/live-send-defaults.md — hand-started OMP %2992 and Claude %2993 receipts name derived sender + UUIDv7"
         },
         {
           "id": "AC2",
           "text": "LIVE: `printf '%s' '--not-a-flag body with $(danger) and backticks' | pij-rs send --to <peer> --body-file -` delivers the bytes verbatim; a 5 KB file via --body-file <path> arrives byte-identical (reader compares).",
           "claim": "bodies from file/stdin are verbatim and never shell-parsed",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "assets/live-send-defaults.md — literal stdin payload delivered; 5120-byte file compared byte-identical"
         },
         {
           "id": "AC3",
           "text": "Unit: --from that disagrees with the pane owner → refusal naming both ids, exit non-zero, nothing sent; missing body → refusal naming --body/--body-file, no usage dump; pane absent and no env → refusal naming both; PIJ_SESSION_ID present wins over pane. RED-first.",
           "claim": "asserted identity cannot override derived identity and failures are named",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "cargo test -p pij-cli; shipped_cli_registers_sends_reads_acks_and_does_not_read_twice"
         },
         {
           "id": "AC4",
           "text": "LIVE: `pij-rs inbox` from a claude pane with no PIJ_SESSION_ID resolves by pane and reads (antelope case); the daemon pointer line reads `run: pij inbox check`; adopt output no longer says export for claude.",
           "claim": "identity derivation covers inbox and the notice texts are correct",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "assets/live-send-defaults.md plus cargo test -p pij-daemon pointer::tests and http::identity_tests"
         },
         {
           "id": "AC5",
           "text": "cargo test workspace, clippy -D warnings, harness checks green (baseline reds per req-0044 excluded by name).",
           "claim": "gates green",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "cargo test --workspace: 550 passed/6 ignored; clippy -D warnings green; harness checks all pass except exact req-0044 TS exclusions"
+        },
+        {
+          "id": "AC6",
+          "claim": "cross-seat inbox reads are explicit and non-destructive",
+          "state": "checked",
+          "text": "Unit + LIVE: from a derived seat, `pij-rs inbox --seat <other>` without `--peek` is refused naming both ids before any claim or ack; `--peek` is the only permitted cross-seat read and does not claim or acknowledge the other seat's messages; help leads with the destructive own-inbox form.",
+          "receipt": "assets/live-send-defaults.md — destructive cross-seat refusal then peek and owner read same msg_id"
         }
       ]
     },
@@ -77,11 +89,11 @@
           "id": "ph-74a6",
           "title": "CLI identity + body sources + notice text",
           "brief": "u1 in crates/cli (identity resolution, send flags, body-file/stdin), u2 daemon text (pointer/adopt), live proofs, PR.",
-          "state": "unchecked",
-          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
+          "state": "checked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks",
+          "receipt": "assets/execution.log.md; assets/live-send-defaults.md"
         }
       ]
     }
-  ],
-  "references": []
+  ]
 }
