@@ -17,7 +17,9 @@ use pij_core::model::{Envelope, ErrorKind, Event, Harness, SeatId};
 use pij_core::wire;
 use pij_harnesses::{
     claude_homes, ensure_claude_inbound_accept, ensure_claude_session_start_hook,
-    inspect_claude_inbound, inspect_claude_session_start_hook, install_claude_session_start_script,
+    ensure_claude_statusline, inspect_claude_inbound, inspect_claude_session_start_hook,
+    inspect_claude_statusline, install_claude_session_start_script,
+    install_claude_statusline_script,
 };
 use serde_json::{Value, json};
 
@@ -388,6 +390,8 @@ enum DoctorAction {
     ClaudeInbound,
     /// Report pij SessionStart hook state for every discovered Claude home.
     ClaudeHook,
+    /// Report pij's managed Claude statusline state for every discovered home.
+    ClaudeStatusline,
 }
 
 #[tokio::main]
@@ -457,6 +461,7 @@ async fn run(cli: Cli) -> ExitCode {
         return match action {
             DoctorAction::ClaudeInbound => run_claude_inbound_doctor(cli.json),
             DoctorAction::ClaudeHook => run_claude_hook_doctor(cli.json, &hook_dir),
+            DoctorAction::ClaudeStatusline => run_claude_statusline_doctor(cli.json, &hook_dir),
         };
     }
 
@@ -952,6 +957,47 @@ fn run_claude_hook_doctor(json: bool, state_dir: &Path) -> ExitCode {
         .collect::<Vec<_>>();
     emit(&Envelope::ok("pij doctor claude-hook", rows), json)
 }
+#[derive(serde::Serialize)]
+struct ClaudeStatuslineDoctorRow {
+    home: PathBuf,
+    configured: Option<String>,
+    expected: PathBuf,
+    script_exists: bool,
+    status: &'static str,
+    error: Option<String>,
+}
+
+fn run_claude_statusline_doctor(json: bool, state_dir: &Path) -> ExitCode {
+    let expected = state_dir.join("claude-statusline-pij.sh");
+    let script_exists = expected.is_file();
+    let rows = inspect_claude_statusline(&claude_homes(), &expected)
+        .into_iter()
+        .map(|report| {
+            let status = if report.error.is_some() {
+                "error"
+            } else if report.installed && script_exists {
+                "installed"
+            } else if report.installed {
+                "script-missing"
+            } else if report.command.is_some() {
+                "wrong-command"
+            } else if report.file_exists {
+                "statusline-missing"
+            } else {
+                "file-missing"
+            };
+            ClaudeStatuslineDoctorRow {
+                home: report.home,
+                configured: report.command,
+                expected: expected.clone(),
+                script_exists,
+                status,
+                error: report.error,
+            }
+        })
+        .collect::<Vec<_>>();
+    emit(&Envelope::ok("pij doctor claude-statusline", rows), json)
+}
 
 async fn run_daemon(bind: &str, state_dir: PathBuf, hook_dir: PathBuf, offline: bool) -> ExitCode {
     let homes = claude_homes();
@@ -961,6 +1007,12 @@ async fn run_daemon(bind: &str, state_dir: PathBuf, hook_dir: PathBuf, offline: 
     let hook_reports = hook_script
         .as_ref()
         .map(|script| ensure_claude_session_start_hook(&homes, script))
+        .unwrap_or_default();
+    let statusline_script = install_claude_statusline_script(&hook_dir)
+        .map_err(|error| format!("could not install Claude statusline script: {error}"));
+    let statusline_reports = statusline_script
+        .as_ref()
+        .map(|script| ensure_claude_statusline(&homes, script))
         .unwrap_or_default();
     let config = daemon_config(bind, &state_dir.join("pij.sqlite"), offline);
     match pij_daemon::boot(&config, state_dir).await {
@@ -975,6 +1027,11 @@ async fn run_daemon(bind: &str, state_dir: PathBuf, hook_dir: PathBuf, offline: 
                     "config.claude-hook-ensured",
                     "Claude SessionStart hook",
                     hook_reports.as_slice(),
+                ),
+                (
+                    "config.claude-statusline-ensured",
+                    "Claude statusline",
+                    statusline_reports.as_slice(),
                 ),
             ] {
                 for report in reports.iter().filter(|report| report.changed) {
@@ -1009,7 +1066,11 @@ async fn run_daemon(bind: &str, state_dir: PathBuf, hook_dir: PathBuf, offline: 
                     }
                 }
             }
-            for (label, reports) in [("inbound", &inbound_reports), ("hook", &hook_reports)] {
+            for (label, reports) in [
+                ("inbound", &inbound_reports),
+                ("hook", &hook_reports),
+                ("statusline", &statusline_reports),
+            ] {
                 let homes = reports
                     .iter()
                     .map(|report| {
@@ -1038,6 +1099,9 @@ async fn run_daemon(bind: &str, state_dir: PathBuf, hook_dir: PathBuf, offline: 
             }
             if let Err(error) = hook_script {
                 eprintln!("pij-rs claude hook: {error}");
+            }
+            if let Err(error) = statusline_script {
+                eprintln!("pij-rs claude statusline: {error}");
             }
             println!(
                 "pij-rs daemon: listening on {} · key {} (0600) · offline={}",
@@ -1422,8 +1486,12 @@ mod tests {
             .get_subcommands()
             .map(|command| command.get_name())
             .collect::<Vec<_>>();
-        assert_eq!(names, ["claude-inbound", "claude-hook"]);
+        assert_eq!(
+            names,
+            ["claude-inbound", "claude-hook", "claude-statusline"]
+        );
         assert!(Cli::try_parse_from(["pij-rs", "doctor", "claude-hook"]).is_ok());
+        assert!(Cli::try_parse_from(["pij-rs", "doctor", "claude-statusline"]).is_ok());
     }
 
     #[test]

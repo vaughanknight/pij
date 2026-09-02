@@ -13,8 +13,11 @@ const INBOUND_KEY: &str = "crossSessionInbound";
 const ACCEPT: &str = "accept";
 const HOOKS_KEY: &str = "hooks";
 const SESSION_START_KEY: &str = "SessionStart";
+const STATUS_LINE_KEY: &str = "statusLine";
 const CLAUDE_SESSION_START_SCRIPT: &str =
     include_str!("../../../harness/scripts/claude-session-start-pij.sh");
+const CLAUDE_STATUSLINE_SCRIPT: &str =
+    include_str!("../../../harness/scripts/claude-statusline-pij.sh");
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// A pure decision about whether and how a Claude settings document must change.
@@ -54,6 +57,15 @@ pub struct ClaudeInboundState {
 /// Read-only state of the pij SessionStart hook in one Claude settings file.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClaudeHookState {
+    pub home: PathBuf,
+    pub file_exists: bool,
+    pub installed: bool,
+    pub command: Option<String>,
+    pub error: Option<String>,
+}
+/// Read-only state of the managed Claude statusline in one settings file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClaudeStatuslineState {
     pub home: PathBuf,
     pub file_exists: bool,
     pub installed: bool,
@@ -146,6 +158,122 @@ pub fn ensure_claude_inbound_accept(homes: &[PathBuf]) -> Vec<EnsureReport> {
         .iter()
         .map(|home| ensure_home(home, ACCEPT, plan_inbound_accept))
         .collect()
+}
+/// Plan the minimal safe edit that points Claude at pij's managed statusline.
+#[must_use]
+pub fn plan_claude_statusline(existing: Option<&str>, command: &str) -> EnsurePlan {
+    if command.is_empty() {
+        return EnsurePlan::Refuse {
+            error: "statusline command must not be empty".to_string(),
+        };
+    }
+    let desired = serde_json::json!({"type": "command", "command": command});
+    let Some(existing) = existing else {
+        return EnsurePlan::Write {
+            before: None,
+            contents: format!(
+                "{{\n  \"{STATUS_LINE_KEY}\": {}\n}}\n",
+                serde_json::to_string(&desired).expect("statusline serialization is infallible")
+            ),
+        };
+    };
+    if existing.trim().is_empty() {
+        return EnsurePlan::Write {
+            before: None,
+            contents: format!(
+                "{{\n  \"{STATUS_LINE_KEY}\": {}\n}}\n",
+                serde_json::to_string(&desired).expect("statusline serialization is infallible")
+            ),
+        };
+    }
+    let parsed: Value = match serde_json::from_str(existing) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            return EnsurePlan::Refuse {
+                error: format!("malformed settings.json: {error}"),
+            };
+        }
+    };
+    let Some(root) = parsed.as_object() else {
+        return EnsurePlan::Refuse {
+            error: "settings.json root must be a JSON object".to_string(),
+        };
+    };
+    let before = root
+        .get(STATUS_LINE_KEY)
+        .and_then(Value::as_object)
+        .and_then(|statusline| statusline.get("command"))
+        .map(render_value);
+    if root.get(STATUS_LINE_KEY) == Some(&desired) {
+        return EnsurePlan::NoChange { before };
+    }
+    let rendered = serde_json::to_string(&desired).expect("statusline serialization is infallible");
+    let contents = if root.contains_key(STATUS_LINE_KEY) {
+        let Some(range) = find_top_level_value(existing, STATUS_LINE_KEY) else {
+            return EnsurePlan::Refuse {
+                error: "could not locate statusLine in valid settings.json".to_string(),
+            };
+        };
+        replace_range(existing, range, &rendered)
+    } else {
+        insert_object_property(existing, root.is_empty(), STATUS_LINE_KEY, &rendered)
+    };
+    EnsurePlan::Write { before, contents }
+}
+
+/// Ensure every named Claude home points at pij's managed statusline.
+#[must_use]
+pub fn ensure_claude_statusline(homes: &[PathBuf], script_path: &Path) -> Vec<EnsureReport> {
+    let command = shell_command(script_path);
+    homes
+        .iter()
+        .map(|home| {
+            let settings_path = home.join("settings.json");
+            if let Ok(existing) = fs::read_to_string(&settings_path)
+                && let EnsurePlan::Write {
+                    before: Some(previous),
+                    ..
+                } = plan_claude_statusline(Some(&existing), &command)
+                && previous != command
+                && let Err(error) = backup_statusline_script(home, &previous)
+            {
+                return report(home, Some(previous), &command, false, None, Some(error));
+            }
+            ensure_home(home, &command, |existing| {
+                plan_claude_statusline(existing, &command)
+            })
+        })
+        .collect()
+}
+
+fn backup_statusline_script(home: &Path, command: &str) -> Result<(), String> {
+    let path = if let Some(relative) = command.strip_prefix("~/") {
+        let Some(root) = home.parent() else {
+            return Ok(());
+        };
+        root.join(relative)
+    } else {
+        let path = PathBuf::from(command);
+        if !path.is_absolute() {
+            return Ok(());
+        }
+        path
+    };
+    if !path.is_file() {
+        return Ok(());
+    }
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return Ok(());
+    };
+    let backup = path.with_file_name(format!("{name}.bak-{}", unix_millis()));
+    fs::copy(&path, &backup).map_err(|error| {
+        format!(
+            "could not back up prior statusline {} to {}: {error}",
+            path.display(),
+            backup.display()
+        )
+    })?;
+    Ok(())
 }
 
 /// Plan the minimal safe edit that installs pij's Claude SessionStart hook.
@@ -409,6 +537,72 @@ pub fn install_claude_session_start_script(state_dir: &Path) -> std::io::Result<
     let path = state_dir.join("claude-session-start-pij.sh");
     if fs::read_to_string(&path).ok().as_deref() != Some(CLAUDE_SESSION_START_SCRIPT) {
         atomic_replace(&path, CLAUDE_SESSION_START_SCRIPT.as_bytes())?;
+    }
+    make_executable(&path)?;
+    Ok(path)
+}
+/// Inspect pij's managed Claude statusline in every named home.
+#[must_use]
+pub fn inspect_claude_statusline(
+    homes: &[PathBuf],
+    script_path: &Path,
+) -> Vec<ClaudeStatuslineState> {
+    let command = shell_command(script_path);
+    homes
+        .iter()
+        .map(|home| {
+            let path = home.join("settings.json");
+            match fs::read_to_string(&path) {
+                Ok(existing) => match plan_claude_statusline(Some(&existing), &command) {
+                    EnsurePlan::NoChange { before } => ClaudeStatuslineState {
+                        home: home.clone(),
+                        file_exists: true,
+                        installed: true,
+                        command: before,
+                        error: None,
+                    },
+                    EnsurePlan::Write { before, .. } => ClaudeStatuslineState {
+                        home: home.clone(),
+                        file_exists: true,
+                        installed: false,
+                        command: before,
+                        error: None,
+                    },
+                    EnsurePlan::Refuse { error } => ClaudeStatuslineState {
+                        home: home.clone(),
+                        file_exists: true,
+                        installed: false,
+                        command: None,
+                        error: Some(error),
+                    },
+                },
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    ClaudeStatuslineState {
+                        home: home.clone(),
+                        file_exists: false,
+                        installed: false,
+                        command: None,
+                        error: None,
+                    }
+                }
+                Err(error) => ClaudeStatuslineState {
+                    home: home.clone(),
+                    file_exists: true,
+                    installed: false,
+                    command: None,
+                    error: Some(format!("could not read {}: {error}", path.display())),
+                },
+            }
+        })
+        .collect()
+}
+
+/// Materialize the embedded statusline at a stable daemon-owned path.
+pub fn install_claude_statusline_script(state_dir: &Path) -> std::io::Result<PathBuf> {
+    fs::create_dir_all(state_dir)?;
+    let path = state_dir.join("claude-statusline-pij.sh");
+    if fs::read_to_string(&path).ok().as_deref() != Some(CLAUDE_STATUSLINE_SCRIPT) {
+        atomic_replace(&path, CLAUDE_STATUSLINE_SCRIPT.as_bytes())?;
     }
     make_executable(&path)?;
     Ok(path)
@@ -1266,6 +1460,204 @@ mod tests {
         assert_eq!(
             fs::read_to_string(home.join("settings.json")).expect("settings"),
             original
+        );
+    }
+
+    #[test]
+    fn statusline_command_is_replaced_without_touching_hooks() {
+        let root = TestDir::new();
+        let home = root.path().join(".claude");
+        fs::create_dir_all(&home).expect("home");
+        let original = concat!(
+            "{\n",
+            "  \"statusLine\": {\"type\":\"command\",\"command\":\"~/.claude/statusline-context.sh\"},\n",
+            "  \"hooks\": {\"SessionStart\":[{\"matcher\":\"\",\"hooks\":[{\"type\":\"command\",\"command\":\"keep\"}]}]}\n",
+            "}\n"
+        );
+        fs::write(home.join("settings.json"), original).expect("seed settings");
+        let previous_script = home.join("statusline-context.sh");
+        fs::write(&previous_script, "#!/bin/sh\nprintf old\n").expect("seed statusline");
+        let script = Path::new("/Users/test/.pij-rs/claude-statusline-pij.sh");
+
+        let report = ensure_claude_statusline(std::slice::from_ref(&home), script)
+            .into_iter()
+            .next()
+            .expect("report");
+
+        assert!(report.changed);
+        assert_eq!(
+            report.before.as_deref(),
+            Some("~/.claude/statusline-context.sh")
+        );
+        assert_eq!(
+            fs::read_to_string(report.backup.expect("backup")).expect("backup readable"),
+            original
+        );
+        assert_eq!(
+            fs::read_to_string(&previous_script).expect("previous script"),
+            "#!/bin/sh\nprintf old\n"
+        );
+        let script_backups = fs::read_dir(&home)
+            .expect("read home")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("statusline-context.sh.bak-"))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(script_backups.len(), 1);
+        assert_eq!(
+            fs::read_to_string(&script_backups[0]).expect("script backup"),
+            "#!/bin/sh\nprintf old\n"
+        );
+        let written = fs::read_to_string(home.join("settings.json")).expect("settings");
+        assert!(written.contains(r#""hooks": {"SessionStart":[{"matcher":"","hooks":[{"type":"command","command":"keep"}]}]}"#));
+        let parsed: Value = serde_json::from_str(&written).expect("valid settings");
+        assert_eq!(parsed["statusLine"]["type"], "command");
+        assert_eq!(
+            parsed["statusLine"]["command"],
+            script.display().to_string()
+        );
+    }
+
+    #[test]
+    fn correct_statusline_command_is_a_no_op_without_backup() {
+        let root = TestDir::new();
+        let home = root.path().join(".claude");
+        fs::create_dir_all(&home).expect("home");
+        let script = Path::new("/Users/test/.pij-rs/claude-statusline-pij.sh");
+        let original = format!(
+            r#"{{\"statusLine\":{{\"type\":\"command\",\"command\":{}}},\"keep\":true}}"#,
+            serde_json::to_string(&script.display().to_string()).expect("path serialization")
+        );
+        fs::write(home.join("settings.json"), &original).expect("seed settings");
+
+        let report = ensure_claude_statusline(std::slice::from_ref(&home), script)
+            .into_iter()
+            .next()
+            .expect("report");
+
+        assert!(!report.changed);
+        assert_eq!(report.backup, None);
+        assert_eq!(
+            fs::read_to_string(home.join("settings.json")).expect("settings"),
+            original
+        );
+    }
+
+    #[test]
+    fn statusline_refuses_malformed_settings_without_touching_them() {
+        let root = TestDir::new();
+        let home = root.path().join(".claude");
+        fs::create_dir_all(&home).expect("home");
+        let original = "{not-json";
+        fs::write(home.join("settings.json"), original).expect("seed settings");
+
+        let report = ensure_claude_statusline(
+            std::slice::from_ref(&home),
+            Path::new("/Users/test/.pij-rs/claude-statusline-pij.sh"),
+        )
+        .into_iter()
+        .next()
+        .expect("report");
+
+        assert!(!report.changed);
+        assert!(report.error.is_some());
+        assert_eq!(report.backup, None);
+        assert_eq!(
+            fs::read_to_string(home.join("settings.json")).expect("settings"),
+            original
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn statusline_script_prefers_rs_and_falls_back_to_legacy() {
+        use std::io::Write as _;
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::Stdio;
+
+        let root = TestDir::new();
+        let state_dir = root.path().join("state");
+        let bin_dir = root.path().join("bin");
+        fs::create_dir_all(&bin_dir).expect("bin directory");
+        let rs = bin_dir.join("pij-rs");
+        let legacy = bin_dir.join("pij");
+        let legacy_marker = root.path().join("legacy-called");
+        fs::write(
+            &rs,
+            "#!/bin/sh\nprintf '{\"ok\":true,\"data\":{\"id\":\"pij-rs-seat\"}}\\n'\n",
+        )
+        .expect("fake rs");
+        fs::write(
+            &legacy,
+            "#!/bin/sh\nprintf called >\"$LEGACY_MARKER\"\nprintf 'pij session: pij-legacy-seat\\n'\n",
+        )
+        .expect("fake legacy");
+        for path in [&rs, &legacy] {
+            let mut permissions = fs::metadata(path).expect("metadata").permissions();
+            permissions.set_mode(0o700);
+            fs::set_permissions(path, permissions).expect("executable fake");
+        }
+        let script = install_claude_statusline_script(&state_dir).expect("install script");
+        let input = format!(
+            concat!(
+                r#"{{"session_id":"fixture","transcript_path":{},"cwd":{},"effort":{{"level":"high"}},"model":{{"id":"claude-opus-5[1m]","display_name":"Opus 5 (1M context)"}},"workspace":{{"current_dir":{},"project_dir":{}}},"context_window":{{"total_input_tokens":46133,"total_output_tokens":4,"context_window_size":1000000,"used_percentage":5,"remaining_percentage":95}},"rate_limits":{{"five_hour":{{"used_percentage":29}}}}}}"#
+            ),
+            serde_json::to_string(&root.path().join("missing.jsonl").display().to_string())
+                .expect("transcript serialization"),
+            serde_json::to_string(&root.path().display().to_string()).expect("cwd serialization"),
+            serde_json::to_string(&root.path().display().to_string())
+                .expect("workspace serialization"),
+            serde_json::to_string(&root.path().display().to_string())
+                .expect("project serialization")
+        );
+        let run = || {
+            let mut child = std::process::Command::new(&script)
+                .env("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()))
+                .env("HOME", root.path())
+                .env("TMUX_PANE", "%42")
+                .env("LEGACY_MARKER", &legacy_marker)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("run statusline");
+            child
+                .stdin
+                .take()
+                .expect("stdin")
+                .write_all(input.as_bytes())
+                .expect("write input");
+            child.wait_with_output().expect("statusline output")
+        };
+
+        let rs_output = run();
+        assert!(rs_output.status.success());
+        let rs_stdout = String::from_utf8(rs_output.stdout).expect("utf-8 stdout");
+        assert!(rs_stdout.contains("\u{1b}[33mrs\u{1b}[0m \u{1b}[34m⛓ pij-rs-seat\u{1b}[0m"));
+        for segment in ["Opus 5 (1M context)", "high", "50k/1.0M", "29%"] {
+            assert!(rs_stdout.contains(segment), "rs output lost {segment}");
+        }
+        assert!(!legacy_marker.exists(), "legacy CLI ran after rs answered");
+
+        fs::write(&rs, "#!/bin/sh\nexit 1\n").expect("rs miss");
+        let legacy_output = run();
+        assert!(legacy_output.status.success());
+        let legacy_stdout = String::from_utf8(legacy_output.stdout).expect("utf-8 stdout");
+        assert!(
+            legacy_stdout.contains("\u{1b}[2mlegacy\u{1b}[0m \u{1b}[34m⛓ pij-legacy-seat\u{1b}[0m")
+        );
+        for segment in ["Opus 5 (1M context)", "high", "50k/1.0M", "29%"] {
+            assert!(
+                legacy_stdout.contains(segment),
+                "legacy fallback lost {segment}"
+            );
+        }
+        assert!(
+            legacy_marker.exists(),
+            "legacy CLI did not run after rs miss"
         );
     }
 
