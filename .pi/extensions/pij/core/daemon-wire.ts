@@ -1,4 +1,4 @@
-export const PIJ_ENVELOPE_VERSION = 1;
+export const PIJ_ENVELOPE_VERSION = 2;
 export const PIJ_EVENT_VERSION = 1;
 
 export type DaemonErrorKind =
@@ -33,6 +33,7 @@ export interface Registration {
 	readonly supersedes?: string;
 	readonly id: string;
 	readonly harness: "pi" | "omp";
+	readonly harness_session?: string;
 	readonly folder: string;
 	readonly pane?: string;
 	readonly pid?: number;

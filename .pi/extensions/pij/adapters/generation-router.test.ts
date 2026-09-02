@@ -6,13 +6,13 @@ const KEY = "k".repeat(64);
 const HEALTH = JSON.stringify({
 	ok: true,
 	command: "pij ping",
-	v: 1,
+	v: 2,
 	data: { status: "healthy", build: "pij-rs test", offline: false, machine: "test" },
 });
 const AUTH_401 = JSON.stringify({
 	ok: false,
 	command: "auth",
-	v: 1,
+	v: 2,
 	meta: "missing or wrong bearer token",
 	error: "auth",
 });
@@ -153,7 +153,7 @@ describe("routeVerb end to end", () => {
 		const refusal = JSON.stringify({
 			ok: false,
 			command: "pij adopt",
-			v: 1,
+			v: 2,
 			meta: "seat not found",
 			error: "not_found",
 		});
@@ -174,7 +174,7 @@ describe("routeVerb end to end", () => {
 		const ok = JSON.stringify({
 			ok: true,
 			command: "pij adopt",
-			v: 1,
+			v: 2,
 			data: { id: "pij-minted-by-rs" },
 		});
 		const { outcome, payload } = await routeVerb(
@@ -190,6 +190,77 @@ describe("routeVerb end to end", () => {
 		expect(outcome).toMatchObject({ kind: "rs", addr: "127.0.0.1:7461" });
 		// The id came from rs. The shim did not invent it (ac-1147).
 		expect(payload).toEqual({ id: "pij-minted-by-rs" });
+	});
+
+	it("unions a fake rs sessions answer and keeps the rs row while null-filling from legacy", async () => {
+		const legacyRows = [
+			{
+				pijId: "pij-shared",
+				harness: "pi",
+				harnessSessionId: "legacy-native-session",
+				lifecycle: "bound",
+				boundModel: "legacy-model",
+				spawnedBy: "pij-parent",
+				transcriptPath: "/legacy/transcript.jsonl",
+				prime: false,
+				oldPrime: false,
+			},
+		];
+		const rsRow = {
+			pijId: "pij-shared",
+			harness: "omp",
+			harnessSessionId: null,
+			gitCommonDir: "/repo/.git",
+			lifecycle: null,
+			boundModel: null,
+			spawnedBy: null,
+			transcriptPath: null,
+			generation: "rs",
+		};
+		const over = {
+			legacySessionRows: () => legacyRows,
+			ambientSeatId: () => "pij-legacy-caller",
+			seatInRs: () => false,
+			seatInLegacy: () => true,
+		} as Partial<GenerationRouterDeps>;
+		const calls: Call[] = [];
+		const { outcome, payload } = await routeVerb(
+			"sessions",
+			undefined,
+			["sessions", "--json"],
+			deps(
+				(url) =>
+					url.endsWith("/health")
+						? new Response(HEALTH, { status: 200 })
+						: new Response(
+								JSON.stringify({
+									ok: true,
+									command: "pij sessions",
+									v: 2,
+									data: { rows: [rsRow] },
+								}),
+								{ status: 200 },
+							),
+				over,
+				calls,
+			),
+		);
+
+		expect(outcome.kind).toBe("rs");
+		expect(calls.at(-1)).toEqual({
+			url: "http://127.0.0.1:7461/v1/shim/sessions",
+			method: "GET",
+		});
+		expect(payload).toEqual([
+			{
+				...rsRow,
+				harnessSessionId: "legacy-native-session",
+				lifecycle: "bound",
+				boundModel: "legacy-model",
+				spawnedBy: "pij-parent",
+				transcriptPath: "/legacy/transcript.jsonl",
+			},
+		]);
 	});
 
 	// o-prime's binding condition 3: an UNANSWERABLE capability question is an

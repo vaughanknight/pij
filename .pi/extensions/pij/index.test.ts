@@ -90,7 +90,7 @@ function inboxPath(pijHome: string, id: string, name: string): string {
 }
 
 function rustEnvelope(command: string, data: unknown): Response {
-	return new Response(JSON.stringify({ ok: true, command, v: 1, data }));
+	return new Response(JSON.stringify({ ok: true, command, v: 2, data }));
 }
 
 function fakeRustGeneration(): daemonHttp.DaemonGeneration {

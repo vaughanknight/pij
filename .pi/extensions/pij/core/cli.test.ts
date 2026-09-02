@@ -300,6 +300,23 @@ describe("dispatch whoami / list", () => {
 		const r = dispatch({ verb: "whoami", json: true }, d);
 		expect(r.exitCode).toBe(0);
 		expect(JSON.parse(r.stdout)).toMatchObject({ id: "a1", state: "working", folder: "/repo" });
+		const verbs = Object.fromEntries(
+			Object.keys(PA_VERB_CLASSIFICATION)
+				.sort()
+				.map((verb) => [verb, "allow"]),
+		);
+		expect(r.stdout).toBe(
+			JSON.stringify({
+				id: "a1",
+				folder: "/repo",
+				dataDir: "/home/.pij/a1",
+				state: "working",
+				pid: 100,
+				orchestrationRole: null,
+				capabilitySchema: 2,
+				verbs,
+			}),
+		);
 	});
 
 	it("whoami E-AMBIG when env unset + multiple local", () => {

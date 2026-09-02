@@ -41,16 +41,17 @@ export interface RsRouteRow {
 	/** WHICH seat the follow-the-seat check is about.
 	 *
 	 *  "ambient" (the default) is right for the identity verbs — adopt, whoami,
-	 *  phonehome, report — which are about ME. It is WRONG for a verb that takes
-	 *  a seat id, because `pij state <id>` is about SOMEONE ELSE: keying that on
-	 *  the ambient seat means an rs-resident caller asking about a legacy-only
-	 *  peer routes to rs, gets a decoded "no such seat", classifies as rs-error
-	 *  and exits 4 — follow-the-seat defeated by following the wrong seat, and a
-	 *  verb that works today broken for every legacy-resident peer.
+	 *  phonehome, report — which are about ME. "argument" is right for a verb
+	 *  such as `pij state <id>` that asks about SOMEONE ELSE: keying that on the
+	 *  ambient seat routes an rs-resident caller reading a legacy-only peer to rs,
+	 *  gets a decoded "no such seat", and breaks a verb that works today.
+	 *
+	 *  "global" means the result spans stores rather than belonging to any seat.
+	 *  Such a route must not follow the caller into one store and erase the union.
 	 *
 	 *  It lives on the ROW because it is per-verb knowledge, and per-verb
 	 *  knowledge belongs in the table rather than in the dispatcher. */
-	readonly seatFrom?: "ambient" | "argument";
+	readonly seatFrom?: "ambient" | "argument" | "global";
 	/** Why this row exists — read by humans, never by code. */
 	readonly why: string;
 	/** How a HUMAN caller sees this row's answer. REQUIRED on every routed row.
@@ -127,6 +128,9 @@ export interface RsRouteRow {
 	 *  again after the lease expired — while printing "claimed", honestly and
 	 *  incompletely. A row that claims must say how it finishes. */
 	readonly acknowledgePath?: string;
+	/** This route returns the global rs sessions projection and must be unioned
+	 *  with the legacy join rows before either renderer sees it. */
+	readonly unionWithLegacySessions?: boolean;
 	/** How to render an rs payload for a HUMAN caller.
 	 *
 	 *  ac-1143 says the CLI's external surface is unchanged, and output shape is
@@ -185,6 +189,33 @@ function renderWhoami(payload: unknown): string {
 		`state:       ${text(payload, "state") ?? "idle"}`,
 		`role:        ${text(payload, "role") ?? "—"}`,
 		"data dir:    — (rs seats have no data dir; the legacy store's concept)",
+	].join("\n");
+}
+
+function projectRsWhoami(payload: unknown): unknown {
+	return {
+		id: text(payload, "id") ?? null,
+		harness: text(payload, "harness") ?? null,
+		pane: text(payload, "pane") ?? null,
+		folder: text(payload, "folder") ?? null,
+		session: text(payload, "session") ?? null,
+		generation: "rs",
+		capabilityGate: "absent",
+	};
+}
+
+function renderSessions(payload: unknown): string {
+	if (!Array.isArray(payload) || payload.length === 0) return "no pij sessions";
+	const cell = (value: unknown): string =>
+		value === undefined || value === null || value === "" ? "—" : String(value);
+	const lines = payload.map(
+		(row) =>
+			`${cell(field(row, "pijId"))}  ${cell(field(row, "generation"))}  ${cell(field(row, "harness"))}  ${cell(field(row, "harnessSessionId"))}  ${cell(field(row, "lifecycle"))}  ${cell(field(row, "boundModel"))}  ${cell(field(row, "spawnedBy"))}  ${cell(field(row, "transcriptPath"))}`,
+	);
+	return [
+		"pij-id  generation  harness  harness-session  lifecycle  model  parent  transcript",
+		...lines,
+		`${payload.length} session(s)`,
 	].join("\n");
 }
 
@@ -273,9 +304,8 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	},
 	{
 		verb: "whoami",
-		jsonOutput: "refuse",
-		jsonRefusal:
-			"legacy whoami --json carries `verbs` and `capabilitySchema`, the capability gate. rs holds neither, and a consumer reading a MISSING gate reads an UNGATED one — absence is the permissive direction, so emitting a partial object is worse than refusing",
+		jsonOutput: "project",
+		projectJson: projectRsWhoami,
 		humanOutput: "render",
 		render: renderWhoami,
 		rsPath: "/v1/whoami",
@@ -284,6 +314,23 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 		// TRANSMIT are POSTs here for that reason alone.
 		method: "POST",
 		why: "ready gesture step 2 — identity must answer from the store the seat registered into",
+	},
+	/** SNAP-IN RECIPE (plan 128 u2): keep this GET row at
+	 *  `/v1/shim/sessions` with `unionWithLegacySessions: true`; the adapter
+	 *  supplies `legacySessionRows(argv)` and calls `mergeSessionRows` before
+	 *  rendering. omp/pi registration sends `harness_session: input.piSessionId`.
+	 *  Composition verifies these three wires; it does not re-derive them. */
+	{
+		verb: "sessions",
+		jsonOutput: "project",
+		projectJson: (payload) => payload,
+		humanOutput: "render",
+		render: renderSessions,
+		rsPath: "/v1/shim/sessions",
+		method: "GET",
+		seatFrom: "global",
+		unionWithLegacySessions: true,
+		why: "plan 128 — union the live rs rows with the legacy telemetry join without renaming either contract",
 	},
 	{
 		verb: "phonehome",
@@ -639,6 +686,7 @@ export function subjectSeatFromArgv(
 	argv: readonly string[],
 	ambient: string | undefined,
 ): string | undefined {
+	if (row.seatFrom === "global") return undefined;
 	if (row.seatFrom !== "argument") return ambient;
 	// argv[0] is the verb; a leaf row consumes one more token.
 	const positionals = argv.slice(row.leaf === undefined ? 1 : 2).filter((t) => !t.startsWith("-"));

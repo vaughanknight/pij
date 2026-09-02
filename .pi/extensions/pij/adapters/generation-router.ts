@@ -16,12 +16,15 @@
 import { readFile as fsReadFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { resolvePijHome } from "../core/agents/paths.js";
+import { mergeSessionRows } from "../core/cli.js";
 import {
 	DaemonRefusalError,
 	decodeEnvelope,
 	PijNoDaemonError,
 	PijWireSkewError,
 } from "../core/daemon-wire.js";
+import { filterByFolder } from "../core/discovery.js";
 import {
 	buildCallerContext,
 	classifyRsResponse,
@@ -35,12 +38,14 @@ import {
 	resolveGenerationForce,
 	subjectSeatFromArgv,
 } from "../core/generation-routing.js";
+import { buildSessionJoinRows, type JoinRow } from "../core/session-join.js";
 import {
 	type DaemonLocation,
 	daemonLocation,
 	detectDaemonGeneration,
 	observedProcessStart,
 } from "./daemon-http.js";
+import { FsRegistry } from "./fs-registry.js";
 
 export interface GenerationRouterDeps {
 	readonly fetch: typeof fetch;
@@ -76,6 +81,9 @@ export interface GenerationRouterDeps {
 	 *  guessed. */
 	readonly pid?: (() => number) | undefined;
 	readonly procStart?: ((pid: number) => number) | undefined;
+	/** Legacy half of the sessions union. The argv is supplied so `--here`
+	 *  preserves the existing legacy filter before the rs rows are merged. */
+	readonly legacySessionRows?: ((argv: readonly string[]) => readonly JoinRow[]) | undefined;
 }
 
 /** The addr/state-dir routing resolves against. Re-exported so the CLI wires
@@ -98,6 +106,15 @@ export function defaultRouterDeps(): GenerationRouterDeps {
 		cwd: () => process.cwd(),
 		pid: () => process.pid,
 		procStart: observedProcessStart,
+		legacySessionRows: (argv) => {
+			try {
+				let descriptors = new FsRegistry(resolvePijHome(process.env)).list();
+				if (argv.includes("--here")) descriptors = filterByFolder(descriptors, process.cwd());
+				return buildSessionJoinRows(descriptors);
+			} catch {
+				return [];
+			}
+		},
 	};
 }
 
@@ -450,7 +467,10 @@ async function callRs(
 		row.acknowledgePath === undefined
 			? undefined
 			: buildAcknowledge(row.acknowledgePath, payload, url, headers, deps);
-	return { outcome, payload, row, acknowledge };
+	const routedPayload = row.unionWithLegacySessions
+		? mergeSessionRows(deps.legacySessionRows?.(argv) ?? [], payload)
+		: payload;
+	return { outcome, payload: routedPayload, row, acknowledge };
 }
 
 /** Build the deferred acknowledgement for a claim-then-ack row. See
