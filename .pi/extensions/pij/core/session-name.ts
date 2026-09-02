@@ -13,10 +13,14 @@ export const DEFAULT_SESSION_NAME_SCHEDULE_MS = [0, 250, 1_000, 3_000, 10_000] a
 export async function publishSeatName(
 	deps: SessionNamePublisherDeps,
 	self: string,
+	generation: "rs" | "legacy",
 	schedule: readonly number[] = DEFAULT_SESSION_NAME_SCHEDULE_MS,
 ): Promise<{ took: boolean; attempts: number }> {
+	const nativeName = `${generation}·${self}`;
+	const statusText =
+		generation === "rs" ? `\u001b[33mrs\u001b[0m ${self}` : `\u001b[2mlegacy\u001b[0m ${self}`;
 	try {
-		deps.setStatus(PIJ_STATUS_KEY, self);
+		deps.setStatus(PIJ_STATUS_KEY, statusText);
 	} catch {
 		// Native publication must still proceed when the fallback surface is unavailable.
 	}
@@ -37,7 +41,7 @@ export async function publishSeatName(
 
 		attempts += 1;
 		try {
-			await deps.setSessionName(self);
+			await deps.setSessionName(nativeName);
 			publishedWithoutReadback = true;
 		} catch {
 			continue;
@@ -45,7 +49,7 @@ export async function publishSeatName(
 
 		if (deps.getSessionName) {
 			try {
-				if (deps.getSessionName() === self) return { took: true, attempts };
+				if (deps.getSessionName() === nativeName) return { took: true, attempts };
 			} catch {
 				// A stale session manager is equivalent to a failed readback; retry.
 			}
