@@ -1,7 +1,7 @@
 # Backpressure Coverage — seat-session-identity
 
 **Plan**: [plan.dd.md](../plan.dd.md)
-**Basis (plan SHA-256)**: 445cc1bef0fea46e12c97ce565176af9761b3e5c076c5de553437afd27ee5a2c
+**Basis (plan SHA-256)**: 54fbecf708cfad58ce6e239c0a2fb8510486cc50d669ff590c4695992c1d4004
 **Generated**: 2026-09-02
 **Certainty**: Partial
 
@@ -26,7 +26,7 @@
 | rs and legacy whoami shapes (AC3) | 1 | EXTEND→RUN: add Vitest cases, then `just test` and isolated live commands | EXTEND | computational | — |
 | flowspace3 resolves rs transcripts (AC4) | 1 | BUILD→RUN: compose isolated daemon/client fixture, then run `flowspace3 conversation ingest --pij <seat>` for omp and claude | BUILDABLE | computational | — |
 | Every behavior has a pre-fix witness (AC5) | 1 | RUN: retained RED outputs plus targeted Cargo/Vitest green outputs | EXISTS | computational | — |
-| Migration 0011/0012 ordering after s122 convergence | 1 | EXTEND→RUN: migration up/down test plus composed Cargo tests | EXTEND | computational | — |
+| Migration 0011 / schema 10→11 lands before s122 | 1 | EXTEND→RUN: migration up/down test plus composed Cargo workspace tests; s122 owns any later renumber | EXTEND | computational | — |
 | Full repo regression | 1 | RUN: `harness checks` | EXISTS | computational | — |
 
 ## Proof Plan (selected)

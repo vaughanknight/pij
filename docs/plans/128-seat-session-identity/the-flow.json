@@ -255,6 +255,59 @@
           "importance": "optional"
         }
       }
+    },
+    {
+      "id": "NOD-003",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-09-02T02:22:55.746Z",
+      "details": {
+        "node": "backpressure-54fbecf708cf",
+        "type": "backpressure",
+        "chore": {
+          "kind": "command",
+          "importance": "optional"
+        }
+      }
+    },
+    {
+      "id": "UPD-007",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-02T02:22:55.970Z",
+      "details": {
+        "node": "backpressure-54fbecf708cf",
+        "fields": [
+          "instructions"
+        ]
+      }
+    },
+    {
+      "id": "UPD-008",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-02T02:22:56.212Z",
+      "details": {
+        "node": "backpressure-54fbecf708cf",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-009",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-02T02:22:56.439Z",
+      "details": {
+        "node": "backpressure-54fbecf708cf",
+        "from": "known",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "optional"
+        }
+      }
     }
   ],
   "nodes": [
@@ -555,6 +608,35 @@
         }
       ],
       "ran_at": "2026-09-02T00:57:47.048Z"
+    },
+    {
+      "id": "backpressure-54fbecf708cf",
+      "type": "backpressure",
+      "label": "Backpressure survey (final migration order)",
+      "status": "done",
+      "next": [
+        "plan"
+      ],
+      "created_at": "2026-09-02T02:22:55.746Z",
+      "modified_at": "2026-09-02T02:22:56.439Z",
+      "command": "run /eng-harness-flow --hook pre-coding --json",
+      "chore": {
+        "kind": "command",
+        "importance": "optional"
+      },
+      "branch_of": "plan",
+      "instructions": [
+        "Re-run the pre-coding survey against final 0011/11 landing order; receipt the full plan SHA-256."
+      ],
+      "comments": [
+        {
+          "at": "2026-09-02T02:22:56.212Z",
+          "text": "verdict:completed reason:coverage refreshed for final 0011/11 landing order basis_sha256:54fbecf708cfad58ce6e239c0a2fb8510486cc50d669ff590c4695992c1d4004 time:2026-09-02",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "ran_at": "2026-09-02T02:22:56.439Z"
     }
   ],
   "plan_dir": "docs/plans/128-seat-session-identity"
