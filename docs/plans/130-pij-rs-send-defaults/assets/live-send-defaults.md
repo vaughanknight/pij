@@ -102,4 +102,43 @@ Final pane lines:
 ```text
 OMP:    LIVE_PEEK_DONE_OMP
 Claude: LIVE_PEEK_DONE_CLAUDE
+
+## Post-review rerun after rebase and identity hardening
+
+**Isolation**: source-built `target/debug/pij-rs`; state `/tmp/pij-130-relaunch`; bind `127.0.0.1:18462`. The production daemon was not stopped, restarted, or contacted. The isolated daemon was stopped after proof.
+
+Clients were hand-started with `tmux new-window` in panes `%3155` and `%3156`. OMP ran `github-copilot/gpt-5.6-sol`; Claude ran `claude-opus-5`. Their project extensions/hooks were disabled for the proof so only the source-built binary performed registration and transport. Neither pane exported `PIJ_SESSION_ID`.
+
+OMP adopted as `pij-sleeper-service`:
+
+```json
+{"ok":true,"command":"pij adopt","v":2,"data":{"id":"pij-sleeper-service","harness":"omp","pane":"%3155"},"meta":"adopted pij-sleeper-service; identity resolves from pane %3155 on each command — no PIJ_SESSION_ID export is required for this harness"}
+```
+
+Claude adopted as `pij-elegant-aardwolf`:
+
+```json
+{"ok":true,"command":"pij adopt","v":2,"data":{"id":"pij-elegant-aardwolf","harness":"claude","pane":"%3156"},"meta":"adopted pij-elegant-aardwolf; identity resolves from pane %3156 on each command — no PIJ_SESSION_ID export is required for this harness"}
+```
+
+Both sent with no `--from` and no `--msg-id`; receipts named the derived sender and minted UUIDv7 ids:
+
+```json
+{"ok":true,"command":"pij send","v":2,"data":{"msg_id":"01a0607c-c505-7102-b04f-5cbe48ffc14f","outcome":{"outcome":"queued"}},"meta":"from pij-sleeper-service; msg_id 01a0607c-c505-7102-b04f-5cbe48ffc14f"}
+{"ok":true,"command":"pij send","v":2,"data":{"msg_id":"01a0607c-c449-7b81-865f-00c8831f7c94","outcome":{"outcome":"queued"}},"meta":"from pij-elegant-aardwolf; msg_id 01a0607c-c449-7b81-865f-00c8831f7c94"}
+```
+
+OMP sent the literal stdin body with `--body-file -`; Claude read it unchanged:
+
+```json
+{"from":"pij-sleeper-service","to":"pij-elegant-aardwolf","body":"--not-a-flag body with $(danger) and `backticks`","msg_id":"01a0607c-c516-7bc2-878d-44c1830e20dd"}
+```
+
+Claude sent `/tmp/pij-130-relaunch/body-5k.txt` with `--body-file`. OMP read bodies of 26 and 5120 bytes; a programmatic comparison reported `file_bytes: 5120` and `file_body_equal: true`.
+
+Final pane output:
+
+```text
+OMP:    LIVE_DONE_OMP
+Claude: LIVE_DONE_CLAUDE
 ```

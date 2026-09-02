@@ -15,7 +15,7 @@
     },
     {
       "name": "mission",
-      "value": "You are the cross-model Claude Opus reviewer for plan 130-pij-rs-send-defaults. Review the composed implementation in the PM worktree read-only, verify every AC including ruled AC6, and return only material findings the PM can act on."
+      "value": "You are the cross-model Claude Opus reviewer for round 2 of plan 130-pij-rs-send-defaults. Review the rebased composed implementation in the PM worktree read-only, independently verify every AC and each round-1 remediation, and return only material findings the PM can act on."
     },
     {
       "name": "instructions",
@@ -46,7 +46,7 @@
         },
         {
           "id": "i6",
-          "text": "WHERE THE AUTHOR IS LEAST CONFIDENT: inspect the Queue::peek contract and pointer-worker concurrency first. Live dogfood forced peek to expose both pending and already-claimed rows; judge whether that leaks the correct oldest live message without mutating state, and whether fake/SQLite/HTTP/CLI tests prove the same rule."
+          "text": "WHERE THE AUTHOR IS LEAST CONFIDENT: verify all round-1 fixes first: contradictory PIJ_SESSION_ID+pane must refuse across send/report; explicit cross-seat --peek must work without actor identity while destructive reads still refuse; Queue::peek/service/HTTP must remain non-mutating; pane-bound adopt guidance must include omp/pi without regressing plan-128 harness-session registration."
         },
         {
           "id": "i7",
@@ -54,7 +54,7 @@
         },
         {
           "id": "i8",
-          "text": "KNOWN-OPEN: req-0044 excludes exactly two pre-existing TypeScript reds: harness/scripts/npm-resolution-policy.integration.test.ts replay expects status 0 and gets 1 on this machine, and .pi/extensions/pij/core/worktree.test.ts cleanup raises ENOTEMPTY. Plan 128 has not yet been rebased by prime instruction. Do not report these as plan-130 findings; pane_observer is not part of req-0044."
+          "text": "KNOWN-OPEN: round-1 findings F1-F4 are claimed fixed and must be re-judged, not re-reported without testing the new code. Req-0044 excludes exactly two pre-existing TypeScript reds: harness/scripts/npm-resolution-policy.integration.test.ts replay status and .pi/extensions/pij/core/worktree.test.ts cleanup ENOTEMPTY; do not report those as plan-130 findings. Plan 128 is now rebased at main ac830c0e."
         }
       ]
     },
@@ -102,8 +102,8 @@
       "value": [
         {
           "id": "r0",
-          "path": ".agents/skills/pij-team/TENETS.md",
-          "note": "the doctrine — tenet 5: you judge diffs against contracts, not philosophy"
+          "path": ".agents-skills-port/pij-team/TENETS.md",
+          "note": "the doctrine — tenet 5: judge diffs against contracts, not philosophy"
         },
         {
           "id": "r1",

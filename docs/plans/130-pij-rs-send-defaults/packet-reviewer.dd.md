@@ -19,7 +19,7 @@
 
 ## Mission
 
-You are the cross-model Claude Opus reviewer for plan 130-pij-rs-send-defaults. Review the composed implementation in the PM worktree read-only, verify every AC including ruled AC6, and return only material findings the PM can act on.
+You are the cross-model Claude Opus reviewer for round 2 of plan 130-pij-rs-send-defaults. Review the rebased composed implementation in the PM worktree read-only, independently verify every AC and each round-1 remediation, and return only material findings the PM can act on.
 
 <a id="instructions"></a>
 
@@ -33,9 +33,9 @@ You are the cross-model Claude Opus reviewer for plan 130-pij-rs-send-defaults. 
 | i3 | Priority order: (1) plan promises that are not actually true, (2) composition-seam defects between units, (3) interface drift from the impl-guide, (4) correctness/safety in the changed code, (5) test gaps on the contract. Style noise is unwanted. |
 | i4 | Findings: at most the material ones, each with severity (CRITICAL/HIGH/MEDIUM), exact location, the claim, the proof, and the smallest fix. `no_material_findings` is a valid verdict. |
 | i5 | Deliver as a ddoc review record in the plan folder (assets/reviews/), build it, and send the PM the path + a one-line verdict. |
-| i6 | WHERE THE AUTHOR IS LEAST CONFIDENT: inspect the Queue::peek contract and pointer-worker concurrency first. Live dogfood forced peek to expose both pending and already-claimed rows; judge whether that leaks the correct oldest live message without mutating state, and whether fake/SQLite/HTTP/CLI tests prove the same rule. |
+| i6 | WHERE THE AUTHOR IS LEAST CONFIDENT: verify all round-1 fixes first: contradictory PIJ_SESSION_ID+pane must refuse across send/report; explicit cross-seat --peek must work without actor identity while destructive reads still refuse; Queue::peek/service/HTTP must remain non-mutating; pane-bound adopt guidance must include omp/pi without regressing plan-128 harness-session registration. |
 | i7 | DISBELIEVE THE AUTHOR'S RECEIPTS: re-derive behavior from the full diff and run your own targeted tests. Treat assets/live-send-defaults.md and PM test claims as hypotheses, not evidence, until independently checked. |
-| i8 | KNOWN-OPEN: req-0044 excludes exactly two pre-existing TypeScript reds: harness/scripts/npm-resolution-policy.integration.test.ts replay expects status 0 and gets 1 on this machine, and .pi/extensions/pij/core/worktree.test.ts cleanup raises ENOTEMPTY. Plan 128 has not yet been rebased by prime instruction. Do not report these as plan-130 findings; pane_observer is not part of req-0044. |
+| i8 | KNOWN-OPEN: round-1 findings F1-F4 are claimed fixed and must be re-judged, not re-reported without testing the new code. Req-0044 excludes exactly two pre-existing TypeScript reds: harness/scripts/npm-resolution-policy.integration.test.ts replay status and .pi/extensions/pij/core/worktree.test.ts cleanup ENOTEMPTY; do not report those as plan-130 findings. Plan 128 is now rebased at main ac830c0e. |
 
 <a id="working-with"></a>
 
@@ -73,6 +73,6 @@ You are the cross-model Claude Opus reviewer for plan 130-pij-rs-send-defaults. 
 
 | id | path | note |
 | --- | --- | --- |
-| r0 | .agents/skills/pij-team/TENETS.md | the doctrine — tenet 5: you judge diffs against contracts, not philosophy |
+| r0 | .agents-skills-port/pij-team/TENETS.md | the doctrine — tenet 5: judge diffs against contracts, not philosophy |
 | r1 | docs/plans/130-pij-rs-send-defaults/impl-guide.dd.json | intended units + interfaces — drift from this is a finding |
 | r2 | docs/plans/130-pij-rs-send-defaults/plan.dd.md | the promises under judgment |

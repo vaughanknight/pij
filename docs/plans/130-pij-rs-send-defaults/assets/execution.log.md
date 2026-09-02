@@ -16,7 +16,7 @@
 | F1 — contradictory environment id outranked the pane | CLI now sends both inputs to the daemon's single identity ladder; the pane remains authoritative and contradictions are refused for send/report | focused shipped-CLI test failed before the fix at `crates/cli/tests/spawn.rs:642`, then passed after the fix |
 | F2 — explicit operator peek required an acting identity | `pij-rs inbox --seat <id> --peek` uses its explicit observation target without resolving an actor; destructive and implicit reads still derive identity | shipped-CLI test invokes explicit peek with both identity variables removed |
 | F3 — service/HTTP peek contracts unwitnessed | Added service guard/preservation coverage and HTTP evidence-free peek coverage | focused `pij-daemon` tests passed |
-| F4 — OMP/Pi received stale export advice | Applied weasel ruling 2026-09-02: every pane-bound harness gets pane guidance; export advice is paneless-only | adopt test covers claude/copilot/codex/omp/pi |
+| F4 — OMP/Pi received stale export advice | Applied weasel ruling 2026-09-02: every pane-bound harness gets pane guidance; export advice is paneless-only | adopt test covers claude/copilot/codex/omp/pi; hand-started OMP and Claude panes confirmed the text live |
 
 
 ## Verification
@@ -31,6 +31,9 @@
 - `cargo test --workspace` → 550 passed across 60 suites; 6 ignored.
 - `harness checks` → local-paths/typecheck/lint/windows-compat/smoke/pkg-audit/snapshots passed; only the two ruled req-0044 TypeScript tests failed (`npm-resolution-policy.integration.test.ts` replay status and `worktree.test.ts` cleanup ENOTEMPTY).
 - Live isolated proof → `assets/live-send-defaults.md`; production daemon untouched.
+- Post-rebase `cargo test --workspace` → 591 passed across 63 suites; 6 ignored, 84 filtered.
+- Post-remediation `cargo clippy --workspace --all-targets -- -D warnings` → green.
+- Post-review live isolated proof → `assets/live-send-defaults.md`; hand-started OMP `%3155` and Claude `%3156`, literal stdin and byte-identical 5120-byte file; production daemon untouched.
 
 ## Discoveries & learnings
 
