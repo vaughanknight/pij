@@ -110,3 +110,19 @@ Fresh SQLite spine receipts:
   {"seq":6,"kind":"spawn.failed","seat":"pij-plan132-live-bad","exit_code":null,"pane":"%3288","reason":"model-mismatch: requested deliberately.invalid/model, actual no-model","spawn_id":"s-328016ecb6d067cdab19685def842f52"}
 ]
 ```
+
+## Production pre-fix identity witness
+
+`pij-forward-worm` reported a real `pij-rs spawn --harness pi --bin omp`
+from main on 2026-09-02: daemon id `pij-legislative-stoat`, pane `%3309`,
+while the live OMP footer identified itself as `pij-ruling-catfish`. One pane,
+two ids: the pre-fix spawned descriptor was not adopted by the runtime.
+
+The fresh worktree proof above closes that mismatch: spawn response, footer,
+roster readback, pane, process, and `spawn.bound` all name
+`pij-plan132-live-ok`.
+
+Out-of-scope boot note from the same run: OMP printed
+`~/.config/opencode/opencode.json: Transport closed` for the Serena MCP.
+This is recorded as client boot evidence only; plan 132 does not change MCP
+configuration or startup.
