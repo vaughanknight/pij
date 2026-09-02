@@ -358,7 +358,14 @@ async fn shim_sessions_emits_the_frozen_legacy_names_and_resolves_git_common_dir
     seat.harness_session = Some("omp-native".to_string());
     seat.parent = Some("pij-parent".into());
     seat.model = Some("provider/model".to_string());
-    let (addr, server, _store) = daemon_with_seats(vec![seat]).await;
+    let mut tombstoned = SeatDescriptor::new(
+        "pij-rs-tombstoned",
+        Harness::Omp,
+        worktree.display().to_string(),
+    );
+    tombstoned.harness_session = Some("dead-native".to_string());
+    tombstoned.tombstoned_at = Some(1);
+    let (addr, server, _store) = daemon_with_seats(vec![seat, tombstoned]).await;
     let expected_common = std::fs::canonicalize(&common).expect("canonical common dir");
 
     let response = get(addr, "/v1/shim/sessions").await;

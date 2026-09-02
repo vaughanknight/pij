@@ -443,6 +443,7 @@ async fn adopt_persists_generic_and_native_harness_session_aliases() {
         ("omp", "harnessSession", "omp-native"),
         ("claude", "CLAUDE_CODE_SESSION_ID", "claude-native"),
         ("copilot", "COPILOT_AGENT_SESSION_ID", "copilot-native"),
+        ("codex", "CODEX_THREAD_ID", "codex-native"),
     ] {
         let registry = Arc::new(FakeRegistry::new());
         let world = world(registry, true).await;
