@@ -101,6 +101,10 @@ shellcheck -s sh harness/scripts/claude-statusline-pij.sh  # pass
 
 The Rust tests cover additive settings edits, settings and prior-script backups, idempotence, malformed-settings refusal, rs-first short-circuiting, legacy fallback, and preservation of model/effort/context/rate segments from a real-shape payload.
 
+Final `harness checks` ran every sensor. `local-paths`, `typecheck`, `lint`, `windows-compat`, `smoke`, `pkg-audit`, and `snapshots` passed; only the aggregate `test` sensor failed. Prime ruled these two persistent main failures as named baseline exclusions: `harness/scripts/npm-resolution-policy.integration.test.ts` replay status `1` instead of `0`, and `.pi/extensions/pij/core/worktree.test.ts` cleanup `ENOTEMPTY`.
+
+The suite excluding only those two files passed 4,637 tests and hit one unrelated 10-second `beforeEach` timeout in `skills/flow-pair/test/cli-observe.test.ts` under the recorded triple-digit host load. Immediate focused rerun of that file passed 3/3 in 2.80 seconds. The earlier three load-sensitive `caller-truth spawn parent` cases likewise passed 5/5 on focused rerun. No baseline or load-sensitive test was edited.
+
 ## Incident and regression
 
 The intermediate script installed before the prime stop ruling lost the model because the JSON-to-shell jq program at `harness/scripts/claude-statusline-pij.sh:21-32` contained escaped string literals inside a shell single-quoted jq program. jq returned no assignments; `PARSED` was empty and `MODEL` fell through to the `?` default at line 35. Prime restored the operator files from the 2026-09-01 backups; the failed attempt remains read-only at the path named in the ruling.
