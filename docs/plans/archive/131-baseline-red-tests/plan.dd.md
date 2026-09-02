@@ -12,7 +12,7 @@
 | title | baseline-red-tests |
 | slug | baseline-red-tests |
 | ordinal | 131 |
-| status | ready |
+| status | shipped |
 | complexity | — |
 | summary | Fresh-worktree just test is green on this machine: the two pre-existing red tests are fixed or honestly quarantined. |
 | backpressure | — |
@@ -59,4 +59,4 @@ req-0044: harness/scripts/npm-resolution-policy.integration.test.ts (~L536, repl
 
 | id | title | brief | state | note | receipt | depends_on | tasks | objective | delivers | key_risks |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ph-1e40 | Build + prove | u1 per impl-guide; ACs; PR into main. | [x] checked | — | All three phase tasks checked; harness checks 8/8 green. | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
+| ph-1e40 | Build + prove | u1 per impl-guide; ACs; PR into main. | [x] checked | — | All three phase tasks checked; harness checks 8/8 green; PR #354 opened against main. | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |

@@ -9,7 +9,7 @@
         "title": "baseline-red-tests",
         "slug": "baseline-red-tests",
         "ordinal": 131,
-        "status": "ready",
+        "status": "shipped",
         "summary": "Fresh-worktree just test is green on this machine: the two pre-existing red tests are fixed or honestly quarantined."
       }
     },
@@ -66,7 +66,7 @@
           "brief": "u1 per impl-guide; ACs; PR into main.",
           "state": "checked",
           "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks",
-          "receipt": "All three phase tasks checked; harness checks 8/8 green."
+          "receipt": "All three phase tasks checked; harness checks 8/8 green; PR #354 opened against main."
         }
       ]
     }

@@ -328,6 +328,41 @@
         "from": "post-flight",
         "to": "ship"
       }
+    },
+    {
+      "id": "UPD-008",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-02T04:22:39.624Z",
+      "details": {
+        "node": "ship",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-014",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-02T04:22:47.610Z",
+      "details": {
+        "node": "ship",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-009",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-02T04:27:56.750Z",
+      "details": {
+        "node": "ship",
+        "fields": [
+          "comments"
+        ]
+      }
     }
   ],
   "nodes": [
@@ -468,14 +503,34 @@
       "id": "ship",
       "type": "ship",
       "label": "Ship",
-      "status": "assumed",
+      "status": "done",
       "command": "/builder 8 ship",
       "next": [],
       "instructions": [
         "Get the work out — push the branch, open a PR (using the repo's PR guidance), watch its CI checks, and report problems; the merge itself is optional.",
         "Run /builder 8 ship --plan \"<plan path>\" — the plan folder was archived at post-flight, so resolve --plan under docs/plans/archive/<ord>-<slug>/; push and PR-open each pause for a separate confirm, and any merge waits for a typed PROCEED.",
         "Done when the PR is open and its checks are green (or the failures are reported with a fix-loop offer); a diverged base hands off to 8c reconcile."
-      ]
+      ],
+      "comments": [
+        {
+          "at": "2026-09-02T04:22:39.624Z",
+          "text": "PR #354 opened against main; check (22), check (24), rust, and windows-compat all passed; merge intentionally left open.",
+          "source": "agent",
+          "kind": "validation",
+          "refs": [
+            "https://github.com/AI-Substrate/pij/pull/354",
+            "33589766518"
+          ]
+        },
+        {
+          "at": "2026-09-02T04:27:56.750Z",
+          "text": "Final local harness checks passed all eight sensors with zero skipped at 2026-09-02T04:27:28.936Z.",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "modified_at": "2026-09-02T04:27:56.750Z",
+      "ran_at": "2026-09-02T04:22:47.609Z"
     },
     {
       "id": "backpressure",
