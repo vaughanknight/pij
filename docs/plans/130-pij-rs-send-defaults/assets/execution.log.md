@@ -44,6 +44,7 @@
 - Post-review live isolated proof → `assets/live-send-defaults.md`; hand-started OMP `%3155` and Claude `%3156`, literal stdin and byte-identical 5120-byte file; production daemon untouched.
 - Final `harness checks` → `status: ok`; local-paths, typecheck, lint, test, windows-compat, smoke, pkg-audit, and snapshots all passed.
 - After round-2 fixes: `cargo test --workspace` → 593 passed across 63 suites; 6 ignored, 84 filtered; clippy `-D warnings` green; `harness checks` passed all eight sensors.
+- Claude Opus round 3 → **APPROVE**; F5-F7 independently RED/GREEN verified and fixed; regression risk LOW (`assets/reviews/round-3.dd.json`).
 
 ## Discoveries & learnings
 
@@ -52,4 +53,5 @@
 | Noteworthy | A useful inbox peek must expose a live delivery while the pointer worker temporarily owns its queue claim; pending-only inspection produced a false empty view. The shared queue contract now pins pending and claimed visibility. |
 | Noteworthy | Live coordination initially used zero-byte `touch` markers with `-s`; the test harness correctly refused to call those ready. Final proof used non-empty markers and records only the successful run. |
 | Noteworthy | Rebased onto main `ac830c0e`; preserved plan 128 harness-session registration while resolving response-text and pointer-test conflicts. |
+| Noteworthy | Claude Opus reproduced `harness checks` 8/8 only on its third run; earlier runs failed different TypeScript/tmux sensors. It classified this as load-sensitive harness flakiness, not a plan-130 regression, and left N1 non-blocking. |
 | Deferred | req-0044 baseline failures remain excluded by prime ruling and are not attributed to plan 130. |

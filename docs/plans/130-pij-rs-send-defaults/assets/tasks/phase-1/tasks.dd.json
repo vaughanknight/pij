@@ -58,7 +58,7 @@
           "title": "Close composition gates and cross-model review",
           "domain": "engineering harness",
           "phase": "ph-74a6",
-          "state": "unchecked",
+          "state": "checked",
           "done": "tasks.dd.json#done_when/tk-1303",
           "success": "Workspace tests, clippy, all harness sensors, plan validation, and Claude Opus review are green.",
           "satisfies": [
@@ -66,7 +66,7 @@
             "../../../plan.dd.json#acceptance_criteria/AC5",
             "../../../plan.dd.json#acceptance_criteria/AC6"
           ],
-          "receipt": "cargo test --workspace 591 passed; clippy green; harness checks 8/8; Claude Opus round 2 pending"
+          "receipt": "cargo test --workspace 593 passed; clippy green; harness checks 8/8; assets/reviews/round-3.dd.json APPROVE, F5-F7 fixed, regression risk low"
         }
       ]
     },
@@ -94,10 +94,10 @@
         "tk-1303": [
           {
             "id": "as-1303",
-            "assertion": "Final deterministic gates and Claude Opus round-2 review approve the composed branch.",
-            "state": "unchecked",
+            "assertion": "Final deterministic gates and Claude Opus round-3 review approve the composed branch.",
+            "state": "checked",
             "pressure": "not-applicable",
-            "receipt": "harness checks 8/8; reviewer pending"
+            "receipt": "harness checks 8/8; assets/reviews/round-3.dd.json APPROVE"
           }
         ]
       }

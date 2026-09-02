@@ -71,7 +71,7 @@
           "text": "cargo test workspace, clippy -D warnings, harness checks green (baseline reds per req-0044 excluded by name).",
           "claim": "gates green",
           "state": "checked",
-          "receipt": "after round-2 fixes: cargo test --workspace 593 passed across 63 suites, 6 ignored, 84 filtered; clippy -D warnings green; harness checks all 8 sensors passed"
+          "receipt": "cargo test --workspace 593 passed across 63 suites, 6 ignored, 84 filtered; clippy -D warnings green; harness checks all 8 sensors passed; Claude Opus round 3 APPROVE"
         },
         {
           "id": "AC6",
@@ -88,10 +88,10 @@
         {
           "id": "ph-74a6",
           "title": "CLI identity + body sources + notice text",
-          "brief": "u1 in crates/cli (identity resolution, send flags, body-file/stdin), u2 daemon text (pointer/adopt), live proofs, PR.",
-          "state": "unchecked",
-          "note": "Implementation, live proof, and gates are complete; Claude Opus round-2 review is pending.",
-          "receipt": "assets/execution.log.md; assets/live-send-defaults.md",
+          "brief": "u1 in crates/cli (identity resolution, send flags, body-file/stdin), u2 daemon text (pointer/adopt/register), live proofs, PR.",
+          "state": "checked",
+          "note": "Implementation, live proof, full gates, and Claude Opus round-3 approval complete.",
+          "receipt": "assets/execution.log.md; assets/live-send-defaults.md; assets/reviews/round-3.dd.json",
           "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
         }
       ]
