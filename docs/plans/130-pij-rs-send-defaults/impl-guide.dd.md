@@ -10,7 +10,7 @@
 | Field | Value |
 | --- | --- |
 | title | Implementation guide — pij-rs-send-defaults |
-| plan | PLANPATH |
+| plan | docs/plans/130-pij-rs-send-defaults/plan.dd.json |
 | mode | build |
 | updated | 2026-09-02 |
 
