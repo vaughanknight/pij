@@ -361,4 +361,25 @@ we hand the pattern to pij and the harness. Also `harness observe` each one.
   blind fallback, and unhandled rejection while ignoring style noise. Three
   review rounds closed every finding, and the final converse assertion came
   from the reviewer's own smallest-fix wording. Keep the three-list brief.
+- 2026-09-02 (opossum, PM 129): reviewer i2b was confirmed again, and the
+  failure explains why. The PM supplied captured real statusline JSON and a
+  real-client footer, but the fixture's fake rs could not REFUSE when an
+  inherited legacy `PIJ_SESSION_ID` contradicted the pane. Claude Opus attacked
+  the named low-confidence env/pane seam, reproduced the real dual-store
+  population, and found AC1 false; the repaired fake was then proved RED against
+  the pre-fix script. A real payload is not a real environment. Keep the
+  three-list brief, and require fakes to model every production outcome —
+  success, miss, and refusal — at the seam under review.
+- 2026-09-02 (opossum, PM 129 — template defects): live proof must default to a
+  temp Claude settings file and temp wrapper until merge. The packet required
+  real clients but did not forbid installing the unmerged statusline into the
+  operator homes; the PM did so, an intermediate jq parser blanked the model on
+  every live Claude, and prime restored backups. Encode the prohibition and the
+  temp-config recipe in PM/coder packets, not in a post-incident ruling. The
+  same packet also pointed at repo-local `.agents/skills/pij-team/TENETS.md`
+  where the worktree had no such path, arrived with a zero-row phase task ddoc,
+  and spawned the Claude reviewer into legacy before rs bind completed. Fix the
+  template to resolve the canonical skill source, refuse dispatch on an empty
+  task ledger, wait for verified rs binding before packet delivery, and record
+  the registry id the canary actually reports rather than the spawn-time id.
 - (add as they arise)
