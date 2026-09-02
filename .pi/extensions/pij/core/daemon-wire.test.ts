@@ -6,6 +6,7 @@ import {
 	DaemonRefusalError,
 	decodeEnvelope,
 	decodeStreamLine,
+	PIJ_ENVELOPE_VERSION,
 	PijNoDaemonError,
 	PijWireSkewError,
 	parseProcessStart,
@@ -16,27 +17,35 @@ const WIRE = resolve(HERE, "../../../../crates/testkit/fixtures/wire");
 const fixture = (name: string): string => readFileSync(resolve(WIRE, name), "utf8");
 
 describe("pij-rs envelope", () => {
-	it("decodes the recorded v1 health response", () => {
-		const envelope = decodeEnvelope<{
-			status: string;
-			build: string;
-			machine: string;
-		}>(fixture("health-v1.json"));
-		expect(envelope).toMatchObject({
-			ok: true,
-			command: "pij ping",
-			v: 1,
-			data: { status: "healthy", build: "pij-rs 0.1.0", machine: "workstation" },
-		});
+	it("pins the exact consumer floor at envelope v2", () => {
+		expect(PIJ_ENVELOPE_VERSION).toBe(2);
+		expect(
+			decodeEnvelope(
+				JSON.stringify({
+					ok: true,
+					command: "pij ping",
+					v: 2,
+					data: { status: "healthy", build: "pij-rs 0.2.0", machine: "workstation" },
+				}),
+			).v,
+		).toBe(2);
+	});
+	it("refuses the old envelope floor with structured versions", () => {
+		expect(() => decodeEnvelope(fixture("health-v1.json"))).toThrow(PijWireSkewError);
+		try {
+			decodeEnvelope(fixture("health-v1.json"));
+		} catch (error) {
+			expect(error).toMatchObject({ code: "PIJ_WIRE_SKEW", found: 1, supported: 2 });
+		}
 	});
 
-	it("refuses an unsupported envelope whole with structured versions", () => {
+	it("refuses a future envelope whole with structured versions", () => {
 		try {
-			decodeEnvelope(fixture("health-future.json"));
+			decodeEnvelope(JSON.stringify({ ok: true, command: "pij ping", v: 3, data: {} }));
 			throw new Error("future envelope was accepted");
 		} catch (error) {
 			expect(error).toBeInstanceOf(PijWireSkewError);
-			expect(error).toMatchObject({ code: "PIJ_WIRE_SKEW", found: 2, supported: 1 });
+			expect(error).toMatchObject({ code: "PIJ_WIRE_SKEW", found: 3, supported: 2 });
 		}
 	});
 
@@ -46,7 +55,7 @@ describe("pij-rs envelope", () => {
 				JSON.stringify({
 					ok: false,
 					command: "pij events",
-					v: 1,
+					v: 2,
 					error: "cursor_reset",
 					meta: "cursor 7 is beyond spine 2",
 				}),
@@ -57,7 +66,7 @@ describe("pij-rs envelope", () => {
 				JSON.stringify({
 					ok: false,
 					command: "pij events",
-					v: 1,
+					v: 2,
 					error: "cursor_reset",
 					meta: "cursor 7 is beyond spine 2",
 				}),

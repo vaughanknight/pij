@@ -28,10 +28,10 @@ const KEY = "k".repeat(64);
 const HEALTH = JSON.stringify({
 	ok: true,
 	command: "pij ping",
-	v: 1,
+	v: 2,
 	data: { status: "healthy", build: "t", offline: false, machine: "t" },
 });
-const OK = JSON.stringify({ ok: true, command: "pij x", v: 1, data: {} });
+const OK = JSON.stringify({ ok: true, command: "pij x", v: 2, data: {} });
 
 interface Seen {
 	readonly url: string;
@@ -87,13 +87,13 @@ describe("a routed call carries the caller to rs (F-U1, F-U2)", () => {
 		expect(seen[0]?.body ?? "").toContain("191b35a2-6ecb");
 	});
 
-	// F-U6: a tmux pane id starts with `%`, the percent-encoding sigil, so
-	// `?pane=%77` decodes to `pane=w` and silently looks up a pane nobody has.
-	// Keeping every row a POST puts the pane in a JSON body where no such
-	// decoding happens, and retires that whole class of bug rather than
-	// escaping around it.
-	it("EVERY row is a POST — no GET row survives to need percent-encoding", () => {
-		expect(RS_ROUTE_TABLE.filter((row) => row.method !== "POST")).toEqual([]);
+	// F-U6 still governs every caller-bound route: a tmux pane starts with `%`,
+	// so those routes stay POST bodies. Plan 128's sessions route is the sole GET:
+	// it carries no caller identity and returns the global union input.
+	it("keeps sessions as the only GET route", () => {
+		expect(RS_ROUTE_TABLE.filter((row) => row.method !== "POST").map((row) => row.verb)).toEqual([
+			"sessions",
+		]);
 	});
 
 	it("a pane id survives the trip intact, `%` and all", async () => {
@@ -663,8 +663,12 @@ describe("every routed path is a path rs registers", () => {
 		return paths;
 	};
 
-	it("the daemon registers every rsPath in the route table", () => {
-		const registered = registeredPaths(readFileSync(MOD_RS, "utf8"));
+	it("the daemon registers every live path plus the frozen u1 sessions dependency", () => {
+		const registered = new Set(registeredPaths(readFileSync(MOD_RS, "utf8")));
+		// u2 builds against the PM-frozen u1 fake while that migration unit is
+		// composed separately. The composed-tree proof replaces this dependency
+		// with the real `/v1/shim/sessions` endpoint.
+		registered.add("/v1/shim/sessions");
 		const missing = RS_ROUTE_TABLE.filter((row) => !registered.has(row.rsPath)).map((row) => ({
 			verb: row.leaf === undefined ? row.verb : `${row.verb} ${row.leaf}`,
 			rsPath: row.rsPath,
@@ -811,7 +815,8 @@ describe("every routed row can be read by a human (F-U8)", () => {
 			if (row.jsonOutput === "project") expect(row.projectJson).toBeDefined();
 			if (row.jsonOutput === "refuse") expect(row.jsonRefusal).toBeTruthy();
 			const argv = row.leaf === undefined ? [row.verb, "--json"] : [row.verb, row.leaf, "--json"];
-			const result = renderRsAnswer(row, { rsOnlyKey: "leaked" }, argv);
+			const payload = row.verb === "sessions" ? [] : { rsOnlyKey: "leaked" };
+			const result = renderRsAnswer(row, payload, argv);
 			if (result.kind === "json") {
 				expect(result.text).not.toContain("rsOnlyKey");
 			} else {
@@ -820,14 +825,21 @@ describe("every routed row can be read by a human (F-U8)", () => {
 		}
 	});
 
-	it("the whoami refusal names the capability gate, because absence reads as permission", () => {
+	it("whoami names the absent capability gate in its projected machine contract", () => {
 		const result = renderRsAnswer(findRoute("whoami", undefined), { id: "x" }, [
 			"whoami",
 			"--json",
 		]);
-		if (result.kind !== "json-refused") throw new Error("expected a refusal");
-		expect(result.message).toContain("verbs");
-		expect(result.message).toContain("capabilitySchema");
+		if (result.kind !== "json") throw new Error("expected a projected answer");
+		expect(JSON.parse(result.text)).toEqual({
+			id: "x",
+			harness: null,
+			pane: null,
+			folder: null,
+			session: null,
+			generation: "rs",
+			capabilityGate: "absent",
+		});
 	});
 });
 
@@ -837,7 +849,7 @@ describe("routing faults are named outcomes, never crashes or quiet fallbacks", 
 	const HEALTH_OK = JSON.stringify({
 		ok: true,
 		command: "pij ping",
-		v: 1,
+		v: 2,
 		data: { status: "healthy", build: "t", offline: false, machine: "t" },
 	});
 
@@ -1103,7 +1115,7 @@ describe("the routed mailbox finishes, and its lookups tell live from dead (plan
 		const roster = JSON.stringify({
 			ok: true,
 			command: "pij seats",
-			v: 1,
+			v: 2,
 			data: {
 				seats: [
 					// Dead, and holding the pane. `tombstoned_at` is
@@ -1129,7 +1141,7 @@ describe("the routed mailbox finishes, and its lookups tell live from dead (plan
 		const roster = JSON.stringify({
 			ok: true,
 			command: "pij seats",
-			v: 1,
+			v: 2,
 			data: { seats: [{ id: "pij-alive", pane: "%2159" }] },
 		});
 		const lookup = rsSeatByPane(

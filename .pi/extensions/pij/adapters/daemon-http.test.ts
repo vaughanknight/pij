@@ -16,6 +16,10 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WIRE = resolve(HERE, "../../../../crates/testkit/fixtures/wire");
 const fixture = (name: string): string => readFileSync(resolve(WIRE, name), "utf8");
+const envelopeFixture = (name: string): string => {
+	const envelope = JSON.parse(fixture(name)) as Record<string, unknown>;
+	return JSON.stringify({ ...envelope, v: 2 });
+};
 const roots: string[] = [];
 
 function root(): string {
@@ -57,7 +61,7 @@ function frame(machine: string, cursor: number): Record<string, unknown> {
 
 function refusal(kind: string, message: string, status: number): Response {
 	return new Response(
-		JSON.stringify({ ok: false, command: "pij events", v: 1, error: kind, meta: message }),
+		JSON.stringify({ ok: false, command: "pij events", v: 2, error: kind, meta: message }),
 		{ status },
 	);
 }
@@ -114,7 +118,7 @@ describe("daemon generation controls", () => {
 		writeFileSync(join(stateDir, "daemon.key"), "secret\n");
 		const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
 			expect(init?.headers).toEqual({ Authorization: "Bearer secret" });
-			return new Response(fixture("health-v1.json"));
+			return new Response(envelopeFixture("health-v1.json"));
 		});
 
 		const generation = await detectDaemonGeneration(
@@ -173,7 +177,7 @@ describe("pij-rs HTTP client", () => {
 		const calls: Array<{ url: string; init?: RequestInit }> = [];
 		const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 			calls.push({ url: String(url), init });
-			return new Response(fixture("register-v1.json"));
+			return new Response(envelopeFixture("register-v1.json"));
 		});
 		const client = new PijDaemonClient(
 			{ addr: "127.0.0.1:7461", stateDir: "/tmp/state" },
@@ -322,7 +326,7 @@ describe("pij-rs HTTP client", () => {
 				JSON.stringify({
 					ok: true,
 					command: "pij send",
-					v: 1,
+					v: 2,
 					data: { msg_id: "m1", outcome: { outcome: "queued" }, at: 1 },
 				}),
 			);
@@ -444,7 +448,7 @@ describe("pij-rs HTTP client", () => {
 		writeFileSync(join(stateDir, "daemon.key"), "secret\n");
 		const fetchMock = vi.fn(
 			async () =>
-				new Response(JSON.stringify({ ok: true, command: "pij events", v: 1, data: {} }), {
+				new Response(JSON.stringify({ ok: true, command: "pij events", v: 2, data: {} }), {
 					status: 500,
 				}),
 		);

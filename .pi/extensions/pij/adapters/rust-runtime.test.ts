@@ -5,7 +5,7 @@ import { FakePiRuntime, FakeTmux } from "./fakes.js";
 import { RustRuntimeSession } from "./rust-runtime.js";
 
 function envelope(command: string, data: unknown): Response {
-	return new Response(JSON.stringify({ ok: true, command, v: 1, data }));
+	return new Response(JSON.stringify({ ok: true, command, v: 2, data }));
 }
 
 function eventResponse(text: string, keepOpen = true): Response {
@@ -220,6 +220,7 @@ describe("RustRuntimeSession", () => {
 			pane: "%42",
 			pid: process.pid,
 			proc_start: 20260829103052,
+			harness_session: "native-session",
 			relay: false,
 		});
 		await vi.waitFor(() => {

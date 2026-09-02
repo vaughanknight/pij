@@ -324,6 +324,7 @@ function registrationFor(
 		...(supersedes === undefined ? {} : { supersedes }),
 		id,
 		harness: input.runtimeBin,
+		...(input.piSessionId === undefined ? {} : { harness_session: input.piSessionId }),
 		folder: input.folder,
 		...(input.paneId === undefined ? {} : { pane: input.paneId }),
 		pid: process.pid,

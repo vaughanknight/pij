@@ -10,6 +10,7 @@ import {
 	NEVER_ROUTED,
 	RS_ROUTE_TABLE,
 	type RsRouteRow,
+	renderRsAnswer,
 	resolveGenerationForce,
 	servedByLegacy,
 } from "./generation-routing.js";
@@ -49,6 +50,42 @@ describe("route table is data", () => {
 		];
 		expect(findRoute("report", "verify", table)?.rsPath).toBe("/v1/report/verify");
 		expect(findRoute("report", "now", table)?.rsPath).toBe("/v1/report");
+	});
+
+	it("routes sessions to the exact rs shim endpoint", () => {
+		expect(findRoute("sessions", undefined)).toMatchObject({
+			rsPath: "/v1/shim/sessions",
+			method: "GET",
+			jsonOutput: "project",
+		});
+	});
+
+	it("projects rs whoami JSON with an explicit absent capability gate", () => {
+		const row = findRoute("whoami", undefined);
+		expect(
+			renderRsAnswer(
+				row,
+				{
+					id: "pij-rs-seat",
+					harness: "omp",
+					pane: "%42",
+					folder: "/repo",
+					session: "omp-native-session",
+				},
+				["whoami", "--json"],
+			),
+		).toEqual({
+			kind: "json",
+			text: JSON.stringify({
+				id: "pij-rs-seat",
+				harness: "omp",
+				pane: "%42",
+				folder: "/repo",
+				session: "omp-native-session",
+				generation: "rs",
+				capabilityGate: "absent",
+			}),
+		});
 	});
 });
 

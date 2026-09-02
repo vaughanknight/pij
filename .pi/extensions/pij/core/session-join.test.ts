@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { FakeDelivery, FakeEventLog, FakeProcess, FakeRegistry } from "../adapters/fakes.js";
 import type { CliDeps } from "./cli.js";
-import { dispatch } from "./cli.js";
+import { dispatch, mergeSessionRows } from "./cli.js";
 import { buildExportLines, buildSessionJoinRows } from "./session-join.js";
 import type { SessionDescriptor } from "./types.js";
 
@@ -123,6 +123,55 @@ describe("buildSessionJoinRows (the telemetry join tuple, AC-1)", () => {
 	});
 });
 
+describe("mergeSessionRows", () => {
+	it("keeps an rs duplicate and null-fills only its identity fields from legacy", () => {
+		const rows = mergeSessionRows(
+			[
+				{
+					pijId: "pij-shared",
+					harness: "pi",
+					harnessSessionId: "legacy-native-session",
+					lifecycle: "bound",
+					boundModel: "legacy-model",
+					spawnedBy: "pij-parent",
+					transcriptPath: "/legacy/transcript.jsonl",
+					prime: false,
+					oldPrime: false,
+				},
+			],
+			{
+				rows: [
+					{
+						pijId: "pij-shared",
+						harness: "omp",
+						harnessSessionId: null,
+						gitCommonDir: "/repo/.git",
+						lifecycle: null,
+						boundModel: null,
+						spawnedBy: null,
+						transcriptPath: null,
+						generation: "rs",
+					},
+				],
+			},
+		);
+
+		expect(rows).toEqual([
+			{
+				pijId: "pij-shared",
+				harness: "omp",
+				harnessSessionId: "legacy-native-session",
+				gitCommonDir: "/repo/.git",
+				lifecycle: "bound",
+				boundModel: "legacy-model",
+				spawnedBy: "pij-parent",
+				transcriptPath: "/legacy/transcript.jsonl",
+				generation: "rs",
+			},
+		]);
+	});
+});
+
 describe("buildExportLines (eval-able self-identity, AC-5)", () => {
 	it("emits export PIJ_SESSION_ID alone when only the id is known", () => {
 		expect(buildExportLines(desc({ id: "pij-solo" }))).toBe("export PIJ_SESSION_ID='pij-solo'");
@@ -198,8 +247,14 @@ describe("dispatch('sessions') smoke", () => {
 		expect(res.exitCode).toBe(0);
 		const rows = JSON.parse(res.stdout) as Array<Record<string, unknown>>;
 		expect(rows).toHaveLength(2);
-		expect(rows[0]).toMatchObject({ pijId: "pij-cop", harness: "copilot", boundModel: "gpt-5.5" });
-		expect(rows[0]).toMatchObject({ prime: false, oldPrime: false });
+		expect(rows[0]).toMatchObject({
+			pijId: "pij-cop",
+			harness: "copilot",
+			boundModel: "gpt-5.5",
+			generation: "legacy",
+			prime: false,
+			oldPrime: false,
+		});
 		expect(rows[1]).toMatchObject({
 			pijId: "pij-cx",
 			harness: "codex",
