@@ -149,6 +149,59 @@
           "importance": "recommended"
         }
       }
+    },
+    {
+      "id": "NOD-001",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-09-02T00:33:40.133Z",
+      "details": {
+        "node": "backpressure-ccd718561165",
+        "type": "backpressure",
+        "chore": {
+          "kind": "command",
+          "importance": "optional"
+        }
+      }
+    },
+    {
+      "id": "UPD-003",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-02T00:33:40.327Z",
+      "details": {
+        "node": "backpressure-ccd718561165",
+        "fields": [
+          "instructions"
+        ]
+      }
+    },
+    {
+      "id": "UPD-004",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-02T00:33:40.517Z",
+      "details": {
+        "node": "backpressure-ccd718561165",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-007",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-02T00:33:40.750Z",
+      "details": {
+        "node": "backpressure-ccd718561165",
+        "from": "known",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "optional"
+        }
+      }
     }
   ],
   "nodes": [
@@ -391,6 +444,35 @@
         "Run /eng-harness-flow --hook post-flight --json — a REAL invocation; narrate its envelope verbatim.",
         "On done, receipt first, status second: harness flow comment --path <flow-path> --node retro-harvest --kind validation --source agent --text \"verdict:<…> time:<…>\" (router missing / envelope noop/UNAVAILABLE → text \"decision:unavailable reason:<…> time:<…>\" — a completed attempt, not a skip) THEN harness flow status --path <flow-path> --node retro-harvest --to done. Mandatory unless the human declines — a decline is: harness flow comment --path <flow-path> --node retro-harvest --kind decision --source user --text \"<their verbatim words>\" THEN harness flow status --path <flow-path> --node retro-harvest --to skipped."
       ]
+    },
+    {
+      "id": "backpressure-ccd718561165",
+      "type": "backpressure",
+      "label": "Backpressure survey (amended G3)",
+      "status": "done",
+      "next": [
+        "plan"
+      ],
+      "created_at": "2026-09-02T00:33:40.133Z",
+      "modified_at": "2026-09-02T00:33:40.750Z",
+      "command": "run /eng-harness-flow --hook pre-coding --json",
+      "chore": {
+        "kind": "command",
+        "importance": "optional"
+      },
+      "branch_of": "plan",
+      "instructions": [
+        "Re-run the pre-coding survey against amended G3; receipt the full plan SHA-256 before marking done."
+      ],
+      "comments": [
+        {
+          "at": "2026-09-02T00:33:40.517Z",
+          "text": "verdict:completed reason:coverage refreshed for rs-first null-fill union basis_sha256:ccd7185611657d1edbca1b8589aa5de233c4a4e0999cb071f106aede2f6c55c6 time:2026-09-02",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "ran_at": "2026-09-02T00:33:40.750Z"
     }
   ],
   "plan_dir": "docs/plans/128-seat-session-identity"
