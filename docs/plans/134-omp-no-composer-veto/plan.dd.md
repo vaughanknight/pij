@@ -37,6 +37,7 @@ req-0054 (magpie 2026-09-02, msg 888D45C1): a ruling to a working omp returned `
 
 - A message to a working omp/pi seat is handed to the extension stream immediately; no composer capture or human-typing veto for those harnesses.
 - A row still queued after N seconds (config, default 60) raises a pushed notice to the sender naming msg_id, recipient, reason, and attempts; later delivery raises delivered late, and the sender's next pij-rs command prints outstanding notices on stderr.
+- id: g3; text: Claude-harness seats: the human-typing veto considers only the recognized composer box content; a seat being `working` or streaming output never counts as typing (u3, magpie u1b).
 
 <a id="non-goals"></a>
 
@@ -57,6 +58,7 @@ req-0054 (magpie 2026-09-02, msg 888D45C1): a ruling to a working omp returned `
 | AC3 | human veto intact | [ ] unchecked | — | — | — | — | LIVE: a send to a Claude seat whose composer holds a draft stays queued (human-typing) — the veto still protects humans; pasted. |
 | AC4 | sender is told | [ ] unchecked | — | — | — | — | LIVE: sender receives `still queued` notice after N s for a row vetoed on a Claude pane, then `delivered late (&lt;delay&gt;)` when it lands; and `pij-rs list` from the sender prints the outstanding notice on stderr; pasted. Unit test for the notice scheduler RED-first. |
 | AC5 | gates | [ ] unchecked | — | — | — | — | `harness checks` green on the rebased tree + explicit `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, `cargo fmt --check` receipts (use ~/.cargo/bin/cargo); no operator-home writes. |
+| AC6 | the Claude veto fires on a human draft, never on agent output or seat busyness | [ ] unchecked | — | — | — | — | LIVE (magpie is the test seat, both directions): a send to a WORKING Claude-harness seat with an EMPTY composer box (`❯` followed by nothing) is delivered by socket, never `human-typing`; a send to a Claude seat whose composer box holds a real draft still queues with `human-typing` AND the receipt/log carries a sha of the draft text so a misfire can be diagnosed. RED control on main first (magpie 2026-09-02 ~20:05: send to pij-still-weasel → human-typing, undelivered 50 s, while weasel's composer was `❯ ` empty). |
 
 <a id="phases"></a>
 

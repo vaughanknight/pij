@@ -37,6 +37,7 @@ Rust only. Delivery: crates/daemon/src/delivery/mod.rs ~L231-260 (socket_availab
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | u1 | omp/pi bypass the composer veto | crates/daemon/src/delivery/mod.rs, crates/transport (read only unless a stream fact is wrong), tests | AC1-AC3 | no wire change | RED-first: fake gate counting calls; live control on main | none | 1 | witness rows: 888D45C1 to pij-upper-dormouse (attempt 101) |
 | u2 | sender notices | crates/core/src/config.rs, crates/daemon/src/delivery/mod.rs (drain), crates/daemon/src/http/types.rs (additive), crates/cli/src/main.rs, tests | AC4 | control message kind `queued-notice` (additive) | RED-first scheduler test; live AC4 | u1 | 2 | — |
+| u3 | claude veto = composer box only | crates/harnesses/src/interaction.rs (permits_with_additional_veto / observe_composer_at — find what other than the composer box feeds the veto: tap-activity recency? output bytes?), crates/harnesses/src/composer.rs, tests | AC6 | InjectionVerdict.reason gains draft_sha (additive) | RED-first with a fake tap that streams agent OUTPUT bytes while the composer box is blank; assert permitted | none | 2 | hypothesis: record_tap on any drained tap bytes marks the pane as recently-typed; agent output through the tap looks like keystrokes. Verify before fixing. |
 
 <a id="isolation"></a>
 

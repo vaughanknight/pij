@@ -47,6 +47,17 @@
           "depends_on": "u1",
           "wave": 2,
           "note": ""
+        },
+        {
+          "id": "u3",
+          "name": "claude veto = composer box only",
+          "paths": "crates/harnesses/src/interaction.rs (permits_with_additional_veto / observe_composer_at — find what other than the composer box feeds the veto: tap-activity recency? output bytes?), crates/harnesses/src/composer.rs, tests",
+          "responsibility": "AC6",
+          "interface": "InjectionVerdict.reason gains draft_sha (additive)",
+          "test_strategy": "RED-first with a fake tap that streams agent OUTPUT bytes while the composer box is blank; assert permitted",
+          "depends_on": "none",
+          "wave": 2,
+          "note": "hypothesis: record_tap on any drained tap bytes marks the pane as recently-typed; agent output through the tap looks like keystrokes. Verify before fixing."
         }
       ]
     },
