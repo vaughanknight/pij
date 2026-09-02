@@ -35,40 +35,36 @@ Witness 2026-09-02 (weasel): a hand-started Copilot CLI in tmux, adopted into pi
 
 ## Goals
 
-| id | text |
-| --- | --- |
-| g1 | Hand-started Copilot/Codex panes get full-body typed delivery even when the legacy daemon tapped the pane first. |
-| g2 | rs pane observer adopts a legacy-generation tap (pane_pipe=1, no @pij-tap-sink marker, legacy sink ~/.pij/pane-signals/_N.raw present) instead of refusing; genuinely unknown pipes are still refused. |
-| g3 | A pane delivery deferred for want of a tap sink returns `queued` WITH a reason (`tap-unowned`), is logged once per pane not per tick, and the drain retries it after the tap is claimed (req-0042 partial). |
-| g4 | A message queued by the human-typing/composer veto is retried by the daemon when the veto lifts, and the receipt names the veto (req-0042 socket half). Note for the register: adopt records pane_pid (the shell) as proc for hand-started-in-a-shell harnesses; UDS pane fallback covers it, so no bind change in this plan. |
+- Hand-started Copilot/Codex panes get full-body typed delivery even when the legacy daemon tapped the pane first.
+- rs pane observer adopts a legacy-generation tap (pane_pipe=1, no @pij-tap-sink marker, legacy sink ~/.pij/pane-signals/_N.raw present) instead of refusing; genuinely unknown pipes are still refused.
+- A pane delivery deferred for want of a tap sink returns queued WITH a reason (tap-unowned), is logged once per pane not per tick, and the drain retries it after the tap is claimed (req-0042 partial).
+- A message queued by the human-typing/composer veto is retried by the daemon when the veto lifts, and the receipt names the veto (req-0042 socket half). Note for the register: adopt records pane_pid (the shell) as proc for hand-started-in-a-shell harnesses; UDS pane fallback covers it, so no bind change in this plan.
 
 <a id="non-goals"></a>
 
 ## Non-goals
 
-| id | text |
-| --- | --- |
-| n1 | Killing or modifying the legacy TS daemon (held by ruling 2026-09-02-legacy-shutdown-held-for-129.md). |
-| n2 | Composer-busy / human-typing deferral policy (req-0042 remainder) beyond naming the reason. |
-| n3 | Any write to the operator homes (~/.claude, ~/.claude-alt, ~/.pij, ~/.pij-rs) before merge; live proof runs a dev daemon on its own state dir/port with the production legacy daemon left RUNNING. |
+- Killing or modifying the legacy TS daemon (held by ruling 2026-09-02-legacy-shutdown-held-for-129.md).
+- Composer-busy / human-typing deferral policy (req-0042 remainder) beyond naming the reason.
+- Any write to the operator homes (~/.claude, ~/.claude-alt, ~/.pij, ~/.pij-rs) before merge; live proof runs a dev daemon on its own state dir/port with the production legacy daemon left RUNNING.
 
 <a id="acceptance-criteria"></a>
 
 ## Acceptance criteria
 
-| id | claim | state | note | receipt | pressure | proven_by | text |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| AC1 | legacy-tapped panes receive typed bodies | [ ] unchecked | — | — | — | — | LIVE: hand-start `copilot --yolo` in a new tmux window; confirm the legacy tap is present (`ps` shows `cat &gt;&gt; ~/.pij/pane-signals/_N.raw`, `tmux display -p -t %N #{pane_pipe}` = 1, no @pij-tap-sink marker); adopt into the DEV rs daemon; `pij-rs send` returns delivered/typed-to-pane and the FULL body is visible in the pane with Copilot replying; transcript pasted. |
-| AC2 | the witness was red before the fix | [ ] unchecked | — | — | — | — | CONTROL on the pre-fix tree (main dd450381): the same gesture returns `queued`, nothing appears in the pane; pasted. Red-first for every new unit test, pre-fix output pasted. |
-| AC3 | supersede is narrow and refusal stops spamming | [ ] unchecked | — | — | — | — | A pane whose pipe has a FOREIGN non-legacy owner (test: pipe-pane a scratch pane to /tmp/foreign.raw with no marker and no legacy sink file) is still refused, and the refusal is logged ONCE per pane per daemon boot (rate-limited), not every observer tick; unit test + `grep -c` on the dev daemon log pasted. |
-| AC4 | queued names its reason and retries | [ ] unchecked | — | — | — | — | `pij-rs send` to a pane seat with no owned tap returns `{outcome:queued, reason:"tap-unowned"}` (additive field, wire stays v2), and once the observer claims the tap the drain delivers the queued row without a second send; integration test + live transcript pasted. |
-| AC5 | gates and blast radius | [ ] unchecked | — | — | — | — | `just checks` green on the rebased tree (req-0044 baseline reds excluded by name only); no changes under .pi/extensions (legacy) and no operator-home writes (`git diff --stat` + `ls -la ~/.pij ~/.pij-rs` mtimes pasted). |
-| AC6 | vetoed socket deliveries are retried when the veto lifts and the receipt names why | [ ] unchecked | — | — | — | — | LIVE: a socket-reachable Claude seat (witness: pij-still-weasel %2081 — direct lookup misses because row proc.pid=6624 is the pane SHELL, but UDS discovery matches ~/.claude/sessions/82124.json via its `tmux` field ending in .%2081, and a send while the composer is blank arrives as a turn) receives a message that was `queued` because the operator had a NON-BLANK composer at send time: once the composer is blank again the daemon retries and the turn arrives WITHOUT a second send (three such rows sat unretried on weasel today: worm F22, opossum PR#353, keech selftest). Receipt for the veto case reads `{outcome:queued, reason:"human-typing"}` (additive). Control on pre-fix tree pasted. CORRECTION 14:45: a retry DOES exist — the keech selftest drained by socket ~4 min after being queued, and opossum's note ~30 min after — but worm F22 (msg 55C220EB, sent ~02:50Z) sat ~12 h until weasel read the inbox by hand. Find what distinguishes the 12 h row from the 4 min row (daemon restarts at 14:22? the row predating the boot? pane observer state?) and make the retry bounded and observable: `pij-rs state &lt;seat&gt;` or the receipt must show queued rows with reason and next-retry; no row may outlive a live, blank-composer recipient by more than one cadence. |
+| id | claim | state | note | receipt | pressure | proven_by |
+| --- | --- | --- | --- | --- | --- | --- |
+| AC1 | legacy-tapped panes receive typed bodies | [ ] unchecked | LIVE: hand-start `copilot --yolo` in a new tmux window; confirm the legacy tap is present (`ps` shows `cat &gt;&gt; ~/.pij/pane-signals/_N.raw`, `tmux display -p -t %N #{pane_pipe}` = 1, no @pij-tap-sink marker); adopt into the DEV rs daemon; `pij-rs send` returns delivered/typed-to-pane and the FULL body is visible in the pane with Copilot replying; transcript pasted. | — | — | — |
+| AC2 | the witness was red before the fix | [ ] unchecked | CONTROL on the pre-fix tree (main dd450381): the same gesture returns `queued`, nothing appears in the pane; pasted. Red-first for every new unit test, pre-fix output pasted. | — | — | — |
+| AC3 | supersede is narrow and refusal stops spamming | [ ] unchecked | A pane whose pipe has a FOREIGN non-legacy owner (test: pipe-pane a scratch pane to /tmp/foreign.raw with no marker and no legacy sink file) is still refused, and the refusal is logged ONCE per pane per daemon boot (rate-limited), not every observer tick; unit test + `grep -c` on the dev daemon log pasted. | — | — | — |
+| AC4 | queued names its reason and retries | [ ] unchecked | `pij-rs send` to a pane seat with no owned tap returns `{outcome:queued, reason:"tap-unowned"}` (additive field, wire stays v2), and once the observer claims the tap the drain delivers the queued row without a second send; integration test + live transcript pasted. | — | — | — |
+| AC5 | gates and blast radius | [ ] unchecked | `harness checks` green on the rebased tree PLUS explicit receipts for `~/.cargo/bin/cargo test --workspace`, `~/.cargo/bin/cargo clippy --workspace -- -D warnings`, and `~/.cargo/bin/cargo fmt --check`, with output pasted in assets/live-proof.md; req-0044 baseline reds excluded by name only; no changes under .pi/extensions (legacy) and no operator-home writes (`git diff --stat` + `~/.pij` and `~/.pij-rs` mtimes pasted). | — | — | — |
+| AC6 | vetoed socket deliveries are retried when the veto lifts and the receipt names why | [ ] unchecked | LIVE: a socket-reachable Claude seat (witness: pij-still-weasel %2081 — direct lookup misses because row proc.pid=6624 is the pane SHELL, but UDS discovery matches ~/.claude/sessions/82124.json via its `tmux` field ending in .%2081, and a send while the composer is blank arrives as a turn) receives a message that was `queued` because the operator had a NON-BLANK composer at send time: once the composer is blank again the daemon retries and the turn arrives WITHOUT a second send. Receipt for the veto case reads `{outcome:queued, reason:"human-typing"}` (additive). Control on pre-fix tree pasted. CORRECTION 14:45: a retry DOES exist — the keech selftest drained by socket ~4 min after being queued, and opossum's note ~30 min after — but worm F22 (msg 55C220EB, sent ~02:50Z) sat ~12 h until weasel read the inbox by hand. Find what distinguishes the 12 h row from the 4 min row (daemon restarts at 14:22? the row predating the boot? pane observer state?) and make the retry bounded and observable: `pij-rs state &lt;seat&gt;` or the receipt must show queued rows with reason and next-retry; no row may outlive a live, blank-composer recipient by more than one cadence. | — | — | — |
 
 <a id="phases"></a>
 
 ## Phases
 
-| id | title | brief | state | note | receipt | depends_on | tasks | objective | delivers | key_risks | name | status |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| p1 | — | — | — | — | — | — | docs/plans/133-rs-tap-supersedes-legacy/assets/tasks/phase-1/tasks.dd.json | — | — | — | Build + prove | pending |
+| id | title | brief | state | note | receipt | depends_on | tasks | objective | delivers | key_risks |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| p1 | Build + prove | — | [ ] unchecked | — | — | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
