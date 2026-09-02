@@ -12,7 +12,7 @@
 | title | Reviewer packet — statusline-generation-badge |
 | role | reviewer |
 | plan | docs/plans/129-statusline-generation-badge/plan.dd.json |
-| seat | pij-quarrelsome-caribou |
+| seat | pij-relative-cheetah |
 | updated | 2026-09-02 |
 
 <a id="mission"></a>
