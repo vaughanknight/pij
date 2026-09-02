@@ -651,7 +651,7 @@ mod tests {
 
         assert!(!envelope.ok);
         assert_eq!(envelope.error, Some(ErrorKind::Skew));
-        assert_eq!(ENVELOPE_VERSION, 1);
+        assert_eq!(ENVELOPE_VERSION, 2);
     }
 
     #[tokio::test]

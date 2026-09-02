@@ -284,24 +284,24 @@ answer = "type=control with action=peer_message_status and status=held maps to H
 
 [[fixture]]
 path = "golden/cli/register-envelope.json"
-sha256 = "7787b2f8fe57f84e1b81d60a03860ee576ce86ed438277f1ccdf2c01dd39c257"
-bytes = 356
+sha256 = "42f17126123e0f11377745902efcaea3a411e83fe4c225b0fa89e92c7e578cf0"
+bytes = 371
 note = "Computed pij register success envelope rendered by u-cli from the accepted SeatDescriptor; editorial text is deliberately absent."
-answer = "Must match render(Envelope::ok(\"pij register\", descriptor), true) byte-for-byte, including absent optional fields staying absent and error staying absent on success."
+answer = "Must match render(Envelope::ok(\"pij register\", descriptor), true) byte-for-byte, including envelope v2, explicit session:null when unknown, absent optional fields staying absent, and error staying absent on success."
 
 [[fixture]]
 path = "golden/cli/send-envelope.json"
-sha256 = "d939a4afc02772b9bceb3e9d8782c6c1103eed70f148b9adb7959b0c47d5a3f9"
+sha256 = "17434b8cd61cb9ed6b3df75697f93e8e4ba9229b7cea1d1ea0ad710437147498"
 bytes = 117
 note = "Computed pij send success envelope rendered by u-cli from a durable queued Receipt."
-answer = "Must preserve msg_id, the tagged queued outcome, and at exactly; the CLI must not upgrade queued into delivered."
+answer = "Must emit envelope v2 and preserve msg_id, the tagged queued outcome, and at exactly; the CLI must not upgrade queued into delivered."
 
 [[fixture]]
 path = "golden/cli/list-envelope.json"
-sha256 = "c0c9901f03abf9d4cbb75497791db26fe7f464a67d40fc5a258c4e836c17d02d"
-bytes = 521
+sha256 = "e399f57eddcc939a94cfd1fab4af81b87648b9ea586e1dc9fd0f27be9dacc359"
+bytes = 551
 note = "Computed pij list success envelope rendered by u-cli from two daemon-owned SeatDescriptors."
-answer = "Must preserve registry order and absent fields, including a paneless relay; the CLI relays descriptors rather than recomputing liveness or state."
+answer = "Must emit envelope v2, preserve registry order, carry explicit session:null when unknown, and preserve absent fields including a paneless relay; the CLI relays descriptors rather than recomputing liveness or state."
 
 [[fixture]]
 path = "uds/status-denied.ndjson"

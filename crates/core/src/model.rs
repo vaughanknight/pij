@@ -491,7 +491,7 @@ impl<T> Envelope<T> {
 }
 
 /// The envelope version this build speaks.
-pub const ENVELOPE_VERSION: u32 = 1;
+pub const ENVELOPE_VERSION: u32 = 2;
 
 /// A message in flight between two seats.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
