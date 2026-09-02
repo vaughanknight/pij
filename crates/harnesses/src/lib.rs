@@ -15,8 +15,10 @@ pub use adapter::{
     ObservedBindFacts, OmpHarness, PiHarness,
 };
 pub use claude_settings::{
-    ClaudeInboundState, EnsurePlan, EnsureReport, claude_homes, claude_homes_from,
-    ensure_claude_inbound_accept, inspect_claude_inbound, plan_inbound_accept,
+    ClaudeHookState, ClaudeInboundState, EnsurePlan, EnsureReport, claude_homes, claude_homes_from,
+    ensure_claude_inbound_accept, ensure_claude_session_start_hook, inspect_claude_inbound,
+    inspect_claude_session_start_hook, install_claude_session_start_script,
+    plan_claude_session_start_hook, plan_inbound_accept,
 };
 pub use composer::{ComposerRegion, composer_region};
 pub use interaction::InteractionGate;

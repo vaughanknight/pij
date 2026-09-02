@@ -15,7 +15,10 @@ use pij_cli::{
 use pij_core::error::PijError;
 use pij_core::model::{Envelope, ErrorKind, Event, Harness, SeatId};
 use pij_core::wire;
-use pij_harnesses::{claude_homes, ensure_claude_inbound_accept, inspect_claude_inbound};
+use pij_harnesses::{
+    claude_homes, ensure_claude_inbound_accept, ensure_claude_session_start_hook,
+    inspect_claude_inbound, inspect_claude_session_start_hook, install_claude_session_start_script,
+};
 use serde_json::{Value, json};
 
 #[derive(Parser)]
@@ -383,6 +386,8 @@ enum DaemonAction {
 enum DoctorAction {
     /// Report cross-session inbound state for every discovered Claude home.
     ClaudeInbound,
+    /// Report pij SessionStart hook state for every discovered Claude home.
+    ClaudeHook,
 }
 
 #[tokio::main]
@@ -391,6 +396,7 @@ async fn main() -> ExitCode {
 }
 
 async fn run(cli: Cli) -> ExitCode {
+    let hook_dir = default_state_dir();
     let state_dir =
         match resolve_state_dir(cli.state_dir.clone(), std::env::var_os("PIJ_RS_STATE_DIR")) {
             Ok(path) => path,
@@ -407,7 +413,7 @@ async fn run(cli: Cli) -> ExitCode {
             Ok(bind) => bind,
             Err(message) => return emit_config_error(&cli, message),
         };
-        return run_daemon(&bind, state_dir, *offline).await;
+        return run_daemon(&bind, state_dir, hook_dir, *offline).await;
     }
     if let Command::Daemon {
         action: Some(DaemonAction::Bounce),
@@ -447,11 +453,11 @@ async fn run(cli: Cli) -> ExitCode {
         };
     }
 
-    if let Command::Doctor {
-        action: DoctorAction::ClaudeInbound,
-    } = &cli.command
-    {
-        return run_claude_inbound_doctor(cli.json);
+    if let Command::Doctor { action } = &cli.command {
+        return match action {
+            DoctorAction::ClaudeInbound => run_claude_inbound_doctor(cli.json),
+            DoctorAction::ClaudeHook => run_claude_hook_doctor(cli.json, &hook_dir),
+        };
     }
 
     let prepared_spawn = match prepare_spawn_request(&cli.command) {
@@ -904,66 +910,133 @@ fn run_claude_inbound_doctor(json: bool) -> ExitCode {
     emit(&Envelope::ok("pij doctor claude-inbound", rows), json)
 }
 
-async fn run_daemon(bind: &str, state_dir: PathBuf, offline: bool) -> ExitCode {
-    let reports = ensure_claude_inbound_accept(&claude_homes());
+#[derive(serde::Serialize)]
+struct ClaudeHookDoctorRow {
+    home: PathBuf,
+    configured: Option<String>,
+    expected: PathBuf,
+    script_exists: bool,
+    status: &'static str,
+    error: Option<String>,
+}
+
+fn run_claude_hook_doctor(json: bool, state_dir: &Path) -> ExitCode {
+    let expected = state_dir.join("claude-session-start-pij.sh");
+    let script_exists = expected.is_file();
+    let rows = inspect_claude_session_start_hook(&claude_homes(), &expected)
+        .into_iter()
+        .map(|report| {
+            let status = if report.error.is_some() {
+                "error"
+            } else if report.installed && script_exists {
+                "installed"
+            } else if report.installed {
+                "script-missing"
+            } else if report.command.is_some() {
+                "wrong-command"
+            } else if report.file_exists {
+                "hook-missing"
+            } else {
+                "file-missing"
+            };
+            ClaudeHookDoctorRow {
+                home: report.home,
+                configured: report.command,
+                expected: expected.clone(),
+                script_exists,
+                status,
+                error: report.error,
+            }
+        })
+        .collect::<Vec<_>>();
+    emit(&Envelope::ok("pij doctor claude-hook", rows), json)
+}
+
+async fn run_daemon(bind: &str, state_dir: PathBuf, hook_dir: PathBuf, offline: bool) -> ExitCode {
+    let homes = claude_homes();
+    let inbound_reports = ensure_claude_inbound_accept(&homes);
+    let hook_script = install_claude_session_start_script(&hook_dir)
+        .map_err(|error| format!("could not install Claude SessionStart hook script: {error}"));
+    let hook_reports = hook_script
+        .as_ref()
+        .map(|script| ensure_claude_session_start_hook(&homes, script))
+        .unwrap_or_default();
     let config = daemon_config(bind, &state_dir.join("pij.sqlite"), offline);
     match pij_daemon::boot(&config, state_dir).await {
         Ok(daemon) => {
-            for report in reports.iter().filter(|report| report.changed) {
-                let at = match system_time_ms() {
-                    Ok(at) => at,
-                    Err(error) => {
-                        eprintln!(
-                            "pij-rs warning: Claude inbound setting changed but its config event timestamp failed: {error}"
-                        );
-                        continue;
-                    }
-                };
-                if let Err(error) = daemon
-                    .publish_event(Event {
-                        seq: None,
-                        v: wire::EVENT_VERSION,
-                        at,
-                        kind: "config.claude-inbound-ensured".to_string(),
-                        seat: None,
-                        payload: json!({
-                            "home": report.home,
-                            "before": report.before,
-                            "after": report.after,
+            for (kind, label, reports) in [
+                (
+                    "config.claude-inbound-ensured",
+                    "Claude inbound setting",
+                    inbound_reports.as_slice(),
+                ),
+                (
+                    "config.claude-hook-ensured",
+                    "Claude SessionStart hook",
+                    hook_reports.as_slice(),
+                ),
+            ] {
+                for report in reports.iter().filter(|report| report.changed) {
+                    let at = match system_time_ms() {
+                        Ok(at) => at,
+                        Err(error) => {
+                            eprintln!(
+                                "pij-rs warning: {label} changed but its config event timestamp failed: {error}"
+                            );
+                            continue;
+                        }
+                    };
+                    if let Err(error) = daemon
+                        .publish_event(Event {
+                            seq: None,
+                            v: wire::EVENT_VERSION,
+                            at,
+                            kind: kind.to_string(),
+                            seat: None,
+                            payload: json!({
+                                "home": report.home,
+                                "before": report.before,
+                                "after": report.after,
+                            })
+                            .to_string(),
                         })
-                        .to_string(),
+                        .await
+                    {
+                        eprintln!(
+                            "pij-rs warning: {label} changed but its config event could not be published: {error}"
+                        );
+                    }
+                }
+            }
+            for (label, reports) in [("inbound", &inbound_reports), ("hook", &hook_reports)] {
+                let homes = reports
+                    .iter()
+                    .map(|report| {
+                        let outcome = if report.error.is_some() {
+                            "error"
+                        } else if report.changed {
+                            "touched"
+                        } else {
+                            "skipped"
+                        };
+                        format!("{}={outcome}", report.home.display())
                     })
-                    .await
-                {
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                println!(
+                    "pij-rs claude {label}: {}",
+                    if homes.is_empty() { "no homes" } else { &homes }
+                );
+                for report in reports.iter().filter(|report| report.error.is_some()) {
                     eprintln!(
-                        "pij-rs warning: Claude inbound setting changed but its config event could not be published: {error}"
+                        "pij-rs claude {label}: {}: {}",
+                        report.home.display(),
+                        report.error.as_deref().unwrap_or("unknown error")
                     );
                 }
             }
-            let homes = reports
-                .iter()
-                .map(|report| {
-                    let outcome = if report.error.is_some() {
-                        "error"
-                    } else if report.changed {
-                        "touched"
-                    } else {
-                        "skipped"
-                    };
-                    format!("{}={outcome}", report.home.display())
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            println!(
-                "pij-rs claude inbound: {}",
-                if homes.is_empty() { "no homes" } else { &homes }
-            );
-            for report in reports.iter().filter(|report| report.error.is_some()) {
-                eprintln!(
-                    "pij-rs claude inbound: {}: {}",
-                    report.home.display(),
-                    report.error.as_deref().unwrap_or("unknown error")
-                );
+            if let Err(error) = hook_script {
+                eprintln!("pij-rs claude hook: {error}");
             }
             println!(
                 "pij-rs daemon: listening on {} · key {} (0600) · offline={}",
@@ -1244,7 +1317,7 @@ impl Command {
     fn name(&self) -> &'static str {
         match self {
             Command::Daemon { .. } => "pij daemon",
-            Command::Doctor { .. } => "pij doctor claude-inbound",
+            Command::Doctor { .. } => "pij doctor",
             Command::Ping => "pij ping",
             Command::Sidecar { .. } => "pij sidecar",
             Command::Register { .. } => "pij register",
@@ -1338,6 +1411,18 @@ mod tests {
                 "tail"
             ]
         );
+    }
+
+    #[test]
+    fn doctor_exposes_claude_hook_state() {
+        let command = Cli::command();
+        let doctor = command.find_subcommand("doctor").expect("doctor command");
+        let names = doctor
+            .get_subcommands()
+            .map(|command| command.get_name())
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["claude-inbound", "claude-hook"]);
+        assert!(Cli::try_parse_from(["pij-rs", "doctor", "claude-hook"]).is_ok());
     }
 
     #[test]

@@ -91,6 +91,13 @@ async fn daemon_boot_repairs_once_and_publishes_one_change_event() {
         serde_json::from_slice(&fs::read(home.join("settings.json")).expect("settings after boot"))
             .expect("valid settings");
     assert_eq!(settings["crossSessionInbound"], "accept");
+    let expected_hook = root.join(".pij-rs/claude-session-start-pij.sh");
+    assert_eq!(
+        settings["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+        expected_hook.display().to_string()
+    );
+    assert!(expected_hook.is_file());
+    assert!(!state_dir.join("claude-session-start-pij.sh").exists());
 
     let database_path = state_dir.join("pij.sqlite");
     let spine = SqliteSpine::new(
@@ -98,14 +105,24 @@ async fn daemon_boot_repairs_once_and_publishes_one_change_event() {
             .await
             .expect("open daemon spine"),
     );
-    let first = spine
+    let first_events = spine
         .tail(None, Seq(0))
         .await
-        .expect("tail first-boot events")
-        .into_iter()
-        .filter(|event| event.kind == "config.claude-inbound-ensured")
-        .count();
-    assert_eq!(first, 1);
+        .expect("tail first-boot events");
+    assert_eq!(
+        first_events
+            .iter()
+            .filter(|event| event.kind == "config.claude-inbound-ensured")
+            .count(),
+        1
+    );
+    assert_eq!(
+        first_events
+            .iter()
+            .filter(|event| event.kind == "config.claude-hook-ensured")
+            .count(),
+        1
+    );
     drop(spine);
 
     boot_once(&root, &home, &state_dir);
@@ -114,14 +131,24 @@ async fn daemon_boot_repairs_once_and_publishes_one_change_event() {
             .await
             .expect("reopen daemon spine"),
     );
-    let second = spine
+    let second_events = spine
         .tail(None, Seq(0))
         .await
-        .expect("tail second-boot events")
-        .into_iter()
-        .filter(|event| event.kind == "config.claude-inbound-ensured")
-        .count();
-    assert_eq!(second, 1);
+        .expect("tail second-boot events");
+    assert_eq!(
+        second_events
+            .iter()
+            .filter(|event| event.kind == "config.claude-inbound-ensured")
+            .count(),
+        1
+    );
+    assert_eq!(
+        second_events
+            .iter()
+            .filter(|event| event.kind == "config.claude-hook-ensured")
+            .count(),
+        1
+    );
     drop(spine);
     let _ = fs::remove_dir_all(root);
 }

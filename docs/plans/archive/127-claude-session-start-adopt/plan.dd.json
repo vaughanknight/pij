@@ -1,0 +1,91 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "claude-session-start-adopt",
+        "slug": "claude-session-start-adopt",
+        "ordinal": 127,
+        "status": "in-progress",
+        "summary": "A hand-started Claude gets its pij seat automatically at session start — no `/pij ready` — via a once-per-session Claude SessionStart hook that pij installs; the statusline stays read-only."
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Jordan 2026-09-02: 'if Claude does not have a pij seat, register for one in its current seat so I do not have to type /pij ready; Claude just loads with a pij id.' Investigation (prime subagent, file:line): the statusline (~/.claude/statusline-context.sh:37-51) is READ-ONLY — `pij whoami` parsed for the ⛓ id; it never adopts; what Jordan saw appear today is pane-based resolution now working (identity.rs:698-728). Adopting FROM the statusline is wrong: it runs on every render (~300ms throttle), on the render path, and a non-tmux Claude would fail every render. The right mechanism is a Claude **SessionStart hook** (fires once per session, off the hot path, sees CLAUDE_CODE_SESSION_ID; the slot is free in ~/.claude/settings.json). rs adopt is already idempotent on a live-owned pane (identity.rs:470-480 adopts INTO the existing owner), so a second session in the same pane does not mint a second id. Legacy TS adopt is only partially idempotent (cli.ts:2952-2967 via pendingPaneOccupant) — not in scope, adopt routes to rs."
+    },
+    {
+      "name": "goals",
+      "value": [
+        "G1 Hook script shipped in the repo: if $TMUX_PANE is set and the rs daemon answers, run `pij-rs adopt \"$TMUX_PANE\" --harness claude` idempotently; on success emit only contract-valid SessionStart context JSON so the initial statusline refreshes after adoption; on refusal/no-tmux/no-daemon exit 0 with empty stderr and one diagnostic log line, never block session start.",
+        "G2 Installer: extend plan 126's ensure path (crates/harnesses/src/claude_settings.rs, same backup + additive-JSON discipline) to ALSO ensure a SessionStart hook entry pointing at the shipped script in every Claude home; idempotent; `pij-rs doctor claude-hook` reports state; run at daemon boot alongside the accept ensure.",
+        "G3 Statusline stays read-only; guard its pij block with `[ -n \"$TMUX_PANE\" ]` so non-tmux sessions skip the node spawn (the statusline script lives in ~/.claude; the installer may patch ONLY that guard, with backup, or the plan documents the one-line operator edit — PM decides and records).",
+        "G4 The adopted seat gets consent stamped (s121) so the very first inbound message lands as a real turn."
+      ]
+    },
+    {
+      "name": "non_goals",
+      "value": [
+        "No statusline adoption.",
+        "No change to legacy TS adopt idempotence (req-0026 family).",
+        "No change to /pij ready (it remains valid and becomes a no-op when the hook already adopted)."
+      ]
+    },
+    {
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "AC1",
+          "claim": "A hand-started Claude in tmux auto-adopts with inbound consent and receives the first peer turn.",
+          "state": "checked",
+          "text": "LIVE: with the hook installed, hand-start `claude` in a fresh tmux window and type NOTHING; within a few seconds the statusline shows ⛓ <id>, `pij-rs list` shows the seat bound to that pane with cross_session_inbound_accept=true, and a message from another seat lands as a real turn. Pane transcript + spine rows pasted.",
+          "receipt": "docs/plans/127-claude-session-start-adopt/assets/live-auto-seat.md"
+        },
+        {
+          "id": "AC2",
+          "claim": "Repeating the hook in one pane never creates two live seat ids.",
+          "state": "checked",
+          "text": "LIVE: start a second `claude` in the SAME pane after closing the first (or run the hook twice) → same id or a clean re-adopt, never two live ids for one pane.",
+          "receipt": "docs/plans/127-claude-session-start-adopt/assets/live-auto-seat.md"
+        },
+        {
+          "id": "AC3",
+          "claim": "Claude outside tmux starts silently and records the hook skip.",
+          "state": "checked",
+          "text": "LIVE: start `claude` OUTSIDE tmux → session starts normally, no error shown, hook log records the skip.",
+          "receipt": "docs/plans/127-claude-session-start-adopt/assets/live-auto-seat.md"
+        },
+        {
+          "id": "AC4",
+          "claim": "The installer additively preserves hooks, backs up changes, is idempotent, and refuses malformed settings.",
+          "state": "checked",
+          "text": "Unit: installer adds the SessionStart hook entry without disturbing existing hooks (Notification/PreToolUse/PostToolUse preserved byte-for-byte), backup written, second run no-op; malformed settings refused. RED-first.",
+          "receipt": "cargo test -p pij-harnesses -p pij-cli: 133 passed; round-3 review"
+        },
+        {
+          "id": "AC5",
+          "claim": "Manual ready after auto-adopt reuses the seat and all repository gates pass.",
+          "state": "checked",
+          "text": "`/pij ready` typed after auto-adopt reports the existing id (no second seat). cargo/typecheck/harness checks green.",
+          "receipt": "harness checks 2026-09-02T01:28:20Z; cargo clippy -D warnings; assets/live-auto-seat.md"
+        }
+      ]
+    },
+    {
+      "name": "phases",
+      "value": [
+        {
+          "id": "ph-4df4",
+          "title": "Hook + installer + live proof",
+          "brief": "Ship the hook script, extend the installer, prove AC1-AC5, PR into main.",
+          "state": "checked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks",
+          "receipt": "docs/plans/127-claude-session-start-adopt/assets/reviews/round-4.dd.md"
+        }
+      ]
+    }
+  ]
+}
