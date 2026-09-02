@@ -37,6 +37,7 @@ req-0035 (meadowlark 2026-09-02): pij-rs spawn --harness pi --bin omp returned o
 - G2 On a pane that exits before bind: capture the child exit code and the last 20 lines of its output (tmux capture-pane before the window is gone, or a pipe-pane log under ~/.pij-rs/spawn/<spawn_id>.log) and return them in the failure.
 - G3 A spine event spawn.bound / spawn.failed with the evidence so it is locatable by seat/spawn id later.
 - G4 Fix the false terminal-absence notice if it is the same code path; otherwise record it as a separate finding with file:line.
+- G5 A queued delivery for an unbound spawned seat whose pane is absent becomes terminal failed state naming the seat and pane; it is not retried.
 
 <a id="non-goals"></a>
 
@@ -53,6 +54,7 @@ req-0035 (meadowlark 2026-09-02): pij-rs spawn --harness pi --bin omp returned o
 | AC1 | a dead-before-bind spawn is reported, not ok:true | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/live-proof.md#deadunusable-model-before-honest-bind | — | — | LIVE: pij-rs spawn of an omp with a deliberately bad --model → returns spawn.failed naming the exit code and the omp log line that refused; pane transcript pasted. |
 | AC2 | a healthy spawn reports bound | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/live-proof.md#healthy-bind | — | — | LIVE: a normal omp spawn returns bound:true with the seat id within the wait window. |
 | AC3 | failure path has a witness | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/red-witness.md | — | — | Unit RED-first: child exits 1 immediately → caller sees exit + log path, never ok:true. |
+| AC4 | a dead unbound pane terminalizes queued delivery | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/red-witness.md#unbound-seat-whose-pane-disappeared | — | — | RED-first unit: an unbound spawned seat whose pane disappeared leaves one named failed outcome, zero retries, and no live queue row. |
 
 <a id="phases"></a>
 

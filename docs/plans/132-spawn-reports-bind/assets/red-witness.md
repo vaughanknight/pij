@@ -26,3 +26,24 @@ test result: FAILED. 0 passed; 1 failed; 148 filtered out
 ```
 
 The pre-bind row stores the parent, then registration overwrites it with an absent claim.
+
+## Unbound seat whose pane disappeared
+
+Command: `cargo test -p pij-daemon a_missing_pane_terminalizes_its_queued_delivery_with_named_reason -- --nocapture`
+
+RED on rebased pre-fix tree:
+
+```text
+thread 'pointer::worker::tests::a_missing_pane_terminalizes_its_queued_delivery_with_named_reason' panicked at crates/daemon/src/pointer/worker.rs:1769:9:
+a missing pane is not retried
+test result: FAILED. 0 passed; 1 failed; 160 filtered out
+```
+
+GREEN after the bounded policy change:
+
+```text
+cargo test: 1 passed (11 suites, 230 filtered, 0.00s)
+```
+
+The queue now records one terminal `Outcome::Failed` whose reason names both
+`pij-vanished` and `%1861`; the row leaves the live queue and is not retried.

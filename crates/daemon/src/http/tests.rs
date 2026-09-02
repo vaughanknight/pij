@@ -402,6 +402,7 @@ async fn paneless_registration_returns_the_identity_export_it_requires() {
             proc_start: Some(identity.proc_start),
             spawn_id: None,
             model: None,
+            actual_model: None,
             provider: None,
             effort: None,
             parent: None,

@@ -35,8 +35,8 @@ Solo PM delivery for plan 132: RED witnesses, additive spawn bind reporting, par
 
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| tk-a132 | Establish RED-first spawn witnesses | — | — | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/red-witness.md | [x] 1/1 [tk-a132](#tk-a132) | Child-exit and parent-loss behavior fail before implementation. | — | — |
-| tk-b132 | Implement additive bind reporting | — | — | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/live-proof.md | [x] 1/1 [tk-b132](#tk-b132) | Spawn waits by default, reports bind or named failure, and preserves parent. | — | — |
+| tk-a132 | Establish RED-first spawn and dead-pane witnesses | — | — | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/red-witness.md | [x] 1/1 [tk-a132](#tk-a132) | Child-exit, parent-loss, and unbound dead-pane retry behavior fail before implementation. | — | — |
+| tk-b132 | Implement additive bind and bounded dead-pane reporting | — | — | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/live-proof.md; docs/plans/132-spawn-reports-bind/assets/red-witness.md#unbound-seat-whose-pane-disappeared | [x] 1/1 [tk-b132](#tk-b132) | Spawn reports bind or named failure; an unbound seat whose pane disappeared leaves named terminal queue state; parent is preserved. | — | — |
 | tk-c132 | Prove and review composed behavior | — | — | [ ] unchecked | — | — | [ ] 0/1 [tk-c132](#tk-c132) | Deterministic checks, live proof, and cross-model review are complete. | — | — |
 
 <a id="done-when"></a>
@@ -47,13 +47,13 @@ Solo PM delivery for plan 132: RED witnesses, additive spawn bind reporting, par
 
 | id | assertion | state | pressure | receipt |
 | --- | --- | --- | --- | --- |
-| dw-a132 | The child-exit and parent-preservation witnesses fail on the pre-fix tree for the expected behavior. | [x] checked | not-applicable | docs/plans/132-spawn-reports-bind/assets/red-witness.md |
+| dw-a132 | The child-exit, parent-preservation, and unbound dead-pane terminal-state witnesses fail on the pre-fix tree for the expected behavior. | [x] checked | not-applicable | docs/plans/132-spawn-reports-bind/assets/red-witness.md |
 
 ### tk-b132
 
 | id | assertion | state | pressure | receipt |
 | --- | --- | --- | --- | --- |
-| dw-b132 | Spawn reports dispatched and bound separately, returns named early-exit evidence, emits spawn.bound/spawn.failed, and first bind preserves parent. | [x] checked | not-applicable | docs/plans/132-spawn-reports-bind/assets/live-proof.md; cargo test focused receipts artifact://92 artifact://93 artifact://131 artifact://132 |
+| dw-b132 | Spawn separates dispatched from bound, returns early-exit evidence, emits spawn.bound/spawn.failed, preserves parent, and terminalizes an unbound missing-pane queue row with a named failed outcome. | [x] checked | not-applicable | docs/plans/132-spawn-reports-bind/assets/live-proof.md; docs/plans/132-spawn-reports-bind/assets/red-witness.md#unbound-seat-whose-pane-disappeared |
 
 ### tk-c132
 

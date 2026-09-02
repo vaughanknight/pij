@@ -23,7 +23,8 @@
         "G1 spawn returns {dispatched:true, bound:false|true, pane, pid} and, unless --no-wait, waits up to N seconds for the seat to register (extension boot ping / /v1/register from that pane) and reports bound or a named failure.",
         "G2 On a pane that exits before bind: capture the child exit code and the last 20 lines of its output (tmux capture-pane before the window is gone, or a pipe-pane log under ~/.pij-rs/spawn/<spawn_id>.log) and return them in the failure.",
         "G3 A spine event spawn.bound / spawn.failed with the evidence so it is locatable by seat/spawn id later.",
-        "G4 Fix the false terminal-absence notice if it is the same code path; otherwise record it as a separate finding with file:line."
+        "G4 Fix the false terminal-absence notice if it is the same code path; otherwise record it as a separate finding with file:line.",
+        "G5 A queued delivery for an unbound spawned seat whose pane is absent becomes terminal failed state naming the seat and pane; it is not retried."
       ]
     },
     {
@@ -55,6 +56,13 @@
           "claim": "failure path has a witness",
           "state": "checked",
           "receipt": "docs/plans/132-spawn-reports-bind/assets/red-witness.md"
+        },
+        {
+          "id": "AC4",
+          "text": "RED-first unit: an unbound spawned seat whose pane disappeared leaves one named failed outcome, zero retries, and no live queue row.",
+          "claim": "a dead unbound pane terminalizes queued delivery",
+          "state": "checked",
+          "receipt": "docs/plans/132-spawn-reports-bind/assets/red-witness.md#unbound-seat-whose-pane-disappeared"
         }
       ]
     },

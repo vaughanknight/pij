@@ -208,6 +208,27 @@ impl DrainWorker {
             return self.release_or_backoff(job_id, &job, &msg).await;
         };
         if recipient.proc.is_none() {
+            // POLICY, not a brake: tmux's pane roster decides whether this
+            // unbound launch can still complete. Removing this check changes a
+            // terminal failure into another retry; it does not merely spare work.
+            let pane_present = match self.tmux.list_panes().await {
+                Ok(panes) => panes.iter().any(|candidate| candidate.id == pane),
+                Err(error) => {
+                    self.release_or_backoff(job_id, &job, &msg).await?;
+                    return Err(error);
+                }
+            };
+            if !pane_present {
+                return self
+                    .fail_claim(
+                        job_id,
+                        format!(
+                            "delivery recipient {} pane {pane} disappeared before bind; not retried",
+                            msg.to
+                        ),
+                    )
+                    .await;
+            }
             return self.release_or_backoff(job_id, &job, &msg).await;
         }
 
@@ -1751,6 +1772,39 @@ mod tests {
             fixture.transport.delivered()
         );
     }
+    /// A pane absent from tmux is a terminal recipient fact, not a transient
+    /// capture failure. This is POLICY: removing the check changes failed to
+    /// retrying, rather than merely making delivery more conservative.
+    #[tokio::test]
+    async fn a_missing_pane_terminalizes_its_queued_delivery_with_named_reason() {
+        let fixture = fixture_unarranged(
+            FakeTransport::reachable(),
+            FakeTmux::new().with_vanished_pane("%1861"),
+        );
+        let mut recipient = seat("pij-vanished", Some("%1861"));
+        recipient.proc = None;
+        register(&fixture, recipient).await;
+        let id = enqueue(&fixture, &message("pij-vanished", "never lands", None)).await;
+
+        assert_eq!(
+            fixture.worker.drain_once().await.expect("terminal drain"),
+            1
+        );
+        assert!(
+            fixture.queue.retried().is_empty(),
+            "a missing pane is not retried"
+        );
+        let acked = fixture.queue.acked();
+        let [(acked_id, Outcome::Failed { reason })] = acked.as_slice() else {
+            panic!("missing pane must leave one named failed outcome: {acked:?}");
+        };
+        assert_eq!(*acked_id, id);
+        assert!(reason.contains("pij-vanished"), "{reason}");
+        assert!(reason.contains("%1861"), "{reason}");
+        assert!(reason.contains("not retried"), "{reason}");
+        assert_eq!(fixture.queue.live_len(), 0);
+    }
+
     /// A recipient we could not OBSERVE backs off; one the worker merely
     /// declined to inject into stays immediate (plan 117).
     ///

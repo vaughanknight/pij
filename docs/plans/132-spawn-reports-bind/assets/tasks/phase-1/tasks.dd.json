@@ -21,19 +21,19 @@
       "value": [
         {
           "id": "tk-a132",
-          "title": "Establish RED-first spawn witnesses",
+          "title": "Establish RED-first spawn and dead-pane witnesses",
           "state": "checked",
           "done": "#done_when/tk-a132",
-          "success": "Child-exit and parent-loss behavior fail before implementation.",
+          "success": "Child-exit, parent-loss, and unbound dead-pane retry behavior fail before implementation.",
           "receipt": "docs/plans/132-spawn-reports-bind/assets/red-witness.md"
         },
         {
           "id": "tk-b132",
-          "title": "Implement additive bind reporting",
+          "title": "Implement additive bind and bounded dead-pane reporting",
           "state": "checked",
           "done": "#done_when/tk-b132",
-          "success": "Spawn waits by default, reports bind or named failure, and preserves parent.",
-          "receipt": "docs/plans/132-spawn-reports-bind/assets/live-proof.md"
+          "success": "Spawn reports bind or named failure; an unbound seat whose pane disappeared leaves named terminal queue state; parent is preserved.",
+          "receipt": "docs/plans/132-spawn-reports-bind/assets/live-proof.md; docs/plans/132-spawn-reports-bind/assets/red-witness.md#unbound-seat-whose-pane-disappeared"
         },
         {
           "id": "tk-c132",
@@ -50,7 +50,7 @@
         "tk-a132": [
           {
             "id": "dw-a132",
-            "assertion": "The child-exit and parent-preservation witnesses fail on the pre-fix tree for the expected behavior.",
+            "assertion": "The child-exit, parent-preservation, and unbound dead-pane terminal-state witnesses fail on the pre-fix tree for the expected behavior.",
             "state": "checked",
             "pressure": "not-applicable",
             "receipt": "docs/plans/132-spawn-reports-bind/assets/red-witness.md"
@@ -59,10 +59,10 @@
         "tk-b132": [
           {
             "id": "dw-b132",
-            "assertion": "Spawn reports dispatched and bound separately, returns named early-exit evidence, emits spawn.bound/spawn.failed, and first bind preserves parent.",
+            "assertion": "Spawn separates dispatched from bound, returns early-exit evidence, emits spawn.bound/spawn.failed, preserves parent, and terminalizes an unbound missing-pane queue row with a named failed outcome.",
             "state": "checked",
             "pressure": "not-applicable",
-            "receipt": "docs/plans/132-spawn-reports-bind/assets/live-proof.md; cargo test focused receipts artifact://92 artifact://93 artifact://131 artifact://132"
+            "receipt": "docs/plans/132-spawn-reports-bind/assets/live-proof.md; docs/plans/132-spawn-reports-bind/assets/red-witness.md#unbound-seat-whose-pane-disappeared"
           }
         ],
         "tk-c132": [
