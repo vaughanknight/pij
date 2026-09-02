@@ -15,13 +15,9 @@ if (!command) {
 	process.exit(2);
 }
 
-// Fail-closed quarantine preflight (dove ruling): governed installs enforce the
-// 7-day age gate via npm-native min-release-age, which only npm >= 11 honors.
-// Refuse loudly on npm < 11 rather than proceed unprotected. The root-lock
-// replay clears the age (min-release-age=null) and so is exempt.
-// Fail-closed quarantine preflight (dove ruling): governed installs enforce the
-// 7-day age gate via npm-native min-release-age, which only npm >= 11 honors.
-// The root-lock replay clears the age (min-release-age=null) and so is exempt.
+// Governed installs enforce the seven-day age gate via npm-native
+// min-release-age, available from npm 11.10.0. Older npm releases are refused.
+// Root-lock replay explicitly clears the age and is exempt.
 if (!rootLockMode) {
 	assertQuarantineEnforceableOrExit({
 		fail: (message) => {

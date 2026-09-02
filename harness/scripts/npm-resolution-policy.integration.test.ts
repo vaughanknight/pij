@@ -14,16 +14,13 @@ import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { npmInvocation } from "./cli-invocation.js";
 import {
-	MIN_NPM_MAJOR_FOR_QUARANTINE,
-	npmMajor,
 	npmResolutionEnvironment,
+	quarantineSupportError,
 	rootLockReplayEnvironment,
 	rootLockReplayNpmArgs,
 } from "./release-age-policy.js";
 
-const RUNNING_NPM_MAJOR = npmMajor(
-	spawnSync("npm", ["--version"], { encoding: "utf8" }).stdout ?? "",
-);
+const RUNNING_NPM_VERSION = spawnSync("npm", ["--version"], { encoding: "utf8" }).stdout ?? "";
 const PIJ_ROOT_DIR = resolve(import.meta.dirname, "..", "..");
 
 const PACKAGE_NAME = "pij-npm-resolution-fixture";
@@ -513,14 +510,12 @@ describe("authoritative npm resolution", () => {
 			const lockedEntry = lock.packages?.[`node_modules/${PACKAGE_NAME}`];
 			expect(lockedEntry).toBeDefined();
 			if (!lockedEntry) throw new Error("fixture lock entry was not created");
-			// npmjs-scoped host replacement (PR#25 adopt): a `resolved` URL on the
-			// npmjs registry host is force-routed to the proxy — so npm fetches from
-			// the proxy and NEVER contacts the pinned npmjs origin. (Under the old
-			// `always` this used `upstream.url`; npmjs correctly rewrites only the
-			// npmjs host, and lockfile-source integrity for non-npmjs hosts is now
-			// owned by the deterministic lockfile-allowlist check, not silent
-			// install-time redirection.)
-			lockedEntry.resolved = `https://registry.npmjs.org/${PACKAGE_NAME}/-/${PACKAGE_NAME}-2.0.0.tgz`;
+			// npmjs-scoped host replacement (PR#25 adopt): npm's lockfile-replay path
+			// replaces the host but preserves the URL scheme. Match this HTTP fixture's
+			// scheme so the replay proves host routing rather than TLS setup.
+			// Lockfile-source integrity for non-npmjs hosts remains owned by the
+			// deterministic lockfile-allowlist check, not silent install-time redirection.
+			lockedEntry.resolved = `http://registry.npmjs.org/${PACKAGE_NAME}/-/${PACKAGE_NAME}-2.0.0.tgz`;
 			writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
 			const lockBefore = createHash("sha256").update(readFileSync(lockPath)).digest("hex");
 
@@ -533,7 +528,14 @@ describe("authoritative npm resolution", () => {
 				lockedProject,
 				fixtureRootLockEnvironment(fixture, proxy.url),
 			);
-			expect(governedLockHostReplay.status).toBe(0);
+			expect(
+				governedLockHostReplay.status,
+				JSON.stringify(
+					{ stderr: governedLockHostReplay.stderr, stdout: governedLockHostReplay.stdout },
+					null,
+					2,
+				),
+			).toBe(0);
 			expect(tarballRequests(proxy.requests(), "2.0.0")).not.toHaveLength(0);
 			expect(upstream.requests()).toHaveLength(0);
 			expect(createHash("sha256").update(readFileSync(lockPath)).digest("hex")).toBe(lockBefore);
@@ -558,29 +560,31 @@ describe("authoritative npm resolution", () => {
 				latest: "3.0.0",
 				versions: { "3.0.0": registryVersion(young) },
 			});
-			// Fail-closed age gate (dove ruling). npm-native min-release-age is only
-			// enforced by npm >= 11. On npm >= 11 the too-young install is REJECTED
-			// (enforcement proof). On npm < 11 the governed runner REFUSES up front
-			// (fail-closed proof) — the control never silently no-ops. Both are
-			// non-zero; the message distinguishes them.
-			if (RUNNING_NPM_MAJOR >= MIN_NPM_MAJOR_FOR_QUARANTINE) {
+			const tooYoungProject = createProject(fixture, "too-young", "3.0.0");
+			if (quarantineSupportError(RUNNING_NPM_VERSION) === null) {
 				const tooYoung = await runNpm(
 					installArgs(),
-					createProject(fixture, "too-young", "3.0.0"),
+					tooYoungProject,
 					fixtureResolutionEnvironment(fixture, proxy.url),
 				);
 				expect(tooYoung.status).not.toBe(0);
 				expect(`${tooYoung.stdout}\n${tooYoung.stderr}`).toMatch(/ETARGET|No matching version/i);
 			} else {
+				proxy.resetRequests();
 				const refused = spawnSync(
-					"node_modules/.bin/tsx",
-					["harness/scripts/npm-resolution-run.ts", ...installArgs()],
-					{ cwd: PIJ_ROOT_DIR, encoding: "utf8" },
+					join(PIJ_ROOT_DIR, "node_modules/.bin/tsx"),
+					[join(PIJ_ROOT_DIR, "harness/scripts/npm-resolution-run.ts"), ...installArgs()],
+					{
+						cwd: tooYoungProject,
+						encoding: "utf8",
+						env: fixtureResolutionEnvironment(fixture, proxy.url),
+					},
 				);
 				expect(refused.status).not.toBe(0);
 				expect(`${refused.stdout}\n${refused.stderr}`).toContain(
-					"min-release-age requires npm>=11",
+					"min-release-age requires npm>=11.10.0",
 				);
+				expect(proxy.requests()).toHaveLength(0);
 			}
 
 			resetCache(fixture);

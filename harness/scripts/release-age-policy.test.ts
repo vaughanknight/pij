@@ -13,12 +13,11 @@ import { join, relative, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	assertQuarantineEnforceableOrExit,
-	MIN_NPM_MAJOR_FOR_QUARANTINE,
+	MIN_NPM_VERSION_FOR_QUARANTINE,
 	MIN_RELEASE_AGE_DAYS,
 	NPM_PREFER_ONLINE,
 	NPM_REGISTRY_URL,
 	NPM_REPLACE_REGISTRY_HOST,
-	npmMajor,
 	npmResolutionEnvironment,
 	quarantineSupportError,
 	ROOT_LOCK_REPLAY_MIN_RELEASE_AGE,
@@ -27,9 +26,7 @@ import {
 } from "./release-age-policy.js";
 
 const PIJ_ROOT = resolve(import.meta.dirname, "..", "..");
-const RUNNING_NPM_MAJOR = npmMajor(
-	spawnSync("npm", ["--version"], { encoding: "utf8" }).stdout ?? "",
-);
+const RUNNING_NPM_VERSION = spawnSync("npm", ["--version"], { encoding: "utf8" }).stdout ?? "";
 // 60s. The pwsh spawn is heavyweight and this file runs in parallel with the whole
 // suite: ~4.5s isolated (s055's measurement), ~10s isolated on a loaded machine
 // (s054's), and past 15s under full-suite contention (vitest workers + pkg audit) —
@@ -247,30 +244,26 @@ describe("npm resolution policy", () => {
 		);
 	});
 
-	it("fails closed: the quarantine preflight refuses npm <11 and allows npm >=11 (dove ruling)", () => {
-		// npm-native min-release-age is only enforced by npm >= 11. npm 10 accepts
-		// the flag but silently installs a too-young package — so the governed path
-		// must REFUSE on npm <11 rather than proceed unprotected. A security control
-		// never silently no-ops: it enforces, or it refuses.
-		expect(MIN_NPM_MAJOR_FOR_QUARANTINE).toBe(11);
-		expect(npmMajor("11.10.0")).toBe(11);
-		expect(npmMajor("v10.9.2")).toBe(10);
-		expect(npmMajor("garbage")).toBeNaN();
+	it("fails closed below npm 11.10.0 and allows supported releases", () => {
+		expect(MIN_NPM_VERSION_FOR_QUARANTINE).toBe("11.10.0");
+		for (const supported of ["11.10.0", "11.10.0+build.1", "11.10.1", "12.0.0"]) {
+			expect(quarantineSupportError(supported)).toBeNull();
+		}
 
-		// >= 11 → enforceable, no refusal.
-		expect(quarantineSupportError("11.10.0")).toBeNull();
-		expect(quarantineSupportError("12.0.0")).toBeNull();
-
-		// < 11 (or unparseable) → the named, loud refusal.
-		for (const bad of ["10.9.2", "9.0.0", "garbage"]) {
-			const err = quarantineSupportError(bad);
-			expect(err).not.toBeNull();
-			expect(err).toContain("min-release-age requires npm>=11");
-			expect(err).toContain("refusing rather than silently skipping");
+		for (const unsupported of ["11.10.0-rc.0", "11.9.9", "10.9.2", "9.0.0", "garbage"]) {
+			const error = quarantineSupportError(unsupported);
+			expect(error).toContain("min-release-age requires npm>=11.10.0");
+			expect(error).toContain("refusing rather than silently skipping");
 		}
 	});
 
-	it("the shared preflight refuses on npm<11 and passes on npm>=11 (injected, deterministic)", () => {
+	it("refuses npm 11.5.1 because min-release-age starts at 11.10.0", () => {
+		const error = quarantineSupportError("11.5.1");
+		expect(error).toContain("min-release-age requires npm>=11.10.0");
+		expect(error).toContain("refusing rather than silently skipping");
+	});
+
+	it("the shared preflight refuses below npm 11.10.0 and passes at the floor", () => {
 		// The shared assert is what BOTH governed install paths (npm-resolution-run
 		// and packages.ts) call, so the fail-closed guarantee is comprehensive.
 		let failed: string | null = null;
@@ -292,7 +285,7 @@ describe("npm resolution policy", () => {
 			probeNpmVersion: () => ({ status: 0, stdout: "10.9.2\n" }),
 			fail,
 		});
-		expect(failed).toContain("min-release-age requires npm>=11");
+		expect(failed).toContain("min-release-age requires npm>=11.10.0");
 
 		// npm probe itself fails → refuse (can't prove enforceability).
 		failed = null;
@@ -421,7 +414,7 @@ describe("npm resolution policy", () => {
 		// the governed env and runs the command (recorder exits 7). On npm < 11 it
 		// REFUSES up front — the recorder never runs — so the governed-env
 		// propagation cannot be observed; the refusal is the correct behaviour.
-		if (RUNNING_NPM_MAJOR >= MIN_NPM_MAJOR_FOR_QUARANTINE) {
+		if (quarantineSupportError(RUNNING_NPM_VERSION) === null) {
 			expect(result.status).toBe(7);
 			expect(JSON.parse(readFileSync(output, "utf8"))).toEqual({
 				registry: NPM_REGISTRY_URL,
@@ -431,7 +424,7 @@ describe("npm resolution policy", () => {
 			});
 		} else {
 			expect(result.status).toBe(1);
-			expect(result.stderr).toContain("min-release-age requires npm>=11");
+			expect(result.stderr).toContain("min-release-age requires npm>=11.10.0");
 		}
 
 		const missing = spawnSync(

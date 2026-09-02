@@ -13,17 +13,13 @@ import {
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { MIN_NPM_MAJOR_FOR_QUARANTINE, npmMajor } from "./release-age-policy.js";
+import { quarantineSupportError } from "./release-age-policy.js";
 
 const PIJ_ROOT = resolve(import.meta.dirname, "..", "..");
-const RUNNING_NPM_MAJOR = npmMajor(
-	spawnSync("npm", ["--version"], { encoding: "utf8" }).stdout ?? "",
-);
-// On npm < 11 the fail-closed quarantine preflight refuses every governed
-// install up front (dove ruling), so the bootstrap exits before running pi. The
-// per-test assertions branch on this: npm >= 11 exercises the install flow;
-// npm < 11 asserts the refusal. Node 24 covers the first, node 22 the second.
-const QUARANTINE_ENFORCEABLE = RUNNING_NPM_MAJOR >= MIN_NPM_MAJOR_FOR_QUARANTINE;
+const RUNNING_NPM_VERSION = spawnSync("npm", ["--version"], { encoding: "utf8" }).stdout ?? "";
+// Older npm releases silently ignore min-release-age, so governed installs
+// refuse before running pi. Supported releases exercise the install flow.
+const QUARANTINE_ENFORCEABLE = quarantineSupportError(RUNNING_NPM_VERSION) === null;
 
 function expectQuarantineRefusal(result: {
 	status: number | null;
@@ -31,7 +27,7 @@ function expectQuarantineRefusal(result: {
 	stderr: string;
 }) {
 	expect(result.status).not.toBe(0);
-	expect(`${result.stdout}\n${result.stderr}`).toContain("min-release-age requires npm>=11");
+	expect(`${result.stdout}\n${result.stderr}`).toContain("min-release-age requires npm>=11.10.0");
 }
 const temporaryRoots: string[] = [];
 
