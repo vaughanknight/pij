@@ -1,7 +1,7 @@
 # Backpressure Coverage — seat-session-identity
 
 **Plan**: [plan.dd.md](../plan.dd.md)
-**Basis (plan SHA-256)**: 54fbecf708cfad58ce6e239c0a2fb8510486cc50d669ff590c4695992c1d4004
+**Basis (plan SHA-256)**: 9e058beb1ef9e9bb4abb757e43022738f2671eed8df78a83d75c5bbbd0763a8f
 **Generated**: 2026-09-02
 **Certainty**: Partial
 
