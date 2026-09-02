@@ -1,0 +1,86 @@
+{
+  "dd": {
+    "schema": "pij-team/impl-guide"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Implementation guide",
+        "plan": "docs/plans/134-omp-no-composer-veto/plan.dd.json",
+        "mode": "build",
+        "updated": "2026-09-02"
+      }
+    },
+    {
+      "name": "architecture",
+      "value": "Rust only. Delivery: crates/daemon/src/delivery/mod.rs ~L231-260 (socket_available → fresh_injection_verdict → select_rung). u1: branch on recipient.harness — for Omp|Pi skip the verdict entirely and hand to the transport (the extension event stream; confirm which Transport impl serves omp in crates/transport and that it buffers a steer during a turn). Keep select_rung pure; add the harness gate one level up. u2: a notice scheduler in the drain (crates/daemon/src/delivery or pointer/worker.rs pattern) that, for rows pending > notice_after_secs (config.rs), enqueues a control message to the SENDER seat (from `pij-rs`, body `still queued: …`), once per row, and `delivered late` on completion when delay > threshold; CLI prints outstanding notices on stderr (crates/cli/src/main.rs, like the stale-card warning). Wire additive only."
+    },
+    {
+      "name": "fan_out",
+      "value": {
+        "decision": "solo-pm",
+        "rationale": "u1 is ~20 lines and urgent — ship it in the first commit; u2 follows on the same branch"
+      }
+    },
+    {
+      "name": "units",
+      "value": [
+        {
+          "id": "u1",
+          "name": "omp/pi bypass the composer veto",
+          "paths": "crates/daemon/src/delivery/mod.rs, crates/transport (read only unless a stream fact is wrong), tests",
+          "responsibility": "AC1-AC3",
+          "interface": "no wire change",
+          "test_strategy": "RED-first: fake gate counting calls; live control on main",
+          "depends_on": "none",
+          "wave": 1,
+          "note": "witness rows: 888D45C1 to pij-upper-dormouse (attempt 101)"
+        },
+        {
+          "id": "u2",
+          "name": "sender notices",
+          "paths": "crates/core/src/config.rs, crates/daemon/src/delivery/mod.rs (drain), crates/daemon/src/http/types.rs (additive), crates/cli/src/main.rs, tests",
+          "responsibility": "AC4",
+          "interface": "control message kind `queued-notice` (additive)",
+          "test_strategy": "RED-first scheduler test; live AC4",
+          "depends_on": "u1",
+          "wave": 2,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "name": "isolation",
+      "value": {
+        "mode": "solo-pm in the plan worktree",
+        "note": "Default: each coder gets its own worktree, branching off the PM's plan branch; unit lands back onto the plan branch (PM merges — coders never merge). Shared-tree work is the retro-proven #1 hazard (staged sweeps, untrustworthy greens) — only choose it for trivially disjoint single-wave work, and then file-scoped `git add` only, never -A. REMEMBER: fences partition WRITE intent, not the build — a mid-refactor sibling can still break your compile, so waves must respect build dependencies, and a broken workspace build is a PM composition concern, not a coder's to fix cross-fence."
+      }
+    },
+    {
+      "name": "composition",
+      "value": {
+        "composer": "pm",
+        "steps": "u1 commit + live proof FIRST (so it can ship alone if u2 slips); u2; cargo receipts; harness checks; PR",
+        "integration_proof": "assets/live-proof.md"
+      }
+    },
+    {
+      "name": "review",
+      "value": {
+        "when": "after composition (or after solo-pm coding), before the PR into main",
+        "inputs": "plan.dd.md + this impl-guide + full branch diff; priority = plan promises, composition seams, interface drift, correctness, contract-test gaps",
+        "model_override": "cross-model: Claude opus seat"
+      }
+    },
+    {
+      "name": "risks",
+      "value": [
+        {
+          "id": "r1",
+          "text": "Keep to the named paths; ask prime before widening."
+        }
+      ]
+    }
+  ]
+}
