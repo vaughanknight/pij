@@ -213,7 +213,7 @@ describe("pij index — footer status bar", () => {
 		delete process.env.PIJ_DAEMON_GENERATION;
 		vi.spyOn(daemonHttp, "detectDaemonGeneration").mockResolvedValue(fakeRustGeneration());
 		const { pi, handlers } = makeFakePi();
-		const { ctx, statuses } = makeFakeCtx("native-rust-statusbar");
+		const { ctx, statuses, notices } = makeFakeCtx("native-rust-statusbar");
 
 		pijExtension(pi);
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
@@ -221,6 +221,8 @@ describe("pij index — footer status bar", () => {
 		expect(statuses.find((status) => status.key === "pij")?.value).toMatch(
 			/^pij-[a-z]+(-[a-z]+)* · rs-v1$/,
 		);
+		expect(notices).toContainEqual(expect.stringContaining("detected rs daemon at"));
+		expect(notices.every((notice) => !notice.includes("Rust daemon v1"))).toBe(true);
 		await handlers.get("session_shutdown")?.({}, ctx);
 	});
 

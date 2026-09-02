@@ -591,21 +591,22 @@ export interface CliResult {
 		  };
 }
 
-export interface RsSessionJoinRow {
+export interface GenerationSessionJoinRow {
 	readonly pijId: SessionId;
 	readonly harness: string | null;
 	readonly harnessSessionId: string | null;
-	readonly gitCommonDir: string;
+	readonly gitCommonDir: string | null;
 	readonly lifecycle: string | null;
 	readonly boundModel: string | null;
 	readonly spawnedBy: SessionId | null;
 	readonly transcriptPath: string | null;
-	readonly generation: "rs";
+	readonly generation: "legacy" | "rs";
 }
 
-export type GenerationSessionJoinRow =
-	| (JoinRow & { readonly generation: "legacy" })
-	| RsSessionJoinRow;
+export interface RsSessionJoinRow extends GenerationSessionJoinRow {
+	readonly gitCommonDir: string;
+	readonly generation: "rs";
+}
 
 function nullableString(value: unknown): value is string | null {
 	return value === null || typeof value === "string";
@@ -627,30 +628,69 @@ function isRsSessionJoinRow(value: unknown): value is RsSessionJoinRow {
 	);
 }
 
+function normalizeRsSessionJoinRow(row: RsSessionJoinRow): RsSessionJoinRow {
+	return {
+		pijId: row.pijId,
+		harness: row.harness,
+		harnessSessionId: row.harnessSessionId,
+		gitCommonDir: row.gitCommonDir,
+		lifecycle: row.lifecycle,
+		boundModel: row.boundModel,
+		spawnedBy: row.spawnedBy,
+		transcriptPath: row.transcriptPath,
+		generation: "rs",
+	};
+}
+
 function rsSessionRows(payload: unknown): readonly RsSessionJoinRow[] {
 	if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
 		throw new Error("rs sessions payload must be an object");
 	}
 	const rows = (payload as { readonly rows?: unknown }).rows;
-	if (!Array.isArray(rows) || !rows.every(isRsSessionJoinRow)) {
+	if (!Array.isArray(rows)) {
 		throw new Error("rs sessions payload must carry frozen legacy-field rows");
 	}
 	const seen = new Set<SessionId>();
+	const normalized: RsSessionJoinRow[] = [];
 	for (const row of rows) {
+		if (!isRsSessionJoinRow(row)) {
+			throw new Error("rs sessions payload must carry frozen legacy-field rows");
+		}
 		if (seen.has(row.pijId)) throw new Error(`rs sessions payload repeats ${row.pijId}`);
 		seen.add(row.pijId);
+		normalized.push(normalizeRsSessionJoinRow(row));
 	}
-	return rows;
+	return normalized;
+}
+
+function normalizeLegacySessionJoinRow(
+	legacy: JoinRow,
+	gitCommonDir?: string | null,
+): GenerationSessionJoinRow {
+	return {
+		pijId: legacy.pijId,
+		harness: legacy.harness,
+		harnessSessionId: legacy.harnessSessionId,
+		gitCommonDir: legacy.gitCommonDir ?? gitCommonDir ?? null,
+		lifecycle: legacy.lifecycle ?? null,
+		boundModel: legacy.boundModel ?? null,
+		spawnedBy: legacy.spawnedBy ?? null,
+		transcriptPath: legacy.transcriptPath ?? null,
+		generation: "legacy",
+	};
 }
 
 function fillRsSessionRow(rs: RsSessionJoinRow, legacy: JoinRow): RsSessionJoinRow {
 	return {
-		...rs,
+		pijId: rs.pijId,
+		harness: rs.harness,
 		harnessSessionId: rs.harnessSessionId ?? legacy.harnessSessionId,
+		gitCommonDir: rs.gitCommonDir,
 		lifecycle: rs.lifecycle ?? legacy.lifecycle ?? null,
 		boundModel: rs.boundModel ?? legacy.boundModel ?? null,
 		spawnedBy: rs.spawnedBy ?? legacy.spawnedBy ?? null,
 		transcriptPath: rs.transcriptPath ?? legacy.transcriptPath ?? null,
+		generation: "rs",
 	};
 }
 
@@ -669,13 +709,7 @@ export function mergeSessionRows(
 	const consumed = new Set<SessionId>();
 	const merged = legacyRows.map((legacy): GenerationSessionJoinRow => {
 		const rs = rsById.get(legacy.pijId);
-		if (rs === undefined) {
-			return {
-				...legacy,
-				...(gitCommonDir === undefined || gitCommonDir === null ? {} : { gitCommonDir }),
-				generation: "legacy",
-			};
-		}
+		if (rs === undefined) return normalizeLegacySessionJoinRow(legacy, gitCommonDir);
 		consumed.add(rs.pijId);
 		return fillRsSessionRow(rs, legacy);
 	});
@@ -3030,8 +3064,13 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 					descs = filterByFolder(descs, deps.cwd);
 				} else {
 					const selection = selectByRepository(descs, deps.cwd, deps.repository);
-					descs = selection.descriptors;
-					gitCommonDir = selection.gitCommonDir;
+					if (selection.gitCommonDir === null) {
+						descs = filterByFolder(descs, deps.cwd);
+						gitCommonDir = deps.cwd;
+					} else {
+						descs = selection.descriptors;
+						gitCommonDir = selection.gitCommonDir;
+					}
 				}
 			}
 			const rows = mergeSessionRows(buildSessionJoinRows(descs), { rows: [] }, gitCommonDir);

@@ -170,6 +170,61 @@ describe("mergeSessionRows", () => {
 			},
 		]);
 	});
+
+	it("normalizes legacy-only and rs-only rows to the same frozen key set and order", () => {
+		const keys = [
+			"pijId",
+			"harness",
+			"harnessSessionId",
+			"gitCommonDir",
+			"lifecycle",
+			"boundModel",
+			"spawnedBy",
+			"transcriptPath",
+			"generation",
+		];
+		const rows = mergeSessionRows(
+			[
+				{
+					pijId: "pij-legacy",
+					harness: "claude",
+					harnessSessionId: "legacy-session",
+					prime: true,
+					oldPrime: false,
+					parentId: "pij-parent",
+				},
+			],
+			{
+				rows: [
+					{
+						pijId: "pij-rs",
+						harness: "omp",
+						harnessSessionId: "rs-session",
+						gitCommonDir: "/repo/.git",
+						lifecycle: "bound",
+						boundModel: null,
+						spawnedBy: null,
+						transcriptPath: null,
+						generation: "rs",
+					},
+				],
+			},
+		);
+
+		expect(Object.keys(rows[0] ?? {})).toEqual(keys);
+		expect(Object.keys(rows[1] ?? {})).toEqual(keys);
+		expect(rows[0]).toEqual({
+			pijId: "pij-legacy",
+			harness: "claude",
+			harnessSessionId: "legacy-session",
+			gitCommonDir: null,
+			lifecycle: null,
+			boundModel: null,
+			spawnedBy: null,
+			transcriptPath: null,
+			generation: "legacy",
+		});
+	});
 });
 
 describe("buildExportLines (eval-able self-identity, AC-5)", () => {
@@ -252,8 +307,6 @@ describe("dispatch('sessions') smoke", () => {
 			harness: "copilot",
 			boundModel: "gpt-5.5",
 			generation: "legacy",
-			prime: false,
-			oldPrime: false,
 		});
 		expect(rows[1]).toMatchObject({
 			pijId: "pij-cx",
