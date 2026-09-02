@@ -193,6 +193,9 @@ impl RegistrationService {
                 .as_deref()
                 .zip(claim.spawn_id.as_deref())
                 .is_some_and(|(launched, claimed)| !launched.is_empty() && launched == claimed);
+        let requested_model = descriptor.model.clone();
+        let model_matches =
+            requested_model_matches(requested_model.as_deref(), claim.actual_model.as_deref());
         descriptor.harness = harness;
         if let Some(harness_session) = harness_session {
             descriptor.harness_session = Some(harness_session);
@@ -208,7 +211,9 @@ impl RegistrationService {
         if descriptor.spawn_id.is_none() {
             descriptor.spawn_id = claim.spawn_id;
         }
-        if descriptor.model.is_none() {
+        if binds_spawned_incarnation {
+            descriptor.model = claim.actual_model.clone();
+        } else if descriptor.model.is_none() {
             descriptor.model = claim.model;
         }
         if descriptor.provider.is_none() {
@@ -217,7 +222,9 @@ impl RegistrationService {
         if descriptor.effort.is_none() {
             descriptor.effort = claim.effort;
         }
-        descriptor.parent = claim.parent;
+        if let Some(parent) = claim.parent {
+            descriptor.parent = Some(parent);
+        }
         descriptor.relay = claim.relay;
         // Keep possession only for the same live process or the matching first
         // bind of a spawned process. A different process with no launch
@@ -244,7 +251,38 @@ impl RegistrationService {
             .put(descriptor.clone())
             .await
             .map_err(RegistrationError::Runtime)?;
+        if binds_spawned_incarnation && model_matches {
+            self.event_bus
+                .publish(Event {
+                    seq: None,
+                    v: wire::EVENT_VERSION,
+                    at: system_time_ms()?,
+                    kind: "spawn.bound".to_string(),
+                    seat: Some(descriptor.id.clone()),
+                    payload: serde_json::json!({
+                        "spawn_id": descriptor.spawn_id,
+                        "pane": descriptor.pane,
+                        "pid": descriptor.proc.map(|identity| identity.pid),
+                    })
+                    .to_string(),
+                })
+                .await
+                .map_err(RegistrationError::Runtime)?;
+        }
         Ok(descriptor)
+    }
+}
+
+pub(crate) fn requested_model_matches(requested: Option<&str>, actual: Option<&str>) -> bool {
+    match requested {
+        None => true,
+        Some(requested) => actual.is_some_and(|actual| {
+            actual == requested
+                || (!requested.contains('/')
+                    && actual
+                        .rsplit_once('/')
+                        .is_some_and(|(_, model)| model == requested))
+        }),
     }
 }
 
@@ -310,6 +348,7 @@ mod tests {
             proc_start: Some(126),
             spawn_id: None,
             model: None,
+            actual_model: None,
             provider: None,
             effort: None,
             parent: None,

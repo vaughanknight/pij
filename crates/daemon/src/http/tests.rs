@@ -295,6 +295,7 @@ async fn registration_corroborates_process_and_refuses_shared_process_aliases() 
         proc_start: Some(identity.proc_start),
         spawn_id: Some("spawn-1".to_string()),
         model: Some("provider/model".to_string()),
+        actual_model: None,
         provider: Some("provider".to_string()),
         effort: Some("high".to_string()),
         parent: None,
@@ -321,6 +322,7 @@ async fn registration_corroborates_process_and_refuses_shared_process_aliases() 
     let self_declaration = Registration {
         spawn_id: Some("self-declared-spawn".to_string()),
         model: Some("self-declared/model".to_string()),
+        actual_model: None,
         provider: Some("self-declared".to_string()),
         effort: Some("low".to_string()),
         ..registration.clone()
@@ -460,8 +462,10 @@ async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
             session: Some("fleet".to_string()),
             caller_pane: None,
             name: None,
-            parent: None,
+            parent: Some("pij-parent".into()),
             accept_inbound: false,
+            wait_seconds: None,
+            no_wait: true,
         })
         .send()
         .await
@@ -522,6 +526,7 @@ async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
             proc_start: Some(identity.proc_start),
             spawn_id: Some(launched_spawn_id.clone()),
             model: None,
+            actual_model: None,
             provider: None,
             effort: None,
             parent: None,
@@ -549,6 +554,316 @@ async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
     let bound = bound.expect("bound launched row");
     assert_eq!(bound.spawn_id.as_deref(), Some(launched_spawn_id.as_str()));
     assert_eq!(bound.pane.as_deref(), Some(launched_pane.id.as_str()));
+    assert_eq!(
+        bound.parent.as_ref().map(SeatId::as_str),
+        Some("pij-parent"),
+        "the first bind cannot erase the parent persisted by spawn"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn spawn_wait_reports_child_exit_with_log_tail() {
+    let registry = Arc::new(FakeRegistry::new());
+    let tmux = Arc::new(
+        FakeTmux::new().with_standing_capture("omp: model selector refused\nchild stopped"),
+    );
+    let spine = Arc::new(FakeSpine::new());
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        spine.clone(),
+    )
+    .await;
+    services.tmux = tmux;
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{addr}/v1/spawn"))
+        .bearer_auth("key")
+        .json(&SpawnRequest {
+            id: Some("pij-exits-before-bind".into()),
+            harness: Harness::Omp,
+            executable: Some("omp".to_string()),
+            model: Some("bad/model".to_string()),
+            effort: None,
+            cwd: "/abs/tree".to_string(),
+            session: Some("fleet".to_string()),
+            caller_pane: None,
+            name: None,
+            parent: None,
+            accept_inbound: false,
+            wait_seconds: Some(1),
+            no_wait: false,
+        })
+        .send();
+    let report_exit = async {
+        let spawned = loop {
+            if let Some(spawned) = registry
+                .get(&SeatId::from("pij-exits-before-bind"))
+                .await
+                .expect("read pre-bind row")
+            {
+                break spawned;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        };
+        let spawn_id = spawned.spawn_id.expect("spawn correlator");
+        let root = std::env::temp_dir().join("pij-rs-spawn");
+        std::fs::create_dir_all(&root).expect("spawn evidence directory");
+        std::fs::write(root.join(format!("{spawn_id}.status")), "1\n").expect("child exit status");
+        (
+            root.join(format!("{spawn_id}.log")),
+            root.join(format!("{spawn_id}.status")),
+        )
+    };
+
+    let (response, (log_path, status_path)) = tokio::join!(response, report_exit);
+    let response = response.expect("spawn response");
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_GATEWAY);
+    let body = response.text().await.expect("failure envelope");
+    assert!(body.contains("spawn.failed"), "{body}");
+    assert!(body.contains("exit code 1"), "{body}");
+    assert!(body.contains(log_path.to_string_lossy().as_ref()), "{body}");
+    assert!(body.contains("model selector refused"), "{body}");
+    let events = spine
+        .tail(
+            Some(&SeatId::from("pij-exits-before-bind")),
+            pij_core::model::Seq(0),
+        )
+        .await
+        .expect("failure event");
+    assert_eq!(
+        events.last().map(|event| event.kind.as_str()),
+        Some("spawn.failed")
+    );
+
+    let _ = std::fs::remove_file(log_path);
+    let _ = std::fs::remove_file(status_path);
+    server.abort();
+}
+
+#[tokio::test]
+async fn spawn_wait_returns_bound_process_and_publishes_event() {
+    let registry = Arc::new(FakeRegistry::new());
+    let tmux = Arc::new(FakeTmux::new());
+    let spine = Arc::new(FakeSpine::new());
+    let identity = ProcIdentity {
+        pid: 13_242,
+        proc_start: 20260902013242,
+    };
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        spine.clone(),
+    )
+    .await;
+    services.tmux = tmux;
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(identity));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{addr}/v1/spawn"))
+        .bearer_auth("key")
+        .json(&SpawnRequest {
+            id: Some("pij-binds-after-spawn".into()),
+            harness: Harness::Omp,
+            executable: Some("omp".to_string()),
+            model: Some("github-copilot/gpt-5.6-sol".to_string()),
+            effort: None,
+            cwd: "/abs/tree".to_string(),
+            session: Some("fleet".to_string()),
+            caller_pane: None,
+            name: None,
+            parent: Some("pij-parent".into()),
+            accept_inbound: false,
+            wait_seconds: Some(1),
+            no_wait: false,
+        })
+        .send();
+    let register = async {
+        let spawned = loop {
+            if let Some(spawned) = registry
+                .get(&SeatId::from("pij-binds-after-spawn"))
+                .await
+                .expect("read pre-bind row")
+            {
+                break spawned;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        };
+        let registered = client
+            .post(format!("http://{addr}/v1/register"))
+            .bearer_auth("key")
+            .json(&Registration {
+                supersedes: None,
+                id: "runtime-candidate".to_string(),
+                harness: "omp".to_string(),
+                folder: "/abs/tree".to_string(),
+                pane: spawned.pane,
+                pid: Some(identity.pid),
+                proc_start: Some(identity.proc_start),
+                spawn_id: spawned.spawn_id,
+                model: Some("github-copilot/gpt-5.6-sol".to_string()),
+                actual_model: Some("github-copilot/gpt-5.6-sol".to_string()),
+                provider: None,
+                effort: None,
+                parent: None,
+                relay: false,
+            })
+            .send()
+            .await
+            .expect("registration response");
+        assert_eq!(registered.status(), reqwest::StatusCode::OK);
+    };
+
+    let (response, ()) = tokio::join!(response, register);
+    let response = response.expect("spawn response");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let envelope: Envelope<SpawnResponse> = response.json().await.expect("spawn outcome");
+    let outcome = envelope.data.expect("spawn outcome data");
+    assert!(outcome.dispatched);
+    assert!(outcome.bound);
+    assert_eq!(outcome.pid, Some(identity.pid));
+    assert_eq!(outcome.seat.id.as_str(), "pij-binds-after-spawn");
+    assert_eq!(
+        outcome.seat.parent.as_ref().map(SeatId::as_str),
+        Some("pij-parent")
+    );
+    let events = spine
+        .tail(
+            Some(&SeatId::from("pij-binds-after-spawn")),
+            pij_core::model::Seq(0),
+        )
+        .await
+        .expect("bind event");
+    assert_eq!(
+        events.last().map(|event| event.kind.as_str()),
+        Some("spawn.bound")
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn spawn_reports_model_mismatch_without_killing_registered_seat() {
+    let registry = Arc::new(FakeRegistry::new());
+    let tmux = Arc::new(FakeTmux::new().with_standing_capture(
+        "Warning: Model requested/model not found\nfooter: pij-model-mismatch · no-model",
+    ));
+    let spine = Arc::new(FakeSpine::new());
+    let identity = ProcIdentity {
+        pid: 13_243,
+        proc_start: 20260902013243,
+    };
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        spine.clone(),
+    )
+    .await;
+    services.tmux = tmux.clone();
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(identity));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("http://{addr}/v1/spawn"))
+        .bearer_auth("key")
+        .json(&SpawnRequest {
+            id: Some("pij-model-mismatch".into()),
+            harness: Harness::Omp,
+            executable: Some("omp".to_string()),
+            model: Some("requested/model".to_string()),
+            effort: None,
+            cwd: "/abs/tree".to_string(),
+            session: Some("fleet".to_string()),
+            caller_pane: None,
+            name: None,
+            parent: None,
+            accept_inbound: false,
+            wait_seconds: Some(1),
+            no_wait: false,
+        })
+        .send();
+    let register = async {
+        let spawned = loop {
+            if let Some(spawned) = registry
+                .get(&SeatId::from("pij-model-mismatch"))
+                .await
+                .expect("read pre-bind row")
+            {
+                break spawned;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        };
+        let registered = client
+            .post(format!("http://{addr}/v1/register"))
+            .bearer_auth("key")
+            .json(&Registration {
+                supersedes: None,
+                id: "pij-model-mismatch".to_string(),
+                harness: "omp".to_string(),
+                folder: "/abs/tree".to_string(),
+                pane: spawned.pane,
+                pid: Some(identity.pid),
+                proc_start: Some(identity.proc_start),
+                spawn_id: spawned.spawn_id,
+                model: Some("requested/model".to_string()),
+                actual_model: None,
+                provider: None,
+                effort: None,
+                parent: None,
+                relay: false,
+            })
+            .send()
+            .await
+            .expect("registration response");
+        assert_eq!(registered.status(), reqwest::StatusCode::OK);
+    };
+
+    let (response, ()) = tokio::join!(response, register);
+    let response = response.expect("spawn response");
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_GATEWAY);
+    let body = response.text().await.expect("model mismatch envelope");
+    assert!(body.contains("model-mismatch"), "{body}");
+    assert!(body.contains("requested/model"), "{body}");
+    assert!(body.contains("actual no-model"), "{body}");
+    assert!(
+        body.contains("footer: pij-model-mismatch · no-model"),
+        "{body}"
+    );
+    let bound = registry
+        .get(&SeatId::from("pij-model-mismatch"))
+        .await
+        .expect("bound row read")
+        .expect("bound row retained");
+    assert_eq!(
+        bound.proc,
+        Some(identity),
+        "mismatch reports but does not kill the seat"
+    );
+    assert!(
+        tmux.list_panes()
+            .await
+            .expect("pane list")
+            .iter()
+            .any(|pane| { pane.id == bound.pane.as_deref().expect("bound pane") })
+    );
+    let events = spine
+        .tail(
+            Some(&SeatId::from("pij-model-mismatch")),
+            pij_core::model::Seq(0),
+        )
+        .await
+        .expect("mismatch event");
+    assert_eq!(
+        events.last().map(|event| event.kind.as_str()),
+        Some("spawn.failed")
+    );
 
     server.abort();
 }
@@ -590,6 +905,7 @@ async fn reregistration_prefers_exact_id_over_spawn_match_without_fresh_allocati
             proc_start: Some(identity.proc_start),
             spawn_id: Some("spawn-shared".to_string()),
             model: None,
+            actual_model: None,
             provider: None,
             effort: None,
             parent: None,
@@ -667,6 +983,7 @@ async fn registration_does_not_inherit_a_port_stamped_for_another_incarnation() 
             // A DIFFERENT incarnation than the one the port was stamped for.
             spawn_id: Some("spawn-new".to_string()),
             model: None,
+            actual_model: None,
             provider: None,
             effort: None,
             parent: None,
@@ -733,6 +1050,7 @@ async fn registration_cannot_adopt_a_spawn_match_that_is_already_bound() {
             proc_start: Some(squatter.proc_start),
             spawn_id: Some("spawn-bound".to_string()),
             model: None,
+            actual_model: None,
             provider: None,
             effort: None,
             parent: None,
@@ -803,6 +1121,7 @@ async fn registration_cannot_adopt_a_spawn_match_from_another_pane() {
             proc_start: Some(identity.proc_start),
             spawn_id: Some("spawn-shared".to_string()),
             model: None,
+            actual_model: None,
             provider: None,
             effort: None,
             parent: None,
@@ -894,6 +1213,7 @@ async fn re_registration_preserves_live_resource_and_consent_stamps() {
                 proc_start: Some(identity.proc_start),
                 spawn_id: Some(spawn_id.to_string()),
                 model: None,
+                actual_model: None,
                 provider: None,
                 effort: None,
                 parent: None,
@@ -948,6 +1268,7 @@ async fn registration_refuses_uncorroborated_or_half_process_identity() {
         proc_start: Some(11),
         spawn_id: None,
         model: None,
+        actual_model: None,
         provider: None,
         effort: None,
         parent: None,
@@ -1023,6 +1344,8 @@ async fn spawn_stamps_only_the_argv_that_reached_the_observed_launch() {
             name: None,
             parent: Some("pij-parent".into()),
             accept_inbound,
+            wait_seconds: None,
+            no_wait: true,
         };
 
     for (id, accept, session, pane) in [
@@ -1055,11 +1378,15 @@ async fn spawn_stamps_only_the_argv_that_reached_the_observed_launch() {
 
     let calls = tmux.calls();
     assert_eq!(calls[0], "list_panes");
-    assert!(calls[1].contains("new_window:fleet:pij-closed:env"));
+    assert!(calls[1].contains("new_window:fleet:pij-closed:"));
+    assert!(calls[1].contains("__spawn-child"));
+    assert!(calls[1].contains("\"env\""));
     assert!(calls[1].contains("PIJ_SESSION_ID=pij-closed"));
     assert!(calls[1].contains("/path with spaces/claude"));
     assert!(!calls[1].contains("crossSessionInbound"));
-    assert!(calls[2].contains("new_window:fleet:pij-open:env"));
+    assert!(calls[2].contains("new_window:fleet:pij-open:"));
+    assert!(calls[2].contains("__spawn-child"));
+    assert!(calls[2].contains("\"env\""));
     assert!(calls[2].contains("PIJ_SESSION_ID=pij-open"));
     assert!(calls[2].contains("/path with spaces/claude"));
     assert!(calls[2].contains(r#"{\"crossSessionInbound\":\"accept\"}"#));
@@ -1143,6 +1470,8 @@ async fn direct_http_spawn_carries_no_claude_default_the_cli_owns_it() {
             name: None,
             parent: None,
             accept_inbound: false,
+            wait_seconds: None,
+            no_wait: true,
         })
         .send()
         .await

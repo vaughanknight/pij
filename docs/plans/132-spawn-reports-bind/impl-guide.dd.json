@@ -29,7 +29,7 @@
         {
           "id": "u1",
           "name": "the unit",
-          "paths": "crates/harnesses/src/spawn.rs, crates/daemon/src/http/mod.rs (spawn_seat only), crates/daemon/src/registration.rs (bind notification hook only), crates/cli/src/main.rs (spawn verb output), tests",
+          "paths": "crates/harnesses/src/spawn.rs, crates/harnesses/src/lib.rs (one additive observed-launch re-export only), crates/daemon/src/http/mod.rs (spawn_seat only), crates/daemon/src/http/types.rs (SpawnRequest, SpawnResponse, Registration actual_model only), crates/daemon/src/registration.rs (bind notification hook only), crates/cli/src/main.rs (spawn verb output), .pi/extensions/pij/index.ts (session-start actualModel wiring only), .pi/extensions/pij/adapters/rust-runtime.ts (boot identity/model only), .pi/extensions/pij/core/daemon-wire.ts (Registration actual_model only), tests",
           "responsibility": "Deliver the plan goals.",
           "interface": "as described in architecture",
           "test_strategy": "RED-first; every new test proven red on the pre-fix tree, output pasted.",

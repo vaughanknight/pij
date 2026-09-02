@@ -12,7 +12,7 @@
 | title | PM packet |
 | role | pm |
 | plan | docs/plans/132-spawn-reports-bind/plan.dd.json |
-| seat | &lt;pij seat name once spawned&gt; |
+| seat | pij-integral-ferret |
 | updated | 2026-09-02 |
 
 <a id="mission"></a>

@@ -4,10 +4,11 @@ mod identity;
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::process::{Command as ProcessCommand, ExitCode};
+use std::process::{Command as ProcessCommand, ExitCode, Stdio};
+use std::time::Duration;
 
 use clap::{Parser, Subcommand};
 use pij_cli::{
@@ -16,7 +17,7 @@ use pij_cli::{
     render_frame, setup_refusal,
 };
 use pij_core::error::PijError;
-use pij_core::model::{Envelope, ErrorKind, Event, Harness, SeatId};
+use pij_core::model::{Envelope, ErrorKind, Event, Harness, SeatDescriptor, SeatId};
 use pij_core::wire;
 use pij_harnesses::{
     claude_homes, ensure_claude_inbound_accept, ensure_claude_session_start_hook,
@@ -71,6 +72,19 @@ enum Command {
     },
     /// Ask a running daemon whether it is healthy.
     Ping,
+    /// Internal child observer used by the daemon's tmux launch wrapper.
+    #[command(name = "__spawn-child", hide = true)]
+    SpawnChild {
+        /// Durable child exit-status witness.
+        #[arg(long)]
+        status_file: PathBuf,
+        /// Durable stderr tail source for a failed launch.
+        #[arg(long)]
+        log_file: PathBuf,
+        /// Exact executable and argv after `--`.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<OsString>,
+    },
     /// Inspect local client configuration without changing it.
     Doctor {
         #[command(subcommand)]
@@ -189,6 +203,12 @@ enum Command {
         /// Has no effect on non-Claude harnesses, which never accept it.
         #[arg(long, conflicts_with = "accept_inbound")]
         no_accept_inbound: bool,
+        /// Return immediately after tmux accepts the launch.
+        #[arg(long)]
+        no_wait: bool,
+        /// Maximum seconds to wait for the spawned seat to register.
+        #[arg(long, default_value_t = 30)]
+        wait_seconds: u64,
     },
     /// Relaunch one tombstoned seat with its prior identity and launch intent.
     Revive {
@@ -420,6 +440,14 @@ async fn main() -> ExitCode {
 }
 
 async fn run(cli: Cli) -> ExitCode {
+    if let Command::SpawnChild {
+        status_file,
+        log_file,
+        command,
+    } = &cli.command
+    {
+        return run_spawn_child(status_file, log_file, command);
+    }
     let hook_dir = default_state_dir();
     let state_dir =
         match resolve_state_dir(cli.state_dir.clone(), std::env::var_os("PIJ_RS_STATE_DIR")) {
@@ -511,6 +539,9 @@ async fn run(cli: Cli) -> ExitCode {
     match cli.command {
         Command::Daemon { .. } => unreachable!("daemon returned before client construction"),
         Command::Doctor { .. } => unreachable!("doctor returned before client construction"),
+        Command::SpawnChild { .. } => {
+            unreachable!("spawn child returned before client construction")
+        }
         Command::Ping => emit(&client.ping().await, cli.json),
         Command::Sidecar { action } => {
             let request = match action.request(&client).await {
@@ -582,12 +613,12 @@ async fn run(cli: Cli) -> ExitCode {
             &client.phonehome(&identity_request(seat, pane)).await,
             cli.json,
         ),
-        Command::Spawn { .. } => emit(
-            &client
+        Command::Spawn { .. } => {
+            let response = client
                 .spawn(prepared_spawn.as_ref().expect("spawn request was prepared"))
-                .await,
-            cli.json,
-        ),
+                .await;
+            emit(&spawn_cli_response(response), cli.json)
+        }
         Command::Revive { .. } => emit(
             &client
                 .revive(
@@ -1318,6 +1349,8 @@ fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijE
         parent,
         accept_inbound,
         no_accept_inbound,
+        no_wait,
+        wait_seconds,
     } = command
     else {
         return Ok(None);
@@ -1380,7 +1413,107 @@ fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijE
         name: name.clone(),
         parent: parent.clone().map(Into::into),
         accept_inbound,
+        wait_seconds: (!*no_wait).then_some(*wait_seconds),
+        no_wait: *no_wait,
     }))
+}
+
+fn run_spawn_child(status_file: &Path, log_file: &Path, command: &[OsString]) -> ExitCode {
+    let Some((executable, args)) = command.split_first() else {
+        eprintln!("pij-rs spawn child: no executable followed `--`");
+        return ExitCode::from(2);
+    };
+    if let Some(parent) = status_file.parent()
+        && let Err(error) = std::fs::create_dir_all(parent)
+    {
+        eprintln!(
+            "pij-rs spawn child: could not create evidence directory {}: {error}",
+            parent.display()
+        );
+    }
+    let mut child = match ProcessCommand::new(executable)
+        .args(args)
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(error) => {
+            let message = format!("could not launch {executable:?}: {error}");
+            eprintln!("pij-rs spawn child: {message}");
+            let _ = std::fs::write(log_file, format!("{message}\n"));
+            let _ = std::fs::write(status_file, "exit_code=127\n");
+            std::thread::sleep(Duration::from_secs(2));
+            return ExitCode::from(127);
+        }
+    };
+    let stderr = child.stderr.take().expect("piped child stderr");
+    let log_file = log_file.to_path_buf();
+    let copier = std::thread::spawn(move || {
+        let mut input = stderr;
+        let mut terminal = std::io::stderr().lock();
+        let mut log = std::fs::File::create(&log_file).ok();
+        let mut buffer = [0_u8; 8 * 1024];
+        loop {
+            let read = match input.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(read) => read,
+                Err(error) => {
+                    let _ = writeln!(terminal, "pij-rs spawn child: stderr read failed: {error}");
+                    break;
+                }
+            };
+            let _ = terminal.write_all(&buffer[..read]);
+            let _ = terminal.flush();
+            if let Some(log) = log.as_mut() {
+                let _ = log.write_all(&buffer[..read]);
+            }
+        }
+    });
+    let code = match child.wait() {
+        Ok(status) => status.code().unwrap_or(1),
+        Err(error) => {
+            eprintln!("pij-rs spawn child: could not wait for {executable:?}: {error}");
+            1
+        }
+    };
+    let _ = copier.join();
+    if let Err(error) = std::fs::write(status_file, format!("exit_code={code}\n")) {
+        eprintln!(
+            "pij-rs spawn child: could not write status {}: {error}",
+            status_file.display()
+        );
+    }
+    std::thread::sleep(Duration::from_secs(2));
+    ExitCode::from(u8::try_from(code).unwrap_or(1))
+}
+
+#[derive(serde::Serialize)]
+struct SpawnCliResponse {
+    #[serde(flatten)]
+    seat: SeatDescriptor,
+    dispatched: bool,
+    bound: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pid: Option<u32>,
+}
+
+fn spawn_cli_response(response: Envelope<SeatDescriptor>) -> Envelope<SpawnCliResponse> {
+    Envelope {
+        ok: response.ok,
+        command: response.command,
+        v: response.v,
+        data: response.data.map(|seat| {
+            let pid = seat.proc.map(|identity| identity.pid);
+            SpawnCliResponse {
+                seat,
+                dispatched: true,
+                bound: pid.is_some(),
+                pid,
+            }
+        }),
+        meta: response.meta,
+        error: response.error,
+    }
 }
 
 fn prepare_revive_request(command: &Command) -> Result<Option<ReviveRequest>, PijError> {
@@ -1444,6 +1577,7 @@ impl Command {
         match self {
             Command::Daemon { .. } => "pij daemon",
             Command::Doctor { .. } => "pij doctor",
+            Command::SpawnChild { .. } => "pij spawn child",
             Command::Ping => "pij ping",
             Command::Sidecar { .. } => "pij sidecar",
             Command::Register { .. } => "pij register",
@@ -1504,6 +1638,7 @@ mod tests {
     fn clap_exposes_every_ruled_verb() {
         let names: Vec<_> = Cli::command()
             .get_subcommands()
+            .filter(|command| !command.is_hide_set())
             .map(|command| command.get_name().to_string())
             .collect();
 
@@ -1869,6 +2004,44 @@ mod tests {
             request.accept_inbound,
             "plan 116: Claude seats accept inbound by default with no flags"
         );
+    }
+
+    #[test]
+    fn spawn_waits_thirty_seconds_by_default_and_no_wait_disables_it() {
+        let defaulted = Cli::try_parse_from([
+            "pij-rs",
+            "spawn",
+            "--harness",
+            "claude",
+            "--cwd",
+            "/abs/tree",
+            "--session",
+            "fleet",
+        ])
+        .expect("default wait parses");
+        let defaulted = prepare_spawn_request(&defaulted.command)
+            .expect("default request")
+            .expect("spawn request");
+        assert_eq!(defaulted.wait_seconds, Some(30));
+        assert!(!defaulted.no_wait);
+
+        let immediate = Cli::try_parse_from([
+            "pij-rs",
+            "spawn",
+            "--harness",
+            "claude",
+            "--cwd",
+            "/abs/tree",
+            "--session",
+            "fleet",
+            "--no-wait",
+        ])
+        .expect("no-wait parses");
+        let immediate = prepare_spawn_request(&immediate.command)
+            .expect("no-wait request")
+            .expect("spawn request");
+        assert_eq!(immediate.wait_seconds, None);
+        assert!(immediate.no_wait);
     }
 
     #[test]

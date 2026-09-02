@@ -261,6 +261,86 @@ describe("RustRuntimeSession", () => {
 		});
 	});
 
+	it("binds startup to the daemon row for the spawned pane", async () => {
+		vi.stubEnv("PIJ_ANNOUNCE_TO", "");
+		vi.stubEnv("PIJ_SESSION_ID", "pij-env-candidate");
+		vi.stubEnv("PIJ_SPAWN_ID", "spawn-132");
+		const registrations: Array<Record<string, unknown>> = [];
+		const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+			const path = new URL(String(url)).pathname;
+			if (path === "/v1/seats") {
+				return envelope("pij seats", {
+					seats: [
+						{
+							id: "pij-spawned-row",
+							harness: "omp",
+							folder: "/abs/tree",
+							pane: "%132",
+							proc: null,
+							state: "idle",
+							parent: "pij-parent",
+							spawn_id: "spawn-132",
+						},
+					],
+					unavailable: [],
+				});
+			}
+			if (path === "/v1/register") {
+				const claim = JSON.parse(String(init?.body)) as Record<string, unknown>;
+				registrations.push(claim);
+				return envelope("pij register", {
+					id: "pij-spawned-row",
+					harness: "omp",
+					folder: "/abs/tree",
+					pane: "%132",
+					proc: { pid: process.pid, proc_start: 20260902013200 },
+					state: "idle",
+					parent: "pij-parent",
+					spawn_id: "spawn-132",
+				});
+			}
+			if (path === "/v1/events") {
+				return eventResponse(`${JSON.stringify({ hello: true, v: 1, build: "pij-rs test" })}\n`);
+			}
+			throw new Error(`unexpected path ${path}`);
+		});
+		const client = new PijDaemonClient(
+			{ addr: "127.0.0.1:7461", stateDir: "/tmp/state" },
+			"secret",
+			{
+				fetch: fetchMock as typeof fetch,
+				readFile: async () => "secret",
+				processStart: () => 20260902013200,
+			},
+		);
+		const runtime = new RustRuntimeSession(client, new FakeTmux(), []);
+		runtime.setPi(new FakePiRuntime());
+
+		const boot = await runtime.boot({
+			folder: "/abs/tree",
+			dataDir: "",
+			eventsPath: "",
+			harness: "pi",
+			harnessSessionId: "native-session",
+			piSessionId: "native-session",
+			actualModel: "github-copilot/gpt-5.6-sol",
+			runtimeBin: "omp",
+			paneId: "%132",
+			resetRuntimeState: true,
+			reason: "startup",
+		});
+
+		expect(boot.id).toBe("pij-spawned-row");
+		expect(process.env.PIJ_SESSION_ID).toBe("pij-spawned-row");
+		expect(registrations).toHaveLength(1);
+		expect(registrations[0]).toMatchObject({
+			id: "pij-spawned-row",
+			pane: "%132",
+			spawn_id: "spawn-132",
+			actual_model: "github-copilot/gpt-5.6-sol",
+		});
+	});
+
 	it("suppresses injection when another worker already owns the queued row", async () => {
 		const pi = new FakePiRuntime();
 		const { acknowledgements, claimRequests, runtime } = await bootPushedEvent(

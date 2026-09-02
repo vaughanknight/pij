@@ -39,19 +39,22 @@
           "id": "AC1",
           "text": "LIVE: pij-rs spawn of an omp with a deliberately bad --model → returns spawn.failed naming the exit code and the omp log line that refused; pane transcript pasted.",
           "claim": "a dead-before-bind spawn is reported, not ok:true",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "docs/plans/132-spawn-reports-bind/assets/live-proof.md#deadunusable-model-before-honest-bind"
         },
         {
           "id": "AC2",
           "text": "LIVE: a normal omp spawn returns bound:true with the seat id within the wait window.",
           "claim": "a healthy spawn reports bound",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "docs/plans/132-spawn-reports-bind/assets/live-proof.md#healthy-bind"
         },
         {
           "id": "AC3",
           "text": "Unit RED-first: child exits 1 immediately → caller sees exit + log path, never ok:true.",
           "claim": "failure path has a witness",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "docs/plans/132-spawn-reports-bind/assets/red-witness.md"
         }
       ]
     },
@@ -67,6 +70,5 @@
         }
       ]
     }
-  ],
-  "references": []
+  ]
 }

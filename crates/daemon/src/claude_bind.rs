@@ -100,6 +100,7 @@ impl ClaudeBinder {
             proc_start: Some(observed_start),
             spawn_id: seat.spawn_id.clone(),
             model: seat.model.clone(),
+            actual_model: None,
             provider: seat.provider.clone(),
             effort: seat.effort.clone(),
             parent: seat.parent.clone(),

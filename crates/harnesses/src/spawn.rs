@@ -1,5 +1,8 @@
+use std::path::Path;
+
 use pij_core::error::{PijError, Result};
 use pij_core::model::{Harness, SeatId};
+use pij_core::ports::LaunchCommand;
 
 const PIJ_SESSION_ID: &str = "PIJ_SESSION_ID";
 const PIJ_SPAWN_ID: &str = "PIJ_SPAWN_ID";
@@ -182,6 +185,48 @@ pub fn build_spawn_plan(input: SpawnPlanInput) -> Result<SpawnPlan> {
     })
 }
 
+/// Wrap one exact harness argv with the shipped `pij-rs` child observer.
+///
+/// The harness still inherits tmux's PTY directly. The wrapper only records the
+/// eventual exit code and keeps the pane alive briefly so the daemon can capture
+/// the final visible lines; no shell joins or interprets the harness arguments.
+pub fn observed_launch_command(
+    plan: &SpawnPlan,
+    wrapper_executable: String,
+    status_path: &Path,
+    log_path: &Path,
+) -> Result<LaunchCommand> {
+    if wrapper_executable.trim().is_empty() {
+        return Err(PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: "the child observer executable must be non-empty".to_string(),
+        });
+    }
+    let status_path = status_path.to_str().ok_or_else(|| PijError::Adapter {
+        adapter: "spawn".to_string(),
+        message: "the child exit-status path is not valid UTF-8".to_string(),
+    })?;
+    let log_path = log_path.to_str().ok_or_else(|| PijError::Adapter {
+        adapter: "spawn".to_string(),
+        message: "the child log path is not valid UTF-8".to_string(),
+    })?;
+    let mut args = Vec::with_capacity(plan.args.len() + 7);
+    args.extend([
+        "__spawn-child".to_string(),
+        "--status-file".to_string(),
+        status_path.to_string(),
+        "--log-file".to_string(),
+        log_path.to_string(),
+        "--".to_string(),
+        plan.executable.clone(),
+    ]);
+    args.extend(plan.args.iter().cloned());
+    Ok(LaunchCommand {
+        executable: wrapper_executable,
+        args,
+    })
+}
+
 fn push_option(args: &mut Vec<String>, flag: &str, value: Option<&str>) {
     if let Some(value) = value {
         args.extend([flag.to_string(), value.to_string()]);
@@ -322,6 +367,33 @@ mod tests {
         let without = build_spawn_plan(input(Harness::Copilot)).expect("pointer-only plan");
         assert!(!without.args.iter().any(|arg| arg == "--ui-server"));
         assert_eq!(without.rpc_port_intent, None);
+    }
+
+    #[test]
+    fn observed_launch_keeps_discrete_argv_and_names_status_path() {
+        let plan = build_spawn_plan(input(Harness::Omp)).expect("harness plan");
+        let command = super::observed_launch_command(
+            &plan,
+            "/opt/pij-rs".to_string(),
+            std::path::Path::new("/tmp/spawn.status"),
+            std::path::Path::new("/tmp/spawn.log"),
+        )
+        .expect("observed launch");
+
+        assert_eq!(command.executable, "/opt/pij-rs");
+        assert_eq!(
+            &command.args[..7],
+            [
+                "__spawn-child",
+                "--status-file",
+                "/tmp/spawn.status",
+                "--log-file",
+                "/tmp/spawn.log",
+                "--",
+                "env"
+            ]
+        );
+        assert_eq!(&command.args[7..], plan.args);
     }
 
     #[test]

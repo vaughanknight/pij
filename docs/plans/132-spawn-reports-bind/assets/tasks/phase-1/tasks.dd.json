@@ -8,22 +8,72 @@
       "value": {
         "title": "Phase 1",
         "slug": "phase-1",
-        "status": "draft",
+        "status": "ready",
         "summary": ""
       }
     },
     {
       "name": "summary",
-      "value": ""
+      "value": "Solo PM delivery for plan 132: RED witnesses, additive spawn bind reporting, parent preservation, deterministic and live proof, review."
     },
     {
       "name": "tasks",
-      "value": []
+      "value": [
+        {
+          "id": "tk-a132",
+          "title": "Establish RED-first spawn witnesses",
+          "state": "checked",
+          "done": "#done_when/tk-a132",
+          "success": "Child-exit and parent-loss behavior fail before implementation.",
+          "receipt": "docs/plans/132-spawn-reports-bind/assets/red-witness.md"
+        },
+        {
+          "id": "tk-b132",
+          "title": "Implement additive bind reporting",
+          "state": "checked",
+          "done": "#done_when/tk-b132",
+          "success": "Spawn waits by default, reports bind or named failure, and preserves parent.",
+          "receipt": "docs/plans/132-spawn-reports-bind/assets/live-proof.md"
+        },
+        {
+          "id": "tk-c132",
+          "title": "Prove and review composed behavior",
+          "state": "unchecked",
+          "done": "#done_when/tk-c132",
+          "success": "Deterministic checks, live proof, and cross-model review are complete."
+        }
+      ]
     },
     {
       "name": "done_when",
-      "value": {}
+      "value": {
+        "tk-a132": [
+          {
+            "id": "dw-a132",
+            "assertion": "The child-exit and parent-preservation witnesses fail on the pre-fix tree for the expected behavior.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "docs/plans/132-spawn-reports-bind/assets/red-witness.md"
+          }
+        ],
+        "tk-b132": [
+          {
+            "id": "dw-b132",
+            "assertion": "Spawn reports dispatched and bound separately, returns named early-exit evidence, emits spawn.bound/spawn.failed, and first bind preserves parent.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "docs/plans/132-spawn-reports-bind/assets/live-proof.md; cargo test focused receipts artifact://92 artifact://93 artifact://131 artifact://132"
+          }
+        ],
+        "tk-c132": [
+          {
+            "id": "dw-c132",
+            "assertion": "Focused Rust tests, harness checks, and healthy plus failing live tmux transcripts prove all acceptance criteria.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ]
+      }
     }
-  ],
-  "references": []
+  ]
 }

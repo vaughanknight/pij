@@ -50,9 +50,9 @@ req-0035 (meadowlark 2026-09-02): pij-rs spawn --harness pi --bin omp returned o
 
 | id | claim | state | note | receipt | pressure | proven_by | text |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| AC1 | a dead-before-bind spawn is reported, not ok:true | [ ] unchecked | — | — | — | — | LIVE: pij-rs spawn of an omp with a deliberately bad --model → returns spawn.failed naming the exit code and the omp log line that refused; pane transcript pasted. |
-| AC2 | a healthy spawn reports bound | [ ] unchecked | — | — | — | — | LIVE: a normal omp spawn returns bound:true with the seat id within the wait window. |
-| AC3 | failure path has a witness | [ ] unchecked | — | — | — | — | Unit RED-first: child exits 1 immediately → caller sees exit + log path, never ok:true. |
+| AC1 | a dead-before-bind spawn is reported, not ok:true | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/live-proof.md#deadunusable-model-before-honest-bind | — | — | LIVE: pij-rs spawn of an omp with a deliberately bad --model → returns spawn.failed naming the exit code and the omp log line that refused; pane transcript pasted. |
+| AC2 | a healthy spawn reports bound | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/live-proof.md#healthy-bind | — | — | LIVE: a normal omp spawn returns bound:true with the seat id within the wait window. |
+| AC3 | failure path has a witness | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/red-witness.md | — | — | Unit RED-first: child exits 1 immediately → caller sees exit + log path, never ok:true. |
 
 <a id="phases"></a>
 

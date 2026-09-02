@@ -12,7 +12,7 @@
 | title | Phase 1 |
 | slug | phase-1 |
 | ordinal | — |
-| status | draft |
+| status | ready |
 | complexity | — |
 | summary | — |
 | backpressure | — |
@@ -27,16 +27,36 @@
 
 ## Summary
 
-_Empty._
+Solo PM delivery for plan 132: RED witnesses, additive spawn bind reporting, parent preservation, deterministic and live proof, review.
 
 <a id="tasks"></a>
 
 ## Tasks
 
-_No entries._
+| id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| tk-a132 | Establish RED-first spawn witnesses | — | — | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/red-witness.md | [x] 1/1 [tk-a132](#tk-a132) | Child-exit and parent-loss behavior fail before implementation. | — | — |
+| tk-b132 | Implement additive bind reporting | — | — | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/live-proof.md | [x] 1/1 [tk-b132](#tk-b132) | Spawn waits by default, reports bind or named failure, and preserves parent. | — | — |
+| tk-c132 | Prove and review composed behavior | — | — | [ ] unchecked | — | — | [ ] 0/1 [tk-c132](#tk-c132) | Deterministic checks, live proof, and cross-model review are complete. | — | — |
 
 <a id="done-when"></a>
 
 ## Done when
 
-_No fields._
+### tk-a132
+
+| id | assertion | state | pressure | receipt |
+| --- | --- | --- | --- | --- |
+| dw-a132 | The child-exit and parent-preservation witnesses fail on the pre-fix tree for the expected behavior. | [x] checked | not-applicable | docs/plans/132-spawn-reports-bind/assets/red-witness.md |
+
+### tk-b132
+
+| id | assertion | state | pressure | receipt |
+| --- | --- | --- | --- | --- |
+| dw-b132 | Spawn reports dispatched and bound separately, returns named early-exit evidence, emits spawn.bound/spawn.failed, and first bind preserves parent. | [x] checked | not-applicable | docs/plans/132-spawn-reports-bind/assets/live-proof.md; cargo test focused receipts artifact://92 artifact://93 artifact://131 artifact://132 |
+
+### tk-c132
+
+| id | assertion | state | pressure |
+| --- | --- | --- | --- |
+| dw-c132 | Focused Rust tests, harness checks, and healthy plus failing live tmux transcripts prove all acceptance criteria. | [ ] unchecked | not-applicable |

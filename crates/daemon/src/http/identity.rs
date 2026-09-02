@@ -525,6 +525,7 @@ pub(crate) async fn adopt(
         proc_start: proc.map(|proc| proc.proc_start),
         spawn_id: None,
         model: None,
+        actual_model: None,
         provider: None,
         effort: None,
         parent,
