@@ -1,0 +1,109 @@
+{
+  "dd": { "schema": "builder/review" },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Cross-model review round 2 — claude-session-start-adopt",
+        "reviewer": "pij-coherent-xerinae",
+        "model": "claude-opus-5 (medium effort)",
+        "round": "2",
+        "date": "2026-09-02",
+        "plan": "../../plan.dd.json#meta",
+        "note": "SCOPE unchanged: read-only on code, writes confined to this folder, no daemon restarted, no real Claude settings written by this review. Re-review of 135fcc2c against round 1 (46b33ad1..135fcc2c).\n\nGATES I RAN MYSELF. `cargo clippy --workspace --all-targets -- -D warnings` exit 0 (was 101). `cargo test -p pij-harnesses -p pij-cli` exit 0, 130 passed. `cargo test --workspace` exit 0, 544 passed. `shellcheck harness/scripts/claude-session-start-pij.sh` exit 0. `just typecheck` exit 0. `cargo fmt --check` exit 0. Every gate the PM claimed is green is green under my own hand.\n\nPROBES RE-RUN, NOT INHERITED. The out-of-tree property probe (path-dep on crates/harnesses; nothing written inside the repo) was rebuilt against the new tree and re-run over 18 settings shapes, now with a branch for the reconcile path: where the seed carries a pij-managed command the probe asserts the array length is unchanged, no stale managed path survives, and every foreign command is untouched; elsewhere it asserts the old append property. 15 shapes pass, 3 refuse safely, and one fails — F7. The inspect probe was re-run over 5 homes and confirms F3's fix exactly. The hook script was re-driven under `env -i` with a shimmed PATH across 4 environments and confirms F5 and F6.\n\nAC LEDGER AFTER THE FIX. AC1 TRUE, and now with the mechanism earned rather than assumed (see F4). AC2 TRUE, unchanged. AC3 TRUE, re-reproduced. AC4 TRUE, re-reproduced over the rebuilt shape set, with the byte-for-byte promise verified to still hold for other hook events on the new reconcile path (PreToolUse came through byte-identical). AC5 NOW TRUE: the gate that falsified it is green, and I ran it rather than reading about it.\n\nSEAM RE-CHECK. The split introduced by the fix is the right shape: `default_state_dir()` (crates/cli/src/lib.rs:29-36) is `$HOME/.pij-rs` and deliberately does NOT consult `PIJ_RS_STATE_DIR`, so the command written into settings is now a machine-stable constant, while the daemon's DATA state dir stays independently configurable. main.rs computes `hook_dir` once and hands the same value to both the installer and `doctor claude-hook`, so the diagnostic and the behaviour cannot disagree about which path they mean — the F3-shaped failure cannot recur through that route. One consequence worth stating rather than filing: the script file is machine-global but binary-versioned, so booting an older daemon after a newer one rewrites the shared script to the older embedded copy. That is inherent to a stable path plus `include_str!`, and it is the correct trade against the round-1 defect.\n\nNET: 6 of 6 round-1 findings resolved (5 fixed, 1 refutation accepted on its evidence). 2 new findings, both MINOR-or-below, both on the reconcile path the fix introduced, neither blocking a merge."
+      }
+    },
+    {
+      "name": "findings",
+      "value": [
+        {
+          "id": "F1",
+          "kind": "defect",
+          "severity": "MAJOR",
+          "state": "checked",
+          "address": "crates/harnesses/src/claude_settings.rs:959",
+          "finding": "ROUND 1, NOW CLOSED. The `#[must_use]` return is consumed (`let _ = ensure_claude_session_start_hook(...)`). I re-ran the exact CI command rather than the crate's own tests: `cargo clippy --workspace --all-targets -- -D warnings` exits 0, where it exited 101 on a82d96ba. AC5's falsifier is gone.",
+          "receipt": "cargo clippy --workspace --all-targets -- -D warnings → exit 0; cargo test --workspace → exit 0, 544 passed; shellcheck → exit 0; just typecheck → exit 0; cargo fmt --check → exit 0"
+        },
+        {
+          "id": "F2",
+          "kind": "defect",
+          "severity": "MAJOR",
+          "state": "checked",
+          "address": "crates/cli/src/main.rs:399,416,459,955-958",
+          "finding": "ROUND 1, CLOSED — one half fixed, one half refuted, and I accept the refutation on its evidence rather than on rank. FIXED: the installed command no longer depends on the daemon's state dir. `hook_dir` is `default_state_dir()` = `$HOME/.pij-rs`, which reads HOME only and ignores `PIJ_RS_STATE_DIR` (crates/cli/src/lib.rs:29-36), and the same value now feeds both the installer and the doctor. A scratch-state daemon therefore writes the SAME command a production daemon writes, so the divergence I found — a temp path baked into the operator's real settings, with a second entry appended next boot — is structurally gone, not merely tidied. My probe confirms a single stale managed entry is now rewritten IN PLACE with the array length unchanged and foreign entries untouched. REFUTED, ACCEPTED: 'no opt-out is intentional.' The refutation holds because G2 states the ensure runs at daemon boot alongside the accept ensure, and because the harm I attached to the missing opt-out was the divergence, which the path fix removes: the write is now idempotent and identical across daemons, exactly like plan 126's constant inbound key. I withdraw the opt-out half. Residual accumulation cases are F7, filed separately rather than as a reopening of this row.",
+          "receipt": "out-of-tree probe shapes one-stale-managed, stale-plus-foreign, stale-quoted-path, stale-pretty-formatting → array length unchanged, foreign commands identical, re-plan yields NoChange; crates/cli/src/lib.rs:29-36 read for the HOME-only derivation"
+        },
+        {
+          "id": "F3",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "checked",
+          "address": "crates/harnesses/src/claude_settings.rs:265-296",
+          "finding": "ROUND 1, NOW CLOSED. `first_hook_command` is deleted and replaced by `first_managed_hook_command`, which only matches a command ending in `/claude-session-start-pij.sh` (quote-tolerant). Re-probed over five homes: a foreign SessionStart hook now reports `installed=false, command=None`, which the doctor ladder renders as `hook-missing` — the true state — while a stale pij-managed path reports its command and renders as `wrong-command`, which is now the only case where that word is accurate. The diagnostic no longer names another owner's config as pij's misconfiguration.",
+          "receipt": "out-of-tree inspect probe: no-hooks-at-all → command=None; foreign-sessionstart-only → command=None (was Some(\"/usr/local/bin/my-own-hook\")); hooks-but-no-sessionstart → command=None; stale-managed → command=Some(\"/tmp/old/claude-session-start-pij.sh\"); installed → installed=true with the expected command"
+        },
+        {
+          "id": "F4",
+          "kind": "question",
+          "severity": "MINOR",
+          "state": "checked",
+          "address": "docs/plans/127-claude-session-start-adopt/assets/live-auto-seat.md:99-106",
+          "finding": "ROUND 1, NOW CLOSED. The asset now records the experiment I asked for, and it is the right one: an otherwise identical live run with the success path emitting NOTHING adopted the pane but left the initial statusline without the id after ten seconds — the id appeared only once `/pij ready` forced a UI update — while the run WITH contract-valid `additionalContext` showed the id after ten seconds with no keystroke. Both arms emit a positive artifact, so the comparison discriminates instead of resting on silence, and the output field is identified as the changed variable. That converts the docs/how claim from an assertion into a receipt, which was the whole ask. Honest limits, recorded rather than held against it: one run per arm, self-reported by the author, and the arms are separated in time rather than interleaved, so this establishes the payload is load-bearing on this Claude version, not across versions. That is proportionate to the claim being made.",
+          "receipt": "assets/live-auto-seat.md:99-113 read on the current tree; the fresh zero-input reproof at :115-130 shows ⛓ pij-moral-constraints on pane %2744 with the stable-path build"
+        },
+        {
+          "id": "F5",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "checked",
+          "address": "harness/scripts/claude-session-start-pij.sh:19-28",
+          "finding": "ROUND 1, NOW CLOSED. The probe and the action are the same binary (`pij-rs ping`, `pij-rs adopt`), so a missing binary can no longer masquerade as a healthy daemon, and the refusal reason survives: `adopt_output=$(pij-rs adopt … 2>&1)` is folded to one line and logged as `refused:adopt pane=%99 reason=<the daemon's own words>`. Reproduced under `env -i` with a shim that refuses: the log line now carries `E-REFUSED: pane %99 is not running anything tmux can see` instead of nothing. Success stdout is still exactly the one JSON object and nothing else. Residual, deliberately not reopened: with one binary, `pij-rs` absent and daemon down both log `skip:no-daemon` — but they now share an outcome as well as a line, so the line is no longer wrong. Note for the record: this moves the action from `pij adopt` to `pij-rs adopt`, a departure from G1's literal wording. It is the right call — it removes the cross-binary seam — but it is drift from the goal text and should be reflected in G1 rather than left implicit.",
+          "receipt": "out-of-tree shell probe under env -i: ok → rc=0, stdout is only the SessionStart JSON, empty log; adopt-refuses → rc=0, stdout empty, log `refused:adopt pane=%99 reason=E-REFUSED: …`; pijrs-missing → rc=0, log `skip:no-daemon pane=%99`"
+        },
+        {
+          "id": "F6",
+          "kind": "defect",
+          "severity": "NIT",
+          "state": "checked",
+          "address": "harness/scripts/claude-session-start-pij.sh:11-13",
+          "finding": "ROUND 1, NOW CLOSED. Every append goes through `log_line`, which suppresses redirect failure (`2>/dev/null || :`). Re-reproduced with a 0500 state dir: the script now exits 0 with empty stderr where it previously printed `Permission denied`, and the success path still emits its JSON. G1's silence promise now holds on every path I can drive.",
+          "receipt": "out-of-tree shell probe case ro-state (state dir chmod 500) → rc=0, stderr empty, stdout is the SessionStart JSON; shellcheck exit 0"
+        },
+        {
+          "id": "F7",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "unchecked",
+          "address": "crates/harnesses/src/claude_settings.rs:273-288",
+          "finding": "NEW, and it is the migration case the reconcile exists for. Reconciliation handles exactly one stale entry and only while the correct command is absent, so the state the PREVIOUS build produced does not converge. Two concrete failures, one root cause. (a) TWO stale managed entries: `replace_managed_hook_command` returns after rewriting the first, so the second dead path survives; re-planning then yields NoChange, so it survives forever. (b) A stale entry plus the correct entry: `hook_entry_contains` short-circuits to NoChange before reconciliation is ever reached, so the stale one is never touched. Both states are reachable by upgrading from the append-per-state-dir build this fix replaces — which is precisely who needs the reconcile. The cost is not cosmetic: a dead managed path is `sh` exiting 127 with `No such file or directory` on stderr at every single session start, forever, and whether that surfaces to the user depends on the Claude version rather than on anything pij controls. It also makes `doctor claude-hook` say `installed` while a broken hook is still wired up, which is the one thing that surface exists to prevent.",
+          "receipt": "out-of-tree probe shape TWO-stale-managed → `/tmp/b/claude-session-start-pij.sh` survives the write and the result re-plans as NoChange; shape stale-and-current-both → EnsurePlan::NoChange with the stale entry intact; `sh -c '/tmp/definitely-missing/claude-session-start-pij.sh'` → rc=127, stderr `No such file or directory`",
+          "note": "Smallest fix: make the sweep total rather than first-match. Drop the early `return` in `replace_managed_hook_command` so every managed command is rewritten, and run the reconcile BEFORE the `hook_entry_contains` NoChange check — then collapse duplicates so exactly one managed entry remains, and treat 'already exactly one, already correct' as the NoChange condition. The existing test `stale_managed_hook_is_replaced_in_place` passes today because it seeds exactly one stale entry and no correct one; it needs a sibling for each of (a) and (b), and the sibling should be written to fail on the current tree first."
+        },
+        {
+          "id": "F8",
+          "kind": "defect",
+          "severity": "NIT",
+          "state": "unchecked",
+          "address": "crates/harnesses/src/claude_settings.rs:277-280",
+          "finding": "NEW, cosmetic, recorded so it is a choice rather than an accident. The reconcile path re-serializes the WHOLE SessionStart array with `serde_json::to_string`, so on that path a foreign entry loses its formatting and its key order: a pretty-printed multi-line array collapses to one line and `{matcher, hooks}` comes back as `{hooks, matcher}`. This is the only writer in the module that does not splice a byte range, and it is the one that runs on an operator's real settings during migration. No AC breaks — entry ORDER is preserved, semantics are identical, and AC4's byte-for-byte promise is about other hook EVENTS, which I re-verified pass through untouched (`PreToolUse` came out byte-identical alongside a reconciled SessionStart). It is a surprising diff in a hand-edited file, nothing more.",
+          "receipt": "out-of-tree probe shape stale-pretty: input `{\"matcher\": \"\", \"hooks\": […]}` across three pretty-printed lines → output one line with keys reordered to `{\"hooks\":…,\"matcher\":\"\"}`; sibling `PreToolUse` value unchanged byte-for-byte; `\"theme\": \"dark\"` unchanged",
+          "note": "Smallest fix, if taken: locate the stale command's own byte range with the module's existing `find_top_level_value`/`string_end` helpers and splice just that string, the way `plan_inbound_accept` already replaces a single value. Reasonable to defer — but then say in docs/how that a migration reformats the SessionStart array, so the diff is expected."
+        }
+      ]
+    },
+    {
+      "name": "verdict",
+      "value": [
+        { "id": "v1", "finding": "round-2.dd.json#findings/F1", "resolution": "fixed", "rationale": "Verified by running CI's own clippy command, not the crate's tests: exit 0 against exit 101 last round. AC5's falsifier is gone and every other gate is green under my hand." },
+        { "id": "v2", "finding": "round-2.dd.json#findings/F2", "resolution": "fixed", "rationale": "The path-stability half is fixed at the root — the command is now derived from HOME alone, so scratch and production daemons write an identical value. The opt-out half I withdraw: G2 mandates the boot-time ensure, and the harm I attached to it was the divergence the path fix removes. Residuals are F7, filed on their own evidence rather than smuggled back into this row." },
+        { "id": "v3", "finding": "round-2.dd.json#findings/F3", "resolution": "fixed", "rationale": "Re-probed directly against inspect_claude_session_start_hook: status no longer varies with unrelated content, and `wrong-command` now fires only where it is true." },
+        { "id": "v4", "finding": "round-2.dd.json#findings/F4", "resolution": "fixed", "rationale": "The negative control now exists and discriminates — both arms emit a positive artifact and the changed variable is named. The claim in docs/how is now a receipt. Its limits (one run per arm, one Claude version) are proportionate to what it claims." },
+        { "id": "v5", "finding": "round-2.dd.json#findings/F5", "resolution": "fixed", "rationale": "Reproduced end to end: one binary for probe and action, the daemon's refusal text retained in one log line, success stdout still exactly one JSON object. The G1 wording should follow the code to `pij-rs adopt`." },
+        { "id": "v6", "finding": "round-2.dd.json#findings/F6", "resolution": "fixed", "rationale": "Reproduced with an unwritable log: silent, exit 0, success JSON intact." },
+        { "id": "v7", "finding": "round-2.dd.json#findings/F7", "resolution": "confirmed", "rationale": "Found by probing the fix rather than the code it replaced: the reconcile is first-match-only and is skipped entirely once the correct entry exists, so the exact state the previous build created never converges. Not a merge blocker — every AC holds — but it should not ship unnoticed, because the people it fails are the ones upgrading." },
+        { "id": "v8", "finding": "round-2.dd.json#findings/F8", "resolution": "deferred", "rationale": "Cosmetic and AC-neutral; recorded so that reformatting an operator's SessionStart array during migration is a decision with a note, not a surprise." }
+      ]
+    }
+  ]
+}

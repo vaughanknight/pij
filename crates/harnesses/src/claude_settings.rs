@@ -234,17 +234,18 @@ pub fn plan_claude_session_start_hook(existing: Option<&str>, command: &str) -> 
             error: "could not locate hooks.SessionStart in valid settings.json".to_string(),
         };
     };
-    if session_start
-        .iter()
-        .any(|entry| hook_entry_contains(entry, command))
+    let managed_count = managed_hook_count(session_start);
+    if managed_count == 1
+        && session_start
+            .iter()
+            .any(|entry| hook_entry_contains(entry, command))
     {
         return EnsurePlan::NoChange {
             before: Some(command.to_string()),
         };
     }
     if let Some(before) = first_managed_hook_command(session_start) {
-        let mut updated_session = session_start.clone();
-        replace_managed_hook_command(&mut updated_session, command);
+        let updated_session = reconcile_managed_hook_commands(session_start, command);
         let updated_session =
             serde_json::to_string(&updated_session).expect("hook serialization is infallible");
         let updated_hooks = replace_range(hooks_document, session_range, &updated_session);
@@ -273,23 +274,57 @@ fn first_managed_hook_command(entries: &[Value]) -> Option<String> {
     })
 }
 
-fn replace_managed_hook_command(entries: &mut [Value], command: &str) {
-    for entry in entries {
-        let Some(hooks) = entry.get_mut("hooks").and_then(Value::as_array_mut) else {
-            continue;
-        };
-        for hook in hooks {
-            let Some(current) = hook.get("command").and_then(Value::as_str) else {
-                continue;
-            };
-            if is_managed_hook_command(current) {
-                hook["command"] = Value::String(command.to_string());
-                return;
-            }
-        }
-    }
+fn managed_hook_count(entries: &[Value]) -> usize {
+    entries
+        .iter()
+        .map(|entry| {
+            entry
+                .get("hooks")
+                .and_then(Value::as_array)
+                .map_or(0, |hooks| {
+                    hooks
+                        .iter()
+                        .filter(|hook| {
+                            hook.get("command")
+                                .and_then(Value::as_str)
+                                .is_some_and(is_managed_hook_command)
+                        })
+                        .count()
+                })
+        })
+        .sum()
 }
 
+fn reconcile_managed_hook_commands(entries: &[Value], command: &str) -> Vec<Value> {
+    let mut kept = false;
+    let mut reconciled = Vec::with_capacity(entries.len());
+    for original in entries {
+        let mut entry = original.clone();
+        let Some(hooks) = entry.get_mut("hooks").and_then(Value::as_array_mut) else {
+            reconciled.push(entry);
+            continue;
+        };
+        hooks.retain_mut(|hook| {
+            let managed = hook
+                .get("command")
+                .and_then(Value::as_str)
+                .is_some_and(is_managed_hook_command);
+            if !managed {
+                return true;
+            }
+            if kept {
+                return false;
+            }
+            hook["command"] = Value::String(command.to_string());
+            kept = true;
+            true
+        });
+        if !hooks.is_empty() {
+            reconciled.push(entry);
+        }
+    }
+    reconciled
+}
 fn is_managed_hook_command(command: &str) -> bool {
     command
         .trim_matches('\'')
@@ -1117,6 +1152,68 @@ mod tests {
             "/Users/test/.pij-rs/claude-session-start-pij.sh"
         );
         assert_eq!(entries[1]["hooks"][0]["command"], "existing");
+    }
+
+    #[test]
+    fn duplicate_stale_managed_hooks_collapse_to_one() {
+        let root = TestDir::new();
+        let home = root.path().join(".claude");
+        fs::create_dir_all(&home).expect("home");
+        let original = r#"{"hooks":{"SessionStart":[{"matcher":"","hooks":[{"type":"command","command":"/tmp/a/claude-session-start-pij.sh"}]},{"matcher":"resume","hooks":[{"type":"command","command":"foreign"}]},{"matcher":"","hooks":[{"type":"command","command":"/tmp/b/claude-session-start-pij.sh"}]}]}}"#;
+        fs::write(home.join("settings.json"), original).expect("seed settings");
+        let script = Path::new("/Users/test/.pij-rs/claude-session-start-pij.sh");
+
+        let report = ensure_claude_session_start_hook(std::slice::from_ref(&home), script)
+            .into_iter()
+            .next()
+            .expect("report");
+
+        assert!(report.changed);
+        let written: Value = serde_json::from_str(
+            &fs::read_to_string(home.join("settings.json")).expect("settings"),
+        )
+        .expect("valid settings");
+        let entries = written["hooks"]["SessionStart"].as_array().expect("array");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(
+            entries[0]["hooks"][0]["command"],
+            script.display().to_string()
+        );
+        assert_eq!(entries[1]["hooks"][0]["command"], "foreign");
+        assert!(matches!(
+            plan_claude_session_start_hook(
+                Some(&fs::read_to_string(home.join("settings.json")).expect("settings")),
+                &script.display().to_string()
+            ),
+            EnsurePlan::NoChange { .. }
+        ));
+    }
+
+    #[test]
+    fn correct_managed_hook_removes_stale_sibling() {
+        let root = TestDir::new();
+        let home = root.path().join(".claude");
+        fs::create_dir_all(&home).expect("home");
+        let desired = "/Users/test/.pij-rs/claude-session-start-pij.sh";
+        let original = format!(
+            r#"{{"hooks":{{"SessionStart":[{{"matcher":"","hooks":[{{"type":"command","command":"{desired}"}}]}},{{"matcher":"","hooks":[{{"type":"command","command":"/tmp/stale/claude-session-start-pij.sh"}}]}}]}}}}"#
+        );
+        fs::write(home.join("settings.json"), original).expect("seed settings");
+
+        let report =
+            ensure_claude_session_start_hook(std::slice::from_ref(&home), Path::new(desired))
+                .into_iter()
+                .next()
+                .expect("report");
+
+        assert!(report.changed);
+        let written: Value = serde_json::from_str(
+            &fs::read_to_string(home.join("settings.json")).expect("settings"),
+        )
+        .expect("valid settings");
+        let entries = written["hooks"]["SessionStart"].as_array().expect("array");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["hooks"][0]["command"], desired);
     }
 
     #[test]
