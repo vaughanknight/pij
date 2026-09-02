@@ -202,6 +202,59 @@
           "importance": "optional"
         }
       }
+    },
+    {
+      "id": "NOD-002",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-09-02T00:57:46.541Z",
+      "details": {
+        "node": "backpressure-445cc1bef0fe",
+        "type": "backpressure",
+        "chore": {
+          "kind": "command",
+          "importance": "optional"
+        }
+      }
+    },
+    {
+      "id": "UPD-005",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-02T00:57:46.746Z",
+      "details": {
+        "node": "backpressure-445cc1bef0fe",
+        "fields": [
+          "instructions"
+        ]
+      }
+    },
+    {
+      "id": "UPD-006",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-02T00:57:46.898Z",
+      "details": {
+        "node": "backpressure-445cc1bef0fe",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-008",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-02T00:57:47.048Z",
+      "details": {
+        "node": "backpressure-445cc1bef0fe",
+        "from": "known",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "optional"
+        }
+      }
     }
   ],
   "nodes": [
@@ -473,6 +526,35 @@
         }
       ],
       "ran_at": "2026-09-02T00:33:40.750Z"
+    },
+    {
+      "id": "backpressure-445cc1bef0fe",
+      "type": "backpressure",
+      "label": "Backpressure survey (sessions scope)",
+      "status": "done",
+      "next": [
+        "plan"
+      ],
+      "created_at": "2026-09-02T00:57:46.541Z",
+      "modified_at": "2026-09-02T00:57:47.048Z",
+      "command": "run /eng-harness-flow --hook pre-coding --json",
+      "chore": {
+        "kind": "command",
+        "importance": "optional"
+      },
+      "branch_of": "plan",
+      "instructions": [
+        "Re-run the pre-coding survey against the sessions --here ruling; receipt the full plan SHA-256 before marking done."
+      ],
+      "comments": [
+        {
+          "at": "2026-09-02T00:57:46.898Z",
+          "text": "verdict:completed reason:coverage refreshed for merged-row repository scoping basis_sha256:445cc1bef0fea46e12c97ce565176af9761b3e5c076c5de553437afd27ee5a2c time:2026-09-02",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "ran_at": "2026-09-02T00:57:47.048Z"
     }
   ],
   "plan_dir": "docs/plans/128-seat-session-identity"

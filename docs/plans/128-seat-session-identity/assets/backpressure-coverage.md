@@ -1,7 +1,7 @@
 # Backpressure Coverage — seat-session-identity
 
 **Plan**: [plan.dd.md](../plan.dd.md)
-**Basis (plan SHA-256)**: ccd7185611657d1edbca1b8589aa5de233c4a4e0999cb071f106aede2f6c55c6
+**Basis (plan SHA-256)**: 445cc1bef0fea46e12c97ce565176af9761b3e5c076c5de553437afd27ee5a2c
 **Generated**: 2026-09-02
 **Certainty**: Partial
 
@@ -22,7 +22,7 @@
 | Criterion / failure mode | Phase | Selected proof | Status | Tier | Probe trail |
 |---|---|---|---|---|---|
 | Persist and expose harness session (AC1) | 1 | EXTEND→RUN: add store/daemon tests, run targeted Cargo tests, then isolated live omp+claude proof | EXTEND | computational | — |
-| Legacy+rs union, rs-first null-fill, legacy field names, dedupe (AC2) | 1 | EXTEND→RUN: add Vitest cases including same-id rs-null/legacy-session input, then `just test` and isolated `pij sessions --json` | EXTEND | computational | — |
+| Legacy+rs union, rs-first null-fill, legacy field names, dedupe, and `--here` scope (AC2) | 1 | EXTEND→RUN: add Vitest cases for same-id null-fill and cross-repo rs exclusion under `--here`, then `just test` and isolated `pij sessions --json` | EXTEND | computational | — |
 | rs and legacy whoami shapes (AC3) | 1 | EXTEND→RUN: add Vitest cases, then `just test` and isolated live commands | EXTEND | computational | — |
 | flowspace3 resolves rs transcripts (AC4) | 1 | BUILD→RUN: compose isolated daemon/client fixture, then run `flowspace3 conversation ingest --pij <seat>` for omp and claude | BUILDABLE | computational | — |
 | Every behavior has a pre-fix witness (AC5) | 1 | RUN: retained RED outputs plus targeted Cargo/Vitest green outputs | EXISTS | computational | — |
@@ -36,7 +36,7 @@
 | Proves | Mode | Proof line |
 |---|---|---|
 | Rust persistence, migration, projections, rs session rows | EXTEND→RUN | Add RED-first store/daemon cases; run `cargo test -p pij-store` and `cargo test -p pij-daemon`. |
-| TS routing, rs-first null-fill union/dedupe, whoami, registration payload | EXTEND→RUN | Add RED-first Vitest cases including same-id rs-null/legacy-session → one rs-generation row with legacy session; run `just test <target files>`, then `just test`. |
+| TS routing, rs-first null-fill union/dedupe, `--here` scope, whoami, registration payload | EXTEND→RUN | Add RED-first Vitest cases including same-id null-fill and other-repo exclusion under `--here`; run `just test <target files>`, then `just test`. |
 | Live identity and consumer integration | BUILD→RUN | Start only an isolated rs daemon; hand-start omp+claude in tmux; capture `pij-rs list`, `pij sessions --json`, both `whoami --json` generations, and two flowspace3 ingests. |
 | Whole-tree regression | RUN | `harness checks`. |
 
