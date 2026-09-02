@@ -1,0 +1,71 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "baseline-red-tests",
+        "slug": "baseline-red-tests",
+        "ordinal": 131,
+        "status": "ready",
+        "summary": "Fresh-worktree just test is green on this machine: the two pre-existing red tests are fixed or honestly quarantined."
+      }
+    },
+    {
+      "name": "summary",
+      "value": "req-0044: harness/scripts/npm-resolution-policy.integration.test.ts (~L536, replay expects status 0 gets 1 — on this machine npm refuses --before together with --min-release-age for git deps) and .pi/extensions/pij/core/worktree.test.ts (cleanup ENOTEMPTY) are red on main since 2026-09-01; every PM (gopher, 126, 129) stops on them. Fix the cause where it is a product/test defect; where it is a machine condition, make the test SKIP with a named reason that prints, never a silent pass."
+    },
+    {
+      "name": "goals",
+      "value": [
+        "G1 npm-resolution test: determine whether the replay failure is the test, the script, or the machine npm config; fix or skip-with-reason.",
+        "G2 worktree.test cleanup ENOTEMPTY: fix the teardown (remove in the right order / retry) so it is green on macOS.",
+        "G3 just test on a fresh worktree with symlinked node_modules is green with zero skips unexplained."
+      ]
+    },
+    {
+      "name": "non_goals",
+      "value": [
+        "Nothing outside the named paths."
+      ]
+    },
+    {
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "AC1",
+          "text": "Fresh worktree, node_modules symlinked: just test exits 0; output pasted.",
+          "claim": "just test is green on a fresh worktree on this machine",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC2",
+          "text": "If any test is skipped, the skip prints its named reason and the reason is a verified machine condition, not a guess; pasted.",
+          "claim": "skips are named and true",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC3",
+          "text": "RED-first: the ENOTEMPTY fix is proven by reproducing the failure first on the pre-fix tree; pasted.",
+          "claim": "fix has a witness",
+          "state": "unchecked"
+        }
+      ]
+    },
+    {
+      "name": "phases",
+      "value": [
+        {
+          "id": "ph-1e40",
+          "title": "Build + prove",
+          "brief": "u1 per impl-guide; ACs; PR into main.",
+          "state": "unchecked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
+        }
+      ]
+    }
+  ],
+  "references": []
+}
