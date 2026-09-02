@@ -1020,10 +1020,15 @@ async fn spawn_failure(
         seat.id,
         log_path.display()
     );
-    Ok(envelope(
-        status,
-        &Envelope::<SpawnResponse>::refused(command_name, ErrorKind::Adapter, meta),
-    ))
+    let mut refusal = Envelope::<SpawnResponse>::refused(command_name, ErrorKind::Adapter, meta);
+    refusal.details = Some(serde_json::json!({
+        "dispatched": true,
+        "bound": seat.proc.is_some(),
+        "pane": pane,
+        "pid": seat.proc.map(|identity| identity.pid),
+        "reason": reason,
+    }));
+    Ok(envelope(status, &refusal))
 }
 fn last_lines(value: &str, count: usize) -> String {
     let lines = value.lines().collect::<Vec<_>>();

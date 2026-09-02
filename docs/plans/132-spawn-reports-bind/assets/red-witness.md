@@ -109,3 +109,46 @@ cargo test: 27 passed
 The fake fails only the first all-server pane inventory. The pass then delivers
 both live recipients' messages and still returns the scripted systemic error.
 Pane absence is terminal only when a successful inventory proves it.
+
+## Refused spawn exposes structured details
+
+RED:
+
+```text
+spawn_wait_reports_child_exit_with_log_tail panicked:
+structured failure details
+```
+
+GREEN after adding the additive envelope `details` field:
+
+```text
+cargo test -p pij-daemon spawn_wait_reports_child_exit_with_log_tail
+cargo test: 1 passed
+```
+
+The test asserts an exact five-field object: `dispatched`, `bound`, `pane`,
+`pid`, and `reason`. It does not grep human `meta` prose.
+
+## Pane absence respects socket reachability
+
+RED:
+
+```text
+missing_pane_with_reachable_socket_delivers_instead_of_terminalizing:
+left delivered [], right [socket message]
+
+unknown_socket_reachability_retries_and_surfaces_the_error:
+expected error, got handled count 1
+```
+
+GREEN:
+
+```text
+cargo test: 1 passed (reachable socket)
+cargo test: 1 passed (unknown reachability)
+cargo test -p pij-daemon pointer::worker::tests
+cargo test: 29 passed
+```
+
+`Ok(true)` delivers over the socket despite pane absence; `Ok(false)` permits
+terminalization; `Err` retries the row and remains visible as the pass error.

@@ -713,6 +713,7 @@ struct TransportState {
     /// the caller learns the injection did not happen, which is the case a
     /// claim-before-inject design must compensate for.
     fail_next_deliver: bool,
+    fail_next_reachability: bool,
     reachable: bool,
     outcome: Option<DeliveryOutcome>,
     delivered: Vec<Msg>,
@@ -748,6 +749,16 @@ impl FakeTransport {
             .lock()
             .expect("fake transport mutex")
             .fail_next_deliver = true;
+        self
+    }
+
+    /// Fail the next reachability probe once, then resume normal answers.
+    #[must_use]
+    pub fn script_reachability_error(self) -> Self {
+        self.state
+            .lock()
+            .expect("fake transport mutex")
+            .fail_next_reachability = true;
         self
     }
 
@@ -791,6 +802,12 @@ impl Transport for FakeTransport {
         state
             .recorder
             .record(format!("can_deliver:{}:{}", seat.id, msg.msg_id));
+        if std::mem::take(&mut state.fail_next_reachability) {
+            return Err(PijError::Adapter {
+                adapter: "testkit/fake-transport".to_string(),
+                message: "scripted reachability failure".to_string(),
+            });
+        }
         Ok(state.reachable)
     }
 

@@ -552,6 +552,7 @@ fn retype_envelope<T, U>(envelope: Envelope<T>) -> Envelope<U> {
         data: None,
         meta: envelope.meta,
         error: envelope.error,
+        details: envelope.details,
     }
 }
 

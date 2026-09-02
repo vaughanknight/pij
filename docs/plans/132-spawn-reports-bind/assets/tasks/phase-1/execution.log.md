@@ -11,19 +11,19 @@
 
 - Preserved the compiling inherited spawn implementation after focused Rust/TypeScript tests and workspace checks.
 - Jordan expanded the retry policy after production measured 72 dead-recipient pending rows, worst attempt 15,933.
-- `DrainWorker` uses one successful all-server tmux pane snapshot per non-empty pass, claims tombstoned recipients, and drains every proven-dead recipient's rows in the same cadence. If inventory fails, absence remains unknown: the systemic error is deferred and returned after per-recipient work continues.
+- `DrainWorker` uses one successful all-server pane snapshot per non-empty pass and drains tombstones immediately. Pane absence terminalizes only after an explicit socket-unreachable result; reachable sockets deliver, while inventory/reachability errors retry and remain visible.
 - Production-copy proof: 72 dead pending before, 0 after the first cadence; evidence in `assets/prod-copy-proof.md`.
 - Opus R001 fixed with additive `actual_model_observed`: unavailable model evidence preserves the requested model, while an observed absence remains a mismatch.
 - Opus R002 fixed by grouping `spawn_failure` evidence; CI-equivalent clippy is green.
-- GREEN: 27 pointer-worker tests, 9 spawn tests, Claude/model truth tests, TS runtime test 8/8, `cargo check --workspace`, and `cargo clippy --workspace --all-targets -- -D warnings`.
+- GREEN: 29 pointer-worker tests, 9 spawn tests, structured refusal-shape test, Claude/model truth tests, TS runtime test 8/8, and `cargo clippy --workspace --all-targets -- -D warnings`.
 
 ## tk-c132 — composed proof and review
 
-- `cargo test --workspace --quiet`: 609 passed across 63 suites; 6 ignored.
+- `cargo test --workspace --quiet`: 612 passed across 63 suites; 6 ignored.
 - `cargo clippy --workspace --all-targets -- -D warnings`: pass.
-- Final `harness checks --json`: all eight sensors passed (`local-paths`, `typecheck`, `lint`, `test`, `windows-compat`, `smoke`, `pkg-audit`, `snapshots`).
-- Final real-client tmux proof: `assets/live-proof.md`; production-copy one-cadence proof: `assets/prod-copy-proof.md`.
-- Claude Opus R1 found R001/R002; R2 verified those closed and found N1. N1 RED/GREEN is recorded in `assets/red-witness.md`; R3 pending.
+- Terminal `harness checks --json`: all eight sensors passed (`local-paths`, `typecheck`, `lint`, `test`, `windows-compat`, `smoke`, `pkg-audit`, `snapshots`).
+- Final real-client tmux proof: `assets/live-proof.md`; production-copy decision-table proof: `assets/prod-copy-proof.md`.
+- Claude Opus R1 found R001/R002; R2 found N1; R3 approved all fixes. Prime-required G1 refusal shape and socket-aware pane absence have RED/GREEN + live receipts; R4 pending.
 
 ## Discoveries & learnings
 
@@ -31,3 +31,4 @@
 | --- | --- | --- |
 | Noteworthy | The PM packet's TENETS path `.agents/skills/pij-team/TENETS.md` does not exist in this checkout; the live copy is `.agents-skills-port/pij-team/TENETS.md`. | Captured as harness observation `CONF-001`; fix the packet template at closeout. |
 | Noteworthy | A worktree-started flowspace3 daemon shares and rewrites the production daemon key even when pointed at the dev database. | Standing rule updated during the run: never start flowspace3 daemon from worker seats. |
+| Noteworthy | Tmux-driving `cargo test --workspace` and `harness checks` smoke cannot run concurrently: the parallel run failed one tmux convergence test; serial specific + 612-test workspace rerun passed. | Captured as harness observation `DL-006`; keep tmux gates serialized. |

@@ -633,6 +633,16 @@ async fn spawn_wait_reports_child_exit_with_log_tail() {
     assert!(body.contains("exit code 1"), "{body}");
     assert!(body.contains(log_path.to_string_lossy().as_ref()), "{body}");
     assert!(body.contains("model selector refused"), "{body}");
+    let parsed: serde_json::Value = serde_json::from_str(&body).expect("failure JSON");
+    let details = parsed["details"]
+        .as_object()
+        .expect("structured failure details");
+    assert_eq!(details.len(), 5, "details shape must stay exact");
+    assert_eq!(details["dispatched"], true);
+    assert_eq!(details["bound"], false);
+    assert!(details["pane"].as_str().is_some());
+    assert_eq!(details["pid"], serde_json::Value::Null);
+    assert_eq!(details["reason"], "child exited before registration");
     let events = spine
         .tail(
             Some(&SeatId::from("pij-exits-before-bind")),

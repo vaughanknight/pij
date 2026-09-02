@@ -1513,6 +1513,7 @@ fn spawn_cli_response(response: Envelope<SeatDescriptor>) -> Envelope<SpawnCliRe
         }),
         meta: response.meta,
         error: response.error,
+        details: response.details,
     }
 }
 

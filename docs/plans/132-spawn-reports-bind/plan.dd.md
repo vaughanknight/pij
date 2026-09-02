@@ -40,6 +40,7 @@ req-0035 (meadowlark 2026-09-02): pij-rs spawn --harness pi --bin omp returned o
 - G5 A queued delivery for an unbound spawned seat whose pane is absent becomes terminal failed state naming the seat and pane; it is not retried.
 - G6 On the next drain tick, every pending delivery whose recipient is tombstoned or whose pane is absent from tmux list-panes -a becomes terminal failed state with a named reason and is never retried.
 - Ruling note: the original AC1 assumed an invalid OMP model exits. OMP v18 stays alive as no-model; AC1a and AC1b split model mismatch from real child-exit evidence.
+- G7 A refused spawn carries machine-readable details {dispatched, bound, pane, pid, reason}; pane absence is terminal only after successful inventory and an explicit socket-unreachable result, while unknowns retry visibly.
 
 <a id="non-goals"></a>
 
@@ -59,6 +60,7 @@ req-0035 (meadowlark 2026-09-02): pij-rs spawn --harness pi --bin omp returned o
 | AC4 | dead recipients terminalize queued delivery without retry | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/red-witness.md#dead-recipients-retained-pending-rows | — | — | RED-first unit: an unbound spawned seat whose pane disappeared leaves one named failed outcome, zero retries, and no live queue row. |
 | AC5 | all dead-recipient delivery rows terminalize next tick | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/prod-copy-proof.md | — | — | RED-first unit tests plus a dev daemon against a writable production-database copy show zero pending delivery rows to tombstoned or pane-absent recipients within one drain cadence; failed rows retain named reasons. |
 | AC1b | child exit reports exit code and durable output evidence | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/live-proof.md#final-branch-live-proof-after-model-truth-fix | — | — | LIVE: a real tmux child exit returns spawn.failed with exit code 23, stderr tail, durable log path, and spawn.failed spine evidence. |
+| AC6 | spawn refusal details are machine-readable | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/red-witness.md#refused-spawn-exposes-structured-details; docs/plans/132-spawn-reports-bind/assets/live-proof.md#final-branch-live-proof-after-model-truth-fix | — | — | A refused spawn carries an exact structured details object with dispatched, bound, pane, pid, and reason; the test parses fields rather than matching meta prose. |
 
 <a id="phases"></a>
 

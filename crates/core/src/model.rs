@@ -450,6 +450,10 @@ pub struct Envelope<T> {
     /// Why it failed, in a form a caller can branch on. Absent when `ok`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<ErrorKind>,
+    /// Command-specific machine-readable failure facts. Absent on success and
+    /// when a refusal has no structured evidence beyond its error category.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<serde_json::Value>,
 }
 
 impl<T> Envelope<T> {
@@ -462,6 +466,7 @@ impl<T> Envelope<T> {
             data: Some(data),
             meta: None,
             error: None,
+            details: None,
         }
     }
 
@@ -474,6 +479,7 @@ impl<T> Envelope<T> {
             data: None,
             meta: Some(meta.into()),
             error: None,
+            details: None,
         }
     }
 
@@ -486,6 +492,7 @@ impl<T> Envelope<T> {
             data: None,
             meta: Some(meta.into()),
             error: Some(error),
+            details: None,
         }
     }
 }

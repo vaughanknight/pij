@@ -111,18 +111,6 @@ impl DrainWorker {
             Ok(panes) => (Some(panes), None),
             Err(error) => (None, Some(error)),
         };
-        let dead_serial_keys: Vec<&str> = seats
-            .iter()
-            .filter(|seat| {
-                seat.tombstoned_at.is_some()
-                    || live_panes.as_deref().is_some_and(|panes| {
-                        seat.pane
-                            .as_deref()
-                            .is_some_and(|pane| !panes.iter().any(|listed| listed.id == pane))
-                    })
-            })
-            .map(|seat| seat.id.as_str())
-            .collect();
 
         let mut handled = 0;
         // A failed global inventory cannot prove pane absence. Defer the error,
@@ -131,18 +119,18 @@ impl DrainWorker {
             let Some((job_id, job)) = self.queue.claim(&kinds, WORKER_ID).await? else {
                 break;
             };
-            // Live recipients keep the one-claim-per-pass suppression. Dead
-            // recipients retain their kind so every queued row is terminalized
-            // in this same cadence, not one row per tick.
-            if !dead_serial_keys.contains(&job.serial_key.as_str()) {
+            handled += 1;
+            let mut recipient_terminal = false;
+            let result = self
+                .handle_claim(job_id, &job, live_panes.as_deref(), &mut recipient_terminal)
+                .await;
+            // Live, retryable, and unknown recipients keep one claim per pass.
+            // Only a successfully terminalized dead recipient retains its kind
+            // so every one of its queued rows closes in this same cadence.
+            if !recipient_terminal || result.is_err() {
                 kinds.retain(|kind| kind != &job.kind);
             }
-            handled += 1;
-            // Dead-recipient facts terminalize inside `handle_claim` and return
-            // success for this claim. Other errors remain retryable: defer the
-            // first one so every recipient still gets a turn, then surface it
-            // to the resilient outer loop after the pass.
-            if let Err(error) = self.handle_claim(job_id, job, live_panes.as_deref()).await {
+            if let Err(error) = result {
                 deferred.get_or_insert(error);
             }
         }
@@ -155,8 +143,9 @@ impl DrainWorker {
     async fn handle_claim(
         &self,
         job_id: JobId,
-        job: Job,
+        job: &Job,
         live_panes: Option<&[pij_core::model::Pane]>,
+        recipient_terminal: &mut bool,
     ) -> Result<()> {
         let msg: Msg = match serde_json::from_str(&job.payload) {
             Ok(msg) => msg,
@@ -189,6 +178,7 @@ impl DrainWorker {
                 .tombstone_reason
                 .as_deref()
                 .unwrap_or("no tombstone reason recorded");
+            *recipient_terminal = true;
             return self
                 .fail_claim(
                     job_id,
@@ -200,29 +190,39 @@ impl DrainWorker {
                 .await;
         }
         if recipient.semantic_state == Some(SemanticState::Hold) {
-            return self.release_or_backoff(job_id, &job, &msg).await;
+            return self.release_or_backoff(job_id, job, &msg).await;
         }
         let Some(pane) = recipient.pane.as_deref() else {
-            return self.release_or_backoff(job_id, &job, &msg).await;
+            return self.release_or_backoff(job_id, job, &msg).await;
         };
-        // POLICY, not a brake: the all-server tmux pane roster decides whether
-        // this recipient can still receive a queued delivery. Removing this
-        // check changes terminal failure into retry; it does not merely spare.
-        if live_panes.is_some_and(|panes| !panes.iter().any(|listed| listed.id == pane)) {
+        let pane_absent =
+            live_panes.is_some_and(|panes| !panes.iter().any(|listed| listed.id == pane));
+        let socket_available = if msg.command.is_none() && recipient.proc.is_some() {
+            Some(match self.transport.can_deliver(&recipient, &msg).await {
+                Ok(available) => available,
+                Err(error) => {
+                    self.release_body(job_id).await?;
+                    return Err(error);
+                }
+            })
+        } else {
+            None
+        };
+        // POLICY, not a brake: a successful all-server pane inventory plus a
+        // negative socket probe decides terminal failure. Unknown inventory or
+        // reachability only delays; neither can prove the recipient is gone.
+        if pane_absent && socket_available != Some(true) {
+            *recipient_terminal = true;
             return self
                 .fail_claim(
                     job_id,
                     format!(
-                        "delivery recipient {} pane {pane} is absent from tmux list-panes -a; not retried",
+                        "delivery recipient {} pane {pane} is absent from tmux list-panes -a and no socket is reachable; not retried",
                         msg.to
                     ),
                 )
                 .await;
         }
-        if recipient.proc.is_none() {
-            return self.release_or_backoff(job_id, &job, &msg).await;
-        }
-
         if msg.command.is_some() {
             let verdict = match self.interaction.fresh_injection_verdict(pane).await {
                 Ok(verdict) => verdict,
@@ -232,21 +232,17 @@ impl DrainWorker {
                 }
             };
             if !verdict.permitted {
-                return self.release_or_backoff(job_id, &job, &msg).await;
+                return self.release_or_backoff(job_id, job, &msg).await;
             }
             return self
                 .submit_command_claim(job_id, job.attempt, pane, &msg)
                 .await;
         }
-
-        let socket_available = match self.transport.can_deliver(&recipient, &msg).await {
-            Ok(available) => available,
-            Err(error) => {
-                self.release_body(job_id).await?;
-                return Err(error);
-            }
-        };
-        let (interaction_permits, composer_idle) = if socket_available {
+        if recipient.proc.is_none() {
+            return self.release_or_backoff(job_id, job, &msg).await;
+        }
+        let socket_available = socket_available.expect("bound body probes socket reachability");
+        let (interaction_permits, composer_idle) = if socket_available && !pane_absent {
             match self.interaction.fresh_injection_verdict(pane).await {
                 Ok(verdict) => (verdict.permitted, verdict.composer_idle),
                 Err(error) => {
@@ -255,8 +251,6 @@ impl DrainWorker {
                 }
             }
         } else {
-            // Pane-body permission is checked once, after input ownership is
-            // acquired, inside `submit_with_owned_input`.
             (true, true)
         };
         if !interaction_permits {
@@ -1736,35 +1730,12 @@ mod tests {
 
     /// ONE DEAD RECIPIENT MUST NOT STARVE EVERY OTHER RECIPIENT (plan 117).
     ///
-    /// Observed on the live fleet, 2026-09-01. `pij-mammoth-ostrich` held job id
-    /// 2 — the lowest-id claimable delivery job — with a pane (`%1861`) that no
-    /// longer existed and a pid (94202) that was dead, and it was not
-    /// tombstoned. So it passed `drain_once`'s kinds filter (`pane.is_some()`,
-    /// which tests whether the pane FIELD is set, never whether the pane
-    /// EXISTS) and passed `recipient.proc.is_none()` (its proc was PRESENT,
-    /// merely stale — an absence check standing where a liveness check belongs).
-    /// It then reached `permits_injection_fresh`, tmux answered `can't find
-    /// pane: %1861`, and the `?` on `handle_claim` ended the pass.
-    ///
-    /// Every pass. The failing release is `Duration::ZERO`, so the job was the
-    /// lowest id again on the very next tick: attempt 20165 -> 20168 in sixteen
-    /// seconds, while EVERY job enqueued behind it — five other recipients, nine
-    /// messages, twenty-nine hours — sat at attempt 0 with `claimed_at` NULL,
-    /// never claimed once. The senders all held a receipt saying `queued`, and
-    /// the receipts were TRUE: the rows were durably enqueued for a worker that
-    /// would never reach them.
-    ///
-    /// `start_resilient_delivery_drain` already carries a comment describing
-    /// this exact outcome — "one dead pane ... would have ended all below-socket
-    /// delivery for the daemon's lifetime". That fix made the TICK LOOP survive
-    /// the error. It did not make the PASS survive it, so the loop lived and
-    /// re-entered the same poisoned job forever. The outer layer's recovery is
-    /// what hid the inner layer's surrender.
-    ///
-    /// The test asserts DELIVERY, not the return count: `handled` counts claims,
-    /// and a pass that claimed both and delivered to neither would satisfy a
-    /// count. What must be true is that the healthy recipient's message actually
-    /// went to their pane in the SAME pass that met the dead one.
+    /// Production found a vanished pane reclaimed every five seconds while
+    /// later recipients stayed at attempt zero for twenty-nine hours. A
+    /// successful all-server inventory now makes that recipient terminal; this
+    /// test proves the live recipient behind it is delivered in the same pass.
+    /// `pane_inventory_failure_is_deferred_while_recipient_work_continues`
+    /// separately guards the systemic tmux-error path and its visible return.
     #[tokio::test]
     async fn a_recipient_whose_pane_has_vanished_does_not_starve_the_queue_behind_it() {
         let fixture = fixture(
@@ -1807,7 +1778,7 @@ mod tests {
     #[tokio::test]
     async fn a_missing_pane_terminalizes_its_queued_delivery_with_named_reason() {
         let fixture = fixture_unarranged(
-            FakeTransport::reachable(),
+            FakeTransport::unreachable(),
             FakeTmux::new().with_vanished_pane("%1861"),
         );
         fixture
@@ -1842,6 +1813,57 @@ mod tests {
             assert!(reason.contains("not retried"), "{reason}");
         }
         assert_eq!(fixture.queue.live_len(), 0);
+    }
+
+    #[tokio::test]
+    async fn missing_pane_with_reachable_socket_delivers_instead_of_terminalizing() {
+        let fixture = fixture_unarranged(
+            FakeTransport::reachable(),
+            FakeTmux::new().with_vanished_pane("%socket"),
+        );
+        fixture
+            .registry
+            .put(seat("pij-socket-only", Some("%socket")))
+            .await
+            .expect("register socket-only seat");
+        let msg = message("pij-socket-only", "socket still answers", None);
+        enqueue(&fixture, &msg).await;
+
+        assert_eq!(fixture.worker.drain_once().await.expect("socket drain"), 1);
+        assert_eq!(fixture.transport.delivered(), [msg]);
+        assert!(fixture.queue.retried().is_empty());
+        assert!(matches!(
+            fixture.queue.acked().as_slice(),
+            [(_, Outcome::Done)]
+        ));
+    }
+
+    #[tokio::test]
+    async fn unknown_socket_reachability_retries_and_surfaces_the_error() {
+        let fixture = fixture_unarranged(
+            FakeTransport::unreachable().script_reachability_error(),
+            FakeTmux::new().with_vanished_pane("%unknown-socket"),
+        );
+        fixture
+            .registry
+            .put(seat("pij-socket-unknown", Some("%unknown-socket")))
+            .await
+            .expect("register unknown socket seat");
+        let id = enqueue(
+            &fixture,
+            &message("pij-socket-unknown", "must not be lost", None),
+        )
+        .await;
+
+        let error = fixture
+            .worker
+            .drain_once()
+            .await
+            .expect_err("unknown reachability remains visible");
+        assert!(error.to_string().contains("scripted reachability failure"));
+        assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)]);
+        assert_eq!(fixture.queue.live_len(), 1);
+        assert!(fixture.queue.acked().is_empty());
     }
 
     #[tokio::test]

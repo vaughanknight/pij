@@ -171,6 +171,14 @@ stderr line and exited 23):
 {"ok":false,"command":"pij spawn","v":2,"meta":"spawn.failed: seat pij-plan132-final-exit in pane %3333 child exited before registration (exit code 23); log: .../pij-rs-spawn/s-8d8ad13afd34f1744c62d4de1b0cb102.log; last output:\ndeliberate child refusal: exit witness 23","error":"adapter"}
 ```
 
+After the prime-required G1 shape fix, the same live child-exit path through an
+isolated daemon on `127.0.0.1:57000` preserved the refusal and added exact
+machine-readable details:
+
+```json
+{"ok":false,"command":"pij spawn","v":2,"meta":"spawn.failed: seat pij-plan132-details-exit in pane %3368 child exited before registration (exit code 23); log: .../pij-rs-spawn/s-51ee8de56ab2e9a280ee64ad3de28220.log; last output:\ndeliberate child refusal: exit witness 23","error":"adapter","details":{"bound":false,"dispatched":true,"pane":"%3368","pid":null,"reason":"child exited before registration"}}
+```
+
 Final spine receipts:
 
 ```json

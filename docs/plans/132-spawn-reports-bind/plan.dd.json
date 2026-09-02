@@ -26,7 +26,8 @@
         "G4 Fix the false terminal-absence notice if it is the same code path; otherwise record it as a separate finding with file:line.",
         "G5 A queued delivery for an unbound spawned seat whose pane is absent becomes terminal failed state naming the seat and pane; it is not retried.",
         "G6 On the next drain tick, every pending delivery whose recipient is tombstoned or whose pane is absent from tmux list-panes -a becomes terminal failed state with a named reason and is never retried.",
-        "Ruling note: the original AC1 assumed an invalid OMP model exits. OMP v18 stays alive as no-model; AC1a and AC1b split model mismatch from real child-exit evidence."
+        "Ruling note: the original AC1 assumed an invalid OMP model exits. OMP v18 stays alive as no-model; AC1a and AC1b split model mismatch from real child-exit evidence.",
+        "G7 A refused spawn carries machine-readable details {dispatched, bound, pane, pid, reason}; pane absence is terminal only after successful inventory and an explicit socket-unreachable result, while unknowns retry visibly."
       ]
     },
     {
@@ -79,6 +80,13 @@
           "claim": "child exit reports exit code and durable output evidence",
           "state": "checked",
           "receipt": "docs/plans/132-spawn-reports-bind/assets/live-proof.md#final-branch-live-proof-after-model-truth-fix"
+        },
+        {
+          "id": "AC6",
+          "text": "A refused spawn carries an exact structured details object with dispatched, bound, pane, pid, and reason; the test parses fields rather than matching meta prose.",
+          "claim": "spawn refusal details are machine-readable",
+          "state": "checked",
+          "receipt": "docs/plans/132-spawn-reports-bind/assets/red-witness.md#refused-spawn-exposes-structured-details; docs/plans/132-spawn-reports-bind/assets/live-proof.md#final-branch-live-proof-after-model-truth-fix"
         }
       ]
     },
