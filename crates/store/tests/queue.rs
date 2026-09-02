@@ -606,6 +606,29 @@ async fn delivered_id_and_origin_survive_queue_reconstruction() {
     );
 }
 
+#[tokio::test]
+async fn typed_to_pane_origin_survives_queue_reconstruction() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let queue = SqliteQueue::new(pool.clone(), 300, 2).expect("queue");
+    deliver(
+        &queue,
+        "pij-typed-recipient",
+        "m-typed",
+        DeliveryOrigin::TypedToPane,
+    )
+    .await;
+
+    let restarted = SqliteQueue::new(pool, 300, 2).expect("restarted queue");
+    assert_eq!(
+        restarted
+            .enqueue_delivery(delivered_job("pij-typed-recipient", "m-typed"))
+            .await
+            .expect("consult durable ledger"),
+        DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::TypedToPane)
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn concurrent_delivery_ack_and_duplicate_enqueue_never_create_a_second_row() {
     let fresh = FreshStore::new();

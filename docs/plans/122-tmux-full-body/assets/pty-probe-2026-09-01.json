@@ -1,0 +1,46 @@
+{
+  "date": "2026-09-01",
+  "host": "darwin-arm64",
+  "tmux": "3.6a",
+  "method": {
+    "canonical": "isolated tmux server; pane shell disabled echo, read one newline-terminated line, printed it between OUT markers; tmux send-keys -l supplied payload and a separate named Enter submitted it",
+    "raw": "isolated tmux server; pane ran stty raw -echo and dd count=<payload bytes>; compared tmux send-keys -l with load-buffer from stdin plus paste-buffer; a second raw probe enabled bracketed-paste mode and verified -p -r framing"
+  },
+  "canonical_results": [
+    { "payload_bytes": 1000, "exact": true },
+    { "payload_bytes": 1020, "exact": true },
+    { "payload_bytes": 1021, "exact": true },
+    { "payload_bytes": 1022, "exact": true },
+    { "payload_bytes": 1023, "exact": true },
+    { "payload_bytes": 1024, "captured_bytes": 0, "exact": false },
+    { "payload_bytes": 1500, "captured_bytes": 0, "exact": false },
+    { "payload_bytes": 3000, "captured_bytes": 0, "exact": false }
+  ],
+  "raw_results": [
+    {
+      "method": "send-keys",
+      "payload_bytes": 3028,
+      "captured_bytes": 3028,
+      "exact": true,
+      "prefix": "BEGIN-S122-0123456789abc",
+      "suffix": "123456789abcdef-END-S122"
+    },
+    {
+      "method": "load-buffer+paste-buffer",
+      "payload_bytes": 3028,
+      "captured_bytes": 3028,
+      "exact": true,
+      "prefix": "BEGIN-S122-0123456789abc",
+      "suffix": "123456789abcdef-END-S122"
+    }
+  ],
+  "bracketed_multiline_result": {
+    "method": "one explicit bracket-open + UTF-8-safe 1000-byte load-buffer/paste-buffer -r chunks + bracket-close + named Enter",
+    "body_bytes": 6647,
+    "wire_bytes": 6660,
+    "exact": true,
+    "wire_shape": "ESC[200~ + paced body bytes with literal LF + ESC[201~ + CR"
+  },
+  "decision": "Hold one bracketed-paste transaction open, feed it through a uniquely named tmux buffer in UTF-8-safe chunks of at most 1000 bytes with a 10ms pause, close the bracket once, then submit one named Enter.",
+  "rationale": "Live clients disproved both simpler shapes: one unpaced paste lost a 16-byte block, while one bracketed paste per chunk intermittently inserted spaces at 1000-byte boundaries. The final single-bracket paced mechanism delivered the identical 6647-byte, 62-line body with SHA-256 2910388ffeafd86448ce8416476f02a8b5ed9fd19d040c839de4465731ae75c8 and zero diffs in hand-run OMP; the real-tmux regression preserves the same wire shape."
+}

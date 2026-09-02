@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use pij_core::error::Result;
+use pij_core::error::{PijError, Result};
 use pij_core::framing::self_injection_matches;
-use pij_core::ports::TmuxPort;
+use pij_core::ports::{StagedSubmit, TmuxPort};
 
 use crate::composer::{ComposerRegion, composer_region};
 
@@ -58,6 +58,24 @@ fn collapsed_eq(left: &str, right: &str) -> bool {
     left.split_whitespace().eq(right.split_whitespace())
 }
 
+/// Fresh pane facts used by one delivery decision.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InjectionVerdict {
+    /// Existing interaction policy permits an injection now.
+    pub permitted: bool,
+    /// The freshly captured composer contains no non-whitespace text.
+    pub composer_idle: bool,
+}
+
+/// Outcome of a pane transaction whose input was owned before observation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StagedSubmission {
+    /// The owned composer was empty, then the staged text was committed.
+    Submitted,
+    /// The owned composer was not safe to type into; nothing was staged.
+    Deferred,
+}
+
 /// Injection safety gate combining tmux mode with stateful composer interaction.
 /// `TmuxPort::user_typing` reports only `pane_in_mode`. This gate owns the other
 /// half: tap activity and recent changes to captured composer content. A recent
@@ -70,6 +88,44 @@ pub struct InteractionGate {
     panes: Mutex<BTreeMap<String, ComposerState>>,
     idle_window: Duration,
     clock: Clock,
+}
+
+struct SelfInjectionScope<'a> {
+    gate: &'a InteractionGate,
+    pane: String,
+}
+
+impl Drop for SelfInjectionScope<'_> {
+    fn drop(&mut self) {
+        self.gate.clear_self_injection(&self.pane);
+    }
+}
+
+struct PaneTransaction<'a> {
+    gate: &'a InteractionGate,
+    staged: StagedSubmit,
+    self_injection: Option<SelfInjectionScope<'a>>,
+}
+
+impl<'a> PaneTransaction<'a> {
+    fn new(gate: &'a InteractionGate, staged: StagedSubmit) -> Self {
+        Self {
+            gate,
+            staged,
+            self_injection: None,
+        }
+    }
+
+    async fn abort(self) -> Result<()> {
+        self.gate.tmux.abort_submit(&self.staged).await
+    }
+
+    async fn stage_and_commit(mut self, text: &str) -> Result<StagedSubmission> {
+        self.self_injection = Some(self.gate.self_injection_scope(&self.staged.pane, text));
+        self.gate.tmux.stage_submit(&mut self.staged, text).await?;
+        self.gate.tmux.commit_submit(&self.staged).await?;
+        Ok(StagedSubmission::Submitted)
+    }
 }
 
 impl InteractionGate {
@@ -114,6 +170,25 @@ impl InteractionGate {
             tap_active: state.tap_active,
             last_interaction_at: state.last_interaction_at,
         });
+    }
+
+    fn self_injection_scope(&self, pane: &str, payload: &str) -> SelfInjectionScope<'_> {
+        self.record_self_injection(pane, payload);
+        SelfInjectionScope {
+            gate: self,
+            pane: pane.to_string(),
+        }
+    }
+
+    fn clear_self_injection(&self, pane: &str) {
+        if let Some(state) = self
+            .panes
+            .lock()
+            .expect("interaction gate mutex")
+            .get_mut(pane)
+        {
+            state.self_injection = None;
+        }
     }
 
     /// Record the current composer contents. Whitespace-only content is empty:
@@ -200,27 +275,104 @@ impl InteractionGate {
         state.uncertainty_since.get_or_insert(now);
     }
 
-    /// Re-capture the composer at the send boundary before deciding.
+    /// Re-drain the live tap and re-capture the composer at the send boundary.
     ///
-    /// Composer evidence is fresh; tap activity remains the observer tick's
-    /// non-destructive state. Cursor discovery enumerates all panes, so this adds
-    /// one fleet-wide listing and one capture round-trip per gated send.
+    /// Unread tap bytes are consumed before capture so a just-typed key cannot
+    /// hide behind renderer lag. An absent tap is absence of safety evidence and
+    /// vetoes. Cursor discovery then adds one listing and one capture round-trip.
     pub async fn permits_injection_fresh(&self, pane: &str) -> Result<bool> {
+        Ok(self.fresh_injection_verdict(pane).await?.permitted)
+    }
+
+    async fn refresh_live_tap(&self, pane: &str) -> Result<bool> {
+        if self.tmux.pane_tap_sink(pane).await?.is_none() {
+            return Ok(false);
+        }
+        let bytes = self.tmux.drain_pane_tap(pane).await?;
+        if !bytes.is_empty() {
+            self.record_tap(pane);
+        }
+        Ok(true)
+    }
+
+    /// Re-capture once and expose both policy permission and actual composer state.
+    ///
+    /// Socket delivery uses `permitted`: it cannot splice text into the composer.
+    /// Pane typing additionally requires `composer_idle`, even after the parked-
+    /// draft policy veto has expired. Both facts come from this one capture.
+    pub async fn fresh_injection_verdict(&self, pane: &str) -> Result<InjectionVerdict> {
+        if !self.refresh_live_tap(pane).await? {
+            return Ok(InjectionVerdict {
+                permitted: false,
+                composer_idle: false,
+            });
+        }
         let listed = self.tmux.list_panes().await?;
         let Some(listed) = listed.into_iter().find(|listed| listed.id == pane) else {
-            return self.permits_with_additional_veto(pane, true).await;
+            let permitted = self.permits_with_additional_veto(pane, true).await?;
+            return Ok(InjectionVerdict {
+                permitted,
+                composer_idle: false,
+            });
         };
         let (Some(cursor_x), Some(cursor_y)) = (listed.cursor_x, listed.cursor_y) else {
-            return self.permits_with_additional_veto(pane, true).await;
+            let permitted = self.permits_with_additional_veto(pane, true).await?;
+            return Ok(InjectionVerdict {
+                permitted,
+                composer_idle: false,
+            });
         };
         let capture = self.tmux.capture(pane, CAPTURE_LINES).await?;
         match composer_region(&capture, cursor_x, cursor_y) {
             ComposerRegion::Recognized(content) => {
+                let composer_idle = content.chars().all(char::is_whitespace);
                 self.observe_composer_at(pane, &content, true);
-                self.permits_with_additional_veto(pane, false).await
+                let permitted = self.permits_with_additional_veto(pane, false).await?;
+                Ok(InjectionVerdict {
+                    permitted,
+                    composer_idle,
+                })
             }
-            ComposerRegion::Unrecognized => self.permits_with_additional_veto(pane, true).await,
+            ComposerRegion::Unrecognized => {
+                let permitted = self.permits_with_additional_veto(pane, true).await?;
+                Ok(InjectionVerdict {
+                    permitted,
+                    composer_idle: false,
+                })
+            }
         }
+    }
+
+    /// Own pane input before observing, then stage and commit only into a blank composer.
+    ///
+    /// Ordering makes external-input races impossible: acquisition happens before
+    /// the one fresh permission capture, and ownership lasts through Enter. This
+    /// deliberately replaces the rejected post-stage rendered-pixel comparison.
+    pub async fn submit_with_owned_input(
+        &self,
+        pane: &str,
+        text: &str,
+    ) -> Result<StagedSubmission> {
+        let transaction = PaneTransaction::new(self, self.tmux.acquire_submit(pane).await?);
+        let verdict = match self.fresh_injection_verdict(pane).await {
+            Ok(verdict) => verdict,
+            Err(error) => {
+                return match transaction.abort().await {
+                    Ok(()) => Err(error),
+                    Err(recovery) => Err(PijError::Adapter {
+                        adapter: "interaction-gate".to_string(),
+                        message: format!(
+                            "{error}; pane input acquisition was not released: {recovery}"
+                        ),
+                    }),
+                };
+            }
+        };
+        if !verdict.permitted || !verdict.composer_idle {
+            transaction.abort().await?;
+            return Ok(StagedSubmission::Deferred);
+        }
+        transaction.stage_and_commit(text).await
     }
 
     /// True only when both independent gates report clear.
@@ -258,11 +410,12 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use pij_core::model::Pane;
+    use pij_core::ports::TmuxPort;
 
     use pij_testkit::block_on;
     use pij_testkit::fakes::FakeTmux;
 
-    use super::InteractionGate;
+    use super::{InteractionGate, PaneTransaction, StagedSubmission};
 
     const RULE: &str = "────────────────────────────────";
 
@@ -456,6 +609,7 @@ mod tests {
         let tmux = Arc::new(
             FakeTmux::new()
                 .with_pane(pane(100, 2))
+                .with_attached_tap("%108")
                 .script_capture(capture),
         );
         let gate = InteractionGate::new(tmux.clone());
@@ -468,7 +622,7 @@ mod tests {
         let calls = tmux.calls();
         assert!(calls.iter().any(|call| call == "list_panes"));
         assert!(calls.iter().any(|call| call == "capture:%108:4294967295"));
-        assert!(calls.iter().all(|call| call != "drain_pane_tap:%108"));
+        assert!(calls.iter().any(|call| call == "drain_pane_tap:%108"));
     }
 
     #[test]
@@ -476,6 +630,7 @@ mod tests {
         let tmux = Arc::new(
             FakeTmux::new()
                 .with_pane(pane(3, 0))
+                .with_attached_tap("%108")
                 .script_capture("ordinary shell output"),
         );
         let gate = InteractionGate::new(tmux);
@@ -491,6 +646,7 @@ mod tests {
         let tmux = Arc::new(
             FakeTmux::new()
                 .with_pane(pane(3, 0))
+                .with_attached_tap("%108")
                 .script_capture("ordinary shell output")
                 .script_capture("ordinary shell output"),
         );
@@ -512,6 +668,7 @@ mod tests {
         let tmux = Arc::new(
             FakeTmux::new()
                 .with_pane(pane(2, 2))
+                .with_attached_tap("%108")
                 .script_capture(capture),
         );
         let gate = InteractionGate::new(tmux.clone());
@@ -522,7 +679,7 @@ mod tests {
         assert!(
             tmux.calls()
                 .iter()
-                .all(|call| call != "drain_pane_tap:%108")
+                .any(|call| call == "drain_pane_tap:%108")
         );
         assert!(!block_on(gate.permits_injection("%108")).expect("tap state preserved"));
     }
@@ -533,11 +690,47 @@ mod tests {
         let tmux = Arc::new(
             FakeTmux::new()
                 .with_pane(pane(2, 2))
+                .with_attached_tap("%108")
                 .script_capture(capture),
         );
         let gate = InteractionGate::new(tmux);
 
         assert!(block_on(gate.permits_injection_fresh("%108")).expect("blank permits"));
+    }
+
+    #[test]
+    fn fresh_verdict_keeps_nonempty_composer_fact_after_policy_expiry() {
+        let elapsed_ms = Arc::new(AtomicU64::new(0));
+        let started_at = Instant::now();
+        let clock_ms = Arc::clone(&elapsed_ms);
+        let capture = format!("output\n{RULE}\n❯ parked draft\n{RULE}");
+        let tmux = Arc::new(
+            FakeTmux::new()
+                .with_pane(pane(14, 2))
+                .with_attached_tap("%108")
+                .script_capture(capture.clone())
+                .script_capture(capture),
+        );
+        let gate = InteractionGate::with_clock(
+            tmux,
+            Duration::from_secs(60),
+            Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
+        );
+
+        let fresh = block_on(gate.fresh_injection_verdict("%108")).expect("fresh draft");
+        assert!(!fresh.permitted);
+        assert!(!fresh.composer_idle);
+
+        elapsed_ms.store(60_000, Ordering::Relaxed);
+        let stale = block_on(gate.fresh_injection_verdict("%108")).expect("stale draft");
+        assert!(
+            stale.permitted,
+            "socket policy still permits an expired draft"
+        );
+        assert!(
+            !stale.composer_idle,
+            "pane typing must retain the actual non-empty composer fact"
+        );
     }
 
     #[test]
@@ -610,6 +803,166 @@ mod tests {
         elapsed_ms.store(120_000, Ordering::Relaxed);
 
         assert!(!block_on(gate.permits_injection("%108")).expect("active mode vetoes"));
+    }
+    #[test]
+    fn owned_submit_hard_vetoes_stale_draft_and_fresh_tap() {
+        let elapsed_ms = Arc::new(AtomicU64::new(0));
+        let started_at = Instant::now();
+        let clock_ms = Arc::clone(&elapsed_ms);
+        let capture = format!("output\n{RULE}\n❯ parked human draft\n{RULE}");
+        let draft_tmux = Arc::new(
+            FakeTmux::new()
+                .with_pane(pane(21, 2))
+                .with_attached_tap("%108")
+                .script_capture(capture),
+        );
+        let draft_gate = InteractionGate::with_clock(
+            Arc::clone(&draft_tmux) as Arc<dyn TmuxPort>,
+            Duration::from_secs(60),
+            Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
+        );
+        draft_gate.observe_composer("%108", "parked human draft");
+        elapsed_ms.store(120_000, Ordering::Relaxed);
+        assert_eq!(
+            block_on(draft_gate.submit_with_owned_input("%108", "AUTOMATED"))
+                .expect("stale draft decision"),
+            StagedSubmission::Deferred,
+            "a non-blank composer is never a pane-typing target, regardless of age"
+        );
+        assert_eq!(draft_tmux.staged_len(), 0);
+        assert!(
+            draft_tmux
+                .calls()
+                .iter()
+                .all(|call| !call.starts_with("stage_submit:") && !call.starts_with("submit:"))
+        );
+
+        let tap_tmux = Arc::new(
+            FakeTmux::new()
+                .with_clear_composer("%108")
+                .script_tap(b"fresh-human-key".to_vec()),
+        );
+        let tap_gate = InteractionGate::new(Arc::clone(&tap_tmux) as Arc<dyn TmuxPort>);
+        tap_gate.observe_composer("%108", "");
+        assert_eq!(
+            block_on(tap_gate.submit_with_owned_input("%108", "AUTOMATED"))
+                .expect("live tap decision"),
+            StagedSubmission::Deferred,
+            "fresh unread tap bytes veto even before the renderer catches up"
+        );
+        let calls = tap_tmux.calls();
+        let drain = calls
+            .iter()
+            .position(|call| call == "drain_pane_tap:%108")
+            .expect("fresh gate drains the live tap");
+        let capture = calls
+            .iter()
+            .position(|call| call == "capture:%108:4294967295")
+            .expect("fresh gate captures composer");
+        assert!(
+            drain < capture,
+            "tap bytes are consulted before composer authorization"
+        );
+        assert_eq!(tap_tmux.staged_len(), 0);
+    }
+
+    #[test]
+    fn transaction_exit_table_clears_marker_input_and_exemption() {
+        #[derive(Clone, Copy, Debug)]
+        enum Exit {
+            Success,
+            StageFail,
+            CommitFail,
+            CleanupFail,
+            Abort,
+            DropWithoutCommit,
+            Deadline,
+            Death,
+        }
+
+        for exit in [
+            Exit::Success,
+            Exit::StageFail,
+            Exit::CommitFail,
+            Exit::CleanupFail,
+            Exit::Abort,
+            Exit::DropWithoutCommit,
+            Exit::Deadline,
+            Exit::Death,
+        ] {
+            let base = FakeTmux::new().with_clear_composer("%108");
+            let fake = match exit {
+                Exit::StageFail => base.script_stage_error("scripted stage failure"),
+                Exit::CommitFail => base.script_commit_error("scripted commit failure"),
+                Exit::CleanupFail => base.script_cleanup_error("scripted cleanup failure"),
+                Exit::Deadline => base.script_stage_error("staging exceeded 1s deadline"),
+                Exit::Death => base.script_stage_error("daemon died during transaction"),
+                Exit::Success | Exit::Abort | Exit::DropWithoutCommit => base,
+            };
+            let tmux = Arc::new(fake);
+            let gate = InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>);
+            gate.observe_composer("%108", "");
+            let result = match exit {
+                Exit::Abort => {
+                    let staged = block_on(tmux.acquire_submit("%108")).expect("acquire abort row");
+                    block_on(PaneTransaction::new(&gate, staged).abort())
+                        .map(|()| StagedSubmission::Deferred)
+                }
+                Exit::DropWithoutCommit => {
+                    let staged = block_on(tmux.acquire_submit("%108")).expect("acquire drop row");
+                    let watchdog_recovery = staged.clone();
+                    let mut transaction = PaneTransaction::new(&gate, staged);
+                    transaction.self_injection =
+                        Some(gate.self_injection_scope("%108", "MATCHING-HUMAN-TEXT"));
+                    drop(transaction);
+                    block_on(tmux.abort_submit(&watchdog_recovery))
+                        .map(|()| StagedSubmission::Deferred)
+                }
+                _ => block_on(gate.submit_with_owned_input("%108", "MATCHING-HUMAN-TEXT")),
+            };
+            match exit {
+                Exit::Success | Exit::CleanupFail => assert_eq!(
+                    result.expect("Enter is the successful outcome boundary"),
+                    StagedSubmission::Submitted
+                ),
+                Exit::Abort | Exit::DropWithoutCommit => {
+                    assert_eq!(result.expect("non-commit exit"), StagedSubmission::Deferred)
+                }
+                Exit::StageFail | Exit::CommitFail | Exit::Deadline | Exit::Death => {
+                    assert!(result.is_err(), "{exit:?} must not report submission")
+                }
+            }
+            if matches!(exit, Exit::CleanupFail) {
+                assert!(
+                    tmux.calls()
+                        .iter()
+                        .any(|call| call == "cleanup_error:scripted cleanup failure"),
+                    "cleanup-fail row must actually inject the failure"
+                );
+            }
+            assert_eq!(tmux.staged_len(), 0, "{exit:?}: ownership marker leaked");
+            assert!(
+                !tmux.pane_input_disabled("%108"),
+                "{exit:?}: pane input remained disabled"
+            );
+            let exemption_active = gate
+                .panes
+                .lock()
+                .expect("interaction gate mutex")
+                .get("%108")
+                .is_some_and(|state| state.self_injection.is_some());
+            assert!(
+                !exemption_active,
+                "{exit:?}: self-injection exemption leaked"
+            );
+
+            gate.record_tap("%108");
+            gate.observe_composer("%108", "MATCHING-HUMAN-TEXT");
+            assert!(
+                !block_on(gate.permits_injection("%108")).expect("human-input verdict"),
+                "{exit:?}: matching human input was hidden by stale exemption"
+            );
+        }
     }
 
     #[test]

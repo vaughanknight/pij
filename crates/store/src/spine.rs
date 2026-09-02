@@ -116,4 +116,28 @@ impl Spine for SqliteSpine {
             .map(decode_event)
             .transpose()
     }
+
+    async fn latest_matching_message(
+        &self,
+        seat: &SeatId,
+        kind: &str,
+        msg_id: &str,
+    ) -> Result<Option<Event>> {
+        require_current_schema(&self.pool).await?;
+        sqlx::query(
+            "SELECT seq, v, at, kind, seat, payload FROM spine_events \
+             WHERE seat = ?1 AND kind = ?2 \
+             AND json_extract(payload, '$.msg_id') = ?3 \
+             ORDER BY seq DESC LIMIT 1",
+        )
+        .bind(seat.as_str())
+        .bind(kind)
+        .bind(msg_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(adapter_error)?
+        .as_ref()
+        .map(decode_event)
+        .transpose()
+    }
 }

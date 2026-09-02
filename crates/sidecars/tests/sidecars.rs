@@ -586,6 +586,14 @@ impl Spine for FailBindingSpine {
     ) -> Result<Option<pij_core::model::Event>> {
         self.inner.latest_matching(seat, kinds).await
     }
+    async fn latest_matching_message(
+        &self,
+        seat: &SeatId,
+        kind: &str,
+        msg_id: &str,
+    ) -> Result<Option<pij_core::model::Event>> {
+        self.inner.latest_matching_message(seat, kind, msg_id).await
+    }
 }
 
 #[derive(Default)]

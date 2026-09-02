@@ -81,8 +81,8 @@ why = "Persistence behind Registry/Spine/Queue: SQLite via sqlx with embedded mi
 # real adapter without shipping test support. `async-trait` implements the
 # frozen async port; `pij-core` is the port and pane model.
 internal = ["pij-core", "pij-testkit@dev"]
-external = ["async-trait", "tokio"]
-why = "Every tmux syscall in the workspace lives here; tokio's timer yields bounded attach/detach effect convergence instead of blocking a runtime worker, and testkit remains dev-only shared contract proof."
+external = ["async-trait", "getrandom", "tokio"]
+why = "Every tmux syscall in the workspace lives here; getrandom mints non-recycled pane-transaction identities directly from OS entropy, tokio's timer yields bounded staged writes and effect convergence instead of blocking a runtime worker, and testkit remains dev-only shared contract proof."
 
 [crates.pij-harnesses]
 internal = ["pij-core", "pij-testkit@dev"]

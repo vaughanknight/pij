@@ -42,7 +42,9 @@ fn rendered_composer(capture: &str, cursor_x: u32, cursor_y: u32) -> Option<Stri
                 return Some(String::new());
             }
             let first_column = leading + 1 + left_rules + spacing;
-            return clip_payload(&payload, row, first_column, cursor_x, cursor_y);
+            if let Some(clipped) = clip_payload(&payload, row, first_column, cursor_x, cursor_y) {
+                return Some(clipped);
+            }
         }
     }
 
@@ -61,8 +63,17 @@ fn rendered_composer(capture: &str, cursor_x: u32, cursor_y: u32) -> Option<Stri
         {
             return clip_multiline(interior, lower + 1, cursor_x, cursor_y);
         }
-        if pair == rules.len() - 1 && interior.iter().all(|line| line.trim().is_empty()) {
-            return clip_multiline(interior, lower + 1, cursor_x, cursor_y);
+    }
+
+    if let Some(prompt) = lines
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, line)| line.trim_start().starts_with('›'))
+    {
+        let trailing = &lines[prompt.0 + 1..];
+        if trailing.iter().any(|line| is_codex_footer(line)) {
+            return clip_multiline(&lines[prompt.0..prompt.0 + 1], prompt.0, cursor_x, cursor_y);
         }
     }
 
@@ -157,8 +168,9 @@ fn take_chars(text: &str, count: usize) -> String {
 
 fn strip_prompt(line: &str) -> String {
     let trimmed = line.trim_start();
-    trimmed
-        .strip_prefix('❯')
+    ['❯', '›']
+        .into_iter()
+        .find_map(|prompt| trimmed.strip_prefix(prompt))
         .map_or_else(|| line.to_string(), |rest| rest.trim_start().to_string())
 }
 
@@ -178,6 +190,12 @@ fn is_copilot_footer(line: &str) -> bool {
     lower.starts_with("/ commands") || lower.contains("esc interrupt") || lower.contains("context")
 }
 
+fn is_codex_footer(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.contains(" · ")
+        && (trimmed.contains("~/") || trimmed.contains(" context") || trimmed.contains(" tokens"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,14 +209,14 @@ mod tests {
     }
 
     #[test]
-    fn unchanged_live_recorded_layouts_match_pre_move_parser_byte_for_byte() {
+    fn live_recorded_layouts_recognize_the_cursor_composer() {
         let fixtures = [
             (
                 "OMP recorded 2026-08-31 from pane %1985",
                 include_str!("../tests/fixtures/2026-08-31-omp-pane-1985.txt"),
                 2,
                 43,
-                ComposerRegion::Unrecognized,
+                ComposerRegion::Recognized(String::new()),
             ),
             (
                 "Claude recorded 2026-08-31 from pane %1973",
@@ -275,6 +293,62 @@ mod tests {
         assert_eq!(
             composer_region("╰─     ─╯", 3, 0),
             ComposerRegion::Recognized(String::new())
+        );
+    }
+
+    #[test]
+    fn rounded_border_above_cursor_does_not_hide_later_composer() {
+        let capture = concat!(
+            "╰──────────┴──────────╯\n",
+            "status text\n",
+            "────────────────\n",
+            "❯ \n",
+            "────────────────",
+        );
+        assert_eq!(
+            composer_region(capture, 2, 3),
+            ComposerRegion::Recognized(String::new()),
+            "a non-composer rounded border must not stop the scan before the cursor's composer"
+        );
+    }
+
+    #[test]
+    fn decorative_blank_rule_region_is_not_an_idle_composer() {
+        let capture = concat!(
+            "╭────────────╮\n",
+            "│ status box │\n",
+            "╰────────────╯\n",
+            "────────────────\n",
+            "                \n",
+            "────────────────",
+        );
+        assert_eq!(
+            composer_region(capture, 2, 4),
+            ComposerRegion::Unrecognized,
+            "blank decoration without a prompt or harness footer cannot authorize staging"
+        );
+    }
+
+    #[test]
+    fn current_codex_prompt_and_footer_identify_the_composer() {
+        let blank = concat!(
+            "╭─ OpenAI Codex ─╮\n",
+            "│ model: gpt-5.6 │\n",
+            "╰────────────────╯\n",
+            "\n",
+            "› Use /skills to list available skills\n",
+            "\n",
+            "  gpt-5.6-sol xhigh · ~/pi-hacking/pij",
+        );
+        assert_eq!(
+            composer_region(blank, 2, 4),
+            ComposerRegion::Recognized(String::new())
+        );
+
+        let draft = blank.replace("› Use /skills to list available skills", "› human draft");
+        assert_eq!(
+            composer_region(&draft, 13, 4),
+            ComposerRegion::Recognized("human draft".to_string())
         );
     }
 

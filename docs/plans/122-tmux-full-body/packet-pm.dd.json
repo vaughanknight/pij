@@ -1,0 +1,63 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "PM packet — s122 tmux-full-body",
+        "role": "pm",
+        "plan": "docs/plans/122-tmux-full-body/plan.dd.json",
+        "seat": "(filled at spawn)",
+        "updated": "2026-09-01"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "Deliver plan 122: full-body tmux delivery (pointer rung retired for pane seats). SMALL UNIT, NO FAN-OUT: you code it yourself, then the reviewer fires."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        "Read plan.dd.md, impl-guide.dd.md, .agents/skills/pij-team/TENETS.md, and assets/inputs/ (the ruling + the tmux audit)",
+        "Base is main b48c2828; when PR #341 (s119) merges, REBASE onto the new main before your PR — the drain worker you touch changed in s119",
+        "Ack this packet to prime pij-still-weasel with a NUMBERED plan before coding; prime rules the ack",
+        "Probe the live pty limit BEFORE writing the chunking/paste decision; record the probe output in assets/",
+        "Every regression witness proven red on the pre-fix tree first; ac-1..ac-3 are live pane witnesses, not unit tests",
+        "Reviewer traffic goes through the prime, never sideways; report card at start/finish (pij report now)"
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        "prime pij-still-weasel — pane %2081; pij send pij-still-weasel or tmux send-keys to %2081",
+        "reviewer (cross-model) appointed by prime at review time"
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/pij-worktrees/s122-tmux-full-body",
+        "branch": "s122/tmux-full-body",
+        "fence": "crates/core/src/delivery.rs · crates/core/src/model.rs (DeliveryOrigin variant ONLY) · crates/daemon/src/delivery/mod.rs · crates/daemon/src/pointer/** · crates/daemon/src/lib.rs (TmuxPort threading at DeliveryService construction ONLY) · crates/store/src/queue.rs (TypedToPane codec ONLY) · crates/tmux/src/lib.rs (submit/chunking only) · constructor fixtures: crates/daemon/src/http/tests.rs, crates/cli/tests/spawn.rs · all named files' tests · docs/plans/122-tmux-full-body/** · crates/store/migrations/0012_typed_to_pane.sql (NEW — s122 lands after plan 128's 0011) · crates/store/src/migrate.rs (SCHEMA_VERSION line only; plan 128 holds 11, you take 11→12) · that migration test · crates/harnesses/src/interaction.rs + lib.rs export + their tests (fresh_injection_verdict: one capture, two facts — ruled after a live Codex witness caught a human draft being clobbered)",
+        "forbidden_note": "Never write .the-flow-state.json, the-flow.json, the-flow.md. No uds.rs, no shim routing, no framing.rs edits (consume it, do not fork it). Outside the fence = stop and ask the prime."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        "ac-1..ac-6 witnessed (ac-1..ac-3 live in panes)",
+        "pij-gate + typecheck + vitest green (modulo known npm-resolution pre-existing)",
+        "PR open with witnesses documented; reviewer verdict via prime before merge"
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        "assets/inputs/2026-09-01-tmux-types-full-bodies.md (the ruling)",
+        "assets/inputs/tmux-audit-2026-09-01.md (port map: what exists, what is wired, worker.rs:299 caveat)"
+      ]
+    }
+  ]
+}

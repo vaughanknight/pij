@@ -1,0 +1,67 @@
+{
+  "date": "2026-09-01",
+  "ruling": "Remove the unreachable DrainWorker pointer announcer; no unselectable legacy DeliveryRung arm.",
+  "module_api": "PointerPolicy and pointer rendering remain public in crates/daemon/src/pointer/mod.rs by explicit non-goal, but no production caller can select pointer delivery after s122. DrainWorker::new retains and validates EventBus/PointerPolicy inputs to hold the existing construction seam; it does not consult them for pane-bound bodies.",
+  "tests": [
+    {
+      "old": "pointer_announces_once_per_pass_and_zero_delay_keeps_body_reader_claimable",
+      "disposition": "RETARGETED",
+      "replacement": "socketless_body_retry_types_the_full_shared_frame_and_acks_it",
+      "reason": "The body itself is now submitted and the row is terminally acknowledged instead of released for inbox pull."
+    },
+    {
+      "old": "cadence_suppresses_repeat_without_delaying_the_body",
+      "disposition": "RETIRED",
+      "replacement": "TypedBody consumes the row on its first permitted drain",
+      "reason": "There is no repeated pointer announcement to suppress."
+    },
+    {
+      "old": "pending_pointer_fact_retries_without_resubmitting_experienced_line",
+      "disposition": "RETIRED",
+      "replacement": "Typed-body delivery has no pointer event publication",
+      "reason": "The process-local pending pointer fact no longer exists."
+    },
+    {
+      "old": "legacy_history_counts_every_announcement_since_the_last_unpark",
+      "disposition": "RETARGETED",
+      "replacement": "legacy_pointer_history_does_not_suppress_typed_body_delivery",
+      "reason": "Historical pointer facts must not suppress the new full-body rung during cutover."
+    },
+    {
+      "old": "lagged_policy_subscription_reconciles_from_durable_spine",
+      "disposition": "RETIRED",
+      "replacement": "No pointer-policy subscription remains",
+      "reason": "Pane-bound bodies no longer use an announcement budget."
+    },
+    {
+      "old": "newer_unpark_fact_wins_over_stale_park_decision",
+      "disposition": "RETIRED",
+      "replacement": "No new pointer park decision is minted",
+      "reason": "The race disappears with pointer parking on the body path."
+    },
+    {
+      "old": "third_pointer_explains_parking_row_stays_readable_and_read_unparks",
+      "disposition": "RETIRED",
+      "replacement": "TypedBody submits and acknowledges the queued row",
+      "reason": "There is no third reminder or pointer parking transition."
+    },
+    {
+      "old": "one_pass_announces_at_most_once_for_a_recipient_with_multiple_rows",
+      "disposition": "RETARGETED",
+      "replacement": "one_pass_delivers_at_most_one_body_for_each_recipient",
+      "reason": "The one-row-per-recipient pass invariant remains load-bearing after the delivery mechanism changes."
+    },
+    {
+      "old": "live_pointer_event_suppresses_a_second_running_worker",
+      "disposition": "RETIRED",
+      "replacement": "Queue claim and terminal typed acknowledgement provide exclusivity",
+      "reason": "No live pointer event is published or subscribed."
+    },
+    {
+      "old": "fresh_worker_replays_pointer_budget_and_cadence_after_restart",
+      "disposition": "RETIRED",
+      "replacement": "Durable queue ownership remains the restart boundary",
+      "reason": "No pointer budget or cadence is reconstructed."
+    }
+  ]
+}

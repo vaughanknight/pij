@@ -30,7 +30,7 @@ use pij_core::model::{
 };
 use pij_core::ports::{
     DeliveryAck, DeliveryEnqueue, HarnessPort, LaunchCommand, LivenessPort, Queue, Registry,
-    SeatFilter, Spine, TmuxPort, Transport,
+    STAGED_SUBMIT_RECOVERY, SeatFilter, Spine, StagedSubmit, TmuxPort, Transport,
 };
 
 /// One recorded interaction, rendered as a stable string so assertions read as
@@ -160,6 +160,7 @@ struct SpineState {
     events: Vec<(Seq, Event)>,
     seq: u64,
     append_errors: VecDeque<String>,
+    latest_matching_errors: VecDeque<String>,
 }
 
 impl FakeSpine {
@@ -184,6 +185,15 @@ impl FakeSpine {
             .lock()
             .expect("fake spine mutex")
             .append_errors
+            .push_back(message.into());
+    }
+
+    /// Make the next bounded latest-event lookup fail with `message`.
+    pub fn script_latest_matching_error(&self, message: impl Into<String>) {
+        self.state
+            .lock()
+            .expect("fake spine mutex")
+            .latest_matching_errors
             .push_back(message.into());
     }
 }
@@ -227,7 +237,13 @@ impl Spine for FakeSpine {
                 message: "latest_matching requires at least one event kind".to_string(),
             });
         }
-        let state = self.state.lock().expect("fake spine mutex");
+        let mut state = self.state.lock().expect("fake spine mutex");
+        if let Some(message) = state.latest_matching_errors.pop_front() {
+            return Err(PijError::Adapter {
+                adapter: "fake/spine".to_string(),
+                message,
+            });
+        }
         Ok(state
             .events
             .iter()
@@ -240,6 +256,39 @@ impl Spine for FakeSpine {
                 event.seq = Some(*seq);
                 event
             }))
+    }
+
+    async fn latest_matching_message(
+        &self,
+        seat: &SeatId,
+        kind: &str,
+        msg_id: &str,
+    ) -> Result<Option<Event>> {
+        let mut state = self.state.lock().expect("fake spine mutex");
+        if let Some(message) = state.latest_matching_errors.pop_front() {
+            return Err(PijError::Adapter {
+                adapter: "fake/spine".to_string(),
+                message,
+            });
+        }
+        for (seq, event) in state
+            .events
+            .iter()
+            .rev()
+            .filter(|(_, event)| event.seat.as_ref() == Some(seat) && event.kind == kind)
+        {
+            let payload: serde_json::Value =
+                serde_json::from_str(&event.payload).map_err(|error| PijError::Adapter {
+                    adapter: "fake/spine".to_string(),
+                    message: format!("invalid event payload for message lookup: {error}"),
+                })?;
+            if payload["msg_id"].as_str() == Some(msg_id) {
+                let mut event = event.clone();
+                event.seq = Some(*seq);
+                return Ok(Some(event));
+            }
+        }
+        Ok(None)
     }
 }
 
@@ -313,6 +362,16 @@ impl Spine for CountingSpine {
     async fn latest_matching(&self, seat: &SeatId, kinds: &[&str]) -> Result<Option<Event>> {
         self.latest_calls.fetch_add(1, Ordering::Relaxed);
         self.inner.latest_matching(seat, kinds).await
+    }
+
+    async fn latest_matching_message(
+        &self,
+        seat: &SeatId,
+        kind: &str,
+        msg_id: &str,
+    ) -> Result<Option<Event>> {
+        self.latest_calls.fetch_add(1, Ordering::Relaxed);
+        self.inner.latest_matching_message(seat, kind, msg_id).await
     }
 }
 
@@ -770,7 +829,26 @@ struct TmuxState {
     /// an error propagates), so a fake that can only produce the first cannot
     /// test the second, and the untestable branch is the one that broke.
     capture_failures: BTreeSet<String>,
+    next_stage: u64,
+    stage_errors: VecDeque<String>,
+    commit_errors: VecDeque<String>,
+    cleanup_errors: VecDeque<String>,
+    input_disabled: BTreeSet<String>,
+    staged: BTreeMap<String, (StagedSubmit, String)>,
     recorder: Recorder,
+}
+
+fn render_staged_composer(text: &str) -> (String, u32, u32) {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let last = lines.last().copied().unwrap_or_default();
+    let cursor_y = u32::try_from(lines.len()).unwrap_or(u32::MAX);
+    let cursor_x =
+        u32::try_from(last.chars().count() + usize::from(lines.len() == 1) * 2).unwrap_or(u32::MAX);
+    (
+        format!("────────────\n❯ {text}\n────────────"),
+        cursor_x,
+        cursor_y,
+    )
 }
 
 impl FakeTmux {
@@ -841,17 +919,20 @@ impl FakeTmux {
     /// needing every pane id enumerated up front.
     pub fn arrange_clear_composer(&self, pane: &str) {
         let mut state = self.state.lock().expect("fake tmux mutex");
-        if state.panes.iter().any(|listed| listed.id == pane) {
-            return;
+        if !state.panes.iter().any(|listed| listed.id == pane) {
+            state.panes.push(Pane {
+                id: pane.to_string(),
+                session: "s".to_string(),
+                window: "w".to_string(),
+                title: "t".to_string(),
+                cursor_x: Some(0),
+                cursor_y: Some(0),
+            });
         }
-        state.panes.push(Pane {
-            id: pane.to_string(),
-            session: "s".to_string(),
-            window: "w".to_string(),
-            title: "t".to_string(),
-            cursor_x: Some(0),
-            cursor_y: Some(0),
-        });
+        state.taps.insert(
+            pane.to_string(),
+            std::env::temp_dir().join(format!("pij-fake-tap-{}", pane.replace('%', "pane"))),
+        );
         state.standing_capture = Some(
             "\u{2570}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{256f}"
                 .to_string(),
@@ -864,6 +945,16 @@ impl FakeTmux {
     /// CONTENT rather than the blank one `with_clear_composer` arranges.
     pub fn with_standing_capture(self, text: impl Into<String>) -> Self {
         self.state.lock().expect("fake tmux mutex").standing_capture = Some(text.into());
+        self
+    }
+
+    /// Arrange a live pane tap without prescribing its bytes.
+    #[must_use]
+    pub fn with_attached_tap(self, pane: &str) -> Self {
+        self.state.lock().expect("fake tmux mutex").taps.insert(
+            pane.to_string(),
+            std::env::temp_dir().join(format!("pij-fake-tap-{}", pane.replace('%', "pane"))),
+        );
         self
     }
 
@@ -902,6 +993,52 @@ impl FakeTmux {
             .calls
             .clone()
     }
+    /// Fail the next staged body write after releasing fake pane ownership.
+    #[must_use]
+    pub fn script_stage_error(self, message: impl Into<String>) -> Self {
+        self.state
+            .lock()
+            .expect("fake tmux mutex")
+            .stage_errors
+            .push_back(message.into());
+        self
+    }
+
+    /// Fail the next commit before Enter after releasing fake pane ownership.
+    #[must_use]
+    pub fn script_commit_error(self, message: impl Into<String>) -> Self {
+        self.state
+            .lock()
+            .expect("fake tmux mutex")
+            .commit_errors
+            .push_back(message.into());
+        self
+    }
+
+    /// Fail post-Enter cleanup while preserving the successful submit outcome.
+    #[must_use]
+    pub fn script_cleanup_error(self, message: impl Into<String>) -> Self {
+        self.state
+            .lock()
+            .expect("fake tmux mutex")
+            .cleanup_errors
+            .push_back(message.into());
+        self
+    }
+
+    /// Number of pane transactions still owned by the fake.
+    pub fn staged_len(&self) -> usize {
+        self.state.lock().expect("fake tmux mutex").staged.len()
+    }
+
+    /// Whether the fake transaction currently owns disabled pane input.
+    pub fn pane_input_disabled(&self, pane: &str) -> bool {
+        self.state
+            .lock()
+            .expect("fake tmux mutex")
+            .input_disabled
+            .contains(pane)
+    }
 }
 
 #[async_trait]
@@ -919,6 +1056,159 @@ impl TmuxPort for FakeTmux {
         // Nothing is invented: a test that wants a process must say so, so an
         // adoption that succeeds proves the fake was asked and answered.
         Ok(state.pane_processes.get(pane).cloned())
+    }
+
+    async fn acquire_submit(&self, pane: &str) -> Result<StagedSubmit> {
+        let mut state = self.state.lock().expect("fake tmux mutex");
+        if state.staged.values().any(|(staged, _)| staged.pane == pane) {
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message: format!("pane {pane} already has a staged submit"),
+            });
+        }
+        if state.input_disabled.contains(pane) {
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message: format!("pane {pane} input is already disabled"),
+            });
+        }
+        state.next_stage = state.next_stage.saturating_add(1);
+        let staged = StagedSubmit {
+            pane: pane.to_string(),
+            token: format!("fake-stage-{}", state.next_stage),
+            staged: false,
+        };
+        state.recorder.record(format!("acquire_submit:{pane}"));
+        state
+            .staged
+            .insert(staged.token.clone(), (staged.clone(), String::new()));
+        state.input_disabled.insert(pane.to_string());
+        Ok(staged)
+    }
+
+    async fn stage_submit(&self, staged: &mut StagedSubmit, text: &str) -> Result<()> {
+        let mut state = self.state.lock().expect("fake tmux mutex");
+        let Some((owned, _)) = state.staged.get(&staged.token) else {
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message: format!("unknown staged submit {}", staged.token),
+            });
+        };
+        if owned.pane != staged.pane || owned.staged {
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message: "staged submit ownership mismatch".to_string(),
+            });
+        }
+        if let Some(message) = state.stage_errors.pop_front() {
+            state.staged.remove(&staged.token);
+            state.input_disabled.remove(&staged.pane);
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message,
+            });
+        }
+        state
+            .recorder
+            .record(format!("stage_submit:{}:{text}", staged.pane));
+        let (_, cursor_x, cursor_y) = render_staged_composer(text);
+        if let Some(listed) = state
+            .panes
+            .iter_mut()
+            .find(|listed| listed.id == staged.pane)
+        {
+            listed.cursor_x = Some(cursor_x);
+            listed.cursor_y = Some(cursor_y);
+        }
+        staged.staged = true;
+        let (owned, stored) = state
+            .staged
+            .get_mut(&staged.token)
+            .expect("checked staged submit");
+        owned.staged = true;
+        *stored = text.to_string();
+        Ok(())
+    }
+
+    async fn commit_submit(&self, staged: &StagedSubmit) -> Result<()> {
+        let mut state = self.state.lock().expect("fake tmux mutex");
+        if let Some(message) = state.commit_errors.pop_front() {
+            state.staged.remove(&staged.token);
+            state.input_disabled.remove(&staged.pane);
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message,
+            });
+        }
+        let Some((owned, text)) = state.staged.remove(&staged.token) else {
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message: format!("unknown staged submit {}", staged.token),
+            });
+        };
+        state.input_disabled.remove(&staged.pane);
+        if &owned != staged || !staged.staged {
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message: "staged submit ownership mismatch".to_string(),
+            });
+        }
+        state
+            .recorder
+            .record(format!("commit_submit:{}:{}", staged.pane, staged.token));
+        state
+            .recorder
+            .record(format!("submit:{}:{text}", staged.pane));
+        if let Some(message) = state.cleanup_errors.pop_front() {
+            state.recorder.record(format!("cleanup_error:{message}"));
+        }
+        state.standing_capture = Some(
+            "\u{2570}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{256f}"
+                .to_string(),
+        );
+        if let Some(listed) = state
+            .panes
+            .iter_mut()
+            .find(|listed| listed.id == staged.pane)
+        {
+            listed.cursor_x = Some(0);
+            listed.cursor_y = Some(0);
+        }
+        Ok(())
+    }
+
+    async fn abort_submit(&self, staged: &StagedSubmit) -> Result<()> {
+        let mut state = self.state.lock().expect("fake tmux mutex");
+        let Some((owned, text)) = state.staged.remove(&staged.token) else {
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message: format!("unknown staged submit {}", staged.token),
+            });
+        };
+        state.input_disabled.remove(&staged.pane);
+        if &owned != staged {
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message: "staged submit ownership mismatch".to_string(),
+            });
+        }
+        state
+            .recorder
+            .record(format!("abort_submit:{}:{}", staged.pane, staged.token));
+        if staged.staged {
+            let recovery = format!("{text}\n{STAGED_SUBMIT_RECOVERY}");
+            let (capture, cursor_x, cursor_y) = render_staged_composer(&recovery);
+            state.standing_capture = Some(capture);
+            if let Some(listed) = state
+                .panes
+                .iter_mut()
+                .find(|listed| listed.id == staged.pane)
+            {
+                listed.cursor_x = Some(cursor_x);
+                listed.cursor_y = Some(cursor_y);
+            }
+        }
+        Ok(())
     }
 
     async fn submit(&self, pane: &str, text: &str) -> Result<()> {
@@ -945,13 +1235,19 @@ impl TmuxPort for FakeTmux {
                 message: format!("can't find pane: {pane}"),
             });
         }
+        if let Some(capture) = state.captures.pop_front() {
+            return Ok(capture);
+        }
+        if let Some((_, text)) = state
+            .staged
+            .values()
+            .find(|(staged, _)| staged.pane == pane && staged.staged)
+        {
+            return Ok(render_staged_composer(text).0);
+        }
         // An unscripted capture is an empty pane, not a panic: a fake that
         // explodes on an unexpected call makes tests about the fake.
-        Ok(state
-            .captures
-            .pop_front()
-            .or_else(|| state.standing_capture.clone())
-            .unwrap_or_default())
+        Ok(state.standing_capture.clone().unwrap_or_default())
     }
 
     async fn attach_pane_tap(&self, pane: &str, sink: &Path) -> Result<()> {
