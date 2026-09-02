@@ -42,7 +42,7 @@
           "name": "shim union + whoami json + extension sends session",
           "paths": ".pi/extensions/pij/core/generation-routing.ts, .pi/extensions/pij/adapters/generation-router.ts, .pi/extensions/pij/core/cli.ts (sessions + whoami json branches only), .pi/extensions/pij/core/daemon-wire.ts (Registration field), .pi/extensions/pij/adapters/rust-runtime.ts (send harness_session), .pi/extensions/pij/index.ts (pass piSessionId), tests",
           "responsibility": "Route `sessions` to the shim, merge with legacy join rows, dedupe by id, tag generation; make whoami --json answer under rs with the named absent gate; make omp/pi registration carry its session id.",
-          "interface": "Frozen row shape as in u1; whoami rs json: {id,harness,pane,folder,session,generation:\"rs\",capabilityGate:\"absent\"}. Registration gains harness_session?: string.",
+          "interface": "Frozen row shape = existing legacy shape + generation (see plan G3); whoami rs json: {id,harness,pane,folder,session,generation:\"rs\",capabilityGate:\"absent\"} (whoami keeps `id`). Registration gains harness_session?: string.",
           "test_strategy": "vitest: routing row + path-agreement test (as s119), union dedupe with a fake rs answer, whoami shapes both generations, registration payload includes session id. RED-first.",
           "depends_on": "u1 (payload shape frozen above; build against a fake, compose after u1 merges)",
           "wave": 2,
