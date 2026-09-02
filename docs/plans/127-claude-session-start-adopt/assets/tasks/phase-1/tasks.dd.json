@@ -8,7 +8,7 @@
       "value": {
         "title": "Phase 1",
         "slug": "phase-1",
-        "status": "draft",
+        "status": "in-progress",
         "summary": ""
       }
     },
@@ -18,12 +18,42 @@
     },
     {
       "name": "tasks",
-      "value": []
+      "value": [
+        {
+          "id": "t1",
+          "title": "Write red installer tests",
+          "state": "unchecked"
+        },
+        {
+          "id": "t2",
+          "title": "Implement session-start hook installer",
+          "state": "unchecked"
+        },
+        {
+          "id": "t3",
+          "title": "Wire daemon boot and doctor",
+          "state": "unchecked"
+        },
+        {
+          "id": "t4",
+          "title": "Document statusline and operator behavior",
+          "state": "unchecked"
+        },
+        {
+          "id": "t5",
+          "title": "Run targeted and full checks",
+          "state": "unchecked"
+        },
+        {
+          "id": "t6",
+          "title": "Capture isolated live acceptance proof",
+          "state": "unchecked"
+        }
+      ]
     },
     {
       "name": "done_when",
       "value": {}
     }
-  ],
-  "references": []
+  ]
 }

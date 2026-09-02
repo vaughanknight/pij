@@ -12,7 +12,7 @@
 | title | Phase 1 |
 | slug | phase-1 |
 | ordinal | — |
-| status | draft |
+| status | in-progress |
 | complexity | — |
 | summary | — |
 | backpressure | — |
@@ -33,7 +33,14 @@ _Empty._
 
 ## Tasks
 
-_No entries._
+| id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| t1 | Write red installer tests | — | — | [ ] unchecked | — | — | — | — | — | — |
+| t2 | Implement session-start hook installer | — | — | [ ] unchecked | — | — | — | — | — | — |
+| t3 | Wire daemon boot and doctor | — | — | [ ] unchecked | — | — | — | — | — | — |
+| t4 | Document statusline and operator behavior | — | — | [ ] unchecked | — | — | — | — | — | — |
+| t5 | Run targeted and full checks | — | — | [ ] unchecked | — | — | — | — | — | — |
+| t6 | Capture isolated live acceptance proof | — | — | [ ] unchecked | — | — | — | — | — | — |
 
 <a id="done-when"></a>
 

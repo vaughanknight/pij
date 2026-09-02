@@ -52,11 +52,11 @@ Jordan 2026-09-02: 'if Claude does not have a pij seat, register for one in its 
 
 | id | claim | state | note | receipt | pressure | proven_by | text |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| AC1 | — | — | — | — | — | — | LIVE: with the hook installed, hand-start `claude` in a fresh tmux window and type NOTHING; within a few seconds the statusline shows ⛓ &lt;id&gt;, `pij-rs list` shows the seat bound to that pane with cross_session_inbound_accept=true, and a message from another seat lands as a real turn. Pane transcript + spine rows pasted. |
-| AC2 | — | — | — | — | — | — | LIVE: start a second `claude` in the SAME pane after closing the first (or run the hook twice) → same id or a clean re-adopt, never two live ids for one pane. |
-| AC3 | — | — | — | — | — | — | LIVE: start `claude` OUTSIDE tmux → session starts normally, no error shown, hook log records the skip. |
-| AC4 | — | — | — | — | — | — | Unit: installer adds the SessionStart hook entry without disturbing existing hooks (Notification/PreToolUse/PostToolUse preserved byte-for-byte), backup written, second run no-op; malformed settings refused. RED-first. |
-| AC5 | — | — | — | — | — | — | `/pij ready` typed after auto-adopt reports the existing id (no second seat). cargo/typecheck/harness checks green. |
+| AC1 | A hand-started Claude in tmux auto-adopts with inbound consent and receives the first peer turn. | [ ] unchecked | — | — | — | — | LIVE: with the hook installed, hand-start `claude` in a fresh tmux window and type NOTHING; within a few seconds the statusline shows ⛓ &lt;id&gt;, `pij-rs list` shows the seat bound to that pane with cross_session_inbound_accept=true, and a message from another seat lands as a real turn. Pane transcript + spine rows pasted. |
+| AC2 | Repeating the hook in one pane never creates two live seat ids. | [ ] unchecked | — | — | — | — | LIVE: start a second `claude` in the SAME pane after closing the first (or run the hook twice) → same id or a clean re-adopt, never two live ids for one pane. |
+| AC3 | Claude outside tmux starts silently and records the hook skip. | [ ] unchecked | — | — | — | — | LIVE: start `claude` OUTSIDE tmux → session starts normally, no error shown, hook log records the skip. |
+| AC4 | The installer additively preserves hooks, backs up changes, is idempotent, and refuses malformed settings. | [ ] unchecked | — | — | — | — | Unit: installer adds the SessionStart hook entry without disturbing existing hooks (Notification/PreToolUse/PostToolUse preserved byte-for-byte), backup written, second run no-op; malformed settings refused. RED-first. |
+| AC5 | Manual ready after auto-adopt reuses the seat and all repository gates pass. | [ ] unchecked | — | — | — | — | `/pij ready` typed after auto-adopt reports the existing id (no second seat). cargo/typecheck/harness checks green. |
 
 <a id="phases"></a>
 
