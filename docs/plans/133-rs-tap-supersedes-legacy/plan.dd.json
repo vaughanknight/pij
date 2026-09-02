@@ -36,7 +36,7 @@
         },
         {
           "id": "g4",
-          "text": "Adopt/register records the harness process, not the pane shell, when a harness was started from an interactive shell; UDS discovery falls back to the session record pane match."
+          "text": "A message queued by the human-typing/composer veto is retried by the daemon when the veto lifts, and the receipt names the veto (req-0042 socket half). Note for the register: adopt records pane_pid (the shell) as proc for hand-started-in-a-shell harnesses; UDS pane fallback covers it, so no bind change in this plan."
         }
       ]
     },
@@ -92,8 +92,8 @@
         },
         {
           "id": "AC6",
-          "text": "LIVE: a Claude Code hand-started INSIDE an existing zsh pane (pane_pid = the shell, claude is its child; witness: pij-still-weasel %2081, row proc.pid=6624 shell while /tmp/cc-socks/82124.sock + ~/.claude/sessions/82124.json belong to the live claude) is reachable by socket: after adopt/auto-adopt the row proc names the HARNESS process (or UDS discovery matches the pane via the session record `tmux` field), `pij-rs send` returns delivered/injected-to-transport and the turn arrives in Claude; before the fix the same send returns queued with nothing shown (control pasted).",
-          "claim": "hand-started-in-a-shell seats are socket-reachable",
+          "text": "LIVE: a socket-reachable Claude seat (witness: pij-still-weasel %2081 — direct lookup misses because row proc.pid=6624 is the pane SHELL, but UDS discovery matches ~/.claude/sessions/82124.json via its `tmux` field ending in .%2081, and a send while the composer is blank arrives as a turn) receives a message that was `queued` because the operator had a NON-BLANK composer at send time: once the composer is blank again the daemon retries and the turn arrives WITHOUT a second send (three such rows sat unretried on weasel today: worm F22, opossum PR#353, keech selftest). Receipt for the veto case reads `{outcome:queued, reason:\"human-typing\"}` (additive). Control on pre-fix tree pasted.",
+          "claim": "vetoed socket deliveries are retried when the veto lifts and the receipt names why",
           "state": "unchecked"
         }
       ]

@@ -39,14 +39,14 @@
         },
         {
           "id": "u2",
-          "name": "bind the harness process, not the shell",
-          "paths": "crates/tmux/src/lib.rs (pane_pid → harness descendant), crates/daemon/src/registration.rs (adopt/register proc), crates/transport/src/uds.rs discover() (~L120-150: record `tmux` field match), tests",
+          "name": "retry vetoed socket rows; receipt names the veto",
+          "paths": "crates/daemon/src/delivery/mod.rs (Socket rung veto → Queue path ~L231-260 and the drain/retry loop), crates/harnesses/src/interaction.rs (verdict reason), crates/daemon/src/http/types.rs (additive reason), tests",
           "responsibility": "AC6",
-          "interface": "ProcIdentity for a pane = the first descendant of pane_pid whose comm is the harness binary (claude/copilot/codex/pi/omp), else pane_pid",
-          "test_strategy": "RED-first: fixture pane whose pane_pid is a shell with a claude child; discovery fixture with <pid>.json whose tmux field names the pane",
+          "interface": "DeliveryOutcome::Queued{reason} (additive); drain re-evaluates the veto on a cadence (reuse pointer_announce_cadence_secs or a new config knob) and delivers by socket when clear",
+          "test_strategy": "RED-first: fake gate that vetoes then clears; assert one delivery, no duplicate (ledger dedupe), receipt reason string",
           "depends_on": "none",
           "wave": 1,
-          "note": "repro: weasel %2081 — `tmux display -p -t %2081 #{pane_pid}` = 6624 (zsh), `pgrep -P 6624` = 82124 (claude)"
+          "note": "witness rows: worm 55C220EB-…, opossum PR#353 note, keech selftest — all queued on weasel 2026-09-02 while Jordan had a draft in the composer"
         }
       ]
     },
