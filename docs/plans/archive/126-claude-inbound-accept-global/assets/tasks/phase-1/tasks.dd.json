@@ -1,0 +1,55 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Phase 1",
+        "slug": "phase-1",
+        "status": "in-progress",
+        "summary": "Implement and prove the solo-PM Claude inbound ensure unit."
+      }
+    },
+    {
+      "name": "summary",
+      "value": "One unit owns AC1-AC4: settings planning and persistence, daemon and registration hooks, read-only doctor, isolated live proof, review, and gates."
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "tk-1261",
+          "title": "Implement and prove global Claude inbound acceptance",
+          "domain": "Claude harness configuration",
+          "phase": "ph-88ee",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1261",
+          "success": "AC1-AC4 checked with focused tests, two-boot integration, live type=user delivery, doctor output, reviewer approval, and final gates.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC4"
+          ],
+          "receipt": "cargo workspace 533 passed; clippy clean; harness checks green; r3 APPROVE; assets/live-claude-no-settings.md"
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {
+        "tk-1261": [
+          {
+            "id": "dw-1261",
+            "assertion": "All four plan acceptance criteria are checked with receipts and the final review verdict is APPROVE.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "plan.dd.json AC1-AC4 checked; assets/reviews/r3-cross-model.dd.json"
+          }
+        ]
+      }
+    }
+  ]
+}

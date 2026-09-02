@@ -1,0 +1,84 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "claude-inbound-accept-global",
+        "slug": "claude-inbound-accept-global",
+        "ordinal": 126,
+        "status": "in-progress",
+        "summary": "pij enforces crossSessionInbound=accept in every Claude home on every machine it runs on, so a hand-started Claude receives peer messages as real turns with no operator settings edit."
+      }
+    },
+    {
+      "name": "summary",
+      "value": "RULING 2026-09-02 (government rulings/2026-09-02-claude-inbound-accept-is-global.md, Jordan: 'the global accept fix is fine, get it in, get it working, make sure it gets set on other machines too'). Evidence: with `\"crossSessionInbound\":\"accept\"` in ~/.claude/settings.json a RUNNING Claude session (vicuna, up since Aug 28) went from held/refused to delivered/injected-to-transport (spine 2077) — Claude re-reads settings live, no restart. Without it the Claude client holds or refuses every pij frame (client-side gate; pij's own sender gate is already open after s121/af139cb4). Today it was hand-applied on one machine; this plan makes pij apply it itself, idempotently, everywhere. The from-mode=bypass wire marker stays withheld (uds.rs:925 pin stands)."
+    },
+    {
+      "name": "goals",
+      "value": [
+        "G1 ensure_claude_inbound_accept(): for each Claude home (CLAUDE_CONFIG_DIR if set, else $HOME/.claude; plus $HOME/.claude-alt when it exists) read settings.json; if the key is absent or not `accept`, write a timestamped backup then rewrite with ONLY that key added/changed (preserve every other key and ordering as far as serde_json allows); malformed JSON → refuse to touch it and report; missing file → create it with just that key.",
+        "G2 Call sites: rs daemon boot (run_daemon in crates/cli/src/main.rs, before listening) and every Claude registration (adopt / spawn / phonehome path through crates/daemon/src/registration.rs register()). Idempotent, cheap (one stat + read when already accept).",
+        "G3 Visibility: one startup log line naming homes touched/skipped; a spine event `config.claude-inbound-ensured` with {home, before, after} on every CHANGE (not on no-op); `pij-rs doctor claude-inbound` prints the current state per home without writing.",
+        "G4 Never emit from-mode on the wire; this plan changes no transport frame."
+      ]
+    },
+    {
+      "name": "non_goals",
+      "value": [
+        "No change to crates/transport/src/uds.rs frames or the uds.rs:925 pin.",
+        "No omp/pi changes.",
+        "No legacy TS daemon changes."
+      ]
+    },
+    {
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "AC1",
+          "text": "Unit (pure fn over a temp dir): absent file → created with the key; key absent → added, other keys byte-preserved, backup written; key=hold → changed, backup written; already accept → no write, no backup, no event; malformed JSON → untouched, reported. RED-first on the pre-fix tree.",
+          "claim": "Settings ensure semantics",
+          "state": "checked",
+          "receipt": "cargo test -p pij-harnesses claude_settings: 10 passed; r3 review APPROVE"
+        },
+        {
+          "id": "AC2",
+          "text": "Integration: daemon boot with a temp HOME lacking the key → key present after boot, spine has config.claude-inbound-ensured; second boot → no new event.",
+          "claim": "Daemon boot idempotency and event",
+          "state": "checked",
+          "receipt": "cargo test -p pij-cli --test claude_inbound: two boots, one config event; 2 passed"
+        },
+        {
+          "id": "AC3",
+          "text": "LIVE (done-bar ruling): on this machine, remove the key from ~/.claude/settings.json (backup first), restart an ISOLATED rs daemon built from the branch with HOME pointed appropriately or the real home per PM judgement, confirm the key is back, then hand-start `claude --dangerously-skip-permissions` WITHOUT any --settings flag in a tmux window, type /pij ready, send it a message from another seat → real type=user turn in its transcript, outcome delivered/injected-to-transport, no pointer. Pane transcript + spine rows pasted into assets/live-claude-no-settings.md.",
+          "claim": "Live no-settings Claude inbound delivery",
+          "state": "checked",
+          "receipt": "assets/live-claude-no-settings.md; native type=user; delivered/injected-to-transport; r3 review"
+        },
+        {
+          "id": "AC4",
+          "text": "`pij-rs doctor claude-inbound` output pasted for both homes; typecheck/cargo test/harness checks green.",
+          "claim": "Doctor output and project gates",
+          "state": "checked",
+          "receipt": "doctor both homes accept; cargo workspace 533 passed; clippy clean; harness checks 2026-09-01T23:47:13Z green"
+        }
+      ]
+    },
+    {
+      "name": "phases",
+      "value": [
+        {
+          "id": "ph-88ee",
+          "title": "Ensure + hook + doctor + live proof",
+          "brief": "Implement u1 (pure ensure fn + doctor), wire the two call sites, prove AC1-AC4, PR into main.",
+          "state": "checked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks",
+          "receipt": "AC1-AC4 checked; r3 review APPROVE; final cargo and harness gates green"
+        }
+      ]
+    }
+  ]
+}

@@ -357,6 +357,8 @@ async fn register(State(state): State<AppState>, Json(claim): Json<Registration>
     let registration = RegistrationService::new(
         Arc::clone(&state.services.registry),
         Arc::clone(&state.services.liveness),
+        Arc::clone(&state.services.event_bus),
+        pij_harnesses::claude_homes(),
     );
     match registration.register(claim).await {
         Ok(descriptor) => envelope(StatusCode::OK, &Envelope::ok("pij register", descriptor)),
