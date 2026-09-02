@@ -713,6 +713,7 @@ struct TransportState {
     /// the caller learns the injection did not happen, which is the case a
     /// claim-before-inject design must compensate for.
     fail_next_deliver: bool,
+    fail_next_reachability: bool,
     reachable: bool,
     outcome: Option<DeliveryOutcome>,
     delivered: Vec<Msg>,
@@ -748,6 +749,16 @@ impl FakeTransport {
             .lock()
             .expect("fake transport mutex")
             .fail_next_deliver = true;
+        self
+    }
+
+    /// Fail the next reachability probe once, then resume normal answers.
+    #[must_use]
+    pub fn script_reachability_error(self) -> Self {
+        self.state
+            .lock()
+            .expect("fake transport mutex")
+            .fail_next_reachability = true;
         self
     }
 
@@ -791,6 +802,12 @@ impl Transport for FakeTransport {
         state
             .recorder
             .record(format!("can_deliver:{}:{}", seat.id, msg.msg_id));
+        if std::mem::take(&mut state.fail_next_reachability) {
+            return Err(PijError::Adapter {
+                adapter: "testkit/fake-transport".to_string(),
+                message: "scripted reachability failure".to_string(),
+            });
+        }
         Ok(state.reachable)
     }
 
@@ -833,6 +850,7 @@ pub struct FakeTmux {
 #[derive(Default)]
 struct TmuxState {
     panes: Vec<Pane>,
+    list_pane_failures: usize,
     captures: VecDeque<String>,
     /// Served when the scripted queue is empty, so a test whose subject makes
     /// MANY captures does not have to script one per call.
@@ -903,6 +921,16 @@ impl FakeTmux {
         self
     }
 
+    /// Fail the next `count` pane inventory calls, then resume normal answers.
+    #[must_use]
+    pub fn with_list_pane_failures(self, count: usize) -> Self {
+        self.state
+            .lock()
+            .expect("fake tmux mutex")
+            .list_pane_failures = count;
+        self
+    }
+
     /// Arrange the process tmux reports for a pane.
     pub fn with_pane_process(self, pane: &str, process: PaneProcess) -> Self {
         self.state
@@ -942,10 +970,11 @@ impl FakeTmux {
         self
     }
 
-    /// `with_clear_composer` for a fake already behind an `Arc`, so a test helper
-    /// can arrange a pane at the moment the seat is registered rather than
-    /// needing every pane id enumerated up front.
-    pub fn arrange_clear_composer(&self, pane: &str) {
+    /// Arrange a listed pane without claiming its composer is recognized.
+    ///
+    /// This keeps "pane exists" separate from "injection is permitted" for
+    /// delivery-policy tests.
+    pub fn arrange_pane(&self, pane: &str) {
         let mut state = self.state.lock().expect("fake tmux mutex");
         if !state.panes.iter().any(|listed| listed.id == pane) {
             state.panes.push(Pane {
@@ -953,14 +982,26 @@ impl FakeTmux {
                 session: "s".to_string(),
                 window: "w".to_string(),
                 title: "t".to_string(),
-                cursor_x: Some(0),
-                cursor_y: Some(0),
+                cursor_x: None,
+                cursor_y: None,
             });
         }
         state.taps.insert(
             pane.to_string(),
             std::env::temp_dir().join(format!("pij-fake-tap-{}", pane.replace('%', "pane"))),
         );
+    }
+
+    /// `with_clear_composer` for a fake already behind an `Arc`, so a test helper
+    /// can arrange a pane at the moment the seat is registered rather than
+    /// needing every pane id enumerated up front.
+    pub fn arrange_clear_composer(&self, pane: &str) {
+        self.arrange_pane(pane);
+        let mut state = self.state.lock().expect("fake tmux mutex");
+        if let Some(listed) = state.panes.iter_mut().find(|listed| listed.id == pane) {
+            listed.cursor_x = Some(0);
+            listed.cursor_y = Some(0);
+        }
         state.standing_capture = Some(
             "\u{2570}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{256f}"
                 .to_string(),
@@ -1079,6 +1120,13 @@ impl TmuxPort for FakeTmux {
     async fn list_panes(&self) -> Result<Vec<Pane>> {
         let mut state = self.state.lock().expect("fake tmux mutex");
         state.recorder.record("list_panes".to_string());
+        if state.list_pane_failures > 0 {
+            state.list_pane_failures -= 1;
+            return Err(PijError::Adapter {
+                adapter: "fake-tmux".to_string(),
+                message: "scripted list-panes failure".to_string(),
+            });
+        }
         Ok(state.panes.clone())
     }
 

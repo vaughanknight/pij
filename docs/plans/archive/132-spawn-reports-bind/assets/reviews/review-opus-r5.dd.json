@@ -1,0 +1,205 @@
+{
+  "dd": {
+    "schema": "builder/review"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Cross-model review R5 (final) — 132-spawn-reports-bind @ 499bcae0",
+        "reviewer": "pij-plan132-opus-review",
+        "model": "claude-opus-5 (medium effort)",
+        "round": "R5-final",
+        "date": "2026-09-02",
+        "plan": "../../plan.dd.json#meta",
+        "note": "FINAL VERDICT: APPROVE — ship it. No blocking findings, and nothing outstanding that needs an answer. All four R4 items (N9, N10, N11, N12) are verified FIXED from source. FRESH GATE RECEIPTS taken by this reviewer at 3c3c991f: `cargo test --workspace` EXIT 0, 613 passed, 0 failed; `cargo clippy --workspace --all-targets -- -D warnings` EXIT 0; `cargo test -p pij-daemon pointer::worker::tests` 30 passed, 0 failed; `vitest .pi/extensions/pij` 4034 passed, EXIT 0 under a neutral PIJ_SESSION_ID. Those receipts carry to the R5 head 499bcae0: I verified `git diff 3c3c991f..499bcae0 -- crates/ .pi/` is EMPTY, so that commit is doc-only and no code or test bytes changed under it; plan.dd.json validates 0/0 at the tip. AC VERDICTS, ALL TRUE: AC1a, AC1b, AC2, AC3, AC4, AC5, AC6 — with AC5's claim and full text now both socket-qualified and both receipt anchors named. REMAINING OPEN ITEMS ARE ALL NON-BLOCKING AND ALL DEFERRED, none needing action before merge: R004, R005, R007, R008, N5, plus the friction note R010. REVIEW ARC: five rounds, three blockers (R001 model-truth destruction, R002 CI-red clippy, N1 tmux-outage delivery halt), every one real and every one fixed in the right shape rather than the cheapest. One candidate blocker (N2) I withdrew myself after the author's own test disconfirmed it, and one R2 over-claim of mine (N8) I corrected in R3. The recurring root across this plan was a single mistake in four costumes — collapsing UNKNOWN into an observed negative: absent actual_model read as no-model, a failed pane inventory read as an empty roster, a failed socket probe read as unreachable, and a paneless recipient read as gone. It was drawn correctly three times running once named, which is the durable lesson worth carrying out of plan 132."
+      }
+    },
+    {
+      "name": "findings",
+      "value": [
+        {
+          "id": "N9",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": "crates/daemon/src/pointer/worker.rs:226",
+          "state": "checked",
+          "finding": "FIXED, and confirmed incidental as I suspected. The `if recipient.proc.is_none() { release_or_backoff }` guard is restored ABOVE the command branch, so the drain worker again mirrors route()'s PreBind rule for commands as well as bodies. The witness is well built and defeats the obvious objection to the finding: unbound_recipient_defers_command_even_when_pane_is_ready uses the ARRANGED fixture, so the composer is recognized and permission would be granted — the pane is READY and the command is still deferred. That removes the 'the composer gate would have caught it anyway' answer, which was the only reason I could not demonstrate harm in R4. It asserts the retry at one second, zero acks, and that NO tmux call starts with 'submit:', so it cannot pass by typing and then failing.",
+          "receipt": "git diff 3eeb232a..3c3c991f on crates/daemon/src/pointer/worker.rs; the guard now precedes `if msg.command.is_some()`. Re-run by this reviewer: pointer::worker::tests 30 passed, 0 failed."
+        },
+        {
+          "id": "N10",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": "docs/plans/132-spawn-reports-bind/assets/prod-copy-proof.md:50",
+          "state": "checked",
+          "finding": "FIXED by re-running rather than by explaining, which is the stronger of the two options I offered. A fresh copy of the source database was taken, the FINAL branch binary ran one cadence on 127.0.0.1:60502, and the recorded reasons now read 'is absent from tmux list-panes -a AND NO SOCKET IS REACHABLE; not retried'. That string is the receipt: it could only have been emitted by the socket-aware code path, so the document now proves which binary produced it rather than asserting it. Same outcome as before — 72 proven-dead pending to 0 in one cadence, the single live-recipient row retained — and the baseline is relabelled proven_dead:72 to match the ruled definition. The section also credits the R4 finding, so the reason for the rerun survives in the artifact.",
+          "receipt": "prod-copy-proof.md 'Final socket-aware binary rerun'; I verified the reason string in the document now matches crates/daemon/src/pointer/worker.rs:220 exactly, which was the mismatch that exposed the staleness."
+        },
+        {
+          "id": "N11",
+          "kind": "question",
+          "severity": "NIT",
+          "address": "docs/plans/132-spawn-reports-bind/plan.dd.json#acceptance_criteria/AC5",
+          "state": "checked",
+          "finding": "FIXED, and fixed completely rather than partially. At 3c3c991f only AC5's short claim column carried the socket qualifier while its long text still read 'tombstoned or pane-absent recipients'. I had this noted as a residual clause rather than a finding; the PM caught it independently and closed it in the doc-only commit 499bcae0, so AC5's FULL TEXT now states that pane-absent socket-unreachable deliveries terminalize, reachable sockets deliver, and unknown observations retry visibly. The claim and its text no longer disagree, and both receipt anchors are named.",
+          "receipt": "git show 499bcae0:docs/plans/132-spawn-reports-bind/plan.dd.md AC5 row; `git diff 3c3c991f..499bcae0 --stat -- crates/ .pi/` returns nothing, confirming the commit is doc-only."
+        },
+        {
+          "id": "N12",
+          "kind": "question",
+          "severity": "NIT",
+          "address": "crates/daemon/src/pointer/worker.rs:244",
+          "state": "checked",
+          "finding": "FIXED with the safe default rather than a tighter assertion. `socket_available.expect(...)` is replaced by `let Some(socket_available) = socket_available else { return self.release_body(job_id).await; }`, so an invariant break now retries the row instead of panicking the drain task. Worth recording WHY this is the right shape even though the fallback is currently unreachable: with the N9 guard restored above the command branch, both callers that could yield None now return earlier, so the else arm cannot execute today. That is precisely the argument for a fallback over an expect — an unreachable branch that retries costs nothing, while an unreachable branch that panics becomes a liveness bug the first time the ordering moves, and this function has now been reordered three times in four rounds.",
+          "receipt": "git diff 3eeb232a..3c3c991f; HEAD crates/daemon/src/pointer/worker.rs:244."
+        },
+        {
+          "id": "R004",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": "crates/daemon/src/lib.rs:665",
+          "state": "unchecked",
+          "finding": "OPEN, non-blocking, unchanged through five rounds. The daemon starts one binder, Claude-only, so a codex spawn with --wait defaulted on still times out into a false spawn.failed after wait_seconds. Non-blocking under the current omp-only fleet policy; hand to prime as a follow-up rather than reopening this plan.",
+          "receipt": "No binder added in 3eeb232a..499bcae0."
+        },
+        {
+          "id": "R005",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": "crates/cli/src/main.rs:1470",
+          "state": "unchecked",
+          "finding": "OPEN on the success path only, non-blocking. The failure path is now the daemon's own answer end to end because R4 made the CLI propagate `details`; spawn_cli_response still drops SpawnResponse's dispatched/bound/pid on success and recomputes them, with dispatched hardcoded true client-side.",
+          "receipt": "crates/cli/src/main.rs unchanged since 3eeb232a."
+        },
+        {
+          "id": "R007",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": "crates/daemon/src/pointer/worker.rs:215",
+          "state": "unchecked",
+          "finding": "OPEN, non-blocking, and now bounded three times over. Terminalizing a revivable seat's queued message requires a SUCCESSFUL pane inventory (R3), AND an explicit socket-unreachable result (R4), AND a drain tick inside the window between the pane dying and revive writing the replacement row. The residual is unchanged in kind — fail_claim is terminal and the check applies to bound seats — but the target is now small enough that I would not spend this plan's remaining budget on it.",
+          "receipt": "HEAD guard `pane_absent && socket_available != Some(true)` plus the Option-typed inventory."
+        },
+        {
+          "id": "R008",
+          "kind": "defect",
+          "severity": "NIT",
+          "address": "crates/daemon/src/http/mod.rs:856",
+          "state": "unchecked",
+          "finding": "OPEN across all five rounds, NIT. Spawn evidence files under temp_dir()/pij-rs-spawn/ are removed only on the success path, so the no_wait path and every revive leave a .status and a .log behind permanently. The only finding in this plan that was raised in R1 and never touched; worth naming as a deliberate carry rather than an oversight.",
+          "receipt": "crates/daemon/src/http/mod.rs spawn_evidence_paths unchanged since it was written."
+        },
+        {
+          "id": "N5",
+          "kind": "question",
+          "severity": "NIT",
+          "address": "crates/daemon/src/http/mod.rs:773",
+          "state": "unchecked",
+          "finding": "OPEN, NIT. requested_model_matches is still called with actual_observed hardcoded true in the spawn wait loop, correct only by the invariant that registration overwrites descriptor.model solely on an observed claim.",
+          "receipt": "crates/daemon/src/http/mod.rs unchanged in this area since R2."
+        },
+        {
+          "id": "N7",
+          "kind": "question",
+          "severity": "NA",
+          "address": ".pi/extensions/pij/index.test.ts",
+          "state": "checked",
+          "finding": "NOT ATTRIBUTABLE TO THIS BRANCH. Recorded in every round so it is never charged to this plan: index.test.ts reads the ambient PIJ_SESSION_ID and asserts ^pij-[a-z]+(-[a-z]+)*$, so it fails for any reviewer whose seat name contains digits. Untouched by this branch and green under a neutral id.",
+          "receipt": "Measured both ways in R2; confirmed green again at R5 under PIJ_SESSION_ID=pij-neutral-name, 4034 passed, exit 0."
+        },
+        {
+          "id": "R010",
+          "kind": "question",
+          "severity": "NA",
+          "address": "docs/plans/132-spawn-reports-bind/packet-reviewer.dd.json#instructions/i1",
+          "state": "unchecked",
+          "finding": "OPEN, tooling friction outside this plan's fence. flowspace3 rejects the documented `--mode semantic` form and its index stayed stale for this branch throughout. Every finding across R1 to R5 was located by reading diffs and by grep, so the dogfood instruction produced no hits in five rounds — that is the report, per i1.",
+          "receipt": "flowspace3 doctor ok; --mode rejected; bare search returned plan-110 rows only."
+        }
+      ]
+    },
+    {
+      "name": "verdict",
+      "value": [
+        {
+          "id": "v1",
+          "finding": "#findings/N9",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Guard restored above the command branch, and the witness uses a READY pane so it defeats the composer-gate objection that stopped me demonstrating harm in R4."
+        },
+        {
+          "id": "v2",
+          "finding": "#findings/N10",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Closed by re-running on the final binary, not by explaining the gap away. The new reason string is itself the proof of which code path executed."
+        },
+        {
+          "id": "v3",
+          "finding": "#findings/N11",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Claim and full text now agree; the PM caught the remaining half independently in a doc-only commit."
+        },
+        {
+          "id": "v4",
+          "finding": "#findings/N12",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Panic replaced by a retry fallback. Correct even though the branch is currently unreachable, because this function has been reordered three times in four rounds."
+        },
+        {
+          "id": "v5",
+          "finding": "#findings/R004",
+          "resolution": "deferred",
+          "state": "unchecked",
+          "rationale": "Non-blocking; hand to prime as a follow-up rather than reopening this plan."
+        },
+        {
+          "id": "v6",
+          "finding": "#findings/R005",
+          "resolution": "deferred",
+          "state": "unchecked",
+          "rationale": "Non-blocking; failure path closed in R4, success path survives."
+        },
+        {
+          "id": "v7",
+          "finding": "#findings/R007",
+          "resolution": "deferred",
+          "state": "unchecked",
+          "rationale": "Non-blocking; bounded three times over."
+        },
+        {
+          "id": "v8",
+          "finding": "#findings/R008",
+          "resolution": "deferred",
+          "state": "unchecked",
+          "rationale": "Non-blocking NIT; the one finding carried untouched from R1 to R5."
+        },
+        {
+          "id": "v9",
+          "finding": "#findings/N5",
+          "resolution": "deferred",
+          "state": "unchecked",
+          "rationale": "Non-blocking NIT."
+        },
+        {
+          "id": "v10",
+          "finding": "#findings/N7",
+          "resolution": "refuted",
+          "state": "checked",
+          "rationale": "Not this branch."
+        },
+        {
+          "id": "v11",
+          "finding": "#findings/R010",
+          "resolution": "deferred",
+          "state": "unchecked",
+          "rationale": "Tooling friction outside the fence; reported per instruction i1."
+        }
+      ]
+    }
+  ]
+}

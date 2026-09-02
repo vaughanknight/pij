@@ -100,6 +100,8 @@ impl ClaudeBinder {
             proc_start: Some(observed_start),
             spawn_id: seat.spawn_id.clone(),
             model: seat.model.clone(),
+            actual_model: None,
+            actual_model_observed: false,
             provider: seat.provider.clone(),
             effort: seat.effort.clone(),
             parent: seat.parent.clone(),
@@ -246,6 +248,7 @@ mod tests {
         let mut seat = SeatDescriptor::new("pij-claude", Harness::Claude, "/abs/worktree");
         seat.pane = Some(pane.to_string());
         seat.spawn_id = Some("spawn-claude".to_string());
+        seat.model = Some("claude-opus-5".to_string());
         seat.cross_session_inbound_accept = Some(true);
         seat
     }
@@ -281,6 +284,7 @@ mod tests {
         let bound = registry.get(&"pij-claude".into()).await.unwrap().unwrap();
         assert_eq!(bound.proc.unwrap().pid, 4242);
         assert_eq!(bound.cross_session_inbound_accept, Some(true));
+        assert_eq!(bound.model.as_deref(), Some("claude-opus-5"));
     }
 
     #[tokio::test]

@@ -31,6 +31,7 @@ import type { PijDaemonClient } from "./daemon-http.js";
 interface RustBootInput extends Omit<BootInput, "id"> {
 	readonly runtimeBin: "pi" | "omp";
 	readonly piSessionId?: string;
+	readonly actualModel?: string | null;
 	readonly reason: SessionShutdownReason | "startup";
 	readonly notice?: (text: string) => void;
 }
@@ -87,21 +88,22 @@ export class RustRuntimeSession {
 			previousSelf !== undefined && (input.reason === "new" || input.reason === "fork");
 		const procStart = this.client.processStart(process.pid);
 		const seats = await this.client.seats();
-		const id = this.chooseIdentity(input.piSessionId, procStart, seats, replacing);
+		const id = this.chooseIdentity(input, procStart, seats, replacing);
 		const registration = registrationFor(
 			id,
 			procStart,
 			input,
 			replacing ? previousSelf : undefined,
 		);
-		const continuityRegistration = registrationFor(id, procStart, input);
 		const accepted = await this.client.register(registration);
+		const acceptedId = accepted.id;
+		const continuityRegistration = registrationFor(acceptedId, procStart, input);
 		for (const seat of seats) this.registry.seed(fromRustDescriptor(seat));
 		if (replacing && previousSelf) this.registry.dissolve(previousSelf);
-		const boot = this.session.boot({ ...input, id });
+		const boot = this.session.boot({ ...input, id: acceptedId });
 		this.registry.seed(fromRustDescriptor(accepted));
-		this.self = id;
-		process.env.PIJ_SESSION_ID = id;
+		this.self = acceptedId;
+		process.env.PIJ_SESSION_ID = acceptedId;
 		await this.flush();
 		this.stopEvents?.();
 		this.stopEvents = await this.client.watchEvents(
@@ -270,20 +272,29 @@ export class RustRuntimeSession {
 	}
 
 	private chooseIdentity(
-		piSessionId: string | undefined,
+		input: RustBootInput,
 		procStart: number,
 		seats: readonly RustSeatDescriptor[],
 		replacing: boolean,
 	): string {
 		if (this.self !== "" && !replacing) return this.self;
 		if (!replacing) {
+			const samePane =
+				input.paneId === undefined ? undefined : seats.find((seat) => seat.pane === input.paneId);
+			if (samePane) return samePane.id;
 			const sameProcess = seats.find(
 				(seat) => seat.proc?.pid === process.pid && seat.proc.proc_start === procStart,
 			);
 			if (sameProcess) return sameProcess.id;
+			const spawnedId = process.env.PIJ_SESSION_ID?.trim();
+			if (spawnedId) return spawnedId;
 		}
 		const used = new Set(seats.map((seat) => seat.id));
-		const seed = memorableIdentitySeed("pi", piSessionId ?? `pid:${process.pid}:${procStart}`);
+		if (replacing && this.self !== "") used.add(this.self);
+		const seed = memorableIdentitySeed(
+			"pi",
+			input.piSessionId ?? `pid:${process.pid}:${procStart}`,
+		);
 		for (const candidate of memorablePijIdCandidates(seed)) {
 			if (!used.has(candidate)) return candidate;
 		}
@@ -331,6 +342,12 @@ function registrationFor(
 		proc_start: procStart,
 		...(process.env.PIJ_SPAWN_ID ? { spawn_id: process.env.PIJ_SPAWN_ID } : {}),
 		...(model ? { model } : {}),
+		...(input.actualModel === undefined
+			? {}
+			: {
+					actual_model_observed: true,
+					...(input.actualModel === null ? {} : { actual_model: input.actualModel }),
+				}),
 		...(process.env.PIJ_SPAWN_PROVIDER ? { provider: process.env.PIJ_SPAWN_PROVIDER } : {}),
 		...(effort ? { effort } : {}),
 		...(input.parentId === undefined || input.parentId === null ? {} : { parent: input.parentId }),

@@ -1,0 +1,113 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Reviewer packet — 132-spawn-reports-bind",
+        "role": "reviewer",
+        "plan": "docs/plans/132-spawn-reports-bind/plan.dd.json",
+        "seat": "pij-plan132-opus-review",
+        "updated": "2026-09-02"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "You are the Claude Opus cross-model reviewer for plan 132-spawn-reports-bind. Judge the composed branch against plan promises, correctness, and composition seams. Read-only on product code; write only the review ddoc."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        {
+          "id": "i1",
+          "text": "Orient: read the plan (rendered .dd.md), the impl-guide (the intended decomposition + interfaces), and then the full diff of the branch against its base. DOGFOOD FLOWSPACE: use `flowspace3 search` to locate consumers/related code by meaning while reviewing; report misses as friction."
+        },
+        {
+          "id": "i2",
+          "text": "Review with the /builder review discipline: verify claims against fresh evidence — run targeted tests yourself, read exit status, never trust a green claim you did not see."
+        },
+        {
+          "id": "i2b",
+          "text": "WHERE AUTHOR IS LEAST CONFIDENT: dead-recipient classification uses one tmux list-panes -a snapshot and deliberately drains every dead serial key while preserving one-claim suppression for live recipients; actual_model_observed must distinguish unreported from observed-none across Rust/TS; failure-envelope structure, codex default wait, and live exit-code proof remain the disputed R003/R004/R006 surfaces. DISBELIEVE all author receipts: re-run focused tests and inspect the production-copy proof query. KNOWN-OPEN: R1 is persisted at assets/reviews/review-opus-r1.dd.md; R001/R002 are claimed fixed and every R001-R010 row requires explicit re-judgment. MCP Transport closed remains out of scope."
+        },
+        {
+          "id": "i3",
+          "text": "Priority order: (1) plan promises that are not actually true, (2) composition-seam defects between units, (3) interface drift from the impl-guide, (4) correctness/safety in the changed code, (5) test gaps on the contract. Style noise is unwanted."
+        },
+        {
+          "id": "i4",
+          "text": "Findings: at most the material ones, each with severity (CRITICAL/HIGH/MEDIUM), exact location, the claim, the proof, and the smallest fix. `no_material_findings` is a valid verdict."
+        },
+        {
+          "id": "i5",
+          "text": "Deliver as a ddoc review record in the plan folder (assets/reviews/), build it, and send the PM the path + a one-line verdict."
+        },
+        {
+          "id": "i6",
+          "text": "Standing rule: NEVER start flowspace3 daemon in any form. Use search/ask/get only if the production daemon is already running; if doctor says down, continue with local evidence and report the miss. Do not restart the production pij-rs daemon."
+        }
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        {
+          "id": "w1",
+          "text": "The PM is your counterpart: verdict and findings go to the PM; the PM may refute findings with evidence — re-judge refutations on the evidence, not on rank."
+        },
+        {
+          "id": "w2",
+          "text": "You do not fix code, commit, or open PRs. If you find something outside the plan's scope, name it as a note for prime rather than expanding the review."
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/fs3-spawn-reports-bind",
+        "branch": "132-spawn-reports-bind; compare to main@4418e3f34ceb69c7e3dbeec43f69a820832c6003",
+        "fence": "read-only on code; write only assets/reviews/ in the plan folder",
+        "forbidden_note": "No code edits, no merges, no government files."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        {
+          "id": "d1",
+          "text": "Every plan AC judged true/false with evidence cited."
+        },
+        {
+          "id": "d2",
+          "text": "Composition seams between units explicitly examined and reported."
+        },
+        {
+          "id": "d3",
+          "text": "Review record ddoc written, built, and path delivered to the PM with a verdict line."
+        }
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        {
+          "id": "r0",
+          "path": ".agents-skills-port/pij-team/TENETS.md",
+          "note": "the doctrine — tenet 5: you judge diffs against contracts, not philosophy"
+        },
+        {
+          "id": "r1",
+          "path": "docs/plans/132-spawn-reports-bind/impl-guide.dd.json",
+          "note": "intended units + interfaces — drift from this is a finding"
+        },
+        {
+          "id": "r2",
+          "path": "docs/plans/132-spawn-reports-bind/plan.dd.md",
+          "note": "the promises under judgment"
+        }
+      ]
+    }
+  ]
+}

@@ -14,13 +14,15 @@ mod types;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const INBOX_ACK_EVENT_KIND: &str = "delivery.inbox-ack";
 const REVIVE_POSTMORTEM_EVENT_KIND: &str = "seat.revive-postmortem";
+const DEFAULT_SPAWN_WAIT_SECONDS: u64 = 30;
+const SPAWN_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 use axum::Router;
 use axum::body::{Body, Bytes};
@@ -34,14 +36,14 @@ use pij_core::model::{
     Envelope, ErrorKind, Event, Harness, Msg, SeatDescriptor, SeatId, SemanticState, Seq,
 };
 use pij_core::names::memorable_pij_id_candidates;
-use pij_core::ports::{LaunchCommand, Registry, SeatFilter};
+use pij_core::ports::{Registry, SeatFilter};
 use pij_core::wire;
-use pij_harnesses::{SpawnPlanInput, build_spawn_plan};
+use pij_harnesses::{SpawnPlanInput, build_spawn_plan, observed_launch_command};
 use serde::{Deserialize, Serialize};
 use tokio_stream::{Stream, StreamExt};
 
 use crate::federation::{FederationSendError, FederationService};
-use crate::registration::{RegistrationError, RegistrationService};
+use crate::registration::{RegistrationError, RegistrationService, requested_model_matches};
 use crate::{BUILD, Services};
 pub use auth::AuthRing;
 pub use client::{PeerEndpoint, get_from_peer, post_to_peer, stream_from_peer};
@@ -49,7 +51,7 @@ pub use exposure::{Exposure, boot_banner, exposure};
 pub use identity::{CallerContext, IdentityQuery, IdentityRequest, Phonehome};
 pub use types::{
     CursorResetDetail, FederatedRoster, InboxAckRequest, PeerStreamState, Registration,
-    ReviveRequest, SendRequest, SpawnRequest, StateCard, StateRequest, StreamFrame,
+    ReviveRequest, SendRequest, SpawnRequest, SpawnResponse, StateCard, StateRequest, StreamFrame,
     UnavailablePeer, UnsupportedField,
 };
 
@@ -529,6 +531,8 @@ async fn revive_seat(
         name: request.name,
         parent: prior.parent,
         accept_inbound: prior.cross_session_inbound_accept == Some(true),
+        wait_seconds: None,
+        no_wait: true,
     };
     launch_seat(
         &state,
@@ -561,6 +565,8 @@ pub(crate) async fn launch_seat(
             "--cwd must be absolute so the descriptor cannot depend on daemon cwd",
         );
     }
+    let wait_seconds = request.wait_seconds.unwrap_or(DEFAULT_SPAWN_WAIT_SECONDS);
+    let no_wait = request.no_wait;
 
     let session = match request.session.as_deref() {
         Some(session) if !session.trim().is_empty() => session.to_string(),
@@ -670,9 +676,32 @@ pub(crate) async fn launch_seat(
         Ok(plan) => plan,
         Err(error) => return refused(command_name, error),
     };
-    let command = LaunchCommand {
-        executable: plan.executable.clone(),
-        args: plan.args.clone(),
+    let requested_model = plan.model.clone();
+    let (status_path, log_path) = spawn_evidence_paths(&spawn_id);
+    if let Some(parent) = status_path.parent()
+        && let Err(error) = tokio::fs::create_dir_all(parent).await
+    {
+        return internal(command_name, error);
+    }
+    let wrapper_executable = match std::env::current_exe()
+        .ok()
+        .and_then(|path| path.into_os_string().into_string().ok())
+    {
+        Some(path) => path,
+        None => {
+            return internal(
+                command_name,
+                PijError::Adapter {
+                    adapter: "spawn".to_string(),
+                    message: "the running pij-rs executable path is not valid UTF-8".to_string(),
+                },
+            );
+        }
+    };
+    let command = match observed_launch_command(&plan, wrapper_executable, &status_path, &log_path)
+    {
+        Ok(command) => command,
+        Err(error) => return internal(command_name, error),
     };
     let name = request
         .name
@@ -725,8 +754,285 @@ pub(crate) async fn launch_seat(
             },
         );
     }
+    drop(_spawn_guard);
 
-    envelope(StatusCode::OK, &Envelope::ok(command_name, descriptor))
+    if no_wait {
+        return spawn_success(command_name, descriptor);
+    }
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(wait_seconds);
+    let mut last_output = String::new();
+    loop {
+        if let Ok(output) = state.services.tmux.capture(&pane.id, 20).await
+            && !output.trim().is_empty()
+        {
+            last_output = output;
+        }
+        match state.services.registry.get(&descriptor.id).await {
+            Ok(Some(bound)) if bound.proc.is_some() => {
+                if requested_model_matches(requested_model.as_deref(), bound.model.as_deref(), true)
+                {
+                    let _ = tokio::fs::remove_file(&status_path).await;
+                    return spawn_success(command_name, bound);
+                }
+                let actual = bound.model.as_deref().unwrap_or("no-model");
+                let footer_deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+                loop {
+                    if let Ok(output) = state.services.tmux.capture(&pane.id, 20).await
+                        && !output.trim().is_empty()
+                    {
+                        let footer_visible = output.contains(actual);
+                        last_output = output;
+                        if footer_visible {
+                            break;
+                        }
+                    }
+                    if tokio::time::Instant::now() >= footer_deadline {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                }
+                let reason = format!(
+                    "model-mismatch: requested {}, actual {actual}",
+                    requested_model.as_deref().unwrap_or("default")
+                );
+                return match spawn_failure(
+                    state,
+                    command_name,
+                    &bound,
+                    SpawnFailure {
+                        exit_code: None,
+                        reason: &reason,
+                        status: StatusCode::BAD_GATEWAY,
+                        last_output: &last_output,
+                        log_path: &log_path,
+                    },
+                )
+                .await
+                {
+                    Ok(response) => response,
+                    Err(error) => internal(command_name, error),
+                };
+            }
+            Ok(_) => {}
+            Err(error) => return internal(command_name, error),
+        }
+        match read_spawn_exit(&status_path).await {
+            Ok(Some(exit_code)) => {
+                return match spawn_failure(
+                    state,
+                    command_name,
+                    &descriptor,
+                    SpawnFailure {
+                        exit_code: Some(exit_code),
+                        reason: "child exited before registration",
+                        status: StatusCode::BAD_GATEWAY,
+                        last_output: &last_output,
+                        log_path: &log_path,
+                    },
+                )
+                .await
+                {
+                    Ok(response) => response,
+                    Err(error) => internal(command_name, error),
+                };
+            }
+            Ok(None) => {}
+            Err(error) => return internal(command_name, error),
+        }
+        let pane_exists = match state.services.tmux.list_panes().await {
+            Ok(panes) => panes.iter().any(|listed| listed.id == pane.id),
+            Err(error) => return internal(command_name, error),
+        };
+        if !pane_exists {
+            return match spawn_failure(
+                state,
+                command_name,
+                &descriptor,
+                SpawnFailure {
+                    exit_code: None,
+                    reason: "pane disappeared before registration and before an exit code was recorded",
+                    status: StatusCode::BAD_GATEWAY,
+                    last_output: &last_output,
+                    log_path: &log_path,
+                },
+            )
+            .await
+            {
+                Ok(response) => response,
+                Err(error) => internal(command_name, error),
+            };
+        }
+        if tokio::time::Instant::now() >= deadline {
+            let reason = format!("timed out after {wait_seconds}s waiting for registration");
+            return match spawn_failure(
+                state,
+                command_name,
+                &descriptor,
+                SpawnFailure {
+                    exit_code: None,
+                    reason: &reason,
+                    status: StatusCode::GATEWAY_TIMEOUT,
+                    last_output: &last_output,
+                    log_path: &log_path,
+                },
+            )
+            .await
+            {
+                Ok(response) => response,
+                Err(error) => internal(command_name, error),
+            };
+        }
+        tokio::time::sleep(SPAWN_POLL_INTERVAL).await;
+    }
+}
+
+fn spawn_evidence_paths(spawn_id: &str) -> (PathBuf, PathBuf) {
+    let root = std::env::temp_dir().join("pij-rs-spawn");
+    (
+        root.join(format!("{spawn_id}.status")),
+        root.join(format!("{spawn_id}.log")),
+    )
+}
+
+async fn read_spawn_exit(path: &Path) -> Result<Option<i32>> {
+    let value = match tokio::fs::read_to_string(path).await {
+        Ok(value) => value,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(PijError::Adapter {
+                adapter: "spawn".to_string(),
+                message: format!(
+                    "could not read child exit status {}: {error}",
+                    path.display()
+                ),
+            });
+        }
+    };
+    let value = value
+        .trim()
+        .strip_prefix("exit_code=")
+        .unwrap_or(value.trim());
+    value
+        .parse::<i32>()
+        .map(Some)
+        .map_err(|error| PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: format!(
+                "child exit status {} was not an integer: {error}",
+                path.display()
+            ),
+        })
+}
+
+fn spawn_success(command_name: &'static str, seat: SeatDescriptor) -> Response {
+    let pid = seat.proc.map(|identity| identity.pid);
+    let bound = pid.is_some();
+    envelope(
+        StatusCode::OK,
+        &Envelope::ok(
+            command_name,
+            SpawnResponse {
+                seat,
+                dispatched: true,
+                bound,
+                pid,
+            },
+        ),
+    )
+}
+
+struct SpawnFailure<'a> {
+    exit_code: Option<i32>,
+    reason: &'a str,
+    status: StatusCode,
+    last_output: &'a str,
+    log_path: &'a Path,
+}
+
+async fn spawn_failure(
+    state: &AppState,
+    command_name: &'static str,
+    seat: &SeatDescriptor,
+    failure: SpawnFailure<'_>,
+) -> Result<Response> {
+    let SpawnFailure {
+        exit_code,
+        reason,
+        status,
+        last_output,
+        log_path,
+    } = failure;
+    let wrapper_output = match tokio::fs::read_to_string(log_path).await {
+        Ok(output) => output,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
+        Err(error) => {
+            return Err(PijError::Adapter {
+                adapter: "spawn".to_string(),
+                message: format!("could not read spawn log {}: {error}", log_path.display()),
+            });
+        }
+    };
+    let observed = if last_output.trim().is_empty() {
+        wrapper_output.as_str()
+    } else {
+        last_output
+    };
+    let log = if observed.trim().is_empty() {
+        "no child output was captured\n".to_string()
+    } else {
+        last_lines(observed, 20)
+    };
+    tokio::fs::write(log_path, &log)
+        .await
+        .map_err(|error| PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: format!("could not write spawn log {}: {error}", log_path.display()),
+        })?;
+    let spawn_id = seat.spawn_id.as_deref().unwrap_or("unknown");
+    let pane = seat.pane.as_deref().unwrap_or("unknown");
+    state
+        .services
+        .event_bus
+        .publish(Event {
+            seq: None,
+            v: wire::EVENT_VERSION,
+            at: system_time_ms()?,
+            kind: "spawn.failed".to_string(),
+            seat: Some(seat.id.clone()),
+            payload: serde_json::json!({
+                "spawn_id": spawn_id,
+                "pane": pane,
+                "exit_code": exit_code,
+                "reason": reason,
+                "log_path": log_path,
+                "last_output": &log,
+            })
+            .to_string(),
+        })
+        .await?;
+    let exit = exit_code.map_or_else(
+        || "exit code unavailable".to_string(),
+        |code| format!("exit code {code}"),
+    );
+    let meta = format!(
+        "spawn.failed: seat {} in pane {pane} {reason} ({exit}); log: {}; last output:\n{log}",
+        seat.id,
+        log_path.display()
+    );
+    let mut refusal = Envelope::<SpawnResponse>::refused(command_name, ErrorKind::Adapter, meta);
+    refusal.details = Some(serde_json::json!({
+        "dispatched": true,
+        "bound": seat.proc.is_some(),
+        "pane": pane,
+        "pid": seat.proc.map(|identity| identity.pid),
+        "reason": reason,
+    }));
+    Ok(envelope(status, &refusal))
+}
+fn last_lines(value: &str, count: usize) -> String {
+    let lines = value.lines().collect::<Vec<_>>();
+    lines[lines.len().saturating_sub(count)..].join("\n")
 }
 
 async fn send(State(state): State<AppState>, Json(request): Json<SendRequest>) -> Response {

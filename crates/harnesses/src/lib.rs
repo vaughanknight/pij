@@ -25,4 +25,4 @@ pub use claude_settings::{
 pub use composer::{ComposerRegion, composer_region};
 pub use interaction::{InjectionVerdict, InteractionGate, StagedSubmission};
 pub use models::ModelCatalog;
-pub use spawn::{SpawnPlan, SpawnPlanInput, build_spawn_plan};
+pub use spawn::{SpawnPlan, SpawnPlanInput, build_spawn_plan, observed_launch_command};

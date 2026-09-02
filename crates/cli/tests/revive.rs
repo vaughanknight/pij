@@ -24,10 +24,10 @@ fn run_cli(state_dir: &std::path::Path, addr: &str, args: &[&str]) -> std::proce
 }
 
 fn launched_environment(call: &str) -> Vec<String> {
-    let (_, args) = call
-        .split_once(":env:")
-        .expect("fake tmux must record the env launcher and argv");
-    serde_json::from_str(args).expect("recorded discrete argv must remain parseable")
+    let start = call
+        .find(":[\"")
+        .expect("fake tmux must record the observer argv");
+    serde_json::from_str(&call[start + 1..]).expect("recorded discrete argv must remain parseable")
 }
 
 fn required_environment_value(args: &[String], name: &str) -> String {
@@ -245,10 +245,12 @@ async fn shipped_revive_derives_identity_and_launches_one_prebind_incarnation() 
     let calls = tmux.calls();
     assert_eq!(calls.len(), 1, "one revive must launch exactly one pane");
     assert!(
-        calls[0].starts_with("new_window:fleet:returned:env:"),
+        calls[0].starts_with("new_window:fleet:returned:"),
         "unexpected launch record: {}",
         calls[0]
     );
+    assert!(calls[0].contains("__spawn-child"));
+    assert!(calls[0].contains("\"env\""));
     assert!(calls[0].contains("copilot"));
     assert!(calls[0].contains("--ui-server"));
     assert!(calls[0].contains("--port"));

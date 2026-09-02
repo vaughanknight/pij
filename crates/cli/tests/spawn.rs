@@ -223,6 +223,7 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
             "/abs/tree",
             "--session",
             "fleet",
+            "--no-wait",
         ];
         if let Some(flag) = flag {
             args.push(flag);
@@ -230,9 +231,16 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
         let output = run_cli(&dir, &addr, &args);
         assert!(
             output.status.success(),
-            "spawn failed: {}",
+            "spawn failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
+        let json: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("spawn JSON value");
+        assert_eq!(json["data"]["dispatched"], true);
+        assert_eq!(json["data"]["bound"], false);
+        assert!(json["data"]["pane"].as_str().is_some());
+        assert!(json["data"].get("pid").is_none());
         let envelope: Envelope<SeatDescriptor> =
             serde_json::from_slice(&output.stdout).expect("spawn JSON envelope");
         envelope.data.expect("spawn descriptor")

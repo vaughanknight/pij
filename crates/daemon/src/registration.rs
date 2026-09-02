@@ -193,6 +193,12 @@ impl RegistrationService {
                 .as_deref()
                 .zip(claim.spawn_id.as_deref())
                 .is_some_and(|(launched, claimed)| !launched.is_empty() && launched == claimed);
+        let requested_model = descriptor.model.clone();
+        let model_matches = requested_model_matches(
+            requested_model.as_deref(),
+            claim.actual_model.as_deref(),
+            claim.actual_model_observed,
+        );
         descriptor.harness = harness;
         if let Some(harness_session) = harness_session {
             descriptor.harness_session = Some(harness_session);
@@ -208,7 +214,9 @@ impl RegistrationService {
         if descriptor.spawn_id.is_none() {
             descriptor.spawn_id = claim.spawn_id;
         }
-        if descriptor.model.is_none() {
+        if binds_spawned_incarnation && claim.actual_model_observed {
+            descriptor.model = claim.actual_model.clone();
+        } else if descriptor.model.is_none() {
             descriptor.model = claim.model;
         }
         if descriptor.provider.is_none() {
@@ -217,7 +225,9 @@ impl RegistrationService {
         if descriptor.effort.is_none() {
             descriptor.effort = claim.effort;
         }
-        descriptor.parent = claim.parent;
+        if let Some(parent) = claim.parent {
+            descriptor.parent = Some(parent);
+        }
         descriptor.relay = claim.relay;
         // Keep possession only for the same live process or the matching first
         // bind of a spawned process. A different process with no launch
@@ -244,7 +254,46 @@ impl RegistrationService {
             .put(descriptor.clone())
             .await
             .map_err(RegistrationError::Runtime)?;
+        if binds_spawned_incarnation && model_matches {
+            self.event_bus
+                .publish(Event {
+                    seq: None,
+                    v: wire::EVENT_VERSION,
+                    at: system_time_ms()?,
+                    kind: "spawn.bound".to_string(),
+                    seat: Some(descriptor.id.clone()),
+                    payload: serde_json::json!({
+                        "spawn_id": descriptor.spawn_id,
+                        "pane": descriptor.pane,
+                        "pid": descriptor.proc.map(|identity| identity.pid),
+                    })
+                    .to_string(),
+                })
+                .await
+                .map_err(RegistrationError::Runtime)?;
+        }
         Ok(descriptor)
+    }
+}
+
+pub(crate) fn requested_model_matches(
+    requested: Option<&str>,
+    actual: Option<&str>,
+    actual_observed: bool,
+) -> bool {
+    if !actual_observed {
+        return true;
+    }
+    match (requested, actual) {
+        (None, _) => true,
+        (Some(_), None) => false,
+        (Some(requested), Some(actual)) => {
+            actual == requested
+                || (!requested.contains('/')
+                    && actual
+                        .rsplit_once('/')
+                        .is_some_and(|(_, model)| model == requested))
+        }
     }
 }
 
@@ -275,9 +324,19 @@ mod tests {
     use pij_core::ports::Spine;
     use pij_testkit::fakes::{FakeLiveness, FakeRegistry, FakeSpine};
 
-    use super::RegistrationService;
+    use super::{RegistrationService, requested_model_matches};
     use crate::events::EventBus;
     use crate::http::Registration;
+
+    #[test]
+    fn absent_actual_model_is_unknown_while_explicit_no_model_is_a_mismatch() {
+        assert!(requested_model_matches(Some("claude-opus-5"), None, false));
+        assert!(!requested_model_matches(
+            Some("github-copilot/gpt-5.6-sol"),
+            None,
+            true,
+        ));
+    }
 
     #[tokio::test]
     async fn claude_inbound_registration_changes_once_and_publishes_once() {
@@ -310,6 +369,8 @@ mod tests {
             proc_start: Some(126),
             spawn_id: None,
             model: None,
+            actual_model: None,
+            actual_model_observed: false,
             provider: None,
             effort: None,
             parent: None,

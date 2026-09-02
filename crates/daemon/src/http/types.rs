@@ -39,6 +39,12 @@ pub struct Registration {
     /// Selected model, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Model the running client actually selected after its own resolution/fallback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual_model: Option<String>,
+    /// Whether `actual_model` was observed, including an observed absence.
+    #[serde(default)]
+    pub actual_model_observed: bool,
     /// Selected provider, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
@@ -92,6 +98,27 @@ pub struct SpawnRequest {
     /// Emit Claude's cross-session inbound accept setting.
     #[serde(default)]
     pub accept_inbound: bool,
+    /// Maximum seconds to wait for this launch to register. Absent uses the daemon default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wait_seconds: Option<u64>,
+    /// Return after dispatch without waiting for registration.
+    #[serde(default)]
+    pub no_wait: bool,
+}
+
+/// Additive spawn result: launch dispatch and process binding are separate facts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnResponse {
+    /// Existing descriptor fields stay at their historical locations on the wire.
+    #[serde(flatten)]
+    pub seat: SeatDescriptor,
+    /// Tmux accepted the launch request.
+    pub dispatched: bool,
+    /// A registration carrying process evidence completed within the wait window.
+    pub bound: bool,
+    /// Registered process id, absent before bind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
 }
 
 /// Request accepted by `POST /v1/revive`.

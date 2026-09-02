@@ -1,0 +1,103 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Phase 1",
+        "slug": "phase-1",
+        "status": "ready",
+        "summary": ""
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Solo PM delivery for plan 132: RED witnesses, additive spawn bind reporting, parent preservation, deterministic and live proof, review."
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "tk-a132",
+          "title": "Establish RED-first spawn and dead-recipient witnesses",
+          "state": "checked",
+          "done": "#done_when/tk-a132",
+          "success": "Child-exit, parent-loss, bound missing-pane, and tombstoned-recipient behavior fail before implementation.",
+          "receipt": "docs/plans/132-spawn-reports-bind/assets/red-witness.md",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1b",
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC4"
+          ]
+        },
+        {
+          "id": "tk-b132",
+          "title": "Implement bind reporting and full dead-recipient terminalization",
+          "state": "checked",
+          "done": "#done_when/tk-b132",
+          "success": "Spawn reports bind or machine-readable named failure; tombstoned recipients terminalize; observed pane absence terminalizes only when socket-unreachable; inventory/reachability unknowns retry visibly; parent is preserved.",
+          "receipt": "assets/live-proof.md; assets/red-witness.md; assets/prod-copy-proof.md; assets/reviews/review-opus-r4.dd.md",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1a",
+            "../../../plan.dd.json#acceptance_criteria/AC1b",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC4",
+            "../../../plan.dd.json#acceptance_criteria/AC5",
+            "../../../plan.dd.json#acceptance_criteria/AC6"
+          ]
+        },
+        {
+          "id": "tk-c132",
+          "title": "Prove and review composed behavior",
+          "state": "checked",
+          "done": "#done_when/tk-c132",
+          "success": "Deterministic checks, live proof, and cross-model review are complete.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1a",
+            "../../../plan.dd.json#acceptance_criteria/AC1b",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC4",
+            "../../../plan.dd.json#acceptance_criteria/AC5",
+            "../../../plan.dd.json#acceptance_criteria/AC6"
+          ],
+          "receipt": "assets/reviews/review-opus-r5.dd.md: APPROVE; reviewer workspace 613 pass; clippy pass; terminal harness checks 8/8; assets/live-proof.md; assets/prod-copy-proof.md"
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {
+        "tk-a132": [
+          {
+            "id": "dw-a132",
+            "assertion": "The child-exit, parent-preservation, bound missing-pane, and tombstoned-recipient terminal-state witnesses fail on the pre-fix tree.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "docs/plans/132-spawn-reports-bind/assets/red-witness.md"
+          }
+        ],
+        "tk-b132": [
+          {
+            "id": "dw-b132",
+            "assertion": "Spawn separates dispatched from bound, exposes structured refusal details, emits spawn.bound/spawn.failed, preserves parent, and applies the tombstone/pane/socket/unknown delivery decision table without retry churn or unproven loss.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "pointer worker: 30 passed including inventory/socket/prebind decision witnesses; final production copy: 72 proven-dead pending before, 0 after socket-aware cadence; R4 approved prime fixes"
+          }
+        ],
+        "tk-c132": [
+          {
+            "id": "dw-c132",
+            "assertion": "Focused Rust tests, full gates, healthy plus failing live tmux transcripts, a production-copy dead-recipient drain, and cross-model review prove all acceptance criteria.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "Claude Opus R5 APPROVE; workspace 613; clippy green; harness checks all 8 pass; final real OMP, child-exit, structured refusal, and 72-to-0 production-copy proofs recorded"
+          }
+        ]
+      }
+    }
+  ]
+}

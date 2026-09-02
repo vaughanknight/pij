@@ -370,6 +370,7 @@ export default function (pi: ExtensionAPI): void {
 				harness: "pi",
 				harnessSessionId: piSessionId,
 				piSessionId,
+				actualModel: ctx.model === undefined ? null : `${ctx.model.provider}/${ctx.model.id}`,
 				runtimeBin,
 				paneId: process.env.TMUX_PANE,
 				...(process.env.PIJ_PARENT_ID !== undefined ? { parentId: process.env.PIJ_PARENT_ID } : {}),
