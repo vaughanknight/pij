@@ -90,7 +90,7 @@ Acceptance IDs are `ac-0a01` through `ac-0a07`. Checked task `tk-0a01` carries s
 
 ## Final gate
 
-At rebased head `232e07a5`, `~/.cargo/bin/cargo run --locked -p pij-testkit --bin pij-gate` is green: toolchain, committed lock, fmt, clippy, tests, and architecture (9 crates, 0 violations; `artifact://915`). `harness checks` is also green across all eight sensors: local paths, TypeScript, Biome, Vitest, Windows compatibility, smoke, package audit, and snapshots. Supporting focused receipts: async-serialized real-tmux suite 29 main tests plus 3 helper-process runs (`artifact://860`); `pij-harnesses` 68 passed/2 ignored (`artifact://850`); `pij-daemon` 216 passed (`artifact://796`).
+After plan 128 and the `0012`/schema-12 renumber, head `d9a08bd2` passes `~/.cargo/bin/cargo run --locked -p pij-testkit --bin pij-gate`: toolchain, committed lock, fmt, clippy, tests, and architecture (9 crates, 0 violations; `artifact://953`). `harness checks` is green across all eight sensors: local paths, TypeScript, Biome, Vitest, Windows compatibility, smoke, package audit, and snapshots. Final plan validation remains 0 errors/0 warnings/0 orphans/0 contradictions. Supporting focused receipts: async-serialized real-tmux suite 29 main tests plus 3 helper-process runs (`artifact://860`); `pij-harnesses` 68 passed/2 ignored (`artifact://850`); `pij-daemon` 216 passed (`artifact://796`).
 
 ## Out-of-scope findings
 
