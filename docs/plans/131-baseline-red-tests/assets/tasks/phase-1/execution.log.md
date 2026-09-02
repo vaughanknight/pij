@@ -25,3 +25,5 @@
 - Flow position: `review-1` in progress; phase tasks and AC1–AC3 are checked; full `harness checks` passed all eight sensors.
 - Reviewer: Claude Opus pane `%3088`, ids `pij-characteristic-pelican` (legacy) / `pij-thirsty-blackbird` (rs), approved review plan running; no verdict yet.
 - Resume: restart OMP with `omp -c`, run `pij inbox`, then continue adjudicating the reviewer record before post-flight/ship.
+
+- Wire-v2 checkpoint: reviewed tree committed, `git fetch && git rebase origin/main` succeeded. OMP and reviewer must now self-restart from their pane shells before the final re-review.
