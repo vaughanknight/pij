@@ -1,0 +1,121 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Reviewer packet — pij-rs-send-defaults",
+        "role": "reviewer",
+        "plan": "docs/plans/130-pij-rs-send-defaults/plan.dd.json",
+        "seat": "pij-yearling-earwig (legacy) / pij-yodelling-sniper (rs-derived)",
+        "updated": "2026-09-02"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "You are the cross-model Claude Opus reviewer for round 2 of plan 130-pij-rs-send-defaults. Review the rebased composed implementation in the PM worktree read-only, independently verify every AC and each round-1 remediation, and return only material findings the PM can act on."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        {
+          "id": "i1",
+          "text": "Orient: read the plan (rendered .dd.md), the impl-guide (the intended decomposition + interfaces), and then the full diff of the branch against its base. DOGFOOD FLOWSPACE: use `flowspace3 search` to locate consumers/related code by meaning while reviewing; report misses as friction."
+        },
+        {
+          "id": "i2",
+          "text": "Review with the /builder review discipline: verify claims against fresh evidence — run targeted tests yourself, read exit status, never trust a green claim you did not see."
+        },
+        {
+          "id": "i2b",
+          "text": "Your dispatcher OWES you three lists in this packet, and you should refuse to start without them: (1) WHERE THE AUTHOR IS LEAST CONFIDENT (hunt there first), (2) an instruction to DISBELIEVE THE AUTHOR'S OWN RECEIPTS (re-derive, don't audit prose), (3) WHAT IS ALREADY KNOWN-OPEN (spend zero findings re-reporting it). Proven 2026-08-28: this brief shape bought a 4-for-4 all-confirmed zero-noise review, including a defect the author hunted for in writing and could not see from inside."
+        },
+        {
+          "id": "i3",
+          "text": "Priority order: (1) plan promises that are not actually true, (2) composition-seam defects between units, (3) interface drift from the impl-guide, (4) correctness/safety in the changed code, (5) test gaps on the contract. Style noise is unwanted."
+        },
+        {
+          "id": "i4",
+          "text": "Findings: at most the material ones, each with severity (CRITICAL/HIGH/MEDIUM), exact location, the claim, the proof, and the smallest fix. `no_material_findings` is a valid verdict."
+        },
+        {
+          "id": "i5",
+          "text": "Deliver as a ddoc review record in the plan folder (assets/reviews/), build it, and send the PM the path + a one-line verdict."
+        },
+        {
+          "id": "i6",
+          "text": "WHERE THE AUTHOR IS LEAST CONFIDENT: verify all round-1 fixes first: contradictory PIJ_SESSION_ID+pane must refuse across send/report; explicit cross-seat --peek must work without actor identity while destructive reads still refuse; Queue::peek/service/HTTP must remain non-mutating; pane-bound adopt guidance must include omp/pi without regressing plan-128 harness-session registration."
+        },
+        {
+          "id": "i7",
+          "text": "DISBELIEVE THE AUTHOR'S RECEIPTS: re-derive behavior from the full diff and run your own targeted tests. Treat assets/live-send-defaults.md and PM test claims as hypotheses, not evidence, until independently checked."
+        },
+        {
+          "id": "i8",
+          "text": "KNOWN-OPEN: round-1 findings F1-F4 are claimed fixed and must be re-judged, not re-reported without testing the new code. Req-0044 excludes exactly two pre-existing TypeScript reds: harness/scripts/npm-resolution-policy.integration.test.ts replay status and .pi/extensions/pij/core/worktree.test.ts cleanup ENOTEMPTY; do not report those as plan-130 findings. Plan 128 is now rebased at main ac830c0e."
+        }
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        {
+          "id": "w1",
+          "text": "The PM is your counterpart: verdict and findings go to the PM; the PM may refute findings with evidence — re-judge refutations on the evidence, not on rank."
+        },
+        {
+          "id": "w2",
+          "text": "You do not fix code, commit, or open PRs. If you find something outside the plan's scope, name it as a note for prime rather than expanding the review."
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/fs3-pij-rs-send-defaults",
+        "branch": "130-pij-rs-send-defaults",
+        "fence": "read-only on code; write only assets/reviews/ in the plan folder",
+        "forbidden_note": "No code edits, no merges, no government files."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        {
+          "id": "d1",
+          "text": "Every plan AC judged true/false with evidence cited."
+        },
+        {
+          "id": "d2",
+          "text": "Composition seams between units explicitly examined and reported."
+        },
+        {
+          "id": "d3",
+          "text": "Review record ddoc written, built, and path delivered to the PM with a verdict line."
+        }
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        {
+          "id": "r0",
+          "path": ".agents-skills-port/pij-team/TENETS.md",
+          "note": "the doctrine — tenet 5: judge diffs against contracts, not philosophy"
+        },
+        {
+          "id": "r1",
+          "path": "docs/plans/130-pij-rs-send-defaults/impl-guide.dd.json",
+          "note": "intended units + interfaces — drift from this is a finding"
+        },
+        {
+          "id": "r2",
+          "path": "docs/plans/130-pij-rs-send-defaults/plan.dd.md",
+          "note": "the promises under judgment"
+        }
+      ]
+    }
+  ]
+}

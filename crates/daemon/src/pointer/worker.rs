@@ -1405,6 +1405,10 @@ mod tests {
             self.inner.claim(kinds, worker).await
         }
 
+        async fn peek(&self, kinds: &[String]) -> pij_core::error::Result<Option<(JobId, Job)>> {
+            self.inner.peek(kinds).await
+        }
+
         async fn ack(&self, job: JobId, outcome: Outcome) -> pij_core::error::Result<()> {
             self.inner.ack(job, outcome).await
         }

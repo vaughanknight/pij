@@ -387,7 +387,18 @@ async fn register(
         .register_with_harness_session(request.claim, request.harness_session)
         .await
     {
-        Ok(descriptor) => envelope(StatusCode::OK, &Envelope::ok("pij register", descriptor)),
+        Ok(descriptor) => {
+            let meta = descriptor.pane.is_none().then(|| {
+                format!(
+                    "export PIJ_SESSION_ID={} — this paneless seat has no observable pane, so subsequent commands require the registered id",
+                    descriptor.id
+                )
+            });
+            let mut answer = Envelope::ok("pij register", descriptor);
+            answer.meta = meta;
+            envelope(StatusCode::OK, &answer)
+        }
+
         Err(RegistrationError::Refused(reason)) => refused("pij register", reason),
         Err(RegistrationError::Runtime(error)) => internal("pij register", error),
     }
@@ -789,24 +800,23 @@ struct InboxQuery {
     seat: SeatId,
     #[serde(default)]
     wait: bool,
+    #[serde(default)]
+    peek: bool,
 }
 
-/// Claim one inbox message without recording delivery.
-///
-/// This GET is the explicit bounded multi-write exception to R4: every delivery
-/// row for a seat shares that seat's serial key, and queue serialization permits
-/// only one running claim per serial key, so one request can mutate exactly one
-/// row from pending to running. It records no `ReaderRead`. A client that receives
-/// the claim and dies before the separate acknowledgement may read it again after
-/// claim expiry; that residual duplicate is deliberately preferred to losing a
-/// message behind false evidence.
+/// Read one inbox message. The default path claims it for explicit client ack;
+/// `peek=true` is observation-only and never changes queue state.
 async fn inbox(State(state): State<AppState>, Query(query): Query<InboxQuery>) -> Response {
-    match state
-        .services
-        .delivery
-        .claim_inbox(&query.seat, query.wait)
-        .await
-    {
+    let result = if query.peek {
+        state.services.delivery.peek_inbox(&query.seat).await
+    } else {
+        state
+            .services
+            .delivery
+            .claim_inbox(&query.seat, query.wait)
+            .await
+    };
+    match result {
         Ok(claims) => envelope(StatusCode::OK, &Envelope::ok("pij inbox", claims)),
         Err(error) => internal("pij inbox", error),
     }

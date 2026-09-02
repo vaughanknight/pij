@@ -135,6 +135,11 @@ pub trait Queue: Send + Sync {
     /// one entity concurrently.
     async fn claim(&self, kinds: &[String], worker: &str) -> Result<Option<(JobId, Job)>>;
 
+    /// Inspect the oldest live job of any of `kinds` without claiming or
+    /// otherwise mutating it. Pending and already-claimed rows remain visible;
+    /// repeated peeks return the same row until another actor completes it.
+    async fn peek(&self, kinds: &[String]) -> Result<Option<(JobId, Job)>>;
+
     /// Record how a claimed job ended, freeing its serial key.
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()>;
 

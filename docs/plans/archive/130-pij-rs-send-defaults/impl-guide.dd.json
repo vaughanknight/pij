@@ -1,0 +1,94 @@
+{
+  "dd": {
+    "schema": "pij-team/impl-guide"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Implementation guide — pij-rs-send-defaults",
+        "plan": "docs/plans/130-pij-rs-send-defaults/plan.dd.json",
+        "mode": "build",
+        "updated": "2026-09-02"
+      }
+    },
+    {
+      "name": "architecture",
+      "value": "Doctrine: .agents-skills-port/pij-team/TENETS.md. Rust. u1 lives in crates/cli/src/main.rs and crates/cli/src/identity.rs: every acting-seat verb sends all available identity inputs to POST /v1/whoami; the daemon's one authority treats an observable pane as authoritative, accepts PIJ_SESSION_ID only when no pane contradicts it, refuses disagreement by name, and names `env -u PIJ_SESSION_ID` as recovery. Send flags: optional --from/--msg-id, --body or --body-file path/stdin; Telegram sidecar also derives optional --from and mints optional --msg-id because its sender binds inbound reply routing. Do NOT re-implement the daemon ladder. u2: crates/daemon/src/pointer/mod.rs says `pij inbox check`; pane-bound adopt responses explain pane identity, while successful paneless register responses emit the export required by later commands. Ruling: weasel 2026-09-02 — every pane-bound harness, including omp/pi, gets pane-derived identity guidance; export advice is paneless-only."
+    },
+    {
+      "name": "fan_out",
+      "value": {
+        "decision": "solo-pm",
+        "rationale": "One crate, one module, two text edits. PM codes, proves live, Claude opus reviewer."
+      }
+    },
+    {
+      "name": "units",
+      "value": [
+        {
+          "id": "u1",
+          "name": "cli identity + body sources",
+          "paths": "crates/cli/src/main.rs, crates/cli/src/identity.rs, crates/cli/tests/**",
+          "responsibility": "Derived acting seats for send/report/inbox and Telegram sidecar; optional send/Telegram identity and msg-id; body arg/file/stdin; named recoverable refusals.",
+          "interface": "resolve_acting_seat(env, pane, client) -> Result<SeatId, NamedRefusal>; send flags: --to (req), --body|--body-file (one req), --from (opt, must agree), --msg-id (opt); Telegram --from/--msg-id optional and derived/minted",
+          "test_strategy": "RED-first unit + fake-daemon integration for contradictions, recovery, and AC3; live AC1/AC2/AC4.",
+          "depends_on": "none",
+          "wave": 1,
+          "note": "Do not change the wire; existing HTTP requests still receive concrete from+msg_id values filled by the CLI."
+        },
+        {
+          "id": "u2",
+          "name": "notice texts",
+          "paths": "crates/daemon/src/pointer/mod.rs, crates/daemon/src/http/identity.rs, crates/daemon/src/http/mod.rs, their tests",
+          "responsibility": "Pointer says pij inbox check; pane-bound adopt gets pane-derived identity guidance; paneless register gets export advice.",
+          "interface": "text only",
+          "test_strategy": "exact render/adopt/register tests; cover claude/copilot/codex/omp/pi pane-bound cases and paneless registration.",
+          "depends_on": "none",
+          "wave": 1,
+          "note": "Rebased after plan 128; preserve harness-session registration while changing response metadata only."
+        }
+      ]
+    },
+    {
+      "name": "isolation",
+      "value": {
+        "mode": "solo-pm in the plan worktree",
+        "note": "Default: each coder gets its own worktree, branching off the PM's plan branch; unit lands back onto the plan branch (PM merges — coders never merge). Shared-tree work is the retro-proven #1 hazard (staged sweeps, untrustworthy greens) — only choose it for trivially disjoint single-wave work, and then file-scoped `git add` only, never -A. REMEMBER: fences partition WRITE intent, not the build — a mid-refactor sibling can still break your compile, so waves must respect build dependencies, and a broken workspace build is a PM composition concern, not a coder's to fix cross-fence."
+      }
+    },
+    {
+      "name": "composition",
+      "value": {
+        "composer": "pm",
+        "steps": "Rebase onto origin/main after plan 128 merges (ask prime); build; cargo test; clippy; harness checks (symlink canonical node_modules); live AC1/AC2/AC4 against an ISOLATED daemon (never restart production) with hand-started omp + claude panes pointed at it via PIJ_RS_ADDR/PIJ_RS_STATE_DIR.",
+        "integration_proof": "assets/live-send-defaults.md"
+      }
+    },
+    {
+      "name": "review",
+      "value": {
+        "when": "after composition (or after solo-pm coding), before the PR into main",
+        "inputs": "plan.dd.md + this impl-guide + full branch diff; priority = plan promises, composition seams, interface drift, correctness, contract-test gaps",
+        "model_override": "cross-model: Claude opus seat"
+      }
+    },
+    {
+      "name": "risks",
+      "value": [
+        {
+          "id": "r1",
+          "text": "A --from that agrees with the pane is fine; the refusal must fire only on DISAGREEMENT (test both)."
+        },
+        {
+          "id": "r2",
+          "text": "stdin body read must not hang when no stdin is attached: only read when --body-file - is explicit."
+        },
+        {
+          "id": "r3",
+          "text": "identity.rs convergence with plan 128 — text-only edits, rebase."
+        }
+      ]
+    }
+  ]
+}

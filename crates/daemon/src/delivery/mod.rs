@@ -448,6 +448,30 @@ impl DeliveryService {
         }
     }
 
+    /// Inspect at most one currently claimable message without changing queue
+    /// state, pointer cadence, or delivery evidence.
+    pub async fn peek_inbox(&self, seat: &SeatId) -> Result<Vec<InboxClaim>> {
+        let kinds = [delivery_kind(seat)];
+        let Some((job_id, job)) = self.queue.peek(&kinds).await? else {
+            return Ok(Vec::new());
+        };
+        let message: Msg =
+            serde_json::from_str(&job.payload).map_err(|error| PijError::Adapter {
+                adapter: "daemon/delivery".to_string(),
+                message: format!("invalid delivery payload: {error}"),
+            })?;
+        if &message.to != seat {
+            return Err(PijError::Adapter {
+                adapter: "daemon/delivery".to_string(),
+                message: format!(
+                    "delivery kind {} contained message for {}",
+                    kinds[0], message.to
+                ),
+            });
+        }
+        Ok(vec![InboxClaim { job_id, message }])
+    }
+
     /// Record `ReaderRead` and return the authority-owned job identity committed.
     ///
     /// # Errors
@@ -778,6 +802,69 @@ mod tests {
                 .iter()
                 .any(|event| event.kind == POINTER_UNPARKED_EVENT_KIND),
             "claim, without acknowledgement, visibly unparks"
+        );
+    }
+    #[tokio::test]
+    async fn peek_inbox_preserves_delivery_and_rejects_misdirected_payloads() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let recipient = SeatId::from("pij-peek-reader");
+        let message = Msg {
+            from: SeatId::from("pij-sender"),
+            to: recipient.clone(),
+            body: "observe only".to_string(),
+            msg_id: "peek-1".to_string(),
+            from_machine: None,
+            in_reply_to: None,
+            command: None,
+        };
+        fixture
+            .queue
+            .enqueue(delivery_job(&message).expect("delivery job"))
+            .await
+            .expect("enqueue message");
+
+        let peeked = fixture
+            .service
+            .peek_inbox(&recipient)
+            .await
+            .expect("peek message");
+        assert_eq!(peeked.len(), 1);
+        assert_eq!(peeked[0].message, message);
+        assert!(
+            fixture.queue.acked().is_empty(),
+            "peek mutates no queue row"
+        );
+        let claimed = fixture
+            .service
+            .claim_inbox(&recipient, false)
+            .await
+            .expect("message remains claimable");
+        assert_eq!(claimed[0].message, message);
+
+        let wrong_recipient = SeatId::from("pij-wrong-reader");
+        let misdirected = Msg {
+            to: recipient.clone(),
+            msg_id: "peek-2".to_string(),
+            ..message
+        };
+        let mut wrong_kind = delivery_job(&misdirected).expect("delivery job");
+        wrong_kind.kind = delivery_kind(&wrong_recipient);
+        fixture
+            .queue
+            .enqueue(wrong_kind)
+            .await
+            .expect("enqueue misdirected message");
+        let live_before = fixture.queue.live_len();
+        let error = fixture
+            .service
+            .peek_inbox(&wrong_recipient)
+            .await
+            .expect_err("misdirected payload must refuse");
+        assert!(error.to_string().contains(recipient.as_str()), "{error}");
+        assert_eq!(
+            fixture.queue.live_len(),
+            live_before,
+            "refusal leaves rows untouched"
         );
     }
 

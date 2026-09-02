@@ -337,6 +337,44 @@ pub async fn queue_contract(queue: &dyn Queue) {
         .expect("claim");
     assert!(none.is_none(), "claim must respect the kind filter");
 
+    // Peek is observation only: repeated calls return the same row, and the row
+    // remains available to the first real claimer.
+    let peek_kind = vec!["peek-only".to_string()];
+    let peek_id = queue
+        .enqueue(Job {
+            kind: peek_kind[0].clone(),
+            serial_key: "seat-peek".to_string(),
+            payload: "peek-body".to_string(),
+            dedupe_key: "peek-1".to_string(),
+            attempt: 0,
+        })
+        .await
+        .expect("enqueue peek row");
+    let first_peek = queue
+        .peek(&peek_kind)
+        .await
+        .expect("peek")
+        .expect("peek row");
+    let second_peek = queue
+        .peek(&peek_kind)
+        .await
+        .expect("peek again")
+        .expect("same peek row");
+    assert_eq!(first_peek, second_peek);
+    assert_eq!(first_peek.0, peek_id);
+    assert_eq!(first_peek.1.payload, "peek-body");
+    let claimed_after_peek = queue
+        .claim(&peek_kind, "peek-witness")
+        .await
+        .expect("claim after peek")
+        .expect("peek did not consume row");
+    assert_eq!(claimed_after_peek.0, peek_id);
+    assert_eq!(
+        queue.peek(&peek_kind).await.expect("peek claimed row"),
+        Some(claimed_after_peek),
+        "a non-destructive observer still sees a live row during another reader's claim"
+    );
+
     // 5. Destination delivery dedupe spans terminal acknowledgement and replays
     //    the evidence that was actually recorded, not a synthetic queue claim.
     let delivery = Job {

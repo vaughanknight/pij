@@ -1,7 +1,8 @@
 use std::collections::{BTreeSet, VecDeque};
 use std::future::Future;
+use std::io::Write;
 use std::pin::Pin;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
 use pij_core::config::{AdapterChoice, Adapters, Config};
@@ -41,9 +42,44 @@ where
             "--json",
         ])
         .args(args)
+        .env_remove("PIJ_SESSION_ID")
+        .env_remove("TMUX_PANE")
         .envs(envs)
         .output()
         .expect("run shipped CLI")
+}
+
+fn run_cli_with_stdin(
+    state_dir: &std::path::Path,
+    addr: &str,
+    args: &[&str],
+    input: &str,
+    envs: &[(&str, &str)],
+) -> std::process::Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_pij-rs"))
+        .args([
+            "--state-dir",
+            state_dir.to_str().expect("UTF-8 state dir"),
+            "--addr",
+            addr,
+            "--json",
+        ])
+        .args(args)
+        .env_remove("PIJ_SESSION_ID")
+        .env_remove("TMUX_PANE")
+        .envs(envs.iter().copied())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn shipped CLI");
+    child
+        .stdin
+        .take()
+        .expect("stdin pipe")
+        .write_all(input.as_bytes())
+        .expect("write stdin");
+    child.wait_with_output().expect("wait for shipped CLI")
 }
 
 fn launch_env(call: &str, key: &str) -> Option<String> {
@@ -455,10 +491,17 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
         pij_daemon::build_services(&config, std::path::Path::new("/tmp/pij-test-pane-signals"))
             .await
             .expect("build real inbox services");
-    services.liveness = Arc::new(FakeLiveness::new().with_proc(ProcIdentity {
-        pid: 4242,
-        proc_start: 20260830112233,
-    }));
+    services.liveness = Arc::new(
+        FakeLiveness::new()
+            .with_proc(ProcIdentity {
+                pid: 4242,
+                proc_start: 20260830112233,
+            })
+            .with_proc(ProcIdentity {
+                pid: 4343,
+                proc_start: 20260830112234,
+            }),
+    );
     services.transport = Arc::new(FakeTransport::unreachable());
     services.delivery = Arc::new(
         pij_daemon::delivery::DeliveryService::new(
@@ -507,6 +550,8 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
             "omp",
             "--folder",
             "/abs/tree",
+            "--pane",
+            "%77",
             "--pid",
             "4242",
             "--proc-start",
@@ -519,28 +564,185 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
         String::from_utf8_lossy(&registered.stdout)
     );
 
-    let sent = run_cli(
+    let sender_registered = run_cli(
+        &dir,
+        &addr,
+        &[
+            "register",
+            "pij-sender",
+            "--harness",
+            "omp",
+            "--folder",
+            "/abs/tree",
+            "--pane",
+            "%88",
+            "--pid",
+            "4343",
+            "--proc-start",
+            "20260830112234",
+        ],
+    );
+    assert!(
+        sender_registered.status.success(),
+        "register sender: {}",
+        String::from_utf8_lossy(&sender_registered.stdout)
+    );
+
+    let mismatched = run_cli_with_env(
         &dir,
         &addr,
         &[
             "send",
             "--from",
-            "pij-sender",
+            "pij-reader",
+            "--to",
+            "pij-reader",
+            "--body",
+            "must not send",
+        ],
+        [("PIJ_SESSION_ID", "pij-sender")],
+    );
+    assert!(!mismatched.status.success());
+    let mismatch: Envelope<serde_json::Value> =
+        serde_json::from_slice(&mismatched.stdout).expect("mismatch refusal");
+    let reason = mismatch.meta.expect("mismatch reason");
+    assert!(reason.contains("pij-sender"), "{reason}");
+    assert!(reason.contains("pij-reader"), "{reason}");
+
+    let missing_body = run_cli_with_env(
+        &dir,
+        &addr,
+        &["send", "--to", "pij-reader"],
+        [("PIJ_SESSION_ID", "pij-sender")],
+    );
+    assert!(!missing_body.status.success());
+    assert!(
+        missing_body.stderr.is_empty(),
+        "missing body must not print usage"
+    );
+    let missing_body: Envelope<serde_json::Value> =
+        serde_json::from_slice(&missing_body.stdout).expect("missing-body refusal");
+    let reason = missing_body.meta.expect("missing-body reason");
+    assert!(reason.contains("--body"), "{reason}");
+    assert!(reason.contains("--body-file"), "{reason}");
+
+    let missing_identity = run_cli(&dir, &addr, &["send", "--to", "pij-reader", "--body", "x"]);
+    assert!(!missing_identity.status.success());
+    let missing_identity: Envelope<serde_json::Value> =
+        serde_json::from_slice(&missing_identity.stdout).expect("missing-identity refusal");
+    let reason = missing_identity.meta.expect("missing-identity reason");
+    assert!(reason.contains("PIJ_SESSION_ID"), "{reason}");
+    assert!(reason.contains("TMUX_PANE"), "{reason}");
+    let contradictory_identity = run_cli_with_env(
+        &dir,
+        &addr,
+        &["send", "--to", "pij-reader", "--body", "must not send"],
+        [("PIJ_SESSION_ID", "pij-sender"), ("TMUX_PANE", "%77")],
+    );
+    assert!(
+        !contradictory_identity.status.success(),
+        "an asserted id must not outrank the observable pane"
+    );
+    let contradiction: Envelope<serde_json::Value> =
+        serde_json::from_slice(&contradictory_identity.stdout).expect("identity refusal");
+    let reason = contradiction.meta.expect("identity refusal reason");
+    assert!(reason.contains("pij-sender"), "{reason}");
+    assert!(reason.contains("pij-reader"), "{reason}");
+    let contradictory_report = run_cli_with_env(
+        &dir,
+        &addr,
+        &["report", "now", "did", "next"],
+        [("PIJ_SESSION_ID", "pij-sender"), ("TMUX_PANE", "%77")],
+    );
+    assert!(
+        !contradictory_report.status.success(),
+        "report must share the same anti-impersonation ladder"
+    );
+    let contradiction: Envelope<serde_json::Value> =
+        serde_json::from_slice(&contradictory_report.stdout).expect("report identity refusal");
+    let reason = contradiction.meta.expect("report identity refusal reason");
+    assert!(reason.contains("pij-sender"), "{reason}");
+    assert!(reason.contains("pij-reader"), "{reason}");
+    let contradictory_telegram = run_cli_with_env(
+        &dir,
+        &addr,
+        &["sidecar", "telegram", "--body", "must not send"],
+        [("PIJ_SESSION_ID", "pij-sender"), ("TMUX_PANE", "%77")],
+    );
+    assert!(
+        !contradictory_telegram.status.success(),
+        "Telegram replies must not bind to an asserted foreign seat"
+    );
+    assert!(
+        contradictory_telegram.stderr.is_empty(),
+        "identity refusal must not be replaced by a usage dump"
+    );
+    let contradiction: Envelope<serde_json::Value> =
+        serde_json::from_slice(&contradictory_telegram.stdout).expect("Telegram identity refusal");
+    let reason = contradiction
+        .meta
+        .expect("Telegram identity refusal reason");
+    assert!(reason.contains("pij-sender"), "{reason}");
+    assert!(reason.contains("pij-reader"), "{reason}");
+
+    let sent = run_cli_with_env(
+        &dir,
+        &addr,
+        &[
+            "send",
             "--to",
             "pij-reader",
             "--body",
             "hello through the shipped binary",
-            "--msg-id",
-            "m-shipped-inbox",
         ],
+        [("PIJ_SESSION_ID", "pij-sender")],
     );
     assert!(
         sent.status.success(),
         "send: {}",
         String::from_utf8_lossy(&sent.stdout)
     );
+    let sent: Envelope<Receipt> = serde_json::from_slice(&sent.stdout).expect("send receipt");
+    let receipt_meta = sent.meta.as_deref().expect("derived identity receipt");
+    let minted_msg_id = sent.data.expect("receipt data").msg_id;
+    assert!(receipt_meta.contains("pij-sender"), "{receipt_meta}");
+    assert!(receipt_meta.contains(&minted_msg_id), "{receipt_meta}");
+    assert_eq!(
+        uuid::Uuid::parse_str(&minted_msg_id)
+            .expect("UUIDv7")
+            .get_version_num(),
+        7
+    );
 
-    let read = run_cli_with_env(&dir, &addr, &["inbox"], [("PIJ_SESSION_ID", "pij-reader")]);
+    let refused = run_cli_with_env(
+        &dir,
+        &addr,
+        &["inbox", "--seat", "pij-reader"],
+        [("PIJ_SESSION_ID", "pij-sender")],
+    );
+    assert!(
+        !refused.status.success(),
+        "cross-seat destructive read must refuse"
+    );
+    let refusal: Envelope<serde_json::Value> =
+        serde_json::from_slice(&refused.stdout).expect("named refusal");
+    let reason = refusal.meta.expect("refusal reason");
+    assert!(reason.contains("pij-sender"), "{reason}");
+    assert!(reason.contains("pij-reader"), "{reason}");
+
+    let peeked = run_cli(&dir, &addr, &["inbox", "--seat", "pij-reader", "--peek"]);
+    assert!(
+        peeked.status.success(),
+        "peek: {}",
+        String::from_utf8_lossy(&peeked.stdout)
+    );
+    let peeked: Envelope<Vec<Msg>> = serde_json::from_slice(&peeked.stdout).expect("peek JSON");
+    assert_eq!(
+        peeked.data.expect("peek data")[0].body,
+        "hello through the shipped binary"
+    );
+
+    let read = run_cli_with_env(&dir, &addr, &["inbox"], [("TMUX_PANE", "%77")]);
     assert!(
         read.status.success(),
         "inbox: {}",
@@ -556,7 +758,7 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
         serde_json::from_slice(&second.stdout).expect("second inbox JSON");
     assert!(second.data.expect("second inbox data").is_empty());
 
-    let duplicate = run_cli(
+    let duplicate = run_cli_with_env(
         &dir,
         &addr,
         &[
@@ -568,8 +770,9 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
             "--body",
             "hello through the shipped binary",
             "--msg-id",
-            "m-shipped-inbox",
+            &minted_msg_id,
         ],
+        [("PIJ_SESSION_ID", "pij-sender")],
     );
     let duplicate: Envelope<Receipt> =
         serde_json::from_slice(&duplicate.stdout).expect("duplicate receipt");
@@ -588,6 +791,50 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
             && event.payload.contains(r#""authenticated_machine":"local""#)
             && event.payload.contains(r#""evidence_grade":"machine""#)
     }));
+
+    let file_body = "f".repeat(5 * 1024);
+    let body_path = dir.join("body.txt");
+    std::fs::write(&body_path, &file_body).expect("write body file");
+    let file_sent = run_cli_with_env(
+        &dir,
+        &addr,
+        &[
+            "send",
+            "--to",
+            "pij-reader",
+            "--body-file",
+            body_path.to_str().expect("UTF-8 body path"),
+        ],
+        [("TMUX_PANE", "%88")],
+    );
+    assert!(
+        file_sent.status.success(),
+        "file send: {}",
+        String::from_utf8_lossy(&file_sent.stdout)
+    );
+    let file_read = run_cli_with_env(&dir, &addr, &["inbox"], [("PIJ_SESSION_ID", "pij-reader")]);
+    let file_read: Envelope<Vec<Msg>> =
+        serde_json::from_slice(&file_read.stdout).expect("file read");
+    assert_eq!(file_read.data.expect("file message")[0].body, file_body);
+
+    let stdin_body = "--not-a-flag body with $(danger) and `backticks`";
+    let stdin_sent = run_cli_with_stdin(
+        &dir,
+        &addr,
+        &["send", "--to", "pij-reader", "--body-file", "-"],
+        stdin_body,
+        &[("PIJ_SESSION_ID", "pij-sender"), ("TMUX_PANE", "%88")],
+    );
+
+    assert!(
+        stdin_sent.status.success(),
+        "stdin send: {}",
+        String::from_utf8_lossy(&stdin_sent.stdout)
+    );
+    let stdin_read = run_cli_with_env(&dir, &addr, &["inbox"], [("PIJ_SESSION_ID", "pij-reader")]);
+    let stdin_read: Envelope<Vec<Msg>> =
+        serde_json::from_slice(&stdin_read.stdout).expect("stdin read");
+    assert_eq!(stdin_read.data.expect("stdin message")[0].body, stdin_body);
 
     server.abort();
     drop(dir);

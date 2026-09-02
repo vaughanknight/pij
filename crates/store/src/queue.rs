@@ -300,6 +300,42 @@ impl Queue for SqliteQueue {
         Ok(Some((JobId(id as u64), job)))
     }
 
+    async fn peek(&self, kinds: &[String]) -> Result<Option<(JobId, Job)>> {
+        require_current_schema(&self.pool).await?;
+        if kinds.is_empty() {
+            return Ok(None);
+        }
+        let kinds_json = serde_json::to_string(kinds).map_err(|error| PijError::Adapter {
+            adapter: "store/queue".to_string(),
+            message: format!("could not encode the peek filter: {error}"),
+        })?;
+        let row = sqlx::query(
+            "SELECT id, kind, serial_key, payload, dedupe_key, attempt FROM jobs \
+             WHERE state IN ('pending', 'running') \
+               AND kind IN (SELECT value FROM json_each(?1)) \
+             ORDER BY id LIMIT 1",
+        )
+        .bind(&kinds_json)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(adapter_error)?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let id = row.try_get::<i64, _>("id").map_err(adapter_error)?;
+        let job = Job {
+            kind: row.try_get("kind").map_err(adapter_error)?,
+            serial_key: row.try_get("serial_key").map_err(adapter_error)?,
+            payload: row.try_get("payload").map_err(adapter_error)?,
+            dedupe_key: row.try_get("dedupe_key").map_err(adapter_error)?,
+            attempt: row
+                .try_get::<i64, _>("attempt")
+                .map_err(adapter_error)?
+                .max(0) as u32,
+        };
+        Ok(Some((JobId(id as u64), job)))
+    }
+
     /// R4-AMEND-1: pending again, counted, and not before `delay` has passed —
     /// all in ONE transaction, because the whole point is that no crash window
     /// exists between "this attempt failed" and "it will be tried again".

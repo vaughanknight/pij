@@ -394,7 +394,9 @@ async fn whoami_refuses_an_asserted_seat_that_contradicts_the_derived_pane() {
         reqwest::StatusCode::OK,
         "a claim that contradicts what the daemon can observe is refused, never preferred"
     );
-    refusal_envelope(response).await;
+    let refusal = refusal_envelope(response).await;
+    let reason = refusal.meta.expect("contradiction reason");
+    assert!(reason.contains("env -u PIJ_SESSION_ID"), "{reason}");
 
     world.server.abort();
 }
@@ -790,31 +792,31 @@ mod argv {
     }
 }
 
-/// The id is the ONE fact the caller cannot derive, so adopt hands it back with
-/// the line that fixes the caller's environment.
-///
-/// Found by running the real gesture rather than by reading: a seat that was
-/// already registered elsewhere adopts successfully, then asks `whoami`, and its
-/// STALE `PIJ_SESSION_ID` contradicts the pane — so the impersonation guard
-/// refuses and a seat that just adopted cannot name itself.
+/// Every pane-bound harness derives identity from the pane. Export advice is
+/// reserved for paneless seats, where no observable pane exists.
 #[tokio::test]
-async fn adopt_hands_back_the_line_that_fixes_the_callers_environment() {
-    let registry = Arc::new(FakeRegistry::new());
-    let world = world(registry.clone(), true).await;
+async fn adopt_tells_pane_bound_harnesses_that_the_pane_resolves_identity() {
+    for harness in ["claude", "copilot", "codex", "omp", "pi"] {
+        let registry = Arc::new(FakeRegistry::new());
+        let world = world(registry.clone(), true).await;
 
-    let response = adopt(world.addr, &["adopt", PANE, "--harness", "claude"]).await;
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
-    let adopted: Envelope<SeatDescriptor> = response.json().await.expect("adopt envelope");
-    let meta = adopted
-        .meta
-        .expect("adopt states the id the caller must export");
-    let id = adopted.data.expect("descriptor").id;
-    assert!(
-        meta.contains(&format!("export PIJ_SESSION_ID={id}")),
-        "the note is the runnable line, not a description of one: {meta}"
-    );
+        let response = adopt(world.addr, &["adopt", PANE, "--harness", harness]).await;
+        assert_eq!(response.status(), reqwest::StatusCode::OK, "{harness}");
+        let adopted: Envelope<SeatDescriptor> = response.json().await.expect("adopt envelope");
+        let meta = adopted.meta.expect("adopt explains subsequent identity");
+        let id = adopted.data.expect("descriptor").id;
+        assert!(!meta.contains("export PIJ_SESSION_ID"), "{harness}: {meta}");
+        assert!(
+            meta.contains(PANE),
+            "the note names the durable pane for {harness}: {meta}"
+        );
+        assert!(
+            meta.contains(id.as_str()),
+            "the note names the adopted seat for {harness}: {meta}"
+        );
 
-    world.server.abort();
+        world.server.abort();
+    }
 }
 
 /// 8b — THE READER ACCEPTS ALL THREE SPELLINGS, named for the wire one.

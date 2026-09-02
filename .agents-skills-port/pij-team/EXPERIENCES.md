@@ -382,4 +382,14 @@ we hand the pattern to pij and the harness. Also `harness observe` each one.
   template to resolve the canonical skill source, refuse dispatch on an empty
   task ledger, wait for verified rs binding before packet delivery, and record
   the registry id the canary actually reports rather than the spawn-time id.
+- 2026-09-02 (elephant, PM 130 relaunch): preserving the dead PM's compiling,
+  independently reviewed WIP retained RED/GREEN history and made the rebase
+  cheaper than reconstruction. The three-list reviewer brief paid again:
+  round 1 caught the split identity ladder; round 2's canary command itself
+  exposed an unrecoverable-but-correct refusal, dead paneless guidance, and the
+  remaining Telegram reply-target identity hole. The zero-row task ddoc still
+  let implementation appear complete until the review departure gate rejected
+  six orphan ACs — confirming the template must refuse empty task ledgers before
+  dispatch. This run fixed the PM/coder/reviewer template TENETS paths to the
+  resolvable `.agents-skills-port/pij-team/TENETS.md` source.
 - (add as they arise)
