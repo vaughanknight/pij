@@ -38,19 +38,22 @@
           "id": "AC1",
           "text": "Fresh worktree, node_modules symlinked: just test exits 0; output pasted.",
           "claim": "just test is green on a fresh worktree on this machine",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "assets/live-proof.md: tmux just test exit 0; 231 files and 4645 tests passed."
         },
         {
           "id": "AC2",
           "text": "If any test is skipped, the skip prints its named reason and the reason is a verified machine condition, not a guess; pasted.",
           "claim": "skips are named and true",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "No plan test skipped: npm resolution integration test executed and passed; no quarantine introduced."
         },
         {
           "id": "AC3",
           "text": "RED-first: the ENOTEMPTY fix is proven by reproducing the failure first on the pre-fix tree; pasted.",
           "claim": "fix has a witness",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "Pre-fix repeat 6 failed ENOTEMPTY; post-fix 30/30 targeted runs passed."
         }
       ]
     },
@@ -61,11 +64,11 @@
           "id": "ph-1e40",
           "title": "Build + prove",
           "brief": "u1 per impl-guide; ACs; PR into main.",
-          "state": "unchecked",
-          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
+          "state": "checked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks",
+          "receipt": "All three phase tasks checked; harness checks 8/8 green."
         }
       ]
     }
-  ],
-  "references": []
+  ]
 }

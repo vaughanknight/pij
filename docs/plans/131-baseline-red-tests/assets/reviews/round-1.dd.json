@@ -1,0 +1,151 @@
+{
+  "dd": {
+    "schema": "builder/review"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Review round 1 — plan 131 baseline-red-tests",
+        "reviewer": "pij-thirsty-blackbird (same pane/session as legacy id pij-characteristic-pelican)",
+        "model": "claude-opus-5",
+        "round": "1",
+        "date": "2026-09-02",
+        "plan": "../../plan.dd.json#meta",
+        "note": "Cross-model review of the DIRTY WORKING TREE (PM ruling: the working tree is the diff of record; do not wait for a commit). Read-only on code. Six files reviewed: .pi/extensions/pij/core/worktree.test.ts, harness/scripts/{npm-resolution-policy.integration.test.ts,npm-resolution-run.ts,packages-bootstrap.test.ts,release-age-policy.test.ts,release-age-policy.ts}. Every green below was re-run by the reviewer, not read from a receipt. Severity uses this schema's enum (MAJOR/MINOR/NIT), not the packet's CRITICAL/HIGH/MEDIUM wording."
+      }
+    },
+    {
+      "name": "findings",
+      "value": [
+        {
+          "id": "f1",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": "harness/scripts/release-age-policy.ts, harness/scripts/release-age-policy.test.ts, harness/scripts/npm-resolution-run.ts, harness/scripts/packages-bootstrap.test.ts",
+          "finding": "Scope was widened without the ruling the plan requires. impl-guide u1 names harness/scripts/npm-resolution-policy.integration.test.ts, harness/scripts/npm-resolution-policy*, .pi/extensions/pij/core/worktree.test.ts and .pi/extensions/pij/core/worktree.ts (teardown only). Four changed files match none of those globs — release-age-policy.ts in particular is neither npm-resolution-policy* nor worktree*. The plan's non-goals say 'Nothing outside the named paths' and risk r1 says 'Keep to the named paths; ask prime before widening'. The execution log records prime ruling that the version check must fail closed; it does not record a ruling on the path widening.",
+          "note": "This is an authorization gap, NOT a code defect: the change itself is correct and load-bearing (see f2's proof). The smallest fix is a retroactive prime ruling recorded in the execution log, or an impl-guide u1 paths amendment naming the four files. Filed MINOR rather than MAJOR because the widening is toward the true root cause and stays inside the same seam.",
+          "receipt": "git diff --stat vs impl-guide.dd.json units[0].paths"
+        },
+        {
+          "id": "f2",
+          "kind": "question",
+          "severity": "NA",
+          "address": "harness/scripts/release-age-policy.ts:14",
+          "finding": "CONFIRMED CORRECT, recorded because it is the load-bearing claim of the whole change and the diff cites no source for it. MIN_NPM_VERSION_FOR_QUARANTINE = '11.10.0' is right. Independently sourced three ways: (1) npm/cli CHANGELOG — 'add min-release-age' is commit 66d6e11 / PR #8965, released under the 11.10.0 heading dated 2026-02-11; (2) this machine runs npm 11.5.1 and emits `npm warn Unknown project config \"min-release-age\"`, so 11.5.1 genuinely does not know the setting; (3) this repo's own docs/plans/048-min-release-age-7/research-dossier.md already states 'npm 11.10.0 natively supports min-release-age'.",
+          "note": "The consequence is worth stating plainly: the previous gate (MIN_NPM_MAJOR_FOR_QUARANTINE = 11) declared the quarantine enforceable on npm 11.0-11.9.x, where npm silently ignores min-release-age. That is a security control reporting green while doing nothing, and it contradicted plan 048's own research dossier. This change closes a real hole rather than merely turning a test green. Also corroborating the plan's original diagnosis: 'allow min-release-age in npmrc to coexist with --before' (PR #9368) lands only in a 12.0.0-pre release, so the --before/--min-release-age conflict the plan named is a genuine npm bug, not a local misconfiguration.",
+          "state": "checked",
+          "receipt": "npm/cli CHANGELOG @ raw.githubusercontent.com (HTTP 200); `npm --version` = 11.5.1; flowspace3 search 'npm min-release-age quarantine preflight'"
+        },
+        {
+          "id": "f3",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": "harness/scripts/npm-resolution-policy.integration.test.ts:563, harness/scripts/release-age-policy.test.ts:417, harness/scripts/packages-bootstrap.test.ts:22",
+          "finding": "AC1's green never exercised the enforcement half of the control. All three suites branch on `quarantineSupportError(RUNNING_NPM_VERSION) === null`. This machine is npm 11.5.1, which is below the new 11.10.0 floor, so every one of those branches now takes the REFUSAL arm. The arm that proves the quarantine actually rejects a too-young package (expect ETARGET / 'No matching version') does not execute here and did not execute in the live proof. Raising the floor from 11 to 11.10.0 is correct, but it also moved this machine from the enforcement arm to the refusal arm, so the suite's coverage of 'the quarantine enforces' went from asserted-and-wrong to not-asserted-at-all.",
+          "note": "Not a regression introduced by this change — it is a truthful consequence of it, and strictly better than the prior state where the enforcement arm ran against an npm that silently ignored the setting. The author partly mitigated it by strengthening the refusal arm with `expect(proxy.requests()).toHaveLength(0)`, which is a genuine improvement. Smallest fix: none required in this plan; record in the plan that 'just test green on this machine' does not evidence enforcement, and that enforcement needs an npm >= 11.10.0 runner (CI matrix or a pinned npm) before it can be claimed.",
+          "receipt": "npm --version = 11.5.1; quarantineSupportError('11.5.1') is non-null by construction"
+        },
+        {
+          "id": "f4",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": "harness/scripts/release-age-policy.ts:16-27",
+          "finding": "npmVersionAtLeast fails OPEN on prereleases of the floor version. The regex `^\\s*v?(\\d+)\\.(\\d+)\\.(\\d+)(?:[-+].*)?\\s*$` captures major/minor/patch and DISCARDS the prerelease identifier, so '11.10.0-rc.0' compares exactly equal to '11.10.0', the loop falls through to `return true`, and the guard reports the quarantine enforceable. Under semver, 11.10.0-rc.0 precedes 11.10.0 and may predate the min-release-age implementation. This is the one place the comparator deviates from semver ordering, and it deviates in the unsafe direction for a fail-closed control.",
+          "note": "Narrow band (only prereleases of the floor release itself), which is why it is MINOR and not MAJOR — 11.9.9-rc is still correctly refused, and 12.0.0-rc is correctly allowed. Smallest fix: treat a captured prerelease suffix as strictly lower when major/minor/patch are all equal, i.e. if every numeric part matches and `current` has a prerelease while `required` does not, return false. This is the author's own self-named least-confident area, and it is the only defect I found in the comparator.",
+          "receipt": "read of the regex and the equal-parts fallthrough at release-age-policy.ts:16-27"
+        },
+        {
+          "id": "f5",
+          "kind": "defect",
+          "severity": "NIT",
+          "address": "harness/scripts/npm-resolution-policy.integration.test.ts:513-518",
+          "finding": "The comment justifying the https->http fixture change over-generalizes. It says 'npm replaces the host but preserves the URL scheme'. That is true of the path this test exercises and false of a sibling path, so the next reader can carry it to the wrong place. Verified in npm 11.5.1's own source: @npmcli/arborist/lib/arborist/reify.js:881-892 (the `npm ci` lockfile-replay path) matches `replaceRegistryHost === resolvedURL.hostname` and then mutates ONLY `.hostname` and `.port`, leaving the protocol untouched — scheme preserved. But pacote/lib/remote.js:13-17 (remote tarball specs) rebuilds via `new URL(resolvedURL.pathname, this.registry)`, which ADOPTS the registry's scheme entirely. Same config, two behaviours.",
+          "note": "The FIX ITSELF IS CORRECT AND I VERIFIED IT, which is the important half of this row. With an https lock URL the reify path yields https://127.0.0.1:PORT against an HTTP-only fixture proxy and dies on TLS, exactly as the author diagnosed; the http fixture URL is faithful, not a paper-over. I initially drafted the opposite finding off pacote/lib/remote.js and withdrew it after reading the reify path. Smallest fix: scope the comment — say 'the arborist lockfile-replay path preserves the scheme (reify.js), unlike pacote's remote fetcher'. Also worth one line: pacote/lib/fetcher.js:87-88 is what normalizes the config value 'npmjs' to 'registry.npmjs.org'.",
+          "receipt": "/opt/homebrew/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/reify.js:881-892; .../pacote/lib/remote.js:13-17; .../pacote/lib/fetcher.js:87-88"
+        },
+        {
+          "id": "f6",
+          "kind": "dim0",
+          "severity": "NA",
+          "address": "harness/scripts/npm-resolution-policy.integration.test.ts:510-540",
+          "finding": "Guard-strength check on the root-lock host replay, performed by READING rather than by mutating. My fence forbids editing code, so I did not inject the mutation; I traced what the assertions would do if `replace_registry_host` were removed. Verdict: the tripwire still bites. The lock's `resolved` host stays registry.npmjs.org, so without host replacement npm would fetch the real npmjs origin, the fixture proxy would record no tarball request, and `expect(tarballRequests(proxy.requests(), '2.0.0')).not.toHaveLength(0)` would fail. The guard is load-bearing, not vacuous.",
+          "note": "Stated honestly as reasoning, not as an executed Dim-0: I did not run the mutation, so this is a strong argument rather than a receipt. One assertion in that block IS weak — `expect(upstream.requests()).toHaveLength(0)` is trivially satisfied because the lock URL names npmjs, not the upstream fixture, so it cannot fail regardless of host-replacement behaviour. It was equally trivial before this change, so it is not a regression, just a passenger.",
+          "state": "checked"
+        },
+        {
+          "id": "f7",
+          "kind": "defect",
+          "severity": "MINOR",
+          "address": "docs/plans/131-baseline-red-tests/plan.dd.json (phase ph-1e40)",
+          "finding": "The phase is marked [x] checked while one of its own three stated deliverables has not happened. Phase ph-1e40's brief is 'u1 per impl-guide; ACs; PR into main'. `gh pr list --head 131-baseline-red-tests --state all` returns []. Beyond the PR, the entire implementation is UNCOMMITTED: `main...HEAD` contains only the 12 plan ddoc files, and all six source changes plus every evidence asset are working-tree state. So the checked phase, the checked tasks and the pasted receipts all describe a tree that is not recorded anywhere in git history.",
+          "note": "Partly by design — the impl-guide's review.when is 'after composition, before the PR into main', so the PR being absent at review time is correct. The overclaim is the phase's checked state covering a deliverable that is deliberately still ahead of it. The uncommitted-tree half is the part that actually matters: the receipts are unreproducible by anyone who does not have this exact working tree. Smallest fix: commit the six source files and the evidence assets before or with the PR, and either split 'PR into main' out of ph-1e40 or leave the phase unchecked until the PR exists.",
+          "receipt": "gh pr list --head 131-baseline-red-tests --state all --json number,state,title -> []; git diff --stat main...HEAD -> 12 files, docs only; git status --porcelain"
+        },
+        {
+          "id": "f8",
+          "kind": "question",
+          "severity": "NA",
+          "address": "docs/plans/131-baseline-red-tests/plan.dd.json (AC3)",
+          "finding": "AC3's red-first witness is the one claim I could not independently reproduce, and I am naming that rather than passing it through. Reproducing the pre-fix ENOTEMPTY failure requires reverting worktree.test.ts, which my read-only fence forbids. So AC3's 'RED-first' half rests on the author's receipt (repeat 6 failed ENOTEMPTY), not on anything I saw.",
+          "note": "What I could verify, I did. MECHANISM: Node 24.7.0's rmSync retries the transient classes including ENOTEMPTY when `recursive` is set, and on exhaustion it THROWS — confirmed empirically (a deliberately unremovable path threw EPERM rather than silently succeeding), so afterEach fails loud and the fix cannot degrade into a silent swallow. That was the author's third self-named least-confident area and it resolves in their favour. STABILITY: I re-ran the suite 12 times sequentially, 12/12 exit 0, against the author's claimed 30/30. The fix is the right shape — Node's built-in retry rather than a hand-rolled sleep loop.",
+          "state": "checked",
+          "receipt": "12x `npm run test -- --run .pi/extensions/pij/core/worktree.test.ts` all exit 0; node -e rmSync exhaustion probe threw EPERM"
+        }
+      ]
+    },
+    {
+      "name": "verdict",
+      "value": [
+        {
+          "id": "v1",
+          "finding": "round-1.dd.json#findings/f1",
+          "resolution": "confirmed",
+          "note": "OVERALL: APPROVE WITH MINOR FINDINGS. The plan's three goals are met and its central change is better than the plan asked for — G1 was scoped as 'fix or skip-with-reason' and the author instead found and fixed a real fail-open security defect (f2), with no quarantine and no operator npm-config change. No CRITICAL or MAJOR defect found. Nothing here should block the PR; f1 wants a prime ruling and f4 is a one-line comparator fix. INDEPENDENTLY RE-RUN BY ME, not taken from receipts: the three targeted suites via the repo's own recipe, 3 files / 19 tests, exit 0; worktree.test.ts 12 times, 12/12 exit 0. AC VERDICTS — AC1 TRUE with a caveat: the live proof transcript shows exit 0, 231 files and 4645 tests passed, and I reproduced the targeted subset, but see f3, this machine's green never exercised the enforcement arm. AC2 TRUE: no plan test is skipped; the 19 skips and 4 skipped files in the live proof are the pre-existing named *.live.test.ts suites the packet excludes. AC3 HALF-VERIFIED: the post-fix stability half is TRUE and I reproduced it; the RED-first half I could not reproduce under my fence and it rests on the author's receipt (f8). COMPOSITION SEAMS, all four examined per done-bar d2: release-age-policy.ts <-> release-age-policy.test.ts CLEAN, the test was migrated off the removed npmMajor export with no orphan reference; release-age-policy.ts <-> npm-resolution-run.ts CLEAN, the runner consults the shared assertQuarantineEnforceableOrExit and the root-lock exemption is preserved; release-age-policy.ts <-> packages-bootstrap.test.ts CLEAN and improved, the test now derives enforceability from quarantineSupportError instead of re-implementing the comparison with npmMajor, which removes a second opinion about the same fact; npm-resolution-run.ts <-> npm-resolution-policy.integration.test.ts CLEAN, the refusal-arm spawn was corrected to absolute paths with cwd on the fixture project and the governed env, which is what makes the refusal arm meaningful rather than incidental. The refusal message string is duplicated as a literal across four sites and tracked the 11 -> 11.10.0 change correctly everywhere I checked, but it is a cross-file literal seam worth a shared constant later. INTERFACE DRIFT: one instance, f1. One removed export (npmMajor) and one renamed export (MIN_NPM_MAJOR_FOR_QUARANTINE -> MIN_NPM_VERSION_FOR_QUARANTINE); I grepped for surviving consumers and found none. NOTE FOR PRIME, outside plan scope, not expanded: a duplicated comment block in npm-resolution-run.ts was deleted by this change, which is a real tidy-up but is also evidence that file had been edited twice without anyone reading the result.\n\nPER-FINDING: CONFIRMED as an authorization gap, not a code defect. Needs a retroactive prime ruling or an impl-guide u1 paths amendment. Does not block the PR."
+        },
+        {
+          "id": "v2",
+          "finding": "round-1.dd.json#findings/f2",
+          "resolution": "confirmed",
+          "note": "CONFIRMED CORRECT in the author's favour. The 11.10.0 floor is right, sourced three independent ways, and it closes a real fail-open hole rather than merely turning a test green."
+        },
+        {
+          "id": "v3",
+          "finding": "round-1.dd.json#findings/f3",
+          "resolution": "confirmed",
+          "note": "CONFIRMED as a truthful coverage consequence, not a regression. Record that green on an npm 11.5.1 machine does not evidence enforcement; enforcement needs an npm >= 11.10.0 runner."
+        },
+        {
+          "id": "v4",
+          "finding": "round-1.dd.json#findings/f4",
+          "resolution": "confirmed",
+          "note": "CONFIRMED. One-line comparator fix: when every numeric part is equal and only the current version carries a prerelease suffix, return false."
+        },
+        {
+          "id": "v5",
+          "finding": "round-1.dd.json#findings/f5",
+          "resolution": "confirmed",
+          "note": "CONFIRMED as a comment-precision nit. The fix itself is correct and I verified it against npm's own source; only the generalized wording needs scoping."
+        },
+        {
+          "id": "v6",
+          "finding": "round-1.dd.json#findings/f6",
+          "resolution": "confirmed",
+          "note": "CONFIRMED by reading, not by mutation — my fence forbade injecting the mutation, so this is a strong argument rather than a receipt. Guard is load-bearing; one passenger assertion is trivially true."
+        },
+        {
+          "id": "v7",
+          "finding": "round-1.dd.json#findings/f7",
+          "resolution": "confirmed",
+          "note": "CONFIRMED. The absent PR is by design at review time; the uncommitted tree is the half that matters, because it makes every pasted receipt unreproducible by anyone else."
+        },
+        {
+          "id": "v8",
+          "finding": "round-1.dd.json#findings/f8",
+          "resolution": "confirmed",
+          "note": "CONFIRMED as a limit of my review, not a defect in the work. AC3's post-fix half verified and reproduced; the RED-first half rests on the author's receipt and is reported as such."
+        }
+      ]
+    }
+  ]
+}

@@ -8,29 +8,30 @@ export const ROOT_LOCK_REPLAY_MIN_RELEASE_AGE = "null";
 
 // ─── quarantine-support preflight (PR#25 adopt, dove ruling: fail-closed) ─────
 //
-// The `min-release-age` quarantine is enforced by npm NATIVELY, and only npm
-// >= 11 does so — npm 10 ACCEPTS the flag but silently installs a too-young
-// package, so the 7-day control no-ops. (This gap shipped in #22 too; the
-// preflight retroactively closes it.) A security control must never silently do
-// nothing: the governed install path probes npm up front and REFUSES on npm <11
-// rather than proceeding unprotected. Net posture: governed installs require
-// npm >= 11 — enforce, or refuse; never silently skip.
-export const MIN_NPM_MAJOR_FOR_QUARANTINE = 11;
+// The `min-release-age` quarantine is enforced natively starting in npm 11.10.0.
+// Older npm releases accept the setting but silently install a too-young package,
+// so the governed path must refuse before resolution rather than run unprotected.
+export const MIN_NPM_VERSION_FOR_QUARANTINE = "11.10.0";
 
-/** Parse an npm `--version` string (e.g. "11.10.0") to its major integer.
- *  Returns NaN for anything unparseable (treated as unsupported by the guard). */
-export function npmMajor(version: string): number {
-	const match = /^\s*v?(\d+)\./.exec(version);
-	return match ? Number(match[1]) : Number.NaN;
+function npmVersionAtLeast(version: string, minimum: string): boolean {
+	const pattern = /^\s*v?(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\s*$/;
+	const current = pattern.exec(version);
+	const required = pattern.exec(minimum);
+	if (!current || !required) return false;
+	for (let index = 1; index <= 3; index += 1) {
+		const currentPart = Number(current[index]);
+		const requiredPart = Number(required[index]);
+		if (currentPart !== requiredPart) return currentPart > requiredPart;
+	}
+	return current[4] === undefined;
 }
 
 /** Pure guard: the named refusal error when npm cannot enforce the quarantine,
  *  or null when it can. */
 export function quarantineSupportError(version: string): string | null {
-	const major = npmMajor(version);
-	if (Number.isInteger(major) && major >= MIN_NPM_MAJOR_FOR_QUARANTINE) return null;
+	if (npmVersionAtLeast(version, MIN_NPM_VERSION_FOR_QUARANTINE)) return null;
 	return (
-		`min-release-age requires npm>=${MIN_NPM_MAJOR_FOR_QUARANTINE}; quarantine cannot be enforced ` +
+		`min-release-age requires npm>=${MIN_NPM_VERSION_FOR_QUARANTINE}; quarantine cannot be enforced ` +
 		`— refusing rather than silently skipping it (found npm ${version.trim() || "unknown"}).`
 	);
 }
@@ -39,7 +40,7 @@ export function quarantineSupportError(version: string): string | null {
  *  governed install may silently skip the quarantine on any npm — unreachability
  *  is a mitigation, not an invariant). Probes the npm version under the governed
  *  environment (so a hostile caller config can't trip the probe) and, on
- *  npm < 11, prints the named refusal and exits nonzero rather than proceeding
+ *  npm < 11.10.0, prints the named refusal and exits nonzero rather than proceeding
  *  unprotected. Injectable for tests. */
 export function assertQuarantineEnforceableOrExit(
 	deps: {

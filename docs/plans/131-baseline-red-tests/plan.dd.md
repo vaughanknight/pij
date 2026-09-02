@@ -49,9 +49,9 @@ req-0044: harness/scripts/npm-resolution-policy.integration.test.ts (~L536, repl
 
 | id | claim | state | note | receipt | pressure | proven_by | text |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| AC1 | just test is green on a fresh worktree on this machine | [ ] unchecked | — | — | — | — | Fresh worktree, node_modules symlinked: just test exits 0; output pasted. |
-| AC2 | skips are named and true | [ ] unchecked | — | — | — | — | If any test is skipped, the skip prints its named reason and the reason is a verified machine condition, not a guess; pasted. |
-| AC3 | fix has a witness | [ ] unchecked | — | — | — | — | RED-first: the ENOTEMPTY fix is proven by reproducing the failure first on the pre-fix tree; pasted. |
+| AC1 | just test is green on a fresh worktree on this machine | [x] checked | — | assets/live-proof.md: tmux just test exit 0; 231 files and 4645 tests passed. | — | — | Fresh worktree, node_modules symlinked: just test exits 0; output pasted. |
+| AC2 | skips are named and true | [x] checked | — | No plan test skipped: npm resolution integration test executed and passed; no quarantine introduced. | — | — | If any test is skipped, the skip prints its named reason and the reason is a verified machine condition, not a guess; pasted. |
+| AC3 | fix has a witness | [x] checked | — | Pre-fix repeat 6 failed ENOTEMPTY; post-fix 30/30 targeted runs passed. | — | — | RED-first: the ENOTEMPTY fix is proven by reproducing the failure first on the pre-fix tree; pasted. |
 
 <a id="phases"></a>
 
@@ -59,4 +59,4 @@ req-0044: harness/scripts/npm-resolution-policy.integration.test.ts (~L536, repl
 
 | id | title | brief | state | note | receipt | depends_on | tasks | objective | delivers | key_risks |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ph-1e40 | Build + prove | u1 per impl-guide; ACs; PR into main. | [ ] unchecked | — | — | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
+| ph-1e40 | Build + prove | u1 per impl-guide; ACs; PR into main. | [x] checked | — | All three phase tasks checked; harness checks 8/8 green. | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
