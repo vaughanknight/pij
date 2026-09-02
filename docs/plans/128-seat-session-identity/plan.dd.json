@@ -22,7 +22,7 @@
       "value": [
         "G1 Persist: rs registration/adopt/spawn stores `harness_session` (the inner harness session id) on the seat row when the caller supplies it — claude from CLAUDE_CODE_SESSION_ID, copilot from COPILOT_AGENT_SESSION_ID, pi/omp from a new registration field the extension fills from getSessionId(). Migration 0012 adds the nullable column; SCHEMA_VERSION 11→12 (s122 owns 0011 / 10→11 — declared convergence: whoever lands second reconciles migrate.rs).",
         "G2 Expose: `pij-rs list` / `pij-rs state` rows carry `session` (null when unknown) and `generation:\"rs\"`; `/v1/seats` likewise.",
-        "G3 Union: `pij sessions --json` routes through the generation shim to a new rs endpoint `/v1/shim/sessions`; the TS side merges the legacy join rows it already builds (buildSessionJoinRows) with the rs rows, dedupes by pijId, and tags each row. ROW SHAPE IS THE EXISTING LEGACY SHAPE PLUS ONE FIELD — do NOT rename: {pijId, harness, harnessSessionId, gitCommonDir, lifecycle, boundModel, spawnedBy, transcriptPath, generation:\"legacy\"|\"rs\"}. For rs rows: harnessSessionId = the persisted session (null when unknown), gitCommonDir = the seat folder resolved to its git common dir when it is a git checkout (else the folder), lifecycle/boundModel/spawnedBy/transcriptPath null unless known. Consumers (fs3 crates/core/src/conversation_join.rs:43) already parse pijId/harness/harnessSessionId/gitCommonDir; one shape under one v.",
+        "G3 Union: `pij sessions --json` routes through the generation shim to a new rs endpoint `/v1/shim/sessions`; the TS side merges the legacy join rows it already builds (buildSessionJoinRows) with the rs rows, dedupes by pijId, and tags each row. ROW SHAPE IS THE EXISTING LEGACY SHAPE PLUS ONE FIELD — do NOT rename: {pijId, harness, harnessSessionId, gitCommonDir, lifecycle, boundModel, spawnedBy, transcriptPath, generation:\"legacy\"|\"rs\"}. For rs rows: harnessSessionId = the persisted session (null when unknown), gitCommonDir = the seat folder resolved to its git common dir when it is a git checkout (else the folder), lifecycle/boundModel/spawnedBy/transcriptPath null unless known. Consumers (fs3 crates/core/src/conversation_join.rs:43) already parse pijId/harness/harnessSessionId/gitCommonDir; one shape under one v. Duplicate precedence: the rs row wins because rs is the live generation, then null fields `harnessSessionId`, `lifecycle`, `boundModel`, `spawnedBy`, and `transcriptPath` are filled from the legacy row; `generation` remains `\"rs\"`.",
         "G4 whoami --json under rs: answer with {id, harness, pane, folder, session, generation:\"rs\", capabilityGate:\"absent\"} — the absent gate is NAMED, never a missing field (the refusal text at generation-routing explains why); legacy shape unchanged for legacy seats.",
         "G5 Consumer floor: a versioned marker in the envelope (`v`) bumps so fs3/harness can pin a floor + one test."
       ]
@@ -82,6 +82,5 @@
         }
       ]
     }
-  ],
-  "references": []
+  ]
 }
