@@ -42,6 +42,9 @@ pub struct Registration {
     /// Model the running client actually selected after its own resolution/fallback.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actual_model: Option<String>,
+    /// Whether `actual_model` was observed, including an observed absence.
+    #[serde(default)]
+    pub actual_model_observed: bool,
     /// Selected provider, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,

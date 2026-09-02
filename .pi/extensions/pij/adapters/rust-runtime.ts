@@ -31,7 +31,7 @@ import type { PijDaemonClient } from "./daemon-http.js";
 interface RustBootInput extends Omit<BootInput, "id"> {
 	readonly runtimeBin: "pi" | "omp";
 	readonly piSessionId?: string;
-	readonly actualModel?: string;
+	readonly actualModel?: string | null;
 	readonly reason: SessionShutdownReason | "startup";
 	readonly notice?: (text: string) => void;
 }
@@ -342,7 +342,12 @@ function registrationFor(
 		proc_start: procStart,
 		...(process.env.PIJ_SPAWN_ID ? { spawn_id: process.env.PIJ_SPAWN_ID } : {}),
 		...(model ? { model } : {}),
-		...(input.actualModel ? { actual_model: input.actualModel } : {}),
+		...(input.actualModel === undefined
+			? {}
+			: {
+					actual_model_observed: true,
+					...(input.actualModel === null ? {} : { actual_model: input.actualModel }),
+				}),
 		...(process.env.PIJ_SPAWN_PROVIDER ? { provider: process.env.PIJ_SPAWN_PROVIDER } : {}),
 		...(effort ? { effort } : {}),
 		...(input.parentId === undefined || input.parentId === null ? {} : { parent: input.parentId }),

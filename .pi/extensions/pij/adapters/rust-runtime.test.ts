@@ -338,6 +338,7 @@ describe("RustRuntimeSession", () => {
 			pane: "%132",
 			spawn_id: "spawn-132",
 			actual_model: "github-copilot/gpt-5.6-sol",
+			actual_model_observed: true,
 		});
 	});
 

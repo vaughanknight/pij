@@ -126,3 +126,57 @@ Out-of-scope boot note from the same run: OMP printed
 `~/.config/opencode/opencode.json: Transport closed` for the Serena MCP.
 This is recorded as client boot evidence only; plan 132 does not change MCP
 configuration or startup.
+
+## Final branch live proof after model-truth fix
+
+Isolated daemon: `127.0.0.1:58803`, state
+`/tmp/pij-plan132-final-live-58803`. Final branch binary; production daemon was
+not restarted.
+
+Healthy real OMP:
+
+```json
+{"ok":true,"command":"pij spawn","v":2,"data":{"id":"pij-plan132-final-ok","harness":"omp","pane":"%3332","proc":{"pid":26621,"proc_start":20260902180045},"spawn_id":"s-755f9c1c3a5f3234606771432d8074d4","model":"github-copilot/gpt-5.6-sol","dispatched":true,"bound":true,"pid":26621}}
+```
+
+```text
+│       GPT-5.6 Sol        │
+│      github-copilot      │
+...
+◫ 2.6%/1.1M ⟲ · rs·pij-plan132-final-ok · ⬢ GPT-5.6 Sol · ◒ high · ⑂ main ?5 · (sub)
+rs pij-plan132-final-ok
+```
+
+`pij state` independently reported `liveness:"active"`, pane `%3332`, pid
+`26621`, and `boundModel:"github-copilot/gpt-5.6-sol"`.
+
+Bad-model real OMP:
+
+```json
+{"ok":false,"command":"pij spawn","v":2,"meta":"spawn.failed: seat pij-plan132-final-bad in pane %3334 model-mismatch: requested deliberately.invalid/model, actual no-model (exit code unavailable); log: .../pij-rs-spawn/s-e50de9dd7fbe0bce68b914a65ed00afe.log; last output: ... ⬢ no-model ...","error":"adapter"}
+```
+
+```text
+pij: detected rs daemon at 127.0.0.1:58803; registered pij-plan132-final-bad
+Warning: Model "deliberately.invalid/model" not found
+...
+◫ 27K/? ⟲ · rs·pij-plan132-final-bad · ⬢ no-model · ⑂ main ?5
+rs pij-plan132-final-bad
+```
+
+Real tmux child-exit witness (observer wrapped an executable that wrote one
+stderr line and exited 23):
+
+```json
+{"ok":false,"command":"pij spawn","v":2,"meta":"spawn.failed: seat pij-plan132-final-exit in pane %3333 child exited before registration (exit code 23); log: .../pij-rs-spawn/s-8d8ad13afd34f1744c62d4de1b0cb102.log; last output:\ndeliberate child refusal: exit witness 23","error":"adapter"}
+```
+
+Final spine receipts:
+
+```json
+[
+  {"seq":3,"kind":"spawn.bound","seat":"pij-plan132-final-ok","pane":"%3332","pid":26621,"spawn_id":"s-755f9c1c3a5f3234606771432d8074d4"},
+  {"seq":6,"kind":"spawn.failed","seat":"pij-plan132-final-exit","exit_code":23,"pane":"%3333","reason":"child exited before registration","spawn_id":"s-8d8ad13afd34f1744c62d4de1b0cb102"},
+  {"seq":8,"kind":"spawn.failed","seat":"pij-plan132-final-bad","exit_code":null,"pane":"%3334","reason":"model-mismatch: requested deliberately.invalid/model, actual no-model","spawn_id":"s-e50de9dd7fbe0bce68b914a65ed00afe"}
+]
+```

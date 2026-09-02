@@ -35,8 +35,8 @@ Solo PM delivery for plan 132: RED witnesses, additive spawn bind reporting, par
 
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| tk-a132 | Establish RED-first spawn and dead-pane witnesses | — | — | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/red-witness.md | [x] 1/1 [tk-a132](#tk-a132) | Child-exit, parent-loss, and unbound dead-pane retry behavior fail before implementation. | — | — |
-| tk-b132 | Implement additive bind and bounded dead-pane reporting | — | — | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/live-proof.md; docs/plans/132-spawn-reports-bind/assets/red-witness.md#unbound-seat-whose-pane-disappeared | [x] 1/1 [tk-b132](#tk-b132) | Spawn reports bind or named failure; an unbound seat whose pane disappeared leaves named terminal queue state; parent is preserved. | — | — |
+| tk-a132 | Establish RED-first spawn and dead-recipient witnesses | — | — | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/red-witness.md | [x] 1/1 [tk-a132](#tk-a132) | Child-exit, parent-loss, bound missing-pane, and tombstoned-recipient behavior fail before implementation. | — | — |
+| tk-b132 | Implement bind reporting and full dead-recipient terminalization | — | — | [x] checked | — | assets/live-proof.md; assets/red-witness.md#dead-recipients-retained-pending-rows; assets/prod-copy-proof.md | [x] 1/1 [tk-b132](#tk-b132) | Spawn reports bind or named failure; every tombstoned or tmux-absent recipient leaves named terminal queue state on the next drain tick; parent is preserved. | — | — |
 | tk-c132 | Prove and review composed behavior | — | — | [ ] unchecked | — | — | [ ] 0/1 [tk-c132](#tk-c132) | Deterministic checks, live proof, and cross-model review are complete. | — | — |
 
 <a id="done-when"></a>
@@ -47,16 +47,16 @@ Solo PM delivery for plan 132: RED witnesses, additive spawn bind reporting, par
 
 | id | assertion | state | pressure | receipt |
 | --- | --- | --- | --- | --- |
-| dw-a132 | The child-exit, parent-preservation, and unbound dead-pane terminal-state witnesses fail on the pre-fix tree for the expected behavior. | [x] checked | not-applicable | docs/plans/132-spawn-reports-bind/assets/red-witness.md |
+| dw-a132 | The child-exit, parent-preservation, bound missing-pane, and tombstoned-recipient terminal-state witnesses fail on the pre-fix tree. | [x] checked | not-applicable | docs/plans/132-spawn-reports-bind/assets/red-witness.md |
 
 ### tk-b132
 
 | id | assertion | state | pressure | receipt |
 | --- | --- | --- | --- | --- |
-| dw-b132 | Spawn separates dispatched from bound, returns early-exit evidence, emits spawn.bound/spawn.failed, preserves parent, and terminalizes an unbound missing-pane queue row with a named failed outcome. | [x] checked | not-applicable | docs/plans/132-spawn-reports-bind/assets/live-proof.md; docs/plans/132-spawn-reports-bind/assets/red-witness.md#unbound-seat-whose-pane-disappeared |
+| dw-b132 | Spawn separates dispatched from bound, returns early-exit evidence, emits spawn.bound/spawn.failed, preserves parent, and terminalizes every pending row for a tombstoned or tmux-absent recipient with a named failed outcome and no retry. | [x] checked | not-applicable | cargo test -p pij-daemon pointer::worker::tests: 26 passed; assets/prod-copy-proof.md: 72 dead pending before, 0 after one cadence |
 
 ### tk-c132
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-c132 | Focused Rust tests, harness checks, and healthy plus failing live tmux transcripts prove all acceptance criteria. | [ ] unchecked | not-applicable |
+| dw-c132 | Focused Rust tests, full gates, healthy plus failing live tmux transcripts, a production-copy dead-recipient drain, and cross-model review prove all acceptance criteria. | [ ] unchecked | not-applicable |

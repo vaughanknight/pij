@@ -21,19 +21,19 @@
       "value": [
         {
           "id": "tk-a132",
-          "title": "Establish RED-first spawn and dead-pane witnesses",
+          "title": "Establish RED-first spawn and dead-recipient witnesses",
           "state": "checked",
           "done": "#done_when/tk-a132",
-          "success": "Child-exit, parent-loss, and unbound dead-pane retry behavior fail before implementation.",
+          "success": "Child-exit, parent-loss, bound missing-pane, and tombstoned-recipient behavior fail before implementation.",
           "receipt": "docs/plans/132-spawn-reports-bind/assets/red-witness.md"
         },
         {
           "id": "tk-b132",
-          "title": "Implement additive bind and bounded dead-pane reporting",
+          "title": "Implement bind reporting and full dead-recipient terminalization",
           "state": "checked",
           "done": "#done_when/tk-b132",
-          "success": "Spawn reports bind or named failure; an unbound seat whose pane disappeared leaves named terminal queue state; parent is preserved.",
-          "receipt": "docs/plans/132-spawn-reports-bind/assets/live-proof.md; docs/plans/132-spawn-reports-bind/assets/red-witness.md#unbound-seat-whose-pane-disappeared"
+          "success": "Spawn reports bind or named failure; every tombstoned or tmux-absent recipient leaves named terminal queue state on the next drain tick; parent is preserved.",
+          "receipt": "assets/live-proof.md; assets/red-witness.md#dead-recipients-retained-pending-rows; assets/prod-copy-proof.md"
         },
         {
           "id": "tk-c132",
@@ -50,7 +50,7 @@
         "tk-a132": [
           {
             "id": "dw-a132",
-            "assertion": "The child-exit, parent-preservation, and unbound dead-pane terminal-state witnesses fail on the pre-fix tree for the expected behavior.",
+            "assertion": "The child-exit, parent-preservation, bound missing-pane, and tombstoned-recipient terminal-state witnesses fail on the pre-fix tree.",
             "state": "checked",
             "pressure": "not-applicable",
             "receipt": "docs/plans/132-spawn-reports-bind/assets/red-witness.md"
@@ -59,16 +59,16 @@
         "tk-b132": [
           {
             "id": "dw-b132",
-            "assertion": "Spawn separates dispatched from bound, returns early-exit evidence, emits spawn.bound/spawn.failed, preserves parent, and terminalizes an unbound missing-pane queue row with a named failed outcome.",
+            "assertion": "Spawn separates dispatched from bound, returns early-exit evidence, emits spawn.bound/spawn.failed, preserves parent, and terminalizes every pending row for a tombstoned or tmux-absent recipient with a named failed outcome and no retry.",
             "state": "checked",
             "pressure": "not-applicable",
-            "receipt": "docs/plans/132-spawn-reports-bind/assets/live-proof.md; docs/plans/132-spawn-reports-bind/assets/red-witness.md#unbound-seat-whose-pane-disappeared"
+            "receipt": "cargo test -p pij-daemon pointer::worker::tests: 26 passed; assets/prod-copy-proof.md: 72 dead pending before, 0 after one cadence"
           }
         ],
         "tk-c132": [
           {
             "id": "dw-c132",
-            "assertion": "Focused Rust tests, harness checks, and healthy plus failing live tmux transcripts prove all acceptance criteria.",
+            "assertion": "Focused Rust tests, full gates, healthy plus failing live tmux transcripts, a production-copy dead-recipient drain, and cross-model review prove all acceptance criteria.",
             "state": "unchecked",
             "pressure": "not-applicable"
           }

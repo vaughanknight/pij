@@ -41,6 +41,7 @@ export interface Registration {
 	readonly spawn_id?: string;
 	readonly model?: string;
 	readonly actual_model?: string;
+	readonly actual_model_observed?: boolean;
 	readonly provider?: string;
 	readonly effort?: string;
 	readonly parent?: string;

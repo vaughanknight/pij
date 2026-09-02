@@ -18,7 +18,7 @@
 
 ## Architecture
 
-Rust: crates/harnesses/src/spawn.rs (argv/launch), crates/daemon/src/http/mod.rs spawn_seat, crates/daemon/src/registration.rs bind evidence/events, and crates/daemon/src/pointer/worker.rs for the bounded unbound-dead-pane terminal policy. Bind evidence = /v1/register from that pane. Keep the wire additive: new fields, no renames.
+Rust: crates/harnesses/src/spawn.rs (argv/launch), crates/daemon/src/http/mod.rs spawn wait, crates/daemon/src/registration.rs bind evidence/events, and crates/daemon/src/pointer/worker.rs for terminal delivery state when a recipient is tombstoned or absent from tmux list-panes -a. Bind evidence = /v1/register from that pane. Keep the wire additive: new fields, no renames.
 
 <a id="fan-out"></a>
 
@@ -35,7 +35,7 @@ Rust: crates/harnesses/src/spawn.rs (argv/launch), crates/daemon/src/http/mod.rs
 
 | id | name | paths | responsibility | interface | test_strategy | depends_on | wave | note |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| u1 | the unit | crates/harnesses/src/spawn.rs, crates/harnesses/src/lib.rs (one additive observed-launch re-export only), crates/daemon/src/http/mod.rs (spawn_seat only), crates/daemon/src/http/types.rs (SpawnRequest, SpawnResponse, Registration actual_model only), crates/daemon/src/registration.rs (bind notification hook only), crates/daemon/src/pointer/worker.rs (unbound missing-pane terminal policy only), crates/cli/src/main.rs (spawn verb output), .pi/extensions/pij/index.ts (session-start actualModel wiring only), .pi/extensions/pij/adapters/rust-runtime.ts (boot identity/model only), .pi/extensions/pij/core/daemon-wire.ts (Registration actual_model only), tests | Deliver the plan goals. | as described in architecture | RED-first; every new test proven red on the pre-fix tree, output pasted. | none | 1 | — |
+| u1 | the unit | crates/harnesses/src/spawn.rs, crates/harnesses/src/lib.rs (one additive observed-launch re-export only), crates/daemon/src/http/mod.rs (spawn wait/failure only), crates/daemon/src/http/types.rs (SpawnRequest, SpawnResponse, Registration actual_model only), crates/daemon/src/registration.rs (bind notification, model truth, parent preservation), crates/daemon/src/pointer/worker.rs (tombstoned-or-missing-pane terminal policy), crates/testkit/src/fakes.rs (pane/composer fact separation only), crates/cli/src/main.rs (spawn verb output), .pi/extensions/pij/index.ts (session-start actualModel wiring only), .pi/extensions/pij/adapters/rust-runtime.ts (boot identity/model only), .pi/extensions/pij/core/daemon-wire.ts (Registration actual_model only), tests | Deliver the plan goals. | as described in architecture | RED-first; every new test proven red on the pre-fix tree, output pasted. | none | 1 | — |
 
 <a id="isolation"></a>
 

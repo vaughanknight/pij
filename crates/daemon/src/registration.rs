@@ -194,8 +194,11 @@ impl RegistrationService {
                 .zip(claim.spawn_id.as_deref())
                 .is_some_and(|(launched, claimed)| !launched.is_empty() && launched == claimed);
         let requested_model = descriptor.model.clone();
-        let model_matches =
-            requested_model_matches(requested_model.as_deref(), claim.actual_model.as_deref());
+        let model_matches = requested_model_matches(
+            requested_model.as_deref(),
+            claim.actual_model.as_deref(),
+            claim.actual_model_observed,
+        );
         descriptor.harness = harness;
         if let Some(harness_session) = harness_session {
             descriptor.harness_session = Some(harness_session);
@@ -211,7 +214,7 @@ impl RegistrationService {
         if descriptor.spawn_id.is_none() {
             descriptor.spawn_id = claim.spawn_id;
         }
-        if binds_spawned_incarnation {
+        if binds_spawned_incarnation && claim.actual_model_observed {
             descriptor.model = claim.actual_model.clone();
         } else if descriptor.model.is_none() {
             descriptor.model = claim.model;
@@ -273,16 +276,24 @@ impl RegistrationService {
     }
 }
 
-pub(crate) fn requested_model_matches(requested: Option<&str>, actual: Option<&str>) -> bool {
-    match requested {
-        None => true,
-        Some(requested) => actual.is_some_and(|actual| {
+pub(crate) fn requested_model_matches(
+    requested: Option<&str>,
+    actual: Option<&str>,
+    actual_observed: bool,
+) -> bool {
+    if !actual_observed {
+        return true;
+    }
+    match (requested, actual) {
+        (None, _) => true,
+        (Some(_), None) => false,
+        (Some(requested), Some(actual)) => {
             actual == requested
                 || (!requested.contains('/')
                     && actual
                         .rsplit_once('/')
                         .is_some_and(|(_, model)| model == requested))
-        }),
+        }
     }
 }
 
@@ -313,9 +324,19 @@ mod tests {
     use pij_core::ports::Spine;
     use pij_testkit::fakes::{FakeLiveness, FakeRegistry, FakeSpine};
 
-    use super::RegistrationService;
+    use super::{RegistrationService, requested_model_matches};
     use crate::events::EventBus;
     use crate::http::Registration;
+
+    #[test]
+    fn absent_actual_model_is_unknown_while_explicit_no_model_is_a_mismatch() {
+        assert!(requested_model_matches(Some("claude-opus-5"), None, false));
+        assert!(!requested_model_matches(
+            Some("github-copilot/gpt-5.6-sol"),
+            None,
+            true,
+        ));
+    }
 
     #[tokio::test]
     async fn claude_inbound_registration_changes_once_and_publishes_once() {
@@ -349,6 +370,7 @@ mod tests {
             spawn_id: None,
             model: None,
             actual_model: None,
+            actual_model_observed: false,
             provider: None,
             effort: None,
             parent: None,

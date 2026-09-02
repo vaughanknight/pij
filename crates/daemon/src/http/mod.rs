@@ -770,7 +770,8 @@ pub(crate) async fn launch_seat(
         }
         match state.services.registry.get(&descriptor.id).await {
             Ok(Some(bound)) if bound.proc.is_some() => {
-                if requested_model_matches(requested_model.as_deref(), bound.model.as_deref()) {
+                if requested_model_matches(requested_model.as_deref(), bound.model.as_deref(), true)
+                {
                     let _ = tokio::fs::remove_file(&status_path).await;
                     return spawn_success(command_name, bound);
                 }
@@ -799,11 +800,13 @@ pub(crate) async fn launch_seat(
                     state,
                     command_name,
                     &bound,
-                    None,
-                    &reason,
-                    StatusCode::BAD_GATEWAY,
-                    &last_output,
-                    &log_path,
+                    SpawnFailure {
+                        exit_code: None,
+                        reason: &reason,
+                        status: StatusCode::BAD_GATEWAY,
+                        last_output: &last_output,
+                        log_path: &log_path,
+                    },
                 )
                 .await
                 {
@@ -820,11 +823,13 @@ pub(crate) async fn launch_seat(
                     state,
                     command_name,
                     &descriptor,
-                    Some(exit_code),
-                    "child exited before registration",
-                    StatusCode::BAD_GATEWAY,
-                    &last_output,
-                    &log_path,
+                    SpawnFailure {
+                        exit_code: Some(exit_code),
+                        reason: "child exited before registration",
+                        status: StatusCode::BAD_GATEWAY,
+                        last_output: &last_output,
+                        log_path: &log_path,
+                    },
                 )
                 .await
                 {
@@ -844,11 +849,13 @@ pub(crate) async fn launch_seat(
                 state,
                 command_name,
                 &descriptor,
-                None,
-                "pane disappeared before registration and before an exit code was recorded",
-                StatusCode::BAD_GATEWAY,
-                &last_output,
-                &log_path,
+                SpawnFailure {
+                    exit_code: None,
+                    reason: "pane disappeared before registration and before an exit code was recorded",
+                    status: StatusCode::BAD_GATEWAY,
+                    last_output: &last_output,
+                    log_path: &log_path,
+                },
             )
             .await
             {
@@ -857,15 +864,18 @@ pub(crate) async fn launch_seat(
             };
         }
         if tokio::time::Instant::now() >= deadline {
+            let reason = format!("timed out after {wait_seconds}s waiting for registration");
             return match spawn_failure(
                 state,
                 command_name,
                 &descriptor,
-                None,
-                &format!("timed out after {wait_seconds}s waiting for registration"),
-                StatusCode::GATEWAY_TIMEOUT,
-                &last_output,
-                &log_path,
+                SpawnFailure {
+                    exit_code: None,
+                    reason: &reason,
+                    status: StatusCode::GATEWAY_TIMEOUT,
+                    last_output: &last_output,
+                    log_path: &log_path,
+                },
             )
             .await
             {
@@ -932,16 +942,27 @@ fn spawn_success(command_name: &'static str, seat: SeatDescriptor) -> Response {
     )
 }
 
+struct SpawnFailure<'a> {
+    exit_code: Option<i32>,
+    reason: &'a str,
+    status: StatusCode,
+    last_output: &'a str,
+    log_path: &'a Path,
+}
+
 async fn spawn_failure(
     state: &AppState,
     command_name: &'static str,
     seat: &SeatDescriptor,
-    exit_code: Option<i32>,
-    reason: &str,
-    status: StatusCode,
-    last_output: &str,
-    log_path: &Path,
+    failure: SpawnFailure<'_>,
 ) -> Result<Response> {
+    let SpawnFailure {
+        exit_code,
+        reason,
+        status,
+        last_output,
+        log_path,
+    } = failure;
     let wrapper_output = match tokio::fs::read_to_string(log_path).await {
         Ok(output) => output,
         Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),

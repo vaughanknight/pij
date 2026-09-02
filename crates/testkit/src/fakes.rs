@@ -942,10 +942,11 @@ impl FakeTmux {
         self
     }
 
-    /// `with_clear_composer` for a fake already behind an `Arc`, so a test helper
-    /// can arrange a pane at the moment the seat is registered rather than
-    /// needing every pane id enumerated up front.
-    pub fn arrange_clear_composer(&self, pane: &str) {
+    /// Arrange a listed pane without claiming its composer is recognized.
+    ///
+    /// This keeps "pane exists" separate from "injection is permitted" for
+    /// delivery-policy tests.
+    pub fn arrange_pane(&self, pane: &str) {
         let mut state = self.state.lock().expect("fake tmux mutex");
         if !state.panes.iter().any(|listed| listed.id == pane) {
             state.panes.push(Pane {
@@ -953,14 +954,26 @@ impl FakeTmux {
                 session: "s".to_string(),
                 window: "w".to_string(),
                 title: "t".to_string(),
-                cursor_x: Some(0),
-                cursor_y: Some(0),
+                cursor_x: None,
+                cursor_y: None,
             });
         }
         state.taps.insert(
             pane.to_string(),
             std::env::temp_dir().join(format!("pij-fake-tap-{}", pane.replace('%', "pane"))),
         );
+    }
+
+    /// `with_clear_composer` for a fake already behind an `Arc`, so a test helper
+    /// can arrange a pane at the moment the seat is registered rather than
+    /// needing every pane id enumerated up front.
+    pub fn arrange_clear_composer(&self, pane: &str) {
+        self.arrange_pane(pane);
+        let mut state = self.state.lock().expect("fake tmux mutex");
+        if let Some(listed) = state.panes.iter_mut().find(|listed| listed.id == pane) {
+            listed.cursor_x = Some(0);
+            listed.cursor_y = Some(0);
+        }
         state.standing_capture = Some(
             "\u{2570}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{256f}"
                 .to_string(),

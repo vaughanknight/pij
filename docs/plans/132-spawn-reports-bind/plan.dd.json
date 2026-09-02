@@ -24,7 +24,9 @@
         "G2 On a pane that exits before bind: capture the child exit code and the last 20 lines of its output (tmux capture-pane before the window is gone, or a pipe-pane log under ~/.pij-rs/spawn/<spawn_id>.log) and return them in the failure.",
         "G3 A spine event spawn.bound / spawn.failed with the evidence so it is locatable by seat/spawn id later.",
         "G4 Fix the false terminal-absence notice if it is the same code path; otherwise record it as a separate finding with file:line.",
-        "G5 A queued delivery for an unbound spawned seat whose pane is absent becomes terminal failed state naming the seat and pane; it is not retried."
+        "G5 A queued delivery for an unbound spawned seat whose pane is absent becomes terminal failed state naming the seat and pane; it is not retried.",
+        "G6 On the next drain tick, every pending delivery whose recipient is tombstoned or whose pane is absent from tmux list-panes -a becomes terminal failed state with a named reason and is never retried.",
+        "Ruling note: the original AC1 assumed an invalid OMP model exits. OMP v18 stays alive as no-model; AC1a and AC1b split model mismatch from real child-exit evidence."
       ]
     },
     {
@@ -37,11 +39,11 @@
       "name": "acceptance_criteria",
       "value": [
         {
-          "id": "AC1",
-          "text": "LIVE: pij-rs spawn of an omp with a deliberately bad --model → returns spawn.failed naming the exit code and the omp log line that refused; pane transcript pasted.",
-          "claim": "a dead-before-bind spawn is reported, not ok:true",
+          "id": "AC1a",
+          "text": "LIVE: a deliberately bad OMP model leaves the real client alive as no-model and spawn returns spawn.failed with the pane model warning and requested-versus-actual mismatch.",
+          "claim": "bad OMP model reports the observed mismatch",
           "state": "checked",
-          "receipt": "docs/plans/132-spawn-reports-bind/assets/live-proof.md#deadunusable-model-before-honest-bind"
+          "receipt": "docs/plans/132-spawn-reports-bind/assets/live-proof.md#final-branch-live-proof-after-model-truth-fix"
         },
         {
           "id": "AC2",
@@ -60,9 +62,23 @@
         {
           "id": "AC4",
           "text": "RED-first unit: an unbound spawned seat whose pane disappeared leaves one named failed outcome, zero retries, and no live queue row.",
-          "claim": "a dead unbound pane terminalizes queued delivery",
+          "claim": "dead recipients terminalize queued delivery without retry",
           "state": "checked",
-          "receipt": "docs/plans/132-spawn-reports-bind/assets/red-witness.md#unbound-seat-whose-pane-disappeared"
+          "receipt": "docs/plans/132-spawn-reports-bind/assets/red-witness.md#dead-recipients-retained-pending-rows"
+        },
+        {
+          "id": "AC5",
+          "text": "RED-first unit tests plus a dev daemon against a writable production-database copy show zero pending delivery rows to tombstoned or pane-absent recipients within one drain cadence; failed rows retain named reasons.",
+          "claim": "all dead-recipient delivery rows terminalize next tick",
+          "state": "checked",
+          "receipt": "docs/plans/132-spawn-reports-bind/assets/prod-copy-proof.md"
+        },
+        {
+          "id": "AC1b",
+          "text": "LIVE: a real tmux child exit returns spawn.failed with exit code 23, stderr tail, durable log path, and spawn.failed spine evidence.",
+          "claim": "child exit reports exit code and durable output evidence",
+          "state": "checked",
+          "receipt": "docs/plans/132-spawn-reports-bind/assets/live-proof.md#final-branch-live-proof-after-model-truth-fix"
         }
       ]
     },

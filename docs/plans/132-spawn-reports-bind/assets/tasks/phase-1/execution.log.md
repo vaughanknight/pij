@@ -7,19 +7,23 @@
 - RED: `cargo test -p pij-daemon a_missing_pane_terminalizes_its_queued_delivery_with_named_reason -- --nocapture` failed because the missing-pane row was retried.
 - Evidence: `assets/red-witness.md`.
 
-## tk-b132 — bind and dead-pane reporting
+## tk-b132 — bind and dead-recipient reporting
 
-- Preserved the compiling inherited implementation after focused Rust/TypeScript tests and workspace check.
-- Rebase conflicts were limited to additive imports in `crates/cli/src/main.rs` and `crates/daemon/src/http/mod.rs`.
-- Added the ruled narrow policy in `crates/daemon/src/pointer/worker.rs`: only an unbound spawned seat is checked against tmux's pane roster; a missing pane fails its queue row with seat and pane in the reason. Listed panes and systemic tmux errors retain the existing retry behavior.
-- GREEN: dead-pane regression, retry-policy distinction, starvation guard, spawn suite, and `cargo check --workspace`.
+- Preserved the compiling inherited spawn implementation after focused Rust/TypeScript tests and workspace checks.
+- Jordan expanded the retry policy after production measured 72 dead-recipient pending rows, worst attempt 15,933.
+- `DrainWorker` now takes one authoritative all-server tmux pane snapshot per non-empty pass, claims tombstoned recipients, and drains every dead recipient's rows in the same cadence. Live recipients retain one-claim-per-pass suppression; listed panes and systemic tmux failures retain their retry behavior.
+- Production-copy proof: 72 dead pending before, 0 after the first cadence; evidence in `assets/prod-copy-proof.md`.
+- Opus R001 fixed with additive `actual_model_observed`: unavailable model evidence preserves the requested model, while an observed absence remains a mismatch.
+- Opus R002 fixed by grouping `spawn_failure` evidence; CI-equivalent clippy is green.
+- GREEN: 26 pointer-worker tests, 9 spawn tests, Claude/model truth tests, TS runtime test 8/8, `cargo check --workspace`, and `cargo clippy --workspace --all-targets -- -D warnings`.
 
 ## tk-c132 — composed proof and review
 
-- `cargo test --workspace --quiet`: 607 passed across 63 suites; 6 ignored.
-- `harness checks --json` on `main@4418e3f3`: all eight sensors passed (`local-paths`, `typecheck`, `lint`, `test`, `windows-compat`, `smoke`, `pkg-audit`, `snapshots`).
-- Fresh real-client tmux proof: `assets/live-proof.md`.
-- Claude Opus review pending.
+- `cargo test --workspace --quiet`: 609 passed across 63 suites; 6 ignored.
+- `cargo clippy --workspace --all-targets -- -D warnings`: pass.
+- Final `harness checks --json`: all eight sensors passed (`local-paths`, `typecheck`, `lint`, `test`, `windows-compat`, `smoke`, `pkg-audit`, `snapshots`).
+- Final real-client tmux proof: `assets/live-proof.md`; production-copy one-cadence proof: `assets/prod-copy-proof.md`.
+- Claude Opus R1 paused on the scope change after recording R001–R010; R001/R002 fixed, full re-review pending.
 
 ## Discoveries & learnings
 
