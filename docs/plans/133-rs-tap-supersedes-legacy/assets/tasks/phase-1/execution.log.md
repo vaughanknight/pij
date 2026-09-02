@@ -41,6 +41,14 @@
 - f3 MEDIUM: `next_retry_at` was a config echo. Prime ruled persisted readback; `DeliveryEnqueue::Queued` now carries `not_before_ms` from SQLite/FakeQueue. Fake 17-second backoff and SQLite query tests prevent cadence-echo regression (`artifact://189`).
 - Final review-fix live run: legacy writer PID 73684 authorized `%3252` takeover; Copilot replied `LIVE133-R2-SEEN`; a real `human-typing` receipt carried persisted `next_retry_at=0` and delivered without a second send (`assets/live-proof.md`).
 
+
+## R2 review fix
+
+- R2 independently closed r1 f1-f3, then found f4: the plan's narrower clippy command omitted test targets while CI runs `--all-targets`.
+- Applied clippy's one-line `std::slice::from_ref(&delivery.kind)` fix and aligned AC5 to `cargo clippy --workspace --all-targets -- -D warnings`.
+- R2 record: `assets/reviews/r2-cross-model.dd.json`.
+- Final tree: Cargo workspace 591 passed / 6 ignored (`artifact://225`); CI-scope clippy and fmt passed; `harness checks` passed all eight sensors at `2026-09-02T06:25:06.082Z`.
+
 ## Discoveries & Learnings
 
 | Tag | Finding | Evidence |

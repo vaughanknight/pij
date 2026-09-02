@@ -474,7 +474,7 @@ async fn delivery_enqueue_returns_the_persisted_not_before_after_backoff() {
         panic!("new delivery must queue");
     };
     queue
-        .claim(&[delivery.kind.clone()], "schedule-worker")
+        .claim(std::slice::from_ref(&delivery.kind), "schedule-worker")
         .await
         .expect("claim delivery")
         .expect("delivery row");

@@ -94,7 +94,7 @@
             "../../../plan.dd.json#acceptance_criteria/AC5",
             "../../../plan.dd.json#acceptance_criteria/AC6"
           ],
-          "receipt": "R1 fixes + final live proof + Cargo artifact://205 + post-review harness checks green."
+          "receipt": "Final R2 fixes, live proof, Cargo artifact://225, CI-scope clippy/fmt, harness checks green."
         }
       ]
     },
@@ -143,7 +143,7 @@
             "assertion": "All focused and full gates pass and assets/live-proof.md contains the required control and isolated live transcripts with production daemons untouched.",
             "state": "checked",
             "pressure": "not-applicable",
-            "receipt": "Post-review Cargo 591 passed plus clippy/fmt artifact://205; harness checks eight sensors pass 2026-09-02T06:11:47.148Z; final review-fix client transcript assets/live-proof.md."
+            "receipt": "Final tree: Cargo workspace 591 passed/6 ignored artifact://225; CI-scope clippy --all-targets and fmt passed; harness checks all eight pass 2026-09-02T06:25:06.082Z; R2 record assets/reviews/r2-cross-model.dd.json."
           }
         ]
       }

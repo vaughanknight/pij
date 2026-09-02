@@ -67,7 +67,7 @@
           "id": "AC5",
           "claim": "gates and blast radius",
           "state": "unchecked",
-          "note": "`harness checks` green on the rebased tree PLUS explicit receipts for `~/.cargo/bin/cargo test --workspace`, `~/.cargo/bin/cargo clippy --workspace -- -D warnings`, and `~/.cargo/bin/cargo fmt --check`, with output pasted in assets/live-proof.md; req-0044 baseline reds excluded by name only; no changes under .pi/extensions (legacy) and no operator-home writes (`git diff --stat` + `~/.pij` and `~/.pij-rs` mtimes pasted)."
+          "note": "`harness checks` green on the rebased tree PLUS explicit receipts for `~/.cargo/bin/cargo test --workspace`, `~/.cargo/bin/cargo clippy --workspace --all-targets -- -D warnings`, and `~/.cargo/bin/cargo fmt --check`, with output pasted in assets/live-proof.md; req-0044 baseline reds excluded by name only; no changes under .pi/extensions (legacy) and no operator-home writes (`git diff --stat` + `~/.pij` and `~/.pij-rs` mtimes pasted)."
         },
         {
           "id": "AC6",

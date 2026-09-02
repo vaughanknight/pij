@@ -107,8 +107,10 @@ Production rs remained pid 46147 / start 20260902144720 throughout; only the rev
 ## Deterministic receipts
 
 - Focused core/tmux/daemon contracts: 7 + 33 + 154 passed (`artifact://100`).
-- Post-review `~/.cargo/bin/cargo test --workspace`: 591 passed, 6 ignored; `cargo clippy --workspace -- -D warnings` and `cargo fmt --check` both passed (`artifact://205`).
+- Final `~/.cargo/bin/cargo test --workspace`: 591 passed, 6 ignored (`artifact://225`); `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` passed on the final tree.
 - `.pi/extensions` diff: empty. Change-surface receipt: `artifact://134`.
 - Operator state directory mtimes after proof: `~/.pij|1788326354|2026-09-02 15:19:14 +1000`; `~/.pij-rs|1788324440|2026-09-02 14:47:20 +1000`. The dev daemon wrote only `/tmp/pij-plan133-ferret-20260902`, then that owned temporary state was removed.
 - Pre-review `harness checks`: PASS at `2026-09-02T05:41:22.062Z`; all eight sensors ran and passed. Two prior all-sensor runs exposed transient smoke/test failures; each failing sensor passed alone (`harness observe` DL-006/DL-007).
 - Post-review `harness checks`: PASS at `2026-09-02T06:11:47.148Z`; all eight sensors ran and passed.
+- R2 review: `assets/reviews/r2-cross-model.dd.json`; r1 f1-f3 independently verified closed. New f4 was the one-line `cloned-ref-to-slice-refs` failure visible only under CI's `--all-targets`; fixed with `std::slice::from_ref` and AC5 aligned to CI.
+- Final post-f4 `harness checks`: PASS at `2026-09-02T06:25:06.082Z`; all eight sensors ran and passed.
