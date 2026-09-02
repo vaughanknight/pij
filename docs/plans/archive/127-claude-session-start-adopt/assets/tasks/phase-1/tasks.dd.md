@@ -12,7 +12,7 @@
 | title | Phase 1 |
 | slug | phase-1 |
 | ordinal | — |
-| status | in-progress |
+| status | shipped |
 | complexity | — |
 | summary | — |
 | backpressure | — |

@@ -6,7 +6,7 @@
     "now": "ship",
     "next": null,
     "bag": {
-      "status": "archived",
+      "status": "complete",
       "mode": "Simple"
     }
   },
@@ -396,6 +396,17 @@
         "from": "post-flight",
         "to": "ship"
       }
+    },
+    {
+      "id": "STA-017",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-02T02:00:50.090Z",
+      "details": {
+        "node": "ship",
+        "from": "in_progress",
+        "to": "done"
+      }
     }
   ],
   "nodes": [
@@ -524,7 +535,7 @@
       "id": "ship",
       "type": "ship",
       "label": "Ship",
-      "status": "in_progress",
+      "status": "done",
       "command": "/builder 8 ship",
       "next": [],
       "instructions": [
@@ -532,7 +543,8 @@
         "Run /builder 8 ship --plan \"<plan path>\" — the plan folder was archived at post-flight, so resolve --plan under docs/plans/archive/<ord>-<slug>/; push and PR-open each pause for a separate confirm, and any merge waits for a typed PROCEED.",
         "Done when the PR is open and its checks are green (or the failures are reported with a fix-loop offer); a diverged base hands off to 8c reconcile."
       ],
-      "modified_at": "2026-09-02T01:40:20.028Z"
+      "modified_at": "2026-09-02T02:00:50.090Z",
+      "ran_at": "2026-09-02T02:00:50.090Z"
     },
     {
       "id": "backpressure",
