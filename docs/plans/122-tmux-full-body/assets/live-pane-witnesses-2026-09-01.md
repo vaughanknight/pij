@@ -120,7 +120,7 @@ After the owned draft was explicitly cleared with `Ctrl-U`, the queued body arri
 
 The globally installed pre-s122 `pij-rs` cannot decode `typed-to-pane` and may report an unknown-variant error after a successful delivery. The source-built client in this worktree decodes it correctly. No installed binary was modified during this run.
 
-Migration convergence is explicit: s121 owns ordinal 0010 and schema 10; s122 owns `0011_typed_to_pane.sql` and schema 11. This branch currently has the intentional 0010 gap until s121 merges; the second merger must rebase and reconcile the shared `SCHEMA_VERSION` line and migration order.
+Migration convergence is final: s121 owns ordinal 0010/schema 10; plan 128 owns ordinal 0011/schema 11; s122 lands afterward with `0012_typed_to_pane.sql` and schema 12.
 
 ## Automated final proof
 
