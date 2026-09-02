@@ -106,3 +106,22 @@ test result: ok. 1 passed
 ```
 
 Magpie confirmed at `2026-09-02 19:25:24` local that the sentinel arrived as a real user turn from `uds:/tmp/cc-socks/pij-uds-93789-0.sock`: 40/40 lines, ordered, no truncation or elision, first line `PLAN134-U3-MAGPIE-EMPTY line 01 of 40 — byte-exactness probe for plan 110.`, last line identical with `40 of 40`, and U+2014 survived on every line. Composer remained empty and no human typed during the window. The sender measured transport completion in `152.743625ms`; no absolute send timestamp was captured, so no wall-clock gap is inferred. The actual empty-vs-draft three-seat production veto run remains the post-merge closing receipt owned by the prime, per ruling.
+
+## u3 PR #365 Rust-lane repair — PASS
+
+The first CI run exposed three pointer-worker tests outside the initial focused suites. Two pinned an obsolete `user_typing` fake call; each now states why a recognized blank composer is authoritative. The behavioural retry test still proves a vetoed row is retried: its evidence now changes from a real recognized draft to a blank capture, and the original `[(JobId(1), 0ns)]` retry assertion remains.
+
+The full architecture gate also required the deliberate `pij-harnesses -> sha2` allowlist edge and refreshed clean/drifted metadata fixtures.
+
+```text
+~/.cargo/bin/cargo test --workspace
+cargo test: 602 passed (63 suites, 6 ignored)
+
+~/.cargo/bin/cargo clippy --workspace --all-targets -- -D warnings
+PASS
+
+~/.cargo/bin/cargo fmt --all --check
+PASS
+```
+
+Captured full-suite output: `artifact://229`; clippy: `artifact://233`.
