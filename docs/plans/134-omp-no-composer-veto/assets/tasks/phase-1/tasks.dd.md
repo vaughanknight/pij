@@ -12,7 +12,7 @@
 | title | Phase 1 |
 | slug | phase-1 |
 | ordinal | — |
-| status | draft |
+| status | ready |
 | complexity | — |
 | summary | — |
 | backpressure | — |
@@ -27,16 +27,36 @@
 
 ## Summary
 
-_Empty._
+Execute u1 first as an independently shippable commit, then u2. Preserve RED output, live-client transcripts, focused/full gate receipts, and the Claude human-veto control; never restart the production daemon.
 
 <a id="tasks"></a>
 
 ## Tasks
 
-_No entries._
+| id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| tk-1341 | Route Omp/Pi through the extension stream | pij-rs delivery | p1 | [x] checked | — | RED and GREEN command outputs are summarized in assets/live-proof.md; focused and full delivery tests passed; live sender/target event-stream transcript recorded there. | [tk-1341](tasks.dd.md#done-when) | Omp and Pi bypass both composer gates and select_rung, queue with reason extension-stream, publish message.pushed, and a live OMP receives at turn end. | RED first; commit and push u1 alone before starting u2. | [AC1](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria) |
+| tk-1342 | Notify senders about queued and late delivery | pij-rs delivery | p1 | [ ] unchecked | — | — | [tk-1342](tasks.dd.md#done-when) | One still-queued notice names msg_id, recipient, reason, and attempts after the configured threshold; later delivery emits delivered late and the sender CLI prints outstanding notices. | Additive queued-notice control message; default threshold 60 seconds. | [AC4](../../../plan.dd.md#acceptance-criteria) |
+| tk-1343 | Prove preserved veto and complete delivery | pij-rs delivery | p1 | [ ] unchecked | — | — | [tk-1343](tasks.dd.md#done-when) | Claude retains the human-typing veto, all Rust and harness gates pass, cross-model review findings are resolved, and the PR is open. | Use a hand-started Claude Opus reviewer; production daemon remains untouched. | [AC3](../../../plan.dd.md#acceptance-criteria), [AC5](../../../plan.dd.md#acceptance-criteria) |
 
 <a id="done-when"></a>
 
 ## Done when
 
-_No fields._
+### tk-1341
+
+| id | assertion | state | pressure | receipt |
+| --- | --- | --- | --- | --- |
+| dw-1341 | Focused tests prove zero interaction-gate calls and reason extension-stream for Omp/Pi while live OMP proof shows turn-end delivery. | [x] checked | not-applicable | RED and GREEN command outputs are summarized in assets/live-proof.md; focused and full delivery tests passed; live sender/target event-stream transcript recorded there. |
+
+### tk-1342
+
+| id | assertion | state | pressure |
+| --- | --- | --- | --- |
+| dw-1342 | Scheduler and CLI tests prove once-only still-queued notices and delivered-late completion, with live sender proof. | [ ] unchecked | not-applicable |
+
+### tk-1343
+
+| id | assertion | state | pressure |
+| --- | --- | --- | --- |
+| dw-1343 | Live Claude control, cargo tests/clippy/fmt, harness checks, reviewer verdict, and PR receipt are recorded. | [ ] unchecked | not-applicable |

@@ -8,22 +8,90 @@
       "value": {
         "title": "Phase 1",
         "slug": "phase-1",
-        "status": "draft",
+        "status": "ready",
         "summary": ""
       }
     },
     {
       "name": "summary",
-      "value": ""
+      "value": "Execute u1 first as an independently shippable commit, then u2. Preserve RED output, live-client transcripts, focused/full gate receipts, and the Claude human-veto control; never restart the production daemon."
     },
     {
       "name": "tasks",
-      "value": []
+      "value": [
+        {
+          "id": "tk-1341",
+          "title": "Route Omp/Pi through the extension stream",
+          "domain": "pij-rs delivery",
+          "phase": "p1",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1341",
+          "success": "Omp and Pi bypass both composer gates and select_rung, queue with reason extension-stream, publish message.pushed, and a live OMP receives at turn end.",
+          "notes": "RED first; commit and push u1 alone before starting u2.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2"
+          ],
+          "receipt": "RED and GREEN command outputs are summarized in assets/live-proof.md; focused and full delivery tests passed; live sender/target event-stream transcript recorded there."
+        },
+        {
+          "id": "tk-1342",
+          "title": "Notify senders about queued and late delivery",
+          "domain": "pij-rs delivery",
+          "phase": "p1",
+          "state": "unchecked",
+          "done": "tasks.dd.json#done_when/tk-1342",
+          "success": "One still-queued notice names msg_id, recipient, reason, and attempts after the configured threshold; later delivery emits delivered late and the sender CLI prints outstanding notices.",
+          "notes": "Additive queued-notice control message; default threshold 60 seconds.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC4"
+          ]
+        },
+        {
+          "id": "tk-1343",
+          "title": "Prove preserved veto and complete delivery",
+          "domain": "pij-rs delivery",
+          "phase": "p1",
+          "state": "unchecked",
+          "done": "tasks.dd.json#done_when/tk-1343",
+          "success": "Claude retains the human-typing veto, all Rust and harness gates pass, cross-model review findings are resolved, and the PR is open.",
+          "notes": "Use a hand-started Claude Opus reviewer; production daemon remains untouched.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC5"
+          ]
+        }
+      ]
     },
     {
       "name": "done_when",
-      "value": {}
+      "value": {
+        "tk-1341": [
+          {
+            "id": "dw-1341",
+            "assertion": "Focused tests prove zero interaction-gate calls and reason extension-stream for Omp/Pi while live OMP proof shows turn-end delivery.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "RED and GREEN command outputs are summarized in assets/live-proof.md; focused and full delivery tests passed; live sender/target event-stream transcript recorded there."
+          }
+        ],
+        "tk-1342": [
+          {
+            "id": "dw-1342",
+            "assertion": "Scheduler and CLI tests prove once-only still-queued notices and delivered-late completion, with live sender proof.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1343": [
+          {
+            "id": "dw-1343",
+            "assertion": "Live Claude control, cargo tests/clippy/fmt, harness checks, reviewer verdict, and PR receipt are recorded.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ]
+      }
     }
-  ],
-  "references": []
+  ]
 }

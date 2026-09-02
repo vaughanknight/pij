@@ -12,7 +12,7 @@ use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::framing::frame_message;
 use pij_core::model::{
-    DeliveryOrigin, DeliveryOutcome, Event, Job, JobId, Msg, Outcome, Receipt, SeatId,
+    DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, Receipt, SeatId,
 };
 use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, Transport};
 use pij_harnesses::{InteractionGate, StagedSubmission};
@@ -233,33 +233,44 @@ impl DeliveryService {
                 }
             }
             DeliveryRoute::Transport => {
-                let socket_available = self.transport.can_deliver(&recipient, &msg).await?;
-                // Socket delivery keeps the fresh permission policy. Pane-body
-                // permission is checked once, after input ownership is acquired,
-                // inside `submit_with_owned_input`.
-                let (interaction_permits, composer_idle, interaction_reason) =
-                    match recipient.pane.as_deref() {
-                        None => (true, true, None),
-                        Some(pane) if socket_available => {
-                            let verdict = self.interaction.fresh_injection_verdict(pane).await?;
-                            (verdict.permitted, verdict.composer_idle, verdict.reason)
-                        }
-                        Some(_) => (true, true, None),
-                    };
-
-                // Paneless socket consumers remain transport-owned. The rung
-                // selector governs pane fallbacks and deliberately returns
-                // `Observe` before consulting socket capability.
-                let rung = if recipient.pane.is_none() && socket_available {
-                    DeliveryRung::Socket
+                // Omp/Pi consume the durable row through `message.pushed`, then
+                // claim and acknowledge it through the inbox API. That extension
+                // stream is not a `Transport`; routing here avoids both composer
+                // gates and the pane-oriented rung selector.
+                let extension_stream = matches!(recipient.harness, Harness::Omp | Harness::Pi);
+                let (rung, interaction_reason) = if extension_stream {
+                    (DeliveryRung::Observe, None)
                 } else {
-                    select_rung(
-                        &recipient,
-                        &msg,
-                        socket_available,
-                        !interaction_permits,
-                        composer_idle,
-                    )
+                    let socket_available = self.transport.can_deliver(&recipient, &msg).await?;
+                    // Socket delivery keeps the fresh permission policy. Pane-body
+                    // permission is checked once, after input ownership is acquired,
+                    // inside `submit_with_owned_input`.
+                    let (interaction_permits, composer_idle, interaction_reason) =
+                        match recipient.pane.as_deref() {
+                            None => (true, true, None),
+                            Some(pane) if socket_available => {
+                                let verdict =
+                                    self.interaction.fresh_injection_verdict(pane).await?;
+                                (verdict.permitted, verdict.composer_idle, verdict.reason)
+                            }
+                            Some(_) => (true, true, None),
+                        };
+
+                    // Paneless socket consumers remain transport-owned. The rung
+                    // selector governs pane fallbacks and deliberately returns
+                    // `Observe` before consulting socket capability.
+                    let rung = if recipient.pane.is_none() && socket_available {
+                        DeliveryRung::Socket
+                    } else {
+                        select_rung(
+                            &recipient,
+                            &msg,
+                            socket_available,
+                            !interaction_permits,
+                            composer_idle,
+                        )
+                    };
+                    (rung, interaction_reason)
                 };
 
                 match rung {
@@ -368,13 +379,19 @@ impl DeliveryService {
                     | DeliveryRung::ControlBodyPull => {
                         match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
                             DeliveryEnqueue::Queued { not_before_ms, .. } => {
-                                let reason = interaction_reason
-                                    .map(DeliveryDeferralReason::as_str)
-                                    .or(match rung {
-                                        DeliveryRung::Observe => Some("unreachable"),
-                                        DeliveryRung::ControlBodyPull => Some("terminal-control"),
-                                        _ => None,
-                                    });
+                                let reason = if extension_stream {
+                                    Some("extension-stream")
+                                } else {
+                                    interaction_reason.map(DeliveryDeferralReason::as_str).or(
+                                        match rung {
+                                            DeliveryRung::Observe => Some("unreachable"),
+                                            DeliveryRung::ControlBodyPull => {
+                                                Some("terminal-control")
+                                            }
+                                            _ => None,
+                                        },
+                                    )
+                                };
                                 Self::queued_outcome(reason, not_before_ms)
                             }
                             DeliveryEnqueue::AlreadyDelivered(origin) => {
@@ -951,7 +968,7 @@ mod tests {
     }
 
     fn bound(id: &str) -> SeatDescriptor {
-        let mut seat = SeatDescriptor::new(id, Harness::Omp, "/abs/tree");
+        let mut seat = SeatDescriptor::new(id, Harness::Claude, "/abs/tree");
         seat.proc = Some(ProcIdentity {
             pid: 7,
             proc_start: 11,
@@ -1067,6 +1084,40 @@ mod tests {
             }
         );
         assert_eq!(clear.transport.delivered().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn omp_and_pi_use_the_extension_stream_without_composer_gates() {
+        for harness in [Harness::Omp, Harness::Pi] {
+            let fixture = fixture_with_gate(
+                FakeTransport::reachable(),
+                FakeTmux::new()
+                    .with_clear_composer("%stream")
+                    .with_attached_tap("%stream")
+                    .with_user_typing(),
+            );
+            let mut recipient = bound(&format!("pij-{harness:?}"));
+            recipient.harness = harness;
+            recipient.pane = Some("%stream".to_string());
+            register(&fixture, recipient.clone()).await;
+
+            let receipt = fixture
+                .service
+                .send("pij-from".into(), recipient.id.clone(), "wait for turn end")
+                .await
+                .expect("extension stream admission");
+
+            assert_eq!(receipt.outcome, queued_outcome("extension-stream", 0));
+            assert_eq!(fixture.queue.live_len(), 1);
+            assert!(fixture.transport.delivered().is_empty());
+            assert!(fixture.tmux.calls().is_empty(), "{harness:?} touched tmux");
+            let events = fixture
+                .spine
+                .tail(Some(&recipient.id), Seq(0))
+                .await
+                .expect("recipient events");
+            assert!(events.iter().any(|event| event.kind == PUSHED_EVENT_KIND));
+        }
     }
 
     #[tokio::test]
