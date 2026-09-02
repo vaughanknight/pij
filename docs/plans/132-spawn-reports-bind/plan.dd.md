@@ -68,4 +68,4 @@ req-0035 (meadowlark 2026-09-02): pij-rs spawn --harness pi --bin omp returned o
 
 | id | title | brief | state | note | receipt | depends_on | tasks | objective | delivers | key_risks |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ph-a2ee | Build + prove | u1 per impl-guide; ACs; PR into main. | [ ] unchecked | — | — | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
+| ph-a2ee | Build + prove | u1 per impl-guide; ACs; PR into main. | [x] checked | — | assets/tasks/phase-1/tasks.dd.json#tasks; assets/reviews/review-opus-r5.dd.md; terminal gates and live proofs green | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |

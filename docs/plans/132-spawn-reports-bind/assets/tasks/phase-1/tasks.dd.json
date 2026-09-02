@@ -51,7 +51,7 @@
         {
           "id": "tk-c132",
           "title": "Prove and review composed behavior",
-          "state": "unchecked",
+          "state": "checked",
           "done": "#done_when/tk-c132",
           "success": "Deterministic checks, live proof, and cross-model review are complete.",
           "satisfies": [
@@ -62,7 +62,8 @@
             "../../../plan.dd.json#acceptance_criteria/AC4",
             "../../../plan.dd.json#acceptance_criteria/AC5",
             "../../../plan.dd.json#acceptance_criteria/AC6"
-          ]
+          ],
+          "receipt": "assets/reviews/review-opus-r5.dd.md: APPROVE; reviewer workspace 613 pass; clippy pass; terminal harness checks 8/8; assets/live-proof.md; assets/prod-copy-proof.md"
         }
       ]
     },
@@ -91,8 +92,9 @@
           {
             "id": "dw-c132",
             "assertion": "Focused Rust tests, full gates, healthy plus failing live tmux transcripts, a production-copy dead-recipient drain, and cross-model review prove all acceptance criteria.",
-            "state": "unchecked",
-            "pressure": "not-applicable"
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "Claude Opus R5 APPROVE; workspace 613; clippy green; harness checks all 8 pass; final real OMP, child-exit, structured refusal, and 72-to-0 production-copy proofs recorded"
           }
         ]
       }

@@ -19,11 +19,11 @@
 
 ## tk-c132 — composed proof and review
 
-- `cargo test --workspace --quiet`: 612 passed across 63 suites; 6 ignored.
+- Final reviewer `cargo test --workspace`: 613 passed, 0 failed.
 - `cargo clippy --workspace --all-targets -- -D warnings`: pass.
 - Terminal `harness checks --json`: all eight sensors passed (`local-paths`, `typecheck`, `lint`, `test`, `windows-compat`, `smoke`, `pkg-audit`, `snapshots`).
 - Final real-client tmux proof: `assets/live-proof.md`; final socket-aware production-copy rerun: `assets/prod-copy-proof.md#final-socket-aware-binary-rerun`.
-- Claude Opus R1–R4 found three blocking defects, all fixed and approved. R4 N9 restored prebind command deferral with RED/GREEN; N10 reran the 72→0 proof on final socket-aware code; N11/N12 wording/panic nits fixed. Focused R5 pending.
+- Claude Opus R1–R5 found three blocking defects, all fixed in subsequent rounds. R5 final verdict: **APPROVE — ship it**; AC1a/AC1b/AC2/AC3/AC4/AC5/AC6 all TRUE.
 
 ## Discoveries & learnings
 

@@ -37,7 +37,7 @@ Solo PM delivery for plan 132: RED witnesses, additive spawn bind reporting, par
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | tk-a132 | Establish RED-first spawn and dead-recipient witnesses | — | — | [x] checked | — | docs/plans/132-spawn-reports-bind/assets/red-witness.md | [x] 1/1 [tk-a132](#tk-a132) | Child-exit, parent-loss, bound missing-pane, and tombstoned-recipient behavior fail before implementation. | — | [AC1b](../../../plan.dd.md#acceptance-criteria), [AC3](../../../plan.dd.md#acceptance-criteria), [AC4](../../../plan.dd.md#acceptance-criteria) |
 | tk-b132 | Implement bind reporting and full dead-recipient terminalization | — | — | [x] checked | — | assets/live-proof.md; assets/red-witness.md; assets/prod-copy-proof.md; assets/reviews/review-opus-r4.dd.md | [x] 1/1 [tk-b132](#tk-b132) | Spawn reports bind or machine-readable named failure; tombstoned recipients terminalize; observed pane absence terminalizes only when socket-unreachable; inventory/reachability unknowns retry visibly; parent is preserved. | — | [AC1a](../../../plan.dd.md#acceptance-criteria), [AC1b](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria), [AC4](../../../plan.dd.md#acceptance-criteria), [AC5](../../../plan.dd.md#acceptance-criteria), [AC6](../../../plan.dd.md#acceptance-criteria) |
-| tk-c132 | Prove and review composed behavior | — | — | [ ] unchecked | — | — | [ ] 0/1 [tk-c132](#tk-c132) | Deterministic checks, live proof, and cross-model review are complete. | — | [AC1a](../../../plan.dd.md#acceptance-criteria), [AC1b](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria), [AC3](../../../plan.dd.md#acceptance-criteria), [AC4](../../../plan.dd.md#acceptance-criteria), [AC5](../../../plan.dd.md#acceptance-criteria), [AC6](../../../plan.dd.md#acceptance-criteria) |
+| tk-c132 | Prove and review composed behavior | — | — | [x] checked | — | assets/reviews/review-opus-r5.dd.md: APPROVE; reviewer workspace 613 pass; clippy pass; terminal harness checks 8/8; assets/live-proof.md; assets/prod-copy-proof.md | [x] 1/1 [tk-c132](#tk-c132) | Deterministic checks, live proof, and cross-model review are complete. | — | [AC1a](../../../plan.dd.md#acceptance-criteria), [AC1b](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria), [AC3](../../../plan.dd.md#acceptance-criteria), [AC4](../../../plan.dd.md#acceptance-criteria), [AC5](../../../plan.dd.md#acceptance-criteria), [AC6](../../../plan.dd.md#acceptance-criteria) |
 
 <a id="done-when"></a>
 
@@ -57,6 +57,6 @@ Solo PM delivery for plan 132: RED witnesses, additive spawn bind reporting, par
 
 ### tk-c132
 
-| id | assertion | state | pressure |
-| --- | --- | --- | --- |
-| dw-c132 | Focused Rust tests, full gates, healthy plus failing live tmux transcripts, a production-copy dead-recipient drain, and cross-model review prove all acceptance criteria. | [ ] unchecked | not-applicable |
+| id | assertion | state | pressure | receipt |
+| --- | --- | --- | --- | --- |
+| dw-c132 | Focused Rust tests, full gates, healthy plus failing live tmux transcripts, a production-copy dead-recipient drain, and cross-model review prove all acceptance criteria. | [x] checked | not-applicable | Claude Opus R5 APPROVE; workspace 613; clippy green; harness checks all 8 pass; final real OMP, child-exit, structured refusal, and 72-to-0 production-copy proofs recorded |

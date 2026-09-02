@@ -97,8 +97,9 @@
           "id": "ph-a2ee",
           "title": "Build + prove",
           "brief": "u1 per impl-guide; ACs; PR into main.",
-          "state": "unchecked",
-          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
+          "state": "checked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks",
+          "receipt": "assets/tasks/phase-1/tasks.dd.json#tasks; assets/reviews/review-opus-r5.dd.md; terminal gates and live proofs green"
         }
       ]
     }
