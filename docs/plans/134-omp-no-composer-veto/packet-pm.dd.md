@@ -12,7 +12,7 @@
 | title | PM packet |
 | role | pm |
 | plan | docs/plans/134-omp-no-composer-veto/plan.dd.json |
-| seat | pij-integral-ferret |
+| seat | pij-electrical-dragonfly |
 | updated | 2026-09-02 |
 
 <a id="mission"></a>
