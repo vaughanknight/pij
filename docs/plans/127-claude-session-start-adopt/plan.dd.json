@@ -68,8 +68,9 @@
         {
           "id": "AC5",
           "claim": "Manual ready after auto-adopt reuses the seat and all repository gates pass.",
-          "state": "unchecked",
-          "text": "`/pij ready` typed after auto-adopt reports the existing id (no second seat). cargo/typecheck/harness checks green."
+          "state": "checked",
+          "text": "`/pij ready` typed after auto-adopt reports the existing id (no second seat). cargo/typecheck/harness checks green.",
+          "receipt": "harness checks 2026-09-02T00:50:10Z; assets/live-auto-seat.md"
         }
       ]
     },

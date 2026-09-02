@@ -56,7 +56,7 @@ Jordan 2026-09-02: 'if Claude does not have a pij seat, register for one in its 
 | AC2 | Repeating the hook in one pane never creates two live seat ids. | [x] checked | — | docs/plans/127-claude-session-start-adopt/assets/live-auto-seat.md | — | — | LIVE: start a second `claude` in the SAME pane after closing the first (or run the hook twice) → same id or a clean re-adopt, never two live ids for one pane. |
 | AC3 | Claude outside tmux starts silently and records the hook skip. | [x] checked | — | docs/plans/127-claude-session-start-adopt/assets/live-auto-seat.md | — | — | LIVE: start `claude` OUTSIDE tmux → session starts normally, no error shown, hook log records the skip. |
 | AC4 | The installer additively preserves hooks, backs up changes, is idempotent, and refuses malformed settings. | [x] checked | — | cargo test -p pij-harnesses -p pij-cli: 127 passed | — | — | Unit: installer adds the SessionStart hook entry without disturbing existing hooks (Notification/PreToolUse/PostToolUse preserved byte-for-byte), backup written, second run no-op; malformed settings refused. RED-first. |
-| AC5 | Manual ready after auto-adopt reuses the seat and all repository gates pass. | [ ] unchecked | — | — | — | — | `/pij ready` typed after auto-adopt reports the existing id (no second seat). cargo/typecheck/harness checks green. |
+| AC5 | Manual ready after auto-adopt reuses the seat and all repository gates pass. | [x] checked | — | harness checks 2026-09-02T00:50:10Z; assets/live-auto-seat.md | — | — | `/pij ready` typed after auto-adopt reports the existing id (no second seat). cargo/typecheck/harness checks green. |
 
 <a id="phases"></a>
 

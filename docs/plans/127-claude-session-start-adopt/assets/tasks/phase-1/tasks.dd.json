@@ -46,7 +46,8 @@
         {
           "id": "t5",
           "title": "Run targeted and full checks",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "harness checks: all 8 sensors pass; cargo test: 128 pass"
         },
         {
           "id": "t6",
