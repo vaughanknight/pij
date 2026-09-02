@@ -1,0 +1,123 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Persist + expose + union + consumer proof",
+        "slug": "phase-1",
+        "status": "ready",
+        "summary": "Completed Rust persistence, TypeScript generation union, isolated live proof, harness hardening, and cross-model review.",
+        "mode": "Simple"
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Completed Rust persistence, TypeScript generation union, isolated live proof, harness hardening, and cross-model review."
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "tk-1281",
+          "title": "Persist and expose harness session identity in rs",
+          "domain": "rs identity",
+          "phase": "ph-3452",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1281",
+          "success": "Migration, registration aliases, seat projections, tombstone filtering, and frozen rs session rows are implemented and tested.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC3"
+          ],
+          "receipt": "cargo test --workspace 522 passed; cargo clippy -D warnings passed; Opus r3 APPROVE"
+        },
+        {
+          "id": "tk-1282",
+          "title": "Unify legacy and rs sessions and whoami contracts",
+          "domain": "pij generation routing",
+          "phase": "ph-3452",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1282",
+          "success": "Sessions route globally, normalize one key set, apply rs-first null-fill dedupe and repository scope, project rs whoami, and send harness_session.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC5"
+          ],
+          "receipt": "focused TypeScript 165 passed; full harness checks 8/8 passed; Opus r3 APPROVE"
+        },
+        {
+          "id": "tk-1283",
+          "title": "Prove live OMP Claude and Flowspace identity resolution",
+          "domain": "live identity integration",
+          "phase": "ph-3452",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1283",
+          "success": "Hand-started OMP and Claude seats persist native sessions; union/whoami outputs and Flowspace indexed delivery are captured.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC4"
+          ],
+          "receipt": "assets/live-identity.md; OMP 11 turns and Claude 2 turns verified indexed"
+        },
+        {
+          "id": "tk-1284",
+          "title": "Close deterministic gates and cross-model review",
+          "domain": "engineering harness",
+          "phase": "ph-3452",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1284",
+          "success": "RED-first witnesses, complete Rust/TypeScript gates, smoke fleet isolation, and all Opus findings are closed.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC5"
+          ],
+          "receipt": "terminal harness checks 8/8; reviews phase-1-review through r3; r3f1 closure confirmed"
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {
+        "tk-1281": [
+          {
+            "id": "as-1281",
+            "assertion": "Rust persistence, projections, aliases, and frozen live-only session rows pass workspace tests and clippy.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1282": [
+          {
+            "id": "as-1282",
+            "assertion": "Both generations expose the frozen keys; routing, dedupe, null-fill, whoami, and repository scope pass focused and full gates.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1283": [
+          {
+            "id": "as-1283",
+            "assertion": "Live OMP and Claude native session ids match rs rows, and both conversations reach the Flowspace index.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1284": [
+          {
+            "id": "as-1284",
+            "assertion": "Terminal harness checks are green and final Claude Opus review approves with every finding closed.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ]
+      }
+    }
+  ]
+}

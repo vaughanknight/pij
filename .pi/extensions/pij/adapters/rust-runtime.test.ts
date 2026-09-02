@@ -5,7 +5,7 @@ import { FakePiRuntime, FakeTmux } from "./fakes.js";
 import { RustRuntimeSession } from "./rust-runtime.js";
 
 function envelope(command: string, data: unknown): Response {
-	return new Response(JSON.stringify({ ok: true, command, v: 1, data }));
+	return new Response(JSON.stringify({ ok: true, command, v: 2, data }));
 }
 
 function eventResponse(text: string, keepOpen = true): Response {
@@ -220,6 +220,7 @@ describe("RustRuntimeSession", () => {
 			pane: "%42",
 			pid: process.pid,
 			proc_start: 20260829103052,
+			harness_session: "native-session",
 			relay: false,
 		});
 		await vi.waitFor(() => {
@@ -351,6 +352,7 @@ describe("RustRuntimeSession", () => {
 		vi.stubEnv("PIJ_SPAWN_MODEL", "");
 		vi.stubEnv("PIJ_SPAWN_TASK", "");
 		let key = "old-key";
+		const acceptedIds: string[] = [];
 		let registeredId = "";
 		let eventAttach = 0;
 		let seatReads = 0;
@@ -383,6 +385,7 @@ describe("RustRuntimeSession", () => {
 				const claim = JSON.parse(String(init?.body)) as Record<string, unknown>;
 				registrations.push(claim);
 				registeredId = String(claim.id);
+				acceptedIds.push(registeredId);
 				return envelope("pij register", {
 					id: registeredId,
 					harness: claim.harness,
@@ -449,6 +452,9 @@ describe("RustRuntimeSession", () => {
 			expect(registrations).toHaveLength(seatKnown ? 1 : 2);
 		});
 		if (!seatKnown) expect(registrations[1]).toMatchObject({ id: boot.id, pane: "%42" });
+		expect(new Set(acceptedIds)).toEqual(new Set([boot.id]));
+		expect(registrations.every((claim) => claim.pane === "%42")).toBe(true);
+		expect(registrations.every((claim) => claim.harness_session === "native-session")).toBe(true);
 		expect(seatReads).toBeGreaterThanOrEqual(2);
 		expect(JSON.parse(eventUrls[1]?.searchParams.get("since") ?? "null")).toEqual({ test: 1 });
 		expect(eventAuthorizations).toEqual(["Bearer old-key", "Bearer new-key"]);

@@ -1,0 +1,134 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Coder packet — rs persists and exposes harness_session (seat-session-identity)",
+        "role": "coder",
+        "plan": "docs/plans/128-seat-session-identity/plan.dd.json",
+        "seat": "pij-smoggy-buzzard",
+        "updated": "2026-09-02"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "You build ONE unit of plan 128-seat-session-identity: u1 rs persists and exposes harness_session. Store the inner harness session id at registration when supplied; expose it on every seat projection; emit the frozen existing-legacy-name session row directly from rs. Report to PM pij-eastern-guppy, not prime."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        {
+          "id": "i1",
+          "text": "Orient: cd /Users/jordanknight/pi-hacking/fs3-seat-session-identity-u1; use ABSOLUTE paths for every file operation; symlink /Users/jordanknight/pi-hacking/pij/node_modules into the worktree if absent; read your u1 row, the amended plan G3, and phase tasks. Run harness boot --json before changes. For every meaning-shaped question run flowspace3 search before grep; report every miss or confusing envelope as friction."
+        },
+        {
+          "id": "i2",
+          "text": "Ack FIRST via pij tooling: pij send pij-eastern-guppy \"<numbered implementation plan, tests, defects/dead premises, exact worktree root, LSP availability>\". Write no code until the PM rules the ack by number."
+        },
+        {
+          "id": "i3",
+          "text": "Implement with /builder discipline, RED-first. Prove migration up/down, registration with/without the field, row roundtrip, list/state projection, and the frozen /v1/shim/sessions row. Keep the contract verbatim; do not invent an rs-native row."
+        },
+        {
+          "id": "i4",
+          "text": "Stay inside u1 paths. Do not touch TypeScript extension paths, delivery/pointer/tmux code, production daemon state, .harness/government/**, or the plan flow. Outside-path need = STOP and ask PM."
+        },
+        {
+          "id": "i5",
+          "text": "Commit with harness commit using a conventional commit. Report status at start and finish with pij report now."
+        },
+        {
+          "id": "i6",
+          "text": "Done = targeted cargo tests and harness checks green in YOUR worktree; never restart the production daemon. Report evidence and hold for composition questions; do not merge."
+        },
+        {
+          "id": "i7",
+          "text": "Capture friction immediately with harness observe; list, never clear."
+        },
+        {
+          "id": "i8",
+          "text": "Use OMP LSP for Rust symbol references/definitions/refactors and structured edit/diagnostic tools. If Rust LSP is unavailable, report it at ack rather than silently replacing all symbol work with grep."
+        }
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        {
+          "id": "w1",
+          "text": "The PM is your interface: acks, questions, done reports. You never message prime or Jordan directly unless the PM's seat is dead."
+        },
+        {
+          "id": "w2",
+          "text": "DEFER to the PM: interface changes (they affect sibling units), dependency additions, schema/migration changes, anything outside your paths."
+        },
+        {
+          "id": "w3",
+          "text": "Your evidence outranks the packet: if the brief is wrong, say so at ack or stop-and-ask with the measurement — do not silently code around it."
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/fs3-seat-session-identity-u1",
+        "branch": "128-seat-session-identity-u1",
+        "fence": "crates/store/migrations/0012_*.sql; crates/store/src/migrate.rs SCHEMA_VERSION only; crates/store/src/** row mapping; crates/core/src/model.rs SeatDescriptor field; crates/daemon/src/registration.rs; crates/daemon/src/http/identity.rs caller alias; crates/daemon/src/http/mod.rs projections; crates/daemon/src/http/shim.rs GET /v1/shim/sessions; directly related Rust tests",
+        "forbidden_note": "Never touch u2 paths, .harness/government/**, production daemon state, or plan flow state. Never merge/open PR. ABSOLUTE PATHS for every read/edit. Migration convergence: s122 owns 0011 and 10→11; u1 targets 0012 and 11→12 and reports if current base disagrees."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        {
+          "id": "d1",
+          "text": "Unit implements the interface contract in the impl-guide row, verbatim or with PM-ruled amendments."
+        },
+        {
+          "id": "d2",
+          "text": "Unit test suite passes standalone and proves the contract."
+        },
+        {
+          "id": "d3",
+          "text": "harness checks green in your worktree — AND prove the change is IN THE TREE YOU BUILT, not just that the build exited 0: cite tree-resident evidence (the lockfile carries your dependency, mtime/git status shows your file, the artifact names your module). An exit code is honest about what it built and silent about what it did not."
+        },
+        {
+          "id": "d4",
+          "text": "The SNAP-IN RECIPE shipped with the unit (tenet 4): the exact wiring the composer will paste — config shape, construction call, registration line — as a doc comment or section in your unit's service page. Wire it in yourself ONLY when both hold: the wiring file is uncontended (no sibling unit touches it) AND your done bar is behavioural (unreachable unwired); the recipe still ships so composition verifies rather than re-derives. Otherwise the composer wires. (Amended 2026-08-28: the blanket never-wire rule contradicted a live probe-flip done bar.)"
+        },
+        {
+          "id": "d5",
+          "text": "Done report to PM: what shipped, evidence, deviations, anything the composer must know — INCLUDING an explicit ASSUMPTIONS section: everything you assumed about the composition you do not own (who calls you, in what order, with what already in the store). A green gate proves your unit against YOUR assumptions; naming them is what lets the composer test them."
+        }
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        {
+          "id": "r0",
+          "path": "/Users/jordanknight/.agents/skills/pij-team/TENETS.md",
+          "note": "tenets 2-6 and 8-10"
+        },
+        {
+          "id": "r1",
+          "path": "docs/plans/128-seat-session-identity/impl-guide.dd.json",
+          "note": "u1 contract and composition"
+        },
+        {
+          "id": "r2",
+          "path": "docs/plans/128-seat-session-identity/plan.dd.json",
+          "note": "amended G3 frozen legacy-name row shape"
+        },
+        {
+          "id": "r3",
+          "path": "AGENTS.md",
+          "note": "repo rules and gates"
+        }
+      ]
+    }
+  ]
+}

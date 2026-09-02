@@ -91,7 +91,7 @@ fn the_envelope_round_trips_and_omits_absent_data_rather_than_nulling_it() {
     let envelope = Envelope::ok("pij ping", "healthy".to_string());
     let json = serde_json::to_string(&envelope).expect("serialize");
     assert!(
-        json.contains("\"v\":1"),
+        json.contains("\"v\":2"),
         "the envelope version travels: {json}"
     );
     assert_eq!(envelope.v, ENVELOPE_VERSION);

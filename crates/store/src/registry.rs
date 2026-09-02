@@ -131,6 +131,7 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
         // registry state. The HTTP boundary stamps the daemon's current alias.
         machine: None,
         harness,
+        harness_session: row.try_get("harness_session").map_err(adapter_error)?,
         pane: row.try_get("pane").map_err(adapter_error)?,
         proc,
         folder: row.try_get("folder").map_err(adapter_error)?,
@@ -205,14 +206,15 @@ impl Registry for SqliteRegistry {
         .map_err(adapter_error)?;
 
         sqlx::query(
-            "INSERT INTO seats (id, harness, pane, pid, proc_start, folder, state, \
+            "INSERT INTO seats (id, harness, harness_session, pane, pid, proc_start, folder, state, \
              semantic_state, role, parent, relay, tombstoned_at, tombstone_reason, seq, \
              spawn_id, model, provider, effort, cross_session_inbound_accept, rpc_port_intent) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
-             ?17, ?18, ?19, ?20) \
+             ?17, ?18, ?19, ?20, ?21) \
              ON CONFLICT(id) DO UPDATE SET \
-             harness=excluded.harness, pane=excluded.pane, pid=excluded.pid, \
-             proc_start=excluded.proc_start, folder=excluded.folder, state=excluded.state, \
+             harness=excluded.harness, harness_session=excluded.harness_session, \
+             pane=excluded.pane, pid=excluded.pid, proc_start=excluded.proc_start, \
+             folder=excluded.folder, state=excluded.state, \
              semantic_state=excluded.semantic_state, role=excluded.role, \
              parent=excluded.parent, relay=excluded.relay, \
              tombstoned_at=excluded.tombstoned_at, \
@@ -224,6 +226,7 @@ impl Registry for SqliteRegistry {
         )
         .bind(descriptor.id.as_str())
         .bind(descriptor.harness.as_str())
+        .bind(descriptor.harness_session.as_deref())
         .bind(descriptor.pane.as_deref())
         .bind(descriptor.proc.map(|p| i64::from(p.pid)))
         .bind(descriptor.proc.map(|p| p.proc_start as i64))

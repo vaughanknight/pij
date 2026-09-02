@@ -6,13 +6,13 @@ const KEY = "k".repeat(64);
 const HEALTH = JSON.stringify({
 	ok: true,
 	command: "pij ping",
-	v: 1,
+	v: 2,
 	data: { status: "healthy", build: "pij-rs test", offline: false, machine: "test" },
 });
 const AUTH_401 = JSON.stringify({
 	ok: false,
 	command: "auth",
-	v: 1,
+	v: 2,
 	meta: "missing or wrong bearer token",
 	error: "auth",
 });
@@ -153,7 +153,7 @@ describe("routeVerb end to end", () => {
 		const refusal = JSON.stringify({
 			ok: false,
 			command: "pij adopt",
-			v: 1,
+			v: 2,
 			meta: "seat not found",
 			error: "not_found",
 		});
@@ -174,7 +174,7 @@ describe("routeVerb end to end", () => {
 		const ok = JSON.stringify({
 			ok: true,
 			command: "pij adopt",
-			v: 1,
+			v: 2,
 			data: { id: "pij-minted-by-rs" },
 		});
 		const { outcome, payload } = await routeVerb(
@@ -190,6 +190,205 @@ describe("routeVerb end to end", () => {
 		expect(outcome).toMatchObject({ kind: "rs", addr: "127.0.0.1:7461" });
 		// The id came from rs. The shim did not invent it (ac-1147).
 		expect(payload).toEqual({ id: "pij-minted-by-rs" });
+	});
+
+	it("unions a fake rs sessions answer and keeps the rs row while null-filling from legacy", async () => {
+		const legacyRows = [
+			{
+				pijId: "pij-shared",
+				harness: "pi",
+				harnessSessionId: "legacy-native-session",
+				lifecycle: "bound",
+				boundModel: "legacy-model",
+				spawnedBy: "pij-parent",
+				transcriptPath: "/legacy/transcript.jsonl",
+				prime: false,
+				oldPrime: false,
+			},
+		];
+		const rsRow = {
+			pijId: "pij-shared",
+			harness: "omp",
+			harnessSessionId: null,
+			gitCommonDir: "/repo/.git",
+			lifecycle: null,
+			boundModel: null,
+			spawnedBy: null,
+			transcriptPath: null,
+			generation: "rs",
+		};
+		const over = {
+			legacySessionRows: () => legacyRows,
+			ambientSeatId: () => "pij-legacy-caller",
+			seatInRs: () => false,
+			seatInLegacy: () => true,
+		} as Partial<GenerationRouterDeps>;
+		const calls: Call[] = [];
+		const { outcome, payload } = await routeVerb(
+			"sessions",
+			undefined,
+			["sessions", "--json"],
+			deps(
+				(url) =>
+					url.endsWith("/health")
+						? new Response(HEALTH, { status: 200 })
+						: new Response(
+								JSON.stringify({
+									ok: true,
+									command: "pij sessions",
+									v: 2,
+									data: { rows: [rsRow] },
+								}),
+								{ status: 200 },
+							),
+				over,
+				calls,
+			),
+		);
+
+		expect(outcome.kind).toBe("rs");
+		expect(calls.at(-1)).toEqual({
+			url: "http://127.0.0.1:7461/v1/shim/sessions",
+			method: "GET",
+		});
+		expect(payload).toEqual([
+			{
+				...rsRow,
+				harnessSessionId: "legacy-native-session",
+				lifecycle: "bound",
+				boundModel: "legacy-model",
+				spawnedBy: "pij-parent",
+				transcriptPath: "/legacy/transcript.jsonl",
+			},
+		]);
+	});
+
+	it("fails loudly without fallback when the legacy half cannot be read", async () => {
+		const result = await routeVerb(
+			"sessions",
+			undefined,
+			["sessions", "--json"],
+			deps(
+				(url) =>
+					url.endsWith("/health")
+						? new Response(HEALTH, { status: 200 })
+						: new Response(
+								JSON.stringify({ ok: true, command: "pij sessions", v: 2, data: { rows: [] } }),
+								{ status: 200 },
+							),
+				{
+					legacySessionRows: () => {
+						throw new Error("legacy registry corrupt");
+					},
+				},
+			),
+		);
+
+		expect(result.outcome).toMatchObject({
+			kind: "rs-error",
+			detail: expect.stringContaining("legacy registry corrupt"),
+		});
+		expect(servedByLegacy(result.outcome)).toBe(false);
+	});
+
+	it("filters rs rows by caller git common dir only when --here is present", async () => {
+		const rows = [
+			{
+				pijId: "pij-local",
+				harness: "omp",
+				harnessSessionId: "local-session",
+				gitCommonDir: "/repo/.git",
+				lifecycle: "bound",
+				boundModel: null,
+				spawnedBy: null,
+				transcriptPath: null,
+				generation: "rs",
+			},
+			{
+				pijId: "pij-other",
+				harness: "omp",
+				harnessSessionId: "other-session",
+				gitCommonDir: "/other/.git",
+				lifecycle: "bound",
+				boundModel: null,
+				spawnedBy: null,
+				transcriptPath: null,
+				generation: "rs",
+			},
+		];
+		const handler = (url: string) =>
+			url.endsWith("/health")
+				? new Response(HEALTH, { status: 200 })
+				: new Response(
+						JSON.stringify({ ok: true, command: "pij sessions", v: 2, data: { rows } }),
+						{ status: 200 },
+					);
+		const over = {
+			legacySessionRows: () => [],
+			gitCommonDir: () => "/repo/.git",
+		} as Partial<GenerationRouterDeps>;
+
+		const all = await routeVerb("sessions", undefined, ["sessions", "--json"], deps(handler, over));
+		const here = await routeVerb(
+			"sessions",
+			undefined,
+			["sessions", "--here", "--json"],
+			deps(handler, over),
+		);
+
+		expect((all.payload as Array<{ pijId: string }>).map((row) => row.pijId)).toEqual([
+			"pij-local",
+			"pij-other",
+		]);
+		expect((here.payload as Array<{ pijId: string }>).map((row) => row.pijId)).toEqual([
+			"pij-local",
+		]);
+	});
+
+	it("falls back to exact caller folder for non-git --here", async () => {
+		const rows = [
+			{
+				pijId: "pij-local",
+				harness: "omp",
+				harnessSessionId: "local-session",
+				gitCommonDir: "/plain/folder",
+				lifecycle: "bound",
+				boundModel: null,
+				spawnedBy: null,
+				transcriptPath: null,
+				generation: "rs",
+			},
+			{
+				pijId: "pij-other",
+				harness: "omp",
+				harnessSessionId: "other-session",
+				gitCommonDir: "/other/folder",
+				lifecycle: "bound",
+				boundModel: null,
+				spawnedBy: null,
+				transcriptPath: null,
+				generation: "rs",
+			},
+		];
+		const handler = (url: string) =>
+			url.endsWith("/health")
+				? new Response(HEALTH, { status: 200 })
+				: new Response(
+						JSON.stringify({ ok: true, command: "pij sessions", v: 2, data: { rows } }),
+						{ status: 200 },
+					);
+		const { payload } = await routeVerb(
+			"sessions",
+			undefined,
+			["sessions", "--here", "--json"],
+			deps(handler, {
+				legacySessionRows: () => [],
+				cwd: () => "/plain/folder",
+				gitCommonDir: () => null,
+			}),
+		);
+
+		expect((payload as Array<{ pijId: string }>).map((row) => row.pijId)).toEqual(["pij-local"]);
 	});
 
 	// o-prime's binding condition 3: an UNANSWERABLE capability question is an

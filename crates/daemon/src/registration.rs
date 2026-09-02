@@ -53,6 +53,15 @@ impl RegistrationService {
         &self,
         claim: Registration,
     ) -> std::result::Result<SeatDescriptor, RegistrationError> {
+        self.register_with_harness_session(claim, None).await
+    }
+
+    pub(crate) async fn register_with_harness_session(
+        &self,
+        claim: Registration,
+        harness_session: Option<String>,
+    ) -> std::result::Result<SeatDescriptor, RegistrationError> {
+        let harness_session = harness_session.filter(|session| !session.trim().is_empty());
         let proc = match (claim.pid, claim.proc_start) {
             (Some(pid), Some(proc_start)) => {
                 let observed = self
@@ -185,6 +194,9 @@ impl RegistrationService {
                 .zip(claim.spawn_id.as_deref())
                 .is_some_and(|(launched, claimed)| !launched.is_empty() && launched == claimed);
         descriptor.harness = harness;
+        if let Some(harness_session) = harness_session {
+            descriptor.harness_session = Some(harness_session);
+        }
         if descriptor.harness == Harness::Claude
             && descriptor.cross_session_inbound_accept.is_none()
         {

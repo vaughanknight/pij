@@ -16,12 +16,15 @@
 import { readFile as fsReadFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { resolvePijHome } from "../core/agents/paths.js";
+import { mergeSessionRows } from "../core/cli.js";
 import {
 	DaemonRefusalError,
 	decodeEnvelope,
 	PijNoDaemonError,
 	PijWireSkewError,
 } from "../core/daemon-wire.js";
+import { filterByFolder, selectByRepository } from "../core/discovery.js";
 import {
 	buildCallerContext,
 	classifyRsResponse,
@@ -35,12 +38,15 @@ import {
 	resolveGenerationForce,
 	subjectSeatFromArgv,
 } from "../core/generation-routing.js";
+import { buildSessionJoinRows, type JoinRow } from "../core/session-join.js";
 import {
 	type DaemonLocation,
 	daemonLocation,
 	detectDaemonGeneration,
 	observedProcessStart,
 } from "./daemon-http.js";
+import { FsRegistry } from "./fs-registry.js";
+import { GitRepositoryAdapter } from "./git-repository.js";
 
 export interface GenerationRouterDeps {
 	readonly fetch: typeof fetch;
@@ -70,12 +76,17 @@ export interface GenerationRouterDeps {
 		| undefined;
 	/** Where the caller is running. */
 	readonly cwd?: (() => string) | undefined;
+	/** Resolve a folder to the repository identity shared by linked worktrees. */
+	readonly gitCommonDir?: ((folder: string) => string | null) | undefined;
 	/** The caller's own pid, and when that process started. The pair matters:
 	 *  a pid is recycled at boot, so the start time is what makes it identify
 	 *  anything. Best-effort — a start time we cannot read is omitted, never
 	 *  guessed. */
 	readonly pid?: (() => number) | undefined;
 	readonly procStart?: ((pid: number) => number) | undefined;
+	/** Legacy half of the sessions union. The argv is supplied so `--here`
+	 *  preserves the existing legacy filter before the rs rows are merged. */
+	readonly legacySessionRows?: ((argv: readonly string[]) => readonly JoinRow[]) | undefined;
 }
 
 /** The addr/state-dir routing resolves against. Re-exported so the CLI wires
@@ -86,6 +97,9 @@ export function daemonLocationForRouting(env: NodeJS.ProcessEnv, home: string): 
 }
 
 export function defaultRouterDeps(): GenerationRouterDeps {
+	const repository = new GitRepositoryAdapter();
+	const env = process.env;
+	const cwd = () => process.cwd();
 	return {
 		fetch,
 		readFile: fsReadFile,
@@ -93,11 +107,24 @@ export function defaultRouterDeps(): GenerationRouterDeps {
 			path === "-"
 				? await fsReadFile(0 as unknown as string, "utf8")
 				: await fsReadFile(path, "utf8"),
-		env: process.env,
+		env,
 		home: homedir(),
-		cwd: () => process.cwd(),
+		cwd,
+		gitCommonDir: (folder) => repository.gitCommonDir(folder),
 		pid: () => process.pid,
 		procStart: observedProcessStart,
+		legacySessionRows: (argv) => {
+			let descriptors = new FsRegistry(resolvePijHome(env)).list();
+			if (argv.includes("--here")) {
+				const folder = cwd();
+				const selection = selectByRepository(descriptors, folder, repository);
+				descriptors =
+					selection.gitCommonDir === null
+						? filterByFolder(descriptors, folder)
+						: selection.descriptors;
+			}
+			return buildSessionJoinRows(descriptors);
+		},
 	};
 }
 
@@ -450,7 +477,27 @@ async function callRs(
 		row.acknowledgePath === undefined
 			? undefined
 			: buildAcknowledge(row.acknowledgePath, payload, url, headers, deps);
-	return { outcome, payload, row, acknowledge };
+	let routedPayload = payload;
+	if (row.unionWithLegacySessions) {
+		try {
+			const folder = deps.cwd?.() ?? "";
+			const hereIdentity = argv.includes("--here")
+				? (deps.gitCommonDir?.(folder) ?? folder)
+				: undefined;
+			routedPayload = mergeSessionRows(deps.legacySessionRows?.(argv) ?? [], payload, hereIdentity);
+		} catch (error) {
+			return {
+				outcome: {
+					kind: "rs-error",
+					verb,
+					addr: location.addr,
+					detail: `could not merge legacy sessions: ${error instanceof Error ? error.message : String(error)}`,
+				},
+				row,
+			};
+		}
+	}
+	return { outcome, payload: routedPayload, row, acknowledge };
 }
 
 /** Build the deferred acknowledgement for a claim-then-ack row. See

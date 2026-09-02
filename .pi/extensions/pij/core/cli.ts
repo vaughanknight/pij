@@ -134,7 +134,7 @@ import type {
 	RepositoryIdentityPort,
 } from "./ports.js";
 import { daemonTickStatus } from "./receipts.js";
-import { buildExportLines, buildSessionJoinRows } from "./session-join.js";
+import { buildExportLines, buildSessionJoinRows, type JoinRow } from "./session-join.js";
 import { activityOf, badgeOf, liveness, STALE_AFTER_MS } from "./state.js";
 import {
 	closeStream,
@@ -589,6 +589,138 @@ export interface CliResult {
 				/** Exit after waiting with the dispatch result (partial broadcast failures stay non-zero). */
 				readonly exitCode: number;
 		  };
+}
+
+export interface GenerationSessionJoinRow {
+	readonly pijId: SessionId;
+	readonly harness: string | null;
+	readonly harnessSessionId: string | null;
+	readonly gitCommonDir: string | null;
+	readonly lifecycle: string | null;
+	readonly boundModel: string | null;
+	readonly spawnedBy: SessionId | null;
+	readonly transcriptPath: string | null;
+	readonly generation: "legacy" | "rs";
+}
+
+export interface RsSessionJoinRow extends GenerationSessionJoinRow {
+	readonly gitCommonDir: string;
+	readonly generation: "rs";
+}
+
+function nullableString(value: unknown): value is string | null {
+	return value === null || typeof value === "string";
+}
+
+function isRsSessionJoinRow(value: unknown): value is RsSessionJoinRow {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+	const row = value as Record<string, unknown>;
+	return (
+		typeof row.pijId === "string" &&
+		nullableString(row.harness) &&
+		nullableString(row.harnessSessionId) &&
+		typeof row.gitCommonDir === "string" &&
+		nullableString(row.lifecycle) &&
+		nullableString(row.boundModel) &&
+		nullableString(row.spawnedBy) &&
+		nullableString(row.transcriptPath) &&
+		row.generation === "rs"
+	);
+}
+
+function normalizeRsSessionJoinRow(row: RsSessionJoinRow): RsSessionJoinRow {
+	return {
+		pijId: row.pijId,
+		harness: row.harness,
+		harnessSessionId: row.harnessSessionId,
+		gitCommonDir: row.gitCommonDir,
+		lifecycle: row.lifecycle,
+		boundModel: row.boundModel,
+		spawnedBy: row.spawnedBy,
+		transcriptPath: row.transcriptPath,
+		generation: "rs",
+	};
+}
+
+function rsSessionRows(payload: unknown): readonly RsSessionJoinRow[] {
+	if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+		throw new Error("rs sessions payload must be an object");
+	}
+	const rows = (payload as { readonly rows?: unknown }).rows;
+	if (!Array.isArray(rows)) {
+		throw new Error("rs sessions payload must carry frozen legacy-field rows");
+	}
+	const seen = new Set<SessionId>();
+	const normalized: RsSessionJoinRow[] = [];
+	for (const row of rows) {
+		if (!isRsSessionJoinRow(row)) {
+			throw new Error("rs sessions payload must carry frozen legacy-field rows");
+		}
+		if (seen.has(row.pijId)) throw new Error(`rs sessions payload repeats ${row.pijId}`);
+		seen.add(row.pijId);
+		normalized.push(normalizeRsSessionJoinRow(row));
+	}
+	return normalized;
+}
+
+/** `JoinRow` retains `prime`/`oldPrime` for `buildExportLines`; the sessions
+ * contract deliberately drops them so both generations expose one frozen key set. */
+function normalizeLegacySessionJoinRow(
+	legacy: JoinRow,
+	gitCommonDir?: string | null,
+): GenerationSessionJoinRow {
+	return {
+		pijId: legacy.pijId,
+		harness: legacy.harness,
+		harnessSessionId: legacy.harnessSessionId,
+		gitCommonDir: legacy.gitCommonDir ?? gitCommonDir ?? null,
+		lifecycle: legacy.lifecycle ?? null,
+		boundModel: legacy.boundModel ?? null,
+		spawnedBy: legacy.spawnedBy ?? null,
+		transcriptPath: legacy.transcriptPath ?? null,
+		generation: "legacy",
+	};
+}
+
+function fillRsSessionRow(rs: RsSessionJoinRow, legacy: JoinRow): RsSessionJoinRow {
+	return {
+		pijId: rs.pijId,
+		harness: rs.harness,
+		harnessSessionId: rs.harnessSessionId ?? legacy.harnessSessionId,
+		gitCommonDir: rs.gitCommonDir,
+		lifecycle: rs.lifecycle ?? legacy.lifecycle ?? null,
+		boundModel: rs.boundModel ?? legacy.boundModel ?? null,
+		spawnedBy: rs.spawnedBy ?? legacy.spawnedBy ?? null,
+		transcriptPath: rs.transcriptPath ?? legacy.transcriptPath ?? null,
+		generation: "rs",
+	};
+}
+
+/** Merge the two generation projections without translating the frozen rs row.
+ *  Legacy order is retained; an rs duplicate replaces that slot, remains tagged
+ *  `rs`, and receives only the PM-ruled null fills. rs-only rows follow in their
+ *  daemon order. When `gitCommonDir` is supplied, the completed union is scoped
+ *  only after both generations have contributed. */
+export function mergeSessionRows(
+	legacyRows: readonly JoinRow[],
+	rsPayload: unknown,
+	gitCommonDir?: string | null,
+): GenerationSessionJoinRow[] {
+	const rsRows = rsSessionRows(rsPayload);
+	const rsById = new Map(rsRows.map((row) => [row.pijId, row] as const));
+	const consumed = new Set<SessionId>();
+	const merged = legacyRows.map((legacy): GenerationSessionJoinRow => {
+		const rs = rsById.get(legacy.pijId);
+		if (rs === undefined) return normalizeLegacySessionJoinRow(legacy, gitCommonDir);
+		consumed.add(rs.pijId);
+		return fillRsSessionRow(rs, legacy);
+	});
+	for (const rs of rsRows) {
+		if (!consumed.has(rs.pijId)) merged.push(rs);
+	}
+	if (gitCommonDir === undefined) return merged;
+	if (gitCommonDir === null) return [];
+	return merged.filter((row) => row.gitCommonDir === gitCommonDir);
 }
 
 export interface WaitTarget {
@@ -2928,8 +3060,22 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			// already-persisted harness↔pij join keys (Finding 01/05) — no daemon, a
 			// pure sibling of `list` decoupled from its human/live-state view.
 			let descs = deps.registry.list();
-			if (cmd.here) descs = filterByFolder(descs, deps.cwd);
-			const rows = buildSessionJoinRows(descs);
+			let gitCommonDir: string | null | undefined;
+			if (cmd.here) {
+				if (deps.repository === undefined) {
+					descs = filterByFolder(descs, deps.cwd);
+				} else {
+					const selection = selectByRepository(descs, deps.cwd, deps.repository);
+					if (selection.gitCommonDir === null) {
+						descs = filterByFolder(descs, deps.cwd);
+						gitCommonDir = deps.cwd;
+					} else {
+						descs = selection.descriptors;
+						gitCommonDir = selection.gitCommonDir;
+					}
+				}
+			}
+			const rows = mergeSessionRows(buildSessionJoinRows(descs), { rows: [] }, gitCommonDir);
 			if (cmd.json) return okOut(JSON.stringify(rows));
 			if (rows.length === 0)
 				return okOut(cmd.here ? "no pij sessions in this folder" : "no pij sessions");

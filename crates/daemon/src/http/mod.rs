@@ -37,7 +37,7 @@ use pij_core::names::memorable_pij_id_candidates;
 use pij_core::ports::{LaunchCommand, Registry, SeatFilter};
 use pij_core::wire;
 use pij_harnesses::{SpawnPlanInput, build_spawn_plan};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio_stream::{Stream, StreamExt};
 
 use crate::federation::{FederationSendError, FederationService};
@@ -117,6 +117,8 @@ enum Endpoint {
     /// The acknowledgement half of a routed inbox read. See
     /// [`shim::shim_inbox_ack`] for why it is not `/v1/inbox/ack`.
     ShimInboxAck,
+    /// Read rs seats in the frozen legacy session-row shape (plan 128).
+    ShimSessions,
     /// Register this seat, with rs minting the name (plan 114, ac-1147).
     Adopt,
     /// Name the calling seat from the store it registered into (ac-1142).
@@ -134,7 +136,7 @@ enum Endpoint {
 }
 
 impl Endpoint {
-    const ALL: [Self; 18] = [
+    const ALL: [Self; 19] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -153,6 +155,7 @@ impl Endpoint {
         Self::ShimSend,
         Self::ShimInbox,
         Self::ShimInboxAck,
+        Self::ShimSessions,
     ];
 
     const fn path(self) -> &'static str {
@@ -180,6 +183,7 @@ impl Endpoint {
             Self::ShimSend => "/v1/shim/send",
             Self::ShimInbox => "/v1/shim/inbox",
             Self::ShimInboxAck => "/v1/shim/inbox/ack",
+            Self::ShimSessions => "/v1/shim/sessions",
         }
     }
 
@@ -195,7 +199,9 @@ impl Endpoint {
             Self::Adopt | Self::Whoami | Self::Phonehome => Method::POST,
             Self::State => Method::POST,
             Self::ShimSend | Self::ShimInbox | Self::ShimInboxAck => Method::POST,
-            Self::Health | Self::Inbox | Self::Seats | Self::Events => Method::GET,
+            Self::Health | Self::Inbox | Self::Seats | Self::Events | Self::ShimSessions => {
+                Method::GET
+            }
         }
     }
 }
@@ -296,6 +302,7 @@ fn router_with_optional_federation(
             Endpoint::ShimSend => router.route(endpoint.path(), post(shim::shim_send)),
             Endpoint::ShimInbox => router.route(endpoint.path(), post(shim::shim_inbox)),
             Endpoint::ShimInboxAck => router.route(endpoint.path(), post(shim::shim_inbox_ack)),
+            Endpoint::ShimSessions => router.route(endpoint.path(), get(shim::shim_sessions)),
         };
     }
     router
@@ -353,14 +360,33 @@ async fn health(State(state): State<AppState>) -> Response {
     )
 }
 
-async fn register(State(state): State<AppState>, Json(claim): Json<Registration>) -> Response {
+#[derive(Deserialize)]
+struct RegistrationRequest {
+    #[serde(flatten)]
+    claim: Registration,
+    #[serde(
+        default,
+        rename = "HARNESS_SESSION_ID",
+        alias = "harness_session",
+        alias = "harnessSession"
+    )]
+    harness_session: Option<String>,
+}
+
+async fn register(
+    State(state): State<AppState>,
+    Json(request): Json<RegistrationRequest>,
+) -> Response {
     let registration = RegistrationService::new(
         Arc::clone(&state.services.registry),
         Arc::clone(&state.services.liveness),
         Arc::clone(&state.services.event_bus),
         pij_harnesses::claude_homes(),
     );
-    match registration.register(claim).await {
+    match registration
+        .register_with_harness_session(request.claim, request.harness_session)
+        .await
+    {
         Ok(descriptor) => envelope(StatusCode::OK, &Envelope::ok("pij register", descriptor)),
         Err(RegistrationError::Refused(reason)) => refused("pij register", reason),
         Err(RegistrationError::Runtime(error)) => internal("pij register", error),
@@ -940,6 +966,15 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
     )
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StateProjection {
+    #[serde(flatten)]
+    card: StateCard,
+    session: Option<String>,
+    generation: &'static str,
+}
+
 /// Project a registry row into the `state` card. Pure: no IO, no clock.
 fn state_card(
     seat: SeatDescriptor,
@@ -947,52 +982,56 @@ fn state_card(
     machine_alias: &str,
     card: Option<pij_core::report::CardStatus>,
     state_note: Option<String>,
-) -> StateCard {
+) -> StateProjection {
     use pij_core::model::{Liveness, SystemState};
-    StateCard {
-        id: seat.id,
-        state: match seat.state {
-            SystemState::Working => "working",
-            SystemState::Idle => "idle",
-        }
-        .to_string(),
-        // A seat that was never bound to a process has no process to observe, so
-        // it gets its own word rather than borrowing `dead` — "never had one" and
-        // "had one and it is gone" are different facts about a seat.
-        liveness: match liveness {
-            Some(Liveness::Active) => "active",
-            Some(Liveness::Dead { .. }) => "dead",
-            Some(Liveness::Recycled { .. }) => "recycled",
-            None => "unbound",
-        }
-        .to_string(),
-        pid: seat.proc.map(|proc| proc.pid),
-        proc_start: seat.proc.map(|proc| proc.proc_start),
-        cwd: seat.folder,
-        harness: seat.harness,
-        role: seat.role,
-        parent: seat.parent,
-        bound_model: seat.model,
-        effort: seat.effort,
-        pane: seat.pane,
-        provider: seat.provider,
-        semantic_state: seat.semantic_state,
-        machine: Some(seat.machine.unwrap_or_else(|| machine_alias.to_string())),
-        tombstoned_at: seat.tombstoned_at,
-        tombstone_reason: seat.tombstone_reason,
-        // `as_ref()` throughout: all five come from ONE optional card, so they
-        // are all present or all null together. Reading them from separate
-        // sources would let a caller see a `statusPrev` with no `statusAt`.
-        status_prev: card.as_ref().map(|status| status.card.did.clone()),
-        status_next: card.as_ref().map(|status| status.card.next.clone()),
-        status_at: card.as_ref().map(|status| status.card.at),
-        status_seq: card
-            .as_ref()
-            .and_then(|status| status.card.seq)
-            .map(|seq| seq.0),
-        status_stale: card.as_ref().map(|status| status.stale),
-        state_note,
-        unsupported: unsupported_state_fields(),
+    StateProjection {
+        session: seat.harness_session,
+        generation: "rs",
+        card: StateCard {
+            id: seat.id,
+            state: match seat.state {
+                SystemState::Working => "working",
+                SystemState::Idle => "idle",
+            }
+            .to_string(),
+            // A seat that was never bound to a process has no process to observe, so
+            // it gets its own word rather than borrowing `dead` — "never had one" and
+            // "had one and it is gone" are different facts about a seat.
+            liveness: match liveness {
+                Some(Liveness::Active) => "active",
+                Some(Liveness::Dead { .. }) => "dead",
+                Some(Liveness::Recycled { .. }) => "recycled",
+                None => "unbound",
+            }
+            .to_string(),
+            pid: seat.proc.map(|proc| proc.pid),
+            proc_start: seat.proc.map(|proc| proc.proc_start),
+            cwd: seat.folder,
+            harness: seat.harness,
+            role: seat.role,
+            parent: seat.parent,
+            bound_model: seat.model,
+            effort: seat.effort,
+            pane: seat.pane,
+            provider: seat.provider,
+            semantic_state: seat.semantic_state,
+            machine: Some(seat.machine.unwrap_or_else(|| machine_alias.to_string())),
+            tombstoned_at: seat.tombstoned_at,
+            tombstone_reason: seat.tombstone_reason,
+            // `as_ref()` throughout: all five come from ONE optional card, so they
+            // are all present or all null together. Reading them from separate
+            // sources would let a caller see a `statusPrev` with no `statusAt`.
+            status_prev: card.as_ref().map(|status| status.card.did.clone()),
+            status_next: card.as_ref().map(|status| status.card.next.clone()),
+            status_at: card.as_ref().map(|status| status.card.at),
+            status_seq: card
+                .as_ref()
+                .and_then(|status| status.card.seq)
+                .map(|seq| seq.0),
+            status_stale: card.as_ref().map(|status| status.stale),
+            state_note,
+            unsupported: unsupported_state_fields(),
+        },
     }
 }
 
@@ -1039,6 +1078,19 @@ struct SeatQuery {
     scope: Option<String>,
 }
 
+#[derive(Serialize)]
+struct SeatProjection<'a> {
+    #[serde(flatten)]
+    seat: &'a SeatDescriptor,
+    generation: &'static str,
+}
+
+#[derive(Serialize)]
+struct FederatedRosterProjection<'a> {
+    seats: Vec<SeatProjection<'a>>,
+    unavailable: &'a [UnavailablePeer],
+}
+
 async fn seats(State(state): State<AppState>, Query(query): Query<SeatQuery>) -> Response {
     if query.scope.as_deref().is_some_and(|scope| scope != "local") {
         return refused("pij seats", "scope must be `local` when supplied");
@@ -1075,7 +1127,18 @@ async fn seats(State(state): State<AppState>, Query(query): Query<SeatQuery>) ->
                 .as_ref()
                 .is_none_or(|parent| seat.parent.as_ref() == Some(parent))
     });
-    envelope(StatusCode::OK, &Envelope::ok("pij seats", roster))
+    let projection = FederatedRosterProjection {
+        seats: roster
+            .seats
+            .iter()
+            .map(|seat| SeatProjection {
+                seat,
+                generation: "rs",
+            })
+            .collect(),
+        unavailable: &roster.unavailable,
+    };
+    envelope(StatusCode::OK, &Envelope::ok("pij seats", projection))
 }
 
 #[derive(Default, Deserialize)]

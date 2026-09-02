@@ -849,6 +849,7 @@ fn caller_context() -> CallerContext {
     let read = |key: &str| std::env::var(key).ok().filter(|value| !value.is_empty());
     CallerContext {
         session_id: read("PIJ_SESSION_ID"),
+        harness_session: read("HARNESS_SESSION_ID"),
         pane: read("TMUX_PANE"),
         parent: read("PIJ_PARENT_ID"),
         claude_session: read("CLAUDE_CODE_SESSION_ID"),

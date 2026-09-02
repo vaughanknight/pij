@@ -1,0 +1,92 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "seat-session-identity",
+        "slug": "seat-session-identity",
+        "ordinal": 128,
+        "status": "ready",
+        "summary": "One generation-agnostic identity contract: rs persists each seat's inner harness session id, `pij sessions --json` unions legacy + rs rows with a generation field, and `pij whoami --json` answers under rs — so conversation ingest (flowspace3, harness-engineering) resolves every seat without reading pij's stores."
+      }
+    },
+    {
+      "name": "summary",
+      "value": "req-0033 (governance PRD), consumer-driven by TWO governments: flowspace3 (lynx) measured 2 of 252 rs seats resolvable to a transcript; harness-engineering (meadowlark) measured 245/248 unresolvable. Cause: (1) the rs seat row stores NO inner harness session id (seats columns: id harness pane pid proc_start folder state semantic_state role parent relay tombstoned_at tombstone_reason seq), although the wire already carries CLAUDE_CODE_SESSION_ID / COPILOT_AGENT_SESSION_ID (crates/daemon/src/http/identity.rs:84-100) and the omp/pi extension has ctx.sessionManager.getSessionId() at boot (.pi/extensions/pij/index.ts:328) — a persist, not a discovery; (2) legacy `pij sessions --json` (cli.ts:2926-2960, buildSessionJoinRows over ~/.pij descriptors: pijId, harness, harnessSessionId, lifecycle, boundModel, spawnedBy, transcriptPath) reads only the legacy store; (3) `pij whoami --json` under rs refuses (E-RS) because rs cannot honour the legacy verbs/capabilitySchema gate. Both consumers have ruled they will NOT build a second store reader; this contract is the single thing gating both. Live count 2026-09-02: 231 pi + 40 omp + 16 claude rs seats."
+    },
+    {
+      "name": "goals",
+      "value": [
+        "G1 Persist: rs registration/adopt/spawn stores `harness_session` (the inner harness session id) on the seat row when the caller supplies it — claude from CLAUDE_CODE_SESSION_ID, copilot from COPILOT_AGENT_SESSION_ID, pi/omp from a new registration field the extension fills from getSessionId(). Migration 0011 adds the nullable column; SCHEMA_VERSION 10→11. Plan 128 lands first with 0011/11; s122 renumbers its unmerged migration when it lands.",
+        "G2 Expose: `pij-rs list` / `pij-rs state` rows carry `session` (null when unknown) and `generation:\"rs\"`; `/v1/seats` likewise.",
+        "G3 Union: `pij sessions --json` routes through the generation shim to a new rs endpoint `/v1/shim/sessions`; the TS side merges the legacy join rows it already builds (buildSessionJoinRows) with the rs rows, dedupes by pijId, and tags each row. ROW SHAPE IS THE EXISTING LEGACY SHAPE PLUS ONE FIELD — do NOT rename: {pijId, harness, harnessSessionId, gitCommonDir, lifecycle, boundModel, spawnedBy, transcriptPath, generation:\"legacy\"|\"rs\"}. For rs rows: harnessSessionId = the persisted session (null when unknown), gitCommonDir = the seat folder resolved to its git common dir when it is a git checkout (else the folder), lifecycle/boundModel/spawnedBy/transcriptPath null unless known. The `gitCommonDir` key is always present: rs rows carry that string fallback, while a legacy row with no recorded common dir carries null. Consumers (fs3 crates/core/src/conversation_join.rs:43) already parse pijId/harness/harnessSessionId/gitCommonDir; one shape under one v. Duplicate precedence: the rs row wins because rs is the live generation, then null fields `harnessSessionId`, `lifecycle`, `boundModel`, `spawnedBy`, and `transcriptPath` are filled from the legacy row; `generation` remains `\"rs\"`. `pij sessions --here` filters the merged legacy+rs rows by `gitCommonDir`, resolving the caller cwd to the same git common dir so linked worktrees retain existing repository scoping.",
+        "G4 whoami --json under rs: answer with {id, harness, pane, folder, session, generation:\"rs\", capabilityGate:\"absent\"} — the absent gate is NAMED, never a missing field (the refusal text at generation-routing explains why); legacy shape unchanged for legacy seats.",
+        "G5 Compatibility marker: the daemon HTTP envelope version bumps to 2. The Rust CLI and TypeScript extension require exactly v2; daemon-to-daemon federation deliberately accepts envelope v1 or v2 through its existing floor decoder. Event-stream hello/frame version stays v1. Mixed-version HTTP clients detect skew; federation remains backward-readable."
+      ]
+    },
+    {
+      "name": "non_goals",
+      "value": [
+        "No transcript path derivation inside rs (consumers derive from harness+session).",
+        "No change to the delivery or typing paths.",
+        "No legacy store migration."
+      ]
+    },
+    {
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "AC1",
+          "text": "LIVE: hand-start an omp in tmux; `pij-rs list` shows its row with session = the id in its ~/.omp/agent/sessions file name; hand-start a claude, `/pij ready`; its row shows session = CLAUDE_CODE_SESSION_ID of that shell. Captures pasted.",
+          "claim": "rs persists and exposes the inner harness session id for omp and claude seats registered live",
+          "state": "checked",
+          "receipt": "assets/live-identity.md: hand-started OMP+Claude rows match native transcript filenames; cargo test --workspace 522 passed; final Opus review APPROVE"
+        },
+        {
+          "id": "AC2",
+          "text": "`pij sessions --json` from any pane returns rows for BOTH a legacy seat (e.g. pij-massive-meadowlark) and an rs seat, in the EXISTING legacy field names plus `generation`; gitCommonDir for an rs seat is its git common dir; no duplicates for a seat present in both.",
+          "claim": "pij sessions --json is a deduplicated union of both stores with a generation tag",
+          "state": "checked",
+          "receipt": "assets/live-identity.md: legacy+rs union, frozen keys, no duplicates, repository scope; focused TypeScript 165 passed; final Opus review APPROVE"
+        },
+        {
+          "id": "AC3",
+          "text": "`pij whoami --json` from an rs-only pane returns the frozen shape with capabilityGate:\"absent\" and exit 0; from a legacy-only pane returns the legacy shape unchanged.",
+          "claim": "whoami --json answers under rs with a named absent gate",
+          "state": "checked",
+          "receipt": "assets/live-identity.md: exact rs whoami shapes for OMP+Claude and unchanged forced-legacy shape; final Opus review APPROVE"
+        },
+        {
+          "id": "AC4",
+          "text": "CONSUMER PROOF: `flowspace3 conversation ingest --pij <rs omp seat>` (which shells out to `pij sessions`) resolves and queues the transcript for one rs omp seat and one rs claude seat — run by the PM, output pasted; if fs3 needs its version floor first, the PM pastes the raw `pij sessions --json` rows instead and prime relays to lynx.",
+          "claim": "an external consumer resolves rs seats through pij sessions without reading pij.sqlite",
+          "state": "checked",
+          "receipt": "assets/live-identity.md: both --pij ingests accepted through the union; native verify confirms 11 OMP turns and 2 Claude turns indexed"
+        },
+        {
+          "id": "AC5",
+          "text": "Rust + TS tests: migration up/down, persist on register with/without the field, list/state projection, shim union dedupe, whoami shape; RED-first; cargo/typecheck/harness checks green.",
+          "claim": "every new behaviour has a witness that failed on the pre-fix tree",
+          "state": "checked",
+          "receipt": "RED-first unit receipts adjudicated in phase-1-review.dd.md; cargo workspace 522, clippy -D warnings, terminal harness checks 8/8, Opus round-3 APPROVE"
+        }
+      ]
+    },
+    {
+      "name": "phases",
+      "value": [
+        {
+          "id": "ph-3452",
+          "title": "Persist + expose + union + consumer proof",
+          "brief": "u1 rs persist/expose (Rust), u2 shim union + whoami json (TS), compose, AC1-AC5, PR.",
+          "state": "checked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks",
+          "receipt": "AC1-AC5 checked; assets/live-identity.md; terminal harness checks 8/8; assets/reviews/phase-1-review-r3.dd.md APPROVE"
+        }
+      ]
+    }
+  ]
+}

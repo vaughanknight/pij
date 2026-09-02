@@ -167,6 +167,11 @@ pub struct SeatDescriptor {
     pub machine: Option<String>,
     /// Harness it runs.
     pub harness: Harness,
+    /// Harness-native session id, when the registering runtime supplied one.
+    /// Serialized as `session` on seat projections; `None` is an explicit
+    /// unknown, not a generated identity.
+    #[serde(default, rename = "session")]
+    pub harness_session: Option<String>,
     /// tmux pane, when it has one. `None` means paneless (external pull mode) —
     /// distinct from "we have not looked", which is the absence of the seat.
     pub pane: Option<String>,
@@ -310,6 +315,7 @@ impl SeatDescriptor {
             id: id.into(),
             machine: None,
             harness,
+            harness_session: None,
             pane: None,
             proc: None,
             folder: folder.into(),
@@ -485,7 +491,7 @@ impl<T> Envelope<T> {
 }
 
 /// The envelope version this build speaks.
-pub const ENVELOPE_VERSION: u32 = 1;
+pub const ENVELOPE_VERSION: u32 = 2;
 
 /// A message in flight between two seats.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

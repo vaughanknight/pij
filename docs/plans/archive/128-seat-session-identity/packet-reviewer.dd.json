@@ -1,0 +1,114 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Reviewer packet — seat-session-identity",
+        "role": "reviewer",
+        "plan": "docs/plans/128-seat-session-identity/plan.dd.json",
+        "seat": "pij-watery-bug",
+        "updated": "2026-09-02"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "You are the cross-model Claude Opus reviewer for plan 128-seat-session-identity. Review the fully composed Rust+TypeScript implementation on branch 128-seat-session-identity. Judge whether AC1-AC5 and the amended G3 rs-first/null-fill/--here contract are actually true, prioritizing composition seams and consumer compatibility. You are read-only on code."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        {
+          "id": "i1",
+          "text": "Orient in /Users/jordanknight/pi-hacking/fs3-seat-session-identity-review. Use absolute paths. Read plan.dd.md, impl-guide.dd.md, and the full branch diff against origin/main. Use flowspace3 search before grep for meaning-shaped questions; report every miss or confusing envelope as friction."
+        },
+        {
+          "id": "i2",
+          "text": "Review with /builder review discipline. DISBELIEVE the authors' receipts: re-derive the changed contracts from source and run the smallest targeted tests needed to challenge them; do not audit prose."
+        },
+        {
+          "id": "i2b",
+          "text": "WHERE AUTHORS ARE LEAST CONFIDENT: (a) Rust gitCommonDir direct .git/commondir resolution, synchronous per-seat cost, and fallback semantics; (b) one clean envelope-v2 cutover while event/stream versions remain v1, including CLI goldens; (c) TS rs-first/null-fill merge, global routing, post-merge --here repository filtering, and reconnect identity continuity; (d) harness Driver child-env scrub: ambient spawn/announce/session identity must be blank while explicit PIJ routing env follows checks into reused tmux servers. DISBELIEVE ALL AUTHOR RECEIPTS: re-derive and run targeted attacks. KNOWN OPEN—DO NOT RE-REPORT: migration is intentionally 0011/schema 11 on current main and must be renumbered only if s122 lands first; production daemon was never restarted; Flowspace omits hidden .pi source; rs remote compact/role-link gaps are platform friction. PM receipts: cargo workspace 522 green, full Vitest 4650 green, Rust clippy -D warnings green after allocation-preserving annotation, final `harness checks` green across all eight sensors with `PIJ_DAEMON_GENERATION=legacy`, live OMP+Claude/union/whoami/Flowspace proof in assets/live-identity.md, and 90 dead-pane smoke rows tombstoned after the env leak was fixed."
+        },
+        {
+          "id": "i3",
+          "text": "Priority: false plan promises; Rust/TS composition defects; frozen-interface drift; correctness/safety; contract-test gaps. Explicitly examine caller session aliases, whoami session projection, endpoint envelope shape/version, duplicate precedence/null-fill, --here filtering, and flowspace3 consumer fields. No style findings."
+        },
+        {
+          "id": "i4",
+          "text": "At most material CRITICAL/HIGH/MEDIUM findings, each with exact location, claim, proof, and smallest fix. no_material_findings is valid."
+        },
+        {
+          "id": "i5",
+          "text": "Write a ddoc review record under docs/plans/128-seat-session-identity/assets/reviews/, build and validate it, commit only that review artifact, then send pij-eastern-guppy the path plus one-line verdict. Do not edit code."
+        }
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        {
+          "id": "w1",
+          "text": "The PM is your counterpart: verdict and findings go to the PM; the PM may refute findings with evidence — re-judge refutations on the evidence, not on rank."
+        },
+        {
+          "id": "w2",
+          "text": "You do not fix code, commit, or open PRs. If you find something outside the plan's scope, name it as a note for prime rather than expanding the review."
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/fs3-seat-session-identity-review",
+        "branch": "128-seat-session-identity-review",
+        "fence": "read-only on all code; write only docs/plans/128-seat-session-identity/assets/reviews/ review ddoc source+render",
+        "forbidden_note": "No code edits, no merges, no government files, no production-daemon restart. Do not widen scope into known-open platform friction."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        {
+          "id": "d1",
+          "text": "Every plan AC judged true/false with evidence cited."
+        },
+        {
+          "id": "d2",
+          "text": "Composition seams between units explicitly examined and reported."
+        },
+        {
+          "id": "d3",
+          "text": "Review record ddoc written, built, and path delivered to the PM with a verdict line."
+        }
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        {
+          "id": "r0",
+          "path": "/Users/jordanknight/.agents/skills/pij-team/TENETS.md",
+          "note": "tenet 5 contract review and tenet 11 evidence"
+        },
+        {
+          "id": "r1",
+          "path": "docs/plans/128-seat-session-identity/impl-guide.dd.json",
+          "note": "unit interfaces and composition"
+        },
+        {
+          "id": "r2",
+          "path": "docs/plans/128-seat-session-identity/plan.dd.md",
+          "note": "amended promises under judgment"
+        },
+        {
+          "id": "r3",
+          "path": "AGENTS.md",
+          "note": "repo rules"
+        }
+      ]
+    }
+  ]
+}

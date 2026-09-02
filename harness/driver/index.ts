@@ -21,6 +21,7 @@ export {
 	capture,
 	hasSession,
 	inspect,
+	isolatedChildEnvironment,
 	paste,
 	press,
 	record,

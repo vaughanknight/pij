@@ -69,6 +69,7 @@ describe("portable pij CLI baseline", () => {
 			HOME: agentHome,
 			USERPROFILE: agentHome,
 			PIJ_HOME: pijHome,
+			PIJ_DAEMON_GENERATION: "legacy",
 			PIJ_SESSION_ID: "",
 			TMUX: "",
 			TMUX_PANE: "",

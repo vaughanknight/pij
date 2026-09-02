@@ -1,0 +1,252 @@
+{
+  "dd": {
+    "schema": "builder/review"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Cross-model re-review — seat-session-identity (phase 1, round 2)",
+        "reviewer": "pij-watery-bug",
+        "model": "claude-opus-5",
+        "round": "2",
+        "date": "2026-09-02",
+        "plan": "../../plan.dd.json#meta",
+        "note": "Re-review of branch `128-seat-session-identity-rereview`, HEAD `3308a54a` (verified). VERDICT: APPROVE. All eleven round-one items (f1-f10, s2) are closed, each re-derived from source rather than taken from the disposition, and each now carries a witness that would fail if the fix were reverted. Two NEW findings, both MINOR and both documentation-precision rather than behaviour — neither blocks the PR. Suites re-run on this tree: vitest generation-router + generation-seam + session-join + driver + cli = 606 passed; `cargo test -p pij-daemon --test shim_http` = 10 passed. Read-only on code; only this review artifact written. No production or live mutation."
+      }
+    },
+    {
+      "name": "findings",
+      "value": [
+        {
+          "id": "r1f1",
+          "kind": "defect",
+          "severity": "NA",
+          "state": "checked",
+          "address": ".pi/extensions/pij/core/cli.ts:631-724",
+          "finding": "R1 f1 (two row shapes) — CLOSED, and closed the stronger way. Both halves now pass through explicit constructors — `normalizeLegacySessionJoinRow` and `normalizeRsSessionJoinRow` — that build the same nine keys in the same order, rather than spreading the source object. `prime`/`oldPrime` are dropped and every optional becomes an explicit null; the shared `GenerationSessionJoinRow` interface widened `gitCommonDir` to `string | null` so the type states the fact instead of hiding it. I checked the risk this fix creates: no consumer reads `prime`/`oldPrime` off `pij sessions --json` — every use is on other surfaces (`pij list` render, tree render, registry descriptors, `invariant-guard.ts`), and `buildExportLines` is untouched — so the drop is safe and conforms to G3's frozen key list.",
+          "receipt": "Witness `session-join.test.ts:174 normalizes legacy-only and rs-only rows to the same frozen key set and order` asserts `Object.keys(...)` deep-equals the nine-key array FOR BOTH generations, ordering included, and feeds the legacy input `prime`/`oldPrime`/`parentId` so the drop is what is being proved. Reverting either normalizer fails it."
+        },
+        {
+          "id": "r1f2",
+          "kind": "defect",
+          "severity": "NA",
+          "state": "checked",
+          "address": ".pi/extensions/pij/adapters/generation-seam.test.ts:666",
+          "finding": "R1 f2 (path-agreement guard exempted) — CLOSED. The `registered.add(\"/v1/shim/sessions\")` line and its stale comment are gone, and the test name no longer advertises the exemption: \"the daemon registers every live routed path\". The guard is now load-bearing for the route this plan added, which was the whole point — a future rename of the Rust-side path literal now fails a test instead of silently halving the union.",
+          "receipt": "generation-seam.test.ts passes on this tree (82 tests) with the exemption removed, confirming the real `Self::ShimSessions => \"/v1/shim/sessions\"` literal is what satisfies it."
+        },
+        {
+          "id": "r1f3",
+          "kind": "defect",
+          "severity": "NA",
+          "state": "checked",
+          "address": ".pi/extensions/pij/adapters/generation-router.ts:109-127,480-497",
+          "finding": "R1 f3 (silent half-union) — CLOSED, and closed at the right layer. The bare `catch { return [] }` is deleted from `legacySessionRows`, so a legacy-read failure now propagates; `callRs` wraps the merge and converts any throw into a named `rs-error` outcome carrying `could not merge legacy sessions: <detail>`. That matches this file's own doctrine that routing faults are named outcomes, never quiet fallbacks. The ambient-globals half is also addressed: `env` and `cwd` are captured once at `defaultRouterDeps` and the closure uses those bindings rather than reaching for `process` again.",
+          "receipt": "Witness `generation-router.test.ts fails loudly without fallback when the legacy half cannot be read`. NOTE, offered as information not a request: the closure still captures `process.env`/`process.cwd` at construction rather than reading `deps.env`/`deps.cwd`, so a test that wanted to vary the environment would still have to stub the process. That is a smaller concern than the one I raised, because the failure is now loud, and I am not asking for it."
+        },
+        {
+          "id": "r1f4",
+          "kind": "defect",
+          "severity": "NA",
+          "state": "checked",
+          "address": "crates/daemon/src/http/shim.rs:99-121",
+          "finding": "R1 f4 (tombstoned seats emitted indistinguishably) — CLOSED. `shim_sessions` now applies `.filter(|seat| seat.tombstoned_at.is_none())`, bringing the shim into line with `identity.rs:321`, which already gated resolvability on the same predicate. Dead seats no longer reach the consumer at all, which is the right choice over projecting the tombstone: the consumer asked for sessions to ingest, not a graveyard to filter.",
+          "receipt": "Witness: `crates/daemon/tests/shim_http.rs` now seeds `daemon_with_seats(vec![seat, tombstoned])` with `tombstoned.tombstoned_at = Some(1)` and `harness_session = Some(\"dead-native\")`, and asserts the response carries only the live row — so the fix is proved by a seat that would otherwise appear. `cargo test -p pij-daemon --test shim_http`: 10 passed."
+        },
+        {
+          "id": "r1f5",
+          "kind": "defect",
+          "severity": "NA",
+          "state": "checked",
+          "address": "crates/daemon/src/http/identity.rs:515",
+          "finding": "R1 f5 (phonehome meta false for codex) — CLOSED by making the message true rather than by weakening it. A `\"codex\" => caller.codex_session.clone()` arm now sits beside claude and copilot, so a codex seat supplying `CODEX_THREAD_ID` really does have its session persisted, and the meta text \"rs stores it for identity projection\" is now accurate for every harness that can reach it. This was the better of the two fixes I offered.",
+          "receipt": "`identity_tests.rs` gained the codex case to its parameterised table: `(\"codex\", \"CODEX_THREAD_ID\", \"codex-native\")`, alongside the existing claude and copilot rows — so all three aliases are proved by the same assertion rather than by three hand-written ones."
+        },
+        {
+          "id": "r1f6",
+          "kind": "defect",
+          "severity": "NA",
+          "state": "checked",
+          "address": "docs/plans/128-seat-session-identity/plan.dd.md#goals",
+          "finding": "R1 f6 (G5 promised a floor, shipped a pin) — CLOSED by amendment, which was the honest option. G5 is now \"Compatibility marker: the daemon envelope version bumps to 2; current Rust and TypeScript clients require exactly v2, while event-stream hello/frame version stays v1. This is an atomic producer/client cutover with explicit skew detection, not a forward-compatible floor.\" The false word is gone, the event-stream carve-out is stated, and the deployment consequence is named. Note that the amendment was made by EXCISION — the old sentence is replaced, not appended to — so no reader is left choosing between two authoritative halves. See r2f1 for one residual inaccuracy in the replacement sentence.",
+          "receipt": "plan.dd.md G5 diff at c37b160f..3308a54a; the string \"pin a floor\" no longer appears in the plan."
+        },
+        {
+          "id": "r1f7",
+          "kind": "defect",
+          "severity": "NA",
+          "state": "checked",
+          "address": ".pi/extensions/pij/adapters/generation-router.ts:482-484",
+          "finding": "R1 f7 (Rust `else the folder` fallback unmatchable from TS) — CLOSED, and closed on the correct side. Both runtimes now fall back to the same value: the routed path computes `hereIdentity = deps.gitCommonDir?.(folder) ?? folder`, the in-process branch sets `gitCommonDir = deps.cwd` when `selectByRepository` yields null and re-filters with `filterByFolder`, and `legacySessionRows` does the same. So a non-repo `--here` now compares folder-to-folder against the Rust fallback instead of comparing a null to a path and returning nothing. The 48-of-685 live seat folders that reach this arm are now addressable.",
+          "receipt": "Witness `generation-router.test.ts falls back to exact caller folder for non-git --here`. I re-derived the agreement rather than trusting it: Rust `git_common_dir` returns the folder string when the ancestor walk finds nothing, and TS now supplies the identical `folder` value as the comparand."
+        },
+        {
+          "id": "r1f8",
+          "kind": "defect",
+          "severity": "NA",
+          "state": "checked",
+          "address": "harness/driver/tmux.ts:92-116",
+          "finding": "R1 f8 (child-env scrub omitted the harness-native session ids) — CLOSED, both halves. `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID` and `COPILOT_AGENT_SESSION_ID` are now in `PIJ_IDENTITY_ENV_KEYS`, so the values this plan newly persists are blanked in every driver child. The second half — isolation being inherited rather than asserted — is closed by seeding `PIJ_DAEMON_GENERATION: process.env.PIJ_DAEMON_GENERATION ?? \"legacy\"`, so a check run with no routing environment now fails SAFE (legacy, registering into no rs store) instead of defaulting at the production daemon. That is the right shape: the default is now a decision rather than an accident.",
+          "receipt": "Witness `harness/driver.test.ts boot() defaults fixture children away from the live rs daemon`, which stubs real-looking `CLAUDE_CODE_SESSION_ID` and `CODEX_THREAD_ID` values and asserts they are blanked. Residual, stated for the record and NOT a request: a check that explicitly sets `PIJ_DAEMON_GENERATION=rs` without `PIJ_RS_ADDR` still reaches the default daemon. That path is now opt-in and deliberate, which is all I asked for."
+        },
+        {
+          "id": "r1f9",
+          "kind": "defect",
+          "severity": "NA",
+          "state": "checked",
+          "address": "docs/plans/128-seat-session-identity/assets/live-identity.md",
+          "finding": "R1 f9 (AC4 receipt was acceptance, not resolution) — CLOSED. The evidence now goes past the ingest envelope to `flowspace3 conversation verify --session <native id> --harness <x>`, returning `turns: 11` for the OMP seat and `turns: 2` for the Claude seat, each with a resolved `address`, `repo` and `worktree`. That is resolution: content reached the index, addressed by the very session id rs newly persists, which is the fact AC4 was about. The surrounding prose was also tightened to say the queued addresses followed from resolving through this branch's `pij sessions`. One honest limit worth naming: `verify` proves the transcript is indexed, and the `--pij` ingests prove the seats resolved through `pij sessions`, but the two are composed rather than a single traced call — nothing shows THAT ingest produced THAT index row. Given the seats were freshly minted in an isolated daemon, I accept the composition.",
+          "receipt": "assets/live-identity.md AC4 block at HEAD 3308a54a."
+        },
+        {
+          "id": "r1f10",
+          "kind": "defect",
+          "severity": "NA",
+          "state": "checked",
+          "address": ".pi/extensions/pij/index.ts:385",
+          "finding": "R1 f10 (\"Rust daemon v1\" beside a v:2 envelope) — CLOSED. The notify line now reads `pij: detected rs daemon at <addr>; registered <self>`, removing the version token that collided with the envelope version in the AC1 receipt. Observation only, not a re-finding: the status key three lines above still renders `${self} · rs-v1`, the same token in a lower-consequence surface.",
+          "receipt": "index.ts:385 diff at c37b160f..3308a54a."
+        },
+        {
+          "id": "r1s2",
+          "kind": "defect",
+          "severity": "NA",
+          "state": "checked",
+          "address": "crates/daemon/src/http/shim.rs:99-108",
+          "finding": "R1 s2 (per-seat git walk, ~14x redundant) — CLOSED, though I had marked it non-blocking. `shim_sessions` now memoises through a `HashMap` keyed on `seat.folder`, so the ancestor walk runs once per distinct folder instead of once per seat. Against the shape I measured in round one (685 seats over 48 distinct folders) that removes essentially all of the redundancy. The walk is still blocking IO on a tokio worker rather than `spawn_blocking`, which I noted and still do not consider a blocker now that the work is bounded by folder count.",
+          "receipt": "shim.rs `git_common_dirs.entry(seat.folder.clone()).or_insert_with(...)`, plus the tombstone filter composing correctly ahead of it."
+        },
+        {
+          "id": "r2f1",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "unchecked",
+          "address": "docs/plans/128-seat-session-identity/plan.dd.md#goals",
+          "finding": "NEW. The amended G5 says \"current Rust and TypeScript clients require exactly v2\". That is true of the CLI (`crates/cli/src/client.rs:524`, `untyped.v != ENVELOPE_VERSION`) and of the extension (`daemon-wire.ts:163`), but NOT of every Rust client: `crates/daemon/src/http/client.rs:252 decode_peer_envelope` — the daemon-to-daemon federation client — calls `wire::decode_envelope`, which refuses only `found > ENVELOPE_VERSION` and therefore ACCEPTS a v1 peer. So one real client floors while two pin, and the sentence written specifically to replace a false promise is itself not quite true about the one property it asserts. This matters beyond pedantry: G5 is now the text a reader consults to decide whether a mixed-version fleet is safe, and it currently implies federation would detect the skew when federation would silently accept it. SMALLEST FIX: name the asymmetry in G5 — \"the CLI and the extension pin v2; the federation peer client accepts v ≤ 2\" — or make `decode_peer_envelope` pin so the sentence becomes true as written. I do not think this blocks the PR; it is one clause in a goal.",
+          "receipt": "crates/core/src/wire.rs:92 `if found > ENVELOPE_VERSION`; crates/daemon/src/http/client.rs:252 `wire::decode_envelope(&body)`; contrasted with client.rs:524 and daemon-wire.ts:163, both exact-equality."
+        },
+        {
+          "id": "r2f2",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "unchecked",
+          "address": "docs/plans/128-seat-session-identity/plan.dd.md#goals",
+          "finding": "NEW, and a direct consequence of the r1f1 fix rather than a pre-existing miss. G3 still describes `gitCommonDir` only by the rs rule (\"the seat folder resolved to its git common dir when it is a git checkout (else the folder)\"), but the shipped shape now admits `null` in that field for a legacy row whose descriptor recorded no common dir and which is not being scoped by `--here` (`normalizeLegacySessionJoinRow`: `legacy.gitCommonDir ?? gitCommonDir ?? null`), and the shared TypeScript interface was widened to `string | null` to say so. This is strictly MORE honest than round one, where the key was simply absent, so it is not a regression and I am not asking for a code change. But the frozen-shape text is now the only place a consumer learns how to type the field, and it does not mention that legacy rows may carry null — a consumer typing it as a required string will be wrong for a real row. SMALLEST FIX: one clause in G3 stating that `gitCommonDir` is nullable on legacy rows and always present on rs rows.",
+          "receipt": "cli.ts `GenerationSessionJoinRow.gitCommonDir: string | null` vs `RsSessionJoinRow.gitCommonDir: string`; plan.dd.md G3 text unchanged on this point at HEAD 3308a54a."
+        },
+        {
+          "id": "r2n1",
+          "kind": "question",
+          "severity": "NIT",
+          "state": "unchecked",
+          "address": ".pi/extensions/pij/core/session-join.ts:34-37",
+          "finding": "Observation for prime, not a change request. `JoinRow` still declares and `buildSessionJoinRows` still emits `prime` and `oldPrime`, which the sessions projection now discards at the merge. They remain load-bearing for `buildExportLines` and other JoinRow consumers, so removing them would be wrong — but on the `pij sessions` path they are now computed and thrown away, which is the shape that eventually reads as coverage to someone auditing what the projection carries. Worth a comment at the normalizer saying the drop is deliberate and where those two fields still matter."
+        },
+        {
+          "id": "ac",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "../../plan.dd.json#meta",
+          "finding": "AC RE-JUDGEMENT at HEAD 3308a54a. AC1 TRUE (unchanged from round one; live omp and claude sessions match their transcript filenames, both paths re-derived from source). AC2 NOW TRUE — the union, dedupe, rs-first precedence, null-fill and generation tag were already true, and the \"one shape under one v\" clause that made it partially false is closed by r1f1 with a key-set witness. AC3 TRUE (unchanged). AC4 NOW TRUE — the native `conversation verify` receipts carry the claim the ingest envelopes could not (r1f9). AC5 NOW TRUE — all three witness gaps are closed: the path-agreement guard is live again (r1f2), the loud-failure path has a witness (r1f3), and tombstone handling has one (r1f4); every new witness in this round is one that would fail if its fix were reverted, which I checked by reading each test's inputs rather than its name. All five ACs judged TRUE with evidence."
+        }
+      ]
+    },
+    {
+      "name": "verdict",
+      "value": [
+        {
+          "id": "v1",
+          "finding": "phase-1-review-r2.dd.json#findings/r1f1",
+          "resolution": "fixed",
+          "rationale": "Re-derived from source; explicit normalizers on both halves and a key-set-equality witness. Consumer risk of the drop checked and cleared."
+        },
+        {
+          "id": "v2",
+          "finding": "phase-1-review-r2.dd.json#findings/r1f2",
+          "resolution": "fixed",
+          "rationale": "Exemption deleted; guard load-bearing again and the test name no longer advertises a hole."
+        },
+        {
+          "id": "v3",
+          "finding": "phase-1-review-r2.dd.json#findings/r1f3",
+          "resolution": "fixed",
+          "rationale": "Failure is loud and named at the routing layer, with a witness. Residual testability note recorded, not requested."
+        },
+        {
+          "id": "v4",
+          "finding": "phase-1-review-r2.dd.json#findings/r1f4",
+          "resolution": "fixed",
+          "rationale": "Tombstone predicate added and proved by a seat that would otherwise appear in the response."
+        },
+        {
+          "id": "v5",
+          "finding": "phase-1-review-r2.dd.json#findings/r1f5",
+          "resolution": "fixed",
+          "rationale": "Fixed by making the honesty surface true rather than by softening its wording."
+        },
+        {
+          "id": "v6",
+          "finding": "phase-1-review-r2.dd.json#findings/r1f6",
+          "resolution": "fixed",
+          "rationale": "G5 amended by excision; the false word is gone and the deployment consequence is stated. One residual clause raised separately as r2f1."
+        },
+        {
+          "id": "v7",
+          "finding": "phase-1-review-r2.dd.json#findings/r1f7",
+          "resolution": "fixed",
+          "rationale": "Both runtimes now fall back to the same folder value; agreement re-derived rather than assumed."
+        },
+        {
+          "id": "v8",
+          "finding": "phase-1-review-r2.dd.json#findings/r1f8",
+          "resolution": "fixed",
+          "rationale": "Both halves closed, and the routing default now fails safe by decision rather than by inheritance."
+        },
+        {
+          "id": "v9",
+          "finding": "phase-1-review-r2.dd.json#findings/r1f9",
+          "resolution": "fixed",
+          "rationale": "Evidence now reaches the claim's own words; the composed-inference limit is named and accepted."
+        },
+        {
+          "id": "v10",
+          "finding": "phase-1-review-r2.dd.json#findings/r1f10",
+          "resolution": "fixed",
+          "rationale": "Colliding version token removed from the quoted diagnostic."
+        },
+        {
+          "id": "v11",
+          "finding": "phase-1-review-r2.dd.json#findings/r1s2",
+          "resolution": "fixed",
+          "rationale": "Memoised by folder; fixed although I had marked it non-blocking."
+        },
+        {
+          "id": "v12",
+          "finding": "phase-1-review-r2.dd.json#findings/r2f1",
+          "resolution": "confirmed",
+          "rationale": "NEW MINOR. One clause of the amended G5 is inaccurate about the federation peer client. Documentation precision on a safety-relevant sentence; does not block."
+        },
+        {
+          "id": "v13",
+          "finding": "phase-1-review-r2.dd.json#findings/r2f2",
+          "resolution": "confirmed",
+          "rationale": "NEW MINOR. G3 does not state that gitCommonDir is nullable on legacy rows. Not a regression — strictly more honest than round one — but the frozen-shape text is what consumers type against."
+        },
+        {
+          "id": "v14",
+          "finding": "phase-1-review-r2.dd.json#findings/r2n1",
+          "resolution": "deferred",
+          "rationale": "Observation for prime; a comment, not a change."
+        },
+        {
+          "id": "v15",
+          "finding": "phase-1-review-r2.dd.json#findings/ac",
+          "resolution": "confirmed",
+          "rationale": "All five acceptance criteria judged TRUE with evidence at HEAD 3308a54a. APPROVE."
+        }
+      ]
+    }
+  ]
+}

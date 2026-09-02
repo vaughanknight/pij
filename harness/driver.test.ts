@@ -88,6 +88,60 @@ describe("driver/tmux primitives", () => {
 		expect(newSession).toContain("50");
 	});
 
+	it("boot() defaults fixture children away from the live rs daemon", async () => {
+		const previous = process.env.PIJ_DAEMON_GENERATION;
+		delete process.env.PIJ_DAEMON_GENERATION;
+		try {
+			const { boot } = await import("./driver/tmux.js");
+			boot({ session: "safe-default", cwd: "/tmp", cmd: "pi" });
+			const newSession = calls.find((call) => call[1] === "new-session");
+			expect(newSession).toContain("PIJ_DAEMON_GENERATION=legacy");
+		} finally {
+			if (previous === undefined) delete process.env.PIJ_DAEMON_GENERATION;
+			else process.env.PIJ_DAEMON_GENERATION = previous;
+		}
+	});
+
+	it("boot() scrubs ambient identity and preserves routing plus scenario env", async () => {
+		vi.stubEnv("PIJ_ANNOUNCE_TO", "pij-real-prime");
+		vi.stubEnv("CLAUDE_CODE_SESSION_ID", "real-claude-session");
+		vi.stubEnv("CODEX_THREAD_ID", "real-codex-session");
+		vi.stubEnv("COPILOT_AGENT_SESSION_ID", "real-copilot-session");
+		vi.stubEnv("PIJ_PARENT_ID", "pij-real-prime");
+		vi.stubEnv("PIJ_SESSION_ID", "pij-real-worker");
+		vi.stubEnv("PIJ_SPAWN_ID", "spawn-real");
+		vi.stubEnv("PIJ_SPAWN_TASK", "real task");
+		vi.stubEnv("PIJ_SPAWNER_CUSTOM", "real pane");
+		vi.stubEnv("PIJ_DAEMON_GENERATION", "legacy");
+		vi.stubEnv("PIJ_RS_ADDR", "127.0.0.1:17600");
+		vi.stubEnv("PIJ_RS_STATE_DIR", "/tmp/isolated-rs");
+		try {
+			const { boot } = await import("./driver/tmux.js");
+			boot({ session: "isolated", cwd: "/tmp", cmd: "pi", env: { FIXTURE_ONLY: "yes" } });
+			const newSession = calls.find((call) => call[1] === "new-session");
+			expect(newSession).toContain("FIXTURE_ONLY=yes");
+			expect(newSession).toContain("PIJ_DAEMON_GENERATION=legacy");
+			expect(newSession).toContain("PIJ_RS_ADDR=127.0.0.1:17600");
+			expect(newSession).toContain("PIJ_RS_STATE_DIR=/tmp/isolated-rs");
+			for (const key of [
+				"CLAUDE_CODE_SESSION_ID",
+				"CODEX_THREAD_ID",
+				"COPILOT_AGENT_SESSION_ID",
+				"PIJ_ANNOUNCE_TO",
+				"PIJ_PARENT_ID",
+				"PIJ_SESSION_ID",
+				"PIJ_SPAWN_ID",
+				"PIJ_SPAWN_TASK",
+				"PIJ_SPAWNER_CUSTOM",
+			]) {
+				expect(newSession).toContain(`${key}=`);
+				expect(newSession).not.toContain(`${key}=${process.env[key]}`);
+			}
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
 	it("inspect() parses tab-separated list-panes output (TC-11)", async () => {
 		const { inspect } = await import("./driver/tmux.js");
 		const info = inspect({ session: "s", paneId: "%5" });

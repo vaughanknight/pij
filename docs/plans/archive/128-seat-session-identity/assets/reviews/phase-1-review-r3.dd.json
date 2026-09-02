@@ -1,0 +1,118 @@
+{
+  "dd": {
+    "schema": "builder/review"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Cross-model review closure — seat-session-identity (phase 1, round 3)",
+        "reviewer": "pij-watery-bug",
+        "model": "claude-opus-5",
+        "round": "3",
+        "date": "2026-09-02",
+        "plan": "../../plan.dd.json#meta",
+        "note": "FINAL VERDICT: APPROVE. Both round-two findings are closed and re-derived against source rather than accepted from the disposition. One NEW MINOR residual (r3f1), explicitly non-blocking. WHERE THIS RECORD SITS: the reviewed commit `c0d1fba29eacd1ac106f5c5b79b9c094414c44c8` is on branch `128-seat-session-identity` (worktree ~/pi-hacking/fs3-seat-session-identity); this review artifact is committed on `128-seat-session-identity-rereview` as instructed, so the record and its subject are on sibling branches — stated so a later reader does not conclude the commit is missing. I inspected the commit with `git show` and re-ran the targeted suites in the worktree that actually carries it: vitest driver + smoke + session-join + generation-router + generation-seam = 152 passed. Read-only on code; only this artifact written. No production or live mutation."
+      }
+    },
+    {
+      "name": "findings",
+      "value": [
+        {
+          "id": "r2f1",
+          "kind": "defect",
+          "severity": "NA",
+          "state": "checked",
+          "address": "docs/plans/128-seat-session-identity/plan.dd.md#goals",
+          "finding": "R2 f1 (amended G5 inaccurate about the federation client) — CLOSED, and closed by naming the asymmetry rather than flattening it. G5 now reads: \"the daemon HTTP envelope version bumps to 2. The Rust CLI and TypeScript extension require exactly v2; daemon-to-daemon federation deliberately accepts envelope v1 or v2 through its existing floor decoder. Event-stream hello/frame version stays v1. Mixed-version HTTP clients detect skew; federation remains backward-readable.\" Every clause checks out against source, which I re-derived rather than trusting: `crates/cli/src/client.rs:524` is `untyped.v != ENVELOPE_VERSION` (exact), `.pi/extensions/pij/core/daemon-wire.ts:163` is `version !== PIJ_ENVELOPE_VERSION` (exact), and `crates/daemon/src/http/client.rs:252` routes through `wire::decode_envelope`, whose only refusal is `found > ENVELOPE_VERSION` at `crates/core/src/wire.rs:92` (floor). The scope word \"HTTP\" was also added, which correctly fences the claim off from the event stream. I checked the one thing the sentence could still over-claim — the DIRECTION of \"backward-readable\" — and it holds: a v2 daemon reads a v1 peer through the floor, while a v1 build would refuse a v2 envelope as FutureVersion, and \"backward\" names exactly the direction that works. No residual.",
+          "receipt": "Re-derived at c0d1fba2: client.rs:524, daemon-wire.ts:163, wire.rs:92, http/client.rs:252."
+        },
+        {
+          "id": "r2f2",
+          "kind": "defect",
+          "severity": "NA",
+          "state": "checked",
+          "address": "docs/plans/128-seat-session-identity/plan.dd.md#goals",
+          "finding": "R2 f2 (G3 silent on nullable gitCommonDir) — CLOSED. G3 gained: \"The `gitCommonDir` key is always present: rs rows carry that string fallback, while a legacy row with no recorded common dir carries null.\" That is exactly the missing clause, and it makes the stronger of the two available statements — it pins PRESENCE as well as nullability, so a consumer knows to type the field `Option<String>` and never to branch on the key being absent. I verified the \"always present\" half rather than taking it: both constructors set the key unconditionally — `normalizeLegacySessionJoinRow` at cli.ts:674 (`legacy.gitCommonDir ?? gitCommonDir ?? null`) and `normalizeRsSessionJoinRow` at cli.ts:636 — so no code path can omit it. The declared types agree with the prose: `GenerationSessionJoinRow.gitCommonDir: string | null` (cli.ts:598), `RsSessionJoinRow.gitCommonDir: string` (cli.ts:607). No residual.",
+          "receipt": "plan.dd.md G3 at c0d1fba2; cli.ts:598, 607, 636, 674."
+        },
+        {
+          "id": "r3f1",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "unchecked",
+          "address": "harness/scripts/smoke.test.ts:10",
+          "finding": "NEW, and it arrives with the unrequested-but-correct part of this commit. Routing the watchdog subprocess through the same helper is a real improvement — `runWatchdogSmoke` (smoke.ts:322) now passes `env: { ...process.env, ...isolatedChildEnvironment() }`, extending the r1 f8 scrub to a spawn path I named as existing but did not chase. The defect is that the new behaviour has NO witness. `runWatchdogSmoke` has no test at all (it appears nowhere in smoke.test.ts), and the only reference to `isolatedChildEnvironment` in any test is the mock at smoke.test.ts:10, `vi.fn(() => ({}))`, which stubs the helper to an EMPTY object — so the one test file that imports this module actively guarantees the scrub is not exercised. A refactor that dropped the `env:` line, or reordered the spread so `process.env` won, would pass every test and silently restore the leak. This is the same shape as r1 f2 (a control present but not load-bearing), one layer over. It is MINOR and NOT blocking: it is a test-harness path, the helper itself is witnessed through `boot()` in driver.test.ts, and the PM's real 11-scenario smoke run exercised it end-to-end even though nothing asserted the env. SMALLEST FIX: one test that calls `runWatchdogSmoke` with the real helper (or asserts the `execFileSync` env argument) and checks a stubbed `PIJ_SESSION_ID` arrives blank.",
+          "receipt": "grep for `isolatedChildEnvironment` across harness/ and .pi/ returns tmux.ts:112/172, index.ts:24, smoke.ts:24/322, and smoke.test.ts:10 (the mock) — no assertion anywhere. grep for `runWatchdogSmoke` in smoke.test.ts returns nothing."
+        },
+        {
+          "id": "r3n1",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "harness/scripts/smoke.ts:322",
+          "finding": "SOUNDNESS CHECK on the watchdog change, recorded because it would have been a plausible finding and is not one. The scrub blanks identity keys to the EMPTY STRING rather than deleting them, and `execFileSync` passes an empty string through as a set variable, so I checked whether a blanked `PIJ_SESSION_ID` could be read as an asserted identity and mint or impersonate a seat. It cannot: `buildCallerContext` (generation-routing.ts) filters with `if (value !== undefined && value !== \"\")`, so an empty value is omitted from the caller context entirely rather than transmitted as an empty claim — which is also what that function's own comment promises. The spread order is correct too (`...process.env` first, helper second), so the blanks win. No finding.",
+          "receipt": "generation-routing.ts buildCallerContext; smoke.ts:322 spread order."
+        },
+        {
+          "id": "r2n1",
+          "kind": "question",
+          "severity": "NIT",
+          "state": "unchecked",
+          "address": ".pi/extensions/pij/core/session-join.ts:34-37",
+          "finding": "CARRIED FORWARD, unchanged and still not a change request. `JoinRow` continues to emit `prime`/`oldPrime`, which the sessions projection discards at the merge while they remain load-bearing for `buildExportLines` and the list/tree surfaces. A comment at `normalizeLegacySessionJoinRow` saying the drop is deliberate, and where those two fields still matter, would save the next reader the trip I made. Recorded for the plan's close-out, not for this PR."
+        },
+        {
+          "id": "ac",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "../../plan.dd.json#meta",
+          "finding": "AC POSITION AT c0d1fba2 — unchanged from round two and still all TRUE. Nothing in this commit touches the code paths under AC1-AC5: the two plan edits are goal text, and the three harness edits are test-fixture isolation. AC1 TRUE, AC2 TRUE, AC3 TRUE, AC4 TRUE, AC5 TRUE. I re-ran the suites that cover the changed files in the worktree that carries the commit (driver 26, smoke 4, session-join 16, generation-router 24, generation-seam 82 = 152 passed) rather than relying on the round-two run, because the harness edits touch driver and smoke directly. FINAL: APPROVE, with r3f1 as the single non-blocking residual — my recommendation is to land it and take r3f1 plus r2n1 into close-out rather than spin another round.",
+          "receipt": "vitest on ~/pi-hacking/fs3-seat-session-identity at c0d1fba2: 5 files, 152 tests, all passed."
+        }
+      ]
+    },
+    {
+      "name": "verdict",
+      "value": [
+        {
+          "id": "v1",
+          "finding": "phase-1-review-r3.dd.json#findings/r2f1",
+          "resolution": "fixed",
+          "rationale": "All four clauses re-derived against source, including the direction of 'backward-readable', which holds. No residual."
+        },
+        {
+          "id": "v2",
+          "finding": "phase-1-review-r3.dd.json#findings/r2f2",
+          "resolution": "fixed",
+          "rationale": "Pins presence as well as nullability; the 'always present' claim verified in both constructors rather than accepted."
+        },
+        {
+          "id": "v3",
+          "finding": "phase-1-review-r3.dd.json#findings/r3f1",
+          "resolution": "confirmed",
+          "rationale": "NEW MINOR. The watchdog isolation is correct but unwitnessed, and its own test file mocks the helper to an empty object. Non-blocking: test-harness path, helper witnessed elsewhere, real smoke exercised it. Recommend close-out, not another round."
+        },
+        {
+          "id": "v4",
+          "finding": "phase-1-review-r3.dd.json#findings/r3n1",
+          "resolution": "refuted",
+          "rationale": "Self-refuted before filing: the empty-string scrub is sound because buildCallerContext drops empty values. Recorded so the check is visible rather than invisible."
+        },
+        {
+          "id": "v5",
+          "finding": "phase-1-review-r3.dd.json#findings/r2n1",
+          "resolution": "deferred",
+          "rationale": "Observation carried to close-out; a comment, not a change."
+        },
+        {
+          "id": "v6",
+          "finding": "phase-1-review-r3.dd.json#findings/ac",
+          "resolution": "confirmed",
+          "rationale": "All five acceptance criteria remain TRUE at c0d1fba2, re-verified by running the suites covering the changed files. FINAL APPROVE."
+        }
+      ]
+    }
+  ]
+}
