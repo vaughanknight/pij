@@ -89,6 +89,31 @@ const TMUX_OPTS: ExecFileSyncOptions = {
 	stdio: ["ignore", "pipe", "pipe"],
 };
 
+const PIJ_IDENTITY_ENV_KEYS = [
+	"PIJ_ANNOUNCE_TO",
+	"PIJ_PARENT_ID",
+	"PIJ_ROLE",
+	"PIJ_SESSION_ID",
+	"PIJ_SPAWN_ID",
+	"PIJ_SPAWN_TASK",
+	"PIJ_SPAWNER_ID",
+	"PIJ_SPAWNER_PANE",
+] as const;
+
+/** A driver child is a fixture, never an incarnation of the agent running it.
+ * Empty tmux environment overrides prevent ambient spawn identity from minting
+ * live-fleet seats; an explicit scenario value still wins for identity tests. */
+function childEnvironment(explicit: Record<string, string> = {}): Record<string, string> {
+	const inheritedSpawnKeys = Object.keys(process.env).filter(
+		(key) => key.startsWith("PIJ_SPAWN_") || key.startsWith("PIJ_SPAWNER"),
+	);
+	const scrubbed = { ...explicit };
+	for (const key of [...new Set([...PIJ_IDENTITY_ENV_KEYS, ...inheritedSpawnKeys])].sort()) {
+		if (!Object.hasOwn(scrubbed, key)) scrubbed[key] = "";
+	}
+	return scrubbed;
+}
+
 function tmux(args: string[]): string {
 	// TC-01: argv array — never `args.join(" ")`. Closes D-014 shell-injection.
 	const out = execFileSync("tmux", args, TMUX_OPTS);
@@ -129,10 +154,8 @@ export function boot(opts: BootOpts): Target {
 		"-c",
 		opts.cwd,
 	];
-	if (opts.env) {
-		for (const [k, v] of Object.entries(opts.env)) {
-			args.push("-e", `${k}=${v}`); // tmux 3.0+ supports repeated -e
-		}
+	for (const [key, value] of Object.entries(childEnvironment(opts.env))) {
+		args.push("-e", `${key}=${value}`); // tmux 3.0+ supports repeated -e
 	}
 	args.push(opts.cmd);
 
