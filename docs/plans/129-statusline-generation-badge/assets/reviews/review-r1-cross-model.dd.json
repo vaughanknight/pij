@@ -1,0 +1,99 @@
+{
+  "dd": {
+    "schema": "builder/review"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Cross-model review r1 — statusline-generation-badge",
+        "reviewer": "pij-relative-cheetah",
+        "model": "claude-opus-5",
+        "round": "r1",
+        "date": "2026-09-02",
+        "plan": "../../plan.dd.json#meta",
+        "note": "SUBJECT: branch 129-statusline-generation-badge at fc01d0e6, reviewed against origin/main (origin/main is an ancestor of HEAD; the 3-dot diff is the whole delivery: 24 files, +2257/-27).\n\nMETHOD: receipts in assets/live-statusline.md were treated as claims, not evidence. I re-ran shellcheck, `cargo test -p pij-harnesses statusline_`, both vitest files, the branch `doctor claude-statusline` verb, and my own timing loop; I read the script, the installer, and every test body rather than the receipt prose. Where the receipts and I agree, I say so and name what I ran. Where I could not independently reproduce (the live omp footer), I label the claim by what I actually checked rather than borrowing the receipt's confidence.\n\nVERDICT: REQUEST CHANGES. One HIGH finding falsifies AC1 for exactly the population AC1 was written for, and I reproduced it live on a real dual-present pane. Three further findings are MEDIUM/LOW. Nothing here is a correctness defect in the installer or in u2; the installer and the omp badge are good work and I could not break them.\n\nAC VERDICTS\n- AC1 dual-present panes show the rs id with a yellow rs tag — FALSE. See #findings/f1. A real dual-present pane (%3060, pid 87487 in BOTH stores) renders `legacy ⛓ pij-quarrelsome-caribou`, not `rs ⛓ pij-relative-cheetah`, whenever the Claude process env carries a PIJ_SESSION_ID that rs disagrees with — which is the defining condition of the mapped-pair seats this AC targets.\n- AC2 legacy-only and unregistered panes render honestly — TRUE, independently reproduced. rs-miss → `legacy ⛓ <legacy id>`; a pane in neither store with no pij binaries on PATH → no pij segment, every other segment intact, exit 0.\n- AC3 omp footer names the generation — TRUE by code and unit test on BOTH generations and BOTH surfaces (native `rs·<id>` / `legacy·<id>`, plus the keyed status row with ANSI 33 / ANSI 2). CONFIDENCE NOTE, per claim: I did not start a real omp, so the live-footer half rests on the author's capture; the code-and-test half I verified myself (17/17 index.test.ts, 8/8 session-name.test.ts, watched).\n- AC4 rs-first resolution is cheap — FALSE AS WRITTEN, TRUE against the bar prime actually ruled. See #findings/f2. plan.dd.md still says \"≤ 50ms over 10 runs\"; the author's median is 92.10ms and mine is 67.98ms. Both clear the ruled ≤100ms; neither clears the written 50ms.\n- AC5 installer is additive, idempotent, and refuses malformed input — TRUE. 4/4 statusline_ tests watched green; `doctor claude-statusline` reports `installed` for both real homes; and the backup mechanism is confirmed on the operator's real disk, not just in a fixture — `~/.claude/statusline-context.sh.bak-1788315355478` and `.bak-1788316617931` exist beside the original, from both the tilde form and the absolute form of the prior command.\n\nCOMPOSITION SEAMS (done-bar d2), examined explicitly:\n- u1↔u2 share no file and no symbol. The only seam is the vocabulary: the shell renders `rs`/`legacy` with ANSI 33/2, and session-name.ts renders `rs·`/`legacy·` with ANSI 33/2. They agree. If either side ever changes the word, nothing fails — the seam is a convention, not a contract. Worth one shared constant eventually; not worth blocking on.\n- u1↔plan 126/127 (claude_settings.rs): additive. `ensure_claude_statusline` is a third peer of the existing `ensure_claude_inbound_accept` / `ensure_claude_session_start_hook`, wired into daemon boot at main.rs:1010 and into the same spine-emission and warning loops. It reuses `ensure_home`, `shell_command`, `find_top_level_value`, `insert_object_property`, `replace_range` unchanged. The statusline test asserts the SessionStart hook block survives the edit, which is the seam assertion I would have asked for.\n- u2↔plan 128 (index.ts): the guide warned plan 128 also edits index.ts. This branch stayed inside the setSessionName call sites as instructed, and additionally renamed the retry-window `generation` parameter to `publicationGeneration` to make room for `daemonGeneration`. That rename is confined to one closure family and is the reason the two meanings do not collide — good call, and the second lander should keep it.\n- Interface drift vs impl-guide.dd.json: none found. `publishSeatName(deps, self, generation: \"rs\"|\"legacy\")` matches the frozen interface exactly. `ensure_claude_statusline(homes, script) -> Vec<EnsureReport>` matches. The script exits 0 always and emits nothing for an unregistered pane — both verified by running it.\n\nFLOWSPACE DOGFOOD (i1) — two frictions, reported as instructed:\n1. `flowspace3 search \"<q>\" --mode semantic` — the form carried in the pij skill and in my own notes — is rejected by the installed flowspace3: `error: unexpected argument '--mode' found`. The usage line is now `flowspace3 search <QUERY>`. Anyone following the documented invocation hits an error before their first result.\n2. Both meaning-shaped queries came back doc-dominated: \"statusline resolves pane against rs before legacy\" → 89 doc / 6 code, \"publish omp session name with generation prefix\" → 84 doc / 11 code. The top hit for both was plan prose describing the code, not the code. For a query phrased as a mechanism, the plan that promises the mechanism outranks the file that implements it — I found neither claude-statusline-pij.sh nor session-name.ts through search and reached both by reading the diff."
+      }
+    },
+    {
+      "name": "findings",
+      "value": [
+        {
+          "id": "f1",
+          "kind": "defect",
+          "severity": "HIGH",
+          "address": "harness/scripts/claude-statusline-pij.sh:78",
+          "finding": "CLAIM (plan.dd.md AC1, G1): \"dual-present panes show the rs id with a yellow rs tag\" / \"resolve the pane against rs FIRST ... fall back to legacy only when rs has no row\".\n\nDEFECT: the script calls `pij-rs --json whoami --pane \"$TMUX_PANE\"` while inheriting the Claude process's environment. When that environment exports a PIJ_SESSION_ID that rs does not agree is the owner of the pane, rs does not answer with the pane's row — it REFUSES, by design:\n\n  {\"ok\":false,\"command\":\"pij whoami\",\"v\":1,\"meta\":\"the caller claims to be `pij-quarrelsome-caribou` but pane `%3060` belongs to `pij-relative-cheetah` — refusing rather than answering for either. An asserted id never outranks an observable one.\",\"error\":\"refused\"}   (exit 2)\n\nThe refusal body contains no `\"id\":\"`, so the `case \"$RS_OUTPUT\" in *'\"id\":\"'*` guard at :79-84 does not match, PIJID stays empty, and control falls to the legacy branch at :89. The pane then renders the LEGACY id under a dim `legacy` tag — the precise outcome AC1 exists to prevent, and it is not even a degraded-but-honest outcome: it asserts \"legacy\" about a pane that rs owns.\n\nThe population is not incidental. The contradiction arises exactly when a pane's exported id and its rs id differ, which is the definition of the mapped pairs named in the plan's own summary (\"20 seats + 4 primes have both ids; map in briefs/seat-id-map-2026-09-02.md\"). AC1's target population and the failing population are the same set.\n\nPROOF — one pane, one script, one input, one variable. Pane %3060 is genuinely dual-present: `pij state pij-quarrelsome-caribou` reports pid 87487 alive, and `pij-rs whoami --pane %3060` reports pid 87487 under id pij-relative-cheetah.\n\n  A) env PIJ_SESSION_ID=pij-quarrelsome-caribou TMUX_PANE=%3060 sh harness/scripts/claude-statusline-pij.sh\n     -> ...ESC[2mlegacyESC[0m ESC[34m⛓ pij-quarrelsome-caribouESC[0m ...\n  B) env -u PIJ_SESSION_ID  TMUX_PANE=%3060 sh harness/scripts/claude-statusline-pij.sh\n     -> ...ESC[33mrsESC[0m ESC[34m⛓ pij-relative-cheetahESC[0m ...\n\nThe only difference between A and B is the inherited variable. A is what a real Claude statusline process gets; B is what the author's harness got.\n\nWHY THE RECEIPTS DID NOT CATCH IT — and this is the more useful half. The AC1 fixture run (%2912) used a temp-PATH fake rs that returns a success row unconditionally, so it cannot express a refusal. The AC1 production capture on %2081 was taken by invoking the script with `--pane %2081` from a shell that was not that pane's Claude process, so it did not inherit that pane's PIJ_SESSION_ID. Both observations are true; neither observes the production path. The captured statusline JSON was real, which makes the setup feel like a live test — but the env, not the stdin, is what decides this.\n\nSMALLEST FIX — one word at harness/scripts/claude-statusline-pij.sh:78:\n  RS_OUTPUT=$(env -u PIJ_SESSION_ID \"$PIJ_RS_BIN\" --json whoami --pane \"$TMUX_PANE\" 2>/dev/null)\n`--pane` already supplies the observable, so the asserted id is not merely unnecessary here, it is the only thing that can make the observable unreachable. Verified: this is exactly the difference between run A and run B above.\n\nDo not fix it only in the script. `--pane` is an explicit \"answer for THIS pane\" gesture; a caller that names a pane has stopped claiming to be anyone. Prime may want rs to ignore PIJ_SESSION_ID whenever `--pane` is given, which would fix every future caller instead of this one — that is a seam decision above my fence, so I name it rather than take it.",
+          "receipt": "live A/B on pane %3060 (dual-present, pid 87487 in both stores) with the branch script and identical stdin; `pij-rs --json whoami --pane %3060` run under three env states (contradicting id -> refused/exit 2, unset -> ok, matching -> ok); script :73-93 read in full; claude_settings.rs:1586-1596 fake read"
+        },
+        {
+          "id": "f2",
+          "kind": "defect",
+          "severity": "MEDIUM",
+          "address": "docs/plans/129-statusline-generation-badge/plan.dd.json#acceptance-criteria AC4",
+          "finding": "CLAIM (plan.dd.md AC4): \"statusline script wall time with rs answering ≤ 50ms over 10 runs (hyperfine or time loop), pasted\".\n\nDEFECT: the delivered evidence does not meet the promise as the plan states it, and the plan text was never amended to the bar that was actually ruled. assets/live-statusline.md records \"Prime ruled the target as median of 10 warm runs ≤100 ms\" with a median of 92.10ms. plan.dd.md still says 50ms. Whoever reads the plan record next — including the ship gate — reads a promise that the receipt beside it does not keep, and has to reconstruct from prose that a different bar was substituted.\n\nPROOF — my own 10 warm runs on the rs path, same script, captured real-shape JSON, host load 67.22 recorded:\n  54.0, 60.6, 60.8, 60.9, 61.8, 74.2, 78.9, 85.5, 85.5, 90.4 ms   median 67.98 ms\n(my loop adds one `sh -c` and one `printf` per iteration, so the true figure is somewhat lower.) I reproduce the author's shape: comfortably inside 100ms, not inside 50ms. I have no quarrel with 100ms as a bar — the statusline is not on a 300ms critical path in any way that 68ms threatens, and the 28× improvement over the tsx path is real and large. The finding is that the plan and its receipt state different bars.\n\nSMALLEST FIX: amend AC4's text in plan.dd.json to the ruled ≤100ms and rebuild, so the ruling replaces the superseded number rather than sitting beside it in a different file. Two authoritative bars in two documents is how the next reader picks the wrong one.",
+          "receipt": "own 10-run warm timing loop on the rs path, raw values and host load 67.22 recorded; plan.dd.md AC4 text read; assets/live-statusline.md AC4 section read"
+        },
+        {
+          "id": "f3",
+          "kind": "test-gap",
+          "severity": "MEDIUM",
+          "address": "crates/harnesses/src/claude_settings.rs:1586",
+          "finding": "CLAIM (impl-guide u1 test_strategy): \"script tested with a fake pij-rs on PATH returning a row / no row\".\n\nDEFECT: the fake is `#!/bin/sh; printf '{\"ok\":true,\"data\":{\"id\":\"pij-rs-seat\"}}'` — it ignores `--pane`, ignores the environment, and has exactly two behaviours: unconditional success, or (for the miss half) `exit 1` with no output. Production rs has a third behaviour that this fake cannot express: answer with a row, OR refuse because the caller's asserted id contradicts the pane. The test is green and will stay green through #findings/f1, because the world it arranges is one where the asserted id never matters. That is why f1 shipped past a test written specifically to prove rs-first resolution.\n\nSecondary, same root: the miss is modelled as `exit 1` with empty stdout, whereas real rs misses and refusals exit 2 WITH a JSON body. The script's `case` guard happens to handle both identically, so this is not itself a defect — but it means the test has never seen the actual bytes the script parses in the failure path, and a future parser change (say, to `grep -o` or `jq`) could pass this test while breaking on real output.\n\nPROOF: crates/harnesses/src/claude_settings.rs:1586-1596 (fake bodies) and :1618-1622 (the `.env(...)` list — TMUX_PANE and LEGACY_MARKER are set; PIJ_SESSION_ID never is). Test read in full; `cargo test -p pij-harnesses statusline_` watched, 4 passed.\n\nSMALLEST FIX: make the fake read its arguments and its environment — refuse with the real refusal shape when `$PIJ_SESSION_ID` is set and differs from the row it would return, answer otherwise — then add one case that sets `PIJ_SESSION_ID=pij-other-seat` and asserts the yellow `rs` tag with the rs id. Written against today's script that case fails; against the f1 fix it passes. That is the witness the current test does not have.",
+          "receipt": "statusline_script_prefers_rs_and_falls_back_to_legacy read in full (:1576-1663); `cargo test -p pij-harnesses statusline_` watched, 4 passed"
+        },
+        {
+          "id": "f4",
+          "kind": "test-gap",
+          "severity": "LOW",
+          "address": ".pi/extensions/pij/index.test.ts:286",
+          "finding": "CLAIM (impl-guide u2, and the packet's third least-confident area): rs/legacy generation propagates through initial publication AND turn_start reassertion.\n\nDEFECT: the code is correct — index.ts:552-556 passes `publication.daemonGeneration` into the reassertion call, and I read it rather than inferring it. But the test that covers that path asserts only `expect(sessionNames).toHaveLength(2)`. It counts publications; it never looks at what was published. Delete the `publication.daemonGeneration` argument and the reassertion would republish a bare id with no generation prefix, and index.test.ts:276-291 would still pass. The startup path is properly witnessed on both generations (index.test.ts:234-260 asserts `/^rs·.../` and `/^legacy·.../` plus both status-row spellings); the reassertion path — the half the packet flagged as least-confident — is the one with no witness.\n\nPROOF: index.test.ts:276-291 read in full; grep for the generation spellings across both test files returns hits only in the startup cases and session-name.test.ts:197. 17/17 and 8/8 watched green, which is exactly the point: green is not evidence for a claim nobody asserted.\n\nSMALLEST FIX: at index.test.ts:286, add `expect(sessionNames.at(-1)).toMatch(/^rs·pij-/)`. One line, and it converts a passing count into a witness for the seam the packet was worried about.",
+          "receipt": "index.ts:544-560 and index.test.ts:276-291 read in full; grep for `rs·`/`legacy·`/ANSI spellings across both test files; vitest watched, 17/17 and 8/8"
+        },
+        {
+          "id": "n1",
+          "kind": "note",
+          "severity": "NIT",
+          "address": "crates/harnesses/src/claude_settings.rs:189",
+          "finding": "NOTE FOR PRIME, not a finding against this plan — `backup_statusline_script` returns Ok(()) and takes no backup in three cases it cannot distinguish from success: a `~/`-prefixed command when `home.parent()` is not the real $HOME (a CLAUDE_CONFIG_DIR outside the home directory), a relative command, and a command with arguments or an interpreter prefix (`sh ~/foo.sh`). The consequence is bounded — the prior script file is never deleted, only dereferenced, so nothing is lost, and I confirmed the mechanism works for both forms that occur in practice: `~/.claude/statusline-context.sh` and `/Users/jordanknight/.claude/statusline-context.sh` both produced real backups on the operator's disk today. I raise it because the incident recorded in the receipts was recovered FROM these backups, which makes silent non-backup a worse failure here than its bounded blast radius suggests. A one-line `error:` on the report when the previous command could not be resolved to a file would make the silence audible without changing behaviour.",
+          "receipt": "backup_statusline_script :185-215 read; `ls ~/.claude | grep -i statusline` shows statusline-context.sh.bak-1788315355478 (from the tilde form) and .bak-1788316617931 (from the absolute form); `jq .statusLine.command` across four of today's settings backups shows both command spellings occurred"
+        }
+      ]
+    },
+    {
+      "name": "verdict",
+      "value": [
+        {
+          "id": "v1",
+          "finding": "#findings/f1",
+          "resolution": "open",
+          "rationale": "Blocking. AC1 is false for the mapped-pair population it was written for, reproduced live on a real dual-present pane with a one-variable A/B. The fix is one `env -u` at :78; the seam question of whether rs should ignore an asserted id when `--pane` is given is prime's, and I name it rather than decide it."
+        },
+        {
+          "id": "v2",
+          "finding": "#findings/f2",
+          "resolution": "open",
+          "rationale": "Not blocking on performance grounds — 68ms is fine and the 28x improvement is real. Blocking on record integrity: plan.dd.md promises 50ms, the receipt delivers 92ms against a separately-ruled 100ms bar, and the two live in different files. Amend the AC text so the ruling replaces the superseded number instead of sitting beside it."
+        },
+        {
+          "id": "v3",
+          "finding": "#findings/f3",
+          "resolution": "open",
+          "rationale": "This is the reason f1 shipped green. The fake rs cannot express a refusal, so the test that exists to prove rs-first resolution is structurally incapable of failing on the way rs-first resolution actually breaks. Fixing f1 without fixing this leaves the next regression equally invisible."
+        },
+        {
+          "id": "v4",
+          "finding": "#findings/f4",
+          "resolution": "open",
+          "rationale": "One line. The code is right today; the assertion is what stops it being refactored away, and the reassertion path is precisely the seam the packet named as least-confident."
+        },
+        {
+          "id": "v5",
+          "finding": "#findings/n1",
+          "resolution": "deferred",
+          "rationale": "Recorded for prime, outside this plan's scope per w2. The mechanism demonstrably works for both command spellings that occur in practice; the concern is that it fails silently for the ones that do not."
+        }
+      ]
+    }
+  ]
+}
