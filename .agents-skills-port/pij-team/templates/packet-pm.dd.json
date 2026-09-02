@@ -54,7 +54,7 @@
 				},
 				{
 					"id": "i9",
-					"text": "This pipeline is a prototype we are improving: read .agents/skills/pij-team/TENETS.md before dispatching anyone, and at close-out report to prime what in the tenets, templates, or this packet was wrong, missing, or confirmed — appended to the skill's EXPERIENCES.md. Every run must leave the substrate better."
+					"text": "This pipeline is a prototype we are improving: read .agents-skills-port/pij-team/TENETS.md before dispatching anyone, and at close-out report to prime what in the tenets, templates, or this packet was wrong, missing, or confirmed — appended to the skill's EXPERIENCES.md. Every run must leave the substrate better."
 				}
 			]
 		},
@@ -115,7 +115,7 @@
 			"value": [
 				{
 					"id": "r0",
-					"path": ".agents/skills/pij-team/TENETS.md",
+					"path": ".agents-skills-port/pij-team/TENETS.md",
 					"note": "the doctrine — read first, cite don't restate"
 				},
 				{
