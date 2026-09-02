@@ -1236,6 +1236,29 @@ async fn inbox_claims_without_evidence_then_ack_records_machine_graded_reader_re
     ))
     .await;
     let client = reqwest::Client::new();
+    let peek = client
+        .get(format!("http://{addr}/v1/inbox"))
+        .bearer_auth("local-key")
+        .query(&[("seat", "pij-reader"), ("wait", "false"), ("peek", "true")])
+        .send()
+        .await
+        .expect("peek inbox");
+    assert_eq!(peek.status(), reqwest::StatusCode::OK);
+    let peeked: Envelope<Vec<crate::delivery::InboxClaim>> =
+        peek.json().await.expect("peek envelope");
+    let peeked = peeked.data.expect("peeked page");
+    assert_eq!(peeked.len(), 1);
+    assert_eq!(peeked[0].message.body, "one durable body");
+    assert!(queue.acked().is_empty(), "peek must not acknowledge");
+    assert!(
+        spine
+            .tail(Some(&SeatId::from("pij-reader")), Seq(0))
+            .await
+            .expect("audit after peek")
+            .iter()
+            .all(|event| event.kind != INBOX_ACK_EVENT_KIND),
+        "peek emits no read attestation"
+    );
 
     let response = client
         .get(format!("http://{addr}/v1/inbox"))

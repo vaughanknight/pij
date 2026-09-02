@@ -14,7 +14,7 @@
     },
     {
       "name": "architecture",
-      "value": "Doctrine: .agents/skills/pij-team/TENETS.md. Rust. u1 lives in crates/cli/src/main.rs (clap verbs: send/inbox/state/report… — find every `seat: Option<String>` / --from arg) + a new small module crates/cli/src/identity.rs: `resolve_acting_seat(env, pane, client) -> Result<SeatId, NamedRefusal>` (PIJ_SESSION_ID → pane lookup via GET /v1/seats filtered by pane → refusal). Do NOT re-implement the daemon's ladder: the daemon already derives by pane for the shim (crates/daemon/src/http/identity.rs resolve_seat); the CLI may instead POST /v1/whoami with the pane and use the answer — prefer that (one authority). Body sources: --body, --body-file <path>, --body-file - (stdin), read as bytes, never through argv parsing (clap `allow_hyphen_values` on --body). msg-id minting: uuid crate v7 (or ulid) — check Cargo.lock for what is already present, add nothing new if avoidable. u2: crates/daemon/src/pointer/mod.rs render_pointer text (`run: pij inbox` → `run: pij inbox check`) + adopt response text in crates/daemon/src/http/identity.rs that prints the export line for claude/copilot/codex. Tests: crates/cli/tests/* with the existing fake daemon world (see crates/cli/tests/claude_inbound.rs from plan 126/127 for the pattern)."
+      "value": "Doctrine: .agents/skills/pij-team/TENETS.md. Rust. u1 lives in crates/cli/src/main.rs (clap verbs: send/inbox/state/report… — find every `seat: Option<String>` / --from arg) + a new small module crates/cli/src/identity.rs: `resolve_acting_seat(env, pane, client) -> Result<SeatId, NamedRefusal>`. Send every available identity input to POST /v1/whoami: the daemon's one authority treats an observable pane as authoritative, accepts PIJ_SESSION_ID only when no pane contradicts it, and refuses disagreement by name. Do NOT re-implement the daemon's ladder: the shim already uses crates/daemon/src/http/identity.rs resolve_seat. Body sources: --body, --body-file <path>, --body-file - (stdin), read literally and never through shell evaluation (clap `allow_hyphen_values` on --body). msg-id minting: uuid crate v7 (or ulid) — check Cargo.lock for what is already present, add nothing new if avoidable. u2: crates/daemon/src/pointer/mod.rs render_pointer text (`run: pij inbox` → `run: pij inbox check`) + adopt response text in crates/daemon/src/http/identity.rs. Ruling: weasel 2026-09-02 — every pane-bound harness, including omp/pi, gets pane-derived identity guidance; export advice is paneless-only."
     },
     {
       "name": "fan_out",
@@ -41,12 +41,12 @@
           "id": "u2",
           "name": "notice texts",
           "paths": "crates/daemon/src/pointer/mod.rs, crates/daemon/src/http/identity.rs (adopt response text only), their tests",
-          "responsibility": "Pointer says pij inbox check; adopt output stops instructing export for non-shell harnesses.",
+          "responsibility": "Pointer says pij inbox check; every pane-bound harness gets pane-derived identity guidance and only paneless seats get export advice.",
           "interface": "text only",
-          "test_strategy": "existing render/adopt tests updated RED-first.",
+          "test_strategy": "existing render/adopt tests updated RED-first; cover claude/copilot/codex/omp/pi pane-bound cases.",
           "depends_on": "none",
           "wave": 1,
-          "note": "plan 128 (in flight, PR imminent) touches identity.rs caller struct — keep to the response text; rebase after 128 merges."
+          "note": "Rebased after plan 128; preserve its harness-session registration changes while changing response text only."
         }
       ]
     },

@@ -790,29 +790,31 @@ mod argv {
     }
 }
 
-/// Non-shell harnesses start each tool command in a fresh shell, so an export
-/// line is unusable advice. Their pane is the durable identity input.
+/// Every pane-bound harness derives identity from the pane. Export advice is
+/// reserved for paneless seats, where no observable pane exists.
 #[tokio::test]
-async fn adopt_tells_non_shell_harnesses_that_the_pane_resolves_identity() {
-    let registry = Arc::new(FakeRegistry::new());
-    let world = world(registry.clone(), true).await;
+async fn adopt_tells_pane_bound_harnesses_that_the_pane_resolves_identity() {
+    for harness in ["claude", "copilot", "codex", "omp", "pi"] {
+        let registry = Arc::new(FakeRegistry::new());
+        let world = world(registry.clone(), true).await;
 
-    let response = adopt(world.addr, &["adopt", PANE, "--harness", "claude"]).await;
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
-    let adopted: Envelope<SeatDescriptor> = response.json().await.expect("adopt envelope");
-    let meta = adopted.meta.expect("adopt explains subsequent identity");
-    let id = adopted.data.expect("descriptor").id;
-    assert!(!meta.contains("export PIJ_SESSION_ID"), "{meta}");
-    assert!(
-        meta.contains(PANE),
-        "the note names the durable pane: {meta}"
-    );
-    assert!(
-        meta.contains(id.as_str()),
-        "the note names the adopted seat: {meta}"
-    );
+        let response = adopt(world.addr, &["adopt", PANE, "--harness", harness]).await;
+        assert_eq!(response.status(), reqwest::StatusCode::OK, "{harness}");
+        let adopted: Envelope<SeatDescriptor> = response.json().await.expect("adopt envelope");
+        let meta = adopted.meta.expect("adopt explains subsequent identity");
+        let id = adopted.data.expect("descriptor").id;
+        assert!(!meta.contains("export PIJ_SESSION_ID"), "{harness}: {meta}");
+        assert!(
+            meta.contains(PANE),
+            "the note names the durable pane for {harness}: {meta}"
+        );
+        assert!(
+            meta.contains(id.as_str()),
+            "the note names the adopted seat for {harness}: {meta}"
+        );
 
-    world.server.abort();
+        world.server.abort();
+    }
 }
 
 /// 8b — THE READER ACCEPTS ALL THREE SPELLINGS, named for the wire one.

@@ -515,7 +515,8 @@ pub(crate) async fn adopt(
             "codex" => caller.codex_session.clone(),
             _ => None,
         });
-    let resolves_from_pane = matches!(harness.as_str(), "claude" | "copilot" | "codex");
+    let resolves_from_pane = pane.is_some();
+
     let claim = Registration {
         supersedes: None,
         id: seat_id.0.clone(),

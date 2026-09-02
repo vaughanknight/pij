@@ -15,15 +15,15 @@
     },
     {
       "name": "summary",
-      "value": "Jordan 2026-09-02: agents write `pij-rs send --from <self> --to <peer> --msg-id \"$(uuidgen)\" --body '…'` on every call — wasteful, and the only rs send form takes the body as a literal shell argument. Also (antelope): `export PIJ_SESSION_ID` is a no-op for Claude/Copilot/Codex seats (fresh shell per command), so `pij-rs inbox` fails with no seat after a successful adopt; and the rs pointer text says `run: pij inbox` which is the unrouted bare legacy verb. Rows: req-0041 (+ req-0032 silent usage on missing --msg-id, req-0039(e) body-file as a legacy-shutdown precondition). The shimmed `pij send <id> <text>` already derives sender by pane and mints the id (crates/daemon/src/http/shim.rs, identity::resolve_seat) — the raw CLI must reach parity."
+      "value": "Jordan 2026-09-02: agents write `pij-rs send --from <self> --to <peer> --msg-id \"$(uuidgen)\" --body '…'` on every call — wasteful, and the only rs send form takes the body as a literal shell argument. Also (antelope): `export PIJ_SESSION_ID` is a no-op for pane-bound seats because fresh shell commands do not retain it, so `pij-rs inbox` fails with no seat after a successful adopt; and the rs pointer text says `run: pij inbox` which is the unrouted bare legacy verb. Rows: req-0041 (+ req-0032 silent usage on missing --msg-id, req-0039(e) body-file as a legacy-shutdown precondition). The shimmed `pij send <id> <text>` already derives sender by pane and mints the id (crates/daemon/src/http/shim.rs, identity::resolve_seat) — the raw CLI must reach parity. Ruling: weasel 2026-09-02 — every pane-bound harness, including omp/pi, derives identity from the pane; `export PIJ_SESSION_ID` advice is paneless-only because an asserted id must never outrank the observable pane."
     },
     {
       "name": "goals",
       "value": [
-        "G1 Identity: every pij-rs verb that needs the acting seat resolves it as PIJ_SESSION_ID → else the pane ($TMUX_PANE against /v1/seats) → else a named refusal that says which env/flag to supply. A supplied --from/--seat that DISAGREES with the pane owner is refused by name (never silently honoured).",
+        "G1 Identity: every pij-rs verb that needs the acting seat sends every available identity input to the daemon; an observable pane ($TMUX_PANE against /v1/seats) is authoritative, PIJ_SESSION_ID is used when no pane exists, disagreement is refused by name, and absence of both produces a named refusal.",
         "G2 send: --from optional (derived), --msg-id optional (minted as a UUIDv7/ULID by the CLI, echoed in the receipt), --body OR --body-file <path> OR --body-file - (stdin); missing all three = refusal naming the options; a body that starts with `-` is never parsed as a flag.",
         "G3 Misuse is loud: any missing required input prints a one-line refusal and exits non-zero; usage text is never printed on a failed send (req-0032).",
-        "G4 Pointer/notice text: the daemon's `message waiting` line says `pij inbox check` (routed) not bare `pij inbox`; adopt output for claude/copilot/codex stops instructing `export PIJ_SESSION_ID` and says the pane resolves identity.",
+        "G4 Pointer/notice text: the daemon's `message waiting` line says `pij inbox check` (routed) not bare `pij inbox`; adopt output for every pane-bound harness, including claude/copilot/codex/omp/pi, says the pane resolves identity and never instructs `export PIJ_SESSION_ID`; export advice is paneless-only.",
         "G5 Help shows the short form first: `pij-rs send --to <id> --body '…'` and `pij-rs send --to <id> --body-file -`."
       ]
     },
@@ -54,17 +54,17 @@
         },
         {
           "id": "AC3",
-          "text": "Unit: --from that disagrees with the pane owner → refusal naming both ids, exit non-zero, nothing sent; missing body → refusal naming --body/--body-file, no usage dump; pane absent and no env → refusal naming both; PIJ_SESSION_ID present wins over pane. RED-first.",
+          "text": "Unit: --from that disagrees with the pane owner → refusal naming both ids, exit non-zero, nothing sent; contradictory PIJ_SESSION_ID and pane → refusal naming both; missing body → refusal naming --body/--body-file, no usage dump; pane absent and no env → refusal naming both; PIJ_SESSION_ID is accepted only when no observable pane contradicts it. RED-first.",
           "claim": "asserted identity cannot override derived identity and failures are named",
           "state": "checked",
-          "receipt": "cargo test -p pij-cli; shipped_cli_registers_sends_reads_acks_and_does_not_read_twice"
+          "receipt": "cargo test -p pij-cli; shipped_cli_registers_sends_reads_acks_and_does_not_read_twice — red before fix on contradictory env/pane, green after daemon receives both inputs"
         },
         {
           "id": "AC4",
-          "text": "LIVE: `pij-rs inbox` from a claude pane with no PIJ_SESSION_ID resolves by pane and reads (antelope case); the daemon pointer line reads `run: pij inbox check`; adopt output no longer says export for claude.",
+          "text": "LIVE: `pij-rs inbox` from a pane-bound seat with no PIJ_SESSION_ID resolves by pane and reads; the daemon pointer line reads `run: pij inbox check`; adopt output no longer says export for any pane-bound harness, including omp/pi; paneless seats retain export advice.",
           "claim": "identity derivation covers inbox and the notice texts are correct",
           "state": "checked",
-          "receipt": "assets/live-send-defaults.md plus cargo test -p pij-daemon pointer::tests and http::identity_tests"
+          "receipt": "assets/live-send-defaults.md plus cargo test -p pij-daemon pointer::tests and http::identity_tests; adopt_tells_pane_bound_harnesses_that_the_pane_resolves_identity covers claude/omp/pi"
         },
         {
           "id": "AC5",

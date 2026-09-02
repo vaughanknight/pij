@@ -633,6 +633,36 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
     let reason = missing_identity.meta.expect("missing-identity reason");
     assert!(reason.contains("PIJ_SESSION_ID"), "{reason}");
     assert!(reason.contains("TMUX_PANE"), "{reason}");
+    let contradictory_identity = run_cli_with_env(
+        &dir,
+        &addr,
+        &["send", "--to", "pij-reader", "--body", "must not send"],
+        [("PIJ_SESSION_ID", "pij-sender"), ("TMUX_PANE", "%77")],
+    );
+    assert!(
+        !contradictory_identity.status.success(),
+        "an asserted id must not outrank the observable pane"
+    );
+    let contradiction: Envelope<serde_json::Value> =
+        serde_json::from_slice(&contradictory_identity.stdout).expect("identity refusal");
+    let reason = contradiction.meta.expect("identity refusal reason");
+    assert!(reason.contains("pij-sender"), "{reason}");
+    assert!(reason.contains("pij-reader"), "{reason}");
+    let contradictory_report = run_cli_with_env(
+        &dir,
+        &addr,
+        &["report", "now", "did", "next"],
+        [("PIJ_SESSION_ID", "pij-sender"), ("TMUX_PANE", "%77")],
+    );
+    assert!(
+        !contradictory_report.status.success(),
+        "report must share the same anti-impersonation ladder"
+    );
+    let contradiction: Envelope<serde_json::Value> =
+        serde_json::from_slice(&contradictory_report.stdout).expect("report identity refusal");
+    let reason = contradiction.meta.expect("report identity refusal reason");
+    assert!(reason.contains("pij-sender"), "{reason}");
+    assert!(reason.contains("pij-reader"), "{reason}");
 
     let sent = run_cli_with_env(
         &dir,
@@ -679,12 +709,7 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
     assert!(reason.contains("pij-sender"), "{reason}");
     assert!(reason.contains("pij-reader"), "{reason}");
 
-    let peeked = run_cli_with_env(
-        &dir,
-        &addr,
-        &["inbox", "--seat", "pij-reader", "--peek"],
-        [("PIJ_SESSION_ID", "pij-sender")],
-    );
+    let peeked = run_cli(&dir, &addr, &["inbox", "--seat", "pij-reader", "--peek"]);
     assert!(
         peeked.status.success(),
         "peek: {}",
@@ -777,8 +802,9 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
         &addr,
         &["send", "--to", "pij-reader", "--body-file", "-"],
         stdin_body,
-        &[("PIJ_SESSION_ID", "pij-sender"), ("TMUX_PANE", "%wrong")],
+        &[("PIJ_SESSION_ID", "pij-sender"), ("TMUX_PANE", "%88")],
     );
+
     assert!(
         stdin_sent.status.success(),
         "stdin send: {}",

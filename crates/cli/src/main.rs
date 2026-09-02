@@ -258,9 +258,9 @@ enum Command {
     ///   pij-rs report blocked|question "<text>"
     ///   pij-rs report clear
     Report {
-        /// The reporting seat. Defaults to `PIJ_SESSION_ID`, which is where a
-        /// seat's own identity lives; it is a CLAIM the daemon checks against
-        /// its registry, never an identity the daemon takes on trust.
+        /// Assert the derived reporting seat. Omit to use the observable pane,
+        /// or PIJ_SESSION_ID when no pane exists; contradictions are refused.
+
         #[arg(long)]
         seat: Option<String>,
         /// The report arguments, exactly as they would be typed.
@@ -617,27 +617,44 @@ async fn run(cli: Cli) -> ExitCode {
             emit(&response, cli.json)
         }
         Command::Inbox { seat, wait, peek } => {
-            let acting = match resolve_command_seat(&client, "pij inbox", None).await {
-                Ok(seat) => seat,
-                Err(error) => return emit(&setup_refusal::<Value>("pij inbox", error), cli.json),
+            let explicit = seat.map(SeatId::from);
+            let target = if peek {
+                match explicit {
+                    Some(target) => target,
+                    None => match resolve_command_seat(&client, "pij inbox", None).await {
+                        Ok(seat) => seat,
+                        Err(error) => {
+                            return emit(&setup_refusal::<Value>("pij inbox", error), cli.json);
+                        }
+                    },
+                }
+            } else {
+                let acting = match resolve_command_seat(&client, "pij inbox", None).await {
+                    Ok(seat) => seat,
+                    Err(error) => {
+                        return emit(&setup_refusal::<Value>("pij inbox", error), cli.json);
+                    }
+                };
+                let target = explicit.unwrap_or_else(|| acting.clone());
+                if target != acting {
+                    return emit(
+                        &setup_refusal::<Value>(
+                            "pij inbox",
+                            PijError::Adapter {
+                                adapter: "pij inbox".to_string(),
+                                message: format!(
+                                    "the acting seat is `{acting}` but --seat names `{target}`; destructive inbox reads cannot claim or acknowledge another seat's mail. Use --peek for a non-destructive cross-seat read"
+                                ),
+                            },
+                        ),
+                        cli.json,
+                    );
+                }
+                target
             };
-            let target = seat.map_or_else(|| acting.clone(), SeatId::from);
-            if !peek && target != acting {
-                return emit(
-                    &setup_refusal::<Value>(
-                        "pij inbox",
-                        PijError::Adapter {
-                            adapter: "pij inbox".to_string(),
-                            message: format!(
-                                "the acting seat is `{acting}` but --seat names `{target}`; destructive inbox reads cannot claim or acknowledge another seat's mail. Use --peek for a non-destructive cross-seat read"
-                            ),
-                        },
-                    ),
-                    cli.json,
-                );
-            }
             emit(&client.inbox(&target, wait, peek).await, cli.json)
         }
+
         Command::Report { seat, args } => {
             let acting = match resolve_command_seat(&client, "pij report", seat.as_deref()).await {
                 Ok(seat) => seat,

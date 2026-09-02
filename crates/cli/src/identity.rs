@@ -26,29 +26,25 @@ impl fmt::Display for NamedRefusal {
 
 /// Resolve the acting seat through the daemon's single identity authority.
 ///
-/// A non-empty `PIJ_SESSION_ID` wins over the pane. Otherwise the pane is sent
-/// to `/v1/whoami` for derivation. No local roster scan or one-seat guess exists.
+/// Send every available identity input together. The daemon treats an observable
+/// pane as authoritative and refuses a contradictory `PIJ_SESSION_ID`; without
+/// a pane, the asserted environment id remains the only available evidence.
 pub(crate) async fn resolve_acting_seat(
     env: Option<OsString>,
     pane: Option<OsString>,
     client: &DaemonClient,
 ) -> Result<SeatId, NamedRefusal> {
-    let env = decode("PIJ_SESSION_ID", env)?;
+    let seat = decode("PIJ_SESSION_ID", env)?;
     let pane = decode("TMUX_PANE", pane)?;
-    let request = if let Some(seat) = env {
-        IdentityRequest {
-            seat: Some(seat),
-            ..IdentityRequest::default()
-        }
-    } else if let Some(pane) = pane {
-        IdentityRequest {
-            pane: Some(pane),
-            ..IdentityRequest::default()
-        }
-    } else {
+    if seat.is_none() && pane.is_none() {
         return Err(NamedRefusal::new(
             "no acting seat: set PIJ_SESSION_ID or run from a registered tmux pane (TMUX_PANE); --from/--seat may assert agreement but cannot create identity",
         ));
+    }
+    let request = IdentityRequest {
+        seat,
+        pane,
+        ..IdentityRequest::default()
     };
 
     let response = client.whoami(&request).await;

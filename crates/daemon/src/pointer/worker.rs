@@ -1082,7 +1082,6 @@ mod tests {
 
         fixture.worker.drain_once().await.expect("typed delivery");
 
-
         assert!(
             fixture.tmux.calls().iter().any(|call| call
                 == "submit:%legacy:[pij-rs from pij-sender]\nlegacy history cannot hide this body\n[/pij]"),

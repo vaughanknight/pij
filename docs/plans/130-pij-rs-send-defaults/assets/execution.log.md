@@ -6,8 +6,18 @@
 |---|---|---|
 | CLI identity/body defaults | Added daemon-authoritative `identity::resolve_acting_seat`; optional `--from`/`--msg-id`; UUIDv7 receipt; `--body`/path/stdin selection; pane-derived report/inbox | `cargo test -p pij-cli` — 51 passed before final receipt assertion; focused shipped-CLI test green after it |
 | Inbox safety | Destructive reads require `--seat` to equal the derived actor; `--peek` is the only cross-seat form and does not claim or ack | shipped-CLI integration; fake and SQLite queue contracts; live OMP→Claude peek then Claude read of the same msg id |
-| Notice text | Pointer/final pointer says `pij inbox check`; non-shell adopt output names pane resolution instead of export | daemon pointer and identity suites green |
+| Notice text | Pointer/final pointer says `pij inbox check`; every pane-bound harness, including omp/pi, gets pane-derived identity guidance; export advice is paneless-only | daemon pointer and identity suites green |
 | Queue observation | Added `Queue::peek` across SQLite/fake/test adapters; exposes the oldest pending or claimed live row without mutation | fake/SQLite shared contract; live pointer-worker race witness |
+
+## Review remediation
+
+| Finding | Resolution | Evidence |
+|---|---|---|
+| F1 — contradictory environment id outranked the pane | CLI now sends both inputs to the daemon's single identity ladder; the pane remains authoritative and contradictions are refused for send/report | focused shipped-CLI test failed before the fix at `crates/cli/tests/spawn.rs:642`, then passed after the fix |
+| F2 — explicit operator peek required an acting identity | `pij-rs inbox --seat <id> --peek` uses its explicit observation target without resolving an actor; destructive and implicit reads still derive identity | shipped-CLI test invokes explicit peek with both identity variables removed |
+| F3 — service/HTTP peek contracts unwitnessed | Added service guard/preservation coverage and HTTP evidence-free peek coverage | focused `pij-daemon` tests passed |
+| F4 — OMP/Pi received stale export advice | Applied weasel ruling 2026-09-02: every pane-bound harness gets pane guidance; export advice is paneless-only | adopt test covers claude/copilot/codex/omp/pi |
+
 
 ## Verification
 
@@ -28,5 +38,5 @@
 |---|---|
 | Noteworthy | A useful inbox peek must expose a live delivery while the pointer worker temporarily owns its queue claim; pending-only inspection produced a false empty view. The shared queue contract now pins pending and claimed visibility. |
 | Noteworthy | Live coordination initially used zero-byte `touch` markers with `-s`; the test harness correctly refused to call those ready. Final proof used non-empty markers and records only the successful run. |
-| Deferred | Plan 128 rebase remains prime-controlled; no rebase performed. |
+| Noteworthy | Rebased onto main `ac830c0e`; preserved plan 128 harness-session registration while resolving response-text and pointer-test conflicts. |
 | Deferred | req-0044 baseline failures remain excluded by prime ruling and are not attributed to plan 130. |
