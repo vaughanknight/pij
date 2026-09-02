@@ -1,5 +1,7 @@
 {
-  "dd": { "schema": "builder/review" },
+  "dd": {
+    "schema": "builder/review"
+  },
   "sections": [
     {
       "name": "meta",
@@ -23,6 +25,14 @@
           "address": "docs/plans/130-pij-rs-send-defaults/assets/execution.log.md:46",
           "finding": "Observation against the receipt, NOT a defect in the plan, and explicitly not a blocker. The log records `harness checks` passing all eight sensors. I ran it three times and got 8/8 only on the third: run 1 failed `smoke`, run 2 failed `test`, run 3 passed all eight with `status: ok`. A DIFFERENT sensor failed each time, which is the signature of a flaky, load-sensitive gate rather than a deterministic regression — and both flaky sensors are on the TypeScript/tmux surface, while the Rust workspace suite was deterministic at 593/593 across every run I made. So the receipt is reproducible and I do not dispute it; what I am recording is that it is reproducible INTERMITTENTLY, which makes it weaker evidence than its one-line form suggests.",
           "note": "Attribution, stated carefully because it would be easy to mis-hang this on plan 130. Nothing in the three commits under review touches the smoke driver or the vitest surface — the code changes are confined to crates/cli and crates/daemon, and f0a9a354 edits only packet doctrine paths. The failing sensors exercise tmux-driven end-to-end scenarios and the TS suite, neither of which this plan modifies. This machine is also under known heavy load (many live worktrees and a busy tmux server), which is a sufficient explanation on its own and one I can neither confirm nor exclude from inside this review.\n\nSo: no action asked of the PM for plan 130. Recorded for prime as a harness-reliability note, because a gate that reports green only two runs in three is exactly the kind of receipt that later gets quoted as proof of something it did not establish. If it is worth anything, the cheap follow-up is to run `harness checks` a few times on an idle machine and see whether the flake survives; that is a harness concern, not a req-0041 one.\n\nI am NOT asking for AC5 to be unchecked. AC5's Rust half I reproduced exactly and deterministically."
+        },
+        {
+          "id": "N2",
+          "kind": "question",
+          "severity": "NIT",
+          "address": "crates/cli/src/main.rs:355-395",
+          "finding": "Regression risk is LOW after probing the async identity-aware sidecar request seam and confirming non-Telegram actions remain identity-free.",
+          "note": "LOW, after probing the seams these commits actually disturbed rather than asserting it. (1) The riskiest structural change is that `SidecarAction::request` became async and now takes a `&DaemonClient`, so EVERY sidecar action routes through a function that can refuse on identity — but only the Telegram arm resolves. I probed the blast radius directly rather than reasoning about it: `sidecar chore-run --target <path>` with BOTH PIJ_SESSION_ID and TMUX_PANE unset still returns `ok — {\"job_id\":3,…}`, so the identity requirement did not leak onto the non-Telegram arms. (2) Telegram itself does now require a resolvable acting seat where it previously accepted any asserted `--from`; that is the intended posture and its reach is bounded — there is no in-repo caller of `pij-rs sidecar telegram` outside the CLI and its own tests, and the live operator channel runs the legacy `pij send pij-telegram` route, which these commits do not touch. The new paneless register guidance mitigates the one population (paneless seats) that now needs an id it might not have had. (3) I considered whether embedding the POSIX gesture `env -u PIJ_SESSION_ID` in a daemon response is a portability regression, given this repo runs a windows-compat sensor, and DISMISSED it on the logic: that branch fires only when an observable pane contradicts an asserted id, a pane implies tmux, and tmux implies a POSIX shell — so the advice is always executable wherever it can appear. (4) `register` success now carries meta where it previously carried none; no consumer asserts its absence and the TypeScript suite passes. (5) The whole of AC1-AC6 remains green under my own 593/593 run, so nothing round 2 confirmed was regressed by round 3."
         }
       ]
     },
@@ -55,7 +65,7 @@
         },
         {
           "id": "v5",
-          "finding": "round-3 regression risk",
+          "finding": "round-3.dd.json#findings/N2",
           "resolution": "confirmed",
           "rationale": "LOW, after probing the seams these commits actually disturbed rather than asserting it. (1) The riskiest structural change is that `SidecarAction::request` became async and now takes a `&DaemonClient`, so EVERY sidecar action routes through a function that can refuse on identity — but only the Telegram arm resolves. I probed the blast radius directly rather than reasoning about it: `sidecar chore-run --target <path>` with BOTH PIJ_SESSION_ID and TMUX_PANE unset still returns `ok — {\"job_id\":3,…}`, so the identity requirement did not leak onto the non-Telegram arms. (2) Telegram itself does now require a resolvable acting seat where it previously accepted any asserted `--from`; that is the intended posture and its reach is bounded — there is no in-repo caller of `pij-rs sidecar telegram` outside the CLI and its own tests, and the live operator channel runs the legacy `pij send pij-telegram` route, which these commits do not touch. The new paneless register guidance mitigates the one population (paneless seats) that now needs an id it might not have had. (3) I considered whether embedding the POSIX gesture `env -u PIJ_SESSION_ID` in a daemon response is a portability regression, given this repo runs a windows-compat sensor, and DISMISSED it on the logic: that branch fires only when an observable pane contradicts an asserted id, a pane implies tmux, and tmux implies a POSIX shell — so the advice is always executable wherever it can appear. (4) `register` success now carries meta where it previously carried none; no consumer asserts its absence and the TypeScript suite passes. (5) The whole of AC1-AC6 remains green under my own 593/593 run, so nothing round 2 confirmed was regressed by round 3."
         }
