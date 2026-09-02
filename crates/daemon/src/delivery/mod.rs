@@ -5,7 +5,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use pij_core::delivery::{
-    DeliveryRoute, DeliveryRung, QueueReason, delivery_kind, route, select_rung,
+    DeliveryRoute, DeliveryRung, MAX_TYPED_FRAME_BYTES, QueueReason, delivery_kind, route,
+    select_rung,
 };
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
@@ -284,22 +285,27 @@ impl DeliveryService {
                             .pane
                             .as_deref()
                             .expect("typed-body rung requires a pane");
-                        match self
-                            .queue
-                            .note_delivered(&to, &msg.msg_id, DeliveryOrigin::TypedToPane)
-                            .await?
-                        {
-                            Some(origin) => {
-                                publish_to_recipient = false;
-                                DeliveryOutcome::Delivered { origin }
+                        let framed =
+                            frame_message(&msg.from, msg.from_machine.as_deref(), &msg.body);
+                        if framed.len() > MAX_TYPED_FRAME_BYTES {
+                            match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
+                                DeliveryEnqueue::Queued(_) => DeliveryOutcome::Queued,
+                                DeliveryEnqueue::AlreadyDelivered(origin) => {
+                                    publish_to_recipient = false;
+                                    DeliveryOutcome::Delivered { origin }
+                                }
                             }
-                            None => {
-                                let framed = frame_message(
-                                    &msg.from,
-                                    msg.from_machine.as_deref(),
-                                    &msg.body,
-                                );
-                                match self
+                        } else {
+                            match self
+                                .queue
+                                .note_delivered(&to, &msg.msg_id, DeliveryOrigin::TypedToPane)
+                                .await?
+                            {
+                                Some(origin) => {
+                                    publish_to_recipient = false;
+                                    DeliveryOutcome::Delivered { origin }
+                                }
+                                None => match self
                                     .interaction
                                     .submit_with_owned_input(pane, &framed)
                                     .await
@@ -316,7 +322,7 @@ impl DeliveryService {
                                         self.queue.forget_delivered(&to, &msg.msg_id).await?;
                                         return Err(error);
                                     }
-                                }
+                                },
                             }
                         }
                     }
@@ -648,9 +654,10 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use pij_core::delivery::delivery_kind;
+    use pij_core::delivery::{MAX_TYPED_FRAME_BYTES, delivery_kind};
     use pij_core::error::PijError;
     use pij_core::events::EventFilter;
+    use pij_core::framing::frame_message;
     use pij_core::model::Pane;
     use pij_core::model::{
         DeliveryOrigin, DeliveryOutcome, Event, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId,
@@ -671,6 +678,11 @@ mod tests {
     use crate::pointer::{POINTER_PARKED_EVENT_KIND, POINTER_UNPARKED_EVENT_KIND};
 
     const INBOX_CLAIM_WIRE: &str = include_str!("../../tests/fixtures/inbox-claim.wire.json");
+    fn body_for_frame_size(from: &SeatId, bytes: usize) -> String {
+        let overhead = frame_message(from, None, "").len();
+        assert!(bytes >= overhead);
+        "x".repeat(bytes - overhead)
+    }
 
     struct Fixture {
         service: Arc<DeliveryService>,
@@ -955,6 +967,44 @@ mod tests {
         assert_eq!(outcome["transport"], "tmux");
     }
 
+    #[tokio::test]
+    async fn oversized_direct_frame_queues_without_typed_delivery() {
+        let fixture = fixture_with_gate(
+            FakeTransport::unreachable(),
+            FakeTmux::new().with_clear_composer("%oversize-direct"),
+        );
+        fixture.interaction.observe_composer("%oversize-direct", "");
+        let mut recipient = bound("pij-oversize-direct");
+        recipient.pane = Some("%oversize-direct".to_string());
+        register(&fixture, recipient.clone()).await;
+        let from = SeatId::from("pij-from");
+        let body = body_for_frame_size(&from, MAX_TYPED_FRAME_BYTES + 1);
+
+        let receipt = fixture
+            .service
+            .send(from, recipient.id.clone(), &body)
+            .await
+            .expect("oversized direct frame queues");
+        assert_eq!(receipt.outcome, DeliveryOutcome::Queued);
+        assert_eq!(fixture.queue.live_len(), 1);
+        assert!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .all(|call| !call.starts_with("stage_submit:") && !call.starts_with("submit:")),
+            "oversized frame must not reach pane typing"
+        );
+        let claimed = fixture
+            .queue
+            .claim(&[delivery_kind(&recipient.id)], "reader")
+            .await
+            .expect("claim oversized direct body")
+            .expect("oversized direct body remains pullable");
+        let queued: Msg = serde_json::from_str(&claimed.1.payload).expect("queued message");
+        assert_eq!(queued.body, body);
+    }
+
     /// A pane presenting a composer with CONTENT, cursor parked at its end.
     ///
     /// The box row is the OMP layout: `first_column` lands after the corner, the
@@ -970,6 +1020,7 @@ mod tests {
                 cursor_x: Some(11),
                 cursor_y: Some(0),
             })
+            .with_attached_tap(pane)
             .with_standing_capture(
                 "\u{2570}\u{2500}\u{2500}\u{2500}\u{2500} hello \u{2500}\u{256f}",
             )

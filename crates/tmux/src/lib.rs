@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use pij_core::delivery::MAX_TYPED_FRAME_BYTES;
 use pij_core::error::{PijError, Result};
 use pij_core::model::{Pane, PaneProcess};
 use pij_core::ports::{LaunchCommand, STAGED_SUBMIT_RECOVERY, StagedSubmit, TmuxPort};
@@ -214,13 +215,6 @@ impl TmuxAdapter {
             );
             return Err(error);
         }
-        if let Err(error) = self.require_staged(staged) {
-            let _ = self.run(
-                "delete unclaimed submit buffer",
-                &os_args(["delete-buffer", "-b", &staged.token]),
-            );
-            return Err(error);
-        }
         Ok(())
     }
 
@@ -252,6 +246,7 @@ impl TmuxAdapter {
                 staged.pane, SUBMIT_STAGE_LIMIT
             )));
         }
+        self.require_staged(staged)?;
         Ok(())
     }
 
@@ -574,7 +569,10 @@ impl TmuxAdapter {
                done; \
              elif [ \"$owner\" = {} ]; then \
                while [ \"$owner\" = {} ]; do \
-                 if {clear_completed}; then break; fi; \
+                 if {tmux} select-pane -e -t {pane}; then \
+                   {tmux} select-pane -T {title} -t {pane}; \
+                   if {clear_completed}; then break; fi; \
+                 fi; \
                  sleep 0.05; owner={read_owner}; \
                done; \
              fi",
@@ -689,11 +687,20 @@ impl TmuxPort for TmuxAdapter {
     }
 
     async fn stage_submit(&self, staged: &mut StagedSubmit, text: &str) -> Result<()> {
-        if let Some((offset, control)) = unsupported_terminal_control(text) {
-            let error = self.error(format!(
+        let refusal = if text.len() > MAX_TYPED_FRAME_BYTES {
+            Some(self.error(format!(
+                "framed pane body is {} bytes; maximum supported pane transaction is {MAX_TYPED_FRAME_BYTES} bytes — body was not typed",
+                text.len()
+            )))
+        } else if let Some((offset, control)) = unsupported_terminal_control(text) {
+            Some(self.error(format!(
                 "cannot type terminal control U+{:04X} at byte {offset} losslessly — use socket delivery or keep the body queued for inbox pull",
                 u32::from(control)
-            ));
+            )))
+        } else {
+            None
+        };
+        if let Some(error) = refusal {
             return match self.abort_submit(staged).await {
                 Ok(()) => Err(error),
                 Err(recovery) => {
@@ -743,26 +750,48 @@ impl TmuxPort for TmuxAdapter {
             };
         }
 
+        // Transition ownership BEFORE Enter. If this write fails, Enter is never
+        // attempted. After Enter succeeds, no cleanup operation may relabel the
+        // delivered turn as failure and cause a duplicate retry.
         let completed = format!("{}-committed", staged.token);
         let target = shell_quote(&staged.pane);
-        let completed_value = shell_quote(&completed);
-        let commit = format!(
-            "select-pane -e -t {target} ; send-keys -t {target} Enter ; set-option -p -t {target} {SUBMIT_OWNER_OPTION} {completed_value}"
+        let transition = format!(
+            "set-option -p -t {target} {SUBMIT_OWNER_OPTION} {}",
+            shell_quote(&completed)
         );
-        if let Err(error) =
-            self.run_if_submit_token(&staged.pane, &staged.token, "commit staged submit", &commit)
-        {
-            return match self.restore_staged_input(staged) {
+        if let Err(error) = self.run_if_submit_token(
+            &staged.pane,
+            &staged.token,
+            "authorize staged submit commit",
+            &transition,
+        ) {
+            return match self.abort_staged_inner(staged) {
                 Ok(()) => Err(error),
                 Err(recovery) => Err(self.error(format!(
-                    "{error}; failed to restore pane input after commit error: {recovery}"
+                    "{error}; failed to restore pane input after commit authorization error: {recovery}"
                 ))),
             };
         }
-        // A successful conditional command means tmux accepted Enter and then
-        // wrote the completed token. That is the delivery receipt. Cleanup is
-        // best-effort from this point: reporting its failure as delivery failure
-        // would retry a turn the recipient already received.
+
+        let enter = format!("select-pane -e -t {target} ; send-keys -t {target} Enter");
+        if let Err(error) = self.run_if_submit_token(
+            &staged.pane,
+            &completed,
+            "submit authorized staged body",
+            &enter,
+        ) {
+            let mut committing = staged.clone();
+            committing.token = completed;
+            return match self.abort_staged_inner(&committing) {
+                Ok(()) => Err(error),
+                Err(recovery) => Err(self.error(format!(
+                    "{error}; failed to restore pane input after Enter error: {recovery}"
+                ))),
+            };
+        }
+
+        // Enter is the delivery receipt. Marker/input cleanup is independently
+        // recoverable by the already-armed watchdog and cannot change outcome.
         let _ = self.restore_submit_token(&staged.pane, &completed);
         Ok(())
     }

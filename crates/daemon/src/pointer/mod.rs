@@ -22,6 +22,8 @@ pub const POINTER_PARKED_EVENT_KIND: &str = "delivery.pointer-parked";
 pub const POINTER_UNPARKED_EVENT_KIND: &str = "delivery.pointer-unparked";
 /// Event proving the narrow control-body pull exception was explained in-pane.
 pub const CONTROL_BODY_POINTER_EVENT_KIND: &str = "delivery.control-body-pointer";
+/// Event proving an oversized framed pane body was left for inbox pull.
+pub const OVERSIZE_BODY_POINTER_EVENT_KIND: &str = "delivery.oversize-body-pointer";
 
 /// Injected pointer cadence and seat-level announcement budget.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,6 +56,23 @@ pub(super) fn render_control_body_pointer(from: &SeatId, from_machine: Option<&s
         from,
         from_machine,
         "message contains terminal control bytes that cannot be typed safely — body remains queued; run: pij inbox",
+    )
+}
+
+/// Render the explicit refusal for a frame above the measured pane limit.
+#[must_use]
+pub(super) fn render_oversize_body_pointer(
+    from: &SeatId,
+    from_machine: Option<&str>,
+    frame_bytes: usize,
+    maximum: usize,
+) -> String {
+    frame_message(
+        from,
+        from_machine,
+        &format!(
+            "message frame is {frame_bytes} bytes; pane typing limit is {maximum} bytes — body remains queued; run: pij inbox"
+        ),
     )
 }
 

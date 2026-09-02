@@ -3,10 +3,13 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Barrier};
+use std::sync::mpsc;
+use std::sync::{Arc, Barrier, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use pij_core::model::Pane;
+use pij_core::delivery::MAX_TYPED_FRAME_BYTES;
+use pij_core::framing::frame_message;
+use pij_core::model::{Pane, SeatId};
 use pij_core::ports::TmuxPort;
 use pij_testkit::block_on;
 use pij_testkit::contract::{TmuxContractFixture, tmux_contract};
@@ -14,6 +17,16 @@ use pij_testkit::fakes::FakeTmux;
 use pij_tmux::{TmuxAdapter, tap_sink_path};
 
 static SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
+static TRANSACTION_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+fn framed_text_of_size(bytes: usize) -> String {
+    let sender = SeatId::from("pij-size-probe");
+    let overhead = frame_message(&sender, None, "").len();
+    assert!(bytes >= overhead);
+    let framed = frame_message(&sender, None, &"x".repeat(bytes - overhead));
+    assert_eq!(framed.len(), bytes);
+    framed
+}
 
 struct Fixture {
     pane: Pane,
@@ -118,6 +131,7 @@ fn missing_tmux_names_the_installation_fix() {
 
 #[test]
 fn real_tmux_honours_the_shared_contract_inside_its_own_session() {
+    let _serial = transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("contract") else {
         return;
     };
@@ -166,7 +180,8 @@ fn capture_proves_zero_and_more_than_the_pane_contains() {
 }
 
 #[tokio::test]
-async fn submit_pastes_a_3000_byte_multiline_body_intact() {
+async fn submit_pastes_maximum_supported_body_intact() {
+    let _serial = transaction_test_guard();
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock after epoch")
@@ -175,17 +190,17 @@ async fn submit_pastes_a_3000_byte_multiline_body_intact() {
         "pij-rs-submit-large-{}-{nonce}.bin",
         std::process::id()
     ));
-    let body = format!("BEGIN-S122\n{}\nEND-S122", "0123456789abcdef".repeat(190));
-    let mut expected = Vec::with_capacity(body.len() + 13);
+    let framed = framed_text_of_size(MAX_TYPED_FRAME_BYTES);
+    let mut expected = Vec::with_capacity(framed.len() + 13);
     expected.extend_from_slice(b"\x1b[200~");
-    expected.extend_from_slice(body.as_bytes());
+    expected.extend_from_slice(framed.as_bytes());
     expected.extend_from_slice(b"\x1b[201~\r");
     let command = format!(
         "stty raw -echo; printf '\\033[?2004h'; dd bs=1 count={} of={} 2>/dev/null; sleep 10",
         expected.len(),
         output_path.display()
     );
-    let Some(session) = TestSession::start_or_skip_with_command("submit-large", &command) else {
+    let Some(session) = TestSession::start_or_skip_with_command("submit-max", &command) else {
         return;
     };
     let tmux = TmuxAdapter::for_server(&session.server, &session.tap_root);
@@ -198,7 +213,7 @@ async fn submit_pastes_a_3000_byte_multiline_body_intact() {
         .expect("isolated session pane");
     std::thread::sleep(Duration::from_millis(100));
 
-    tmux.submit(&pane.id, &body)
+    tmux.submit(&pane.id, &framed)
         .await
         .expect("submit large body");
 
@@ -223,7 +238,48 @@ async fn submit_pastes_a_3000_byte_multiline_body_intact() {
 }
 
 #[tokio::test]
+async fn submit_refuses_one_byte_above_supported_maximum_without_writing() {
+    let _serial = transaction_test_guard();
+    let Some(session) = TestSession::start_or_skip("submit-over-max") else {
+        return;
+    };
+    let tmux = TmuxAdapter::for_server(&session.server, &session.tap_root);
+    let pane = tmux
+        .list_panes()
+        .await
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    let before = tmux
+        .capture(&pane.id, u32::MAX)
+        .await
+        .expect("capture before refusal");
+    let error = tmux
+        .submit(&pane.id, &framed_text_of_size(MAX_TYPED_FRAME_BYTES + 1))
+        .await
+        .expect_err("one byte above the supported domain must refuse");
+    assert!(
+        error.to_string().contains("8193 bytes")
+            && error
+                .to_string()
+                .contains("maximum supported pane transaction is 8192 bytes"),
+        "{error}"
+    );
+    assert!(!pane_input_off(&session, &pane.id));
+    assert!(submit_marker(&session, &pane.id).is_empty());
+    assert_eq!(
+        tmux.capture(&pane.id, u32::MAX)
+            .await
+            .expect("capture after refusal"),
+        before,
+        "oversize refusal must not type a prefix"
+    );
+}
+
+#[tokio::test]
 async fn submit_rejects_bracket_terminator_before_touching_real_pane() {
+    let _serial = transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("control-body") else {
         return;
     };
@@ -259,6 +315,7 @@ async fn submit_rejects_bracket_terminator_before_touching_real_pane() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn staged_submit_excludes_human_input_mid_body_and_before_enter() {
+    let _serial = transaction_test_guard();
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock after epoch")
@@ -324,6 +381,7 @@ async fn staged_submit_excludes_human_input_mid_body_and_before_enter() {
 
 #[tokio::test]
 async fn abort_leaves_recovery_notice_unsent_and_restores_input() {
+    let _serial = transaction_test_guard();
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock after epoch")
@@ -380,8 +438,27 @@ async fn abort_leaves_recovery_notice_unsent_and_restores_input() {
 }
 
 #[tokio::test]
-async fn stage_deadline_aborts_and_restores_input() {
-    let Some(session) = TestSession::start_or_skip("submit-deadline") else {
+async fn dropped_staged_submit_restores_input_without_enter() {
+    let _serial = transaction_test_guard();
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let output_path = std::env::temp_dir().join(format!(
+        "pij-rs-submit-drop-{}-{nonce}.bin",
+        std::process::id()
+    ));
+    let body = "DROPPED-WITHOUT-COMMIT";
+    let mut expected = Vec::new();
+    expected.extend_from_slice(b"\x1b[200~");
+    expected.extend_from_slice(body.as_bytes());
+    expected.extend_from_slice(b"\x1b[201~");
+    let command = format!(
+        "stty raw -echo; dd bs=1 count={} of={} 2>/dev/null; sleep 5",
+        expected.len(),
+        output_path.display()
+    );
+    let Some(session) = TestSession::start_or_skip_with_command("submit-drop", &command) else {
         return;
     };
     let tmux = TmuxAdapter::for_server(&session.server, &session.tap_root);
@@ -392,7 +469,51 @@ async fn stage_deadline_aborts_and_restores_input() {
         .into_iter()
         .next()
         .expect("isolated session pane");
-    let body = "x".repeat(200_000);
+    let mut staged = tmux
+        .acquire_submit(&pane.id)
+        .await
+        .expect("acquire pane input");
+    tmux.stage_submit(&mut staged, body)
+        .await
+        .expect("stage body");
+    assert!(pane_input_off(&session, &pane.id));
+    drop(staged);
+
+    wait_for_pane_input(&session, &pane.id, false, Duration::from_secs(3));
+    wait_for_submit_marker_clear(&session, &pane.id, Duration::from_secs(1));
+    let observed = wait_for_file(&output_path, expected.len(), Duration::from_secs(3));
+    assert_eq!(observed, expected);
+    assert_ne!(observed.last(), Some(&b'\r'), "drop must never press Enter");
+    let title = session.run(["display-message", "-p", "-t", &pane.id, "#{pane_title}"]);
+    assert!(
+        String::from_utf8_lossy(&title.stdout).contains("PIJ STAGED UNSENT"),
+        "watchdog must expose recovery guidance for dropped staged text"
+    );
+    fs::remove_file(output_path).expect("remove drop capture");
+}
+
+#[tokio::test]
+async fn stage_deadline_aborts_and_restores_input() {
+    let _serial = transaction_test_guard();
+    let Some(session) = TestSession::start_or_skip("submit-deadline") else {
+        return;
+    };
+    fs::create_dir_all(&session.tap_root).expect("create deadline fixture directory");
+    let wrapper = session.tap_root.join("tmux-deadline-wrapper");
+    let script = format!(
+        "#!/bin/sh\ncase \"${{6-}}\" in *paste-buffer*) sleep 0.2 ;; esac\nexec tmux -L {} \"$@\"\n",
+        shell_literal(&session.server)
+    );
+    write_executable(&wrapper, &script);
+    let tmux = TmuxAdapter::with_binary(&wrapper, &session.tap_root);
+    let pane = tmux
+        .list_panes()
+        .await
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    let body = "x".repeat(MAX_TYPED_FRAME_BYTES);
     let mut staged = tmux
         .acquire_submit(&pane.id)
         .await
@@ -404,16 +525,7 @@ async fn stage_deadline_aborts_and_restores_input() {
 
     assert!(error.to_string().contains("exceeded 1s"), "{error}");
     wait_for_pane_input(&session, &pane.id, false, Duration::from_secs(1));
-    let marker = session.run([
-        "show-options",
-        "-p",
-        "-v",
-        "-q",
-        "-t",
-        &pane.id,
-        "@pij-submit-owner",
-    ]);
-    assert!(String::from_utf8_lossy(&marker.stdout).trim().is_empty());
+    wait_for_submit_marker_clear(&session, &pane.id, Duration::from_secs(1));
 }
 
 #[test]
@@ -432,6 +544,7 @@ fn stage_helper_process() {
 
 #[test]
 fn daemon_death_mid_stage_restores_input_within_bound() {
+    let _serial = transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("submit-death") else {
         return;
     };
@@ -486,6 +599,7 @@ fn acquire_watchdog_race_helper_process() {
 
 #[test]
 fn watchdog_expiry_before_disable_cannot_strand_input() {
+    let _serial = transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("submit-acquire-race") else {
         return;
     };
@@ -523,7 +637,7 @@ fn watchdog_expiry_before_disable_cannot_strand_input() {
         .env("PIJ_ACQUIRE_RACE_PANE", &pane.id)
         .spawn()
         .expect("spawn acquisition race helper");
-    wait_for_file(&ready, 1, Duration::from_secs(2));
+    wait_for_file(&ready, 1, Duration::from_secs(4));
     assert!(!pane_input_off(&session, &pane.id));
     assert!(submit_marker(&session, &pane.id).is_empty());
 
@@ -568,6 +682,7 @@ fn watchdog_expiry_before_disable_cannot_strand_input() {
 
 #[test]
 fn separate_adapters_cannot_both_reserve_one_pane() {
+    let _serial = transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("submit-adapter-cas") else {
         return;
     };
@@ -616,7 +731,67 @@ fn separate_adapters_cannot_both_reserve_one_pane() {
 }
 
 #[test]
+fn forced_old_read_write_interleaving_allows_only_one_adapter() {
+    let _serial = transaction_test_guard();
+    let Some(session) = TestSession::start_or_skip("submit-forced-adapter-cas") else {
+        return;
+    };
+    let pane = block_on(TmuxAdapter::for_server(&session.server, &session.tap_root).list_panes())
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    fs::create_dir_all(&session.tap_root).expect("create forced-CAS fixture directory");
+    let ready_a = session.tap_root.join("reservation-a-ready");
+    let ready_b = session.tap_root.join("reservation-b-ready");
+    let allow_b = session.tap_root.join("allow-reservation-b");
+    let wrapper_a = session.tap_root.join("tmux-reservation-a");
+    let wrapper_b = session.tap_root.join("tmux-reservation-b");
+    write_executable(
+        &wrapper_a,
+        &reservation_wrapper_script(&session.server, &ready_a, &ready_b, None),
+    );
+    write_executable(
+        &wrapper_b,
+        &reservation_wrapper_script(&session.server, &ready_b, &ready_a, Some(&allow_b)),
+    );
+
+    let (send, receive) = mpsc::channel();
+    let mut racers = Vec::new();
+    for (label, wrapper) in [("a", wrapper_a), ("b", wrapper_b)] {
+        let pane_id = pane.id.clone();
+        let tap_root = session.tap_root.clone();
+        let send = send.clone();
+        racers.push(std::thread::spawn(move || {
+            let result =
+                block_on(TmuxAdapter::with_binary(wrapper, tap_root).acquire_submit(&pane_id));
+            send.send((label, result))
+                .expect("send adapter race result");
+        }));
+    }
+    drop(send);
+    let (first_label, first) = receive
+        .recv_timeout(Duration::from_secs(2))
+        .expect("adapter A completes while B is held after its empty read");
+    assert_eq!(first_label, "a");
+    assert!(first.is_ok(), "adapter A must win: {first:?}");
+    fs::write(&allow_b, b"go").expect("release adapter B reservation");
+    let (second_label, second) = receive
+        .recv_timeout(Duration::from_secs(2))
+        .expect("adapter B returns after forced interleaving");
+    assert_eq!(second_label, "b");
+    assert!(second.is_err(), "atomic CAS must reject adapter B");
+    for racer in racers {
+        racer.join().expect("join forced adapter racer");
+    }
+    let winner = first.expect("checked adapter A winner");
+    block_on(TmuxAdapter::for_server(&session.server, &session.tap_root).abort_submit(&winner))
+        .expect("release forced-CAS winner");
+}
+
+#[test]
 fn ownership_tokens_do_not_recycle_across_adapters() {
+    let _serial = transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("submit-unique-token") else {
         return;
     };
@@ -638,6 +813,7 @@ fn ownership_tokens_do_not_recycle_across_adapters() {
 
 #[test]
 fn stale_watchdog_cannot_release_a_later_adapter_transaction() {
+    let _serial = transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("submit-stale-watchdog") else {
         return;
     };
@@ -705,7 +881,11 @@ fn submit_cas_process_helper_process() {
     let release = PathBuf::from(std::env::var("PIJ_CAS_RACE_RELEASE").expect("CAS helper release"));
     fs::write(ready, b"ready").expect("signal CAS helper readiness");
     wait_for_file(&start, 1, Duration::from_secs(3));
-    let tmux = TmuxAdapter::for_server(server, std::env::temp_dir());
+    let tmux = if let Ok(wrapper) = std::env::var("PIJ_CAS_RACE_WRAPPER") {
+        TmuxAdapter::with_binary(wrapper, std::env::temp_dir())
+    } else {
+        TmuxAdapter::for_server(server, std::env::temp_dir())
+    };
     match block_on(tmux.acquire_submit(&pane)) {
         Ok(staged) => {
             fs::write(&result, format!("ok:{}", staged.token)).expect("write CAS winner");
@@ -720,6 +900,7 @@ fn submit_cas_process_helper_process() {
 
 #[test]
 fn separate_processes_cannot_both_reserve_one_pane() {
+    let _serial = transaction_test_guard();
     let Some(session) = TestSession::start_or_skip("submit-process-cas") else {
         return;
     };
@@ -731,11 +912,30 @@ fn separate_processes_cannot_both_reserve_one_pane() {
     fs::create_dir_all(&session.tap_root).expect("create process CAS fixture directory");
     let start = session.tap_root.join("start");
     let release = session.tap_root.join("release");
+    let reservation_ready_a = session.tap_root.join("process-reservation-a-ready");
+    let reservation_ready_b = session.tap_root.join("process-reservation-b-ready");
+    let allow_b = session.tap_root.join("allow-process-reservation-b");
     let mut children = Vec::new();
     let mut result_paths = Vec::new();
     for index in 0..2 {
         let ready = session.tap_root.join(format!("ready-{index}"));
         let result = session.tap_root.join(format!("result-{index}"));
+        let wrapper = session
+            .tap_root
+            .join(format!("tmux-process-reservation-{index}"));
+        let (own_ready, other_ready, wait) = if index == 0 {
+            (&reservation_ready_a, &reservation_ready_b, None)
+        } else {
+            (
+                &reservation_ready_b,
+                &reservation_ready_a,
+                Some(allow_b.as_path()),
+            )
+        };
+        write_executable(
+            &wrapper,
+            &reservation_wrapper_script(&session.server, own_ready, other_ready, wait),
+        );
         let child = Command::new(std::env::current_exe().expect("current test binary"))
             .args([
                 "--exact",
@@ -748,22 +948,23 @@ fn separate_processes_cannot_both_reserve_one_pane() {
             .env("PIJ_CAS_RACE_START", &start)
             .env("PIJ_CAS_RACE_RESULT", &result)
             .env("PIJ_CAS_RACE_RELEASE", &release)
+            .env("PIJ_CAS_RACE_WRAPPER", &wrapper)
             .spawn()
             .expect("spawn process CAS racer");
         children.push(child);
         result_paths.push((ready, result));
     }
     for (ready, _) in &result_paths {
-        wait_for_file(ready, 1, Duration::from_secs(2));
+        wait_for_file(ready, 1, Duration::from_secs(4));
     }
     fs::write(&start, b"start").expect("release process CAS racers");
-    let results: Vec<String> = result_paths
-        .iter()
-        .map(|(_, result)| {
-            String::from_utf8(wait_for_file(result, 4, Duration::from_secs(2)))
-                .expect("UTF-8 CAS result")
-        })
-        .collect();
+    let first = String::from_utf8(wait_for_file(&result_paths[0].1, 4, Duration::from_secs(4)))
+        .expect("UTF-8 first CAS result");
+    assert!(first.starts_with("ok:"), "process A must win: {first}");
+    fs::write(&allow_b, b"go").expect("release process B reservation");
+    let second = String::from_utf8(wait_for_file(&result_paths[1].1, 4, Duration::from_secs(4)))
+        .expect("UTF-8 second CAS result");
+    let results = [first, second];
     assert_eq!(
         results
             .iter()
@@ -795,7 +996,79 @@ fn separate_processes_cannot_both_reserve_one_pane() {
 }
 
 #[tokio::test]
+async fn committed_marker_transition_failure_never_sends_enter() {
+    let _serial = transaction_test_guard();
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let output_path = std::env::temp_dir().join(format!(
+        "pij-rs-submit-marker-failure-{}-{nonce}.bin",
+        std::process::id()
+    ));
+    let body = "STAGED-NOT-SUBMITTED";
+    let mut expected = Vec::new();
+    expected.extend_from_slice(b"\x1b[200~");
+    expected.extend_from_slice(body.as_bytes());
+    expected.extend_from_slice(b"\x1b[201~");
+    let command = format!(
+        "stty raw -echo; dd bs=1 count={} of={} 2>/dev/null; sleep 5",
+        expected.len(),
+        output_path.display()
+    );
+    let Some(session) = TestSession::start_or_skip_with_command("submit-marker-error", &command)
+    else {
+        return;
+    };
+    let pane = TmuxAdapter::for_server(&session.server, &session.tap_root)
+        .list_panes()
+        .await
+        .expect("list isolated panes")
+        .into_iter()
+        .next()
+        .expect("isolated session pane");
+    fs::create_dir_all(&session.tap_root).expect("create marker fixture directory");
+    let wrapper = session.tap_root.join("tmux-marker-wrapper");
+    let failed = session.tap_root.join("marker-transition-failed");
+    let script = format!(
+        "#!/bin/sh\ncase \"${{6-}}\" in *-committed*) case \"${{6-}}\" in *'run-shell -b'*) ;; *) : > {}; exit 71 ;; esac ;; esac\nexec tmux -L {} \"$@\"\n",
+        shell_literal(&failed.to_string_lossy()),
+        shell_literal(&session.server)
+    );
+    fs::write(&wrapper, script).expect("write marker wrapper");
+    let mut permissions = fs::metadata(&wrapper)
+        .expect("marker wrapper metadata")
+        .permissions();
+    permissions.set_mode(0o700);
+    fs::set_permissions(&wrapper, permissions).expect("make marker wrapper executable");
+
+    let tmux = TmuxAdapter::with_binary(&wrapper, &session.tap_root);
+    let mut staged = tmux.acquire_submit(&pane.id).await.expect("acquire input");
+    tmux.stage_submit(&mut staged, body)
+        .await
+        .expect("stage body");
+    let error = tmux
+        .commit_submit(&staged)
+        .await
+        .expect_err("commit marker failure must refuse before Enter");
+    assert!(
+        error.to_string().contains("authorize staged submit commit"),
+        "{error}"
+    );
+    assert!(
+        failed.exists(),
+        "the committed-marker transition fault must execute"
+    );
+    assert!(!pane_input_off(&session, &pane.id));
+    assert!(submit_marker(&session, &pane.id).is_empty());
+    let observed = wait_for_file(&output_path, expected.len(), Duration::from_secs(3));
+    assert_eq!(observed, expected, "marker failure must emit no CR/Enter");
+    fs::remove_file(output_path).expect("remove marker-failure capture");
+}
+
+#[tokio::test]
 async fn post_enter_cleanup_failure_remains_success_and_submits_once() {
+    let _serial = transaction_test_guard();
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock after epoch")
@@ -829,7 +1102,7 @@ async fn post_enter_cleanup_failure_remains_success_and_submits_once() {
     let wrapper = session.tap_root.join("tmux-cleanup-wrapper");
     let failed_once = session.tap_root.join("cleanup-failed-once");
     let script = format!(
-        "#!/bin/sh\ncase \"${{5-}}\" in *-committed*) if [ ! -e {} ]; then : > {}; exit 71; fi ;; esac\nexec tmux -L {} \"$@\"\n",
+        "#!/bin/sh\ncase \"${{6-}}\" in *'set-option -p -u'*) case \"${{6-}}\" in *'run-shell -b'*) ;; *) if [ ! -e {} ]; then : > {}; exit 71; fi ;; esac ;; esac\nexec tmux -L {} \"$@\"\n",
         shell_literal(&failed_once.to_string_lossy()),
         shell_literal(&failed_once.to_string_lossy()),
         shell_literal(&session.server)
@@ -857,6 +1130,41 @@ async fn post_enter_cleanup_failure_remains_success_and_submits_once() {
     );
     wait_for_submit_marker_clear(&session, &pane.id, Duration::from_secs(3));
     fs::remove_file(output_path).expect("remove cleanup capture");
+}
+
+fn write_executable(path: &Path, content: &str) {
+    fs::write(path, content).expect("write executable fixture");
+    let mut permissions = fs::metadata(path)
+        .expect("executable fixture metadata")
+        .permissions();
+    permissions.set_mode(0o700);
+    fs::set_permissions(path, permissions).expect("make fixture executable");
+}
+
+fn transaction_test_guard() -> MutexGuard<'static, ()> {
+    TRANSACTION_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+fn reservation_wrapper_script(
+    server: &str,
+    own_ready: &Path,
+    other_ready: &Path,
+    wait_for_release: Option<&Path>,
+) -> String {
+    let release = wait_for_release.map_or_else(String::new, |path| {
+        format!(
+            "while [ ! -e {} ]; do sleep 0.01; done\n",
+            shell_literal(&path.to_string_lossy())
+        )
+    });
+    format!(
+        "#!/bin/sh\nreservation=0\ncase \"$1\" in\n  if-shell) case \"${{6-}}\" in *'run-shell -b'*'select-pane -d'*) reservation=1 ;; esac ;;\n  set-option) case \"$*\" in *'@pij-submit-owner'*) reservation=1 ;; esac ;;\nesac\nif [ \"$reservation\" = 1 ]; then\n  : > {}\n  while [ ! -e {} ]; do sleep 0.01; done\n  {}fi\nexec tmux -L {} \"$@\"\n",
+        shell_literal(&own_ready.to_string_lossy()),
+        shell_literal(&other_ready.to_string_lossy()),
+        release,
+        shell_literal(server)
+    )
 }
 
 fn signal_process(pid: u32, signal: &str) {

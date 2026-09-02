@@ -1,6 +1,6 @@
 # s122 review fixes
 
-Response to `review.c5c7fd2c.md` and authoritative re-review `review.047ea0ed.md` (`REQUEST_CHANGES`).
+Response to `review.c5c7fd2c.md`, `review.047ea0ed.md`, and `review.2701005f-second.md` (`REQUEST_CHANGES`).
 
 ## F001 — terminal-control bodies
 
@@ -31,13 +31,14 @@ Proofs:
 2. One tmux-server `if-shell` CAS requires an empty owner and enabled input, then queues marker reservation, watchdog arming, and input disable in the same server command list. Two adapters or processes cannot both acquire the pane.
 3. Every paste, abort, recovery, and commit transition is conditional on the same token. The watchdog first moves an active token to a private `-recovering` state, making every resumed stale write ineligible; it retries enable/clear without ever clearing a failed restoration.
 4. `PaneTransaction` owns the self-injection exemption through RAII. Success, error, abort, deadline, unwind, and object destruction all drop it.
-5. Commit conditionally enables input, sends one Enter, and transitions to `-committed`. Enter is the irreversible success boundary: cleanup failure stays a successful delivery while the already-armed watchdog clears the completed marker.
+5. Commit first transitions the matching owner to `-committed`; only that token may send Enter. A failed transition cannot send. Once Enter succeeds it is the irreversible delivery receipt: cleanup failure stays successful while the already-armed watchdog clears the completed marker.
 
 Bound and recovery:
 
 - Body staging aborts after **1 second**.
 - The tmux-server watchdog restores input after **2 seconds** even if the daemon panics, hangs, is SIGSTOPed, or is SIGKILLed. It leaves `PIJ STAGED UNSENT — inspect composer; Ctrl-C clears` visible for unsent staged text.
 - Every ownership mismatch or pre-Enter error has one postcondition: pane input enabled; no unmatched process may clear or mutate a later owner's transaction.
+- The supported pane-typing domain is an explicit **8,192-byte maximum for the complete `frame_message` output**. Reference-machine probes passed at 16,020 and 18,020 bytes but crossed the one-second bound at 19,012 and 20,020 bytes; 8 KiB is conservative and covers the 6,647-byte live witness. `submit_pastes_maximum_supported_body_intact` constructs and byte-checks an exact 8,192-byte frame; `submit_refuses_one_byte_above_supported_maximum_without_writing` proves an 8,193-byte frame writes nothing. `oversized_direct_frame_queues_without_typed_delivery` leaves direct delivery pullable; `oversized_worker_frame_is_named_and_immediately_pullable` emits one named 8,193/8,192 refusal and immediately re-exposes the intact row.
 
 ### Exit table
 
@@ -48,15 +49,17 @@ Bound and recovery:
 | success | clear | enabled | clear | `Submitted` | `staged_submit_excludes_human_input_mid_body_and_before_enter` |
 | stage fail | clear | enabled | clear | error; not submitted | exit-table injected stage error |
 | commit fail before Enter | clear | enabled | clear | error; not submitted | exit-table injected commit error |
+| commit-marker transition fail | clear | enabled | clear | error; no Enter | `committed_marker_transition_failure_never_sends_enter` |
 | cleanup fail after Enter | watchdog-cleared | enabled | clear | `Submitted`; never retried | `post_enter_cleanup_failure_remains_success_and_submits_once` |
 | abort | clear | enabled | clear | deferred; no Enter | `abort_leaves_recovery_notice_unsent_and_restores_input` |
+| drop without commit | watchdog-cleared | enabled | clear | no Enter | `dropped_staged_submit_restores_input_without_enter` |
 | deadline | clear | enabled | clear | error; no Enter | `stage_deadline_aborts_and_restores_input` |
 | daemon death | watchdog-cleared | enabled | process memory reclaimed | no delivery receipt | `daemon_death_mid_stage_restores_input_within_bound` |
 
 Concurrency and recovery proofs:
 
-- `separate_adapters_cannot_both_reserve_one_pane`: two independent adapters race one pane; exactly one CAS succeeds.
-- `separate_processes_cannot_both_reserve_one_pane`: two OS processes race the same real pane; exactly one CAS succeeds.
+- `forced_old_read_write_interleaving_allows_only_one_adapter`: forces both independent adapters past the old empty-marker read, then releases writes in order; the CAS admits one. Replacing the CAS with the old check-then-set failed red: `atomic CAS must reject adapter B`.
+- `separate_processes_cannot_both_reserve_one_pane`: forces the same old read/write schedule across two OS processes. The CAS admits one; the check-then-set mutation failed red with two winners (`left: 2`, `right: 1`).
 - `ownership_tokens_do_not_recycle_across_adapters` and `stale_watchdog_cannot_release_a_later_adapter_transaction`: distinct tokens are measured and adapter A's executed watchdog cannot change adapter B's marker or input.
 - `watchdog_expiry_before_disable_cannot_strand_input`: a wrapper pauses the daemon while tmux executes the atomic acquisition; the watchdog restores input and clears ownership before SIGCONT, and a real human key is accepted afterward.
 - `staged_submit_excludes_human_input_mid_body_and_before_enter`: real tmux sends repeated external `send-keys` during chunking and after bracket-close/before commit; captured PTY bytes contain only the automated body and one Enter.
@@ -64,10 +67,18 @@ Concurrency and recovery proofs:
 - `stage_deadline_aborts_and_restores_input` and `abort_leaves_recovery_notice_unsent_and_restores_input`: deadline and explicit abort restore input, clear ownership, retain visible recovery text when needed, and emit no Enter.
 - Live hand-run Copilot `pij-whole-zakalwe`, pane `%2299`: `S122-ACQUIRE-FIRST-HUMAN-DRAFT` remained the only composer text, send returned `queued`, body never appeared, `pane_input_off` returned to `0`.
 - Live extension-free OMP `pij-nervous-energy`, pane `%2297`, and hand-run Copilot `pij-imperial-rattlesnake`, pane `%2298`: full frames arrived through the owned transaction as one turn.
+- `committed_marker_transition_failure_never_sends_enter` forces the `-committed` transition itself to fail and captures staged bytes without CR; `post_enter_cleanup_failure_remains_success_and_submits_once` separately fails later cleanup and captures exactly one submitted turn.
+- Rust `Drop` clears only the in-memory self-injection exemption; async tmux restoration cannot depend on the dying process. The watchdog is armed in the same server-side CAS that disables input and owns drop/death recovery. `dropped_staged_submit_restores_input_without_enter` proves an ordinary uncommitted object drop restores input and marker with no Enter.
 
 ### Pre-existing current-main parser blast radius
 
 `origin/main` returned immediately from the first rounded `╰…╯` candidate even when its row did not contain the cursor. The fix scans onward only to positively identified prompt/footer composers; it no longer admits a generic blank rule region after a failed rounded candidate. `rounded_border_above_cursor_does_not_hide_later_composer` preserves the false-negative repair, while `decorative_blank_rule_region_is_not_an_idle_composer` proves unrelated blank decoration cannot authorize staging.
+
+### Live draft/tap authorization
+
+Pane submission always requires the freshly captured composer to be whitespace-only; draft age can relax socket policy but never `composer_idle`. Before that capture, `refresh_live_tap` drains the attached tap; unread bytes veto even when renderer lag still shows blank, and an absent tap is absence of evidence and vetoes. `owned_submit_hard_vetoes_stale_draft_and_fresh_tap` proves both arms and asserts no stage/submit call.
+
+The full-daemon hang introduced by the new absent-tap veto was a fixture defect, not a relaxed production rule. `drain_loop_survives_transient_delivery_ack_failure_and_processes_next_message` now arranges live taps for all three manual panes and completes. Post-r2 suites: real tmux 29 main tests plus 3 helper-process runs (`artifact://799`), harnesses 67 passed/2 ignored (`artifact://801`), daemon 216 passed (`artifact://796`).
 
 ### Control-body error exits
 

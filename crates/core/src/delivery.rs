@@ -7,6 +7,12 @@
 use crate::error::{PijError, Result};
 use crate::model::{Msg, SeatDescriptor, SeatId, SemanticState};
 
+/// Maximum complete framed message accepted by pane typing.
+///
+/// Socket transports remain unrestricted; an oversized socketless frame stays
+/// queued for a named inbox pull instead of racing a machine-speed timeout.
+pub const MAX_TYPED_FRAME_BYTES: usize = 8 * 1024;
+
 /// Why a message must be durably queued instead of attempted now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QueueReason {

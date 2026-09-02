@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use pij_core::delivery::{DeliveryRung, delivery_kind, select_rung};
+use pij_core::delivery::{DeliveryRung, MAX_TYPED_FRAME_BYTES, delivery_kind, select_rung};
 use pij_core::error::{PijError, Result};
 use pij_core::framing::frame_message;
 use pij_core::model::{
@@ -13,8 +13,8 @@ use pij_harnesses::{InteractionGate, StagedSubmission};
 use crate::events::EventBus;
 
 use super::{
-    CONTROL_BODY_POINTER_EVENT_KIND, PointerPolicy, render_control_body_pointer, retry_delay,
-    submit_command,
+    CONTROL_BODY_POINTER_EVENT_KIND, OVERSIZE_BODY_POINTER_EVENT_KIND, PointerPolicy,
+    render_control_body_pointer, render_oversize_body_pointer, retry_delay, submit_command,
 };
 
 /// How many times a held delivery is re-offered before the job is parked.
@@ -319,6 +319,24 @@ impl DrainWorker {
         msg: &Msg,
     ) -> Result<()> {
         let framed = frame_message(&msg.from, msg.from_machine.as_deref(), &msg.body);
+        if framed.len() > MAX_TYPED_FRAME_BYTES {
+            let pointer = render_oversize_body_pointer(
+                &msg.from,
+                msg.from_machine.as_deref(),
+                framed.len(),
+                MAX_TYPED_FRAME_BYTES,
+            );
+            return self
+                .announce_pull_claim(
+                    job_id,
+                    pane,
+                    msg,
+                    OVERSIZE_BODY_POINTER_EVENT_KIND,
+                    "frame-too-large",
+                    pointer,
+                )
+                .await;
+        }
         match self
             .interaction
             .submit_with_owned_input(pane, &framed)
@@ -344,13 +362,36 @@ impl DrainWorker {
         pane: &str,
         msg: &Msg,
     ) -> Result<()> {
+        let pointer = render_control_body_pointer(&msg.from, msg.from_machine.as_deref());
+        self.announce_pull_claim(
+            job_id,
+            pane,
+            msg,
+            CONTROL_BODY_POINTER_EVENT_KIND,
+            "terminal-control",
+            pointer,
+        )
+        .await
+    }
+
+    async fn announce_pull_claim(
+        &self,
+        job_id: JobId,
+        pane: &str,
+        msg: &Msg,
+        event_kind: &str,
+        reason: &str,
+        pointer: String,
+    ) -> Result<()> {
         let already_announced = self
-            .keep_control_body_pullable(job_id, self.control_body_pointer_announced(msg).await)
+            .keep_body_pullable(
+                job_id,
+                self.body_pointer_announced(msg, event_kind, reason).await,
+            )
             .await?;
         if already_announced {
             return self.release_body(job_id).await;
         }
-        let pointer = render_control_body_pointer(&msg.from, msg.from_machine.as_deref());
         match self
             .interaction
             .submit_with_owned_input(pane, &pointer)
@@ -360,20 +401,18 @@ impl DrainWorker {
                 let payload = serde_json::json!({
                     "msg_id": msg.msg_id,
                     "from": msg.from,
-                    "reason": "terminal-control",
+                    "reason": reason,
                 })
                 .to_string();
-                let at = self
-                    .keep_control_body_pullable(job_id, (self.clock)())
-                    .await?;
-                self.keep_control_body_pullable(
+                let at = self.keep_body_pullable(job_id, (self.clock)()).await?;
+                self.keep_body_pullable(
                     job_id,
                     self.event_bus
                         .publish(Event {
                             seq: None,
                             v: 1,
                             at,
-                            kind: CONTROL_BODY_POINTER_EVENT_KIND.to_string(),
+                            kind: event_kind.to_string(),
                             seat: Some(msg.to.clone()),
                             payload,
                         })
@@ -384,14 +423,19 @@ impl DrainWorker {
                 self.release_body(job_id).await
             }
             Ok(StagedSubmission::Deferred) => self.release_body(job_id).await,
-            Err(error) => self.keep_control_body_pullable(job_id, Err(error)).await,
+            Err(error) => self.keep_body_pullable(job_id, Err(error)).await,
         }
     }
 
-    async fn control_body_pointer_announced(&self, msg: &Msg) -> Result<bool> {
+    async fn body_pointer_announced(
+        &self,
+        msg: &Msg,
+        event_kind: &str,
+        reason: &str,
+    ) -> Result<bool> {
         let Some(event) = self
             .event_bus
-            .latest_matching_message(&msg.to, CONTROL_BODY_POINTER_EVENT_KIND, &msg.msg_id)
+            .latest_matching_message(&msg.to, event_kind, &msg.msg_id)
             .await?
         else {
             return Ok(false);
@@ -399,10 +443,9 @@ impl DrainWorker {
         let payload: serde_json::Value =
             serde_json::from_str(&event.payload).map_err(|error| PijError::Adapter {
                 adapter: "daemon/pointer".to_string(),
-                message: format!("invalid control-body pointer event: {error}"),
+                message: format!("invalid body-pull pointer event: {error}"),
             })?;
-        Ok(payload["msg_id"].as_str() == Some(&msg.msg_id)
-            && payload["reason"] == "terminal-control")
+        Ok(payload["msg_id"].as_str() == Some(&msg.msg_id) && payload["reason"] == reason)
     }
 
     async fn release_or_backoff(&self, job_id: JobId, job: &Job, msg: &Msg) -> Result<()> {
@@ -417,7 +460,7 @@ impl DrainWorker {
         self.queue.retry(job_id, Duration::ZERO).await
     }
 
-    async fn keep_control_body_pullable<T>(&self, job_id: JobId, result: Result<T>) -> Result<T> {
+    async fn keep_body_pullable<T>(&self, job_id: JobId, result: Result<T>) -> Result<T> {
         match result {
             Ok(value) => Ok(value),
             Err(error) => match self.release_body(job_id).await {
@@ -425,7 +468,7 @@ impl DrainWorker {
                 Err(release) => Err(PijError::Adapter {
                     adapter: "daemon/pointer".to_string(),
                     message: format!(
-                        "{error}; additionally failed to keep control body pullable: {release}"
+                        "{error}; additionally failed to keep body pullable: {release}"
                     ),
                 }),
             },
@@ -501,8 +544,9 @@ mod tests {
 
     use async_trait::async_trait;
     use pij_core::config::Config;
-    use pij_core::delivery::delivery_kind;
+    use pij_core::delivery::{MAX_TYPED_FRAME_BYTES, delivery_kind};
     use pij_core::error::PijError;
+    use pij_core::framing::frame_message;
     use pij_core::model::{
         DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, Pane,
         ProcIdentity, SeatDescriptor, SeatId,
@@ -515,7 +559,7 @@ mod tests {
     use tokio::sync::Notify;
 
     use super::{DrainWorker, EventBus, PointerPolicy, retry_delay};
-    use crate::pointer::POINTER_ANNOUNCED_EVENT_KIND;
+    use crate::pointer::{OVERSIZE_BODY_POINTER_EVENT_KIND, POINTER_ANNOUNCED_EVENT_KIND};
 
     const CADENCE: Duration = Duration::from_secs(90);
 
@@ -671,6 +715,8 @@ mod tests {
         assert_eq!(
             fixture.tmux.calls(),
             [
+                "pane_tap_sink:%7",
+                "drain_pane_tap:%7",
                 "list_panes",
                 "capture:%7:4294967295",
                 "user_typing:%7",
@@ -732,6 +778,55 @@ mod tests {
             serde_json::to_value(origin).expect("origin json"),
             "typed-to-pane",
             "typed delivery records its weaker, distinct evidence class"
+        );
+    }
+
+    #[tokio::test]
+    async fn oversized_worker_frame_is_named_and_immediately_pullable() {
+        let fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
+        register(&fixture, seat("pij-oversize", Some("%oversize"))).await;
+        fixture.interaction.observe_composer("%oversize", "");
+        let mut msg = message("pij-oversize", "", None);
+        let overhead = frame_message(&msg.from, msg.from_machine.as_deref(), "").len();
+        msg.body = "x".repeat(MAX_TYPED_FRAME_BYTES + 1 - overhead);
+        assert_eq!(
+            frame_message(&msg.from, msg.from_machine.as_deref(), &msg.body).len(),
+            MAX_TYPED_FRAME_BYTES + 1
+        );
+        let id = enqueue(&fixture, &msg).await;
+
+        assert_eq!(fixture.worker.drain_once().await.expect("named refusal"), 1);
+        assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)]);
+        assert_eq!(fixture.queue.live_len(), 1);
+        let submits: Vec<_> = fixture
+            .tmux
+            .calls()
+            .into_iter()
+            .filter(|call| call.starts_with("submit:"))
+            .collect();
+        assert_eq!(submits.len(), 1);
+        assert!(
+            submits[0].contains("message frame is 8193 bytes; pane typing limit is 8192 bytes")
+                && submits[0].contains("body remains queued; run: pij inbox")
+        );
+        assert!(!submits[0].contains(&msg.body));
+        let event = fixture
+            .event_bus
+            .latest_matching_message(&msg.to, OVERSIZE_BODY_POINTER_EVENT_KIND, &msg.msg_id)
+            .await
+            .expect("query oversized refusal")
+            .expect("oversized refusal is durable");
+        assert!(event.payload.contains("frame-too-large"));
+        let claimed = fixture
+            .queue
+            .claim(&[delivery_kind(&msg.to)], "reader")
+            .await
+            .expect("claim oversized body")
+            .expect("oversized body remains immediately pullable");
+        assert_eq!(claimed.0, id);
+        assert_eq!(
+            serde_json::from_str::<Msg>(&claimed.1.payload).expect("queued oversized message"),
+            msg
         );
     }
 
@@ -1159,7 +1254,13 @@ mod tests {
         ));
         assert_eq!(
             fixture.tmux.calls(),
-            ["list_panes", "capture:%10:4294967295", "user_typing:%10"]
+            [
+                "pane_tap_sink:%10",
+                "drain_pane_tap:%10",
+                "list_panes",
+                "capture:%10:4294967295",
+                "user_typing:%10"
+            ]
         );
     }
 
@@ -1357,6 +1458,7 @@ mod tests {
                 .put(seat(seat_id, Some(pane)))
                 .await
                 .expect("register recipient");
+            tmux.arrange_clear_composer(pane);
             interaction.observe_composer(pane, "");
             let msg = message(seat_id, seat_id, None);
             queue
@@ -1406,6 +1508,7 @@ mod tests {
             .put(seat("pij-after-error", Some("%23")))
             .await
             .expect("register recipient");
+        tmux.arrange_clear_composer("%23");
         interaction.observe_composer("%23", "");
         let later = message("pij-after-error", "after the failure", None);
         queue
