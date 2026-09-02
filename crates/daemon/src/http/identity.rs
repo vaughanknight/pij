@@ -512,6 +512,7 @@ pub(crate) async fn adopt(
         .or_else(|| match harness.as_str() {
             "claude" => caller.claude_session.clone(),
             "copilot" => caller.copilot_session.clone(),
+            "codex" => caller.codex_session.clone(),
             _ => None,
         });
     let claim = Registration {

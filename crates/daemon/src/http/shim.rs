@@ -49,6 +49,7 @@
 //! that shape would silently re-home the caller into the other store while every
 //! surface reported success.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use axum::extract::State;
@@ -95,18 +96,26 @@ pub(crate) async fn shim_sessions(State(state): State<AppState>) -> Response {
         Ok(seats) => seats,
         Err(error) => return internal(SESSIONS, error),
     };
+    let mut git_common_dirs = HashMap::new();
     let rows = seats
         .into_iter()
-        .map(|seat| SessionRow {
-            git_common_dir: git_common_dir(Path::new(&seat.folder)),
-            pij_id: seat.id,
-            harness: seat.harness,
-            harness_session_id: seat.harness_session,
-            lifecycle: None,
-            bound_model: seat.model,
-            spawned_by: seat.parent,
-            transcript_path: None,
-            generation: "rs",
+        .filter(|seat| seat.tombstoned_at.is_none())
+        .map(|seat| {
+            let git_common_dir = git_common_dirs
+                .entry(seat.folder.clone())
+                .or_insert_with(|| git_common_dir(Path::new(&seat.folder)))
+                .clone();
+            SessionRow {
+                git_common_dir,
+                pij_id: seat.id,
+                harness: seat.harness,
+                harness_session_id: seat.harness_session,
+                lifecycle: None,
+                bound_model: seat.model,
+                spawned_by: seat.parent,
+                transcript_path: None,
+                generation: "rs",
+            }
         })
         .collect();
     envelope(
