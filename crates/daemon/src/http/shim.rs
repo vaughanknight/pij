@@ -49,15 +49,110 @@
 //! that shape would silently re-home the caller into the other store while every
 //! surface reported success.
 
+use std::path::{Path, PathBuf};
+
 use axum::extract::State;
 use axum::response::Response;
-use pij_core::model::SeatId;
+use pij_core::model::{Harness, SeatId};
+use pij_core::ports::SeatFilter;
 
 use super::identity::{self, CallerContext, Resolved};
-use super::{AppState, internal, refused};
+use super::{AppState, envelope, internal, refused};
 
 pub(crate) const SEND: &str = "pij send";
 pub(crate) const INBOX: &str = "pij inbox";
+
+pub(crate) const SESSIONS: &str = "pij sessions";
+
+#[derive(serde::Serialize)]
+struct SessionRows {
+    rows: Vec<SessionRow>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionRow {
+    pij_id: SeatId,
+    harness: Harness,
+    harness_session_id: Option<String>,
+    git_common_dir: String,
+    lifecycle: Option<String>,
+    bound_model: Option<String>,
+    spawned_by: Option<SeatId>,
+    transcript_path: Option<String>,
+    generation: &'static str,
+}
+
+/// Return rs seats in the frozen legacy session-row shape.
+///
+/// # Composition recipe
+///
+/// Add a GET `Endpoint::ShimSessions` row at `/v1/shim/sessions` and route it
+/// directly to this handler. The TypeScript composer unions these rows with its
+/// legacy rows; rs does not translate them again.
+pub(crate) async fn shim_sessions(State(state): State<AppState>) -> Response {
+    let seats = match state.services.registry.list(SeatFilter::default()).await {
+        Ok(seats) => seats,
+        Err(error) => return internal(SESSIONS, error),
+    };
+    let rows = seats
+        .into_iter()
+        .map(|seat| SessionRow {
+            git_common_dir: git_common_dir(Path::new(&seat.folder)),
+            pij_id: seat.id,
+            harness: seat.harness,
+            harness_session_id: seat.harness_session,
+            lifecycle: None,
+            bound_model: seat.model,
+            spawned_by: seat.parent,
+            transcript_path: None,
+            generation: "rs",
+        })
+        .collect();
+    envelope(
+        axum::http::StatusCode::OK,
+        &pij_core::model::Envelope::ok(SESSIONS, SessionRows { rows }),
+    )
+}
+
+fn git_common_dir(folder: &Path) -> String {
+    discover_git_common_dir(folder)
+        .unwrap_or_else(|| folder.to_path_buf())
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn discover_git_common_dir(folder: &Path) -> Option<PathBuf> {
+    for directory in folder.ancestors() {
+        let dot_git = directory.join(".git");
+        if dot_git.is_dir() {
+            return Some(std::fs::canonicalize(&dot_git).unwrap_or(dot_git));
+        }
+        if !dot_git.is_file() {
+            continue;
+        }
+        let pointer = std::fs::read_to_string(&dot_git).ok()?;
+        let git_dir = pointer.trim().strip_prefix("gitdir:")?.trim();
+        let git_dir = resolve_path(directory, Path::new(git_dir));
+        let common = std::fs::read_to_string(git_dir.join("commondir"))
+            .ok()
+            .and_then(|value| {
+                let value = value.trim();
+                (!value.is_empty()).then(|| resolve_path(&git_dir, Path::new(value)))
+            })
+            .unwrap_or(git_dir);
+        return Some(std::fs::canonicalize(&common).unwrap_or(common));
+    }
+    None
+}
+
+fn resolve_path(base: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base.join(path)
+    }
+}
 
 /// The one body every shim-originated route accepts.
 ///

@@ -64,6 +64,14 @@ pub struct CallerContext {
         alias = "pijSessionId"
     )]
     pub session_id: Option<String>,
+    /// Generic harness-native session id used by pi and OMP callers.
+    #[serde(
+        default,
+        rename = "HARNESS_SESSION_ID",
+        alias = "harness_session",
+        alias = "harnessSession"
+    )]
+    pub harness_session: Option<String>,
     /// The pane the caller believes it occupies. CHECKED against tmux.
     #[serde(default, rename = "TMUX_PANE", alias = "tmux_pane", alias = "tmuxPane")]
     pub pane: Option<String>,
@@ -75,14 +83,10 @@ pub struct CallerContext {
         alias = "pijParentId"
     )]
     pub parent: Option<String>,
-    /// Harness-native session ids.
+    /// Harness-specific native session ids retained for existing callers.
     ///
-    /// rs has NO column for these and does not bind by them — it binds by
-    /// `(pid, proc_start)`, which it observes itself. They are declared here so
-    /// that `phonehome` can SAY SO when one is supplied: the TS route binds
-    /// exactly this value at exactly this moment, and a caller who sent one and
-    /// got a bare "bound" back would reasonably conclude rs had pinned their
-    /// native session. Naming the difference is the whole point.
+    /// Registration stores the value for identity projection but never treats it
+    /// as bind evidence; process identity remains the anti-impersonation control.
     #[serde(
         default,
         rename = "CLAUDE_CODE_SESSION_ID",
@@ -502,6 +506,14 @@ pub(crate) async fn adopt(
         .or_else(|| caller.parent.clone())
         .map(SeatId::from)
         .or_else(|| incumbent.and_then(|seat| seat.parent.clone()));
+    let harness_session = caller
+        .harness_session
+        .clone()
+        .or_else(|| match harness.as_str() {
+            "claude" => caller.claude_session.clone(),
+            "copilot" => caller.copilot_session.clone(),
+            _ => None,
+        });
     let claim = Registration {
         supersedes: None,
         id: seat_id.0.clone(),
@@ -521,7 +533,10 @@ pub(crate) async fn adopt(
         std::sync::Arc::clone(&state.services.registry),
         std::sync::Arc::clone(&state.services.liveness),
     );
-    if let Err(error) = registration.register(claim).await {
+    if let Err(error) = registration
+        .register_with_harness_session(claim, harness_session)
+        .await
+    {
         return match error {
             RegistrationError::Refused(reason) => refused(ADOPT, reason),
             RegistrationError::Runtime(error) => internal(ADOPT, error),
@@ -634,8 +649,9 @@ pub(crate) async fn phonehome(
     // A caller that sent a harness-native session id is told plainly that rs did
     // not bind by it. Silence here would read as agreement.
     let claimed_harness_session = caller
-        .claude_session
+        .harness_session
         .as_deref()
+        .or(caller.claude_session.as_deref())
         .or(caller.copilot_session.as_deref())
         .or(caller.codex_session.as_deref())
         .map(str::trim)
@@ -656,7 +672,7 @@ pub(crate) async fn phonehome(
     );
     if let Some(session) = claimed_harness_session {
         answer.meta = Some(format!(
-            "the caller supplied harness session `{session}`; rs does not store one and did not bind by it — this confirmation is process identity, not a native-session pin"
+            "the caller supplied harness session `{session}`; rs stores it for identity projection but did not bind by it — this confirmation is process identity, not a native-session pin"
         ));
     }
     envelope(StatusCode::OK, &answer)

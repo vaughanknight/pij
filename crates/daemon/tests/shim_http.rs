@@ -25,6 +25,16 @@ const RECIPIENT: &str = "pij-shim-recipient";
 const RECIPIENT_PANE: &str = "%120";
 
 async fn daemon() -> (SocketAddr, tokio::task::JoinHandle<()>, FreshStore) {
+    let mut sender = SeatDescriptor::new(SENDER, Harness::Claude, "/abs/tree");
+    sender.pane = Some(PANE.to_string());
+    let mut recipient = SeatDescriptor::new(RECIPIENT, Harness::Omp, "/abs/tree");
+    recipient.pane = Some(RECIPIENT_PANE.to_string());
+    daemon_with_seats(vec![sender, recipient]).await
+}
+
+async fn daemon_with_seats(
+    seats: Vec<SeatDescriptor>,
+) -> (SocketAddr, tokio::task::JoinHandle<()>, FreshStore) {
     let store = FreshStore::new();
     let config = Config {
         adapters: Adapters {
@@ -43,18 +53,9 @@ async fn daemon() -> (SocketAddr, tokio::task::JoinHandle<()>, FreshStore) {
     )
     .await
     .expect("services");
-    // The sender owns a pane; the recipient does not need one for the send to be
-    // ACCEPTED (delivery is the drain worker's job, and is not what these test).
-    let mut sender = SeatDescriptor::new(SENDER, Harness::Claude, "/abs/tree");
-    sender.pane = Some(PANE.to_string());
-    services.registry.put(sender).await.expect("seed sender");
-    let mut recipient = SeatDescriptor::new(RECIPIENT, Harness::Omp, "/abs/tree");
-    recipient.pane = Some(RECIPIENT_PANE.to_string());
-    services
-        .registry
-        .put(recipient)
-        .await
-        .expect("seed recipient");
+    for seat in seats {
+        services.registry.put(seat).await.expect("seed seat");
+    }
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind");
@@ -81,6 +82,15 @@ async fn post(addr: SocketAddr, path: &str, body: serde_json::Value) -> reqwest:
         .send()
         .await
         .expect("post")
+}
+
+async fn get(addr: SocketAddr, path: &str) -> reqwest::Response {
+    reqwest::Client::new()
+        .get(format!("http://{addr}{path}"))
+        .bearer_auth(KEY)
+        .send()
+        .await
+        .expect("get")
 }
 
 /// THE CLAIM THE UNIT EXISTS FOR: a seat that registered into rs can speak,
@@ -313,6 +323,61 @@ async fn the_shim_paths_the_route_table_names_are_served() {
         let payload: Envelope<serde_json::Value> = response.json().await.expect("envelope");
         assert!(!payload.ok, "{path} should have refused this body");
     }
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn shim_sessions_emits_the_frozen_legacy_names_and_resolves_git_common_dir() {
+    struct Cleanup(std::path::PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    let root = pij_testkit::fresh_dir("pij-shim-sessions");
+    let _cleanup = Cleanup(root.clone());
+    let worktree = root.join("worktree");
+    let common = root.join("common.git");
+    let git_dir = common.join("worktrees").join("seat");
+    std::fs::create_dir_all(&worktree).expect("create worktree");
+    std::fs::create_dir_all(&git_dir).expect("create git admin dir");
+    std::fs::write(
+        worktree.join(".git"),
+        format!("gitdir: {}\n", git_dir.display()),
+    )
+    .expect("write linked-worktree git file");
+    std::fs::write(git_dir.join("commondir"), "../..\n").expect("write common-dir pointer");
+
+    let mut seat = SeatDescriptor::new(
+        "pij-rs-session",
+        Harness::Omp,
+        worktree.display().to_string(),
+    );
+    seat.harness_session = Some("omp-native".to_string());
+    seat.parent = Some("pij-parent".into());
+    seat.model = Some("provider/model".to_string());
+    let (addr, server, _store) = daemon_with_seats(vec![seat]).await;
+    let expected_common = std::fs::canonicalize(&common).expect("canonical common dir");
+
+    let response = get(addr, "/v1/shim/sessions").await;
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let payload: Envelope<serde_json::Value> = response.json().await.expect("sessions envelope");
+    assert_eq!(
+        payload.data.expect("sessions data")["rows"],
+        serde_json::json!([{
+            "pijId": "pij-rs-session",
+            "harness": "omp",
+            "harnessSessionId": "omp-native",
+            "gitCommonDir": expected_common.display().to_string(),
+            "lifecycle": null,
+            "boundModel": "provider/model",
+            "spawnedBy": "pij-parent",
+            "transcriptPath": null,
+            "generation": "rs"
+        }])
+    );
 
     server.abort();
 }
