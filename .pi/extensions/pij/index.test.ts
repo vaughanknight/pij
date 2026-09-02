@@ -236,8 +236,11 @@ describe("pij index — footer status bar", () => {
 		pijExtension(pi);
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 
-		expect(sessionNames.at(-1)).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
-		expect(statuses.find((status) => status.key === "pij")?.value).toBe(sessionNames.at(-1));
+		const sessionName = sessionNames.at(-1);
+		expect(sessionName).toMatch(/^rs·pij-[a-z]+(-[a-z]+)*$/);
+		expect(statuses.find((status) => status.key === "pij")?.value).toBe(
+			`\u001b[33mrs\u001b[0m ${sessionName?.slice(3)}`,
+		);
 		await handlers.get("session_shutdown")?.({}, ctx);
 	});
 
@@ -249,8 +252,11 @@ describe("pij index — footer status bar", () => {
 		pijExtension(pi);
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 
-		expect(sessionNames.at(-1)).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
-		expect(statuses.find((status) => status.key === "pij")?.value).toBe(sessionNames.at(-1));
+		const sessionName = sessionNames.at(-1);
+		expect(sessionName).toMatch(/^legacy·pij-[a-z]+(-[a-z]+)*$/);
+		expect(statuses.find((status) => status.key === "pij")?.value).toBe(
+			`\u001b[2mlegacy\u001b[0m ${sessionName?.slice(7)}`,
+		);
 		await handlers.get("session_shutdown")?.({}, ctx);
 	});
 
@@ -280,6 +286,7 @@ describe("pij index — footer status bar", () => {
 
 		handlers.get("turn_start")?.({ timestamp: Date.now() });
 		expect(sessionNames).toHaveLength(2);
+		expect(sessionNames.at(-1)).toMatch(/^legacy·pij-/);
 
 		await new Promise((resolve) => setTimeout(resolve, 300));
 		expect(notices.filter((message) => message.includes("omp session name"))).toEqual([]);

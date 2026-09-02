@@ -165,6 +165,7 @@ export default function (pi: ExtensionAPI): void {
 		| {
 				deps: SessionNamePublisherDeps;
 				self: string;
+				daemonGeneration: "rs" | "legacy";
 				state: {
 					reasserted: boolean;
 					took: boolean;
@@ -177,22 +178,23 @@ export default function (pi: ExtensionAPI): void {
 	const startOmpSessionNamePublication = (
 		ctx: ExtensionContext,
 		name: string,
-		generation: number,
+		daemonGeneration: "rs" | "legacy",
+		publicationGeneration: number,
 	): void => {
-		if (generation !== ompSessionNameGeneration) return;
+		if (publicationGeneration !== ompSessionNameGeneration) return;
 		const state = { reasserted: false, took: false, noticeShown: false };
 		const deps: SessionNamePublisherDeps = {
 			setSessionName: async (sessionName) => {
-				if (generation !== ompSessionNameGeneration) return;
+				if (publicationGeneration !== ompSessionNameGeneration) return;
 				pi.setSessionName(sessionName);
 			},
 			getSessionName: () =>
-				generation === ompSessionNameGeneration ? pi.getSessionName() : undefined,
+				publicationGeneration === ompSessionNameGeneration ? pi.getSessionName() : undefined,
 			setStatus: (key, text) => {
-				if (generation === ompSessionNameGeneration) ctx.ui.setStatus(key, text);
+				if (publicationGeneration === ompSessionNameGeneration) ctx.ui.setStatus(key, text);
 			},
 			notice: (text) => {
-				if (generation !== ompSessionNameGeneration || state.noticeShown) return;
+				if (publicationGeneration !== ompSessionNameGeneration || state.noticeShown) return;
 				ctx.ui.notify(text, "warning");
 				state.noticeShown = true;
 			},
@@ -201,9 +203,10 @@ export default function (pi: ExtensionAPI): void {
 		const publication = {
 			deps,
 			self: name,
+			daemonGeneration,
 			state,
 			notifyRecovered: () => {
-				if (generation !== ompSessionNameGeneration) return;
+				if (publicationGeneration !== ompSessionNameGeneration) return;
 				try {
 					ctx.ui.notify(`pij: omp session name set after retry — id is ${name}`, "info");
 				} catch {
@@ -212,7 +215,7 @@ export default function (pi: ExtensionAPI): void {
 			},
 		};
 		ompSessionNamePublication = publication;
-		void publishSeatName(deps, name).then((result) => {
+		void publishSeatName(deps, name, daemonGeneration).then((result) => {
 			if (ompSessionNamePublication === publication && result.took) state.took = true;
 		});
 	};
@@ -379,7 +382,8 @@ export default function (pi: ExtensionAPI): void {
 			session = rustRuntime;
 			self = boot.id;
 			role = boot.role === "parent" || boot.role === "worker" ? boot.role : undefined;
-			if (runtimeBin === "omp") startOmpSessionNamePublication(ctx, self, sessionNameGeneration);
+			if (runtimeBin === "omp")
+				startOmpSessionNamePublication(ctx, self, "rs", sessionNameGeneration);
 			else ctx.ui.setStatus(PIJ_STATUS_KEY, `${self} · rs-v1`);
 			ctx.ui.notify(
 				`pij: detected rs daemon at ${generation.location.addr}; registered ${self}`,
@@ -424,7 +428,8 @@ export default function (pi: ExtensionAPI): void {
 		}
 		// OMP's native session-name segment can miss during startup. Publish through
 		// the shared retry helper and always retain the extension-status fallback.
-		if (runtimeBin === "omp") startOmpSessionNamePublication(ctx, self, sessionNameGeneration);
+		if (runtimeBin === "omp")
+			startOmpSessionNamePublication(ctx, self, "legacy", sessionNameGeneration);
 		else ctx.ui.setStatus(PIJ_STATUS_KEY, self);
 		const dataDir = join(pijHome, self);
 		const eventsPath = join(dataDir, "events.ndjson");
@@ -547,6 +552,7 @@ export default function (pi: ExtensionAPI): void {
 					notice: () => {},
 				},
 				publication.self,
+				publication.daemonGeneration,
 				[0],
 			).then((result) => {
 				if (ompSessionNamePublication !== publication || !result.took) return;

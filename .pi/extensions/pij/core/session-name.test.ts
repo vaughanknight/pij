@@ -25,12 +25,13 @@ describe("publishSeatName", () => {
 				},
 			},
 			SELF,
+			"rs",
 			[0, 250, 1_000, 3_000],
 		);
 
 		expect(result).toEqual({ took: true, attempts: 3 });
 		expect(sleeps).toEqual([250, 750]);
-		expect(statuses).toEqual([["pij", SELF]]);
+		expect(statuses).toEqual([["pij", `\u001b[33mrs\u001b[0m ${SELF}`]]);
 		expect(notices).toEqual([]);
 	});
 
@@ -43,7 +44,7 @@ describe("publishSeatName", () => {
 				setSessionName: async () => {
 					attempts += 1;
 				},
-				getSessionName: () => SELF,
+				getSessionName: () => `rs·${SELF}`,
 				setStatus: () => {},
 				notice: () => {},
 				sleep: async (ms) => {
@@ -51,6 +52,7 @@ describe("publishSeatName", () => {
 				},
 			},
 			SELF,
+			"rs",
 			[0, 250],
 		);
 
@@ -75,12 +77,13 @@ describe("publishSeatName", () => {
 				},
 			},
 			SELF,
+			"rs",
 			[0, 250, 1_000],
 		);
 
 		expect(result).toEqual({ took: false, attempts: 3 });
 		expect(sleeps).toEqual([250, 750]);
-		expect(statuses).toEqual([["pij", SELF]]);
+		expect(statuses).toEqual([["pij", `\u001b[33mrs\u001b[0m ${SELF}`]]);
 		expect(notices).toEqual([`pij: could not set omp session name — id is ${SELF}`]);
 	});
 
@@ -98,6 +101,7 @@ describe("publishSeatName", () => {
 				sleep: async () => {},
 			},
 			SELF,
+			"rs",
 			[0, 0],
 		);
 
@@ -121,6 +125,7 @@ describe("publishSeatName", () => {
 				sleep: async () => {},
 			},
 			SELF,
+			"rs",
 			[0],
 		);
 
@@ -144,11 +149,56 @@ describe("publishSeatName", () => {
 				},
 			},
 			SELF,
+			"rs",
 			[0, 250, 1_000],
 		);
 
 		expect(result).toEqual({ took: false, attempts: 1 });
 		expect(attempts).toBe(1);
 		expect(notices).toHaveLength(1);
+	});
+	it("prefixes the native name and colors the generation status", async () => {
+		let current: string | undefined;
+		const statuses: Array<[string, string]> = [];
+
+		await publishSeatName(
+			{
+				setSessionName: async (name) => {
+					current = name;
+				},
+				getSessionName: () => current,
+				setStatus: (key, text) => statuses.push([key, text]),
+				notice: () => {},
+				sleep: async () => {},
+			},
+			SELF,
+			"rs",
+			[0],
+		);
+
+		expect(current).toBe(`rs·${SELF}`);
+		expect(statuses).toEqual([["pij", `\u001b[33mrs\u001b[0m ${SELF}`]]);
+	});
+	it("renders the legacy generation honestly", async () => {
+		let current: string | undefined;
+		const statuses: Array<[string, string]> = [];
+
+		await publishSeatName(
+			{
+				setSessionName: async (name) => {
+					current = name;
+				},
+				getSessionName: () => current,
+				setStatus: (key, text) => statuses.push([key, text]),
+				notice: () => {},
+				sleep: async () => {},
+			},
+			SELF,
+			"legacy",
+			[0],
+		);
+
+		expect(current).toBe(`legacy·${SELF}`);
+		expect(statuses).toEqual([["pij", `\u001b[2mlegacy\u001b[0m ${SELF}`]]);
 	});
 });

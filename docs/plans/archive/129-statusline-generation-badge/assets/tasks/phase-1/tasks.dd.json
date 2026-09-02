@@ -1,0 +1,76 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Phase 1",
+        "slug": "phase-1",
+        "status": "in-progress",
+        "summary": "Plan 129 implementation, live proof, gates, and review"
+      }
+    },
+    {
+      "name": "summary",
+      "value": ""
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "t1",
+          "title": "Implement rs-first Claude statusline and installer",
+          "state": "checked",
+          "receipt": "cargo test -p pij-harnesses statusline_: 4 passed; cargo test -p pij-harnesses -p pij-cli: 137 passed; shellcheck pass",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC5"
+          ]
+        },
+        {
+          "id": "t2",
+          "title": "Label omp native and status generation",
+          "state": "checked",
+          "receipt": "session-name.test.ts 8/8; index generation wiring 2/2; just typecheck pass",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC3"
+          ]
+        },
+        {
+          "id": "t3",
+          "title": "Capture real clients and comparative timing",
+          "state": "checked",
+          "receipt": "assets/live-statusline.md: real Claude rs/legacy/unregistered footers, real omp footer, non-pij byte parity; median 92.10ms and 28.52x speedup",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC4"
+          ]
+        },
+        {
+          "id": "t4",
+          "title": "Run deterministic repository gates",
+          "state": "checked",
+          "receipt": "harness checks: 7/8 sensors pass; test sensor contains two prime-ruled main baselines; all other cases green across excluded suite and focused timeout reruns",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC5"
+          ]
+        },
+        {
+          "id": "t5",
+          "title": "Obtain cross-model Claude Opus review",
+          "state": "checked",
+          "receipt": "assets/reviews/review-r2-cross-model.dd.md — APPROVE; f1-f4 fixed"
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {}
+    }
+  ]
+}
