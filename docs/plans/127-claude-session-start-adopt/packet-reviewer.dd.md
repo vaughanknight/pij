@@ -12,7 +12,7 @@
 | title | Reviewer packet — claude-session-start-adopt |
 | role | reviewer |
 | plan | docs/plans/127-claude-session-start-adopt/plan.dd.json |
-| seat | &lt;pij seat name once spawned&gt; |
+| seat | pij-coherent-xerinae |
 | updated | 2026-09-02 |
 
 <a id="mission"></a>
