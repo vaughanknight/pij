@@ -54,4 +54,4 @@
 | Noteworthy | Live coordination initially used zero-byte `touch` markers with `-s`; the test harness correctly refused to call those ready. Final proof used non-empty markers and records only the successful run. |
 | Noteworthy | Rebased onto main `ac830c0e`; preserved plan 128 harness-session registration while resolving response-text and pointer-test conflicts. |
 | Noteworthy | Claude Opus reproduced `harness checks` 8/8 only on its third run; earlier runs failed different TypeScript/tmux sensors. It classified this as load-sensitive harness flakiness, not a plan-130 regression, and left N1 non-blocking. |
-| Deferred | req-0044 baseline failures remain excluded by prime ruling and are not attributed to plan 130. |
+| Noteworthy | The req-0044 TypeScript baseline failures were resolved on main before the ac830c0e rebase; final `harness checks` passed all eight sensors. |
