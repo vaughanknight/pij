@@ -9,7 +9,7 @@
         "title": "claude-session-start-adopt",
         "slug": "claude-session-start-adopt",
         "ordinal": 127,
-        "status": "ready",
+        "status": "in-progress",
         "summary": "A hand-started Claude gets its pij seat automatically at session start — no `/pij ready` — via a once-per-session Claude SessionStart hook that pij installs; the statusline stays read-only."
       }
     },
@@ -81,8 +81,9 @@
           "id": "ph-4df4",
           "title": "Hook + installer + live proof",
           "brief": "Ship the hook script, extend the installer, prove AC1-AC5, PR into main.",
-          "state": "unchecked",
-          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
+          "state": "checked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks",
+          "receipt": "docs/plans/127-claude-session-start-adopt/assets/reviews/round-4.dd.md"
         }
       ]
     }

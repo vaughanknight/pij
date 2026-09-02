@@ -12,7 +12,7 @@
 | title | claude-session-start-adopt |
 | slug | claude-session-start-adopt |
 | ordinal | 127 |
-| status | ready |
+| status | in-progress |
 | complexity | — |
 | summary | A hand-started Claude gets its pij seat automatically at session start — no `/pij ready` — via a once-per-session Claude SessionStart hook that pij installs; the statusline stays read-only. |
 | backpressure | — |
@@ -64,4 +64,4 @@ Jordan 2026-09-02: 'if Claude does not have a pij seat, register for one in its 
 
 | id | title | brief | state | note | receipt | depends_on | tasks | objective | delivers | key_risks |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ph-4df4 | Hook + installer + live proof | Ship the hook script, extend the installer, prove AC1-AC5, PR into main. | [ ] unchecked | — | — | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
+| ph-4df4 | Hook + installer + live proof | Ship the hook script, extend the installer, prove AC1-AC5, PR into main. | [x] checked | — | docs/plans/127-claude-session-start-adopt/assets/reviews/round-4.dd.md | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
