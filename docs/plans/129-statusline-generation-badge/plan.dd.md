@@ -51,11 +51,11 @@ Jordan 2026-09-02: 'in the Claude status bar, if we have old and new id, it is s
 
 | id | claim | state | note | receipt | pressure | proven_by | text |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| AC1 | dual-present panes show the rs id with a yellow rs tag | [ ] unchecked | — | — | — | — | LIVE: a hand-started Claude in tmux on a pane present in BOTH stores (e.g. a helper-migrated seat, or adopt a fresh one then confirm it has a legacy row) shows `rs` in yellow followed by the rs id; capture pasted. |
-| AC2 | legacy-only and unregistered panes render honestly | [ ] unchecked | — | — | — | — | LIVE: a legacy-only Claude pane shows `legacy` (dim) and its legacy id; a pane in neither store shows nothing; captures pasted. |
-| AC3 | omp footer names the generation | [ ] unchecked | — | — | — | — | LIVE: a hand-started omp shows `rs·&lt;id&gt;` in its footer (and the yellow status row if the segment cannot colour); capture pasted. |
-| AC4 | rs-first resolution is cheap | [ ] unchecked | — | — | — | — | Measured: median wall time over 10 warm runs with rs answering ≤ 100ms and at least 10× faster than the forced legacy tsx path on the same captured real Claude JSON; paste all raw values and host load average. Prime ruling 2026-09-02 supersedes the original 50ms target. |
-| AC5 | installer is additive, idempotent, and refuses malformed input | [ ] unchecked | — | — | — | — | Installer unit tests (RED-first): points statusLine.command at the shipped script, backs up the previous, no-op on rerun, malformed settings refused; existing hooks untouched. typecheck/cargo/harness checks green. |
+| AC1 | dual-present panes show the rs id with a yellow rs tag | [x] checked | — | assets/live-statusline.md#AC1; assets/reviews/review-r2-cross-model.dd.md f1 fixed and independently reproduced | — | — | LIVE: a hand-started Claude in tmux on a pane present in BOTH stores (e.g. a helper-migrated seat, or adopt a fresh one then confirm it has a legacy row) shows `rs` in yellow followed by the rs id; capture pasted. |
+| AC2 | legacy-only and unregistered panes render honestly | [x] checked | — | assets/live-statusline.md#AC2; cargo test -p pij-harnesses statusline_: 4 passed | — | — | LIVE: a legacy-only Claude pane shows `legacy` (dim) and its legacy id; a pane in neither store shows nothing; captures pasted. |
+| AC3 | omp footer names the generation | [x] checked | — | assets/live-statusline.md#AC3; index.test.ts 17/17; session-name.test.ts 8/8; Opus r2 APPROVE | — | — | LIVE: a hand-started omp shows `rs·&lt;id&gt;` in its footer (and the yellow status row if the segment cannot colour); capture pasted. |
+| AC4 | rs-first resolution is cheap | [x] checked | — | assets/live-statusline.md#AC4: 10 warm raw runs, median 92.10ms at load 154.97, 28.52x faster than legacy tsx; Opus median 67.98ms | — | — | Measured: median wall time over 10 warm runs with rs answering ≤ 100ms and at least 10× faster than the forced legacy tsx path on the same captured real Claude JSON; paste all raw values and host load average. Prime ruling 2026-09-02 supersedes the original 50ms target. |
+| AC5 | installer is additive, idempotent, and refuses malformed input | [x] checked | — | cargo test -p pij-harnesses -p pij-cli: 137 passed; shellcheck; typecheck; harness checks 7/8 with only two prime-ruled main baselines; every other test green; Opus r2 APPROVE | — | — | Installer unit tests (RED-first): points statusLine.command at the shipped script, backs up the previous, no-op on rerun, malformed settings refused; existing hooks untouched. typecheck/cargo/harness checks green. |
 
 <a id="phases"></a>
 
@@ -63,4 +63,4 @@ Jordan 2026-09-02: 'in the Claude status bar, if we have old and new id, it is s
 
 | id | title | brief | state | note | receipt | depends_on | tasks | objective | delivers | key_risks |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ph-32e0 | rs-first statusline + omp badge + installer + live proof | u1 claude script + installer, u2 omp badge; live AC1-AC5; PR. | [ ] unchecked | — | — | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
+| ph-32e0 | rs-first statusline + omp badge + installer + live proof | u1 claude script + installer, u2 omp badge; live AC1-AC5; PR. | [x] checked | — | assets/reviews/review-r2-cross-model.dd.md — APPROVE; assets/live-statusline.md | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |

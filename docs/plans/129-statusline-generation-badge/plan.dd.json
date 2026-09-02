@@ -40,31 +40,36 @@
           "id": "AC1",
           "text": "LIVE: a hand-started Claude in tmux on a pane present in BOTH stores (e.g. a helper-migrated seat, or adopt a fresh one then confirm it has a legacy row) shows `rs` in yellow followed by the rs id; capture pasted.",
           "claim": "dual-present panes show the rs id with a yellow rs tag",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "assets/live-statusline.md#AC1; assets/reviews/review-r2-cross-model.dd.md f1 fixed and independently reproduced"
         },
         {
           "id": "AC2",
           "text": "LIVE: a legacy-only Claude pane shows `legacy` (dim) and its legacy id; a pane in neither store shows nothing; captures pasted.",
           "claim": "legacy-only and unregistered panes render honestly",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "assets/live-statusline.md#AC2; cargo test -p pij-harnesses statusline_: 4 passed"
         },
         {
           "id": "AC3",
           "text": "LIVE: a hand-started omp shows `rs·<id>` in its footer (and the yellow status row if the segment cannot colour); capture pasted.",
           "claim": "omp footer names the generation",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "assets/live-statusline.md#AC3; index.test.ts 17/17; session-name.test.ts 8/8; Opus r2 APPROVE"
         },
         {
           "id": "AC4",
           "text": "Measured: median wall time over 10 warm runs with rs answering ≤ 100ms and at least 10× faster than the forced legacy tsx path on the same captured real Claude JSON; paste all raw values and host load average. Prime ruling 2026-09-02 supersedes the original 50ms target.",
           "claim": "rs-first resolution is cheap",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "assets/live-statusline.md#AC4: 10 warm raw runs, median 92.10ms at load 154.97, 28.52x faster than legacy tsx; Opus median 67.98ms"
         },
         {
           "id": "AC5",
           "text": "Installer unit tests (RED-first): points statusLine.command at the shipped script, backs up the previous, no-op on rerun, malformed settings refused; existing hooks untouched. typecheck/cargo/harness checks green.",
           "claim": "installer is additive, idempotent, and refuses malformed input",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "cargo test -p pij-harnesses -p pij-cli: 137 passed; shellcheck; typecheck; harness checks 7/8 with only two prime-ruled main baselines; every other test green; Opus r2 APPROVE"
         }
       ]
     },
@@ -75,8 +80,9 @@
           "id": "ph-32e0",
           "title": "rs-first statusline + omp badge + installer + live proof",
           "brief": "u1 claude script + installer, u2 omp badge; live AC1-AC5; PR.",
-          "state": "unchecked",
-          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
+          "state": "checked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks",
+          "receipt": "assets/reviews/review-r2-cross-model.dd.md — APPROVE; assets/live-statusline.md"
         }
       ]
     }

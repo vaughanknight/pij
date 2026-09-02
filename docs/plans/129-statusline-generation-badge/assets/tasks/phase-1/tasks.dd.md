@@ -39,7 +39,7 @@ _Empty._
 | t2 | Label omp native and status generation | — | — | [x] checked | — | session-name.test.ts 8/8; index generation wiring 2/2; just typecheck pass | — | — | — | [AC3](../../../plan.dd.md#acceptance-criteria) |
 | t3 | Capture real clients and comparative timing | — | — | [x] checked | — | assets/live-statusline.md: real Claude rs/legacy/unregistered footers, real omp footer, non-pij byte parity; median 92.10ms and 28.52x speedup | — | — | — | [AC1](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria), [AC3](../../../plan.dd.md#acceptance-criteria), [AC4](../../../plan.dd.md#acceptance-criteria) |
 | t4 | Run deterministic repository gates | — | — | [x] checked | — | harness checks: 7/8 sensors pass; test sensor contains two prime-ruled main baselines; all other cases green across excluded suite and focused timeout reruns | — | — | — | [AC5](../../../plan.dd.md#acceptance-criteria) |
-| t5 | Obtain cross-model Claude Opus review | — | — | [ ] unchecked | — | — | — | — | — | — |
+| t5 | Obtain cross-model Claude Opus review | — | — | [x] checked | — | assets/reviews/review-r2-cross-model.dd.md — APPROVE; f1-f4 fixed | — | — | — | — |
 
 <a id="done-when"></a>
 

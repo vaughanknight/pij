@@ -63,8 +63,8 @@
         {
           "id": "t5",
           "title": "Obtain cross-model Claude Opus review",
-          "state": "unchecked",
-          "receipt": ""
+          "state": "checked",
+          "receipt": "assets/reviews/review-r2-cross-model.dd.md — APPROVE; f1-f4 fixed"
         }
       ]
     },
