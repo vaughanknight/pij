@@ -14,7 +14,7 @@
     },
     {
       "name": "architecture",
-      "value": "Doctrine: .agents/skills/pij-team/TENETS.md. Rust. u1 lives in crates/cli/src/main.rs (clap verbs: send/inbox/state/report… — find every `seat: Option<String>` / --from arg) + a new small module crates/cli/src/identity.rs: `resolve_acting_seat(env, pane, client) -> Result<SeatId, NamedRefusal>`. Send every available identity input to POST /v1/whoami: the daemon's one authority treats an observable pane as authoritative, accepts PIJ_SESSION_ID only when no pane contradicts it, and refuses disagreement by name. Do NOT re-implement the daemon's ladder: the shim already uses crates/daemon/src/http/identity.rs resolve_seat. Body sources: --body, --body-file <path>, --body-file - (stdin), read literally and never through shell evaluation (clap `allow_hyphen_values` on --body). msg-id minting: uuid crate v7 (or ulid) — check Cargo.lock for what is already present, add nothing new if avoidable. u2: crates/daemon/src/pointer/mod.rs render_pointer text (`run: pij inbox` → `run: pij inbox check`) + adopt response text in crates/daemon/src/http/identity.rs. Ruling: weasel 2026-09-02 — every pane-bound harness, including omp/pi, gets pane-derived identity guidance; export advice is paneless-only."
+      "value": "Doctrine: .agents-skills-port/pij-team/TENETS.md. Rust. u1 lives in crates/cli/src/main.rs and crates/cli/src/identity.rs: every acting-seat verb sends all available identity inputs to POST /v1/whoami; the daemon's one authority treats an observable pane as authoritative, accepts PIJ_SESSION_ID only when no pane contradicts it, refuses disagreement by name, and names `env -u PIJ_SESSION_ID` as recovery. Send flags: optional --from/--msg-id, --body or --body-file path/stdin; Telegram sidecar also derives optional --from and mints optional --msg-id because its sender binds inbound reply routing. Do NOT re-implement the daemon ladder. u2: crates/daemon/src/pointer/mod.rs says `pij inbox check`; pane-bound adopt responses explain pane identity, while successful paneless register responses emit the export required by later commands. Ruling: weasel 2026-09-02 — every pane-bound harness, including omp/pi, gets pane-derived identity guidance; export advice is paneless-only."
     },
     {
       "name": "fan_out",
@@ -29,24 +29,24 @@
         {
           "id": "u1",
           "name": "cli identity + body sources",
-          "paths": "crates/cli/src/main.rs, crates/cli/src/identity.rs (new), crates/cli/tests/**",
-          "responsibility": "Derived acting seat, optional from/msg-id, body from arg/file/stdin, named refusals.",
-          "interface": "resolve_acting_seat(env, pane, client) -> Result<SeatId, NamedRefusal>; send flags: --to (req), --body|--body-file (one req), --from (opt, must agree), --msg-id (opt)",
-          "test_strategy": "RED-first unit + fake-daemon integration for AC3; live AC1/AC2/AC4.",
+          "paths": "crates/cli/src/main.rs, crates/cli/src/identity.rs, crates/cli/tests/**",
+          "responsibility": "Derived acting seats for send/report/inbox and Telegram sidecar; optional send/Telegram identity and msg-id; body arg/file/stdin; named recoverable refusals.",
+          "interface": "resolve_acting_seat(env, pane, client) -> Result<SeatId, NamedRefusal>; send flags: --to (req), --body|--body-file (one req), --from (opt, must agree), --msg-id (opt); Telegram --from/--msg-id optional and derived/minted",
+          "test_strategy": "RED-first unit + fake-daemon integration for contradictions, recovery, and AC3; live AC1/AC2/AC4.",
           "depends_on": "none",
           "wave": 1,
-          "note": "Do not change the wire; /v1/send already takes from+msg_id — the CLI fills them."
+          "note": "Do not change the wire; existing HTTP requests still receive concrete from+msg_id values filled by the CLI."
         },
         {
           "id": "u2",
           "name": "notice texts",
-          "paths": "crates/daemon/src/pointer/mod.rs, crates/daemon/src/http/identity.rs (adopt response text only), their tests",
-          "responsibility": "Pointer says pij inbox check; every pane-bound harness gets pane-derived identity guidance and only paneless seats get export advice.",
+          "paths": "crates/daemon/src/pointer/mod.rs, crates/daemon/src/http/identity.rs, crates/daemon/src/http/mod.rs, their tests",
+          "responsibility": "Pointer says pij inbox check; pane-bound adopt gets pane-derived identity guidance; paneless register gets export advice.",
           "interface": "text only",
-          "test_strategy": "existing render/adopt tests updated RED-first; cover claude/copilot/codex/omp/pi pane-bound cases.",
+          "test_strategy": "exact render/adopt/register tests; cover claude/copilot/codex/omp/pi pane-bound cases and paneless registration.",
           "depends_on": "none",
           "wave": 1,
-          "note": "Rebased after plan 128; preserve its harness-session registration changes while changing response text only."
+          "note": "Rebased after plan 128; preserve harness-session registration while changing response metadata only."
         }
       ]
     },

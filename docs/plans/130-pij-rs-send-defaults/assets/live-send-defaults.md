@@ -142,3 +142,5 @@ Final pane output:
 OMP:    LIVE_DONE_OMP
 Claude: LIVE_DONE_CLAUDE
 ```
+
+- **Seat-migration canary (req-0039)**: round-2 Claude reviewer pane `%3168` reported `pij-yearling-earwig` from legacy `pij whoami`/phonehome, while the rs footer and send refusal resolved the same live process (`pid 94823`, `proc_start 20260902150558`) as `pij-yodelling-sniper`; the split blocked its ack but not the read-only review, and no daemon was restarted.

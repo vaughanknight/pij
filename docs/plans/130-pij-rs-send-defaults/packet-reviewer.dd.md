@@ -12,7 +12,7 @@
 | title | Reviewer packet — pij-rs-send-defaults |
 | role | reviewer |
 | plan | docs/plans/130-pij-rs-send-defaults/plan.dd.json |
-| seat | pij-panicky-pheasant (legacy) / pij-moral-whale (rs-derived) |
+| seat | pij-yearling-earwig (legacy) / pij-yodelling-sniper (rs-derived) |
 | updated | 2026-09-02 |
 
 <a id="mission"></a>

@@ -19,6 +19,14 @@
 | F4 — OMP/Pi received stale export advice | Applied weasel ruling 2026-09-02: every pane-bound harness gets pane guidance; export advice is paneless-only | adopt test covers claude/copilot/codex/omp/pi; hand-started OMP and Claude panes confirmed the text live |
 
 
+## Round-2 remediation
+
+| Finding | Resolution | Evidence |
+|---|---|---|
+| F5 — correct identity refusal had no recovery | Contradictory pane/id refusals now name the verified `env -u PIJ_SESSION_ID` recovery gesture without weakening the pane-authoritative policy | identity test failed on the missing gesture, then passed; reviewer independently verified the gesture restores affected verbs |
+| F6 — paneless export branch was dead | Removed the unreachable adopt branch and moved export guidance to the successful paneless `register` response | paneless register test failed with `meta: None`, then passed with the exact export instruction |
+| F7 — Telegram sidecar trusted `--from` | Telegram now derives/asserts `--from` through the same daemon authority and mints an omitted UUIDv7 `--msg-id` before constructing the unchanged wire request | parser test failed on required flags, then passed; shipped-CLI contradiction test covers reply-target impersonation refusal |
+
 ## Verification
 
 - `cargo test -p pij-cli` → 51 passed.
@@ -35,6 +43,7 @@
 - Post-remediation `cargo clippy --workspace --all-targets -- -D warnings` → green.
 - Post-review live isolated proof → `assets/live-send-defaults.md`; hand-started OMP `%3155` and Claude `%3156`, literal stdin and byte-identical 5120-byte file; production daemon untouched.
 - Final `harness checks` → `status: ok`; local-paths, typecheck, lint, test, windows-compat, smoke, pkg-audit, and snapshots all passed.
+- After round-2 fixes: `cargo test --workspace` → 593 passed across 63 suites; 6 ignored, 84 filtered; clippy `-D warnings` green; `harness checks` passed all eight sensors.
 
 ## Discoveries & learnings
 

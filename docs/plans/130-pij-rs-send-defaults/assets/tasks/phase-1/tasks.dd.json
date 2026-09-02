@@ -6,24 +6,101 @@
     {
       "name": "meta",
       "value": {
-        "title": "Phase 1",
+        "title": "CLI identity + body sources + notice text",
         "slug": "phase-1",
-        "status": "draft",
-        "summary": ""
+        "status": "ready",
+        "summary": "Implement and prove pane-authoritative CLI identity, send defaults, safe inbox peek, and routed notice text.",
+        "mode": "Simple"
       }
     },
     {
       "name": "summary",
-      "value": ""
+      "value": "Implement and prove pane-authoritative CLI identity, send defaults, safe inbox peek, and routed notice text."
     },
     {
       "name": "tasks",
-      "value": []
+      "value": [
+        {
+          "id": "tk-1301",
+          "title": "Implement pane-authoritative identity and safe send/inbox defaults",
+          "domain": "Rust CLI and daemon",
+          "phase": "ph-74a6",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1301",
+          "success": "Send/report/Telegram share the daemon identity ladder with recoverable refusals; send and Telegram mint UUIDv7 ids; send accepts literal body sources; destructive inbox reads cannot cross seats; pointer/adopt/register guidance is correct.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC4",
+            "../../../plan.dd.json#acceptance_criteria/AC6"
+          ],
+          "receipt": "focused pij-cli and pij-daemon RED/GREEN tests for contradictory identity, recovery, Telegram reply binding, paneless registration, pointer, peek service, and HTTP"
+        },
+        {
+          "id": "tk-1302",
+          "title": "Prove defaults and literal bodies in hand-started clients",
+          "domain": "live identity integration",
+          "phase": "ph-74a6",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1302",
+          "success": "Hand-started OMP and Claude panes send without --from/--msg-id, receive literal stdin and 5120-byte file bodies, and derive inbox identity without PIJ_SESSION_ID.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC4",
+            "../../../plan.dd.json#acceptance_criteria/AC6"
+          ],
+          "receipt": "assets/live-send-defaults.md — post-review proof on isolated 127.0.0.1:18462"
+        },
+        {
+          "id": "tk-1303",
+          "title": "Close composition gates and cross-model review",
+          "domain": "engineering harness",
+          "phase": "ph-74a6",
+          "state": "unchecked",
+          "done": "tasks.dd.json#done_when/tk-1303",
+          "success": "Workspace tests, clippy, all harness sensors, plan validation, and Claude Opus review are green.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC5",
+            "../../../plan.dd.json#acceptance_criteria/AC6"
+          ],
+          "receipt": "cargo test --workspace 591 passed; clippy green; harness checks 8/8; Claude Opus round 2 pending"
+        }
+      ]
     },
     {
       "name": "done_when",
-      "value": {}
+      "value": {
+        "tk-1301": [
+          {
+            "id": "as-1301",
+            "assertion": "Pane-authoritative identity, recoverable contradictions, send and Telegram defaults, inbox safety, and notice/registration guidance pass focused Rust tests.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "focused CLI and daemon RED/GREEN tests"
+          }
+        ],
+        "tk-1302": [
+          {
+            "id": "as-1302",
+            "assertion": "Hand-started OMP and Claude clients exchange short-form, stdin, and 5120-byte file messages through an isolated daemon without PIJ_SESSION_ID.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "assets/live-send-defaults.md"
+          }
+        ],
+        "tk-1303": [
+          {
+            "id": "as-1303",
+            "assertion": "Final deterministic gates and Claude Opus round-2 review approve the composed branch.",
+            "state": "unchecked",
+            "pressure": "not-applicable",
+            "receipt": "harness checks 8/8; reviewer pending"
+          }
+        ]
+      }
     }
-  ],
-  "references": []
+  ]
 }

@@ -3,8 +3,8 @@
   "kind": "flight-plan",
   "slug": "pij-rs-send-defaults",
   "nav": {
-    "now": "phase-1",
-    "next": "review-1",
+    "now": "review-1",
+    "next": "post-flight",
     "intent": "Implement plan 130 pij-rs send defaults",
     "bag": {
       "mode": "Simple",
@@ -155,6 +155,54 @@
           "importance": "recommended"
         }
       }
+    },
+    {
+      "id": "UPD-004",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-02T05:08:17.657Z",
+      "details": {
+        "node": "retro-1",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-007",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-02T05:08:17.819Z",
+      "details": {
+        "node": "retro-1",
+        "from": "known",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "STA-008",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-02T05:08:17.968Z",
+      "details": {
+        "node": "phase-1",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "CUR-002",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-09-02T05:08:18.126Z",
+      "details": {
+        "from": "phase-1",
+        "to": "review-1"
+      }
     }
   ],
   "nodes": [
@@ -199,13 +247,21 @@
       "type": "phase",
       "phase": 1,
       "label": "P1: Implementation",
-      "status": "in_progress",
+      "status": "done",
       "command": "/builder 6 implement",
       "next": [
         "review-1"
       ],
       "dd_link": {
-        "address": "docs/plans/130-pij-rs-send-defaults/assets/tasks/phase-1/tasks.dd.json#tasks"
+        "address": "docs/plans/130-pij-rs-send-defaults/assets/tasks/phase-1/tasks.dd.json#tasks",
+        "basis_sha": "ebe24c8bd00eb22304ae1f585936abf230ed082d90a75dda530a6825e9cf2858",
+        "reading": {
+          "status": "complete",
+          "terminal": 0,
+          "total": 0,
+          "incomplete": [],
+          "at": "2026-09-02T05:08:18.126Z"
+        }
       },
       "instructions": [
         "Implement exactly ONE phase using the plan's testing approach and domain placement rules — keep the task table and execution.log.md live as you go.",
@@ -217,7 +273,8 @@
         "Match model tier to work: chores -> cheap subagent, analysis -> Opus-class, judgement -> lead; context may override (§ Shared conventions).",
         "Environment friction is work, not an apology: fix small things, otherwise `harness observe` it — is this environment working for us? (builder SKILL.md invariant #14)"
       ],
-      "modified_at": "2026-09-02T02:36:24.412Z"
+      "modified_at": "2026-09-02T05:08:17.968Z",
+      "ran_at": "2026-09-02T05:08:17.968Z"
     },
     {
       "id": "review-1",
@@ -372,7 +429,7 @@
       "id": "retro-1",
       "type": "harness-retro",
       "label": "Retro: P1 (drain)",
-      "status": "known",
+      "status": "done",
       "branch_of": "phase-1",
       "next": [
         "phase-1"
@@ -386,7 +443,17 @@
         "Post-coding seam: drain this phase's observe buffer into durable retro notes before moving on.",
         "Run /eng-harness-flow --hook post-coding --json — a REAL invocation; narrate its envelope verbatim.",
         "Runs after this phase's observe chore is terminalized (real capture receipt, or human decline). On done, receipt first, status second: harness flow comment --path <flow-path> --node retro-1 --kind validation --source agent --text \"verdict:<…> time:<…>\" (router missing / envelope noop/UNAVAILABLE → text \"decision:unavailable reason:<…> time:<…>\" — a completed attempt, not a skip) THEN harness flow status --path <flow-path> --node retro-1 --to done. Mandatory unless the human declines — a decline is: harness flow comment --path <flow-path> --node retro-1 --kind decision --source user --text \"<their verbatim words>\" THEN harness flow status --path <flow-path> --node retro-1 --to skipped."
-      ]
+      ],
+      "comments": [
+        {
+          "at": "2026-09-02T05:08:17.657Z",
+          "text": "decision:done verdict:o-prime-drained reason:all-8-entries-accepted-and-dispositioned receipt:/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government/briefs/vendored-2026-09-02/plan-130-disposition.md time:2026-09-02",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "modified_at": "2026-09-02T05:08:17.819Z",
+      "ran_at": "2026-09-02T05:08:17.819Z"
     },
     {
       "id": "retro-harvest",
