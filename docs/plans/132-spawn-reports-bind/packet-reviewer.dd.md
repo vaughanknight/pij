@@ -12,7 +12,7 @@
 | title | Reviewer packet — 132-spawn-reports-bind |
 | role | reviewer |
 | plan | docs/plans/132-spawn-reports-bind/plan.dd.json |
-| seat | &lt;pij seat name once spawned&gt; |
+| seat | pij-plan132-opus-review |
 | updated | 2026-09-02 |
 
 <a id="mission"></a>
