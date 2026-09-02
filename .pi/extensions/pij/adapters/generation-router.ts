@@ -24,7 +24,7 @@ import {
 	PijNoDaemonError,
 	PijWireSkewError,
 } from "../core/daemon-wire.js";
-import { filterByFolder } from "../core/discovery.js";
+import { selectByRepository } from "../core/discovery.js";
 import {
 	buildCallerContext,
 	classifyRsResponse,
@@ -46,6 +46,7 @@ import {
 	observedProcessStart,
 } from "./daemon-http.js";
 import { FsRegistry } from "./fs-registry.js";
+import { GitRepositoryAdapter } from "./git-repository.js";
 
 export interface GenerationRouterDeps {
 	readonly fetch: typeof fetch;
@@ -75,6 +76,8 @@ export interface GenerationRouterDeps {
 		| undefined;
 	/** Where the caller is running. */
 	readonly cwd?: (() => string) | undefined;
+	/** Resolve a folder to the repository identity shared by linked worktrees. */
+	readonly gitCommonDir?: ((folder: string) => string | null) | undefined;
 	/** The caller's own pid, and when that process started. The pair matters:
 	 *  a pid is recycled at boot, so the start time is what makes it identify
 	 *  anything. Best-effort — a start time we cannot read is omitted, never
@@ -94,6 +97,7 @@ export function daemonLocationForRouting(env: NodeJS.ProcessEnv, home: string): 
 }
 
 export function defaultRouterDeps(): GenerationRouterDeps {
+	const repository = new GitRepositoryAdapter();
 	return {
 		fetch,
 		readFile: fsReadFile,
@@ -104,12 +108,15 @@ export function defaultRouterDeps(): GenerationRouterDeps {
 		env: process.env,
 		home: homedir(),
 		cwd: () => process.cwd(),
+		gitCommonDir: (folder) => repository.gitCommonDir(folder),
 		pid: () => process.pid,
 		procStart: observedProcessStart,
 		legacySessionRows: (argv) => {
 			try {
 				let descriptors = new FsRegistry(resolvePijHome(process.env)).list();
-				if (argv.includes("--here")) descriptors = filterByFolder(descriptors, process.cwd());
+				if (argv.includes("--here")) {
+					descriptors = selectByRepository(descriptors, process.cwd(), repository).descriptors;
+				}
 				return buildSessionJoinRows(descriptors);
 			} catch {
 				return [];
@@ -468,7 +475,11 @@ async function callRs(
 			? undefined
 			: buildAcknowledge(row.acknowledgePath, payload, url, headers, deps);
 	const routedPayload = row.unionWithLegacySessions
-		? mergeSessionRows(deps.legacySessionRows?.(argv) ?? [], payload)
+		? mergeSessionRows(
+				deps.legacySessionRows?.(argv) ?? [],
+				payload,
+				argv.includes("--here") ? (deps.gitCommonDir?.(deps.cwd?.() ?? "") ?? null) : undefined,
+			)
 		: payload;
 	return { outcome, payload: routedPayload, row, acknowledge };
 }
