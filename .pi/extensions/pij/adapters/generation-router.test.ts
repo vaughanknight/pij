@@ -263,6 +263,34 @@ describe("routeVerb end to end", () => {
 		]);
 	});
 
+	it("fails loudly without fallback when the legacy half cannot be read", async () => {
+		const result = await routeVerb(
+			"sessions",
+			undefined,
+			["sessions", "--json"],
+			deps(
+				(url) =>
+					url.endsWith("/health")
+						? new Response(HEALTH, { status: 200 })
+						: new Response(
+								JSON.stringify({ ok: true, command: "pij sessions", v: 2, data: { rows: [] } }),
+								{ status: 200 },
+							),
+				{
+					legacySessionRows: () => {
+						throw new Error("legacy registry corrupt");
+					},
+				},
+			),
+		);
+
+		expect(result.outcome).toMatchObject({
+			kind: "rs-error",
+			detail: expect.stringContaining("legacy registry corrupt"),
+		});
+		expect(servedByLegacy(result.outcome)).toBe(false);
+	});
+
 	it("filters rs rows by caller git common dir only when --here is present", async () => {
 		const rows = [
 			{
@@ -315,6 +343,52 @@ describe("routeVerb end to end", () => {
 		expect((here.payload as Array<{ pijId: string }>).map((row) => row.pijId)).toEqual([
 			"pij-local",
 		]);
+	});
+
+	it("falls back to exact caller folder for non-git --here", async () => {
+		const rows = [
+			{
+				pijId: "pij-local",
+				harness: "omp",
+				harnessSessionId: "local-session",
+				gitCommonDir: "/plain/folder",
+				lifecycle: "bound",
+				boundModel: null,
+				spawnedBy: null,
+				transcriptPath: null,
+				generation: "rs",
+			},
+			{
+				pijId: "pij-other",
+				harness: "omp",
+				harnessSessionId: "other-session",
+				gitCommonDir: "/other/folder",
+				lifecycle: "bound",
+				boundModel: null,
+				spawnedBy: null,
+				transcriptPath: null,
+				generation: "rs",
+			},
+		];
+		const handler = (url: string) =>
+			url.endsWith("/health")
+				? new Response(HEALTH, { status: 200 })
+				: new Response(
+						JSON.stringify({ ok: true, command: "pij sessions", v: 2, data: { rows } }),
+						{ status: 200 },
+					);
+		const { payload } = await routeVerb(
+			"sessions",
+			undefined,
+			["sessions", "--here", "--json"],
+			deps(handler, {
+				legacySessionRows: () => [],
+				cwd: () => "/plain/folder",
+				gitCommonDir: () => null,
+			}),
+		);
+
+		expect((payload as Array<{ pijId: string }>).map((row) => row.pijId)).toEqual(["pij-local"]);
 	});
 
 	// o-prime's binding condition 3: an UNANSWERABLE capability question is an

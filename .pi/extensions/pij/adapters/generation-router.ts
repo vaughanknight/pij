@@ -24,7 +24,7 @@ import {
 	PijNoDaemonError,
 	PijWireSkewError,
 } from "../core/daemon-wire.js";
-import { selectByRepository } from "../core/discovery.js";
+import { filterByFolder, selectByRepository } from "../core/discovery.js";
 import {
 	buildCallerContext,
 	classifyRsResponse,
@@ -98,6 +98,8 @@ export function daemonLocationForRouting(env: NodeJS.ProcessEnv, home: string): 
 
 export function defaultRouterDeps(): GenerationRouterDeps {
 	const repository = new GitRepositoryAdapter();
+	const env = process.env;
+	const cwd = () => process.cwd();
 	return {
 		fetch,
 		readFile: fsReadFile,
@@ -105,22 +107,23 @@ export function defaultRouterDeps(): GenerationRouterDeps {
 			path === "-"
 				? await fsReadFile(0 as unknown as string, "utf8")
 				: await fsReadFile(path, "utf8"),
-		env: process.env,
+		env,
 		home: homedir(),
-		cwd: () => process.cwd(),
+		cwd,
 		gitCommonDir: (folder) => repository.gitCommonDir(folder),
 		pid: () => process.pid,
 		procStart: observedProcessStart,
 		legacySessionRows: (argv) => {
-			try {
-				let descriptors = new FsRegistry(resolvePijHome(process.env)).list();
-				if (argv.includes("--here")) {
-					descriptors = selectByRepository(descriptors, process.cwd(), repository).descriptors;
-				}
-				return buildSessionJoinRows(descriptors);
-			} catch {
-				return [];
+			let descriptors = new FsRegistry(resolvePijHome(env)).list();
+			if (argv.includes("--here")) {
+				const folder = cwd();
+				const selection = selectByRepository(descriptors, folder, repository);
+				descriptors =
+					selection.gitCommonDir === null
+						? filterByFolder(descriptors, folder)
+						: selection.descriptors;
 			}
+			return buildSessionJoinRows(descriptors);
 		},
 	};
 }
@@ -474,13 +477,26 @@ async function callRs(
 		row.acknowledgePath === undefined
 			? undefined
 			: buildAcknowledge(row.acknowledgePath, payload, url, headers, deps);
-	const routedPayload = row.unionWithLegacySessions
-		? mergeSessionRows(
-				deps.legacySessionRows?.(argv) ?? [],
-				payload,
-				argv.includes("--here") ? (deps.gitCommonDir?.(deps.cwd?.() ?? "") ?? null) : undefined,
-			)
-		: payload;
+	let routedPayload = payload;
+	if (row.unionWithLegacySessions) {
+		try {
+			const folder = deps.cwd?.() ?? "";
+			const hereIdentity = argv.includes("--here")
+				? (deps.gitCommonDir?.(folder) ?? folder)
+				: undefined;
+			routedPayload = mergeSessionRows(deps.legacySessionRows?.(argv) ?? [], payload, hereIdentity);
+		} catch (error) {
+			return {
+				outcome: {
+					kind: "rs-error",
+					verb,
+					addr: location.addr,
+					detail: `could not merge legacy sessions: ${error instanceof Error ? error.message : String(error)}`,
+				},
+				row,
+			};
+		}
+	}
 	return { outcome, payload: routedPayload, row, acknowledge };
 }
 

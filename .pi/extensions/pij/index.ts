@@ -382,7 +382,7 @@ export default function (pi: ExtensionAPI): void {
 			if (runtimeBin === "omp") startOmpSessionNamePublication(ctx, self, sessionNameGeneration);
 			else ctx.ui.setStatus(PIJ_STATUS_KEY, `${self} · rs-v1`);
 			ctx.ui.notify(
-				`pij: detected Rust daemon v1 at ${generation.location.addr}; registered ${self}`,
+				`pij: detected rs daemon at ${generation.location.addr}; registered ${self}`,
 				"info",
 			);
 			return;
