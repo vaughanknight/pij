@@ -229,7 +229,11 @@ pub fn plan_claude_session_start_hook(existing: Option<&str>, command: &str) -> 
             error: "settings.json hooks.SessionStart must be a JSON array".to_string(),
         };
     };
-    let before = first_hook_command(session_start);
+    let Some(session_range) = find_top_level_value(hooks_document, SESSION_START_KEY) else {
+        return EnsurePlan::Refuse {
+            error: "could not locate hooks.SessionStart in valid settings.json".to_string(),
+        };
+    };
     if session_start
         .iter()
         .any(|entry| hook_entry_contains(entry, command))
@@ -238,11 +242,17 @@ pub fn plan_claude_session_start_hook(existing: Option<&str>, command: &str) -> 
             before: Some(command.to_string()),
         };
     }
-    let Some(session_range) = find_top_level_value(hooks_document, SESSION_START_KEY) else {
-        return EnsurePlan::Refuse {
-            error: "could not locate hooks.SessionStart in valid settings.json".to_string(),
+    if let Some(before) = first_managed_hook_command(session_start) {
+        let mut updated_session = session_start.clone();
+        replace_managed_hook_command(&mut updated_session, command);
+        let updated_session =
+            serde_json::to_string(&updated_session).expect("hook serialization is infallible");
+        let updated_hooks = replace_range(hooks_document, session_range, &updated_session);
+        return EnsurePlan::Write {
+            before: Some(before),
+            contents: replace_range(existing, hooks_range, &updated_hooks),
         };
-    };
+    }
     let updated_session = append_array_value(
         &hooks_document[session_range.clone()],
         session_start.is_empty(),
@@ -250,9 +260,40 @@ pub fn plan_claude_session_start_hook(existing: Option<&str>, command: &str) -> 
     );
     let updated_hooks = replace_range(hooks_document, session_range, &updated_session);
     EnsurePlan::Write {
-        before,
+        before: None,
         contents: replace_range(existing, hooks_range, &updated_hooks),
     }
+}
+fn first_managed_hook_command(entries: &[Value]) -> Option<String> {
+    entries.iter().find_map(|entry| {
+        entry.get("hooks")?.as_array()?.iter().find_map(|hook| {
+            let command = hook.get("command")?.as_str()?;
+            is_managed_hook_command(command).then(|| command.to_string())
+        })
+    })
+}
+
+fn replace_managed_hook_command(entries: &mut [Value], command: &str) {
+    for entry in entries {
+        let Some(hooks) = entry.get_mut("hooks").and_then(Value::as_array_mut) else {
+            continue;
+        };
+        for hook in hooks {
+            let Some(current) = hook.get("command").and_then(Value::as_str) else {
+                continue;
+            };
+            if is_managed_hook_command(current) {
+                hook["command"] = Value::String(command.to_string());
+                return;
+            }
+        }
+    }
+}
+
+fn is_managed_hook_command(command: &str) -> bool {
+    command
+        .trim_matches('\'')
+        .ends_with("/claude-session-start-pij.sh")
 }
 
 /// Ensure every named Claude home invokes pij's SessionStart hook.
@@ -530,16 +571,6 @@ fn replace_range(document: &str, range: Range<usize>, replacement: &str) -> Stri
     output.push_str(replacement);
     output.push_str(&document[range.end..]);
     output
-}
-
-fn first_hook_command(entries: &[Value]) -> Option<String> {
-    entries.iter().find_map(|entry| {
-        entry
-            .get("hooks")?
-            .as_array()?
-            .iter()
-            .find_map(|hook| hook.get("command")?.as_str().map(ToOwned::to_owned))
-    })
 }
 
 fn hook_entry_contains(entry: &Value, command: &str) -> bool {
@@ -925,7 +956,7 @@ mod tests {
         let home = root.path().join(".claude");
         let script = Path::new("/opt/pij hooks/session-start.sh");
 
-        ensure_claude_session_start_hook(std::slice::from_ref(&home), script);
+        let _ = ensure_claude_session_start_hook(std::slice::from_ref(&home), script);
 
         let written: Value = serde_json::from_str(
             &fs::read_to_string(home.join("settings.json")).expect("settings created"),
@@ -1019,6 +1050,15 @@ mod tests {
             r#"{"matcher":"resume","hooks":[{"type":"command","command":"existing"}]}"#;
         let original = format!(r#"{{"hooks":{{"SessionStart":[{existing_entry}]}}}}"#);
         fs::write(home.join("settings.json"), &original).expect("seed settings");
+        let before = inspect_claude_session_start_hook(
+            std::slice::from_ref(&home),
+            Path::new("/opt/pij/claude-session-start-pij.sh"),
+        )
+        .into_iter()
+        .next()
+        .expect("inspection");
+        assert!(!before.installed);
+        assert_eq!(before.command, None);
 
         let report = ensure_claude_session_start_hook(
             std::slice::from_ref(&home),
@@ -1043,6 +1083,40 @@ mod tests {
             parsed["hooks"]["SessionStart"][0]["hooks"][0]["command"],
             "existing"
         );
+    }
+
+    #[test]
+    fn stale_managed_hook_is_replaced_in_place() {
+        let root = TestDir::new();
+        let home = root.path().join(".claude");
+        fs::create_dir_all(&home).expect("home");
+        let original = r#"{"hooks":{"SessionStart":[{"matcher":"","hooks":[{"type":"command","command":"/tmp/old/claude-session-start-pij.sh"}]},{"matcher":"resume","hooks":[{"type":"command","command":"existing"}]}]}}"#;
+        fs::write(home.join("settings.json"), original).expect("seed settings");
+
+        let report = ensure_claude_session_start_hook(
+            std::slice::from_ref(&home),
+            Path::new("/Users/test/.pij-rs/claude-session-start-pij.sh"),
+        )
+        .into_iter()
+        .next()
+        .expect("report");
+
+        assert!(report.changed);
+        assert_eq!(
+            report.before.as_deref(),
+            Some("/tmp/old/claude-session-start-pij.sh")
+        );
+        let written: Value = serde_json::from_str(
+            &fs::read_to_string(home.join("settings.json")).expect("settings"),
+        )
+        .expect("valid settings");
+        let entries = written["hooks"]["SessionStart"].as_array().expect("array");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(
+            entries[0]["hooks"][0]["command"],
+            "/Users/test/.pij-rs/claude-session-start-pij.sh"
+        );
+        assert_eq!(entries[1]["hooks"][0]["command"], "existing");
     }
 
     #[test]
@@ -1116,16 +1190,15 @@ mod tests {
         let state_dir = root.path().join("state");
         let bin_dir = root.path().join("bin");
         fs::create_dir_all(&bin_dir).expect("bin directory");
-        for (name, body) in [
-            ("pij-rs", "#!/bin/sh\n[ \"$1\" = ping ]\n"),
-            ("pij", "#!/bin/sh\nexit 0\n"),
-        ] {
-            let path = bin_dir.join(name);
-            fs::write(&path, body).expect("fake binary");
-            let mut permissions = fs::metadata(&path).expect("metadata").permissions();
-            permissions.set_mode(0o700);
-            fs::set_permissions(&path, permissions).expect("executable fake");
-        }
+        let path = bin_dir.join("pij-rs");
+        fs::write(
+            &path,
+            "#!/bin/sh\ncase \"$1\" in ping|adopt) exit 0 ;; *) exit 2 ;; esac\n",
+        )
+        .expect("fake binary");
+        let mut permissions = fs::metadata(&path).expect("metadata").permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&path, permissions).expect("executable fake");
         let script = install_claude_session_start_script(&state_dir).expect("install script");
 
         let output = std::process::Command::new(&script)
@@ -1145,5 +1218,41 @@ mod tests {
         );
         assert!(output.stderr.is_empty());
         assert!(!state_dir.join("hook.log").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refused_script_adopt_logs_one_line_and_stays_silent() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = TestDir::new();
+        let state_dir = root.path().join("state");
+        let bin_dir = root.path().join("bin");
+        fs::create_dir_all(&bin_dir).expect("bin directory");
+        let path = bin_dir.join("pij-rs");
+        fs::write(
+            &path,
+            "#!/bin/sh\nif [ \"$1\" = ping ]; then exit 0; fi\nprintf 'permission denied\\nsecond line\\n' >&2\nexit 2\n",
+        )
+        .expect("fake binary");
+        let mut permissions = fs::metadata(&path).expect("metadata").permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&path, permissions).expect("executable fake");
+        let script = install_claude_session_start_script(&state_dir).expect("install script");
+
+        let output = std::process::Command::new(&script)
+            .env("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()))
+            .env("PIJ_RS_STATE_DIR", &state_dir)
+            .env("TMUX_PANE", "%42")
+            .output()
+            .expect("run hook");
+
+        assert!(output.status.success());
+        assert!(output.stdout.is_empty());
+        assert!(output.stderr.is_empty());
+        assert_eq!(
+            fs::read_to_string(state_dir.join("hook.log")).expect("hook log"),
+            "refused:adopt pane=%42 reason=permission denied second line\n"
+        );
     }
 }

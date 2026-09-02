@@ -1,19 +1,20 @@
 # Claude automatic pij seats
 
 A foreground `pij-rs daemon` boot installs an embedded copy of
-`harness/scripts/claude-session-start-pij.sh` at
-`$PIJ_RS_STATE_DIR/claude-session-start-pij.sh` (default:
-`~/.pij-rs/claude-session-start-pij.sh`). It then additively ensures this
-absolute command under `hooks.SessionStart` in every discovered Claude
-`settings.json`.
+`harness/scripts/claude-session-start-pij.sh` at the stable
+`$HOME/.pij-rs/claude-session-start-pij.sh`, independent of any custom daemon
+`--state-dir`. It then ensures this absolute command under `hooks.SessionStart`
+in every discovered Claude `settings.json`, replacing an older pij-managed hook
+path in place rather than accumulating stale entries.
 
-The hook runs once when Claude starts. In tmux it checks the rs daemon and runs
-`pij adopt "$TMUX_PANE" --harness claude`, then emits only valid SessionStart
-JSON context so Claude refreshes its initial UI after the seat exists; Claude does
-not show successful hook stdout in the transcript. Outside tmux, with no daemon,
-or on an adopt refusal, it exits zero with empty stdout and appends one line to
-`$PIJ_RS_STATE_DIR/hook.log`. Existing Claude hooks retain their original order.
-Changed settings are backed up as `settings.json.bak-<millis>`.
+The hook runs once when Claude starts. In tmux it checks and adopts through the
+same `pij-rs` transport, then emits only valid SessionStart JSON context so Claude
+refreshes its initial UI after the seat exists; Claude does not show successful
+hook stdout in the transcript. Outside tmux, with no daemon, or on an adopt
+refusal, it exits zero with empty stdout and appends one diagnostic line to
+`$PIJ_RS_STATE_DIR/hook.log` (default `~/.pij-rs/hook.log`). Existing Claude hooks
+retain their original order. Changed settings are backed up as
+`settings.json.bak-<millis>`.
 
 Inspect without changing settings:
 

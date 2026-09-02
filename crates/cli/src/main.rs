@@ -396,6 +396,7 @@ async fn main() -> ExitCode {
 }
 
 async fn run(cli: Cli) -> ExitCode {
+    let hook_dir = default_state_dir();
     let state_dir =
         match resolve_state_dir(cli.state_dir.clone(), std::env::var_os("PIJ_RS_STATE_DIR")) {
             Ok(path) => path,
@@ -412,7 +413,7 @@ async fn run(cli: Cli) -> ExitCode {
             Ok(bind) => bind,
             Err(message) => return emit_config_error(&cli, message),
         };
-        return run_daemon(&bind, state_dir, *offline).await;
+        return run_daemon(&bind, state_dir, hook_dir, *offline).await;
     }
     if let Command::Daemon {
         action: Some(DaemonAction::Bounce),
@@ -455,7 +456,7 @@ async fn run(cli: Cli) -> ExitCode {
     if let Command::Doctor { action } = &cli.command {
         return match action {
             DoctorAction::ClaudeInbound => run_claude_inbound_doctor(cli.json),
-            DoctorAction::ClaudeHook => run_claude_hook_doctor(cli.json, &state_dir),
+            DoctorAction::ClaudeHook => run_claude_hook_doctor(cli.json, &hook_dir),
         };
     }
 
@@ -951,10 +952,10 @@ fn run_claude_hook_doctor(json: bool, state_dir: &Path) -> ExitCode {
     emit(&Envelope::ok("pij doctor claude-hook", rows), json)
 }
 
-async fn run_daemon(bind: &str, state_dir: PathBuf, offline: bool) -> ExitCode {
+async fn run_daemon(bind: &str, state_dir: PathBuf, hook_dir: PathBuf, offline: bool) -> ExitCode {
     let homes = claude_homes();
     let inbound_reports = ensure_claude_inbound_accept(&homes);
-    let hook_script = install_claude_session_start_script(&state_dir)
+    let hook_script = install_claude_session_start_script(&hook_dir)
         .map_err(|error| format!("could not install Claude SessionStart hook script: {error}"));
     let hook_reports = hook_script
         .as_ref()

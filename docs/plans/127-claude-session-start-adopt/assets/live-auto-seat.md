@@ -77,10 +77,10 @@ RED first: `cargo test -p pij-harnesses` initially failed with four `E0425` erro
 
 ```text
 cargo test -p pij-harnesses -p pij-cli
-cargo test: 127 passed (13 suites, 2 ignored)
+cargo test: 130 passed (13 suites, 2 ignored)
 ```
 
-Coverage includes missing settings creation, byte-preservation of Notification/PreToolUse/PostToolUse, append without reordering existing SessionStart entries, existing-command no-op/no backup, malformed refusal, stable executable script installation, silent non-tmux behavior, and contract-valid success JSON.
+Coverage includes missing settings creation, byte-preservation of Notification/PreToolUse/PostToolUse, append without reordering unrelated SessionStart entries, stale managed-path replacement, existing-command no-op/no backup, malformed refusal, stable executable script installation, silent non-tmux behavior, one-line refusal diagnostics, and contract-valid success JSON.
 
 ## AC5 — `/pij ready` remains a no-op
 
@@ -95,3 +95,36 @@ After auto-adopt, `/pij ready` was typed in the same live Claude client:
 ```
 
 The statusline still showed `pij-established-giraffe`, and the daemon still listed only one Claude row for `%2643`.
+
+## Statusline refresh control and post-review reproof
+
+Negative control: an otherwise identical live run with successful-hook stdout
+empty auto-adopted its pane, but the initial statusline still lacked the pij id
+after ten seconds; the id appeared only after `/pij ready` caused a UI update.
+After the hook returned contract-valid SessionStart `additionalContext`, a fresh
+zero-input run showed `⛓ pij-established-giraffe` after ten seconds. The output
+field was therefore the changed variable that removed the initial-render race.
+
+After review findings F1–F6, the branch was rebuilt with a stable hook path and
+the hook's probe and action both using `pij-rs`. A new isolated daemon used data
+state `/tmp/pij-plan127-fix-state`, while the installed script lived independently
+at `/tmp/pij-plan127-fix-home/.pij-rs/claude-session-start-pij.sh`. Doctor reported
+`status:"installed"`; the settings entry contained the stable HOME-relative path,
+not the custom daemon state directory.
+
+A new hand-started Claude in pane `%2744`, again with no task and no keystrokes,
+showed after ten seconds:
+
+```text
+0% fs3-claude-session-start-adopt ⎇ 127-claude-session-start-adopt ⛓ pij-moral-constraints • Opus 5 • medium • 0/1.0M /rc
+```
+
+The isolated daemon row was:
+
+```json
+{"id":"pij-moral-constraints","harness":"claude","pane":"%2744","proc":{"pid":67522,"proc_start":20260902110926},"parent":null,"cross_session_inbound_accept":true}
+```
+
+Running the fixed installed hook twice more retained that exact id and process
+tuple. Operator settings were restored afterward and again matched the pre-proof
+SHA-256 `b90e9a9434a9b2e24939ac573f424a180c2c56144b71d1a50cbfedacdf8844d3`.
