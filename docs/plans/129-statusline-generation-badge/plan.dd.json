@@ -23,7 +23,7 @@
         "G1 Claude statusline: resolve the pane against rs FIRST using the Rust binary (`pij-rs whoami`/state by $TMUX_PANE, or POST /v1/whoami with the pane; milliseconds), fall back to legacy `pij whoami` only when rs has no row. Render `<yellow>rs</yellow> ⛓ <id>` for rs, `<dim>legacy</dim> ⛓ <id>` for legacy-only. Never spawn the tsx CLI when rs answered.",
         "G2 omp: session name becomes `rs·<id>` (or the closest the native segment allows); if the segment cannot colour, ALSO set the pij status row with a yellow `rs` via ctx.ui.setStatus so the generation is visible. Legacy-registered omp shows `legacy·<id>`.",
         "G3 Ship the canonical Claude statusline script in the repo (harness/scripts/claude-statusline-pij.sh) and have the plan-126/127 installer ensure it is what settings.json statusLine.command points at (backup the operator's current script first; preserve every non-pij segment of the existing script byte-for-byte by extracting the pij block into a sourced snippet rather than rewriting the whole file, if that is cleaner — PM decides, records).",
-        "G4 Cost: statusline render path must not exceed ~50ms when rs answers; measure and paste."
+        "G4 Cost target: aim for ~50ms when rs answers; the acceptance bar is AC4’s prime-ruled median ≤ 100ms and at least 10× faster than the forced legacy tsx path on the same captured input."
       ]
     },
     {
