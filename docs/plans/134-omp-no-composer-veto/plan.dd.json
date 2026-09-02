@@ -1,0 +1,88 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "134 — omp/pi take the extension stream with no composer veto; senders are told when a row is still queued or landed late",
+        "slug": "omp-no-composer-veto",
+        "ordinal": 134,
+        "status": "ready",
+        "summary": "Route Omp/Pi directly to the queue-backed extension event stream before composer gates; notify senders when queued or delivered late.",
+        "updated": "2026-09-02",
+        "plan_id": "134"
+      }
+    },
+    {
+      "name": "summary",
+      "value": "req-0054 (magpie 2026-09-02, msg 888D45C1): a ruling to a working omp returned `queued, reason:human-typing` and delivered on attempt 101, eight minutes late. Omp/Pi must bypass both composer gates and `select_rung`, entering the queue-backed Observe/message.pushed path immediately; the extension claims and acknowledges the row after injecting it at turn end. Correction 2026-09-02: the production `Transport` is Claude-only `UdsTransport`; the Omp/Pi extension stream is the event bus plus inbox claim, not a Transport. A second unit adds sender-visible still-queued and delivered-late notices."
+    },
+    {
+      "name": "goals",
+      "value": [
+        "A message to a working omp/pi seat is handed to the extension stream immediately; no composer capture or human-typing veto for those harnesses.",
+        "A row still queued after N seconds (config, default 60) raises a pushed notice to the sender naming msg_id, recipient, reason, and attempts; later delivery raises delivered late, and the sender's next pij-rs command prints outstanding notices on stderr."
+      ]
+    },
+    {
+      "name": "non_goals",
+      "value": [
+        "Changing the veto for Claude/Copilot/Codex panes, where a human composer can exist.",
+        "Any OMP extension change beyond what the stream already does.",
+        "Restarting the production rs daemon or running any flowspace3 daemon."
+      ]
+    },
+    {
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "AC1",
+          "text": "LIVE, dev daemon: hand-started omp in tmux, mid-turn (give it a long task); `pij-rs send` returns delivered (or queued with a reason that is NOT human-typing) and the turn arrives at the end of the current turn — transcript + timestamps pasted; CONTROL on main first: same gesture returns queued/human-typing (pasted).",
+          "claim": "working omp receives without the composer veto",
+          "state": "checked",
+          "receipt": "assets/live-proof.md — hand-started OMP target received msg 97752745-7aef-40ad-860a-e1e68b99f6d3 at turn end; authority rows show extension-stream and reader-read ack."
+        },
+        {
+          "id": "AC2",
+          "text": "Unit: select_rung / the socket-path verdict is never invoked for Harness::Omp|Pi (fake interaction gate asserts zero calls); RED-first output pasted.",
+          "claim": "no veto path for omp/pi",
+          "state": "checked",
+          "receipt": "delivery::tests::omp_and_pi_use_the_extension_stream_without_composer_gates; RED and GREEN outputs plus 20/20 delivery suite are summarized in assets/live-proof.md."
+        },
+        {
+          "id": "AC3",
+          "text": "LIVE: a send to a Claude seat whose composer holds a draft stays queued (human-typing) — the veto still protects humans; pasted.",
+          "claim": "human veto intact",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC4",
+          "text": "LIVE: sender receives `still queued` notice after N s for a row vetoed on a Claude pane, then `delivered late (<delay>)` when it lands; and `pij-rs list` from the sender prints the outstanding notice on stderr; pasted. Unit test for the notice scheduler RED-first.",
+          "claim": "sender is told",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC5",
+          "text": "`harness checks` green on the rebased tree + explicit `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, `cargo fmt --check` receipts (use ~/.cargo/bin/cargo); no operator-home writes.",
+          "claim": "gates",
+          "state": "unchecked"
+        }
+      ]
+    },
+    {
+      "name": "phases",
+      "value": [
+        {
+          "id": "p1",
+          "name": "u1 then u2",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks",
+          "status": "pending",
+          "title": "Build and prove",
+          "state": "unchecked"
+        }
+      ]
+    }
+  ]
+}
