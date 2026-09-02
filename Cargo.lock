@@ -1190,6 +1190,7 @@ dependencies = [
  "pij-core",
  "pij-testkit",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

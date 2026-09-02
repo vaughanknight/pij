@@ -66,3 +66,43 @@ cargo test: 20 passed
 ```
 
 Captured outputs: focused GREEN `artifact://51`; delivery suite `artifact://58`.
+
+## u3 RED controls
+
+- Production control `EEE16F98` (2026-09-02): Claude→Claude, target working with an empty `❯ ` composer, returned `human-typing` and delivered six seconds later (sent `1788339465`, delivered `1788339471`). Supplied by magpie and accepted as ground truth; production daemon was not restarted.
+- Deterministic pre-fix control: `fresh_boundary_streamed_output_with_blank_composer_permits` failed because unread agent-output bytes set the human-typing latch (`artifact://127`).
+
+## u3 deterministic proof — PASS
+
+The corrected fresh boundary drains pane output without treating it as input. A recognized blank composer permits immediately; recognized non-blank content returns `human-typing` plus `draft_sha`, the first 12 hex characters of SHA-256 over the draft.
+
+```text
+~/.cargo/bin/cargo test -p pij-harnesses interaction::tests
+cargo test: 24 passed
+
+~/.cargo/bin/cargo test -p pij-daemon delivery::tests
+cargo test: 20 passed
+```
+
+Captured outputs: interaction `artifact://156`; delivery/receipt `artifact://157`.
+
+## u3 real accepting-socket proof — PASS
+
+The first two attempts exposed stale process metadata rather than a delivery failure:
+- `pij-binding-magpie` registry PID `86356` is its launching zsh, not Claude; lookup on that PID correctly returned queued (`artifact://199`). Magpie's real Claude PID is `13020`, with both `/tmp/cc-socks/13020.sock` and `~/.claude/sessions/13020.json` live.
+- `pij-plan132-opus-review` registry PID `71185` likewise did not resolve to its accepting endpoint in this probe (`artifact://202`).
+- Production daemon and pane tap remained untouched.
+
+The existing worktree-built `UdsTransport` live test sent one 3,080-byte, 40-line user turn directly to PID `13020`:
+
+```text
+PIJ_LIVE_ACCEPTING_PID=13020 PIJ_LIVE_SENTINEL=PLAN134-U3-MAGPIE-EMPTY \
+  ~/.cargo/bin/cargo test -p pij-transport --test live_held_observation \
+  a_long_body_reaches_an_accepting_seat_without_a_dialog -- --ignored --nocapture
+
+sentinel PLAN134-U3-MAGPIE-EMPTY: 3080 bytes,
+outcome after 152.743625ms: Delivered { origin: InjectedToTransport }
+test result: ok. 1 passed
+```
+
+Magpie confirmed at `2026-09-02 19:25:24` local that the sentinel arrived as a real user turn from `uds:/tmp/cc-socks/pij-uds-93789-0.sock`: 40/40 lines, ordered, no truncation or elision, first line `PLAN134-U3-MAGPIE-EMPTY line 01 of 40 — byte-exactness probe for plan 110.`, last line identical with `40 of 40`, and U+2014 survived on every line. Composer remained empty and no human typed during the window. The sender measured transport completion in `152.743625ms`; no absolute send timestamp was captured, so no wall-clock gap is inferred. The actual empty-vs-draft three-seat production veto run remains the post-merge closing receipt owned by the prime, per ruling.

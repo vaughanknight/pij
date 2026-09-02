@@ -185,12 +185,14 @@ impl Transport for UdsTransport {
             return Ok(DeliveryOutcome::Queued {
                 reason: None,
                 next_retry_at: None,
+                draft_sha: None,
             });
         }
         let Some(endpoint) = self.discover(seat) else {
             return Ok(DeliveryOutcome::Queued {
                 reason: None,
                 next_retry_at: None,
+                draft_sha: None,
             });
         };
         // The receiver delivers `peer_message_status` by connecting BACK to the
@@ -206,6 +208,7 @@ impl Transport for UdsTransport {
             return Ok(DeliveryOutcome::Queued {
                 reason: None,
                 next_retry_at: None,
+                draft_sha: None,
             });
         };
         let frame = build_peer_frame(msg, &inbox.origin())?;
@@ -495,6 +498,7 @@ async fn send_frame(
         return Ok(DeliveryOutcome::Queued {
             reason: None,
             next_retry_at: None,
+            draft_sha: None,
         });
     };
 
@@ -514,6 +518,7 @@ async fn send_frame(
         return Ok(DeliveryOutcome::Queued {
             reason: None,
             next_retry_at: None,
+            draft_sha: None,
         });
     }
 
@@ -544,6 +549,7 @@ async fn send_frame(
         Some(Status::Dropped | Status::Malformed) => DeliveryOutcome::Queued {
             reason: None,
             next_retry_at: None,
+            draft_sha: None,
         },
         Some(Status::Held) => DeliveryOutcome::Held {
             reason: "recipient approval pending".to_string(),
@@ -862,7 +868,8 @@ mod tests {
                 transport.deliver(&target, &message(None)).await.unwrap(),
                 DeliveryOutcome::Queued {
                     reason: None,
-                    next_retry_at: None
+                    next_retry_at: None,
+                    draft_sha: None,
                 }
             );
         }
@@ -933,7 +940,8 @@ mod tests {
             transport.deliver(&target, &message(None)).await.unwrap(),
             DeliveryOutcome::Queued {
                 reason: None,
-                next_retry_at: None
+                next_retry_at: None,
+                draft_sha: None,
             },
             "an unauthenticated write must never become delivered on a silent timer"
         );
@@ -1432,7 +1440,8 @@ mod tests {
             socket_case(None, true, Reply::Never).await.outcome,
             DeliveryOutcome::Queued {
                 reason: None,
-                next_retry_at: None
+                next_retry_at: None,
+                draft_sha: None,
             }
         );
     }

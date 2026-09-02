@@ -23,11 +23,9 @@
       "name": "goals",
       "value": [
         "A message to a working omp/pi seat is handed to the extension stream immediately; no composer capture or human-typing veto for those harnesses.",
-        "A row still queued after N seconds (config, default 60) raises a pushed notice to the sender naming msg_id, recipient, reason, and attempts; later delivery raises delivered late, and the sender's next pij-rs command prints outstanding notices on stderr.",
-        {
-          "id": "g3",
-          "text": "Claude-harness seats: the human-typing veto considers only the recognized composer box content; a seat being `working` or streaming output never counts as typing (u3, magpie u1b)."
-        }
+        "A row still queued after N seconds (config, default 60) raises a pushed notice to the sender naming msg_id, recipient, reason, attempts, and age; later delivery raises delivered late, and the sender's next pij-rs command prints outstanding notices on stderr.",
+        "Claude-harness seats: the human-typing veto considers only recognized non-blank composer-box content; a working seat or streamed output never counts as typing.",
+        "A configured retry cap no greater than 30 seconds prevents a cleared veto from remaining queued beyond one cap."
       ]
     },
     {
@@ -77,7 +75,8 @@
           "id": "AC6",
           "text": "LIVE (magpie is the test seat, both directions, plus two omp seats): a send to a WORKING Claude-harness seat with an EMPTY composer box is delivered by socket and the receipt reason is NEVER `human-typing`; a send to a Claude seat whose composer box holds a real draft still queues `human-typing` AND the receipt carries a sha of the draft. Assert on the REASON string and latency > 0 for the control, not on minutes. RED CONTROL ON RECORD (magpie 2026-09-02, pre-u3): msg EEE16F98 claude→claude, weasel mid-turn, composer `❯ ` empty → reason=human-typing, delivered 6 s later (sent 1788339465, delivered 1788339471).",
           "claim": "the Claude veto fires on a human draft, never on agent output or seat busyness",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "Proven by tests + socket delivery; live veto witness at deploy. RED artifact 127; interaction 24/24 and delivery 20/20; magpie confirmed PLAN134-U3-MAGPIE-EMPTY as a 40/40 byte-exact user turn from its accepting socket. See assets/live-proof.md."
         },
         {
           "id": "AC7",

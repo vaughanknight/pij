@@ -6,6 +6,7 @@ use pij_core::delivery::DeliveryDeferralReason;
 use pij_core::error::{PijError, Result};
 use pij_core::framing::self_injection_matches;
 use pij_core::ports::{StagedSubmit, TmuxPort};
+use sha2::{Digest, Sha256};
 
 use crate::composer::{ComposerRegion, composer_region};
 
@@ -59,8 +60,19 @@ fn collapsed_eq(left: &str, right: &str) -> bool {
     left.split_whitespace().eq(right.split_whitespace())
 }
 
+fn short_sha256(text: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let digest = Sha256::digest(text.as_bytes());
+    let mut short = String::with_capacity(12);
+    for byte in &digest[..6] {
+        short.push(HEX[(byte >> 4) as usize] as char);
+        short.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    short
+}
+
 /// Fresh pane facts used by one delivery decision.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InjectionVerdict {
     /// Existing interaction policy permits an injection now.
     pub permitted: bool,
@@ -68,10 +80,12 @@ pub struct InjectionVerdict {
     pub composer_idle: bool,
     /// Named reason when either gate vetoes delivery.
     pub reason: Option<DeliveryDeferralReason>,
+    /// Short SHA-256 fingerprint of a recognized non-blank draft.
+    pub draft_sha: Option<String>,
 }
 
 /// Outcome of a pane transaction whose input was owned before observation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StagedSubmission {
     /// The owned composer was empty, then the staged text was committed.
     Submitted,
@@ -79,6 +93,8 @@ pub enum StagedSubmission {
     Deferred {
         /// Why input ownership could not safely be used.
         reason: DeliveryDeferralReason,
+        /// Short SHA-256 fingerprint of the recognized draft, when present.
+        draft_sha: Option<String>,
     },
 }
 
@@ -294,10 +310,9 @@ impl InteractionGate {
         if self.tmux.pane_tap_sink(pane).await?.is_none() {
             return Ok(false);
         }
-        let bytes = self.tmux.drain_pane_tap(pane).await?;
-        if !bytes.is_empty() {
-            self.record_tap(pane);
-        }
+        // A pane tap contains rendered OUTPUT, not input events. Drain it to keep
+        // the boundary fresh, but never translate output bytes into human typing.
+        self.tmux.drain_pane_tap(pane).await?;
         Ok(true)
     }
 
@@ -312,6 +327,7 @@ impl InteractionGate {
                 permitted: false,
                 composer_idle: false,
                 reason: Some(DeliveryDeferralReason::TapUnowned),
+                draft_sha: None,
             });
         }
         let listed = self.tmux.list_panes().await?;
@@ -321,6 +337,7 @@ impl InteractionGate {
                 permitted,
                 composer_idle: false,
                 reason: Some(DeliveryDeferralReason::Unrecognized),
+                draft_sha: None,
             });
         };
         let (Some(cursor_x), Some(cursor_y)) = (listed.cursor_x, listed.cursor_y) else {
@@ -329,25 +346,21 @@ impl InteractionGate {
                 permitted,
                 composer_idle: false,
                 reason: Some(DeliveryDeferralReason::Unrecognized),
+                draft_sha: None,
             });
         };
         let capture = self.tmux.capture(pane, CAPTURE_LINES).await?;
         match composer_region(&capture, cursor_x, cursor_y) {
             ComposerRegion::Recognized(content) => {
                 let composer_idle = content.chars().all(char::is_whitespace);
-                self.observe_composer_at(pane, &content, true);
-                let permitted = self.permits_with_additional_veto(pane, false).await?;
-                let reason = if !composer_idle {
-                    Some(DeliveryDeferralReason::ComposerBusy)
-                } else if !permitted {
-                    Some(DeliveryDeferralReason::HumanTyping)
-                } else {
-                    None
-                };
+                // This fresh, recognized capture is the authority. It clears any
+                // historical tap latch because tap bytes are rendered output.
+                self.observe_composer_at(pane, &content, false);
                 Ok(InjectionVerdict {
-                    permitted,
+                    permitted: composer_idle,
                     composer_idle,
-                    reason,
+                    reason: (!composer_idle).then_some(DeliveryDeferralReason::HumanTyping),
+                    draft_sha: (!composer_idle).then(|| short_sha256(&content)),
                 })
             }
             ComposerRegion::Unrecognized => {
@@ -356,6 +369,7 @@ impl InteractionGate {
                     permitted,
                     composer_idle: false,
                     reason: Some(DeliveryDeferralReason::Unrecognized),
+                    draft_sha: None,
                 })
             }
         }
@@ -392,6 +406,7 @@ impl InteractionGate {
                 reason: verdict
                     .reason
                     .unwrap_or(DeliveryDeferralReason::Unrecognized),
+                draft_sha: verdict.draft_sha,
             });
         }
         transaction.stage_and_commit(text).await
@@ -437,10 +452,11 @@ mod tests {
     use pij_testkit::block_on;
     use pij_testkit::fakes::FakeTmux;
 
-    use super::{DeliveryDeferralReason, InteractionGate, PaneTransaction, StagedSubmission};
+    use super::{
+        DeliveryDeferralReason, InteractionGate, PaneTransaction, StagedSubmission, short_sha256,
+    };
 
     const RULE: &str = "────────────────────────────────";
-
     fn pane(cursor_x: u32, cursor_y: u32) -> Pane {
         Pane {
             id: "%108".to_string(),
@@ -685,25 +701,28 @@ mod tests {
     }
 
     #[test]
-    fn fresh_boundary_preserves_and_vetoes_on_tick_derived_tap_state() {
-        let capture = format!("output\n{RULE}\n❯ \n{RULE}");
+    fn fresh_boundary_streamed_output_with_blank_composer_permits() {
+        let capture = format!("agent output\n{RULE}\n❯ \n{RULE}");
         let tmux = Arc::new(
             FakeTmux::new()
                 .with_pane(pane(2, 2))
                 .with_attached_tap("%108")
+                .script_tap(b"streamed agent output".to_vec())
                 .script_capture(capture),
         );
         let gate = InteractionGate::new(tmux.clone());
         gate.observe_composer("%108", "");
-        gate.record_tap("%108");
 
-        assert!(!block_on(gate.permits_injection_fresh("%108")).expect("tap vetoes"));
+        assert!(
+            block_on(gate.permits_injection_fresh("%108")).expect("blank composer permits"),
+            "agent output from the pane tap is not evidence of human typing"
+        );
         assert!(
             tmux.calls()
                 .iter()
                 .any(|call| call == "drain_pane_tap:%108")
         );
-        assert!(!block_on(gate.permits_injection("%108")).expect("tap state preserved"));
+        assert!(block_on(gate.permits_injection("%108")).expect("blank state remains clear"));
     }
 
     #[test]
@@ -721,7 +740,7 @@ mod tests {
     }
 
     #[test]
-    fn fresh_verdict_keeps_nonempty_composer_fact_after_policy_expiry() {
+    fn fresh_verdict_never_expires_a_recognized_draft() {
         let elapsed_ms = Arc::new(AtomicU64::new(0));
         let started_at = Instant::now();
         let clock_ms = Arc::clone(&elapsed_ms);
@@ -745,13 +764,13 @@ mod tests {
 
         elapsed_ms.store(60_000, Ordering::Relaxed);
         let stale = block_on(gate.fresh_injection_verdict("%108")).expect("stale draft");
-        assert!(
-            stale.permitted,
-            "socket policy still permits an expired draft"
-        );
-        assert!(
-            !stale.composer_idle,
-            "pane typing must retain the actual non-empty composer fact"
+        assert!(!stale.permitted, "a recognized draft remains a human veto");
+        assert!(!stale.composer_idle);
+        assert_eq!(stale.reason, Some(DeliveryDeferralReason::HumanTyping));
+        assert_eq!(
+            stale.draft_sha,
+            Some(short_sha256("parked draft")),
+            "the receipt can identify the exact draft without storing its text"
         );
     }
 
@@ -827,7 +846,7 @@ mod tests {
         assert!(!block_on(gate.permits_injection("%108")).expect("active mode vetoes"));
     }
     #[test]
-    fn owned_submit_hard_vetoes_stale_draft_and_fresh_tap() {
+    fn owned_submit_vetoes_draft_and_ignores_streamed_output() {
         let elapsed_ms = Arc::new(AtomicU64::new(0));
         let started_at = Instant::now();
         let clock_ms = Arc::clone(&elapsed_ms);
@@ -849,7 +868,8 @@ mod tests {
             block_on(draft_gate.submit_with_owned_input("%108", "AUTOMATED"))
                 .expect("stale draft decision"),
             StagedSubmission::Deferred {
-                reason: DeliveryDeferralReason::ComposerBusy,
+                reason: DeliveryDeferralReason::HumanTyping,
+                draft_sha: Some(short_sha256("parked human draft")),
             },
             "a non-blank composer is never a pane-typing target, regardless of age"
         );
@@ -864,17 +884,15 @@ mod tests {
         let tap_tmux = Arc::new(
             FakeTmux::new()
                 .with_clear_composer("%108")
-                .script_tap(b"fresh-human-key".to_vec()),
+                .script_tap(b"streamed agent output".to_vec()),
         );
         let tap_gate = InteractionGate::new(Arc::clone(&tap_tmux) as Arc<dyn TmuxPort>);
         tap_gate.observe_composer("%108", "");
         assert_eq!(
             block_on(tap_gate.submit_with_owned_input("%108", "AUTOMATED"))
-                .expect("live tap decision"),
-            StagedSubmission::Deferred {
-                reason: DeliveryDeferralReason::HumanTyping,
-            },
-            "fresh unread tap bytes veto even before the renderer catches up"
+                .expect("streamed output decision"),
+            StagedSubmission::Submitted,
+            "rendered output is not human typing when the composer is blank"
         );
         let calls = tap_tmux.calls();
         let drain = calls
@@ -887,9 +905,14 @@ mod tests {
             .expect("fresh gate captures composer");
         assert!(
             drain < capture,
-            "tap bytes are consulted before composer authorization"
+            "tap output is drained before composer authorization"
         );
-        assert_eq!(tap_tmux.staged_len(), 0);
+        assert!(
+            tap_tmux
+                .calls()
+                .iter()
+                .any(|call| call == "submit:%108:AUTOMATED")
+        );
     }
 
     #[test]
@@ -934,6 +957,7 @@ mod tests {
                     block_on(PaneTransaction::new(&gate, staged).abort()).map(|()| {
                         StagedSubmission::Deferred {
                             reason: DeliveryDeferralReason::Unrecognized,
+                            draft_sha: None,
                         }
                     })
                 }
@@ -947,6 +971,7 @@ mod tests {
                     block_on(tmux.abort_submit(&watchdog_recovery)).map(|()| {
                         StagedSubmission::Deferred {
                             reason: DeliveryDeferralReason::Unrecognized,
+                            draft_sha: None,
                         }
                     })
                 }
@@ -962,6 +987,7 @@ mod tests {
                         result.expect("non-commit exit"),
                         StagedSubmission::Deferred {
                             reason: DeliveryDeferralReason::Unrecognized,
+                            draft_sha: None,
                         }
                     )
                 }

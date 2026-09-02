@@ -128,7 +128,8 @@ async fn a_long_body_reaches_an_accepting_seat_without_a_dialog() {
 
     // 40 numbered lines, each carrying the sentinel, so a truncation to the last
     // pty chunk is visible as MISSING LINE NUMBERS rather than as a shorter blob.
-    let sentinel = format!("WOODPECKER-LONG-{}", std::process::id());
+    let sentinel = env::var("PIJ_LIVE_SENTINEL")
+        .unwrap_or_else(|_| format!("WOODPECKER-LONG-{}", std::process::id()));
     let body: String = (1..=40)
         .map(|n| format!("{sentinel} line {n:02} of 40 — byte-exactness probe for plan 110.\n"))
         .collect();

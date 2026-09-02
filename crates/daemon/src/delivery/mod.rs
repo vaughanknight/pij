@@ -122,9 +122,18 @@ impl DeliveryService {
     }
 
     fn queued_outcome(reason: Option<&str>, not_before_ms: u64) -> DeliveryOutcome {
+        Self::queued_outcome_with_draft(reason, not_before_ms, None)
+    }
+
+    fn queued_outcome_with_draft(
+        reason: Option<&str>,
+        not_before_ms: u64,
+        draft_sha: Option<String>,
+    ) -> DeliveryOutcome {
         DeliveryOutcome::Queued {
             reason: reason.map(str::to_string),
             next_retry_at: Some(not_before_ms),
+            draft_sha,
         }
     }
 
@@ -238,22 +247,27 @@ impl DeliveryService {
                 // stream is not a `Transport`; routing here avoids both composer
                 // gates and the pane-oriented rung selector.
                 let extension_stream = matches!(recipient.harness, Harness::Omp | Harness::Pi);
-                let (rung, interaction_reason) = if extension_stream {
-                    (DeliveryRung::Observe, None)
+                let (rung, interaction_reason, draft_sha) = if extension_stream {
+                    (DeliveryRung::Observe, None, None)
                 } else {
                     let socket_available = self.transport.can_deliver(&recipient, &msg).await?;
                     // Socket delivery keeps the fresh permission policy. Pane-body
                     // permission is checked once, after input ownership is acquired,
                     // inside `submit_with_owned_input`.
-                    let (interaction_permits, composer_idle, interaction_reason) =
+                    let (interaction_permits, composer_idle, interaction_reason, draft_sha) =
                         match recipient.pane.as_deref() {
-                            None => (true, true, None),
+                            None => (true, true, None, None),
                             Some(pane) if socket_available => {
                                 let verdict =
                                     self.interaction.fresh_injection_verdict(pane).await?;
-                                (verdict.permitted, verdict.composer_idle, verdict.reason)
+                                (
+                                    verdict.permitted,
+                                    verdict.composer_idle,
+                                    verdict.reason,
+                                    verdict.draft_sha,
+                                )
                             }
-                            Some(_) => (true, true, None),
+                            Some(_) => (true, true, None, None),
                         };
 
                     // Paneless socket consumers remain transport-owned. The rung
@@ -270,7 +284,7 @@ impl DeliveryService {
                             composer_idle,
                         )
                     };
-                    (rung, interaction_reason)
+                    (rung, interaction_reason, draft_sha)
                 };
 
                 match rung {
@@ -346,7 +360,7 @@ impl DeliveryService {
                                     Ok(StagedSubmission::Submitted) => DeliveryOutcome::Delivered {
                                         origin: DeliveryOrigin::TypedToPane,
                                     },
-                                    Ok(StagedSubmission::Deferred { reason }) => {
+                                    Ok(StagedSubmission::Deferred { reason, draft_sha }) => {
                                         self.queue.forget_delivered(&to, &msg.msg_id).await?;
                                         match self
                                             .queue
@@ -354,9 +368,10 @@ impl DeliveryService {
                                             .await?
                                         {
                                             DeliveryEnqueue::Queued { not_before_ms, .. } => {
-                                                Self::queued_outcome(
+                                                Self::queued_outcome_with_draft(
                                                     Some(reason.as_str()),
                                                     not_before_ms,
+                                                    draft_sha,
                                                 )
                                             }
                                             DeliveryEnqueue::AlreadyDelivered(origin) => {
@@ -392,7 +407,7 @@ impl DeliveryService {
                                         },
                                     )
                                 };
-                                Self::queued_outcome(reason, not_before_ms)
+                                Self::queued_outcome_with_draft(reason, not_before_ms, draft_sha)
                             }
                             DeliveryEnqueue::AlreadyDelivered(origin) => {
                                 publish_to_recipient = false;
@@ -980,6 +995,15 @@ mod tests {
         DeliveryOutcome::Queued {
             reason: Some(reason.to_string()),
             next_retry_at: Some(next_retry_at),
+            draft_sha: None,
+        }
+    }
+
+    fn queued_draft_outcome(next_retry_at: u64) -> DeliveryOutcome {
+        DeliveryOutcome::Queued {
+            reason: Some("human-typing".to_string()),
+            next_retry_at: Some(next_retry_at),
+            draft_sha: Some("2cf24dba5fb0".to_string()),
         }
     }
 
@@ -1012,24 +1036,20 @@ mod tests {
 
     #[tokio::test]
     async fn first_attempt_socket_delivery_obeys_the_same_politeness_gate_as_retries() {
-        for (label, fixture, observe_clear, expected_reason) in [
+        for (label, fixture, observe_clear, expected_reason, expected_draft_sha) in [
             (
                 "unknown",
                 fixture(FakeTransport::reachable()),
                 false,
                 "tap-unowned",
+                None,
             ),
             (
-                "tmux typing",
-                fixture_with_gate(
-                    FakeTransport::reachable(),
-                    FakeTmux::new()
-                        .with_clear_composer("%108")
-                        .with_attached_tap("%108")
-                        .with_user_typing(),
-                ),
+                "recognized draft",
+                fixture_with_gate(FakeTransport::reachable(), typing_pane("%108")),
                 true,
                 "human-typing",
+                Some("2cf24dba5fb0"),
             ),
         ] {
             let mut recipient = bound(&format!("pij-{label}"));
@@ -1048,11 +1068,13 @@ mod tests {
             let wire = serde_json::to_value(&receipt.outcome).expect("queued outcome wire");
             assert_eq!(wire["reason"], expected_reason);
             assert_eq!(wire["next_retry_at"], 0);
+            assert_eq!(wire["draft_sha"].as_str(), expected_draft_sha);
             assert_eq!(
                 receipt.outcome,
                 DeliveryOutcome::Queued {
                     reason: Some(expected_reason.to_string()),
                     next_retry_at: Some(0),
+                    draft_sha: expected_draft_sha.map(str::to_string),
                 },
                 "{label}"
             );
@@ -1279,15 +1301,12 @@ mod tests {
             )
     }
 
-    /// ac-1111 end to end: a PARKED draft delays delivery, it does not block it.
+    /// A recognized draft is the human-typing veto, independent of its age.
     ///
-    /// The composer never goes blank and the human never returns. Before the idle
-    /// window the send is queued; once the same unchanged content has outlived the
-    /// window, delivery PROCEEDS. This is the regression that forced TS's
-    /// fleet-wide emergency bypass (72b5dd61) — there, a walked-away draft held a
-    /// pane forever.
+    /// Socket delivery cannot interrupt a person merely because an unchanged
+    /// draft outlived a timer. The recognized composer box is the authority.
     #[tokio::test]
-    async fn a_parked_draft_delays_delivery_and_then_stops_blocking_it() {
+    async fn a_recognized_draft_never_expires_for_socket_delivery() {
         let idle = Duration::from_millis(30);
         let fixture =
             fixture_with_gate_and_idle(FakeTransport::reachable(), typing_pane("%108"), idle);
@@ -1295,34 +1314,28 @@ mod tests {
         recipient.pane = Some("%108".to_string());
         register(&fixture, recipient.clone()).await;
 
-        // First send: the draft is fresh, so it is a real hold.
         let held = fixture
             .service
             .send("pij-from".into(), recipient.id.clone(), "wait your turn")
             .await
             .expect("a live draft queues durably");
-        assert_eq!(held.outcome, queued_outcome("composer-busy", 0));
+        assert_eq!(held.outcome, queued_draft_outcome(0));
         assert!(fixture.transport.delivered().is_empty());
 
         // The draft is never touched again and never cleared.
         tokio::time::sleep(idle * 3).await;
 
-        let sent = fixture
+        let still_held = fixture
             .service
-            .send("pij-from".into(), recipient.id, "no longer blocked")
+            .send("pij-from".into(), recipient.id, "still your turn")
             .await
-            .expect("an expired hold delivers");
-        assert_eq!(
-            sent.outcome,
-            DeliveryOutcome::Delivered {
-                origin: DeliveryOrigin::InjectedToTransport
-            },
-            "a parked draft must DELAY delivery, never block it forever"
-        );
+            .expect("a recognized draft remains a veto");
+        assert_eq!(still_held.outcome, queued_draft_outcome(0));
+        assert!(fixture.transport.delivered().is_empty());
     }
 
     #[tokio::test]
-    async fn expired_nonempty_draft_still_vetoes_typed_body_delivery() {
+    async fn nonempty_draft_still_vetoes_typed_body_delivery_after_idle_window() {
         let idle = Duration::from_millis(30);
         let fixture =
             fixture_with_gate_and_idle(FakeTransport::unreachable(), typing_pane("%typed"), idle);
@@ -1335,7 +1348,7 @@ mod tests {
             .send("pij-from".into(), recipient.id.clone(), "wait first")
             .await
             .expect("fresh draft queues");
-        assert_eq!(first.outcome, queued_outcome("composer-busy", 0));
+        assert_eq!(first.outcome, queued_draft_outcome(0));
 
         tokio::time::sleep(idle * 3).await;
         let second = fixture
@@ -1344,7 +1357,7 @@ mod tests {
             .await
             .expect("stale draft still queues typed body");
 
-        assert_eq!(second.outcome, queued_outcome("composer-busy", 0));
+        assert_eq!(second.outcome, queued_draft_outcome(0));
         assert_eq!(fixture.queue.live_len(), 2);
         assert!(
             fixture
@@ -1379,7 +1392,7 @@ mod tests {
 
         assert_eq!(
             receipt.outcome,
-            queued_outcome("composer-busy", 0),
+            queued_draft_outcome(0),
             "a stale CLEAR tick must not outrank a fresh capture showing a human typing"
         );
         assert!(fixture.transport.delivered().is_empty());
