@@ -314,8 +314,8 @@ export async function runTeamScaffoldSmoke(): Promise<TeamScaffoldSmokeResult> {
 	}
 }
 
-export function runWatchdogSmoke(): WatchdogSmokeResult {
-	const result = spawnSync(process.execPath, [TSX_CLI, WATCHDOG_PROOF, "--smoke"], {
+export function runWatchdogSmoke(spawn: typeof spawnSync = spawnSync): WatchdogSmokeResult {
+	const result = spawn(process.execPath, [TSX_CLI, WATCHDOG_PROOF, "--smoke"], {
 		cwd: PIJ_ROOT,
 		encoding: "utf8",
 		timeout: 60_000,

@@ -1,16 +1,20 @@
+import type { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { loadScenario, runScenario } from "../driver/index.js";
-import { findProjectExtensionEntries, resolveSmokeCommand } from "./smoke.js";
+import { findProjectExtensionEntries, resolveSmokeCommand, runWatchdogSmoke } from "./smoke.js";
 
-vi.mock("../driver/index.js", () => ({
-	isolatedChildEnvironment: vi.fn(() => ({})),
-	loadScenario: vi.fn(),
-	runScenario: vi.fn(),
-}));
+vi.mock("../driver/index.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../driver/index.js")>();
+	return {
+		...actual,
+		loadScenario: vi.fn(),
+		runScenario: vi.fn(),
+	};
+});
 
 const cleanupPaths: string[] = [];
 
@@ -18,6 +22,30 @@ afterEach(() => {
 	for (const path of cleanupPaths.splice(0)) {
 		rmSync(path, { recursive: true, force: true });
 	}
+	vi.unstubAllEnvs();
+});
+
+describe("runWatchdogSmoke", () => {
+	it("passes scrubbed identity and safe routing to the watchdog subprocess", () => {
+		vi.stubEnv("PIJ_SESSION_ID", "pij-real-worker");
+		vi.stubEnv("CLAUDE_CODE_SESSION_ID", "real-claude-session");
+		delete process.env.PIJ_DAEMON_GENERATION;
+		let childEnv: NodeJS.ProcessEnv | undefined;
+		const spawn = ((
+			_file: string,
+			_args: readonly string[],
+			options: { readonly env?: NodeJS.ProcessEnv },
+		) => {
+			childEnv = options.env;
+			return { status: 0, stdout: '{"verdict":"PASS"}', stderr: "" };
+		}) as unknown as typeof spawnSync;
+
+		expect(runWatchdogSmoke(spawn)).toEqual({ verdict: "PASS" });
+		expect(childEnv?.PIJ_SESSION_ID).toBe("");
+		expect(childEnv?.CLAUDE_CODE_SESSION_ID).toBe("");
+		expect(childEnv?.PIJ_DAEMON_GENERATION).toBe("legacy");
+		expect(childEnv?.PATH).toBe(process.env.PATH);
+	});
 });
 
 describe("resolveSmokeCommand", () => {

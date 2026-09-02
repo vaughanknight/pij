@@ -663,6 +663,8 @@ function rsSessionRows(payload: unknown): readonly RsSessionJoinRow[] {
 	return normalized;
 }
 
+/** `JoinRow` retains `prime`/`oldPrime` for `buildExportLines`; the sessions
+ * contract deliberately drops them so both generations expose one frozen key set. */
 function normalizeLegacySessionJoinRow(
 	legacy: JoinRow,
 	gitCommonDir?: string | null,
