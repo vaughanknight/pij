@@ -35,12 +35,12 @@ _Empty._
 
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| t1 | Write red installer tests | — | — | [x] checked | — | cargo test initially failed E0425 for ensure_claude_session_start_hook | — | — | — | — |
+| t1 | Write red installer tests | — | — | [x] checked | — | cargo test initially failed E0425 for ensure_claude_session_start_hook | — | — | — | [AC4](../../../plan.dd.md#acceptance-criteria) |
 | t2 | Implement session-start hook installer | — | — | [x] checked | — | cargo test -p pij-harnesses: pass; installed script behavior covered | — | — | — | — |
 | t3 | Wire daemon boot and doctor | — | — | [x] checked | — | cargo test -p pij-cli: pass; doctor claude-hook emitted structured state | — | — | — | — |
 | t4 | Document statusline and operator behavior | — | — | [x] checked | — | docs/how/claude-auto-seat.md | — | — | — | — |
-| t5 | Run targeted and full checks | — | — | [x] checked | — | harness checks: all 8 sensors pass; cargo test: 133 pass; clippy -D warnings: pass | — | — | — | — |
-| t6 | Capture isolated live acceptance proof | — | — | [x] checked | — | docs/plans/127-claude-session-start-adopt/assets/live-auto-seat.md | — | — | — | — |
+| t5 | Run targeted and full checks | — | — | [x] checked | — | harness checks: all 8 sensors pass; cargo test: 133 pass; clippy -D warnings: pass | — | — | — | [AC5](../../../plan.dd.md#acceptance-criteria) |
+| t6 | Capture isolated live acceptance proof | — | — | [x] checked | — | docs/plans/127-claude-session-start-adopt/assets/live-auto-seat.md | — | — | — | [AC1](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria), [AC3](../../../plan.dd.md#acceptance-criteria) |
 
 <a id="done-when"></a>
 

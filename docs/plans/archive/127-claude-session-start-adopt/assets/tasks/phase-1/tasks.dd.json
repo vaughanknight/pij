@@ -23,7 +23,10 @@
           "id": "t1",
           "title": "Write red installer tests",
           "state": "checked",
-          "receipt": "cargo test initially failed E0425 for ensure_claude_session_start_hook"
+          "receipt": "cargo test initially failed E0425 for ensure_claude_session_start_hook",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC4"
+          ]
         },
         {
           "id": "t2",
@@ -47,13 +50,21 @@
           "id": "t5",
           "title": "Run targeted and full checks",
           "state": "checked",
-          "receipt": "harness checks: all 8 sensors pass; cargo test: 133 pass; clippy -D warnings: pass"
+          "receipt": "harness checks: all 8 sensors pass; cargo test: 133 pass; clippy -D warnings: pass",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC5"
+          ]
         },
         {
           "id": "t6",
           "title": "Capture isolated live acceptance proof",
           "state": "checked",
-          "receipt": "docs/plans/127-claude-session-start-adopt/assets/live-auto-seat.md"
+          "receipt": "docs/plans/127-claude-session-start-adopt/assets/live-auto-seat.md",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC3"
+          ]
         }
       ]
     },
