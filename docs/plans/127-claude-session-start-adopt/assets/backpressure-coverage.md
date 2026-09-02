@@ -1,7 +1,7 @@
 # Backpressure Coverage — claude-session-start-adopt
 
 **Plan**: [plan.dd.md](../plan.dd.md)
-**Basis (plan SHA-256)**: `10e83e0702cc3e9a0eb8ac4ba7b6ac49eb53c0cc4b028c6b2ed073a30b734ba8`
+**Basis (plan SHA-256)**: `151200a981b25780824581308f25160f7517ba3ae828cff238cf11003afc57b1`
 **Generated**: 2026-09-02
 **Certainty**: Partial
 

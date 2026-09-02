@@ -137,6 +137,47 @@
           "importance": "recommended"
         }
       }
+    },
+    {
+      "id": "NOD-001",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-09-02T00:10:49.353Z",
+      "details": {
+        "node": "backpressure-151200a981b2",
+        "type": "backpressure",
+        "chore": {
+          "kind": "command",
+          "importance": "optional"
+        }
+      }
+    },
+    {
+      "id": "UPD-003",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-02T00:10:49.514Z",
+      "details": {
+        "node": "backpressure-151200a981b2",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-006",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-02T00:10:49.664Z",
+      "details": {
+        "node": "backpressure-151200a981b2",
+        "from": "known",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "optional"
+        }
+      }
     }
   ],
   "nodes": [
@@ -379,6 +420,32 @@
         "Run /eng-harness-flow --hook post-flight --json — a REAL invocation; narrate its envelope verbatim.",
         "On done, receipt first, status second: harness flow comment --path <flow-path> --node retro-harvest --kind validation --source agent --text \"verdict:<…> time:<…>\" (router missing / envelope noop/UNAVAILABLE → text \"decision:unavailable reason:<…> time:<…>\" — a completed attempt, not a skip) THEN harness flow status --path <flow-path> --node retro-harvest --to done. Mandatory unless the human declines — a decline is: harness flow comment --path <flow-path> --node retro-harvest --kind decision --source user --text \"<their verbatim words>\" THEN harness flow status --path <flow-path> --node retro-harvest --to skipped."
       ]
+    },
+    {
+      "id": "backpressure-151200a981b2",
+      "type": "backpressure",
+      "label": "Backpressure survey (latest plan)",
+      "status": "done",
+      "next": [
+        "plan"
+      ],
+      "created_at": "2026-09-02T00:10:49.353Z",
+      "modified_at": "2026-09-02T00:10:49.664Z",
+      "command": "run /eng-harness-flow --hook pre-coding --json",
+      "chore": {
+        "kind": "command",
+        "importance": "optional"
+      },
+      "branch_of": "plan",
+      "comments": [
+        {
+          "at": "2026-09-02T00:10:49.514Z",
+          "text": "decision:route verdict:Partial basis_sha256:151200a981b25780824581308f25160f7517ba3ae828cff238cf11003afc57b1 artifact:docs/plans/127-claude-session-start-adopt/assets/backpressure-coverage.md time:2026-09-02",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "ran_at": "2026-09-02T00:10:49.664Z"
     }
   ],
   "plan_dir": "docs/plans/127-claude-session-start-adopt"

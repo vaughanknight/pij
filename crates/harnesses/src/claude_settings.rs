@@ -13,6 +13,8 @@ const INBOUND_KEY: &str = "crossSessionInbound";
 const ACCEPT: &str = "accept";
 const HOOKS_KEY: &str = "hooks";
 const SESSION_START_KEY: &str = "SessionStart";
+const CLAUDE_SESSION_START_SCRIPT: &str =
+    include_str!("../../../harness/scripts/claude-session-start-pij.sh");
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// A pure decision about whether and how a Claude settings document must change.
@@ -162,13 +164,17 @@ pub fn plan_claude_session_start_hook(existing: Option<&str>, command: &str) -> 
     let Some(existing) = existing else {
         return EnsurePlan::Write {
             before: None,
-            contents: format!("{{\n  \"{HOOKS_KEY}\": {{\n    \"{SESSION_START_KEY}\": [{entry}]\n  }}\n}}\n"),
+            contents: format!(
+                "{{\n  \"{HOOKS_KEY}\": {{\n    \"{SESSION_START_KEY}\": [{entry}]\n  }}\n}}\n"
+            ),
         };
     };
     if existing.trim().is_empty() {
         return EnsurePlan::Write {
             before: None,
-            contents: format!("{{\n  \"{HOOKS_KEY}\": {{\n    \"{SESSION_START_KEY}\": [{entry}]\n  }}\n}}\n"),
+            contents: format!(
+                "{{\n  \"{HOOKS_KEY}\": {{\n    \"{SESSION_START_KEY}\": [{entry}]\n  }}\n}}\n"
+            ),
         };
     }
     let parsed: Value = match serde_json::from_str(existing) {
@@ -224,7 +230,10 @@ pub fn plan_claude_session_start_hook(existing: Option<&str>, command: &str) -> 
         };
     };
     let before = first_hook_command(session_start);
-    if session_start.iter().any(|entry| hook_entry_contains(entry, command)) {
+    if session_start
+        .iter()
+        .any(|entry| hook_entry_contains(entry, command))
+    {
         return EnsurePlan::NoChange {
             before: Some(command.to_string()),
         };
@@ -252,7 +261,7 @@ pub fn ensure_claude_session_start_hook(
     homes: &[PathBuf],
     script_path: &Path,
 ) -> Vec<EnsureReport> {
-    let command = script_path.display().to_string();
+    let command = shell_command(script_path);
     homes
         .iter()
         .map(|home| {
@@ -269,7 +278,7 @@ pub fn inspect_claude_session_start_hook(
     homes: &[PathBuf],
     script_path: &Path,
 ) -> Vec<ClaudeHookState> {
-    let command = script_path.display().to_string();
+    let command = shell_command(script_path);
     homes
         .iter()
         .map(|home| {
@@ -315,6 +324,17 @@ pub fn inspect_claude_session_start_hook(
             }
         })
         .collect()
+}
+
+/// Materialize the embedded Claude hook at a stable daemon-owned path.
+pub fn install_claude_session_start_script(state_dir: &Path) -> std::io::Result<PathBuf> {
+    fs::create_dir_all(state_dir)?;
+    let path = state_dir.join("claude-session-start-pij.sh");
+    if fs::read_to_string(&path).ok().as_deref() != Some(CLAUDE_SESSION_START_SCRIPT) {
+        atomic_replace(&path, CLAUDE_SESSION_START_SCRIPT.as_bytes())?;
+    }
+    make_executable(&path)?;
+    Ok(path)
 }
 
 /// Inspect every named Claude home without changing any file.
@@ -533,12 +553,28 @@ fn hook_entry_contains(entry: &Value, command: &str) -> bool {
         })
 }
 
+fn shell_command(path: &Path) -> String {
+    let path = path.to_string_lossy();
+    if path.bytes().all(|byte| {
+        byte.is_ascii_alphanumeric()
+            || matches!(
+                byte,
+                b'_' | b'@' | b'%' | b'+' | b'=' | b':' | b',' | b'.' | b'/' | b'-'
+            )
+    }) {
+        path.into_owned()
+    } else {
+        format!("'{}'", path.replace('\'', "'\"'\"'"))
+    }
+}
+
 fn atomic_replace(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    let temp = path.with_file_name(format!(
-        ".settings.json.pij-{}-{sequence}.tmp",
-        std::process::id()
-    ));
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("file");
+    let temp = path.with_file_name(format!(".{name}.pij-{}-{sequence}.tmp", std::process::id()));
     let result = (|| {
         let permissions = fs::metadata(path)
             .ok()
@@ -561,6 +597,19 @@ fn atomic_replace(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     result
 }
 
+#[cfg(unix)]
+fn make_executable(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path)?.permissions();
+    permissions.set_mode(permissions.mode() | 0o700);
+    fs::set_permissions(path, permissions)
+}
+
+#[cfg(not(unix))]
+fn make_executable(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
 
 fn render_value(value: &Value) -> String {
     value
@@ -606,7 +655,6 @@ fn find_top_level_value(document: &str, wanted: &str) -> Option<Range<usize>> {
         }
     }
 }
-
 
 fn skip_whitespace(bytes: &[u8], mut cursor: usize) -> usize {
     while bytes.get(cursor).is_some_and(u8::is_ascii_whitespace) {
@@ -872,6 +920,24 @@ mod tests {
     }
 
     #[test]
+    fn session_start_hook_shell_quotes_spaced_script_paths() {
+        let root = TestDir::new();
+        let home = root.path().join(".claude");
+        let script = Path::new("/opt/pij hooks/session-start.sh");
+
+        ensure_claude_session_start_hook(std::slice::from_ref(&home), script);
+
+        let written: Value = serde_json::from_str(
+            &fs::read_to_string(home.join("settings.json")).expect("settings created"),
+        )
+        .expect("valid settings");
+        assert_eq!(
+            written["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+            "'/opt/pij hooks/session-start.sh'"
+        );
+    }
+
+    #[test]
     fn session_start_hook_preserves_existing_hooks_byte_for_byte() {
         let root = TestDir::new();
         let home = root.path().join(".claude");
@@ -905,7 +971,10 @@ mod tests {
             r#""PreToolUse": [{"matcher":"tool","hooks":[{"type":"command","command":"pre"}]}]"#,
             r#""PostToolUse": [{"matcher":"after","hooks":[{"type":"command","command":"post"}]}]"#,
         ] {
-            assert!(written.contains(preserved), "existing hook changed: {preserved}");
+            assert!(
+                written.contains(preserved),
+                "existing hook changed: {preserved}"
+            );
         }
         let parsed: Value = serde_json::from_str(&written).expect("valid settings");
         assert_eq!(parsed["theme"], "dark");
@@ -942,6 +1011,41 @@ mod tests {
     }
 
     #[test]
+    fn session_start_hook_appends_without_reordering_existing_entries() {
+        let root = TestDir::new();
+        let home = root.path().join(".claude");
+        fs::create_dir_all(&home).expect("home");
+        let existing_entry =
+            r#"{"matcher":"resume","hooks":[{"type":"command","command":"existing"}]}"#;
+        let original = format!(r#"{{"hooks":{{"SessionStart":[{existing_entry}]}}}}"#);
+        fs::write(home.join("settings.json"), &original).expect("seed settings");
+
+        let report = ensure_claude_session_start_hook(
+            std::slice::from_ref(&home),
+            Path::new("/opt/pij/claude-session-start-pij.sh"),
+        )
+        .into_iter()
+        .next()
+        .expect("report");
+
+        assert!(report.changed);
+        let written = fs::read_to_string(home.join("settings.json")).expect("settings");
+        assert!(written.contains(&format!("[{existing_entry},")));
+        let parsed: Value = serde_json::from_str(&written).expect("valid settings");
+        assert_eq!(
+            parsed["hooks"]["SessionStart"]
+                .as_array()
+                .expect("array")
+                .len(),
+            2
+        );
+        assert_eq!(
+            parsed["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+            "existing"
+        );
+    }
+
+    #[test]
     fn session_start_hook_refuses_malformed_settings_without_touching_them() {
         let root = TestDir::new();
         let home = root.path().join(".claude");
@@ -964,5 +1068,82 @@ mod tests {
             fs::read_to_string(home.join("settings.json")).expect("settings"),
             original
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn installed_script_is_executable_and_silent_without_tmux() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = TestDir::new();
+        let state_dir = root.path().join("state");
+        let script = install_claude_session_start_script(&state_dir).expect("install script");
+        assert_ne!(
+            fs::metadata(&script)
+                .expect("script metadata")
+                .permissions()
+                .mode()
+                & 0o100,
+            0,
+            "owner execute bit"
+        );
+
+        let output = std::process::Command::new(&script)
+            .env("PIJ_RS_STATE_DIR", &state_dir)
+            .env_remove("TMUX_PANE")
+            .output()
+            .expect("run hook");
+
+        assert!(output.status.success());
+        assert!(output.stdout.is_empty());
+        assert!(output.stderr.is_empty());
+        assert_eq!(
+            fs::read_to_string(state_dir.join("hook.log")).expect("hook log"),
+            "skip:no-tmux\n"
+        );
+        assert_eq!(
+            install_claude_session_start_script(&state_dir).expect("idempotent install"),
+            script
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn successful_script_adopt_emits_only_session_start_json() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = TestDir::new();
+        let state_dir = root.path().join("state");
+        let bin_dir = root.path().join("bin");
+        fs::create_dir_all(&bin_dir).expect("bin directory");
+        for (name, body) in [
+            ("pij-rs", "#!/bin/sh\n[ \"$1\" = ping ]\n"),
+            ("pij", "#!/bin/sh\nexit 0\n"),
+        ] {
+            let path = bin_dir.join(name);
+            fs::write(&path, body).expect("fake binary");
+            let mut permissions = fs::metadata(&path).expect("metadata").permissions();
+            permissions.set_mode(0o700);
+            fs::set_permissions(&path, permissions).expect("executable fake");
+        }
+        let script = install_claude_session_start_script(&state_dir).expect("install script");
+
+        let output = std::process::Command::new(&script)
+            .env("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()))
+            .env("PIJ_RS_STATE_DIR", &state_dir)
+            .env("TMUX_PANE", "%42")
+            .output()
+            .expect("run hook");
+
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8(output.stdout).expect("utf-8 stdout"),
+            concat!(
+                r#"{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"pij automatically adopted this Claude session."}}"#,
+                "\n"
+            )
+        );
+        assert!(output.stderr.is_empty());
+        assert!(!state_dir.join("hook.log").exists());
     }
 }

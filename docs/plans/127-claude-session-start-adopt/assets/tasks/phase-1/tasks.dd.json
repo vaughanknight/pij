@@ -22,22 +22,26 @@
         {
           "id": "t1",
           "title": "Write red installer tests",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "cargo test initially failed E0425 for ensure_claude_session_start_hook"
         },
         {
           "id": "t2",
           "title": "Implement session-start hook installer",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "cargo test -p pij-harnesses: pass; installed script behavior covered"
         },
         {
           "id": "t3",
           "title": "Wire daemon boot and doctor",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "cargo test -p pij-cli: pass; doctor claude-hook emitted structured state"
         },
         {
           "id": "t4",
           "title": "Document statusline and operator behavior",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "docs/how/claude-auto-seat.md"
         },
         {
           "id": "t5",
@@ -47,7 +51,8 @@
         {
           "id": "t6",
           "title": "Capture isolated live acceptance proof",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "docs/plans/127-claude-session-start-adopt/assets/live-auto-seat.md"
         }
       ]
     },

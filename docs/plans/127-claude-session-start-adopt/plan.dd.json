@@ -40,26 +40,30 @@
         {
           "id": "AC1",
           "claim": "A hand-started Claude in tmux auto-adopts with inbound consent and receives the first peer turn.",
-          "state": "unchecked",
-          "text": "LIVE: with the hook installed, hand-start `claude` in a fresh tmux window and type NOTHING; within a few seconds the statusline shows ⛓ <id>, `pij-rs list` shows the seat bound to that pane with cross_session_inbound_accept=true, and a message from another seat lands as a real turn. Pane transcript + spine rows pasted."
+          "state": "checked",
+          "text": "LIVE: with the hook installed, hand-start `claude` in a fresh tmux window and type NOTHING; within a few seconds the statusline shows ⛓ <id>, `pij-rs list` shows the seat bound to that pane with cross_session_inbound_accept=true, and a message from another seat lands as a real turn. Pane transcript + spine rows pasted.",
+          "receipt": "docs/plans/127-claude-session-start-adopt/assets/live-auto-seat.md"
         },
         {
           "id": "AC2",
           "claim": "Repeating the hook in one pane never creates two live seat ids.",
-          "state": "unchecked",
-          "text": "LIVE: start a second `claude` in the SAME pane after closing the first (or run the hook twice) → same id or a clean re-adopt, never two live ids for one pane."
+          "state": "checked",
+          "text": "LIVE: start a second `claude` in the SAME pane after closing the first (or run the hook twice) → same id or a clean re-adopt, never two live ids for one pane.",
+          "receipt": "docs/plans/127-claude-session-start-adopt/assets/live-auto-seat.md"
         },
         {
           "id": "AC3",
           "claim": "Claude outside tmux starts silently and records the hook skip.",
-          "state": "unchecked",
-          "text": "LIVE: start `claude` OUTSIDE tmux → session starts normally, no error shown, hook log records the skip."
+          "state": "checked",
+          "text": "LIVE: start `claude` OUTSIDE tmux → session starts normally, no error shown, hook log records the skip.",
+          "receipt": "docs/plans/127-claude-session-start-adopt/assets/live-auto-seat.md"
         },
         {
           "id": "AC4",
           "claim": "The installer additively preserves hooks, backs up changes, is idempotent, and refuses malformed settings.",
-          "state": "unchecked",
-          "text": "Unit: installer adds the SessionStart hook entry without disturbing existing hooks (Notification/PreToolUse/PostToolUse preserved byte-for-byte), backup written, second run no-op; malformed settings refused. RED-first."
+          "state": "checked",
+          "text": "Unit: installer adds the SessionStart hook entry without disturbing existing hooks (Notification/PreToolUse/PostToolUse preserved byte-for-byte), backup written, second run no-op; malformed settings refused. RED-first.",
+          "receipt": "cargo test -p pij-harnesses -p pij-cli: 127 passed"
         },
         {
           "id": "AC5",
