@@ -6,58 +6,108 @@
     {
       "name": "meta",
       "value": {
-        "title": "Reviewer packet — <plan slug>",
+        "title": "Reviewer packet — statusline-generation-badge",
         "role": "reviewer",
-        "plan": "docs/plans/<ord>-<slug>/plan.dd.json",
-        "seat": "<pij seat name once spawned>",
-        "updated": "<date>"
+        "plan": "docs/plans/129-statusline-generation-badge/plan.dd.json",
+        "seat": "pij-quarrelsome-caribou",
+        "updated": "2026-09-02"
       }
     },
     {
       "name": "mission",
-      "value": "You are the cross-model reviewer for plan <ord>-<slug>. The composed implementation is complete on the branch below. Judge whether the code makes the plan's promises TRUE — plan fidelity, correctness, and composition seams (where units meet is where it breaks) — and return findings the PM can act on. You are read-only on the code."
+      "value": "You are the cross-model Claude Opus reviewer for plan 129-statusline-generation-badge. Review the composed branch 129-statusline-generation-badge against origin/main and judge whether AC1-AC5 are true. You are read-only on product code; write only the review ddoc under assets/reviews/."
     },
     {
       "name": "instructions",
       "value": [
-        { "id": "i1", "text": "Orient: read the plan (rendered .dd.md), the impl-guide (the intended decomposition + interfaces), and then the full diff of the branch against its base. DOGFOOD FLOWSPACE: use `flowspace3 search` to locate consumers/related code by meaning while reviewing; report misses as friction." },
-        { "id": "i2", "text": "Review with the /builder review discipline: verify claims against fresh evidence — run targeted tests yourself, read exit status, never trust a green claim you did not see." },
-        { "id": "i2b", "text": "Your dispatcher OWES you three lists in this packet, and you should refuse to start without them: (1) WHERE THE AUTHOR IS LEAST CONFIDENT (hunt there first), (2) an instruction to DISBELIEVE THE AUTHOR'S OWN RECEIPTS (re-derive, don't audit prose), (3) WHAT IS ALREADY KNOWN-OPEN (spend zero findings re-reporting it). Proven 2026-08-28: this brief shape bought a 4-for-4 all-confirmed zero-noise review, including a defect the author hunted for in writing and could not see from inside." },
-        { "id": "i3", "text": "Priority order: (1) plan promises that are not actually true, (2) composition-seam defects between units, (3) interface drift from the impl-guide, (4) correctness/safety in the changed code, (5) test gaps on the contract. Style noise is unwanted." },
-        { "id": "i4", "text": "Findings: at most the material ones, each with severity (CRITICAL/HIGH/MEDIUM), exact location, the claim, the proof, and the smallest fix. `no_material_findings` is a valid verdict." },
-        { "id": "i5", "text": "Deliver as a ddoc review record in the plan folder (assets/reviews/), build it, and send the PM the path + a one-line verdict." }
+        {
+          "id": "i1",
+          "text": "Orient: cd /Users/jordanknight/pi-hacking/fs3-statusline-generation-badge; read plan.dd.md, impl-guide.dd.md, assets/live-statusline.md, and the full branch diff against origin/main. DOGFOOD FLOWSPACE: use flowspace3 search for meaning-shaped questions and report every miss as friction."
+        },
+        {
+          "id": "i2",
+          "text": "Review with the /builder review discipline: verify claims against fresh evidence — run targeted tests yourself, read exit status, never trust a green claim you did not see."
+        },
+        {
+          "id": "i2b",
+          "text": "THREE REQUIRED LISTS. WHERE AUTHOR IS LEAST CONFIDENT: (1) POSIX statusline parser/byte parity and the 09-01-model-loss regression, (2) previous-script backup/path resolution across Claude homes, (3) rs/legacy generation propagation through initial publication and turn_start reassertion. DISBELIEVE RECEIPTS: independently rerun focused Rust/TS tests, shellcheck, inspect the diff, and re-derive AC verdicts rather than auditing assets/live-statusline.md prose. KNOWN OPEN: full harness checks has only the aggregate test sensor red; prime explicitly excludes two main baselines—npm-resolution-policy.integration.test.ts replay status 1 and worktree.test.ts cleanup ENOTEMPTY. A load-induced cli-observe beforeEach timeout and three caller-truth spawn timeouts passed focused reruns; do not re-report these unless independently reproducible outside host-load pressure."
+        },
+        {
+          "id": "i3",
+          "text": "Priority order: (1) plan promises that are not actually true, (2) composition-seam defects between units, (3) interface drift from the impl-guide, (4) correctness/safety in the changed code, (5) test gaps on the contract. Style noise is unwanted."
+        },
+        {
+          "id": "i4",
+          "text": "Findings: at most the material ones, each with severity (CRITICAL/HIGH/MEDIUM), exact location, the claim, the proof, and the smallest fix. `no_material_findings` is a valid verdict."
+        },
+        {
+          "id": "i5",
+          "text": "Deliver as a ddoc review record in the plan folder (assets/reviews/), build it, and send the PM the path + a one-line verdict."
+        }
       ]
     },
     {
       "name": "working_with",
       "value": [
-        { "id": "w1", "text": "The PM is your counterpart: verdict and findings go to the PM; the PM may refute findings with evidence — re-judge refutations on the evidence, not on rank." },
-        { "id": "w2", "text": "You do not fix code, commit, or open PRs. If you find something outside the plan's scope, name it as a note for prime rather than expanding the review." }
+        {
+          "id": "w1",
+          "text": "The PM is your counterpart: verdict and findings go to the PM; the PM may refute findings with evidence — re-judge refutations on the evidence, not on rank."
+        },
+        {
+          "id": "w2",
+          "text": "You do not fix code, commit, or open PRs. If you find something outside the plan's scope, name it as a note for prime rather than expanding the review."
+        }
       ]
     },
     {
       "name": "scope",
       "value": {
-        "worktree": "<read-only checkout or the pm's worktree path>",
-        "branch": "<branch under review>",
-        "fence": "read-only on code; write only assets/reviews/ in the plan folder",
-        "forbidden_note": "No code edits, no merges, no government files."
+        "worktree": "/Users/jordanknight/pi-hacking/fs3-statusline-generation-badge",
+        "branch": "129-statusline-generation-badge",
+        "fence": "read-only on code; write only docs/plans/129-statusline-generation-badge/assets/reviews/",
+        "forbidden_note": "No product-code edits, no merges, no government files, no writes to ~/.claude, ~/.claude-alt, ~/.pij-rs, or ~/.pij."
       }
     },
     {
       "name": "done_bar",
       "value": [
-        { "id": "d1", "text": "Every plan AC judged true/false with evidence cited." },
-        { "id": "d2", "text": "Composition seams between units explicitly examined and reported." },
-        { "id": "d3", "text": "Review record ddoc written, built, and path delivered to the PM with a verdict line." }
+        {
+          "id": "d1",
+          "text": "Every plan AC judged true/false with evidence cited."
+        },
+        {
+          "id": "d2",
+          "text": "Composition seams between units explicitly examined and reported."
+        },
+        {
+          "id": "d3",
+          "text": "Review record ddoc written, built, and path delivered to the PM with a verdict line."
+        }
       ]
     },
     {
       "name": "refs",
       "value": [
-        { "id": "r0", "path": ".agents/skills/pij-team/TENETS.md", "note": "the doctrine — tenet 5: you judge diffs against contracts, not philosophy" },
-        { "id": "r1", "path": "docs/plans/<ord>-<slug>/impl-guide.dd.json", "note": "intended units + interfaces — drift from this is a finding" },
-        { "id": "r2", "path": "docs/plans/<ord>-<slug>/plan.dd.md", "note": "the promises under judgment" }
+        {
+          "id": "r0",
+          "path": "skill://pij-team/TENETS.md",
+          "note": "tenet 5: judge diffs against contracts, not philosophy"
+        },
+        {
+          "id": "r1",
+          "path": "docs/plans/129-statusline-generation-badge/impl-guide.dd.json",
+          "note": "binding units and frozen interfaces"
+        },
+        {
+          "id": "r2",
+          "path": "docs/plans/129-statusline-generation-badge/plan.dd.md",
+          "note": "AC1-AC5 promises"
+        },
+        {
+          "id": "r3",
+          "path": "docs/plans/129-statusline-generation-badge/assets/live-statusline.md",
+          "note": "author receipts to disbelieve and re-derive"
+        }
       ]
     }
   ]
