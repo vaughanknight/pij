@@ -437,6 +437,35 @@ async fn phonehome_confirms_the_binding_rs_already_made() {
     world.server.abort();
 }
 
+#[tokio::test]
+async fn adopt_persists_generic_and_native_harness_session_aliases() {
+    for (harness, key, session) in [
+        ("omp", "harnessSession", "omp-native"),
+        ("claude", "CLAUDE_CODE_SESSION_ID", "claude-native"),
+        ("copilot", "COPILOT_AGENT_SESSION_ID", "copilot-native"),
+    ] {
+        let registry = Arc::new(FakeRegistry::new());
+        let world = world(registry, true).await;
+        let mut caller = serde_json::Map::new();
+        caller.insert(key.to_string(), serde_json::json!(session));
+        let response = reqwest::Client::new()
+            .post(format!("http://{}/v1/adopt", world.addr))
+            .bearer_auth("key")
+            .json(&serde_json::json!({
+                "argv": ["adopt", PANE, "--harness", harness],
+                "caller": caller,
+            }))
+            .send()
+            .await
+            .expect("adopt with harness session");
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let seats = live_seats(&world.registry).await;
+        assert_eq!(seats.len(), 1);
+        assert_eq!(seats[0].harness_session.as_deref(), Some(session));
+        world.server.abort();
+    }
+}
+
 /// A caller that sends a harness-native session id must be TOLD rs did not bind
 /// by it. The TS route binds exactly that value at exactly this moment, so
 /// answering a bare `bound: true` would let the caller conclude rs had pinned
@@ -813,7 +842,8 @@ fn caller_context_accepts_all_three_wire_spellings() {
                 "pijParentId": "pij-governor",
                 "claudeCodeSessionId": "claude-1",
                 "copilotAgentSessionId": "copilot-1",
-                "codexThreadId": "codex-1"
+                "codexThreadId": "codex-1",
+                "harnessSession": "generic-1",
             }),
         ),
         (
@@ -824,7 +854,8 @@ fn caller_context_accepts_all_three_wire_spellings() {
                 "PIJ_PARENT_ID": "pij-governor",
                 "CLAUDE_CODE_SESSION_ID": "claude-1",
                 "COPILOT_AGENT_SESSION_ID": "copilot-1",
-                "CODEX_THREAD_ID": "codex-1"
+                "CODEX_THREAD_ID": "codex-1",
+                "HARNESS_SESSION_ID": "generic-1",
             }),
         ),
         (
@@ -835,7 +866,8 @@ fn caller_context_accepts_all_three_wire_spellings() {
                 "pij_parent_id": "pij-governor",
                 "claude_code_session_id": "claude-1",
                 "copilot_agent_session_id": "copilot-1",
-                "codex_thread_id": "codex-1"
+                "codex_thread_id": "codex-1",
+                "harness_session": "generic-1",
             }),
         ),
     ];
@@ -853,6 +885,7 @@ fn caller_context_accepts_all_three_wire_spellings() {
             ("claude session", caller.claude_session.is_some()),
             ("copilot session", caller.copilot_session.is_some()),
             ("codex session", caller.codex_session.is_some()),
+            ("generic harness session", caller.harness_session.is_some()),
         ] {
             assert!(
                 read,

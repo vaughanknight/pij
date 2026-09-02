@@ -294,16 +294,21 @@ async fn registration_corroborates_process_and_refuses_shared_process_aliases() 
         relay: false,
     };
 
+    let mut registration_with_session =
+        serde_json::to_value(&registration).expect("registration json");
+    registration_with_session["harnessSession"] = serde_json::json!("omp-native-42");
     let response = client
         .post(format!("http://{addr}/v1/register"))
         .bearer_auth("key")
-        .json(&registration)
+        .json(&registration_with_session)
         .send()
         .await
         .expect("register");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let accepted: Envelope<SeatDescriptor> = response.json().await.expect("descriptor envelope");
-    assert_eq!(accepted.data.expect("descriptor").proc, Some(identity));
+    let accepted = accepted.data.expect("descriptor");
+    assert_eq!(accepted.proc, Some(identity));
+    assert_eq!(accepted.harness_session.as_deref(), Some("omp-native-42"));
     assert_eq!(registry.calls(), ["list", "put:pij-parent"]);
 
     let self_declaration = Registration {
@@ -327,6 +332,7 @@ async fn registration_corroborates_process_and_refuses_shared_process_aliases() 
     assert_eq!(accepted.model.as_deref(), Some("provider/model"));
     assert_eq!(accepted.provider.as_deref(), Some("provider"));
     assert_eq!(accepted.effort.as_deref(), Some("high"));
+    assert_eq!(accepted.harness_session.as_deref(), Some("omp-native-42"));
     assert_eq!(
         registry.calls(),
         ["list", "put:pij-parent", "list", "put:pij-parent"]
@@ -1329,11 +1335,9 @@ async fn inbox_claims_without_evidence_then_ack_records_machine_graded_reader_re
 
 #[tokio::test]
 async fn seats_performs_one_unfiltered_registry_list() {
-    let registry = Arc::new(FakeRegistry::new().with_seat(SeatDescriptor::new(
-        "pij-b",
-        pij_core::model::Harness::Omp,
-        "/abs/tree",
-    )));
+    let mut seat = SeatDescriptor::new("pij-b", pij_core::model::Harness::Omp, "/abs/tree");
+    seat.harness_session = Some("omp-native-seat".to_string());
+    let registry = Arc::new(FakeRegistry::new().with_seat(seat));
     let services = test_services(
         registry.clone(),
         Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
@@ -1348,11 +1352,13 @@ async fn seats_performs_one_unfiltered_registry_list() {
         .send()
         .await
         .expect("seats");
-    let body: Envelope<FederatedRoster> = response.json().await.expect("seats envelope");
+    let body: Envelope<serde_json::Value> = response.json().await.expect("seats envelope");
     let roster = body.data.expect("data");
-    assert_eq!(roster.seats.len(), 1);
-    assert_eq!(roster.seats[0].machine.as_deref(), Some("workstation"));
-    assert!(roster.unavailable.is_empty());
+    assert_eq!(roster["seats"].as_array().expect("seat rows").len(), 1);
+    assert_eq!(roster["seats"][0]["machine"], "workstation");
+    assert_eq!(roster["seats"][0]["session"], "omp-native-seat");
+    assert_eq!(roster["seats"][0]["generation"], "rs");
+    assert_eq!(roster["unavailable"], serde_json::json!([]));
     assert_eq!(registry.calls(), ["list"]);
 
     server.abort();
@@ -2560,6 +2566,7 @@ fn readback_seat() -> SeatDescriptor {
     seat.state = pij_core::model::SystemState::Working;
     seat.model = Some("claude-opus-5".to_string());
     seat.parent = Some("pij-parent".into());
+    seat.harness_session = Some("claude-native-7".to_string());
     seat
 }
 
@@ -2609,6 +2616,8 @@ async fn state_reads_one_seat_back_by_id() {
     assert_eq!(card["parent"], "pij-parent");
     assert_eq!(card["boundModel"], "claude-opus-5");
     assert_eq!(card["liveness"], "active");
+    assert_eq!(card["session"], "claude-native-7");
+    assert_eq!(card["generation"], "rs");
 
     server.abort();
 }

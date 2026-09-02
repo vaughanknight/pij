@@ -207,8 +207,8 @@ async fn consent_backfill_upgrades_only_live_unknown_claude_rows_and_is_idempote
         pij_store::schema_version(&migrated_pool)
             .await
             .expect("schema version"),
-        10,
-        "the backfill advances the schema cache with its migration"
+        pij_store::SCHEMA_VERSION,
+        "opening the store applies the backfill and every later migration"
     );
 
     let backfill = pij_store::migrate::MIGRATIONS
@@ -224,6 +224,71 @@ async fn consent_backfill_upgrades_only_live_unknown_claude_rows_and_is_idempote
         0,
         "running the backfill SQL twice changes zero additional rows"
     );
+}
+
+#[tokio::test]
+async fn harness_session_migration_round_trips_up_and_down() {
+    let fresh = FreshStore::new();
+    let options = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(fresh.path())
+        .create_if_missing(true);
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .expect("open schema-10 store");
+    let schema_10 = sqlx::migrate::Migrator {
+        migrations: std::borrow::Cow::Owned(
+            pij_store::migrate::MIGRATIONS
+                .iter()
+                .filter(|migration| migration.version <= 10)
+                .cloned()
+                .collect(),
+        ),
+        ..sqlx::migrate::Migrator::DEFAULT
+    };
+    schema_10
+        .run(&pool)
+        .await
+        .expect("migrate fixture to schema 10");
+    sqlx::query(
+        "INSERT INTO seats (id, harness, folder, state, relay, seq) \
+         VALUES ('pij-schema-10', 'omp', '/abs/tree', 'idle', 0, 1)",
+    )
+    .execute(&pool)
+    .await
+    .expect("seed schema-10 seat");
+
+    pij_store::migrate::MIGRATIONS
+        .run(&pool)
+        .await
+        .expect("migrate schema 10 to 11");
+    assert_eq!(pij_store::schema_version(&pool).await.expect("version"), 11);
+    let session: Option<String> =
+        sqlx::query_scalar("SELECT harness_session FROM seats WHERE id = 'pij-schema-10'")
+            .fetch_one(&pool)
+            .await
+            .expect("new nullable column");
+    assert_eq!(session, None, "migration invents no session for an old row");
+
+    pij_store::migrate::MIGRATIONS
+        .undo(&pool, 10)
+        .await
+        .expect("revert schema 11 to 10");
+    assert_eq!(pij_store::schema_version(&pool).await.expect("version"), 10);
+    let column: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM pragma_table_info('seats') WHERE name = 'harness_session'",
+    )
+    .fetch_optional(&pool)
+    .await
+    .expect("inspect reverted schema")
+    .flatten();
+    assert_eq!(column, None, "down migration removes the added column");
+    let retained: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM seats WHERE id = 'pij-schema-10'")
+        .fetch_one(&pool)
+        .await
+        .expect("seat survives down migration");
+    assert_eq!(retained, 1);
 }
 
 #[tokio::test]
@@ -261,6 +326,7 @@ async fn a_seat_round_trips_with_every_optional_fact_intact() {
     seat.parent = Some(SeatId::from("pij-prime"));
     seat.relay = true;
     seat.rpc_port_intent = Some(47_781);
+    seat.harness_session = Some("omp-session-255".to_string());
 
     registry.put(seat.clone()).await.expect("put");
     assert_eq!(registry.get(&seat.id).await.expect("get"), Some(seat));
