@@ -325,6 +325,7 @@ impl FederationService {
             outcome: DeliveryOutcome::Queued {
                 reason: None,
                 next_retry_at: None,
+                draft_sha: None,
             },
             at: (self.clock)().map_err(FederationSendError::Runtime)?,
         };
@@ -837,7 +838,8 @@ mod tests {
             receipt.outcome,
             pij_core::model::DeliveryOutcome::Queued {
                 reason: None,
-                next_retry_at: None
+                next_retry_at: None,
+                draft_sha: None,
             }
         );
         assert_eq!(queue.live_len(), 1);

@@ -36,7 +36,9 @@ req-0054 (magpie 2026-09-02, msg 888D45C1): a ruling to a working omp returned `
 ## Goals
 
 - A message to a working omp/pi seat is handed to the extension stream immediately; no composer capture or human-typing veto for those harnesses.
-- A row still queued after N seconds (config, default 60) raises a pushed notice to the sender naming msg_id, recipient, reason, and attempts; later delivery raises delivered late, and the sender's next pij-rs command prints outstanding notices on stderr.
+- A row still queued after N seconds (config, default 60) raises a pushed notice to the sender naming msg_id, recipient, reason, attempts, and age; later delivery raises delivered late, and the sender's next pij-rs command prints outstanding notices on stderr.
+- Claude-harness seats: the human-typing veto considers only recognized non-blank composer-box content; a working seat or streamed output never counts as typing.
+- A configured retry cap no greater than 30 seconds prevents a cleared veto from remaining queued beyond one cap.
 
 <a id="non-goals"></a>
 
@@ -57,6 +59,8 @@ req-0054 (magpie 2026-09-02, msg 888D45C1): a ruling to a working omp returned `
 | AC3 | human veto intact | [ ] unchecked | — | — | — | — | LIVE: a send to a Claude seat whose composer holds a draft stays queued (human-typing) — the veto still protects humans; pasted. |
 | AC4 | sender is told | [ ] unchecked | — | — | — | — | LIVE: sender receives `still queued` notice after N s for a row vetoed on a Claude pane, then `delivered late (&lt;delay&gt;)` when it lands; and `pij-rs list` from the sender prints the outstanding notice on stderr; pasted. Unit test for the notice scheduler RED-first. |
 | AC5 | gates | [ ] unchecked | — | — | — | — | `harness checks` green on the rebased tree + explicit `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, `cargo fmt --check` receipts (use ~/.cargo/bin/cargo); no operator-home writes. |
+| AC6 | the Claude veto fires on a human draft, never on agent output or seat busyness | [x] checked | — | Proven by tests + socket delivery; live veto witness at deploy. RED artifact 127; interaction 24/24 and delivery 20/20; magpie confirmed PLAN134-U3-MAGPIE-EMPTY as a 40/40 byte-exact user turn from its accepting socket. See assets/live-proof.md. | — | — | LIVE (magpie is the test seat, both directions, plus two omp seats): a send to a WORKING Claude-harness seat with an EMPTY composer box is delivered by socket and the receipt reason is NEVER `human-typing`; a send to a Claude seat whose composer box holds a real draft still queues `human-typing` AND the receipt carries a sha of the draft. Assert on the REASON string and latency &gt; 0 for the control, not on minutes. RED CONTROL ON RECORD (magpie 2026-09-02, pre-u3): msg EEE16F98 claude→claude, weasel mid-turn, composer `❯ ` empty → reason=human-typing, delivered 6 s later (sent 1788339465, delivered 1788339471). |
+| AC7 | backoff cannot turn a 6 s veto into 8 min | [ ] unchecked | — | — | — | — | Retry backoff for a vetoed row is bounded and observable: for the same recipient in the same state magpie measured 6 s (EEE16F98) and somewhere between 50 s and ~10 min (sent 1788338783), and this afternoon 8 min / attempt 101 (888D45C1). Requirement: document the backoff curve in the plan, cap the interval (config, default ≤30 s) so a veto that clears is retried within one cap, and expose attempts + next_retry_at on the notice (u2). Test: fake gate vetoes N times then clears; assert delivery within one cap of the clear. |
 
 <a id="phases"></a>
 

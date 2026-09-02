@@ -137,6 +137,10 @@
           "kind": null
         },
         {
+          "name": "sha2",
+          "kind": null
+        },
+        {
           "name": "pij-testkit",
           "kind": "dev"
         }

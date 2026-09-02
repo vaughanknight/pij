@@ -60,6 +60,20 @@
             "../../../plan.dd.json#acceptance_criteria/AC3",
             "../../../plan.dd.json#acceptance_criteria/AC5"
           ]
+        },
+        {
+          "id": "tk-1344",
+          "title": "Make Claude veto composer-box authoritative",
+          "domain": "pij-rs interaction gate",
+          "phase": "p1",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1344",
+          "success": "Streamed agent output with a blank recognized composer permits delivery; a non-blank draft queues human-typing with a 12-hex draft_sha; live Claude proof covers both arms.",
+          "notes": "Ship u3 as its own PR before u2.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC6"
+          ],
+          "receipt": "RED and GREEN gate tests plus worktree-built real UDS socket delivery are recorded in assets/live-proof.md; magpie confirmed a 40/40 line user turn with an empty composer, production daemon/tap untouched."
         }
       ]
     },
@@ -89,6 +103,15 @@
             "assertion": "Live Claude control, cargo tests/clippy/fmt, harness checks, reviewer verdict, and PR receipt are recorded.",
             "state": "unchecked",
             "pressure": "not-applicable"
+          }
+        ],
+        "tk-1344": [
+          {
+            "id": "dw-1344",
+            "assertion": "RED/green tests and live Claude transcripts prove blank-output delivery plus typed draft SHA veto without touching production daemon state.",
+            "state": "checked",
+            "pressure": "not-applicable",
+            "receipt": "RED and GREEN gate tests plus worktree-built real UDS socket delivery are recorded in assets/live-proof.md; magpie confirmed a 40/40 line user turn with an empty composer, production daemon/tap untouched."
           }
         ]
       }

@@ -720,6 +720,8 @@ mod tests {
         .await;
 
         assert_eq!(fixture.worker.drain_once().await.expect("drain"), 1);
+        // A recognized blank composer is authoritative under u3, so the fresh
+        // verdict no longer asks tmux mode for a second, output-shaped veto.
         assert_eq!(
             fixture.tmux.calls(),
             [
@@ -728,7 +730,6 @@ mod tests {
                 "drain_pane_tap:%7",
                 "list_panes",
                 "capture:%7:4294967295",
-                "user_typing:%7",
                 "submit:%7:/compact"
             ]
         );
@@ -1191,23 +1192,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn human_typing_veto_retries_once_on_the_next_clear_tick() {
+    async fn recognized_draft_retries_once_then_delivers_on_the_next_blank_capture() {
         let pane = "%typing-clears";
-        let fixture = fixture(
-            FakeTransport::reachable(),
-            FakeTmux::new().with_user_typing(),
-        );
-        register(&fixture, seat("pij-typing-clears", Some(pane))).await;
-        fixture.interaction.observe_composer(pane, "");
+        let tmux = FakeTmux::new()
+            .with_pane(Pane {
+                id: pane.to_string(),
+                session: "s".to_string(),
+                window: "w".to_string(),
+                title: "t".to_string(),
+                cursor_x: Some(11),
+                cursor_y: Some(0),
+            })
+            .with_attached_tap(pane)
+            .script_capture("╰──── hello ─╯")
+            .script_capture("╰────       ─╯");
+        let fixture = fixture_unarranged(FakeTransport::reachable(), tmux);
+        let mut recipient = seat("pij-typing-clears", Some(pane));
+        recipient.harness = Harness::Claude;
+        register(&fixture, recipient).await;
         let msg = message("pij-typing-clears", "deliver after clear", None);
         let id = enqueue(&fixture, &msg).await;
 
-        assert_eq!(fixture.worker.drain_once().await.expect("vetoed tick"), 1);
+        // This remains a behavioural retry assertion: only the evidence that
+        // creates the veto changed from tmux mode to real composer content.
+        assert_eq!(fixture.worker.drain_once().await.expect("draft tick"), 1);
         assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)]);
         assert!(fixture.transport.delivered().is_empty());
 
-        fixture.tmux.set_user_typing(false);
-        assert_eq!(fixture.worker.drain_once().await.expect("clear tick"), 1);
+        assert_eq!(fixture.worker.drain_once().await.expect("blank tick"), 1);
         assert_eq!(fixture.transport.delivered(), [msg]);
         assert_eq!(fixture.queue.live_len(), 0);
         assert_eq!(fixture.worker.drain_once().await.expect("deduped tick"), 0);
@@ -1308,6 +1320,8 @@ mod tests {
             fixture.queue.acked().as_slice(),
             [(_, Outcome::Done)]
         ));
+        // A recognized blank composer is authoritative under u3, so socket
+        // delivery does not consult tmux mode after the fresh capture.
         assert_eq!(
             fixture.tmux.calls(),
             [
@@ -1315,8 +1329,7 @@ mod tests {
                 "pane_tap_sink:%10",
                 "drain_pane_tap:%10",
                 "list_panes",
-                "capture:%10:4294967295",
-                "user_typing:%10"
+                "capture:%10:4294967295"
             ]
         );
     }

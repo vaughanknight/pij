@@ -631,6 +631,9 @@ pub enum DeliveryOutcome {
         /// Persisted queue eligibility (`jobs.not_before`), in Unix milliseconds.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         next_retry_at: Option<u64>,
+        /// First 12 hex characters of SHA-256 over the recognized draft text.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        draft_sha: Option<String>,
     },
     /// Withheld pending an approval step. PENDING, not final — a held message may
     /// still become delivered, or refused.

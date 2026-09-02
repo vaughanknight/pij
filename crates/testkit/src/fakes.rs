@@ -829,6 +829,7 @@ impl Transport for FakeTransport {
             return Ok(DeliveryOutcome::Queued {
                 reason: None,
                 next_retry_at: None,
+                draft_sha: None,
             });
         }
         state.delivered.push(msg.clone());

@@ -122,7 +122,8 @@ fn an_unreachable_transport_queues_rather_than_claiming_delivery() {
         outcome,
         DeliveryOutcome::Queued {
             reason: None,
-            next_retry_at: None
+            next_retry_at: None,
+            draft_sha: None,
         }
     );
     assert!(

@@ -38,6 +38,7 @@ Execute u1 first as an independently shippable commit, then u2. Preserve RED out
 | tk-1341 | Route Omp/Pi through the extension stream | pij-rs delivery | p1 | [x] checked | — | RED and GREEN command outputs are summarized in assets/live-proof.md; focused and full delivery tests passed; live sender/target event-stream transcript recorded there. | [tk-1341](tasks.dd.md#done-when) | Omp and Pi bypass both composer gates and select_rung, queue with reason extension-stream, publish message.pushed, and a live OMP receives at turn end. | RED first; commit and push u1 alone before starting u2. | [AC1](../../../plan.dd.md#acceptance-criteria), [AC2](../../../plan.dd.md#acceptance-criteria) |
 | tk-1342 | Notify senders about queued and late delivery | pij-rs delivery | p1 | [ ] unchecked | — | — | [tk-1342](tasks.dd.md#done-when) | One still-queued notice names msg_id, recipient, reason, and attempts after the configured threshold; later delivery emits delivered late and the sender CLI prints outstanding notices. | Additive queued-notice control message; default threshold 60 seconds. | [AC4](../../../plan.dd.md#acceptance-criteria) |
 | tk-1343 | Prove preserved veto and complete delivery | pij-rs delivery | p1 | [ ] unchecked | — | — | [tk-1343](tasks.dd.md#done-when) | Claude retains the human-typing veto, all Rust and harness gates pass, cross-model review findings are resolved, and the PR is open. | Use a hand-started Claude Opus reviewer; production daemon remains untouched. | [AC3](../../../plan.dd.md#acceptance-criteria), [AC5](../../../plan.dd.md#acceptance-criteria) |
+| tk-1344 | Make Claude veto composer-box authoritative | pij-rs interaction gate | p1 | [x] checked | — | RED and GREEN gate tests plus worktree-built real UDS socket delivery are recorded in assets/live-proof.md; magpie confirmed a 40/40 line user turn with an empty composer, production daemon/tap untouched. | [tk-1344](tasks.dd.md#done-when) | Streamed agent output with a blank recognized composer permits delivery; a non-blank draft queues human-typing with a 12-hex draft_sha; live Claude proof covers both arms. | Ship u3 as its own PR before u2. | [AC6](../../../plan.dd.md#acceptance-criteria) |
 
 <a id="done-when"></a>
 
@@ -60,3 +61,9 @@ Execute u1 first as an independently shippable commit, then u2. Preserve RED out
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
 | dw-1343 | Live Claude control, cargo tests/clippy/fmt, harness checks, reviewer verdict, and PR receipt are recorded. | [ ] unchecked | not-applicable |
+
+### tk-1344
+
+| id | assertion | state | pressure | receipt |
+| --- | --- | --- | --- | --- |
+| dw-1344 | RED/green tests and live Claude transcripts prove blank-output delivery plus typed draft SHA veto without touching production daemon state. | [x] checked | not-applicable | RED and GREEN gate tests plus worktree-built real UDS socket delivery are recorded in assets/live-proof.md; magpie confirmed a 40/40 line user turn with an empty composer, production daemon/tap untouched. |

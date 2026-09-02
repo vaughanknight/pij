@@ -1555,6 +1555,7 @@ async fn send_enqueues_exactly_once_and_refuses_remote_without_federation() {
         pij_core::model::DeliveryOutcome::Queued {
             reason: Some(reason),
             next_retry_at: Some(0),
+            ..
         } if reason == "pre-bind"
     ));
 
@@ -2174,7 +2175,8 @@ async fn two_daemons_forward_remote_send_into_destination_queue_and_spine() {
         admitted.data.expect("receipt").outcome,
         pij_core::model::DeliveryOutcome::Queued {
             reason: None,
-            next_retry_at: None
+            next_retry_at: None,
+            draft_sha: None,
         },
         "the origin observed only its own durable queue"
     );

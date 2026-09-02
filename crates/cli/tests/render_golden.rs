@@ -37,6 +37,7 @@ fn send_computed_payload_matches_the_committed_golden() {
                 outcome: DeliveryOutcome::Queued {
                     reason: None,
                     next_retry_at: None,
+                    draft_sha: None,
                 },
                 at: 1_787_999_999_000,
             },

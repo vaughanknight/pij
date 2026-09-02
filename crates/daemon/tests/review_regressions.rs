@@ -300,7 +300,8 @@ async fn emitted_spawn_argv_is_the_stamp_that_opens_the_real_transport() {
             .expect("closed delivery"),
         pij_core::model::DeliveryOutcome::Queued {
             reason: None,
-            next_retry_at: None
+            next_retry_at: None,
+            draft_sha: None,
         }
     );
     assert!(
