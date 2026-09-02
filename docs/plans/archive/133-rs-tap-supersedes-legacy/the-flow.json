@@ -386,6 +386,17 @@
         "from": "post-flight",
         "to": "ship"
       }
+    },
+    {
+      "id": "STA-016",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-02T06:34:20.437Z",
+      "details": {
+        "node": "ship",
+        "from": "assumed",
+        "to": "in_progress"
+      }
     }
   ],
   "nodes": [
@@ -514,14 +525,15 @@
       "id": "ship",
       "type": "ship",
       "label": "Ship",
-      "status": "assumed",
+      "status": "in_progress",
       "command": "/builder 8 ship",
       "next": [],
       "instructions": [
         "Get the work out — push the branch, open a PR (using the repo's PR guidance), watch its CI checks, and report problems; the merge itself is optional.",
         "Run /builder 8 ship --plan \"<plan path>\" — the plan folder was archived at post-flight, so resolve --plan under docs/plans/archive/<ord>-<slug>/; push and PR-open each pause for a separate confirm, and any merge waits for a typed PROCEED.",
         "Done when the PR is open and its checks are green (or the failures are reported with a fix-loop offer); a diverged base hands off to 8c reconcile."
-      ]
+      ],
+      "modified_at": "2026-09-02T06:34:20.437Z"
     },
     {
       "id": "backpressure",
