@@ -43,14 +43,14 @@
           "text": "LIVE from a hand-started omp AND a hand-started claude pane in tmux: `pij-rs send --to <peer> --body hello` with NO --from/--msg-id, no PIJ_SESSION_ID exported → receipt shows the derived sender and a minted id; peer receives it; transcript pasted.",
           "claim": "send derives the sender from the pane and mints the id",
           "state": "checked",
-          "receipt": "assets/live-send-defaults.md — hand-started OMP %2992 and Claude %2993 receipts name derived sender + UUIDv7"
+          "receipt": "assets/live-send-defaults.md — post-review OMP %3155 and Claude %3156 receipts name derived senders + UUIDv7 ids; both peers received messages"
         },
         {
           "id": "AC2",
           "text": "LIVE: `printf '%s' '--not-a-flag body with $(danger) and backticks' | pij-rs send --to <peer> --body-file -` delivers the bytes verbatim; a 5 KB file via --body-file <path> arrives byte-identical (reader compares).",
           "claim": "bodies from file/stdin are verbatim and never shell-parsed",
           "state": "checked",
-          "receipt": "assets/live-send-defaults.md — literal stdin payload delivered; 5120-byte file compared byte-identical"
+          "receipt": "assets/live-send-defaults.md — post-review literal stdin payload delivered; 5120-byte file compared byte-identical"
         },
         {
           "id": "AC3",
@@ -64,14 +64,14 @@
           "text": "LIVE: `pij-rs inbox` from a pane-bound seat with no PIJ_SESSION_ID resolves by pane and reads; the daemon pointer line reads `run: pij inbox check`; adopt output no longer says export for any pane-bound harness, including omp/pi; paneless seats retain export advice.",
           "claim": "identity derivation covers inbox and the notice texts are correct",
           "state": "checked",
-          "receipt": "assets/live-send-defaults.md plus cargo test -p pij-daemon pointer::tests and http::identity_tests; adopt_tells_pane_bound_harnesses_that_the_pane_resolves_identity covers claude/omp/pi"
+          "receipt": "assets/live-send-defaults.md — post-review OMP/Claude pane-derived inbox and adopt text; cargo test -p pij-daemon pointer::tests; adopt test covers claude/copilot/codex/omp/pi"
         },
         {
           "id": "AC5",
           "text": "cargo test workspace, clippy -D warnings, harness checks green (baseline reds per req-0044 excluded by name).",
           "claim": "gates green",
           "state": "checked",
-          "receipt": "cargo test --workspace: 550 passed/6 ignored; clippy -D warnings green; harness checks all pass except exact req-0044 TS exclusions"
+          "receipt": "cargo test --workspace: 591 passed across 63 suites, 6 ignored, 84 filtered; clippy -D warnings green; harness checks: all 8 sensors passed"
         },
         {
           "id": "AC6",

@@ -29,11 +29,12 @@
 - `cargo test -p pij-testkit --test arch_drift` → 6 passed after adding the `uuid` edge to both metadata fixtures.
 - `cargo clippy --workspace --all-targets -- -D warnings` → green.
 - `cargo test --workspace` → 550 passed across 60 suites; 6 ignored.
-- `harness checks` → local-paths/typecheck/lint/windows-compat/smoke/pkg-audit/snapshots passed; only the two ruled req-0044 TypeScript tests failed (`npm-resolution-policy.integration.test.ts` replay status and `worktree.test.ts` cleanup ENOTEMPTY).
+- Initial pre-remediation `harness checks` inherited the two ruled req-0044 TypeScript failures; the final post-rebase run passed all eight sensors.
 - Live isolated proof → `assets/live-send-defaults.md`; production daemon untouched.
 - Post-rebase `cargo test --workspace` → 591 passed across 63 suites; 6 ignored, 84 filtered.
 - Post-remediation `cargo clippy --workspace --all-targets -- -D warnings` → green.
 - Post-review live isolated proof → `assets/live-send-defaults.md`; hand-started OMP `%3155` and Claude `%3156`, literal stdin and byte-identical 5120-byte file; production daemon untouched.
+- Final `harness checks` → `status: ok`; local-paths, typecheck, lint, test, windows-compat, smoke, pkg-audit, and snapshots all passed.
 
 ## Discoveries & learnings
 
