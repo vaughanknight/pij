@@ -62,7 +62,11 @@ payload: {"pane":"%3076","pid":39359,"spawn_id":"s-b5783e1e8d6a97a886135c3e63179
 
 The spawned id, footer id, roster row id, pane, pid, and `spawn.bound` event agree.
 
-## Fresh proof after rebase to `main@7b82118e`
+## Fresh proof after rebase to `main@4418e3f3`
+
+The live run occurred on the preceding rebased product tree at `main@7b82118e`.
+The final rebase to `4418e3f3` changed only the PM packet template formatting
+(`git diff --stat 7b82118e..4418e3f3`); no product or test bytes changed.
 
 Isolated daemon: `127.0.0.1:63341`, state `/tmp/pij-plan132-live-63341`.
 The production daemon was not restarted. Both clients were real OMP processes

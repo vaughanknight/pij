@@ -51,7 +51,7 @@ You are the Claude Opus cross-model reviewer for plan 132-spawn-reports-bind. Ju
 | Field | Value |
 | --- | --- |
 | worktree | /Users/jordanknight/pi-hacking/fs3-spawn-reports-bind |
-| branch | 132-spawn-reports-bind; compare to main@7b82118e |
+| branch | 132-spawn-reports-bind; compare to main@4418e3f34ceb69c7e3dbeec43f69a820832c6003 |
 | fence | read-only on code; write only assets/reviews/ in the plan folder |
 | forbidden_note | No code edits, no merges, no government files. |
 
