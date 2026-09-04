@@ -344,6 +344,51 @@ function sameMessage(left, right) {
 	);
 }
 
+/** A live send's completion proof; persisted acceptance alone cannot recreate ephemeral idle. */
+class NativeCompletion {
+	constructor(msgId, recoveredNativeId) {
+		this.msgId = msgId;
+		this.nativeId = recoveredNativeId;
+		this.live = recoveredNativeId === undefined;
+		this.pending = [];
+		this.descendants = new Set();
+		this.done = new Promise((resolve) => {
+			this.resolve = resolve;
+		});
+	}
+	bind(nativeId) {
+		this.nativeId = nativeId;
+		for (const event of this.pending) this.observe(event);
+		this.pending = undefined;
+	}
+	observe(event) {
+		if (!this.live || this.terminal) return;
+		if (!this.nativeId) {
+			// Keep correlation metadata only, never buffered prompts or streamed model text.
+			this.pending.push({
+				type: event.type,
+				id: event.id,
+				parentId: event.parentId,
+				agentId: event.agentId,
+				data: { messageId: event.data?.messageId },
+			});
+			return;
+		}
+		if (!nonempty(event.id)) return;
+		if (event.type === "user.message") {
+			if (!event.agentId && event.data?.messageId === this.nativeId) this.descendants.add(event.id);
+			return;
+		}
+		if (!this.descendants.has(event.parentId)) return;
+		this.descendants.add(event.id);
+		if (!event.agentId && ["session.idle", "session.error"].includes(event.type)) {
+			this.terminal = { type: event.type, eventId: event.id };
+			this.descendants.clear();
+			this.resolve(this.terminal);
+		}
+	}
+}
+
 export class NativeBridge {
 	constructor({
 		registration,
@@ -363,6 +408,7 @@ export class NativeBridge {
 		this.registered = false;
 		this.running = undefined;
 		this.unsubscribe = undefined;
+		this.completion = undefined;
 	}
 	emit(kind, details = {}) {
 		this.report({
@@ -425,6 +471,7 @@ export class NativeBridge {
 			throwIfStopped(signal);
 			this.unsubscribe = this.native.on((event) => {
 				if (signal.aborted) return;
+				this.completion?.observe(event);
 				if (
 					["user.message", "assistant.message", "session.idle", "session.error"].includes(
 						event.type,
@@ -441,6 +488,7 @@ export class NativeBridge {
 			while (!signal.aborted) {
 				try {
 					if (!this.registered) await this.register();
+					if (this.completion) await this.waitForCompletion();
 					const query = new URLSearchParams({ ...this.tuple(), wait: "true" });
 					const claims = await this.client.request(`/v1/inbox?${query}`, undefined, signal);
 					throwIfStopped(signal);
@@ -473,7 +521,29 @@ export class NativeBridge {
 					action:
 						"Inspect native history and durable acceptance before recovery; do not blindly resend or acknowledge.",
 				});
+		} finally {
+			this.unsubscribe?.();
+			this.unsubscribe = undefined;
+			this.completion = undefined;
 		}
+	}
+	async waitForCompletion() {
+		const completion = this.completion;
+		if (!completion.live)
+			throw new NativeError(
+				"Accepted duplicate lacks observed native completion; next claim held for recovery",
+			);
+		if (completion.reported) return;
+		this.emit("completion-wait", { msgId: completion.msgId, nativeMessageId: completion.nativeId });
+		const terminal = await abortable(completion.done, this.controller.signal);
+		throwIfStopped(this.controller.signal);
+		completion.reported = true;
+		this.emit("native-completed", {
+			msgId: completion.msgId,
+			nativeMessageId: completion.nativeId,
+			...terminal,
+			grade: "observed-native-terminal-not-model-success",
+		});
 	}
 	async deliver(claim) {
 		const signal = this.controller.signal;
@@ -496,6 +566,7 @@ export class NativeBridge {
 				throwIfStopped(signal);
 				const prompt = `[pij from ${JSON.stringify(message.from)}; msg_id=${JSON.stringify(message.msg_id)}]\n${message.body}`;
 				let nativeId;
+				this.completion = new NativeCompletion(message.msg_id);
 				try {
 					nativeId = await abortable(this.native.send({ prompt, mode: "enqueue" }), signal);
 				} catch (error) {
@@ -507,6 +578,7 @@ export class NativeBridge {
 				throwIfStopped(signal);
 				if (!nonempty(nativeId))
 					throw new NativeError("Native send returned no message ID; acceptance ambiguous");
+				this.completion.bind(nativeId);
 				await this.journal.accept(message, nativeId);
 				record = { state: "accepted", message, nativeId };
 				this.emit("native-accepted", {
@@ -523,6 +595,8 @@ export class NativeBridge {
 			throw new NativeError(
 				"Previous native send is ambiguous; held without reinjection or acknowledgement",
 			);
+		if (this.completion?.msgId !== message.msg_id || this.completion.nativeId !== record.nativeId)
+			this.completion = new NativeCompletion(message.msg_id, record.nativeId);
 		const acknowledged = await this.client.request(
 			"/v1/inbox/ack",
 			{ ...this.tuple(), job_id: claim.job_id },
