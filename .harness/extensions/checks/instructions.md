@@ -20,6 +20,12 @@ failure), so one invocation surfaces every problem:
 7. `pkg-audit` — `PIJ_VET_SKIP_AGENT=1 just pkg audit` (no new package findings)
 8. `snapshots` — `just snapshots-check` (agent-pack snapshots not drifted)
 
+`copilot-native` also runs `just copilot-native-test`: the native extension's
+node:test contracts are outside the Vitest include and must not be invisible.
+This deterministic sensor does not substitute for `just copilot-native-smoke`
+with actual manual/spawned Copilot clients; local-provider and real-provider
+witnesses are separately graded.
+
 Envelope `data` carries `{ ok, ran[], skipped[], results[] }`; each `results[]`
 entry is `{ name, status: pass|fail|skipped, code, proves }`. On failure,
 `data.failures[]` holds the last ~25 lines of each failing sensor's output.

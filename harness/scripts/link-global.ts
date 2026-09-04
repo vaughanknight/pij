@@ -6,6 +6,7 @@
 // and deliberately loads no other local extensions or project package manifest.
 // `--check-only` exposes the same linked-worktree guard without mutating either home.
 
+import { randomUUID } from "node:crypto";
 import {
 	existsSync,
 	lstatSync,
@@ -13,8 +14,10 @@ import {
 	readdirSync,
 	readFileSync,
 	readlinkSync,
+	renameSync,
 	symlinkSync,
 	unlinkSync,
+	writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
@@ -25,6 +28,7 @@ type Verdict = "linked" | "already" | "removed" | "missing" | "skipped";
 export interface RunLinkGlobalOptions {
 	readonly pijRoot: string;
 	readonly home: string;
+	readonly copilotHome?: string;
 	readonly args: readonly string[];
 	readonly stdout: (line: string) => void;
 	readonly stderr: (line: string) => void;
@@ -67,11 +71,16 @@ function absoluteLinkTarget(linkPath: string, target: string): string {
 	return isAbsolute(target) ? resolve(target) : resolve(dirname(linkPath), target);
 }
 
-function isPijOwnedExtensionTarget(linkPath: string, target: string, name: string): boolean {
+function isPijOwnedExtensionTarget(
+	linkPath: string,
+	target: string,
+	name: string,
+	namespace = ".pi",
+): boolean {
 	const absolute = absoluteLinkTarget(linkPath, target);
 	if (basename(absolute) !== name) return false;
 	if (basename(dirname(absolute)) !== "extensions") return false;
-	if (basename(dirname(dirname(absolute))) !== ".pi") return false;
+	if (basename(dirname(dirname(absolute))) !== namespace) return false;
 	try {
 		const packageJson = JSON.parse(
 			readFileSync(resolve(absolute, "..", "..", "..", "package.json"), "utf8"),
@@ -110,7 +119,7 @@ function linkExtension(
 	}
 	const current = readlinkSync(target);
 	if (absoluteLinkTarget(target, current) === resolve(source)) return "already";
-	if (!isPijOwnedExtensionTarget(target, current, name)) {
+	if (!isPijOwnedExtensionTarget(target, current, name, basename(dirname(sourceRoot)))) {
 		stderr(`skip ${target}: refusing to replace foreign symlink -> ${current}`);
 		return "skipped";
 	}
@@ -123,6 +132,7 @@ function removeExtension(
 	targetRoot: string,
 	name: string,
 	stderr: (line: string) => void,
+	namespace = ".pi",
 ): Verdict {
 	const target = join(targetRoot, name);
 	const stat = lstatSync(target, { throwIfNoEntry: false });
@@ -132,7 +142,7 @@ function removeExtension(
 		return "skipped";
 	}
 	const current = readlinkSync(target);
-	if (!isPijOwnedExtensionTarget(target, current, name)) {
+	if (!isPijOwnedExtensionTarget(target, current, name, namespace)) {
 		stderr(`skip ${target}: refusing to remove foreign symlink -> ${current}`);
 		return "skipped";
 	}
@@ -271,6 +281,110 @@ function doctorOmp(options: RunLinkGlobalOptions, sourceRoot: string): number {
 	return 0;
 }
 
+/** Filesystem operations shared by canonical setup and isolated smoke fixtures.
+ * The executable entry point still enforces the canonical-checkout guard.
+ */
+export function manageCopilotExtension(options: RunLinkGlobalOptions): number {
+	const home = resolve(options.copilotHome || join(options.home, ".copilot"));
+	const extensions = join(home, "extensions");
+	const sourceRoot = join(options.pijRoot, ".copilot", "extensions");
+	const source = join(sourceRoot, "pij");
+	const target = join(extensions, "pij");
+	const settingsPath = join(home, "settings.json");
+	const remove = options.args.includes("--remove");
+	const doctor = options.args.includes("--doctor-copilot");
+	try {
+		// These are preservation brakes: removing them can only broaden writes.
+		for (const directory of [home, extensions]) {
+			const stat = lstatSync(directory, { throwIfNoEntry: false });
+			if (stat && (!stat.isDirectory() || stat.isSymbolicLink())) {
+				options.stderr(`Copilot: refusing non-directory or symlinked path ${directory}`);
+				return 1;
+			}
+		}
+		if (remove) {
+			const verdict = removeExtension(extensions, "pij", options.stderr, ".copilot");
+			options.stdout(`Copilot extension: ${verdict}; settings preserved`);
+			return verdict === "skipped" ? 1 : 0;
+		}
+		for (const name of ["extension.mjs", "store.mjs"]) {
+			if (!lstatSync(join(source, name), { throwIfNoEntry: false })?.isFile()) {
+				options.stderr(
+					`Copilot source missing: ${join(source, name)}; use the complete reviewed checkout`,
+				);
+				return 1;
+			}
+		}
+		const targetStat = lstatSync(target, { throwIfNoEntry: false });
+		if (
+			targetStat &&
+			(!targetStat.isSymbolicLink() ||
+				!isPijOwnedExtensionTarget(target, readlinkSync(target), "pij", ".copilot"))
+		) {
+			options.stderr(`Copilot: refusing foreign symlink or real file/directory ${target}`);
+			return 1;
+		}
+		const settingsStat = lstatSync(settingsPath, { throwIfNoEntry: false });
+		if (settingsStat && (!settingsStat.isFile() || settingsStat.nlink !== 1)) {
+			options.stderr(
+				`Copilot: refusing non-regular, symlinked or multiply-linked settings ${settingsPath}`,
+			);
+			return 1;
+		}
+		const settings: unknown = settingsStat ? JSON.parse(readFileSync(settingsPath, "utf8")) : {};
+		if (settings === null || typeof settings !== "object" || Array.isArray(settings)) {
+			options.stderr(
+				`Copilot settings must be a JSON object: ${settingsPath}; refusing to overwrite`,
+			);
+			return 1;
+		}
+		const enabled = "experimental" in settings && settings.experimental === true;
+		if (doctor) {
+			if (!targetStat || absoluteLinkTarget(target, readlinkSync(target)) !== resolve(source)) {
+				options.stderr(
+					`Copilot extension link mismatch: expected ${source}; run just link from the canonical checkout`,
+				);
+				return 1;
+			}
+			if (!enabled) {
+				options.stderr(
+					`Copilot experimental is disabled/missing in ${settingsPath}; run just link to opt in. --no-experimental remains an explicit per-session opt-out.`,
+				);
+				return 1;
+			}
+			options.stdout(
+				`Copilot native extension ready: ${target}; experimental enabled (new CLI sessions only)`,
+			);
+			return 0;
+		}
+		ensureDirectory(extensions);
+		if (!enabled) {
+			const temporary = join(home, `.settings-${randomUUID()}.tmp`);
+			try {
+				writeFileSync(
+					temporary,
+					`${JSON.stringify({ ...settings, experimental: true }, null, "\t")}\n`,
+					{
+						flag: "wx",
+						mode: settingsStat ? settingsStat.mode & 0o777 : 0o600,
+					},
+				);
+				renameSync(temporary, settingsPath);
+			} finally {
+				if (lstatSync(temporary, { throwIfNoEntry: false })) unlinkSync(temporary);
+			}
+		}
+		const verdict = linkExtension(sourceRoot, extensions, "pij", options.stderr);
+		options.stdout(`Copilot extension: ${verdict}; experimental enabled`);
+		return verdict === "skipped" ? 1 : 0;
+	} catch (error) {
+		options.stderr(
+			`Copilot setup failed without replacing foreign settings: ${error instanceof Error ? error.message : String(error)}`,
+		);
+		return 1;
+	}
+}
+
 export function runLinkGlobal(options: RunLinkGlobalOptions): number {
 	const worktreeCanonicalRoot = canonicalRootFromGitFile(options.pijRoot);
 	if (worktreeCanonicalRoot !== undefined) {
@@ -282,6 +396,7 @@ export function runLinkGlobal(options: RunLinkGlobalOptions): number {
 	if (options.args.includes("--check-only")) return 0;
 	const sourceRoot = join(options.pijRoot, ".pi", "extensions");
 	if (options.args.includes("--doctor-omp")) return doctorOmp(options, sourceRoot);
+	if (options.args.includes("--doctor-copilot")) return manageCopilotExtension(options);
 	const removeMode = options.args.includes("--remove");
 	const filter = options.args.find((arg) => !arg.startsWith("--"));
 	const names = sourceExtensions(sourceRoot, filter);
@@ -335,6 +450,7 @@ export function runLinkGlobal(options: RunLinkGlobalOptions): number {
 			changed += shared.changed;
 			skipped += shared.skipped;
 		}
+		skipped += manageCopilotExtension(options);
 	}
 	if (changed === 0 && skipped === 0) {
 		options.stdout(removeMode ? "nothing to remove" : "everything already linked");
@@ -348,6 +464,7 @@ if (directEntry === import.meta.url) {
 		runLinkGlobal({
 			pijRoot: resolve(import.meta.dirname, "..", ".."),
 			home: homedir(),
+			copilotHome: process.env.COPILOT_HOME,
 			args: process.argv.slice(2),
 			stdout: console.log,
 			stderr: console.error,

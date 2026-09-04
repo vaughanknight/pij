@@ -66,6 +66,7 @@ install:
     @echo
     @echo "=== 6/6 pi-doctor ==="
     just pi-doctor
+    just copilot-native-doctor
     @echo
     @echo "✓ install complete. pi is set up on this machine."
 
@@ -96,6 +97,23 @@ check-file-watch-notify:
 smoke:
     npm run smoke
 
+
+# Native Copilot extension contracts are node:test, outside Vitest's TS include.
+copilot-native-test:
+    node --test .copilot/extensions/pij/*.test.mjs
+
+# Keep Cargo artifacts local to this checkout during isolated parallel work.
+copilot-native-rust-test:
+    CARGO_TARGET_DIR="{{justfile_directory()}}/target" cargo test -p pij-core -p pij-store -p pij-harnesses -p pij-daemon -p pij-cli
+
+# Actual CLI smoke; local fixture and real-provider evidence remain distinct.
+copilot-native-smoke *ARGS:
+    node_modules/.bin/tsx harness/scripts/copilot-native-smoke.ts "$@"
+
+# Read-only installation diagnosis. Does not enable extensions or change settings.
+copilot-native-doctor:
+    copilot --version
+    npm run link -- --doctor-copilot
 # Cross-platform static + focused inbox/CLI proof used by the Windows CI lane.
 windows-compat:
     npm run windows:check
@@ -169,6 +187,7 @@ self-check:
     just typecheck
     just lint
     just test
+    just copilot-native-test
     just windows-compat
     just smoke
     PIJ_VET_SKIP_AGENT=1 just pkg audit

@@ -1,0 +1,220 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+	fixtureReply,
+	object,
+	sendPrompt,
+	smokeEnvironment,
+	startFixtureProvider,
+} from "./copilot-native-fixture.js";
+import {
+	nativeMessages,
+	parseSmokeArgs,
+	readNativeEvents,
+	runSmoke,
+	verifyOrdinaryUsability,
+} from "./copilot-native-smoke.js";
+
+const roots: string[] = [];
+function temporary(): string {
+	const root = mkdtempSync(join(tmpdir(), "copilot-proof-test-"));
+	roots.push(root);
+	return root;
+}
+afterEach(() => {
+	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+const tools = [
+	{ type: "function", function: { name: "pij_send", parameters: { type: "object" } } },
+];
+
+describe("native smoke fixture protocol", () => {
+	it("requests only the advertised native tool, once per explicit marker", () => {
+		const prompt = sendPrompt("pij-target", "nonce-1");
+		const messages = [{ role: "user", content: prompt }];
+		const first = fixtureReply({ messages, tools });
+		const call = object((first.tool_calls as unknown[])[0]);
+		expect(object(call.function)).toMatchObject({
+			name: "pij_send",
+			arguments: JSON.stringify({ to: "pij-target", message: "nonce-1" }),
+		});
+		expect(
+			fixtureReply({
+				messages: [...messages, first, { role: "tool", tool_call_id: call.id, content: "receipt" }],
+				tools,
+			}),
+		).toEqual({ role: "assistant", content: "PIJ_NATIVE_DONE" });
+		expect(
+			fixtureReply({ messages: [{ role: "user", content: "ordinary incoming data" }], tools })
+				.tool_calls,
+		).toBeUndefined();
+	});
+
+	it("refuses a missing native tool instead of fabricating an outgoing reply", () => {
+		expect(() =>
+			fixtureReply({
+				messages: [{ role: "user", content: sendPrompt("pij-target", "nonce") }],
+				tools: [],
+			}),
+		).toThrow("PIJ_NATIVE_TOOL_MISSING");
+		expect(() => fixtureReply({ messages: [] })).not.toThrow();
+		expect(() => fixtureReply({ messages: "bad" })).toThrow("messages must be an array");
+	});
+
+	it("serves actual streaming and non-streaming OpenAI protocol with explicit failure", async () => {
+		const fixture = await startFixtureProvider();
+		try {
+			const send = (body: unknown) =>
+				fetch(`${fixture.url}/chat/completions`, { method: "POST", body: JSON.stringify(body) });
+			const body = {
+				messages: [{ role: "user", content: sendPrompt("pij-peer", "nonce") }],
+				tools,
+			};
+			const response = await send(body);
+			expect(response.status).toBe(200);
+			expect(object(await response.json()).object).toBe("chat.completion");
+			const streaming = await send({ ...body, stream: true });
+			expect(streaming.headers.get("content-type")).toBe("text/event-stream");
+			const events = (await streaming.text()).split("\n\n").filter(Boolean);
+			expect(events.at(-1)).toBe("data: [DONE]");
+			expect(events.join("\n")).toContain('"finish_reason":"tool_calls"');
+			const failed = await send({ ...body, tools: [] });
+
+			expect(failed.status).toBe(400);
+			expect(await failed.text()).toContain("PIJ_NATIVE_TOOL_MISSING");
+			expect((await fetch(`${fixture.url}/models`)).status).toBe(200);
+			expect((await fetch(`${fixture.url}/unknown`)).status).toBe(404);
+		} finally {
+			await fixture.close();
+		}
+	});
+});
+
+describe("native witness boundaries", () => {
+	it("requires ordinary native usability and exactly one actionable outage diagnostic", () => {
+		const user = {
+			id: "user-event",
+			type: "user.message",
+			data: { content: "ordinary-nonce", messageId: "user-native", interactionId: "turn-a" },
+		};
+		const assistant = {
+			id: "assistant-event",
+			type: "assistant.message",
+			data: {
+				content: "PIJ_NATIVE_OBSERVED",
+				messageId: "assistant-native",
+				interactionId: "turn-a",
+			},
+		};
+		const diagnostic = "[pij native] unavailable: start the daemon";
+		expect(() =>
+			verifyOrdinaryUsability([user, assistant], "ordinary-nonce", diagnostic),
+		).not.toThrow();
+		expect(() => verifyOrdinaryUsability([user], "ordinary-nonce", diagnostic)).toThrow(
+			"same native interaction",
+		);
+		expect(() =>
+			verifyOrdinaryUsability(
+				[user, { ...assistant, data: { ...assistant.data, interactionId: "other-turn" } }],
+				"ordinary-nonce",
+				diagnostic,
+			),
+		).toThrow("same native interaction");
+		expect(() => verifyOrdinaryUsability([user, assistant], "ordinary-nonce", "")).toThrow(
+			"one diagnostic",
+		);
+		expect(() =>
+			verifyOrdinaryUsability([user, assistant], "ordinary-nonce", `${diagnostic}\n${diagnostic}`),
+		).toThrow("one diagnostic");
+	});
+	it("manual launch drops identity and SDK context, only real mode inherits auth in memory", () => {
+		const inherited = {
+			PATH: "/bin",
+			PIJ_SESSION_ID: "real-seat",
+			PIJ_SPAWN_ID: "real-spawn",
+			TMUX: "live-socket",
+			COPILOT_AGENT_SESSION_ID: "live-native",
+			COPILOT_PROVIDER_BASE_URL: "http://foreign",
+			COPILOT_PROVIDER_API_KEY: "foreign-secret",
+			GH_TOKEN: "real-secret",
+			NODE_OPTIONS: "--import=evil.js",
+		};
+		const local = smokeEnvironment(
+			inherited,
+			"/fixture/home",
+			"/fixture/config",
+			"/fixture/state",
+			"127.0.0.1:1234",
+			"local",
+		);
+		expect(local).toMatchObject({
+			HOME: "/fixture/home",
+			COPILOT_HOME: "/fixture/config",
+			PIJ_RS_ADDR: "127.0.0.1:1234",
+			PIJ_RS_STATE_DIR: "/fixture/state",
+			COPILOT_OFFLINE: "true",
+		});
+		for (const key of [
+			"PIJ_SESSION_ID",
+			"PIJ_SPAWN_ID",
+			"TMUX",
+			"COPILOT_AGENT_SESSION_ID",
+			"COPILOT_PROVIDER_BASE_URL",
+			"COPILOT_PROVIDER_API_KEY",
+			"GH_TOKEN",
+			"NODE_OPTIONS",
+		])
+			expect(local[key]).toBeUndefined();
+		const real = smokeEnvironment(inherited, "/h", "/c", "/s", "127.0.0.1:1234", "real");
+		expect(real.GH_TOKEN).toBe("real-secret");
+		expect(real.COPILOT_OFFLINE).toBe("false");
+	});
+
+	it("counts only actual native user messages, retains IDs, ignores partial final writes", () => {
+		const path = join(temporary(), "events.jsonl");
+		writeFileSync(
+			path,
+			[
+				JSON.stringify({
+					id: "assistant-id",
+					type: "assistant.message",
+					data: { content: "nonce" },
+				}),
+				JSON.stringify({
+					id: "user-id",
+					type: "user.message",
+					data: { content: "[pij from peer]\nnonce" },
+				}),
+				'{"id":"partial',
+			].join("\n"),
+		);
+		expect(nativeMessages(readNativeEvents(path), "nonce")).toEqual([
+			{ id: "user-id", type: "user.message", data: { content: "[pij from peer]\nnonce" } },
+		]);
+		writeFileSync(path, '{"type":"user.message","data":{"content":"nonce"}}\n');
+		expect(() => readNativeEvents(path)).toThrow("native event must have its real event id");
+	});
+
+	it("rejects ambiguous CLI inputs and never upgrades a missing binary to success", async () => {
+		expect(() => parseSmokeArgs(["--provider", "fake"])).toThrow();
+		expect(() => parseSmokeArgs(["--mode"])).toThrow();
+		expect(() => parseSmokeArgs(["--timeout-seconds", "NaN"])).toThrow();
+		const root = temporary();
+		const output = join(root, "receipt.json");
+		const options = parseSmokeArgs(["--pij-bin", join(root, "missing"), "--output", output]);
+		const result = await runSmoke(options);
+		expect(result.code).toBe(2);
+		const receipt = JSON.parse(readFileSync(output, "utf8"));
+		expect(receipt).toMatchObject({
+			status: "prerequisite-missing",
+			provider: "deterministic-local-fixture-not-real-inference",
+			witnesses: [],
+		});
+		expect(receipt.error).toContain("PIJ_NATIVE_PREREQUISITE_BINARY");
+		roots.push(receipt.run);
+		await expect(runSmoke(options)).rejects.toThrow("refusing to overwrite receipt");
+	});
+});
