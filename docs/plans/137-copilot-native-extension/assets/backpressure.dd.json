@@ -8,7 +8,7 @@
       "value": {
         "title": "Copilot native extension — selected backpressure",
         "plan": "../plan.dd.json#meta",
-        "basis_sha": "95619c09497f2a4bed84edcd3b93cc528ecd7079e60a73ab883fa3476bdb6cc5",
+        "basis_sha": "184f7de353b001f25bb1268d202c62f43fc6d7f4009a8e42558754d8f3ba9038",
         "certainty": "Partial"
       }
     },
@@ -87,11 +87,11 @@
         },
         {
           "id": "bp-0008",
-          "criterion": "ac-0008: Obsolete Copilot UI-server launch/port-intent runtime machinery is removed with safe forward migration semantics and historical migrations untouched; native compact works if exposed, otherwise unsupported controls fail explicitly with no typing.",
+          "criterion": "ac-0008: Obsolete Copilot UI-server launch/port-intent runtime machinery is removed with safe forward migration semantics and historical migrations untouched; programmatic Copilot controls refuse explicitly without legacy/tmux fallback, while other harness controls are unchanged.",
           "phase": "ph-66f1",
           "mode": "EXTEND",
           "tier": "computational",
-          "proof": "Extend store forward-upgrade and CLI spawn/revive tests showing no active rpc intent/port allocation/UI-server args; historical migration checksums intact. Native compact capability proof or explicit unsupported-command refusal; no typing. just copilot-native-rust-test.",
+          "proof": "Extend forward migration, spawn/revive and caller-control tests: no RPC port/args, old migration checksums intact; Copilot programmatic controls explicitly refused, no legacy/tmux fallback; other harnesses unchanged. just copilot-native-rust-test plus focused CLI tests.",
           "state": "unchecked",
           "note": "Selection, not completed proof. No numeric confidence score."
         },
@@ -115,6 +115,16 @@
           "state": "unchecked",
           "note": "Selection, not completed proof. No numeric confidence score.",
           "probe": "Intentional judgment tier, not missing tooling: inspected root package/Cargo/justfile, vitest config, all crate test entrypoints and checks sensors; these cannot independently judge product acceptance."
+        },
+        {
+          "id": "bp-0012",
+          "criterion": "Baseline and frozen contract fixtures exist before implementation; no completed product behavior implied.",
+          "phase": "ph-66f1",
+          "mode": "EXISTS",
+          "tier": "computational",
+          "proof": "RUN harness plan validate <plan>; ddocs validate <guide>; inspect committed native-extension.json and input SHA manifest. Record harness boot output: typecheck passed and file-watch-notify smoke baseline failed.",
+          "state": "unchecked",
+          "note": "This row proves preparation only; product ACs retain separate full-behavior proof rows."
         }
       ]
     },

@@ -1,0 +1,118 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Independent Opus review — Copilot native extension",
+        "role": "reviewer",
+        "plan": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/plan.dd.json",
+        "seat": "pij-static-rhinoceros",
+        "updated": "2026-09-05"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "Read-only code review after PM composition; verify plan promises and seam correctness against actual code and runtime evidence. PM writes plan/guide, coders implement. No source fixes or scope changes. Await explicit PM dispatch with composed SHA before reviewing code."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        {
+          "id": "i1",
+          "text": "Read PM plan, guide, typed backpressure, contracts and prime constraints. Inspect full diff of composed commit against main base46c9314c; distinguish PM document commits from actual code. All paths absolute in PM worktree."
+        },
+        {
+          "id": "i2",
+          "text": "Least confidence: true Copilot host PID/native identity across manual/spawn/new/resume; pane-based consent claim/wake timing; crash after native accept before durable mapping/ack; global installation preservation and foreign path safety. Hunt those first."
+        },
+        {
+          "id": "i3",
+          "text": "DISBELIEVE author receipts: re-derive selected high-risk tests/scenarios independently. Check actual shipping path, not helper-only tests; no hidden pane metadata or Pi harness spoofing. No Copilot sendkeys path including failed-consumer fallback."
+        },
+        {
+          "id": "i4",
+          "text": "Known-open at planning: unrelated file-watch-notify smoke baseline red; npm min-release-age/before git dependency install conflict, existing main node_modules symlink reused read-only. Existing uninstrumented sessions explicitly exempt. Do not duplicate these as new findings; no failure suppression."
+        },
+        {
+          "id": "i5",
+          "text": "Use /builder review discipline and Flowspace3 semantic CLI search/get plus native LSP. Report actual CLI/tool gaps. No code edits, toolchain changes, production peer messages/restarts or global config changes."
+        },
+        {
+          "id": "i6",
+          "text": "Inspect all10 ACs; run focused proof against composed tree after coder edits stop, not project-wide suite repeated unnecessarily. Real manual and Pij-spawned client evidence required; deterministic fixture provider is not real model proof."
+        },
+        {
+          "id": "i7",
+          "text": "Return only material findings (severity, exact location, evidence, affected AC, smallest correction); no_material_findings valid. Write assets/reviews/opus-review.json or ddoc via CLI plus captured evidence. Message PM pij-grim-gurgeh with verdict and pointer; PM will compact you first after terminal verdict."
+        }
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        {
+          "id": "w1",
+          "text": "PM pij-grim-gurgeh owns adjudication and dispatch; unit owners fix upheld findings. Independent evidence outranks any packet assumption."
+        },
+        {
+          "id": "w2",
+          "text": "No plan/guide/code edits or merge/push. Only own assets/reviews files. No modal questions; C10 concise pointer delivery."
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension",
+        "branch": "137-copilot-native-extension",
+        "fence": "Read-only code and plan; write only docs/plans/137-copilot-native-extension/assets/reviews/",
+        "forbidden_note": "No .the-flow-state.json, the-flow.json, the-flow.md, plan/guide/backpressure mutations, governance, other branch or global user files."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        {
+          "id": "d1",
+          "text": "Every AC judged with evidence or explicit unavailable proof; no silent substitutions."
+        },
+        {
+          "id": "d2",
+          "text": "Composition/native identity/delivery/consent/installation risks examined and all material findings grounded."
+        },
+        {
+          "id": "d3",
+          "text": "Terminal verdict artifact and path delivered to PM; remain available for focused follow-up."
+        }
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        {
+          "id": "r1",
+          "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/plan.dd.json",
+          "note": "Authoritative PM acceptance"
+        },
+        {
+          "id": "r2",
+          "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/impl-guide.dd.json",
+          "note": "Unit interfaces and shared-file exclusions"
+        },
+        {
+          "id": "r3",
+          "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/contracts/native-extension.json",
+          "note": "Frozen wire/file contract"
+        },
+        {
+          "id": "r4",
+          "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/backpressure.dd.json",
+          "note": "Typed proof selected per AC"
+        }
+      ]
+    }
+  ]
+}

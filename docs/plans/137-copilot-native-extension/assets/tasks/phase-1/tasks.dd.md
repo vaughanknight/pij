@@ -14,7 +14,7 @@
 | ordinal | — |
 | status | ready |
 | complexity | — |
-| summary | Ordered contract-first work; PM owns plan/guide; one Astra coder implements, Opus independently reviews. |
+| summary | PM-owned task contract; three isolated Astra units, serial composition and independent Opus review. |
 | backpressure | — |
 | log | — |
 | mode | — |
@@ -52,10 +52,8 @@ Use impl-guide.dd.json as the frozen contract. No product edits outside fence; n
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-0001 | Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged. | [ ] unchecked | [bp-0004](../../backpressure.dd.md#rows) |
-| dw-0002 | One inbox claim is injected through native SDK and acknowledged only after acceptance; accepted duplicate msg_id is not reinjected; queue/API errors preserve recoverable state and acceptance is never mislabeled model completion. | [ ] unchecked | [bp-0005](../../backpressure.dd.md#rows) |
-| dw-0003 | Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence. | [ ] unchecked | [bp-0006](../../backpressure.dd.md#rows) |
-| dw-0004 | Hand-started pane-backed and Pij-spawned real Copilot witnesses prove bidirectional unique-message delivery and no duplicate, plus a real model canary; deterministic provider proof is labeled separately; scoped tests and final harness checks pass. | [ ] unchecked | [bp-0009](../../backpressure.dd.md#rows) |
+| dw-001c | Frozen wire/file fixtures and expected positive/negative outcomes are committed and referenced by all three unit packets. | [ ] unchecked | [bp-0012](../../backpressure.dd.md#rows) |
+| dw-001d | Baseline commands and exact results are recorded, including existing smoke failure, and scoped unit test entrypoints are assigned. | [ ] unchecked | [bp-0012](../../backpressure.dd.md#rows) |
 
 ### tk-0002
 
@@ -95,7 +93,7 @@ Use impl-guide.dd.json as the frozen contract. No product edits outside fence; n
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
 | dw-0012 | Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged. | [ ] unchecked | [bp-0004](../../backpressure.dd.md#rows) |
-| dw-0013 | Obsolete Copilot UI-server launch/port-intent runtime machinery is removed with safe forward migration semantics and historical migrations untouched; native compact works if exposed, otherwise unsupported controls fail explicitly with no typing. | [ ] unchecked | [bp-0008](../../backpressure.dd.md#rows) |
+| dw-0013 | Obsolete Copilot UI-server launch/port-intent runtime machinery is removed with safe forward migration semantics and historical migrations untouched; programmatic Copilot controls refuse explicitly without legacy/tmux fallback, while other harness controls are unchanged. | [ ] unchecked | [bp-0008](../../backpressure.dd.md#rows) |
 
 ### tk-0007
 

@@ -1,0 +1,126 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Coder daemon — Copilot native extension",
+        "role": "coder",
+        "plan": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/docs/plans/137-copilot-native-extension/plan.dd.json",
+        "seat": "pij-grotesque-armadillo",
+        "updated": "2026-09-05"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "Add verified native-extension capability and exclusive Copilot inbox ownership; preserve other harnesses; safe claim consent admission; remove RPC intent runtime and spawn machinery; explicit unsupported Copilot remote-control refusal without legacy fallback (no new control protocol). PM authors plan/guide; no new remote control protocol."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        {
+          "id": "i1",
+          "text": "Read plan.dd.md, impl-guide.dd.md unit daemon, assets/contracts/native-extension.json, assets/backpressure.dd.md and assets/inputs/prime-constraints-2026-09-05.md IN YOUR WORKTREE. Use absolute paths. C10 wire discipline from skill://pij."
+        },
+        {
+          "id": "i2",
+          "text": "ACK before code: report your exact worktree/branch, actual harness/model/configured effort, numbered execution steps, interface mismatches, and any unknown affecting proof. Wait for PM ack approval before source edits. Do not author a competing plan/guide."
+        },
+        {
+          "id": "i3",
+          "text": "Use /builder implementation discipline. Contract-first targeted tests; every negative witness must demonstrably catch a plausible defect. Run scoped tests in YOUR isolated tree; skip project-wide builds/lint/test gates during concurrent wave. PM owns final gate. No new dependencies/toolchain upgrades; worktree-local Cargo target. Never run legacy TS daemon or flowspace3 daemon."
+        },
+        {
+          "id": "i4",
+          "text": "Stay strictly in scope fence. Do not edit core/src/delivery.rs, harnesses/src/interaction.rs or .pi extension-side hold queue (plan136). Register response additive to135. If frozen interface insufficient, stop only dependent work and send precise evidence to PM, no private sibling renegotiation."
+        },
+        {
+          "id": "i5",
+          "text": "Dogfood actual flowspace3 CLI search/get for meaning-shaped code questions; read skill://flowspace first. Use native LSP references/refactors where available. Report CLI/tool gaps, not silent substitution. Exact text grep is fine."
+        },
+        {
+          "id": "i6",
+          "text": "Unit acceptance: Existing Rust crate tests, real SQLite + fixture-based request parity. Assert no first-send nor drain tmux submit; hold/admit positive pair; matching/mismatching pid/session; no native capability reuse across replacement; duplicate/ack semantics; historical migration upgrade; unchanged Pi/OMP/Claude behavior. Do not run project-wide gates while siblings edit; all targets local to this worktree."
+        },
+        {
+          "id": "i7",
+          "text": "Commit explicit paths only with conventional commit; no -A, no bypass hooks, no push/main merge. Record commands, versions, result IDs and assumptions in your assets/evidence/daemon-receipt.json or .md. Do not mark PM ACs complete; return commit SHA + unit evidence + remaining integration needs."
+        },
+        {
+          "id": "i8",
+          "text": "Do NOT copy scratch PoC automatic assistant-reply forwarding into product. Incoming data must remain data. Never claim native acknowledgement means completed model work. No real global setup/restart; only isolated test homes and processes you own."
+        },
+        {
+          "id": "i9",
+          "text": "Status now at start/end via Pij; runtime discovery and actual canary already requested. Model github-copilot/gpt-6-astra-1m high, OMP. Do not update OMP: local Astra patches required. If missing thinking/API error, report to PM."
+        }
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        {
+          "id": "w1",
+          "text": "PM pij-grim-gurgeh owns contract, plan, guide and convergence. Send questions/done there using native pij_send; no modal UI. Other coders are isolated and must not share source writes."
+        },
+        {
+          "id": "w2",
+          "text": "Prime pij-minor-unicorn owns136/135 overlap; PM coordinates shared-file convergence. Do not request global restarts or alter governance."
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon",
+        "branch": "137-copilot-native-daemon",
+        "fence": "crates/core/src/model.rs; crates/core/src/ports.rs only if concrete persisted capability requires; crates/store/src/**; NEW forward migrations; crates/daemon/src/registration.rs; crates/daemon/src/delivery/**; crates/daemon/src/pointer/**; crates/daemon/src/http/**; crates/daemon/src/lib.rs; crates/harnesses/src/spawn.rs; crates/cli/src/** Copilot-specific cleanup only; corresponding Rust tests. EXCLUDE core/src/delivery.rs, harnesses/src/interaction.rs, all .pi files, Cargo.lock, installer/JS extension.; .pi/extensions/pij/cli.ts and core/generation-routing.ts Copilot-only unsupported control/fallback guard plus direct tests (NOT hold queues); own assets/evidence/daemon-* receipts only",
+        "forbidden_note": "No .the-flow-state.json, the-flow.json, the-flow.md, plan.dd.json/.md, impl-guide.dd.json/.md, assets/backpressure.dd.json/.md, assets/contracts/*, governance or other coder paths. No Cargo.lock changes. All file operations absolute under your root."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        {
+          "id": "d1",
+          "text": "Frozen unit contract implemented with targeted passing proof and necessary corrections explicitly ruled by PM."
+        },
+        {
+          "id": "d2",
+          "text": "Positive and negative receipt artifacts exist, cite actual source commit and toolchain; integration dependencies honestly named, not claimed proven with mocks."
+        },
+        {
+          "id": "d3",
+          "text": "Explicit-path conventional commit and one concise PM message with SHA, receipt path, assumptions and pending integration; do not merge/push."
+        }
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        {
+          "id": "r1",
+          "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/docs/plans/137-copilot-native-extension/plan.dd.json",
+          "note": "PM WHAT/WHY and acceptance criteria"
+        },
+        {
+          "id": "r2",
+          "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/docs/plans/137-copilot-native-extension/impl-guide.dd.json",
+          "note": "Frozen HOW/fence/contracts; unit daemon"
+        },
+        {
+          "id": "r3",
+          "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/docs/plans/137-copilot-native-extension/assets/contracts/native-extension.json",
+          "note": "Cross-unit request/response and file contract"
+        },
+        {
+          "id": "r4",
+          "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/docs/plans/137-copilot-native-extension/assets/backpressure.dd.json",
+          "note": "Typed AC proof rows linked to task assertions"
+        }
+      ]
+    }
+  ]
+}

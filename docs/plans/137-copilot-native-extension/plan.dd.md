@@ -21,7 +21,7 @@
 | plan_version | 1.0.0 |
 | created | 2026-09-05 |
 | confidence | 0.85 |
-| complexity_breakdown | S2 I2 D2 N1 F2 T2 =11; one cohesive cutover, single coder; reviewer and live integration are hard checkpoints |
+| complexity_breakdown | S2 I2 D2 N1 F2 T2 =11; three disjoint coder units, single integrated phase and explicit review checkpoint |
 
 <a id="summary"></a>
 
@@ -84,7 +84,7 @@ A repo-managed JavaScript user extension joins the native Copilot session, estab
 3. Implement native extension shell plus independently testable runtime-neutral state module: join/register, native tool for outgoing send, one claim/native send/ack, separate idle evidence, reconnect/key refresh and bounded duplicate handling.
 4. Preserve lifecycle: manual stable identity, spawned prebind correlation, native new/resume/reload rollover, old connection cancellation and stale claims; no context clearing as delivery workaround.
 5. Wire canonical-main installation and doctor, enabling experimental through targeted settings merge and preserving foreign files/symlinks/unknown settings. Cover COPILOT_HOME. Test installed artifact matches reviewed source.
-6. Remove obsolete Copilot UI-server/port allocation and live rpc_port_intent consumers with forward-compatible storage cleanup; remove only Copilot sendkeys branches made obsolete. Commands use proven native equivalents (compact) or explicit unsupported errors (new/reload if SDK cannot implement safely), never text slash command fallback; do not alter other harness controls.
+6. Remove obsolete Copilot UI-server/port allocation and live rpc_port_intent consumers with forward-compatible storage cleanup; remove only Copilot sendkeys branches made obsolete. Programmatic Copilot controls are outside this body-messaging feature: explicitly refuse them at the caller boundary without legacy/tmux fallback. Do not add a new control RPC or alter other harness controls; user-driven native new/resume remains lifecycle input.
 7. Prove manual pane-backed and Pij-spawned real Copilot, bidirectional tool-originated send, duplicate, missing consumer and human typing control; bounded restart/reconnect scenario. Both passing and held/refused worlds emit positive artifacts. Real model canary supplements deterministic local provider, cannot be silently replaced by it.
 8. Independent Opus review, remediation by Astra, PM runs composed gates and retains artifacts; no deployment/push without authorization.
 
@@ -141,7 +141,7 @@ Prime durable constraints: assets/inputs/prime-constraints-2026-09-05.md. rs is 
 | ac-0005 | One inbox claim is injected through native SDK and acknowledged only after acceptance; accepted duplicate msg_id is not reinjected; queue/API errors preserve recoverable state and acceptance is never mislabeled model completion. | [ ] unchecked | — | — | [bp-0005](assets/backpressure.dd.md#rows) | — |
 | ac-0006 | Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence. | [ ] unchecked | — | — | [bp-0006](assets/backpressure.dd.md#rows) | — |
 | ac-0007 | Reconnect/key rotation, extension reload/native session rollover and old-process replacement cancel stale consumers, maintain correct identity and do not route old work into a different native session; native idle/event evidence stays separate from acceptance. | [ ] unchecked | — | — | [bp-0007](assets/backpressure.dd.md#rows) | — |
-| ac-0008 | Obsolete Copilot UI-server launch/port-intent runtime machinery is removed with safe forward migration semantics and historical migrations untouched; native compact works if exposed, otherwise unsupported controls fail explicitly with no typing. | [ ] unchecked | — | — | [bp-0008](assets/backpressure.dd.md#rows) | — |
+| ac-0008 | Obsolete Copilot UI-server launch/port-intent runtime machinery is removed with safe forward migration semantics and historical migrations untouched; programmatic Copilot controls refuse explicitly without legacy/tmux fallback, while other harness controls are unchanged. | [ ] unchecked | — | — | [bp-0008](assets/backpressure.dd.md#rows) | — |
 | ac-0009 | Hand-started pane-backed and Pij-spawned real Copilot witnesses prove bidirectional unique-message delivery and no duplicate, plus a real model canary; deterministic provider proof is labeled separately; scoped tests and final harness checks pass. | [ ] unchecked | — | — | [bp-0009](assets/backpressure.dd.md#rows) | — |
 | ac-000a | PM-authored plan/guide, coder receipts, independent Opus review and resolved findings are preserved; no unauthorized global rollout, public push or main merge occurs. | [ ] unchecked | — | — | [bp-000a](assets/backpressure.dd.md#rows) | — |
 
@@ -151,4 +151,4 @@ Prime durable constraints: assets/inputs/prime-constraints-2026-09-05.md. rs is 
 
 | id | title | brief | state | note | receipt | depends_on | tasks | objective | delivers | key_risks |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ph-66f1 | Copilot native extension cutover | Eight ordered task groups; single implementation owner, standalone review and PM integration acceptance. | [ ] unchecked | — | — | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
+| ph-66f1 | Copilot native extension cutover | Eight task groups assigned across three isolated coder units; PM composes and owns final live acceptance. | [ ] unchecked | — | — | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |

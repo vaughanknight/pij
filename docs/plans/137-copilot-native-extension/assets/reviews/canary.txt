@@ -1,0 +1,20 @@
+CANARY-S137-OPUS-83AD
+
+seat: rs (reviewer seat, this session)
+pm: pij-grim-gurgeh
+timestamp: 2026-09-05
+
+runtime (actual, as observed in-session):
+  harness: OMP (Oh My Pi) — tool surface is OMP native (read/edit/eval/hub/xd:// devices),
+           not the legacy pij CLI; `pij canary` cannot address this seat.
+  model: github-copilot/claude-opus-5
+  reasoning effort: high (session-configured; not independently introspectable from
+           inside the turn — no in-band signal contradicts the expected "high")
+  cwd: /Users/jordanknight/pi-hacking/pij
+  workstation: darwin 25.6.0, arm64 (Apple M4 Max), tmux 3.6a
+
+matches expected: OMP github-copilot/claude-opus-5 high
+
+state: no plan/code edits performed. Pending, not-yet-dispatched work:
+  /Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/plan.dd.json
+awaiting dispatch from PM.

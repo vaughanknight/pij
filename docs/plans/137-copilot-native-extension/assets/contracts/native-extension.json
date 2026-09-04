@@ -112,7 +112,7 @@
       "no direct artificial /clear or typed slash commands"
     ]
   },
-  "commands": "explicit command field never model text or tmux; proven native compact or clear unsupported refusal; user-driven new/resume lifecycle remains supported",
+  "commands": "Body messaging only: no new native command protocol. Copilot programmatic controls explicitly unsupported at producer/caller boundary with no legacy/tmux fallback; preserve other harness controls. Native user-driven new/resume/reload is lifecycle input, not remote control.",
   "envelope": {
     "ok": true,
     "command": "pij inbox",

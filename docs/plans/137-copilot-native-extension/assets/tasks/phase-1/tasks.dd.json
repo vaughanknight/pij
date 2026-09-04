@@ -9,7 +9,7 @@
         "title": "Copilot native extension cutover",
         "slug": "phase-1",
         "status": "ready",
-        "summary": "Ordered contract-first work; PM owns plan/guide; one Astra coder implements, Opus independently reviews."
+        "summary": "PM-owned task contract; three isolated Astra units, serial composition and independent Opus review."
       }
     },
     {
@@ -133,28 +133,16 @@
       "value": {
         "tk-0001": [
           {
-            "id": "dw-0001",
-            "assertion": "Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged.",
+            "id": "dw-001c",
+            "assertion": "Frozen wire/file fixtures and expected positive/negative outcomes are committed and referenced by all three unit packets.",
             "state": "unchecked",
-            "pressure": "../../backpressure.dd.json#rows/bp-0004"
+            "pressure": "../../backpressure.dd.json#rows/bp-0012"
           },
           {
-            "id": "dw-0002",
-            "assertion": "One inbox claim is injected through native SDK and acknowledged only after acceptance; accepted duplicate msg_id is not reinjected; queue/API errors preserve recoverable state and acceptance is never mislabeled model completion.",
+            "id": "dw-001d",
+            "assertion": "Baseline commands and exact results are recorded, including existing smoke failure, and scoped unit test entrypoints are assigned.",
             "state": "unchecked",
-            "pressure": "../../backpressure.dd.json#rows/bp-0005"
-          },
-          {
-            "id": "dw-0003",
-            "assertion": "Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence.",
-            "state": "unchecked",
-            "pressure": "../../backpressure.dd.json#rows/bp-0006"
-          },
-          {
-            "id": "dw-0004",
-            "assertion": "Hand-started pane-backed and Pij-spawned real Copilot witnesses prove bidirectional unique-message delivery and no duplicate, plus a real model canary; deterministic provider proof is labeled separately; scoped tests and final harness checks pass.",
-            "state": "unchecked",
-            "pressure": "../../backpressure.dd.json#rows/bp-0009"
+            "pressure": "../../backpressure.dd.json#rows/bp-0012"
           }
         ],
         "tk-0002": [
@@ -252,7 +240,7 @@
           },
           {
             "id": "dw-0013",
-            "assertion": "Obsolete Copilot UI-server launch/port-intent runtime machinery is removed with safe forward migration semantics and historical migrations untouched; native compact works if exposed, otherwise unsupported controls fail explicitly with no typing.",
+            "assertion": "Obsolete Copilot UI-server launch/port-intent runtime machinery is removed with safe forward migration semantics and historical migrations untouched; programmatic Copilot controls refuse explicitly without legacy/tmux fallback, while other harness controls are unchanged.",
             "state": "unchecked",
             "pressure": "../../backpressure.dd.json#rows/bp-0008"
           }
