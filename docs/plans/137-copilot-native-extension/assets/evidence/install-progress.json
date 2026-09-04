@@ -1,0 +1,13 @@
+{
+  "status": "unit-source-ready-for-composition",
+  "source_commit": "333d95997971f00e502c9b039f17ae924626b2a1",
+  "contract": 3,
+  "receipt": "install-receipt.json",
+  "final_scoped_proof": {"tests": "29 passed", "typescript": "exit0", "biome": "5 files clean"},
+  "runtime_protocol_proof": "Actual Copilot1.0.84-0/local-provider probe exited0; install-provider-client.json. Not composed extension or real-model proof.",
+  "dependency_incident": "Resolved by PM/prime exact-lock restore; no install, dependency repair or repoint performed by this seat. Final scoped checks rerun successfully.",
+  "remaining": ["PM composed shipping modules and Rust binary", "actual native manual/spawned/held/absent/reconnect/real-model witnesses", "PM serialized full gate"],
+  "future_validation_environment": {"VITEST_MAX_THREADS": "4", "CARGO_BUILD_JOBS": "4"},
+  "load_rule": "Prime rule received after final scoped checks; applies to every next test/gate invocation. No further test/gate run has occurred since receipt.",
+  "acceptance_states": "PM ACs unchanged"
+}
