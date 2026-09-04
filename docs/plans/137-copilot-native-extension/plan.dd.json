@@ -9,7 +9,7 @@
         "title": "Copilot native extension delivery",
         "slug": "copilot-native-extension",
         "ordinal": 137,
-        "status": "ready",
+        "status": "in-progress",
         "mode": "Simple",
         "complexity": "CS-4",
         "plan_version": "1.0.0",
@@ -104,6 +104,12 @@
           "claim": "PM-authored plan/guide, coder receipts, independent Opus review and resolved findings are preserved; no unauthorized global rollout, public push or main merge occurs.",
           "state": "unchecked",
           "pressure": "assets/backpressure.dd.json#rows/bp-000a"
+        },
+        {
+          "id": "ac-000b",
+          "claim": "With daemon unreachable or key unavailable, a newly started real Copilot session remains usable; extension emits one actionable diagnostic per failure episode, retries boundedly/abortably without transcript spam, and never activates sendkeys fallback.",
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0013"
         }
       ]
     },

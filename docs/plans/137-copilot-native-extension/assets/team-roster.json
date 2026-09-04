@@ -3,7 +3,7 @@
   "pm": "pij-grim-gurgeh",
   "prime": "pij-minor-unicorn",
   "base": "46c9314c4b97449c33da1c9de2590500b8815702",
-  "contract_commit": "e3e9b6ac5a069a71922ea0ef80a3aa917ac9a32d",
+  "contract_commit": "36248c58638316c3bc3d4c90aad765eda39b3ba3",
   "plan_worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension",
   "coders": {
     "daemon": {
@@ -15,7 +15,7 @@
       "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon",
       "branch": "137-copilot-native-daemon",
       "packet": "docs/plans/137-copilot-native-extension/assets/packets/coder-daemon.dd.json",
-      "state": "awaiting-numbered-ack"
+      "state": "GO; implementing"
     },
     "runtime": {
       "seat": "pij-worldwide-rat",
@@ -26,7 +26,7 @@
       "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime",
       "branch": "137-copilot-native-runtime",
       "packet": "docs/plans/137-copilot-native-extension/assets/packets/coder-runtime.dd.json",
-      "state": "awaiting-numbered-ack"
+      "state": "GO; implementing"
     },
     "install": {
       "seat": "pij-intellectual-mosquito",
@@ -37,7 +37,7 @@
       "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-install",
       "branch": "137-copilot-native-install",
       "packet": "docs/plans/137-copilot-native-extension/assets/packets/coder-install.dd.json",
-      "state": "awaiting-numbered-ack"
+      "state": "GO; implementing"
     }
   },
   "reviewer": {

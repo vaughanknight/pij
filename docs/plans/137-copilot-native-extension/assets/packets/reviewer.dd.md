@@ -32,7 +32,7 @@ Read-only code review after PM composition; verify plan promises and seam correc
 | i3 | DISBELIEVE author receipts: re-derive selected high-risk tests/scenarios independently. Check actual shipping path, not helper-only tests; no hidden pane metadata or Pi harness spoofing. No Copilot sendkeys path including failed-consumer fallback. |
 | i4 | Known-open at planning: unrelated file-watch-notify smoke baseline red; npm min-release-age/before git dependency install conflict, existing main node_modules symlink reused read-only. Existing uninstrumented sessions explicitly exempt. Do not duplicate these as new findings; no failure suppression. |
 | i5 | Use /builder review discipline and Flowspace3 semantic CLI search/get plus native LSP. Report actual CLI/tool gaps. No code edits, toolchain changes, production peer messages/restarts or global config changes. |
-| i6 | Inspect all10 ACs; run focused proof against composed tree after coder edits stop, not project-wide suite repeated unnecessarily. Real manual and Pij-spawned client evidence required; deterministic fixture provider is not real model proof. |
+| i6 | Inspect all typed ACs; run focused proof against composed tree after coder edits stop, not project-wide suite repeated unnecessarily. Real manual and Pij-spawned client evidence required; deterministic fixture provider is not real model proof. |
 | i7 | Return only material findings (severity, exact location, evidence, affected AC, smallest correction); no_material_findings valid. Write assets/reviews/opus-review.json or ddoc via CLI plus captured evidence. Message PM pij-grim-gurgeh with verdict and pointer; PM will compact you first after terminal verdict. |
 
 <a id="working-with"></a>

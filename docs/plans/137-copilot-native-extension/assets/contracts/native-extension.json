@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "scope": "copilot native user extension; new sessions; other harnesses unchanged",
   "source_files": [
     ".copilot/extensions/pij/extension.mjs",
@@ -58,12 +58,26 @@
           "from": "pij-peer",
           "to": "pij-copilot-fixture",
           "body": "PIJ_137_NONCE"
+        },
+        "native_consumer": {
+          "native_session": "00000000-0000-4000-8000-000000000137",
+          "pid": 13700,
+          "proc_start": 20260905120000
         }
       }
     ],
     "ownership": "Copilot requires current native-extension attestation and never tmux fallback; pane claim gated by existing InteractionGate, failed observation is not permission",
     "bound": "0 or1 claims; serialized session consumer; client handles0 by bounded wait/backoff, not failure/busy-loop",
-    "incarnation_rule": "Native Copilot claims require native_session/pid/proc_start equal current attested descriptor; revalidate after waits before handing off. Other harness clients keep existing request compatibility. Missing/mismatched native tuple refuses explicitly; no fallback."
+    "incarnation_rule": "Native Copilot claims require native_session/pid/proc_start equal current attested descriptor; revalidate after waits before handing off. Other harness clients keep existing request compatibility. Missing/mismatched native tuple refuses explicitly; no fallback.",
+    "enforcement_layer": "DeliveryService native-aware claim admission, shared by all routes. Legacy /v1/shim/inbox must refuse Copilot if it cannot supply the tuple; it must not call an unguarded claim path. No entrypoint bypass, including future direct service callers.",
+    "proof_marker": "Every Copilot claim row carries native_consumer equal to the tuple actually validated by daemon. Extension refuses native injection and ack if absent or mismatching; old daemon unknown-field acceptance cannot impersonate capability proof.",
+    "hold": {
+      "data": [],
+      "meta": "native-consumer-held:<reason>",
+      "queue_effect": "message stays pending/unacknowledged",
+      "wait_rule": "A pane-backed Copilot consent-held verdict returns promptly with zero claims even when wait=true; never park across that verdict waiting solely for unrelated outcome events. Normal empty inbox may long-poll, revalidate after wake before handoff.",
+      "retry": "client bounded backoff (default250ms, max5000ms) before next claim; no empty-result tight loop, no second consent policy"
+    }
   },
   "ack": {
     "method": "POST",
@@ -77,7 +91,8 @@
     },
     "data_example": 137,
     "grade": "reader-read / native harness accepted, NOT model completed",
-    "incarnation_rule": "Copilot native ack verifies tuple against current attested descriptor AND job recipient against seat before terminal ack. Existing other-harness ack semantics retained. Delayed old consumer cannot ack replacement session work."
+    "incarnation_rule": "Copilot native ack verifies tuple against current attested descriptor AND job recipient against seat before terminal ack. Existing other-harness ack semantics retained. Delayed old consumer cannot ack replacement session work.",
+    "enforcement_layer": "DeliveryService derives actual running job recipient using Queue::claimed_delivery, then validates native tuple/seat before ack. Every route including shim inherits this; no bypass by naming a non-Copilot seat."
   },
   "send": {
     "method": "POST",
@@ -133,5 +148,14 @@
     "extension": "native SDK state machine with protocol fixture adapter and durable acceptance record",
     "installation": "safe setup and real-client harness that consumes actual source/artifacts"
   },
-  "test_isolation": "Manual means no Pij identity/preallocation variables or Copilot RPC flags; PIJ_RS_ADDR and PIJ_RS_STATE_DIR endpoint-only overrides and isolated HOME/COPILOT_HOME are permitted for smoke, never the live fleet."
+  "test_isolation": "Manual means no Pij identity/preallocation variables or Copilot RPC flags; PIJ_RS_ADDR and PIJ_RS_STATE_DIR endpoint-only overrides and isolated HOME/COPILOT_HOME are permitted for smoke, never the live fleet.",
+  "degraded_startup": "If daemon/key unavailable or native join unsupported, ordinary Copilot session remains usable; one actionable diagnostic per failure episode, bounded abortable retry, no transcript spam or fallback. Prove isolated daemon-absent startup with native CLI.",
+  "diagnostic": {
+    "prefix": "[pij native] unavailable:",
+    "sink": "Copilot native session log/terminal, using documented session.log(...,{level:\"info\"}) or equivalent SDK-visible log; NOT a private acceptance journal",
+    "semantics": "one actionable line per unavailability episode; no key/token values. Include failure class and retry/check-daemon advice. Suppress repeated reconnect diagnostics until a successful attach ends episode.",
+    "proof": "unit test counts diagnostic sink calls; real CLI smoke captures isolated terminal after outage and counts this stable prefix once while ordinary nonce response succeeds; log-dir supplemental only, not assumed authoritative",
+    "pre_join_exception": "When no joined session exists, one extension stderr diagnostic with stable prefix or native loader import error is acceptable; timeline visibility not claimed. CLI remains usable. Post-join daemon/key outage still uses native session.log."
+  },
+  "queued_native_target": "Optional daemon-private original native SESSION ID on already-attested queued recipients; same-native resume across new pid allowed, different native context explicitly held. Unstamped prebind initial task adopts first verified native session. Not a client wire change."
 }

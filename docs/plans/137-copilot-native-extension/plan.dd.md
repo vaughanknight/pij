@@ -12,7 +12,7 @@
 | title | Copilot native extension delivery |
 | slug | copilot-native-extension |
 | ordinal | 137 |
-| status | ready |
+| status | in-progress |
 | complexity | CS-4 |
 | summary | PM-authored contract for extension-owned Copilot delivery in new manual and spawned sessions. |
 | backpressure | [rows](assets/backpressure.dd.md#rows) |
@@ -144,6 +144,7 @@ Prime durable constraints: assets/inputs/prime-constraints-2026-09-05.md. rs is 
 | ac-0008 | Obsolete Copilot UI-server launch/port-intent runtime machinery is removed with safe forward migration semantics and historical migrations untouched; programmatic Copilot controls refuse explicitly without legacy/tmux fallback, while other harness controls are unchanged. | [ ] unchecked | — | — | [bp-0008](assets/backpressure.dd.md#rows) | — |
 | ac-0009 | Hand-started pane-backed and Pij-spawned real Copilot witnesses prove bidirectional unique-message delivery and no duplicate, plus a real model canary; deterministic provider proof is labeled separately; scoped tests and final harness checks pass. | [ ] unchecked | — | — | [bp-0009](assets/backpressure.dd.md#rows) | — |
 | ac-000a | PM-authored plan/guide, coder receipts, independent Opus review and resolved findings are preserved; no unauthorized global rollout, public push or main merge occurs. | [ ] unchecked | — | — | [bp-000a](assets/backpressure.dd.md#rows) | — |
+| ac-000b | With daemon unreachable or key unavailable, a newly started real Copilot session remains usable; extension emits one actionable diagnostic per failure episode, retries boundedly/abortably without transcript spam, and never activates sendkeys fallback. | [ ] unchecked | — | — | [bp-0013](assets/backpressure.dd.md#rows) | — |
 
 <a id="phases"></a>
 

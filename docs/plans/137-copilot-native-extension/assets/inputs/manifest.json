@@ -16,7 +16,15 @@
     "sha256": "8800f39bad61a22d4a2732349717cd70f81dfd3d7162d0ef14a26cc767c069dc"
   },
   {
+    "path": "pm-queue-lookup-ruling.md",
+    "sha256": "18a1ed4be55352067d4db68dbe8413fd2bab914dbb14fd51bfd546093900d49a"
+  },
+  {
     "path": "manual-extension-evidence.json",
     "sha256": "250aa604fc93d4439600ab9585d307b82314bdcc8c9d48ce89c5bd84468f00c6"
+  },
+  {
+    "path": "pm-opus-preflight-rulings.md",
+    "sha256": "a1ae17c05db334c530549d7c0da52225a09f99a24f2101164fd35ce7f71493ed"
   }
 ]

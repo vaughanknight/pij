@@ -42,7 +42,7 @@
         },
         {
           "id": "i6",
-          "text": "Inspect all10 ACs; run focused proof against composed tree after coder edits stop, not project-wide suite repeated unnecessarily. Real manual and Pij-spawned client evidence required; deterministic fixture provider is not real model proof."
+          "text": "Inspect all typed ACs; run focused proof against composed tree after coder edits stop, not project-wide suite repeated unnecessarily. Real manual and Pij-spawned client evidence required; deterministic fixture provider is not real model proof."
         },
         {
           "id": "i7",

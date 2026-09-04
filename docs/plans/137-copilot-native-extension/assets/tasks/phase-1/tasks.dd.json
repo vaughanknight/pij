@@ -22,15 +22,10 @@
         {
           "id": "tk-0001",
           "title": "Contract fixtures and baseline",
-          "state": "unchecked",
+          "state": "checked",
           "success": "Record baseline and pin focused regression cases before source edits: initial/drain zero-tmux for extension Copilot, correct native identity, ack grade, duplicate suppression, consent hold and recovery. Preserve existing failures as baseline.",
-          "notes": "PM contracts + all coders scoped baseline; see impl-guide unit fence and assets/contracts/native-extension.json",
-          "satisfies": [
-            "../../../plan.dd.json#acceptance_criteria/ac-0004",
-            "../../../plan.dd.json#acceptance_criteria/ac-0005",
-            "../../../plan.dd.json#acceptance_criteria/ac-0006",
-            "../../../plan.dd.json#acceptance_criteria/ac-0009"
-          ],
+          "notes": "PM preparation only; product ACs are satisfied by subsequent implementation/integration tasks, not by completed baseline scaffolding.",
+          "satisfies": [],
           "done": "tasks.dd.json#done_when/tk-0001"
         },
         {
@@ -69,7 +64,8 @@
           "satisfies": [
             "../../../plan.dd.json#acceptance_criteria/ac-0003",
             "../../../plan.dd.json#acceptance_criteria/ac-0005",
-            "../../../plan.dd.json#acceptance_criteria/ac-0007"
+            "../../../plan.dd.json#acceptance_criteria/ac-0007",
+            "../../../plan.dd.json#acceptance_criteria/ac-000b"
           ],
           "done": "tasks.dd.json#done_when/tk-0004"
         },
@@ -110,7 +106,8 @@
             "../../../plan.dd.json#acceptance_criteria/ac-0005",
             "../../../plan.dd.json#acceptance_criteria/ac-0006",
             "../../../plan.dd.json#acceptance_criteria/ac-0007",
-            "../../../plan.dd.json#acceptance_criteria/ac-0009"
+            "../../../plan.dd.json#acceptance_criteria/ac-0009",
+            "../../../plan.dd.json#acceptance_criteria/ac-000b"
           ],
           "done": "tasks.dd.json#done_when/tk-0007"
         },
@@ -135,14 +132,16 @@
           {
             "id": "dw-001c",
             "assertion": "Frozen wire/file fixtures and expected positive/negative outcomes are committed and referenced by all three unit packets.",
-            "state": "unchecked",
-            "pressure": "../../backpressure.dd.json#rows/bp-0012"
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0012",
+            "receipt": "PM contract36248c58; frozen fixtures and three ACKs; harness boot typecheck pass/file-watch-notify baseline failure recorded before coding; scoped entrypoints in typed backpressure."
           },
           {
             "id": "dw-001d",
             "assertion": "Baseline commands and exact results are recorded, including existing smoke failure, and scoped unit test entrypoints are assigned.",
-            "state": "unchecked",
-            "pressure": "../../backpressure.dd.json#rows/bp-0012"
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0012",
+            "receipt": "PM contract36248c58; frozen fixtures and three ACKs; harness boot typecheck pass/file-watch-notify baseline failure recorded before coding; scoped entrypoints in typed backpressure."
           }
         ],
         "tk-0002": [
@@ -209,6 +208,12 @@
             "assertion": "Reconnect/key rotation, extension reload/native session rollover and old-process replacement cancel stale consumers, maintain correct identity and do not route old work into a different native session; native idle/event evidence stays separate from acceptance.",
             "state": "unchecked",
             "pressure": "../../backpressure.dd.json#rows/bp-0007"
+          },
+          {
+            "id": "dw-001e",
+            "assertion": "With daemon unreachable or key unavailable, a newly started real Copilot session remains usable; extension emits one actionable diagnostic per failure episode, retries boundedly/abortably without transcript spam, and never activates sendkeys fallback.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0013"
           }
         ],
         "tk-0005": [
@@ -281,6 +286,12 @@
             "assertion": "Hand-started pane-backed and Pij-spawned real Copilot witnesses prove bidirectional unique-message delivery and no duplicate, plus a real model canary; deterministic provider proof is labeled separately; scoped tests and final harness checks pass.",
             "state": "unchecked",
             "pressure": "../../backpressure.dd.json#rows/bp-0009"
+          },
+          {
+            "id": "dw-001f",
+            "assertion": "With daemon unreachable or key unavailable, a newly started real Copilot session remains usable; extension emits one actionable diagnostic per failure episode, retries boundedly/abortably without transcript spam, and never activates sendkeys fallback.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0013"
           }
         ],
         "tk-0008": [

@@ -8,7 +8,7 @@
       "value": {
         "title": "Copilot native extension — selected backpressure",
         "plan": "../plan.dd.json#meta",
-        "basis_sha": "09d09d0357ca43b8a6bfc371c2df9d87fe04c30af73f6d29f3db28e2a3eb824d",
+        "basis_sha": "463f734e00564a0bdc193e7d779e6101c2196c246bfa92a7354c6f393212872a",
         "certainty": "Partial"
       }
     },
@@ -123,8 +123,18 @@
           "mode": "EXISTS",
           "tier": "computational",
           "proof": "RUN harness plan validate <plan>; ddocs validate <guide>; inspect committed native-extension.json and input SHA manifest. Record harness boot output: typecheck passed and file-watch-notify smoke baseline failed.",
-          "state": "unchecked",
-          "note": "This row proves preparation only; product ACs retain separate full-behavior proof rows."
+          "state": "checked",
+          "note": "This row proves preparation only; product ACs retain separate full-behavior proof rows.",
+          "receipt": "PM36248c58; baseline harness boot output captured in session; typecheck pass, file-watch-notify pre-existing smoke red; all3 numbered ACKs approved."
+        },
+        {
+          "id": "bp-0013",
+          "criterion": "ac-000b: With daemon unreachable or key unavailable, a newly started real Copilot session remains usable; extension emits one actionable diagnostic per failure episode, retries boundedly/abortably without transcript spam, and never activates sendkeys fallback.",
+          "phase": "ph-66f1",
+          "mode": "BUILD",
+          "tier": "computational",
+          "proof": "Extend native JS startup/reconnect tests and dedicated CLI smoke: no daemon endpoint/key, real Copilot answers local-provider nonce normally with bounded extension diagnostic and no busy retry. just copilot-native-test and native smoke.",
+          "state": "unchecked"
         }
       ]
     },
