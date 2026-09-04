@@ -1,0 +1,117 @@
+{
+  "dd": {
+    "schema": "pij-team/impl-guide"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Implementation guide — Copilot native extension delivery",
+        "plan": "docs/plans/137-copilot-native-extension/plan.dd.json",
+        "mode": "build",
+        "updated": "2026-09-05"
+      }
+    },
+    {
+      "name": "architecture",
+      "value": "Binding doctrine: .agents-skills-port/pij-team/TENETS.md (repo-local copy); repo AGENTS.md; Plan109 graded findings (historical RPC mechanics superseded, consent/order/receipt lessons applicable). PM authors all plan/guide changes. Three coders with disjoint fences own daemon, native extension, and installation/proof harness. PM freezes wire and file-layout contracts before fan-out; same-file mutation prohibited.\n\nFrozen architecture:\n1. User extension source .copilot/extensions/pij/extension.mjs; split runtime-neutral state/helpers into adjacent store.mjs only when it removes test/runtime coupling. SDK import is top-level @github/copilot-sdk/extension and resolved by Copilot, never a new npm dependency. No giant inline bundle or fs polling bridge. Use daemon blocking inbox wait as in PoC, abortable and reconnectable.\n2. Add optional registration capability native_extension_delivery:boolean (default false) and persisted SeatDescriptor representation; only verified live Copilot extension registration asserts true. PID+proc_start is runtime truth, not extension child PID guessed as host; require parent context supplied by native runtime or a verified ancestor. Preserve harness_session and exact pane. Same-incarnation reconnect preserves correct capability; new incarnation/revive clears it until attested. Registration response changes additive. Any claimed native-session mismatch refuses rather than hijacks an existing seat.\n3. Copilot becomes extension-only: arrival queues, pointer/drain excludes Copilot; pre-attach/new unsupported seat remains pending or explicit unavailable. A true capability permits native claim; false cannot claim as supported native delivery. No path types/pastes a Copilot message/control command, even on transient extension failure. Existing OMP/Pi behavior unchanged. Never hide pane metadata to force paneless route. Historical RPC migration scripts untouched; remove runtime rpc_port_intent/allocator/flags and obsolete Copilot-only paths, using forward migration if removing persisted column.\n4. Human input consent lives in existing InteractionGate. Native Copilot claims with panes require the current fresh permission verdict at handoff; held claims stay durable and wake when permission changes or on bounded retry cadence. No policy/timing edits in crates/core/src/delivery.rs or crates/harnesses/src/interaction.rs (plan136 owns); expose/use existing API, request PM decision if insufficient. Pi/OMP exemption unchanged. Failed sensor must not count as permission.\n5. Native receive lifecycle: one consumer/session, one claim at a time, capture Pij msg_id + native returned messageId; durable acceptance record before ack; repeated Pij delivery consults that record and native event/history evidence rather than blind reinjection. Ack after native acceptance, not after mere file read, never label model completion. Native idle/assistant evidence is separate. Abort loop and close handles on extension/session change. Reconnect refreshes bearer key; non-JSON HTTP failures keep status/body diagnostic. Avoid persistently replaying malformed or unsupported commands. Ambiguous crash boundary produces honest failure/held diagnostic unless current native events prove acceptance; no universal exactly-once claim.\n6. Outgoing API: native tool pij_send({to:string,message:string}) calls authenticated Pij /v1/send with immutable registered seat as from and newly minted msg_id; returns receipt with acceptance grade. Do not install an automatic assistant-response forwarding loop. Regular Pij CLI in pane must resolve current seat; for paneless users native tool is supported outgoing path. Do not change global process identity or mutate parent environment. Existing identity projections may gain additive native-session metadata only.\n7. Installation extends guarded harness/scripts/link-global.ts + just link/install/doctor conventions. Canonical checkout owns global artifact; COPILOT_HOME overrides default ~/.copilot; expected destination extensions/pij/extension.mjs and any adjacent module links. Preserve foreign symlinks/real files; merge experimental:true into settings.json without deleting unknowns; do not copy PoC hooks/provider settings. Disabled extension mode remains explicit opt-out with actionable diagnostic, not coerced session mutation. Isolated homes supported for tests and real witnesses without touching developer's real settings.\n8. Commands: never invoke tmux to implement Copilot compact/new/reload. Use SDK history.compact if actual runtime capability can be proven; unsupported command returns explicit named refusal before irreversible consume. No sending '/compact' as model text. Native user-driven new/resume/reload keeps session lifecycle coherent; no forced /clear workaround.\n\nScope exclusions: current plan136 vocabulary/interaction implementations and the .pi/extensions/pij extension-side hold queue, unrelated gates, installed binaries, machine global configuration, governance ledger, other stream code. Shared crates/daemon/src/delivery/mod.rs extension-stream match is notified at implementation and takes baton at COMPOSITION only. Plan135 additive register response; do not revert its contracts at convergence."
+    },
+    {
+      "name": "fan_out",
+      "value": {
+        "decision": "coders",
+        "rationale": "Jordan requested parallel capacity and clean boundaries. Exactly three independent Astra1m/high coders in disjoint worktrees: Rust daemon, native JS extension, installer+proof harness. Contract fixtures frozen by PM before any dispatch; no fourth coder can get an independent useful slice without fragmenting lifecycle or duplicating integration."
+      }
+    },
+    {
+      "name": "units",
+      "value": [
+        {
+          "id": "daemon",
+          "name": "Daemon native-delivery ownership",
+          "paths": "crates/core/src/model.rs; crates/core/src/ports.rs only if concrete persisted capability requires; crates/store/src/**; NEW forward migrations; crates/daemon/src/registration.rs; crates/daemon/src/delivery/**; crates/daemon/src/pointer/**; crates/daemon/src/http/**; crates/daemon/src/lib.rs; crates/harnesses/src/spawn.rs; crates/cli/src/** Copilot-specific cleanup only; corresponding Rust tests. EXCLUDE core/src/delivery.rs, harnesses/src/interaction.rs, all .pi files, Cargo.lock, installer/JS extension.",
+          "responsibility": "Add verified native-extension capability and exclusive Copilot inbox ownership; preserve other harnesses; safe claim consent admission; remove RPC intent runtime and spawn machinery; native compact or explicit unsupported command without sendkeys.",
+          "interface": "assets/contracts/native-extension.json. Additive register native_extension_delivery bool default false with verified copilot process/session binding. True copied in descriptor response; no other response rename. All Copilot messages queue to native delivery; unattached cannot claim as attached; pointer/drain never types Copilot. Claim/ack/send current envelopes unchanged. Existing fresh InteractionGate API for pane-backed claim; no 136 policy edits. Expose stable diagnostic on disabled/unavailable native consumer.",
+          "test_strategy": "Existing Rust crate tests, real SQLite + fixture-based request parity. Assert no first-send nor drain tmux submit; hold/admit positive pair; matching/mismatching pid/session; no native capability reuse across replacement; duplicate/ack semantics; historical migration upgrade; unchanged Pi/OMP/Claude behavior. Do not run project-wide gates while siblings edit; all targets local to this worktree.",
+          "depends_on": "PM contract frozen",
+          "wave": 1,
+          "note": "Shared delivery/mod.rs match composes under prime baton; no global daemon restart or toolchain upgrade."
+        },
+        {
+          "id": "extension",
+          "name": "Copilot native runtime bridge",
+          "paths": ".copilot/extensions/pij/extension.mjs; .copilot/extensions/pij/store.mjs; .copilot/extensions/pij/*.test.mjs only. No Rust/installer/justfile/plan edits.",
+          "responsibility": "Join current native session and register true identity/capability; native outgoing pij_send tool; serialized blocking inbox consumer, durable acceptance before ack, reconnect/abort/session rollover and honest errors/events. No automatic reply forwarding.",
+          "interface": "assets/contracts/native-extension.json and exact published file layout. SDK bundled top-level import @github/copilot-sdk/extension. Resolve PIJ_RS_ADDR, PIJ_RS_STATE_DIR/default ~/.pij-rs; use actual host process identity. Incoming message data includes msg_id/from/to/body and optional command; ACK contains seat and job_id. Outgoing tool {to,message} -> /v1/send immutable self. Capability readback before receive; preserve additive fields.",
+          "test_strategy": "node:test through proposed just copilot-native-test (installer owner provides recipe). Inject runtime/HTTP/storage for deterministic lifecycle/crash/duplicate and capability protocol tests; no new dependencies. Receiver consumes daemon-owned consent decision, never implements competing typing policy. Test buffered user/assistant events do not create auto-reply loop.",
+          "depends_on": "PM contract frozen; runtime integration only after daemon branch composed",
+          "wave": 1,
+          "note": "Use absolute worktree paths. Pure module stays free of SDK imports. Live host proof runs after composition; cannot claim production on standalone fake tests."
+        },
+        {
+          "id": "installation",
+          "name": "Managed installation and proof harness",
+          "paths": "harness/scripts/link-global.ts and related link tests; new harness/scripts/copilot-native-* fixtures/doctor/smoke; justfile; README.md; docs/how/copilot-native-extension.md. May update vitest.config.ts only to include extension .test.mjs if essential; prefer node:test recipe. No Rust or .copilot extension-source edits.; .harness/extensions/checks/extension.ts + instructions.md for native-extension sensor only",
+          "responsibility": "Idempotent canonical-home user extension installation/experimental settings merge/doctor; pave JS test and isolated actual manual+spawned CLI smoke commands. Preserve foreign paths and unknown settings. Capture exact native/daemon evidence, no global process disturbance.",
+          "interface": "Consumes .copilot/extensions/pij/{extension,store}.mjs (never creates shipping stub). Add just copilot-native-test for node --test .copilot/extensions/pij/*.test.mjs; just copilot-native-smoke *ARGS runs harness/scripts/copilot-native-smoke.ts with --mode manual|spawned|both and --provider local|real, isolated config roots/dedicated tmux server and daemon. --provider local is explicitly deterministic fixture; --provider real requires actual model/provider and returns named prerequisite error if unavailable. Existing just link/install/doctor include Copilot managed state and honor COPILOT_HOME. Pave just copilot-native-rust-test as cargo test -p pij-core -p pij-store -p pij-harnesses -p pij-daemon -p pij-cli; add copilot-native-test to harness checks/self-check so native JS tests are not invisible. Do not change existing gate failure policy.",
+          "test_strategy": "Extend existing link-global tests for empty/existing/foreign/malformed homes, idempotency, alternate COPILOT_HOME and settings preservation. Smoke driver must identify native messages by unique nonce and daemon IDs, check no duplicate, absence and typing hold as positive outcomes; gather process/version/build identity. In own tree test fixture protocol; real integrated smoke after PM merges shipping artifacts.",
+          "depends_on": "PM file/wire contract frozen; integrated real smoke depends on other branches",
+          "wave": 1,
+          "note": "No actual global link/config changes from worktree. Only isolated homes; no npm/Cargo dependency mutation. Source artifacts may be absent before composition; fixture tests must not create shipping placeholders."
+        }
+      ]
+    },
+    {
+      "name": "isolation",
+      "value": {
+        "mode": "worktree-per-coder",
+        "note": "PM plan worktree /Users/jordanknight/pi-hacking/fs3-copilot-native-extension branch137-copilot-native-extension. Coder child worktree off committed PM plan, named before dispatch. Absolute paths for every read/edit; worktree-local Cargo target. Main node_modules symlink read-only reuse, no dependency mutation. Reviewer reads coder/composed tree and writes only assets/reviews; no concurrent product mutation during review."
+      }
+    },
+    {
+      "name": "composition",
+      "value": {
+        "composer": "pm pij-grim-gurgeh",
+        "steps": "PM commits validated plan+guide+contracts. Three coder worktrees branch off that commit; verify native runtime via canary then deliver exact per-unit packet and rule numbered ack. Each unit scoped proofs, no project-wide concurrent checks. Compact completed peer first; inspect patches/receipts. Merge daemon then extension then installer branches into PM plan branch, resolving no internal changes silently. Coordinate shared delivery/mod.rs match with136 at convergence, registration response additive to135. Run composed unit and integration proofs plus full harness checks; Opus independently reviews. Return upheld findings to original coder. PM alone owns plan/guide and evidence states. No main merge/public push/global install without authorization.",
+        "integration_proof": "assets/evidence/manual-native, spawned-native, consent-positive-and-held, duplicate, missing-consumer, reconnect and real-model-canary receipts with process/version/commit identities. Terminal screenshots/capture and daemon/native event IDs, not only code assertions. Manual witness MUST be hand-started through dedicated tmux, not disguised pij spawn."
+      }
+    },
+    {
+      "name": "review",
+      "value": {
+        "when": "Validate PM-authored plan before coder dispatch; code review after implementation and before any rollout",
+        "inputs": "plan.dd.md + impl-guide.dd.md + full code diff from committed plan base + exact evidence. Least confidence: parent/native identity and rollover, pane-based consent claim handoff/wake, crash native acceptance before ack, install settings preservation. DISBELIEVE receipts and re-derive relevant scenarios. Known-open: baseline file-watch-notify smoke red and npm git-dep min-release-age/before conflict; do not relabel as implementation defects or skip final reporting. Old-session compatibility explicitly exempt.",
+        "model_override": "OMP github-copilot/claude-opus-5 high reviewer; three OMP github-copilot/gpt-6-astra-1m high coders. Do not update OMP or its local Astra patches."
+      }
+    },
+    {
+      "name": "risks",
+      "value": [
+        {
+          "id": "identity",
+          "text": "Native child and host PIDs differ. Bind only verified actual host incarnation/session, and never steal another pane/seat."
+        },
+        {
+          "id": "ownership",
+          "text": "Generic drain may race extension. Assert both initial and scheduled paths never submit tmux for Copilot and run pane-backed proof."
+        },
+        {
+          "id": "durability",
+          "text": "Native accepted before daemon ack is ambiguous under crash. Durable local acceptance plus native event/history evidence; never promise universal exactly-once without proof."
+        },
+        {
+          "id": "consent",
+          "text": "RPC/native transport can start a turn while human composing. Reuse current InteractionGate; no vocabulary/timing edits owned by136."
+        },
+        {
+          "id": "install",
+          "text": "Global edits are risky. Use isolated homes for tests; canonical-main ownership and preservation checks; no real rollout in worktree."
+        },
+        {
+          "id": "baseline",
+          "text": "Before code: typecheck passed, file-watch-notify smoke failed. Final deliverable must disclose full gate red if still present; no suppression."
+        }
+      ]
+    }
+  ]
+}

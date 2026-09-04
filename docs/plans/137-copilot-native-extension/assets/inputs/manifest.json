@@ -1,0 +1,18 @@
+[
+  {
+    "path": "research-evidence.json",
+    "sha256": "3bdcf1f79a3cda006a90393afde756ed617cb262739c3cd8451bc81d4322fae7"
+  },
+  {
+    "path": "prime-constraints-2026-09-05.md",
+    "sha256": "0ce63e615967c19ea851f6255a339e7a54871db159073a54f7882359f69e034f"
+  },
+  {
+    "path": "research-brief.md",
+    "sha256": "88e43774b5f7f57d13eca41bce7ed01d8947beaf0e9f7dcff9388d1912c390f2"
+  },
+  {
+    "path": "manual-extension-evidence.json",
+    "sha256": "250aa604fc93d4439600ab9585d307b82314bdcc8c9d48ce89c5bd84468f00c6"
+  }
+]

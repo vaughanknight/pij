@@ -1,0 +1,123 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Copilot native extension delivery",
+        "slug": "copilot-native-extension",
+        "ordinal": 137,
+        "status": "ready",
+        "mode": "Simple",
+        "complexity": "CS-4",
+        "plan_version": "1.0.0",
+        "created": "2026-09-05",
+        "confidence": "0.85",
+        "complexity_breakdown": "S2 I2 D2 N1 F2 T2 =11; one cohesive cutover, single coder; reviewer and live integration are hard checkpoints",
+        "summary": "PM-authored contract for extension-owned Copilot delivery in new manual and spawned sessions.",
+        "backpressure": "assets/backpressure.dd.json#rows"
+      }
+    },
+    {
+      "name": "summary",
+      "value": "## Business Specification\n\n### Purpose and decisions\nJordan wants direct Copilot CLI communication for every NEW seat started by Pij or by typing `copilot` manually. Existing sessions need not migrate. The native Copilot extension, not AHP and not an external UI-server socket, owns injection. PM pij-grim-gurgeh authors this plan and implementation guide; coder implements; reviewer judges independently.\n\n### Clarifications — 2026-09-05\n- User explicitly accepted existing sessions unsupported; normal future manual starts and Pij auto-starts must work after one-time installation/enablement.\n- User requested OMP GitHub GPT-6 Astra high coder and OMP GitHub Claude Opus 5 high reviewer. Discovered selectors: github-copilot/gpt-6-astra and github-copilot/claude-opus-5, effort high.\n- Prior scope was research/scratch only; this instruction authorizes planning and delegated implementation in an approved worktree, not public push/merge or global rollout.\n- Mode: Simple, one cohesive implementation phase with eight task groups; three isolated coders behind frozen interfaces, followed by serial PM composition and independent review. Complexity CS-4 reflects identity/durability/installation seams, not phase count.\n- Testing: hybrid, contract-first tests around ownership/identity/durability, real SQLite and explicit fake runtime seams for offline tests; mandatory real CLI witnesses. No new mocking libraries.\n- Documentation: amend existing installation/operations guidance and add one focused docs/how/copilot-native-extension.md when needed; no extra architecture framework. Domain mode off.\n\n### Research context and proof ceiling\nassets/inputs/research-evidence.json records a real Copilot 1.0.84-0 / real isolated SQLite Pij round trip with exact one-message delivery and duplicate suppression. Both seats were paneless; a deterministic localhost provider supplied responses. This is not pane-backed, real-model, consent, restart, or spawned-seat acceptance. assets/inputs/manual-extension-evidence.json demonstrates startup auto-load and opt-in preserving native session/history after native reinitialization. SDK joinSession is child-extension attachment, not arbitrary external attach. The throwaway auto-reply witness is NOT production reply behavior.\n\n### Invariants\n- Correct harness is copilot. Never spoof pi/omp, suppress pane identity, or use fake transport to make tests pass.\n- Once the native extension owns a Copilot seat, every delivery path (first send, drain, retry, commands) must exclude tmux typing/paste/pointer injection. Missing consumer/permissions queues or explicitly refuses; it NEVER activates a fallback.\n- Sender/recipient identity binds native session + observed process incarnation + exact pane if present; launch intent is not a runtime identity proof.\n- Claim and native acceptance precede Pij acknowledgement. ReaderRead is machine/native acceptance, not model completion. Native user/assistant/idle events are separately graded evidence.\n- Copilot human draft/typing is a CONSENT brake; do not bypass it simply because extension transport cannot corrupt a text buffer. Reuse existing InteractionGate without changing plan136 vocabulary or timing policy.\n- Registration response changes additive (plan135). Source migration scripts already applied must not be deleted/re-written to remove an obsolete RPC field; use a forward migration when necessary.\n\n### Non-goal boundaries\nNo AHP host, Copilot external RPC implementation, generic bus abstraction, modifications to installed upstream binaries, automatic replies to every assistant turn, retroactive attachment to all old CLI processes, or changing Pi/OMP/Claude behavior. No public push/merge or real global configuration deployment in this worktree.\n\n## Planning Seam\n| Artifact | Present | Effect |\n|---|---|---|\n| assets/inputs/research-evidence.json | yes | Feasibility only; expand proof to pane-backed/manual/spawned |\n| Plan109 SHAPE + graded findings | yes, existing repo | RPC specifics superseded; ordering, acceptance grade and consent retained |\n| minor-unicorn allocation | yes | plan137, base46c9314c;136 shared match needs compose baton;135 additive registration |\n| impl-guide.dd.json | PM-authored | Frozen architecture, paths and execution ownership |\n\n## Implementation Plan\n\n### Gate Matrix\n| Gate | Check | Verdict | Evidence |\n|---|---|---|---|\n| G1 | Clarification | PASS | User explicitly settled manual/spawned new-only scope and PM/coder/reviewer ownership; safe repo testing conventions above |\n| G2 | Constitution | N/A | No constitution file in scoped project-rules directory; loaded project rules retained |\n| G3 | Architecture | PASS | Rust functional core/adapter separation; native JS shell and pi-free logic; three disjoint code fences avoid shared edits |\n| G4 | ADR/coordination | PASS | Plan109 facts retained;136 files excluded and compose baton required;135 additive response |\n| G5 | Structure | PASS | Unified WHAT/HOW in summary plus typed AC/phases/tasks and guide |\n| G6 | Testing alignment | PASS | Contract-first cases before implementation; every task has assertions; real-client terminal proof mandatory |\n| G7 | Domains | N/A | Domains off |\n\n### Approach\nA repo-managed JavaScript user extension joins the native Copilot session, establishes a truthful daemon identity, consumes one durable inbox claim at a time, injects through the SDK, acknowledges after acceptance, and reports activity without inventing model completion. A bounded daemon capability (`native_extension_delivery`, default false; Copilot registration attestation) makes ownership explicit. Copilot is extension-only after cutover: unsupported/unattached seats never use sendkeys. Existing Pi/OMP extension ownership remains unchanged. Installation extends guarded repo global linking/settings patterns; no copying sandbox config wholesale.\n\n### Ordered task groups\n1. Pin contract fixtures and baseline, especially pane-backed no-tmux negative witness and sender identity.\n2. Add persistent capability with incarnation semantics; make first arrival AND drain extension-only for Copilot; add safe native claim admission using current InteractionGate. Preserve unrelated harness paths and register response fields.\n3. Implement native extension shell plus independently testable runtime-neutral state module: join/register, native tool for outgoing send, one claim/native send/ack, separate idle evidence, reconnect/key refresh and bounded duplicate handling.\n4. Preserve lifecycle: manual stable identity, spawned prebind correlation, native new/resume/reload rollover, old connection cancellation and stale claims; no context clearing as delivery workaround.\n5. Wire canonical-main installation and doctor, enabling experimental through targeted settings merge and preserving foreign files/symlinks/unknown settings. Cover COPILOT_HOME. Test installed artifact matches reviewed source.\n6. Remove obsolete Copilot UI-server/port allocation and live rpc_port_intent consumers with forward-compatible storage cleanup; remove only Copilot sendkeys branches made obsolete. Commands use proven native equivalents (compact) or explicit unsupported errors (new/reload if SDK cannot implement safely), never text slash command fallback; do not alter other harness controls.\n7. Prove manual pane-backed and Pij-spawned real Copilot, bidirectional tool-originated send, duplicate, missing consumer and human typing control; bounded restart/reconnect scenario. Both passing and held/refused worlds emit positive artifacts. Real model canary supplements deterministic local provider, cannot be silently replaced by it.\n8. Independent Opus review, remediation by Astra, PM runs composed gates and retains artifacts; no deployment/push without authorization.\n\n### Acceptance coverage\nEach typed AC below links from the phase task rows. Task done states derive from assertions; no checkbox on prose alone. PM owns plan/guide edits, shared wire fixtures and final adjudication. Three Astra coders own daemon, native extension, and installation/proof harness in separate worktrees. The Opus reviewer writes only review artifacts.\n\n### Verification and risks\n- Fresh `harness boot --json` establishes baseline; `harness checks` final gate plus touched Rust/JS contract tests and hand-started real client in tmux. Existing project failures are recorded, not suppressed or fixed outside scope.\n- Biggest risk: pane-backed Copilot would race generic DrainWorker. Assert zero tmux submits in both initial/drain paths and run real tmux control.\n- Native injection has an unavoidable crash/ack ambiguity. Persist native acceptance by Pij msg_id before ack and consult native user.message id/history where available; never claim exactly-once across all failures without proof. Accepted-but-unacked retry must not blindly reinject.\n- Stream/drain/suspend waits must wake on safe readiness transitions, not hang until another unrelated message; bounded retries, abortable waits, no busy-loop.\n- Global installer runs only canonical checkout in production; test with isolated homes, preserve unknown settings and foreign paths; report refusal clearly.\n- Consent integration reuses existing fresh verdict; plan136 owns delivery vocabulary/interaction implementation. Notify+baton at shared-file composition, no unilateral timing change.\n- Forward migration leaves historical migrations intact and old rows conservatively unsupported. No shims that re-enable old Copilot typing.\n- Native extension API experimental/version-sensitive: canary installed CLI; clear diagnostic when missing/disabled; no fake fallback.\n\n### Tooling observations\nCurrent ddocs writer cannot create a schema-declared absent section (E450). The unified business+implementation content therefore lives in the scaffolded summary field, with typed AC/phases/tasks still first-class; no hand-edit of plan source or generated sibling. npm ci hit min-release-age/--before conflict in git dependency preparation; worktree uses existing main node_modules symlink, no dependency changes allowed without separate fresh install and review. All Rust builds remain worktree-local target directories.\n\n### Parallel strategy amendment — requested by Jordan 2026-09-05\nThree coders in one wave after PM freezes the interfaces: daemon capability/ownership/identity/RPC cleanup; native JavaScript extension/state/tool; installation/doctor/repeatable proof harness. Fences do not overlap. Rust protocol changes are additive and conform to assets/contracts/native-extension.json; native extension and smoke harness implement against those fixtures until PM composes. Shared target source path is .copilot/extensions/pij/ with extension.mjs and store.mjs; installer consumes files, never edits them. Only PM edits plan/guide, contract fixtures and shared Cargo.lock. Validation during fan-out is unit-local; final workspace gates and real integrated scenario run once after composition.\n\nPrime durable constraints: assets/inputs/prime-constraints-2026-09-05.md. rs is the ONLY machine daemon; never start legacy TS or Telegram daemon. Do not edit the .pi/extensions/pij extension-side hold queue. OMP workers each own a tmux window. All coders use github-copilot/gpt-6-astra-1m high; reviewer github-copilot/claude-opus-5 high. Do NOT update OMP: local Astra enablement patches would be lost. Dedicated isolated Rust daemon for acceptance, no shared restart without prime coordination.\n"
+    },
+    {
+      "name": "goals",
+      "value": [
+        "New manually launched and Pij-launched Copilot CLI seats automatically become addressable after one-time native-extension installation.",
+        "Native delivery exclusively replaces Copilot message sendkeys without changing Pi/OMP/Claude transport behavior.",
+        "Retain truthful identity, durable claim/ack, human consent, lifecycle and observable completion evidence.",
+        "Prove end-to-end with real pane-backed manual and spawned clients, not only unit tests."
+      ]
+    },
+    {
+      "name": "non_goals",
+      "value": [
+        "Migrate or keep compatibility with already-running uninstrumented Copilot sessions.",
+        "Use AHP or implement Copilot external UI-server RPC transport.",
+        "Deploy from worktree, modify upstream installed binaries, push publicly or merge to main without approval.",
+        "Automatically forward every assistant response in production; scratch forwarding was a witness only."
+      ]
+    },
+    {
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "ac-0001",
+          "claim": "Canonical setup installs the repo-owned Copilot extension and persistently enables experimental features while preserving unrelated settings, foreign symlinks and files; repeated setup is idempotent and COPILOT_HOME is honored.",
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0001"
+        },
+        {
+          "id": "ac-0002",
+          "claim": "A new Copilot CLI started manually in tmux with no Pij env or RPC flags auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0002"
+        },
+        {
+          "id": "ac-0003",
+          "claim": "A Pij-spawned new Copilot session uses the same installed extension, binds the preallocated seat/spawn correlation exactly once, receives initial task once, and sends replies with the same Pij identity.",
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0003"
+        },
+        {
+          "id": "ac-0004",
+          "claim": "Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged.",
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0004"
+        },
+        {
+          "id": "ac-0005",
+          "claim": "One inbox claim is injected through native SDK and acknowledged only after acceptance; accepted duplicate msg_id is not reinjected; queue/API errors preserve recoverable state and acceptance is never mislabeled model completion.",
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0005"
+        },
+        {
+          "id": "ac-0006",
+          "claim": "Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence.",
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0006"
+        },
+        {
+          "id": "ac-0007",
+          "claim": "Reconnect/key rotation, extension reload/native session rollover and old-process replacement cancel stale consumers, maintain correct identity and do not route old work into a different native session; native idle/event evidence stays separate from acceptance.",
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0007"
+        },
+        {
+          "id": "ac-0008",
+          "claim": "Obsolete Copilot UI-server launch/port-intent runtime machinery is removed with safe forward migration semantics and historical migrations untouched; native compact works if exposed, otherwise unsupported controls fail explicitly with no typing.",
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0008"
+        },
+        {
+          "id": "ac-0009",
+          "claim": "Hand-started pane-backed and Pij-spawned real Copilot witnesses prove bidirectional unique-message delivery and no duplicate, plus a real model canary; deterministic provider proof is labeled separately; scoped tests and final harness checks pass.",
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0009"
+        },
+        {
+          "id": "ac-000a",
+          "claim": "PM-authored plan/guide, coder receipts, independent Opus review and resolved findings are preserved; no unauthorized global rollout, public push or main merge occurs.",
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-000a"
+        }
+      ]
+    },
+    {
+      "name": "phases",
+      "value": [
+        {
+          "id": "ph-66f1",
+          "title": "Copilot native extension cutover",
+          "brief": "Eight ordered task groups; single implementation owner, standalone review and PM integration acceptance.",
+          "state": "unchecked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
+        }
+      ]
+    }
+  ]
+}

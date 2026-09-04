@@ -1,0 +1,56 @@
+{
+  "cli_version": "1.0.84-0",
+  "provider": "deterministic local OpenAI-compatible test provider; no real LLM inference",
+  "first_startup_bridge": {
+    "pid": 23610,
+    "sessionId": "cf1a1769-35c1-40c8-9374-7706c0281810",
+    "port": 61211
+  },
+  "first_receipt": {
+    "sessionId": "cf1a1769-35c1-40c8-9374-7706c0281810",
+    "messageId": "ac789819-7acc-4ee1-b707-849134acd2f4"
+  },
+  "existing_session": "3780eb11-d20c-4f4c-8a93-c1bfbaf5f23b",
+  "optin": "/experimental on; native session reinitialization observed, same session id and history preserved",
+  "hot_receipt": {
+    "sessionId": "3780eb11-d20c-4f4c-8a93-c1bfbaf5f23b",
+    "messageId": "cf1d81d8-a7d2-4b1e-9710-b8aadf8b7509"
+  },
+  "messages": [
+    {
+      "type": "user.message",
+      "content": "Reply ACK PIJ_MANUAL_PROBE_PREOPTIN. Do not call tools.",
+      "messageId": "99c8ac83-d7c5-4d1c-bf47-e16c662d7acc"
+    },
+    {
+      "type": "assistant.message",
+      "content": "ACK PIJ_MANUAL_PROBE_PREOPTIN",
+      "messageId": "eb35fdd3-8d16-40bf-aa5d-ca338cdbcba7"
+    },
+    {
+      "type": "user.message",
+      "content": "Reply ACK PIJ_MANUAL_PROBE_POSTOPTIN. Do not call tools.",
+      "messageId": "cf1d81d8-a7d2-4b1e-9710-b8aadf8b7509"
+    },
+    {
+      "type": "assistant.message",
+      "content": "ACK PIJ_MANUAL_PROBE_POSTOPTIN",
+      "messageId": "f7dc9e1e-1469-4dc3-87bf-7751fdbafed1"
+    }
+  ],
+  "prior_context_reached_provider_after_optin": true,
+  "launch_without": [
+    "pij spawn",
+    "--ui-server",
+    "--port"
+  ],
+  "scope": "scratch only; no global settings or production seats changed",
+  "unproven": [
+    "real model behavior",
+    "busy/steer ordering",
+    "human-draft consent",
+    "reconnect/crash dedupe",
+    "extension installed after session startup",
+    "zero-initialization hot attachment"
+  ]
+}

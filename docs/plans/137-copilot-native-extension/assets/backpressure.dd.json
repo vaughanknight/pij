@@ -1,0 +1,176 @@
+{
+  "dd": {
+    "schema": "builder/backpressure"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Copilot native extension — selected backpressure",
+        "plan": "../plan.dd.json#meta",
+        "basis_sha": "95619c09497f2a4bed84edcd3b93cc528ecd7079e60a73ab883fa3476bdb6cc5",
+        "certainty": "Partial"
+      }
+    },
+    {
+      "name": "rows",
+      "value": [
+        {
+          "id": "bp-0001",
+          "criterion": "ac-0001: Canonical setup installs the repo-owned Copilot extension and persistently enables experimental features while preserving unrelated settings, foreign symlinks and files; repeated setup is idempotent and COPILOT_HOME is honored.",
+          "phase": "ph-66f1",
+          "mode": "EXTEND",
+          "tier": "computational",
+          "proof": "Extend link-global tests: absent/existing/foreign path and settings preservation, repeat setup/COPILOT_HOME; RUN just test harness/scripts/link-global.test.ts. Installation unit owns fixtures.",
+          "state": "unchecked",
+          "note": "Selection, not completed proof. No numeric confidence score."
+        },
+        {
+          "id": "bp-0002",
+          "criterion": "ac-0002: A new Copilot CLI started manually in tmux with no Pij env or RPC flags auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
+          "phase": "ph-66f1",
+          "mode": "BUILD",
+          "tier": "computational",
+          "proof": "Pave just copilot-native-rust-test with actual registration/identity cases; BUILD just copilot-native-smoke --mode manual --provider local and real. Hand-started Copilot in dedicated tmux, no Pij env/RPC flags, truthful native/process/pane identity, outgoing tool and incoming nonce.",
+          "state": "unchecked",
+          "note": "Selection, not completed proof. No numeric confidence score."
+        },
+        {
+          "id": "bp-0003",
+          "criterion": "ac-0003: A Pij-spawned new Copilot session uses the same installed extension, binds the preallocated seat/spawn correlation exactly once, receives initial task once, and sends replies with the same Pij identity.",
+          "phase": "ph-66f1",
+          "mode": "BUILD",
+          "tier": "computational",
+          "proof": "BUILD just copilot-native-smoke --mode spawned --provider local and real. Actual Pij-spawned Copilot same installation, exact preallocated identity and one initial task; observed outgoing native tool reply. Extend Rust spawn/register tests.",
+          "state": "unchecked",
+          "note": "Selection, not completed proof. No numeric confidence score."
+        },
+        {
+          "id": "bp-0004",
+          "criterion": "ac-0004: Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged.",
+          "phase": "ph-66f1",
+          "mode": "EXTEND",
+          "tier": "computational",
+          "proof": "Extend Rust delivery initial/drain/command tests with a tmux adapter that fails if called for Copilot; other harnesses retain original behavior. Pave just copilot-native-rust-test. Missing extension control gives positive queued/refused evidence, not silence.",
+          "state": "unchecked",
+          "note": "Selection, not completed proof. No numeric confidence score."
+        },
+        {
+          "id": "bp-0005",
+          "criterion": "ac-0005: One inbox claim is injected through native SDK and acknowledged only after acceptance; accepted duplicate msg_id is not reinjected; queue/API errors preserve recoverable state and acceptance is never mislabeled model completion.",
+          "phase": "ph-66f1",
+          "mode": "BUILD",
+          "tier": "computational",
+          "proof": "BUILD just copilot-native-test: fake native/HTTP seam models claim -> send acceptance -> durable mapping -> ack, duplicate and ambiguous crash cases. Real SQLite acceptance duplicate plus actual native CLI events in smoke; prove acceptance distinct from model idle.",
+          "state": "unchecked",
+          "note": "Selection, not completed proof. No numeric confidence score."
+        },
+        {
+          "id": "bp-0006",
+          "criterion": "ac-0006: Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence.",
+          "phase": "ph-66f1",
+          "mode": "BUILD",
+          "tier": "computational",
+          "proof": "Existing InteractionGate consumer contract tests plus real native smoke with nonempty human draft held then permitted delivery. Both worlds emit positive evidence, original text preserved. No changes to136 typing policy; just copilot-native-rust-test and copilot-native-smoke.",
+          "state": "unchecked",
+          "note": "Selection, not completed proof. No numeric confidence score."
+        },
+        {
+          "id": "bp-0007",
+          "criterion": "ac-0007: Reconnect/key rotation, extension reload/native session rollover and old-process replacement cancel stale consumers, maintain correct identity and do not route old work into a different native session; native idle/event evidence stays separate from acceptance.",
+          "phase": "ph-66f1",
+          "mode": "EXTEND",
+          "tier": "computational",
+          "proof": "Extend Rust incarnation/supersedes tests and native JS reconnect/abort/new-session tests; real isolated daemon restart/key rotation and native rollover witness. just copilot-native-rust-test and just copilot-native-test, then native smoke.",
+          "state": "unchecked",
+          "note": "Selection, not completed proof. No numeric confidence score."
+        },
+        {
+          "id": "bp-0008",
+          "criterion": "ac-0008: Obsolete Copilot UI-server launch/port-intent runtime machinery is removed with safe forward migration semantics and historical migrations untouched; native compact works if exposed, otherwise unsupported controls fail explicitly with no typing.",
+          "phase": "ph-66f1",
+          "mode": "EXTEND",
+          "tier": "computational",
+          "proof": "Extend store forward-upgrade and CLI spawn/revive tests showing no active rpc intent/port allocation/UI-server args; historical migration checksums intact. Native compact capability proof or explicit unsupported-command refusal; no typing. just copilot-native-rust-test.",
+          "state": "unchecked",
+          "note": "Selection, not completed proof. No numeric confidence score."
+        },
+        {
+          "id": "bp-0009",
+          "criterion": "ac-0009: Hand-started pane-backed and Pij-spawned real Copilot witnesses prove bidirectional unique-message delivery and no duplicate, plus a real model canary; deterministic provider proof is labeled separately; scoped tests and final harness checks pass.",
+          "phase": "ph-66f1",
+          "mode": "BUILD",
+          "tier": "computational",
+          "proof": "BUILD paved JS/Rust/native terminal proofs above; real-provider canary separate from local deterministic provider, capture native IDs/nonce/tool reply and daemon ack against exact composed commit. RUN harness checks; existing file-watch-notify baseline red explicitly reported, never hidden.",
+          "state": "unchecked",
+          "note": "Selection, not completed proof. No numeric confidence score."
+        },
+        {
+          "id": "bp-000a",
+          "criterion": "ac-000a: PM-authored plan/guide, coder receipts, independent Opus review and resolved findings are preserved; no unauthorized global rollout, public push or main merge occurs.",
+          "phase": "ph-66f1",
+          "mode": "ABSENT",
+          "tier": "human-judgement",
+          "proof": "PM judgment and independent OMP Opus5 high review: source/evidence re-derived, resolved findings and no unauthorized rollout. Schema and linkage are deterministic via harness plan validate and ddocs validate/build --check; final product acceptance also belongs to Jordan.",
+          "state": "unchecked",
+          "note": "Selection, not completed proof. No numeric confidence score.",
+          "probe": "Intentional judgment tier, not missing tooling: inspected root package/Cargo/justfile, vitest config, all crate test entrypoints and checks sensors; these cannot independently judge product acceptance."
+        }
+      ]
+    },
+    {
+      "name": "sensors",
+      "value": [
+        {
+          "id": "bp-000b",
+          "name": "TypeScript contract",
+          "command": "just typecheck",
+          "dimension": "maintainability",
+          "found_in": "justfile74; package.json29; baseline passed"
+        },
+        {
+          "id": "bp-000c",
+          "name": "JavaScript tests",
+          "command": "just test <path>",
+          "dimension": "behaviour",
+          "found_in": "justfile85; vitest.config.ts"
+        },
+        {
+          "id": "bp-000d",
+          "name": "Lint",
+          "command": "just lint",
+          "dimension": "maintainability",
+          "found_in": "justfile77; baseline passed with informational schema version drift"
+        },
+        {
+          "id": "bp-000e",
+          "name": "Full inventory",
+          "command": "harness checks",
+          "dimension": "behaviour",
+          "found_in": "checks extension SENSORS; baseline file-watch-notify red"
+        },
+        {
+          "id": "bp-000f",
+          "name": "Native unit tests — proposed",
+          "command": "just copilot-native-test",
+          "dimension": "behaviour",
+          "found_in": "BUILD installer recipe; node:test pure native extension seam"
+        },
+        {
+          "id": "bp-0010",
+          "name": "Native Rust tests — proposed",
+          "command": "just copilot-native-rust-test",
+          "dimension": "architecture-fitness",
+          "found_in": "BUILD paved wrapper for existing relevant Cargo tests"
+        },
+        {
+          "id": "bp-0011",
+          "name": "Native real CLI smoke — proposed",
+          "command": "just copilot-native-smoke --mode both --provider local",
+          "dimension": "behaviour",
+          "found_in": "BUILD dedicated tmux/daemon/CLI witness driver; --provider real separate"
+        }
+      ]
+    }
+  ]
+}

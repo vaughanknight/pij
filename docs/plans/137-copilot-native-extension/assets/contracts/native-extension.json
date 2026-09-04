@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "scope": "copilot native user extension; new sessions; other harnesses unchanged",
+  "source_files": [
+    ".copilot/extensions/pij/extension.mjs",
+    ".copilot/extensions/pij/store.mjs"
+  ],
+  "installed_directory": "${COPILOT_HOME:-$HOME/.copilot}/extensions/pij",
+  "settings_file": "${COPILOT_HOME:-$HOME/.copilot}/settings.json",
+  "settings_merge": {
+    "experimental": true
+  },
+  "daemon_addr": "${PIJ_RS_ADDR:-127.0.0.1:7461}",
+  "daemon_state_dir": "${PIJ_RS_STATE_DIR:-$HOME/.pij-rs}",
+  "auth": "Authorization: Bearer <state-dir>/daemon.key; never log key",
+  "registration": {
+    "method": "POST",
+    "path": "/v1/register",
+    "required_request_fields": [
+      "id",
+      "harness",
+      "harness_session",
+      "folder",
+      "pid",
+      "proc_start",
+      "relay",
+      "native_extension_delivery"
+    ],
+    "request_example": {
+      "id": "pij-copilot-fixture",
+      "harness": "copilot",
+      "harness_session": "00000000-0000-4000-8000-000000000137",
+      "folder": "/isolated/worktree",
+      "pid": 13700,
+      "proc_start": 20260905120000,
+      "relay": false,
+      "native_extension_delivery": true
+    },
+    "optional_fields": [
+      "pane",
+      "spawn_id",
+      "supersedes",
+      "parent",
+      "actual_model",
+      "actual_model_observed"
+    ],
+    "response_rule": "existing descriptor fields unchanged; additive native_extension_delivery boolean and any135 binding metadata tolerated",
+    "identity_rule": "PIJ_SESSION_ID/PIJ_SPAWN_ID when present must be corroborated as exact pre-bind/current process; manual native session+exact host process+pane resolves one stable seat; never newest-by-mtime; duplicate process mismatch refuses"
+  },
+  "claim": {
+    "method": "GET",
+    "path": "/v1/inbox?seat=<encoded-seat>&wait=true",
+    "data_example": [
+      {
+        "job_id": 137,
+        "message": {
+          "msg_id": "poc-137",
+          "from": "pij-peer",
+          "to": "pij-copilot-fixture",
+          "body": "PIJ_137_NONCE"
+        }
+      }
+    ],
+    "ownership": "Copilot requires current native-extension attestation and never tmux fallback; pane claim gated by existing InteractionGate, failed observation is not permission",
+    "bound": "0 or1 claims; serialized session consumer; client handles0 by bounded wait/backoff, not failure/busy-loop"
+  },
+  "ack": {
+    "method": "POST",
+    "path": "/v1/inbox/ack",
+    "body_example": {
+      "seat": "pij-copilot-fixture",
+      "job_id": 137
+    },
+    "data_example": 137,
+    "grade": "reader-read / native harness accepted, NOT model completed"
+  },
+  "send": {
+    "method": "POST",
+    "path": "/v1/send",
+    "body_example": {
+      "from": "pij-copilot-fixture",
+      "to": {
+        "seat": "pij-peer"
+      },
+      "body": "PIJ_137_REPLY",
+      "msg_id": "caller-minted-uuid",
+      "in_reply_to": "optional-original-id"
+    },
+    "tool": {
+      "name": "pij_send",
+      "input": {
+        "to": "string",
+        "message": "string"
+      }
+    },
+    "result": "Pij receipt; no auto-forward on assistant event"
+  },
+  "native": {
+    "join": "joinSession() bundled SDK",
+    "send": "session.send({prompt,mode:\"enqueue\"}) returns native messageId",
+    "events": [
+      "user.message",
+      "assistant.message",
+      "session.idle",
+      "session.error"
+    ],
+    "rules": [
+      "subscribe before sending",
+      "record Pij-to-native acceptance before daemon ack",
+      "separate native idle from acceptance",
+      "abort old pending loop on native session shutdown/replacement",
+      "no direct artificial /clear or typed slash commands"
+    ]
+  },
+  "commands": "explicit command field never model text or tmux; proven native compact or clear unsupported refusal; user-driven new/resume lifecycle remains supported",
+  "envelope": {
+    "ok": true,
+    "command": "pij inbox",
+    "v": 2,
+    "data": "operation value"
+  },
+  "error": "non-ok or non-JSON response preserves HTTP status and raw bounded body; capability missing/refused never activates alternate transport",
+  "semantics": "normal accepted duplicate suppressed; crash-after-native-accept-before-record is explicitly ambiguous until native event/history proves outcome; never falsely exactly-once",
+  "test_ownership": {
+    "daemon": "registry/queue/capability/consent/drain native ownership and additive wire fixtures",
+    "extension": "native SDK state machine with protocol fixture adapter and durable acceptance record",
+    "installation": "safe setup and real-client harness that consumes actual source/artifacts"
+  }
+}

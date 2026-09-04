@@ -1,0 +1,315 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Copilot native extension cutover",
+        "slug": "phase-1",
+        "status": "ready",
+        "summary": "Ordered contract-first work; PM owns plan/guide; one Astra coder implements, Opus independently reviews."
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Use impl-guide.dd.json as the frozen contract. No product edits outside fence; no global deploy; source paths absolute. Baseline typecheck passed; harness boot failed existing file-watch-notify smoke before implementation. Do not suppress or fix unrelated baseline failures. A fresh implementation smoke remains required."
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "tk-0001",
+          "title": "Contract fixtures and baseline",
+          "state": "unchecked",
+          "success": "Record baseline and pin focused regression cases before source edits: initial/drain zero-tmux for extension Copilot, correct native identity, ack grade, duplicate suppression, consent hold and recovery. Preserve existing failures as baseline.",
+          "notes": "PM contracts + all coders scoped baseline; see impl-guide unit fence and assets/contracts/native-extension.json",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0004",
+            "../../../plan.dd.json#acceptance_criteria/ac-0005",
+            "../../../plan.dd.json#acceptance_criteria/ac-0006",
+            "../../../plan.dd.json#acceptance_criteria/ac-0009"
+          ],
+          "done": "tasks.dd.json#done_when/tk-0001"
+        },
+        {
+          "id": "tk-0002",
+          "title": "Exclusive daemon ownership and identity",
+          "state": "unchecked",
+          "success": "Native Copilot registration attests capability against exact observed process incarnation; initial arrival and DrainWorker never type for Copilot after cutover; claim admission honors current consent gate and safe wake/retry, while Pi/OMP/Claude are unchanged.",
+          "notes": "daemon; see impl-guide unit fence and assets/contracts/native-extension.json",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0002",
+            "../../../plan.dd.json#acceptance_criteria/ac-0003",
+            "../../../plan.dd.json#acceptance_criteria/ac-0004",
+            "../../../plan.dd.json#acceptance_criteria/ac-0006"
+          ],
+          "done": "tasks.dd.json#done_when/tk-0002"
+        },
+        {
+          "id": "tk-0003",
+          "title": "Native user extension and outgoing messages",
+          "state": "unchecked",
+          "success": "Repo-managed JavaScript module joins current session using bundled SDK, establishes identity, exposes native outgoing Pij send tool, processes one blocking claim/send/ack at a time and observes events with no automatic reply loop.",
+          "notes": "extension; see impl-guide unit fence and assets/contracts/native-extension.json",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0002",
+            "../../../plan.dd.json#acceptance_criteria/ac-0004",
+            "../../../plan.dd.json#acceptance_criteria/ac-0005"
+          ],
+          "done": "tasks.dd.json#done_when/tk-0003"
+        },
+        {
+          "id": "tk-0004",
+          "title": "Reconnect and native lifecycle",
+          "state": "unchecked",
+          "success": "Spawn correlation, manual identity, new/resume/reload, daemon key refresh/reconnect, pending claims and native accepted-message ledger are exercised; old consumer cancellation and explicit ambiguity diagnostic prevent wrong-session or blind duplicate delivery.",
+          "notes": "extension with daemon lifecycle contract; see impl-guide unit fence and assets/contracts/native-extension.json",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0003",
+            "../../../plan.dd.json#acceptance_criteria/ac-0005",
+            "../../../plan.dd.json#acceptance_criteria/ac-0007"
+          ],
+          "done": "tasks.dd.json#done_when/tk-0004"
+        },
+        {
+          "id": "tk-0005",
+          "title": "Managed installation and doctor",
+          "state": "unchecked",
+          "success": "Canonical-main install/link/update surfaces install reviewed artifact into resolved Copilot home, merge experimental setting safely, preserve foreign paths and user values, expose clear doctor result; isolated-home tests prove repeatability.",
+          "notes": "installation; see impl-guide unit fence and assets/contracts/native-extension.json",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0001",
+            "../../../plan.dd.json#acceptance_criteria/ac-0002",
+            "../../../plan.dd.json#acceptance_criteria/ac-0003"
+          ],
+          "done": "tasks.dd.json#done_when/tk-0005"
+        },
+        {
+          "id": "tk-0006",
+          "title": "Remove obsolete RPC and typing paths",
+          "state": "unchecked",
+          "success": "Copilot UI-server/port allocator/intents and active fallback branches are removed across all callers; historical migrations remain, any new schema change is forward-only. Native controls work where supported; unsupported controls are explicit rather than queued forever or typed.",
+          "notes": "daemon; see impl-guide unit fence and assets/contracts/native-extension.json",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0004",
+            "../../../plan.dd.json#acceptance_criteria/ac-0008"
+          ],
+          "done": "tasks.dd.json#done_when/tk-0006"
+        },
+        {
+          "id": "tk-0007",
+          "title": "Real client acceptance and composed checks",
+          "state": "unchecked",
+          "success": "Use isolated HOME/COPILOT_HOME/CLAUDE_CONFIG_DIR/PIJ_RS_STATE_DIR and dedicated daemon/tmux server. Capture manual pane-backed native delivery, spawned initial-task delivery, outgoing native tool, both consent worlds, missing-consumer and duplicate, restart, real model canary and final gates.",
+          "notes": "installation driver; PM composed witness; see impl-guide unit fence and assets/contracts/native-extension.json",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0002",
+            "../../../plan.dd.json#acceptance_criteria/ac-0003",
+            "../../../plan.dd.json#acceptance_criteria/ac-0005",
+            "../../../plan.dd.json#acceptance_criteria/ac-0006",
+            "../../../plan.dd.json#acceptance_criteria/ac-0007",
+            "../../../plan.dd.json#acceptance_criteria/ac-0009"
+          ],
+          "done": "tasks.dd.json#done_when/tk-0007"
+        },
+        {
+          "id": "tk-0008",
+          "title": "Independent review and PM acceptance",
+          "state": "unchecked",
+          "success": "OMP Opus5 high independently reviews full diff and real receipts; Astra fixes upheld findings; PM judges every AC and records gate limitations without claiming done when baseline remains red.",
+          "notes": "PM and reviewer; see impl-guide unit fence and assets/contracts/native-extension.json",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-000a",
+            "../../../plan.dd.json#acceptance_criteria/ac-0009"
+          ],
+          "done": "tasks.dd.json#done_when/tk-0008"
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {
+        "tk-0001": [
+          {
+            "id": "dw-0001",
+            "assertion": "Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0004"
+          },
+          {
+            "id": "dw-0002",
+            "assertion": "One inbox claim is injected through native SDK and acknowledged only after acceptance; accepted duplicate msg_id is not reinjected; queue/API errors preserve recoverable state and acceptance is never mislabeled model completion.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0005"
+          },
+          {
+            "id": "dw-0003",
+            "assertion": "Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0006"
+          },
+          {
+            "id": "dw-0004",
+            "assertion": "Hand-started pane-backed and Pij-spawned real Copilot witnesses prove bidirectional unique-message delivery and no duplicate, plus a real model canary; deterministic provider proof is labeled separately; scoped tests and final harness checks pass.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0009"
+          }
+        ],
+        "tk-0002": [
+          {
+            "id": "dw-0005",
+            "assertion": "A new Copilot CLI started manually in tmux with no Pij env or RPC flags auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0002"
+          },
+          {
+            "id": "dw-0006",
+            "assertion": "A Pij-spawned new Copilot session uses the same installed extension, binds the preallocated seat/spawn correlation exactly once, receives initial task once, and sends replies with the same Pij identity.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0003"
+          },
+          {
+            "id": "dw-0007",
+            "assertion": "Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0004"
+          },
+          {
+            "id": "dw-0008",
+            "assertion": "Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0006"
+          }
+        ],
+        "tk-0003": [
+          {
+            "id": "dw-0009",
+            "assertion": "A new Copilot CLI started manually in tmux with no Pij env or RPC flags auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0002"
+          },
+          {
+            "id": "dw-000a",
+            "assertion": "Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0004"
+          },
+          {
+            "id": "dw-000b",
+            "assertion": "One inbox claim is injected through native SDK and acknowledged only after acceptance; accepted duplicate msg_id is not reinjected; queue/API errors preserve recoverable state and acceptance is never mislabeled model completion.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0005"
+          }
+        ],
+        "tk-0004": [
+          {
+            "id": "dw-000c",
+            "assertion": "A Pij-spawned new Copilot session uses the same installed extension, binds the preallocated seat/spawn correlation exactly once, receives initial task once, and sends replies with the same Pij identity.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0003"
+          },
+          {
+            "id": "dw-000d",
+            "assertion": "One inbox claim is injected through native SDK and acknowledged only after acceptance; accepted duplicate msg_id is not reinjected; queue/API errors preserve recoverable state and acceptance is never mislabeled model completion.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0005"
+          },
+          {
+            "id": "dw-000e",
+            "assertion": "Reconnect/key rotation, extension reload/native session rollover and old-process replacement cancel stale consumers, maintain correct identity and do not route old work into a different native session; native idle/event evidence stays separate from acceptance.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0007"
+          }
+        ],
+        "tk-0005": [
+          {
+            "id": "dw-000f",
+            "assertion": "Canonical setup installs the repo-owned Copilot extension and persistently enables experimental features while preserving unrelated settings, foreign symlinks and files; repeated setup is idempotent and COPILOT_HOME is honored.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0001"
+          },
+          {
+            "id": "dw-0010",
+            "assertion": "A new Copilot CLI started manually in tmux with no Pij env or RPC flags auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0002"
+          },
+          {
+            "id": "dw-0011",
+            "assertion": "A Pij-spawned new Copilot session uses the same installed extension, binds the preallocated seat/spawn correlation exactly once, receives initial task once, and sends replies with the same Pij identity.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0003"
+          }
+        ],
+        "tk-0006": [
+          {
+            "id": "dw-0012",
+            "assertion": "Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0004"
+          },
+          {
+            "id": "dw-0013",
+            "assertion": "Obsolete Copilot UI-server launch/port-intent runtime machinery is removed with safe forward migration semantics and historical migrations untouched; native compact works if exposed, otherwise unsupported controls fail explicitly with no typing.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0008"
+          }
+        ],
+        "tk-0007": [
+          {
+            "id": "dw-0014",
+            "assertion": "A new Copilot CLI started manually in tmux with no Pij env or RPC flags auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0002"
+          },
+          {
+            "id": "dw-0015",
+            "assertion": "A Pij-spawned new Copilot session uses the same installed extension, binds the preallocated seat/spawn correlation exactly once, receives initial task once, and sends replies with the same Pij identity.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0003"
+          },
+          {
+            "id": "dw-0016",
+            "assertion": "One inbox claim is injected through native SDK and acknowledged only after acceptance; accepted duplicate msg_id is not reinjected; queue/API errors preserve recoverable state and acceptance is never mislabeled model completion.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0005"
+          },
+          {
+            "id": "dw-0017",
+            "assertion": "Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0006"
+          },
+          {
+            "id": "dw-0018",
+            "assertion": "Reconnect/key rotation, extension reload/native session rollover and old-process replacement cancel stale consumers, maintain correct identity and do not route old work into a different native session; native idle/event evidence stays separate from acceptance.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0007"
+          },
+          {
+            "id": "dw-0019",
+            "assertion": "Hand-started pane-backed and Pij-spawned real Copilot witnesses prove bidirectional unique-message delivery and no duplicate, plus a real model canary; deterministic provider proof is labeled separately; scoped tests and final harness checks pass.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0009"
+          }
+        ],
+        "tk-0008": [
+          {
+            "id": "dw-001a",
+            "assertion": "PM-authored plan/guide, coder receipts, independent Opus review and resolved findings are preserved; no unauthorized global rollout, public push or main merge occurs.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-000a"
+          },
+          {
+            "id": "dw-001b",
+            "assertion": "Hand-started pane-backed and Pij-spawned real Copilot witnesses prove bidirectional unique-message delivery and no duplicate, plus a real model canary; deterministic provider proof is labeled separately; scoped tests and final harness checks pass.",
+            "state": "unchecked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0009"
+          }
+        ]
+      }
+    }
+  ]
+}
