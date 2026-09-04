@@ -1,0 +1,147 @@
+{
+	"dd": {
+		"schema": "pij-team/packet"
+	},
+	"sections": [
+		{
+			"name": "meta",
+			"value": {
+				"title": "Coder packet — u1 extension typing sensor + hold queue (136-typing-grace-gate)",
+				"role": "coder",
+				"plan": "docs/plans/136-typing-grace-gate/plan.dd.json",
+				"seat": "<filled at spawn>",
+				"updated": "2026-09-05"
+			}
+		},
+		{
+			"name": "mission",
+			"value": "You build ONE unit of plan 136-typing-grace-gate: u1, the pi/omp extension side — know when the human last typed, HOLD a pushed row while inside the grace, make the hold visible, and release in order. Your PM is the seat named in working_with w1; you report to it, never to prime or Jordan. CURRENT STATE, falsifiable in one read and MEASURED TODAY by your PM on main: a message pushed to a working/idle omp seat is injected IMMEDIATELY and DESTROYS the human's unsubmitted draft. Control run 2026-09-05, seat pij-secret-bat, pane %3492: draft 'DRAFT2-CONTROL-136 still typing no enter pressed' visible in the composer at t0+1s; `pij send` at t0+5.2s; spine seq 6793 message.pushed at t0+6.1s, seq 6794 delivery.outcome queued/reason=extension-stream, seq 6795 delivery.inbox-ack outcome=reader-read 8 ms later; pane 2 s after the send: composer EMPTY, seat Working. That is the bug you are closing. STANDING RULE: NEVER run `flowspace3 daemon` in any form with any env (two worker daemons broke flowspace3 PROD in one day). Client verbs only (search/ask/get/status); if `flowspace3 doctor` says it is down, tell the PM and stop. Also NEVER start a pij daemon of any kind — `pij daemon start` and anything that offers to start one is forbidden; rs is the only daemon and only the PM bounces it."
+		},
+		{
+			"name": "instructions",
+			"value": [
+				{
+					"id": "i0",
+					"text": "SETUP, in this order, before anything else. (a) Your worktree is ALREADY CREATED at /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1 on branch 136-typing-grace-gate-u1 — `cd` there first; you were spawned from the main clone (/Users/jordanknight/pi-hacking/pij) because omp refuses worktree spawns, so EVERY file read and edit must use an ABSOLUTE path under your worktree root. State that root once in your ack. (b) `npm install` in a fresh worktree FAILS with '--min-release-age cannot be provided when using --before' — the project .npmrc sets min-release-age=7 and npm 11.10 then passes --before to its own child during git-dep preparation. Neither the CLI flag nor the env var reaches that child. The ONLY working workaround, already proven by the PM: `cp .npmrc /tmp/npmrc.bak && sed -i '' '/min-release-age/d' .npmrc && npm install && cp /tmp/npmrc.bak .npmrc`. DO NOT COMMIT the .npmrc change or the package-lock.json churn — restore both (prime is raising the root cause with Jordan). (c) Then `harness boot --json`: typecheck must be green. `just smoke` has ONE pre-existing flake, file-watch-notify, which fails only inside the full run and passes in isolation (`npx tsx harness/scripts/smoke.ts file-watch-notify`) — that flake is baseline, not yours."
+				},
+				{
+					"id": "i1",
+					"text": "Orient: read your unit row (u1) in docs/plans/136-typing-grace-gate/impl-guide.dd.md, the plan's AC1-AC5 and AC7, and THE FROZEN CONTRACT at docs/plans/136-typing-grace-gate/assets/contracts/hold-events.json — it is PM-authored and binding: the /v1/hold and /v1/release request bodies, the delivery.held / delivery.released event shapes, the register response carrying typing_grace_ms, and the invariants block are what your tests must defend. Fill the contract; never widen it (TENETS tenet 2). DOGFOOD FLOWSPACE: `flowspace3 search \"<question>\"` for every meaning-shaped question before grep (exact identifiers may still grep); report every miss as friction."
+				},
+				{
+					"id": "i2",
+					"text": "Ack FIRST: reply to the PM (see w1 for the exact command) with your read of the unit plus a NUMBERED implementation plan, before you write any code. Corrections to this packet are welcome — bring evidence. Wait for the PM to rule your ack by number before coding."
+				},
+				{
+					"id": "i3",
+					"text": "Build core/hold-queue.ts EXACTLY to this interface (impl-guide u1, frozen): `class HoldQueue { constructor(clock: () => number, graceMs: number); noteEdit(at: number): void; shouldHold(at: number): boolean; push(row: HeldRow): void; drain(at: number): HeldRow[]; size(): number }` — pure, clock-injected, ZERO imports from @earendil-works/* (pij pattern P2: core/ is pi-free). Constants live in the store/core file next to the data they constrain (P5). Tagged-union returns over throws (P4). `.js` extension on relative imports (P7)."
+				},
+				{
+					"id": "i4",
+					"text": "Wire the sensor and the queue in the adapters: pi-runtime.ts gains `onEditorChange(cb: (at: number) => void)` fed from pi's `editor.onChange`; rust-runtime.ts `consumePushed` becomes: claim the row → if it is a command (compact|new|reload) or urgent, inject+ack immediately (bypass, AC4) → else if `shouldHold(now)` then HOLD (do NOT ack, do NOT inject), POST /v1/hold and `setStatus('⏸ N held · typing')` → else inject+ack. A 1 s ticker drains: on release POST /v1/release then inject+ack, in claim order. Timers MUST be cleared on session_shutdown and re-armed on session_start (all reasons — P10). Grace comes from `accepted.typing_grace_ms ?? 60000` and NOWHERE else: that `??` is the only 60000 allowed in your unit, and a test must assert the wire value WINS over it (AC7, risk r4)."
+				},
+				{
+					"id": "i5",
+					"text": "RISK r1 IS YOURS TO RETIRE: `editor.onChange` also fires on YOUR OWN programmatic writes (inject / setEditorText), which would make the extension believe the human is typing when it is only hearing itself. Ignore changes within 200 ms of your own write, and TEST it — a test where an inject is followed immediately by an onChange must NOT extend the grace."
+				},
+				{
+					"id": "i6",
+					"text": "RED FIRST, pasted. Every behavioural test must be shown failing on the pre-fix tree before it passes: run it, paste the RED output into your done report, then implement. `bun test .pi/extensions/pij` is your suite. Required coverage: hold at 59 s and inject at 60 s on a fake clock; order preserved across two holds; commands bypass while a hold is outstanding; a claimed-but-held row is NEVER acked (fake client records acks) and IS redelivered after re-register (AC5); the wire grace beats the fallback."
+				},
+				{
+					"id": "i7",
+					"text": "Stay inside your fence (scope below). core/session.ts and the delivery vocabulary are NOT yours. The daemon routes /v1/hold and /v1/release are u2's — you CALL them, you do not implement them; until u2 lands, test against a fake client. If the work forces you outside your paths, STOP and ask the PM: that is a composition concern."
+				},
+				{
+					"id": "i8",
+					"text": "Ship the SNAP-IN RECIPE (tenet 4), not the integration: the exact wiring for RustRuntimeSession as a doc comment — construction call, ticker arming, status-line call — so the PM pastes rather than re-derives."
+				},
+				{
+					"id": "i9",
+					"text": "Commit with `harness commit` (conventional commits binding). Status card at start and end of each unit of work: `pij report now \"<did>\" \"<next>\"`. Capture friction the moment it bites with `harness observe \"<what>\" --kind difficulty|confusion` — list, never clear."
+				},
+				{
+					"id": "i10",
+					"text": "OMP seats: use your LSP (go-to-definition, find-references, rename, diagnostics) for symbol-level questions and refactors instead of text search. If the TypeScript LSP is not configured in your seat, report it as friction at ack time rather than silently grepping for the whole packet."
+				}
+			]
+		},
+		{
+			"name": "working_with",
+			"value": [
+				{
+					"id": "w1",
+					"text": "Your PM is pij-fellow-whale. Reply to it with `pij send pij-fellow-whale \"<text>\"` — acks, questions, done reports. Never message prime or Jordan directly unless the PM's seat is dead."
+				},
+				{
+					"id": "w2",
+					"text": "DEFER to the PM: any change to the frozen contract or the HoldQueue interface (they bind sibling units), dependency additions, anything outside your paths, and any restart of any daemon."
+				},
+				{
+					"id": "w3",
+					"text": "Your evidence outranks this packet: if the brief is wrong, say so at ack or stop-and-ask WITH the measurement — do not silently code around it."
+				}
+			]
+		},
+		{
+			"name": "scope",
+			"value": {
+				"worktree": "/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1",
+				"branch": "136-typing-grace-gate-u1",
+				"fence": ".pi/extensions/pij/adapters/rust-runtime.ts, .pi/extensions/pij/adapters/rust-runtime.test.ts, .pi/extensions/pij/adapters/pi-runtime.ts, .pi/extensions/pij/core/hold-queue.ts (new), .pi/extensions/pij/core/hold-queue.test.ts (new), .pi/extensions/pij/core/daemon-wire.ts (ADDITIVE fields only), .pi/extensions/pij/adapters/daemon-http.ts (hold/release calls only)",
+				"forbidden_note": "Never touch another unit's paths (u2 owns crates/core + crates/daemon; u3 owns crates/harnesses), .harness/government/**, or the plan's flow state. Never merge, never open a PR, never restart a daemon — the PM composes. ABSOLUTE PATHS FOR EVERY FILE READ AND EDIT, ALWAYS: your file tools may resolve relative paths against the SPAWN directory (the main clone) while your shell resolves against your worktree — the same relative path then addresses two different files, the tool reports success either way, and your build goes green against a tree missing your change (proven 2026-08-28, three seats). State your worktree root once at ack and prefix every path with it."
+			}
+		},
+		{
+			"name": "done_bar",
+			"value": [
+				{
+					"id": "d1",
+					"text": "HoldQueue implements the impl-guide interface verbatim (or with a PM-ruled amendment), and the hold/release calls match assets/contracts/hold-events.json byte-for-byte in field spelling."
+				},
+				{
+					"id": "d2",
+					"text": "`bun test .pi/extensions/pij` green standalone, with the RED-first output pasted for every new behavioural test."
+				},
+				{
+					"id": "d3",
+					"text": "`harness checks` green in YOUR worktree — AND prove the change is IN THE TREE YOU BUILT, not merely that the build exited 0: cite tree-resident evidence (git status/mtime showing your files under your worktree root). An exit code is honest about what it built and silent about what it did not."
+				},
+				{
+					"id": "d4",
+					"text": "The snap-in recipe for RustRuntimeSession shipped as a doc comment (tenet 4). You do NOT wire the composition root."
+				},
+				{
+					"id": "d5",
+					"text": "Done report to the PM: what shipped, evidence, deviations, and an explicit ASSUMPTIONS section — everything you assumed about the composition you do not own (who calls consumePushed and in what order, what the daemon has already persisted, what state the store is in at session_start). A green gate proves your unit against YOUR assumptions; naming them is what lets the composer test them."
+				}
+			]
+		},
+		{
+			"name": "refs",
+			"value": [
+				{
+					"id": "r0",
+					"path": ".agents-skills-port/pij-team/TENETS.md",
+					"note": "the doctrine — esp. tenets 2-6: fill contracts never widen them, ship the snap-in recipe, mechanical done"
+				},
+				{
+					"id": "r1",
+					"path": "docs/plans/136-typing-grace-gate/impl-guide.dd.md",
+					"note": "your unit row (u1) + the frozen seams (a)-(d)"
+				},
+				{
+					"id": "r2",
+					"path": "docs/plans/136-typing-grace-gate/assets/contracts/hold-events.json",
+					"note": "THE CONTRACT — request bodies, event shapes, register response, invariants"
+				},
+				{
+					"id": "r3",
+					"path": "docs/plans/136-typing-grace-gate/plan.dd.md",
+					"note": "AC1-AC5, AC7 are yours to make provable"
+				},
+				{ "id": "r4", "path": "AGENTS.md", "note": "P1-P10 extension patterns, dogfooding + harness commit rules" }
+			]
+		}
+	]
+}

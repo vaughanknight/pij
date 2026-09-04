@@ -1,0 +1,125 @@
+{
+  "$comment": "u0 — FROZEN CONTRACT for plan 136 typing-grace-gate. PM-authored (pij-fellow-whale, 2026-09-05) before fan-out. Field spellings derived from crates/core/src/model.rs (Event, Envelope, SeatDescriptor, DeliveryOutcome, DeliveryOrigin), crates/core/src/wire.rs (EVENT_VERSION, KNOWN_EVENT_KINDS) and crates/daemon/src/http/mod.rs (delivery.inbox-ack emission) — none invented. u1/u2/u3 fill this contract; widening it is a stop-and-ask to the PM. Rust structs serialize snake_case (no rename_all on SeatDescriptor); spine events are {v, at, kind, seat, payload} with `seq` skipped on the wire (model.rs Event).",
+
+  "grace": {
+    "$comment": "Seam (a): ONE definition. `pub const DEFAULT_TYPING_GRACE_MS: u64 = 60_000;` in crates/core/src/delivery.rs, overridable by env PIJ_TYPING_GRACE_MS at the daemon only. The extension NEVER restates 60000 except as the `??` fallback used solely when the daemon omits the field (AC7).",
+    "const_name": "DEFAULT_TYPING_GRACE_MS",
+    "const_home": "crates/core/src/delivery.rs",
+    "env_var": "PIJ_TYPING_GRACE_MS",
+    "default_ms": 60000,
+    "wire_field": "typing_grace_ms",
+    "extension_read": "accepted.typing_grace_ms ?? 60000"
+  },
+
+  "event_kinds": {
+    "$comment": "Both kinds MUST be added to KNOWN_EVENT_KINDS in crates/core/src/wire.rs (u2), otherwise a reader decodes them as WireEvent::Unknown. Existing sibling kinds for style: delivery.outcome, delivery.inbox-ack, delivery.pointer-parked.",
+    "held": "delivery.held",
+    "released": "delivery.released"
+  },
+
+  "held": {
+    "$comment": "Spine event appended when the extension declines to inject a claimed row because the human typed inside the grace. `since_ms` is the Unix-ms timestamp of the LAST observed keystroke, not the hold's start.",
+    "v": 1,
+    "at": 1788600000000,
+    "kind": "delivery.held",
+    "seat": "pij-current-nigel",
+    "payload": {
+      "msg_id": "97752745-7aef-40ad-860a-e1e68b99f6d3",
+      "seat": "pij-current-nigel",
+      "reason": "human-typing",
+      "since_ms": 1788599997000
+    }
+  },
+
+  "released": {
+    "$comment": "Appended when the grace elapsed and the extension injected + acked the row. `at_ms` is when the release decision was taken; the delivery.inbox-ack that follows is the delivered receipt (origin reader-read).",
+    "v": 1,
+    "at": 1788600060000,
+    "kind": "delivery.released",
+    "seat": "pij-current-nigel",
+    "payload": {
+      "msg_id": "97752745-7aef-40ad-860a-e1e68b99f6d3",
+      "seat": "pij-current-nigel",
+      "at_ms": 1788600060000
+    }
+  },
+
+  "hold_request": {
+    "$comment": "Seam (b): POST /v1/hold, bearer-authed exactly like /v1/register. Additive route. Body below; u1 calls it, u2 serves it. Serving it appends the `held` event above. Idempotent per (seat, msg_id): a repeat is 200 and appends nothing.",
+    "method": "POST",
+    "path": "/v1/hold",
+    "body": {
+      "seat": "pij-current-nigel",
+      "msg_id": "97752745-7aef-40ad-860a-e1e68b99f6d3",
+      "reason": "human-typing",
+      "since_ms": 1788599997000
+    },
+    "response": {
+      "ok": true,
+      "command": "pij hold",
+      "v": 2,
+      "data": {
+        "msg_id": "97752745-7aef-40ad-860a-e1e68b99f6d3",
+        "held": true
+      }
+    }
+  },
+
+  "release_request": {
+    "$comment": "Seam (b): POST /v1/release. Appends the `released` event. Releasing an unheld (seat, msg_id) is 200 with held:false — the extension must be free to release optimistically after a restart without a 4xx.",
+    "method": "POST",
+    "path": "/v1/release",
+    "body": {
+      "seat": "pij-current-nigel",
+      "msg_id": "97752745-7aef-40ad-860a-e1e68b99f6d3",
+      "at_ms": 1788600060000
+    },
+    "response": {
+      "ok": true,
+      "command": "pij release",
+      "v": 2,
+      "data": {
+        "msg_id": "97752745-7aef-40ad-860a-e1e68b99f6d3",
+        "released": true
+      }
+    }
+  },
+
+  "register_response_with_grace": {
+    "$comment": "Seam (a) on the wire. The register route answers Envelope::ok(\"pij register\", descriptor) (crates/daemon/src/http/mod.rs:399). `typing_grace_ms` is an ADDITIVE field on the response DATA object, flattened alongside the descriptor's snake_case fields — NOT a new field on SeatDescriptor (which would leak into seat.put rows and every registry projection). u2 defines the response wrapper in crates/core/src/wire.rs; u1 reads `accepted.typing_grace_ms`. Descriptor fields shown are the real ones from model.rs SeatDescriptor; absent Options are omitted by skip_serializing_if.",
+    "ok": true,
+    "command": "pij register",
+    "v": 2,
+    "data": {
+      "id": "pij-current-nigel",
+      "machine": "JordansacStudio.localdomain",
+      "harness": "omp",
+      "session": null,
+      "pane": "%3366",
+      "proc": { "pid": 80716, "proc_start": 20260905091826 },
+      "folder": "/Users/jordanknight/pi-hacking/pij",
+      "state": "idle",
+      "semantic_state": null,
+      "role": null,
+      "parent": "pij-minor-unicorn",
+      "relay": false,
+      "typing_grace_ms": 60000
+    }
+  },
+
+  "invariants": {
+    "$comment": "The properties every unit's tests must defend. These are the review priorities (impl-guide review.inputs).",
+    "held_is_unacked": "A held row is CLAIMED but NEVER acked. Nothing may mark it delivered while held; killing the seat or the daemon must redeliver it in order on re-register (AC5).",
+    "order_preserved": "Release drains in claim order — a message held at t0 is injected before one held at t0+1s.",
+    "bypass": "Msg.command (compact|new|reload) and urgent payloads skip the hold entirely: inject + ack immediately, even with holds outstanding, and the held rows stay held (AC4).",
+    "one_grace": "Exactly one numeric literal for the grace exists in Rust (DEFAULT_TYPING_GRACE_MS) and exactly one in TS (the `??` fallback). A test on each side asserts the observed value; a TS test asserts the wire value WINS over the fallback (AC7, risk r4).",
+    "no_false_typing": "Programmatic edits (the extension's own inject/setEditorText) must not count as keystrokes — u1 ignores editor changes within 200 ms of its own write and tests it (risk r1).",
+    "no_double_delivery": "A held row must not be re-delivered by the daemon's retry scheduler while held (risk r2)."
+  },
+
+  "receipt_note": {
+    "$comment": "PM finding 2026-09-05, evidence for the plan-vs-reality ruling: crates/daemon/src/delivery/mod.rs:249-251 routes Omp|Pi to DeliveryRung::Observe and :397-398 already emits Queued{reason:\"extension-stream\"} — the extension-stream push receipt is ALREADY queued-not-delivered on main, and flips to delivered only on delivery.inbox-ack (plan-134-live-proof.md spine rows seq 7-8, outcome reader-read). A repo-wide grep for `extension-stream` returns two hits, both inside delivery/mod.rs (:398 the producer, :1132 its own test) — risk r3's 'consumers that expected delivered' set is EMPTY. u2's receipt work is therefore a REGRESSION GUARD (a test pinning queued-before-ack / delivered-after-ack), not a behaviour change.",
+    "current_outcome_before_ack": { "outcome": "queued", "reason": "extension-stream", "next_retry_at": 0 },
+    "current_outcome_after_ack": { "outcome": "delivered", "origin": "reader-read" }
+  }
+}
