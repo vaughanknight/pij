@@ -1,0 +1,11 @@
+{
+  "target": "52fe40d3",
+  "status": "execution-acknowledged",
+  "owner": "pij-worldwide-rat",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime",
+  "decision": "Preserve native acceptance -> durable persist -> daemon ack. Add generation-safe observed idle/error barrier after ack and before the next claim/native send.",
+  "source": "PM contract native.rules and impl-guide.dd.md final implementation paragraph read from fs3-copilot-native-extension",
+  "proof": ["subscribe before send and retain early completion", "no next claim before completion, ack remains prompt", "stale events cannot release new generation", "stop disposes wait and subscription", "accepted duplicate requires completion evidence or explicit hold"],
+  "scope": "Existing runtime source/tests and runtime evidence only; PM owns integration and plan/guide edits",
+  "load_rule": {"VITEST_MAX_THREADS": "4", "CARGO_BUILD_JOBS": "4", "full_gates": "PM serialized; not run in worker", "new_worktrees": false}
+}
