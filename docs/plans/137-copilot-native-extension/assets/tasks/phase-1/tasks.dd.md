@@ -59,7 +59,7 @@ Use impl-guide.dd.json as the frozen contract. No product edits outside fence; n
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-0005 | A new Copilot CLI started manually in tmux with no Pij env or RPC flags auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages. | [ ] unchecked | [bp-0002](../../backpressure.dd.md#rows) |
+| dw-0005 | A new Copilot CLI started manually in tmux with no Pij identity/preallocation env or RPC flags (isolated endpoint/state overrides allowed) auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages. | [ ] unchecked | [bp-0002](../../backpressure.dd.md#rows) |
 | dw-0006 | A Pij-spawned new Copilot session uses the same installed extension, binds the preallocated seat/spawn correlation exactly once, receives initial task once, and sends replies with the same Pij identity. | [ ] unchecked | [bp-0003](../../backpressure.dd.md#rows) |
 | dw-0007 | Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged. | [ ] unchecked | [bp-0004](../../backpressure.dd.md#rows) |
 | dw-0008 | Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence. | [ ] unchecked | [bp-0006](../../backpressure.dd.md#rows) |
@@ -68,7 +68,7 @@ Use impl-guide.dd.json as the frozen contract. No product edits outside fence; n
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-0009 | A new Copilot CLI started manually in tmux with no Pij env or RPC flags auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages. | [ ] unchecked | [bp-0002](../../backpressure.dd.md#rows) |
+| dw-0009 | A new Copilot CLI started manually in tmux with no Pij identity/preallocation env or RPC flags (isolated endpoint/state overrides allowed) auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages. | [ ] unchecked | [bp-0002](../../backpressure.dd.md#rows) |
 | dw-000a | Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged. | [ ] unchecked | [bp-0004](../../backpressure.dd.md#rows) |
 | dw-000b | One inbox claim is injected through native SDK and acknowledged only after acceptance; accepted duplicate msg_id is not reinjected; queue/API errors preserve recoverable state and acceptance is never mislabeled model completion. | [ ] unchecked | [bp-0005](../../backpressure.dd.md#rows) |
 
@@ -85,7 +85,7 @@ Use impl-guide.dd.json as the frozen contract. No product edits outside fence; n
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
 | dw-000f | Canonical setup installs the repo-owned Copilot extension and persistently enables experimental features while preserving unrelated settings, foreign symlinks and files; repeated setup is idempotent and COPILOT_HOME is honored. | [ ] unchecked | [bp-0001](../../backpressure.dd.md#rows) |
-| dw-0010 | A new Copilot CLI started manually in tmux with no Pij env or RPC flags auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages. | [ ] unchecked | [bp-0002](../../backpressure.dd.md#rows) |
+| dw-0010 | A new Copilot CLI started manually in tmux with no Pij identity/preallocation env or RPC flags (isolated endpoint/state overrides allowed) auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages. | [ ] unchecked | [bp-0002](../../backpressure.dd.md#rows) |
 | dw-0011 | A Pij-spawned new Copilot session uses the same installed extension, binds the preallocated seat/spawn correlation exactly once, receives initial task once, and sends replies with the same Pij identity. | [ ] unchecked | [bp-0003](../../backpressure.dd.md#rows) |
 
 ### tk-0006
@@ -99,7 +99,7 @@ Use impl-guide.dd.json as the frozen contract. No product edits outside fence; n
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-0014 | A new Copilot CLI started manually in tmux with no Pij env or RPC flags auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages. | [ ] unchecked | [bp-0002](../../backpressure.dd.md#rows) |
+| dw-0014 | A new Copilot CLI started manually in tmux with no Pij identity/preallocation env or RPC flags (isolated endpoint/state overrides allowed) auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages. | [ ] unchecked | [bp-0002](../../backpressure.dd.md#rows) |
 | dw-0015 | A Pij-spawned new Copilot session uses the same installed extension, binds the preallocated seat/spawn correlation exactly once, receives initial task once, and sends replies with the same Pij identity. | [ ] unchecked | [bp-0003](../../backpressure.dd.md#rows) |
 | dw-0016 | One inbox claim is injected through native SDK and acknowledged only after acceptance; accepted duplicate msg_id is not reinjected; queue/API errors preserve recoverable state and acceptance is never mislabeled model completion. | [ ] unchecked | [bp-0005](../../backpressure.dd.md#rows) |
 | dw-0017 | Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence. | [ ] unchecked | [bp-0006](../../backpressure.dd.md#rows) |

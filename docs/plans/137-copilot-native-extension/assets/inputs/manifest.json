@@ -12,6 +12,10 @@
     "sha256": "88e43774b5f7f57d13eca41bce7ed01d8947beaf0e9f7dcff9388d1912c390f2"
   },
   {
+    "path": "pm-ack-rulings.md",
+    "sha256": "8800f39bad61a22d4a2732349717cd70f81dfd3d7162d0ef14a26cc767c069dc"
+  },
+  {
     "path": "manual-extension-evidence.json",
     "sha256": "250aa604fc93d4439600ab9585d307b82314bdcc8c9d48ce89c5bd84468f00c6"
   }

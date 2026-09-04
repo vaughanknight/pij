@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "scope": "copilot native user extension; new sessions; other harnesses unchanged",
   "source_files": [
     ".copilot/extensions/pij/extension.mjs",
@@ -45,11 +45,11 @@
       "actual_model_observed"
     ],
     "response_rule": "existing descriptor fields unchanged; additive native_extension_delivery boolean and any135 binding metadata tolerated",
-    "identity_rule": "PIJ_SESSION_ID/PIJ_SPAWN_ID when present must be corroborated as exact pre-bind/current process; manual native session+exact host process+pane resolves one stable seat; never newest-by-mtime; duplicate process mismatch refuses"
+    "identity_rule": "PIJ_SESSION_ID/PIJ_SPAWN_ID when present must be corroborated as exact pre-bind/current process; manual native session+exact host process+pane resolves one stable seat; never newest-by-mtime; duplicate process mismatch refuses; same native-session reconnect retains address, user-driven new native session explicitly supersedes prior same-process seat through existing checked supersedes mechanism; mismatches otherwise refuse"
   },
   "claim": {
     "method": "GET",
-    "path": "/v1/inbox?seat=<encoded-seat>&wait=true",
+    "path": "/v1/inbox?seat=<encoded-seat>&wait=true&native_session=<id>&pid=<host-pid>&proc_start=<stamp>",
     "data_example": [
       {
         "job_id": 137,
@@ -62,17 +62,22 @@
       }
     ],
     "ownership": "Copilot requires current native-extension attestation and never tmux fallback; pane claim gated by existing InteractionGate, failed observation is not permission",
-    "bound": "0 or1 claims; serialized session consumer; client handles0 by bounded wait/backoff, not failure/busy-loop"
+    "bound": "0 or1 claims; serialized session consumer; client handles0 by bounded wait/backoff, not failure/busy-loop",
+    "incarnation_rule": "Native Copilot claims require native_session/pid/proc_start equal current attested descriptor; revalidate after waits before handing off. Other harness clients keep existing request compatibility. Missing/mismatched native tuple refuses explicitly; no fallback."
   },
   "ack": {
     "method": "POST",
     "path": "/v1/inbox/ack",
     "body_example": {
       "seat": "pij-copilot-fixture",
-      "job_id": 137
+      "job_id": 137,
+      "native_session": "00000000-0000-4000-8000-000000000137",
+      "pid": 13700,
+      "proc_start": 20260905120000
     },
     "data_example": 137,
-    "grade": "reader-read / native harness accepted, NOT model completed"
+    "grade": "reader-read / native harness accepted, NOT model completed",
+    "incarnation_rule": "Copilot native ack verifies tuple against current attested descriptor AND job recipient against seat before terminal ack. Existing other-harness ack semantics retained. Delayed old consumer cannot ack replacement session work."
   },
   "send": {
     "method": "POST",
@@ -109,7 +114,9 @@
       "record Pij-to-native acceptance before daemon ack",
       "separate native idle from acceptance",
       "abort old pending loop on native session shutdown/replacement",
-      "no direct artificial /clear or typed slash commands"
+      "no direct artificial /clear or typed slash commands",
+      "private acceptance namespace under state-dir/native-extensions/copilot hashed from seat/native session/host incarnation; exact file layout unit-local",
+      "ambiguous or malformed claim stops affected receive work with diagnostic and no ack; outgoing tool remains usable; no new nack API"
     ]
   },
   "commands": "Body messaging only: no new native command protocol. Copilot programmatic controls explicitly unsupported at producer/caller boundary with no legacy/tmux fallback; preserve other harness controls. Native user-driven new/resume/reload is lifecycle input, not remote control.",
@@ -125,5 +132,6 @@
     "daemon": "registry/queue/capability/consent/drain native ownership and additive wire fixtures",
     "extension": "native SDK state machine with protocol fixture adapter and durable acceptance record",
     "installation": "safe setup and real-client harness that consumes actual source/artifacts"
-  }
+  },
+  "test_isolation": "Manual means no Pij identity/preallocation variables or Copilot RPC flags; PIJ_RS_ADDR and PIJ_RS_STATE_DIR endpoint-only overrides and isolated HOME/COPILOT_HOME are permitted for smoke, never the live fleet."
 }

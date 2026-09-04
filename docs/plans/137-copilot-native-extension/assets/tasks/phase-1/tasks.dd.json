@@ -148,7 +148,7 @@
         "tk-0002": [
           {
             "id": "dw-0005",
-            "assertion": "A new Copilot CLI started manually in tmux with no Pij env or RPC flags auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
+            "assertion": "A new Copilot CLI started manually in tmux with no Pij identity/preallocation env or RPC flags (isolated endpoint/state overrides allowed) auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
             "state": "unchecked",
             "pressure": "../../backpressure.dd.json#rows/bp-0002"
           },
@@ -174,7 +174,7 @@
         "tk-0003": [
           {
             "id": "dw-0009",
-            "assertion": "A new Copilot CLI started manually in tmux with no Pij env or RPC flags auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
+            "assertion": "A new Copilot CLI started manually in tmux with no Pij identity/preallocation env or RPC flags (isolated endpoint/state overrides allowed) auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
             "state": "unchecked",
             "pressure": "../../backpressure.dd.json#rows/bp-0002"
           },
@@ -220,7 +220,7 @@
           },
           {
             "id": "dw-0010",
-            "assertion": "A new Copilot CLI started manually in tmux with no Pij env or RPC flags auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
+            "assertion": "A new Copilot CLI started manually in tmux with no Pij identity/preallocation env or RPC flags (isolated endpoint/state overrides allowed) auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
             "state": "unchecked",
             "pressure": "../../backpressure.dd.json#rows/bp-0002"
           },
@@ -248,7 +248,7 @@
         "tk-0007": [
           {
             "id": "dw-0014",
-            "assertion": "A new Copilot CLI started manually in tmux with no Pij env or RPC flags auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
+            "assertion": "A new Copilot CLI started manually in tmux with no Pij identity/preallocation env or RPC flags (isolated endpoint/state overrides allowed) auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
             "state": "unchecked",
             "pressure": "../../backpressure.dd.json#rows/bp-0002"
           },

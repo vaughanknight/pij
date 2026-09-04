@@ -1,0 +1,53 @@
+{
+  "plan": "137-copilot-native-extension",
+  "pm": "pij-grim-gurgeh",
+  "prime": "pij-minor-unicorn",
+  "base": "46c9314c4b97449c33da1c9de2590500b8815702",
+  "contract_commit": "e3e9b6ac5a069a71922ea0ef80a3aa917ac9a32d",
+  "plan_worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension",
+  "coders": {
+    "daemon": {
+      "seat": "pij-grotesque-armadillo",
+      "pane": "%3475",
+      "harness": "omp",
+      "model": "github-copilot/gpt-6-astra-1m",
+      "effort": "high",
+      "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon",
+      "branch": "137-copilot-native-daemon",
+      "packet": "docs/plans/137-copilot-native-extension/assets/packets/coder-daemon.dd.json",
+      "state": "awaiting-numbered-ack"
+    },
+    "runtime": {
+      "seat": "pij-worldwide-rat",
+      "pane": "%3476",
+      "harness": "omp",
+      "model": "github-copilot/gpt-6-astra-1m",
+      "effort": "high",
+      "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime",
+      "branch": "137-copilot-native-runtime",
+      "packet": "docs/plans/137-copilot-native-extension/assets/packets/coder-runtime.dd.json",
+      "state": "awaiting-numbered-ack"
+    },
+    "install": {
+      "seat": "pij-intellectual-mosquito",
+      "pane": "%3477",
+      "harness": "omp",
+      "model": "github-copilot/gpt-6-astra-1m",
+      "effort": "high",
+      "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-install",
+      "branch": "137-copilot-native-install",
+      "packet": "docs/plans/137-copilot-native-extension/assets/packets/coder-install.dd.json",
+      "state": "awaiting-numbered-ack"
+    }
+  },
+  "reviewer": {
+    "seat": "pij-static-rhinoceros",
+    "pane": "%3472",
+    "harness": "omp",
+    "model": "github-copilot/claude-opus-5",
+    "effort": "high",
+    "packet": "docs/plans/137-copilot-native-extension/assets/packets/reviewer.dd.json",
+    "state": "preflight-only; code review after composition"
+  },
+  "canary_evidence": "All peers completed actual nonce reply through native pij_send, model/high confirmed in pane/launch argv. Some incoming replies missing in busy PM conversation; bounded pane capture recovered real reply receipt. Legacy pij canary is TS-registry-only and refused rs seats. No global runtime upgrade."
+}

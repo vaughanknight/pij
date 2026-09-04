@@ -8,7 +8,7 @@
       "value": {
         "title": "Copilot native extension — selected backpressure",
         "plan": "../plan.dd.json#meta",
-        "basis_sha": "184f7de353b001f25bb1268d202c62f43fc6d7f4009a8e42558754d8f3ba9038",
+        "basis_sha": "09d09d0357ca43b8a6bfc371c2df9d87fe04c30af73f6d29f3db28e2a3eb824d",
         "certainty": "Partial"
       }
     },
@@ -27,7 +27,7 @@
         },
         {
           "id": "bp-0002",
-          "criterion": "ac-0002: A new Copilot CLI started manually in tmux with no Pij env or RPC flags auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
+          "criterion": "ac-0002: A new Copilot CLI started manually in tmux with no Pij identity/preallocation env or RPC flags (isolated endpoint/state overrides allowed) auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
           "phase": "ph-66f1",
           "mode": "BUILD",
           "tier": "computational",
