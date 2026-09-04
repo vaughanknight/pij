@@ -66,7 +66,7 @@
   },
 
   "release_request": {
-    "$comment": "Seam (b): POST /v1/release. Appends the `released` event. Releasing an unheld (seat, msg_id) is 200 with held:false — the extension must be free to release optimistically after a restart without a 4xx.",
+    "$comment": "Seam (b): POST /v1/release. Appends the `released` event. Releasing an unheld (seat, msg_id) is 200 with `released: false` — the extension must be free to release optimistically after a restart without a 4xx. (Corrected 2026-09-05 after u2's ack caught this comment saying `held:false`; the response field is `released`, as the sample below always showed.)",
     "method": "POST",
     "path": "/v1/release",
     "body": {
