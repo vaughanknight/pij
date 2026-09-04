@@ -30,6 +30,10 @@ function checkout(names: readonly string[] = ["pij", "todo"]): string {
 	for (const name of names) mkdirSync(join(root, ".pi", "extensions", name), { recursive: true });
 	mkdirSync(join(root, ".omp"), { recursive: true });
 	writeFileSync(join(root, ".omp", "models.yml"), "providers: {}\n");
+	mkdirSync(join(root, ".copilot", "extensions", "pij"), { recursive: true });
+	for (const name of ["extension.mjs", "store.mjs"]) {
+		writeFileSync(join(root, ".copilot", "extensions", "pij", name), "export {};\n");
+	}
 	return root;
 }
 
@@ -171,6 +175,7 @@ describe("link-global", () => {
 		expect(readFileSync(marker, "utf8")).toBe("unchanged\n");
 		expect(existsSync(join(home, ".pi"))).toBe(false);
 		expect(existsSync(join(home, ".omp"))).toBe(false);
+		expect(existsSync(join(home, ".copilot"))).toBe(false);
 	});
 
 	it("check-only validates a canonical checkout without touching HOME", () => {
@@ -181,5 +186,167 @@ describe("link-global", () => {
 		expect(result).toMatchObject({ code: 0, stderr: [] });
 		expect(existsSync(join(home, ".pi"))).toBe(false);
 		expect(existsSync(join(home, ".omp"))).toBe(false);
+		expect(existsSync(join(home, ".copilot"))).toBe(false);
+	});
+});
+
+describe("Copilot managed installation", () => {
+	it("links reviewed modules and enables experimental without replacing unknown settings", () => {
+		const root = checkout();
+		const home = tempDir("pij-copilot-home-");
+		const config = join(home, ".copilot");
+		mkdirSync(config);
+		const settings = join(config, "settings.json");
+		writeFileSync(
+			settings,
+			JSON.stringify({ experimental: false, theme: "light", nested: { keep: 1 } }),
+		);
+		expect(run(root, home).code).toBe(0);
+		expect(readlinkSync(join(config, "extensions", "pij"))).toBe(
+			join(root, ".copilot", "extensions", "pij"),
+		);
+		expect(JSON.parse(readFileSync(settings, "utf8"))).toEqual({
+			experimental: true,
+			theme: "light",
+			nested: { keep: 1 },
+		});
+		const first = readFileSync(settings, "utf8");
+		const inode = lstatSync(settings).ino;
+		expect(run(root, home).code).toBe(0);
+		expect(readFileSync(settings, "utf8")).toBe(first);
+		expect(lstatSync(settings).ino).toBe(inode);
+		expect(run(root, home, ["--doctor-copilot"]).code).toBe(0);
+	});
+
+	it("treats empty COPILOT_HOME as the default, matching shell :- semantics", () => {
+		const root = checkout();
+		const home = tempDir("pij-copilot-empty-");
+		expect(
+			runLinkGlobal({
+				pijRoot: root,
+				home,
+				copilotHome: "",
+				args: [],
+				stdout: () => {},
+				stderr: () => {},
+			}),
+		).toBe(0);
+		expect(JSON.parse(readFileSync(join(home, ".copilot", "settings.json"), "utf8"))).toEqual({
+			experimental: true,
+		});
+	});
+
+	it("honors explicit COPILOT_HOME without touching the default root", () => {
+		const root = checkout();
+		const home = tempDir("pij-copilot-home-");
+		const copilotHome = join(tempDir("pij-copilot-alt-"), "config");
+		const stderr: string[] = [];
+		expect(
+			runLinkGlobal({
+				pijRoot: root,
+				home,
+				copilotHome,
+				args: [],
+				stdout: () => {},
+				stderr: (line) => stderr.push(line),
+			}),
+		).toBe(0);
+		expect(stderr).toEqual([]);
+		expect(existsSync(join(home, ".copilot"))).toBe(false);
+		expect(JSON.parse(readFileSync(join(copilotHome, "settings.json"), "utf8")).experimental).toBe(
+			true,
+		);
+	});
+
+	it.each([
+		"foreign-link",
+		"dangling-link",
+		"directory",
+		"file",
+	])("preserves a %s at the install destination", (kind) => {
+		const root = checkout();
+		const home = tempDir("pij-copilot-home-");
+		const config = join(home, ".copilot");
+		const target = join(config, "extensions", "pij");
+		const foreign = tempDir("foreign-copilot-");
+		mkdirSync(join(config, "extensions"), { recursive: true });
+		if (kind === "directory") mkdirSync(target);
+		else if (kind === "file") writeFileSync(target, "preserve me");
+		else symlinkSync(kind === "dangling-link" ? join(foreign, "absent") : foreign, target);
+		const before = lstatSync(target).ino;
+		const result = run(root, home);
+		expect(result.code).toBe(1);
+		expect(result.stderr.join("\n")).toContain("refusing");
+		expect(lstatSync(target).ino).toBe(before);
+		expect(existsSync(join(config, "settings.json"))).toBe(false);
+	});
+
+	it.each([
+		"{broken",
+		"null",
+		"[]",
+		"true",
+	])("preserves malformed/non-object settings %s without linking", (raw) => {
+		const root = checkout();
+		const home = tempDir("pij-copilot-home-");
+		const config = join(home, ".copilot");
+		mkdirSync(config);
+		writeFileSync(join(config, "settings.json"), raw);
+		expect(run(root, home).code).toBe(1);
+		expect(readFileSync(join(config, "settings.json"), "utf8")).toBe(raw);
+		expect(existsSync(join(config, "extensions", "pij"))).toBe(false);
+	});
+
+	it.each([
+		"root",
+		"extensions",
+		"settings",
+	])("refuses symlinked %s without touching its referent", (kind) => {
+		const root = checkout();
+		const home = tempDir("pij-copilot-home-");
+		const config = join(home, ".copilot");
+		const foreign = tempDir("foreign-copilot-");
+		const marker = join(foreign, "settings.json");
+		writeFileSync(marker, "{}");
+		if (kind === "root") symlinkSync(foreign, config);
+		else {
+			mkdirSync(config);
+			symlinkSync(
+				kind === "settings" ? marker : foreign,
+				join(config, kind === "settings" ? "settings.json" : "extensions"),
+			);
+		}
+		expect(run(root, home).code).toBe(1);
+		expect(readFileSync(marker, "utf8")).toBe("{}");
+		expect(readdirSync(foreign)).toEqual(["settings.json"]);
+	});
+
+	it("migrates only a repo-owned link and unlink preserves experimental settings", () => {
+		const root = checkout();
+		const oldRoot = checkout();
+		const home = tempDir("pij-copilot-home-");
+		const target = join(home, ".copilot", "extensions", "pij");
+		mkdirSync(join(home, ".copilot", "extensions"), { recursive: true });
+		symlinkSync(join(oldRoot, ".copilot", "extensions", "pij"), target);
+		expect(run(root, home).code).toBe(0);
+		expect(readlinkSync(target)).toBe(join(root, ".copilot", "extensions", "pij"));
+		const settings = readFileSync(join(home, ".copilot", "settings.json"), "utf8");
+		expect(run(root, home, ["--remove"]).code).toBe(0);
+		expect(existsSync(target)).toBe(false);
+		expect(readFileSync(join(home, ".copilot", "settings.json"), "utf8")).toBe(settings);
+		expect(run(root, home, ["--remove"]).code).toBe(0);
+	});
+
+	it("doctor is read-only and diagnoses disabled settings and missing modules", () => {
+		const root = checkout();
+		const home = tempDir("pij-copilot-home-");
+		expect(run(root, home, ["--doctor-copilot"]).code).toBe(1);
+		expect(readdirSync(home)).toEqual([]);
+		expect(run(root, home).code).toBe(0);
+		writeFileSync(join(home, ".copilot", "settings.json"), '{"experimental":false}');
+		expect(run(root, home, ["--doctor-copilot"]).stderr.join("\n")).toContain("experimental");
+		writeFileSync(join(home, ".copilot", "settings.json"), '{"experimental":true}');
+		rmSync(join(root, ".copilot", "extensions", "pij", "store.mjs"));
+		expect(run(root, home, ["--doctor-copilot"]).code).toBe(1);
 	});
 });

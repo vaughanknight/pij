@@ -1,0 +1,30 @@
+# Installation unit ACK — plan 137
+
+- Seat: `pij-intellectual-mosquito`; PM: `pij-grim-gurgeh`.
+- Verified root: `/Users/jordanknight/pi-hacking/fs3-copilot-native-install`.
+- Verified branch: `137-copilot-native-install`.
+- Verified HEAD/base: `e3e9b6ac5a069a71922ea0ef80a3aa917ac9a32d`.
+- Actual runtime: OMP, `github-copilot/gpt-6-astra-1m`, configured effort `high`; live process argv observed as `omp --auto-approve --model github-copilot/gpt-6-astra-1m --thinking high`.
+- Read: worktree `plan.dd.md`, `impl-guide.dd.md` (including full installation row), `assets/contracts/native-extension.json`, `assets/backpressure.dd.md`, `assets/inputs/prime-constraints-2026-09-05.md`, and coder packet. C10 applies.
+- State: ACK only. No source edits, source commits, global configuration changes, daemon restarts, or OMP update performed. Waiting for explicit PM GO.
+
+## Numbered execution steps
+
+1. After GO, apply builder implementation discipline and the harness boot/backpressure seam within the assigned fence. Reuse the reported baseline (typecheck passed; file-watch-notify smoke red), not rerun to dispute it. Inspect existing linker/tests/doctor and driver patterns; use actual flowspace3 CLI search/get for meaning questions and LSP references before exported-symbol changes. Record unavailable tools as evidence.
+2. Extend existing link-global behavioral tests before implementation: empty/existing homes, exact repo-owned versus foreign links/real files, malformed settings/root shapes, unknown settings preservation, repeated setup and alternate COPILOT_HOME. Negative witnesses must fail a plausible unsafe overwrite or incorrect path decision.
+3. Extend guarded canonical-main installation, unlink/ownership behavior where applicable, and read-only Copilot doctor. Consume `.copilot/extensions/pij/{extension,store}.mjs`; do not create shipping placeholders. Merge only `experimental:true` into valid settings, preserve unknown keys/foreign artifacts, refuse unsafe paths clearly, and exercise installation only in isolated homes.
+4. Pave `just copilot-native-test` using node:test, `just copilot-native-rust-test` using the five named Cargo packages and worktree-local target, and the native-JS sensor in both `harness checks` and existing self-check inventory. Preserve failure policy, dependencies, and unrelated gates. Run only scoped unit checks during the parallel wave; final gates belong to PM.
+5. Implement `just copilot-native-smoke --mode manual|spawned|both --provider local|real`: actual Copilot CLI, dedicated tmux server, isolated Rust daemon/state/config, process/version/source/build identities, explicit ownership cleanup, and bounded actionable prerequisite failures. Local deterministic provider and real provider remain separately graded. Manual mode launches Copilot directly; spawned mode uses actual Pij spawn. No legacy daemon, flowspace daemon, or global process manipulation.
+6. Exercise the smoke fixture protocol in this tree. The integrated driver must capture unique nonce, Pij msg/job IDs, native message/event IDs, exact process/pane/seat correlation, outgoing pij_send receipt, duplicate suppression, affirmative missing-consumer and typing-held/admitted evidence, and reconnect/lifecycle evidence. Native acceptance is not model completion; no auto-forward of assistant events. Actual integrated smoke awaits PM composition, and fixture results will not be labeled product acceptance.
+7. Update only scoped installation/operation docs and unit receipts. Record actual commands/toolchain/source identity, passing and negative proof, unresolved prerequisites, harness friction, and integration needs in `assets/evidence/install-*`. Commit explicit owned paths with a conventional message; no push/merge. Report SHA plus receipt pointer and remaining integration to PM; do not mark PM ACs complete.
+
+## Interface concerns and proof prerequisites
+
+1. **PM interpretation needed before manual-smoke implementation:** AC-0002 says the manual CLI starts with “no Pij env,” while isolated-daemon testing requires overriding the frozen default `127.0.0.1:7461` via `PIJ_RS_ADDR` (and isolated state via `PIJ_RS_STATE_DIR`, or isolated HOME). Proposed interpretation: manual launch has no Pij identity/preallocation variables (`PIJ_SESSION_ID`, `PIJ_SPAWN_ID`, etc.) and no RPC flags; test-only endpoint/state overrides are permitted solely to isolate transport. If “no Pij env” is literal, an alternate isolation mechanism needs a PM ruling; do not silently use the machine daemon.
+2. **Canonical installer versus worktree smoke:** production guard remains canonical-main-only. Tests and smoke need an explicitly isolated-home fixture path exercising the same installation operations, not a global guard bypass or `just link` from a linked worktree. Implementation will inspect and reuse existing injectable linker patterns; no exception allowing real global writes.
+3. **Native proof observation:** frozen wire specifies native IDs/events and durable acceptance but not a public durable-record path or observation API. Driver will consume actual supported SDK/history/artifacts where available. If exact native acceptance/idle evidence cannot be observed without another unit's interface change, report the precise gap to PM rather than private sibling negotiation or inferred success.
+4. **Composition dependencies:** shipping `.copilot` source and native-capable Rust binary are other units' outputs. Standalone fixture tests are implementable now; integrated native/manual/spawned/consent/reconnect and real-model claims remain unproven until composed artifacts and provider prerequisites exist.
+
+## Fence
+
+Only packet-authorized linker/tests, new `harness/scripts/copilot-native-*`, `justfile`, README, focused Copilot how-to, native-test checks sensor/instructions, and own `assets/evidence/install-*` receipts. No Rust, `.copilot` source, `.pi` source, Cargo.lock/dependency changes, plan/guide/contracts/backpressure, governance, `.the-flow-state.json`, `the-flow.json`, or `the-flow.md` mutations. All repository file operations use absolute paths under the verified root.
