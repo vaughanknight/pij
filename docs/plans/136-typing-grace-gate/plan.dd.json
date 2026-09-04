@@ -1,0 +1,119 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "typing grace gate \u2014 hold delivery while a human is typing",
+        "slug": "typing-grace-gate",
+        "ordinal": 136,
+        "status": "draft",
+        "summary": "Pushed messages to omp/pi seats are held while the human has typed within PIJ_TYPING_GRACE_MS (default 60 s) and delivered once idle; the hold is visible from both ends and control commands bypass it. Claude/send-keys seats move their veto from 'draft present' to the same recent-keystroke rule, retiring plan 134's AC7 pathology."
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Jordan 2026-09-05: 'pij messages to omp seats step on me if I'm already typing. Detect if I typed in the client in the last 1 min and delay; if I don't type for 1 min then step on is fine.' Plan 134 removed the composer veto for omp/pi entirely (extension-stream, delivered 0 s) and left Claude seats keyed on DRAFT PRESENT (queued/human-typing + draft sha), which is what produced 8 min at attempt 101. Recency-of-keystroke is the fact we care about; draft-present was the nearest observable. Design: the pij extension is in-process for omp/pi and can hook editor changes directly (`editor.onChange` \u2192 lastEditAt); RustRuntimeSession.consumePushed claims a pushed row, and if now\u2212lastEditAt < grace it HOLDS (not acked, not injected), shows `\u23f8 N held \u00b7 typing` in the status line, reports the hold to the daemon so `pij state`/tail show `held/human-typing since <t>`, and injects+acks when idle \u2265 grace. Control commands (compact/new/reload) and messages flagged urgent bypass. Claude seats: the interaction gate in crates/harnesses keeps the `human-typing` word but derives it from keystroke recency (pane-signals) with the same grace, so a parked draft stops blocking after one grace. No hard cap (Jordan's rule); observability is the cap. Evidence base vendored: assets/inputs/plan-134-live-proof.md, plan-134-ac-rows.md."
+    },
+    {
+      "name": "goals",
+      "value": [
+        "omp/pi: a pushed message is held while a keystroke happened in the last grace window and delivered within one grace of the last keystroke; order preserved; nothing lost across /new or a daemon restart (held = unacked).",
+        "Both ends can see a hold: recipient status line and sender-visible `pij state <seat>` / tail event with reason and since-timestamp.",
+        "Control commands and urgent messages bypass the hold.",
+        "Claude/send-keys seats: `human-typing` means keystroke within grace, not draft present \u2014 closes plan 134 AC7's failure mode with a bounded, observable rule.",
+        "One knob: PIJ_TYPING_GRACE_MS (default 60000), read by both runtimes from one definition."
+      ]
+    },
+    {
+      "name": "non_goals",
+      "value": [
+        "A maximum hold time (Jordan: no cap; visibility is the control).",
+        "Changing the send-keys transport itself or the UDS socket path for Claude seats.",
+        "Reaping/tombstoning seats; Copilot native extension delivery (plan 137 owns the delivery/mod.rs match arm)."
+      ]
+    },
+    {
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "AC1",
+          "claim": "omp hold then deliver within one grace of the last keystroke",
+          "text": "LIVE: type into an omp seat's composer at t0 (no Enter); `pij send` at t0+5 s \u2192 recipient shows `\u23f8 1 held`, nothing injected; stop typing \u2192 the message is injected at t0+60 s \u00b13 s. Unit: fake clock test in the extension asserts hold at 59 s and inject at 60 s. Paste both.",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC2",
+          "claim": "a parked draft no longer blocks after one grace",
+          "text": "LIVE omp: type a draft, leave it unsubmitted, wait 61 s, send \u2192 delivered (injected) despite non-empty composer. CONTROL on main first shows today's immediate injection (no hold at all) so the test discriminates by content: hold observed in world A, not in world B.",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC3",
+          "claim": "the hold is visible from both ends",
+          "text": "While held: omp status line shows `\u23f8 N held \u00b7 typing`; `pij state <seat>` (and `pij-rs tail`) show a `delivery.held` row with reason=human-typing, msg_id and since; on release a `delivery.released` row. Sender's push receipt is unchanged (delivered/origin=extension-stream at push time is a lie today \u2014 the receipt MUST now read queued/reason=extension-stream until the extension acks). Paste rows.",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC4",
+          "claim": "control commands bypass",
+          "text": "With a hold active, `pij send <seat> --command compact` (and new/reload) is injected immediately; a normal message queued behind it stays held. Unit test + live paste.",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC5",
+          "claim": "nothing lost: held means unacked",
+          "text": "Kill the omp process while 2 messages are held \u2192 after restart/re-register both are redelivered in order (daemon rows were never acked). Daemon restart while held \u2192 same. Paste spine rows.",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC6",
+          "claim": "Claude seats: human-typing = keystroke recency",
+          "text": "LIVE Claude seat: draft typed then idle 61 s \u2192 delivered (was: queued/human-typing indefinitely, plan 134 EEE16F98 shape); keystroke 5 s ago \u2192 queued/human-typing with next_retry_at \u2264 grace. Interaction-gate unit tests updated; the old draft-present-forever behaviour has a RED control.",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC7",
+          "claim": "one grace definition, two runtimes",
+          "text": "PIJ_TYPING_GRACE_MS default 60000 lives in one place (crates/core delivery vocabulary) and the extension reads it from the daemon (/v1/config or the register response, additive) rather than restating the number; a test on each side asserts the value it observed.",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC8",
+          "claim": "gates green, witnesses red-first",
+          "text": "cargo test/clippy/fmt, bun test, harness checks green on the composed branch; every new behavioural test shows a pasted RED on the pre-fix tree.",
+          "state": "unchecked"
+        }
+      ]
+    },
+    {
+      "name": "phases",
+      "value": [
+        {
+          "id": "p1",
+          "title": "Contract, three units, compose, live",
+          "name": "u0 contract \u2192 u1 ext \u2225 u2 daemon \u2225 u3 gate \u2192 compose",
+          "brief": "Freeze the hold/release event shape + grace source (u0, PM); fan out u1 (TS extension sensor+hold queue), u2 (Rust daemon: held/released rows, grace exposure, honest push receipt), u3 (Rust interaction gate recency); compose; live proofs.",
+          "state": "unchecked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
+        }
+      ]
+    }
+  ],
+  "references": [
+    {
+      "id": "ref-134-proof",
+      "path": "assets/inputs/plan-134-live-proof.md",
+      "mode": "pinned",
+      "sha": "sha256:7b847c2c5b23b20991d5f0a914ae97d21d2c2b4882a592f353cdd4d7c57589c7"
+    },
+    {
+      "id": "ref-134-ac",
+      "path": "assets/inputs/plan-134-ac-rows.md",
+      "mode": "pinned",
+      "sha": "sha256:26e7aeda3d9afa1cfd249e7dcf734ca4bd2dc8c3e1e923c1d0f213fbe68d1a88"
+    }
+  ]
+}
