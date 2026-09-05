@@ -131,9 +131,13 @@
   },
   "queue_seam": {
     "$comment": "ADDED 2026-09-05 (PM ruling on u2's evidence, notified to prime). Queue::retry (queue.rs:345-374) updates only `WHERE id = ?1 AND state = 'running'` and deliberately ERRORS on a row nobody claimed, so it can serve /v1/hold (the row is running: the extension claimed it moments earlier) but CANNOT serve /v1/release, whose row is pending-and-deferred. That is a genuine API gap, not a held-state request. ONE additive port method closes it, with NO new stored state and NO schema change — which keeps prime's 'do not teach the store a held state' intact.",
-    "method": "Queue::defer(job: JobId, delay: Duration) -> Result<DeferOutcome>",
+    "method": "Queue::defer(job: JobId, delay: Duration) -> DeferOutcome  ·  Queue::release_deferred(job: JobId) -> ReleaseOutcome",
     "semantics": "Set a LIVE delivery row (pending OR running) to state='pending', worker/claimed_at cleared, not_before = now + delay. ATTEMPT IS NOT INCREMENTED: a hold is not a failed attempt, and inflating attempt would corrupt the backoff and budget logic that reads it. Absent or terminal job -> DeferOutcome::NotLive. AMENDED 2026-09-05 (prime): the routes still answer 200, but the BODY MUST NAME THE NO-OP AND ITS REASON — {held|released: false, noop: true, reason: \"absent\" | \"terminal\"} — because those two states have different meanings for the caller (an absent job on release is a CALLER BUG; a terminal one is benign) and collapsing them into one silent 200 leaves the instrument unable to separate them. Test BOTH branches.",
-    "used_by": "/v1/hold with delay = typing_grace_ms; /v1/release with delay = 0.",
-    "fence": "u2 += crates/core/src/ports.rs, crates/store/src/queue.rs, the testkit queue fake, and those crates' own tests."
+    "used_by": "/v1/hold calls defer(job, typing_grace_ms). /v1/release calls release_deferred(job) — NOT defer(job, 0). AMENDED 2026-09-05 on u2's race analysis: an unconditional defer(job, ZERO) on a DUPLICATE release revokes a claim the extension is currently executing, so its ack then fails and the body can be injected a second time — the exact double delivery this plan exists to prevent, shipped inside the fix. release_deferred is therefore PENDING-ONLY and atomic: it clears not_before on a pending delivery row, leaves a RUNNING row untouched and says so, and never becomes a check-then-mutate (a route that is correct only when nothing else is happening is not correct).",
+    "fence": "u2 += crates/core/src/ports.rs, crates/store/src/queue.rs, the testkit queue fake, and those crates' own tests.",
+    "outcomes": {
+      "defer": "Deferred | NotLive{reason: absent|terminal} — 200 with {held:false, noop:true, reason} on NotLive.",
+      "release_deferred": "Released{recipient,msg_id} | NotDeferred (the row is RUNNING — a live reader owns it; 200 with {released:false, noop:true, reason:'not-deferred'}) | NotLive{reason: absent|terminal} (200 with {released:false, noop:true, reason}). Three distinguishable states, because an absent job is a caller bug, a terminal one is benign, and a running one means the reader already has it — collapsing any of them loses the fact the operator needs."
+    }
   }
 }
