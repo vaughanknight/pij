@@ -3,7 +3,9 @@ use std::time::Duration;
 
 use pij_core::config::{AdapterChoice, Config};
 use pij_core::delivery::delivery_kind;
-use pij_core::model::{Envelope, Harness, Job, JobId, Pane, ProcIdentity, SeatDescriptor, SeatId};
+use pij_core::model::{
+    Envelope, Harness, Job, JobId, Pane, PaneProcess, ProcIdentity, SeatDescriptor, SeatId,
+};
 use pij_testkit::FreshStore;
 use pij_testkit::fakes::{FakeLiveness, FakeTmux};
 use serde_json::{Value, json};
@@ -39,8 +41,10 @@ fn contract_identity() -> (SeatDescriptor, NativeInboxIdentity) {
 }
 
 async fn sqlite_services(store: &FreshStore) -> crate::Services {
-    let mut config = Config::default();
-    config.store_path = store.path();
+    let mut config = Config {
+        store_path: store.path(),
+        ..Default::default()
+    };
     config.adapters.registry = AdapterChoice::Real;
     config.adapters.queue = AdapterChoice::Real;
     config.adapters.spine = AdapterChoice::Real;
@@ -436,6 +440,326 @@ async fn stale_native_ack_cannot_retire_replacement_incarnation_work() {
 }
 
 #[tokio::test]
+async fn native_sqlite_http_new_session_supersedes_seat_without_stranding_new_work() {
+    struct HostFixture {
+        directory: std::path::PathBuf,
+        process: Option<std::process::Child>,
+    }
+
+    impl Drop for HostFixture {
+        fn drop(&mut self) {
+            if let Some(process) = self.process.as_mut() {
+                let _ = process.kill();
+                let _ = process.wait();
+            }
+            let _ = std::fs::remove_dir_all(&self.directory);
+        }
+    }
+
+    // A copied sleep binary is only an OS-observation fixture, not a real
+    // Copilot/SDK session. Registration still checks executable, argv and tuple.
+    let mut host = HostFixture {
+        directory: pij_testkit::fresh_dir("pij-native-rollover-host"),
+        process: None,
+    };
+    let executable = host.directory.join("copilot");
+    std::fs::copy("/bin/sleep", &executable).expect("copy inert host fixture");
+    #[cfg(target_os = "macos")]
+    {
+        // Darwin kills a relocated platform binary until its temp copy is
+        // ad-hoc signed. This uses no signing identity or global keychain state.
+        let signed = std::process::Command::new("/usr/bin/codesign")
+            .args(["--force", "--sign", "-"])
+            .arg(&executable)
+            .output()
+            .expect("inert host fixture requires macOS /usr/bin/codesign");
+        assert!(
+            signed.status.success(),
+            "cannot ad-hoc sign the inert host fixture: {}",
+            String::from_utf8_lossy(&signed.stderr)
+        );
+    }
+    // Retain the long absolute launch path used by real hosts: a short relative
+    // fixture would hide Darwin ps comm truncation from this registration proof.
+    assert!(executable.is_absolute());
+    assert!(executable.as_os_str().len() > 16);
+    host.process = Some(
+        std::process::Command::new(&executable)
+            .arg("60")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("start inert host fixture"),
+    );
+    let process = ProcIdentity {
+        pid: host.process.as_ref().unwrap().id(),
+        proc_start: 1370,
+    };
+    let store = FreshStore::new();
+    let mut services = sqlite_services(&store).await;
+    let (mut first, mut original_identity) = contract_identity();
+    first.proc = Some(process);
+    first.pane = Some("%137".into());
+    original_identity.pid = Some(process.pid);
+    original_identity.proc_start = Some(process.proc_start);
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(process));
+    let tmux = Arc::new(
+        FakeTmux::new()
+            .with_pane(Pane {
+                id: "%137".into(),
+                session: "s".into(),
+                window: "w".into(),
+                title: "native rollover".into(),
+                cursor_x: Some(0),
+                cursor_y: Some(0),
+            })
+            .with_pane_process(
+                "%137",
+                PaneProcess {
+                    pid: process.pid,
+                    cwd: first.folder.clone(),
+                },
+            )
+            .with_attached_tap("%137"),
+    );
+    tmux.arrange_clear_composer("%137");
+    services.tmux = tmux.clone();
+    services.interaction = Arc::new(pij_harnesses::InteractionGate::new(tmux.clone()));
+    services.delivery = Arc::new(
+        DeliveryService::new(
+            services.registry.clone(),
+            services.queue.clone(),
+            services.transport.clone(),
+            services.interaction.clone(),
+            services.event_bus.clone(),
+        )
+        .unwrap(),
+    );
+    let registry = services.registry.clone();
+    let queue = services.queue.clone();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let mut registration = json!({
+        "id": first.id,
+        "harness": "copilot",
+        "harness_session": first.harness_session,
+        "folder": first.folder,
+        "pane": first.pane,
+        "pid": process.pid,
+        "proc_start": process.proc_start,
+        "relay": false,
+        "native_extension_delivery": true,
+    });
+    let registered: Value = client
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("native-key")
+        .json(&registration)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        registered["ok"], true,
+        "first native registration: {registered}"
+    );
+    assert_eq!(registry.get(&first.id).await.unwrap(), Some(first.clone()));
+
+    let sent: Value = client
+        .post(format!("http://{addr}/v1/send"))
+        .bearer_auth("native-key")
+        .json(&json!({
+            "from": "pij-peer", "to": {"seat": first.id},
+            "body": "M1 original native session", "msg_id": "native-rollover-m1",
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(sent["data"]["outcome"]["outcome"], "queued");
+    let (old_job_id, old_job) = queue
+        .peek(&[delivery_kind(&first.id)])
+        .await
+        .unwrap()
+        .expect("M1 remains pending for the original seat");
+    let old_payload: Value = serde_json::from_str(&old_job.payload).unwrap();
+    assert_eq!(
+        old_payload["native_target_session"],
+        original_identity.native_session.as_deref().unwrap()
+    );
+
+    // Normal /new keeps the live host/pane but creates S2/N2 and supersedes S1,
+    // rather than trying to register a different conversation on the same seat.
+    let next_id = SeatId::from("pij-copilot-rollover");
+    let next_identity = NativeInboxIdentity {
+        native_session: Some("user-created-new-native-session".into()),
+        ..original_identity.clone()
+    };
+    registration["id"] = json!(next_id);
+    registration["harness_session"] = json!(next_identity.native_session);
+    registration["supersedes"] = json!(first.id);
+    let registered: Value = client
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("native-key")
+        .json(&registration)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        registered["ok"], true,
+        "checked native supersedes: {registered}"
+    );
+    let successor = registry.get(&next_id).await.unwrap().unwrap();
+    assert_eq!(successor.harness, Harness::Copilot);
+    assert_eq!(successor.proc, first.proc);
+    assert_eq!(successor.pane, first.pane);
+    assert_eq!(successor.harness_session, next_identity.native_session);
+    assert!(successor.native_extension_delivery);
+    assert!(successor.tombstoned_at.is_none());
+    let retired = registry.get(&first.id).await.unwrap().unwrap();
+    assert!(retired.tombstoned_at.is_some());
+    assert!(
+        retired
+            .tombstone_reason
+            .as_deref()
+            .unwrap()
+            .contains(next_id.as_str())
+    );
+    assert!(!retired.native_extension_delivery);
+    assert_eq!(retired.harness_session, original_identity.native_session);
+    let retained = queue
+        .peek(&[delivery_kind(&first.id)])
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(retained.0, old_job_id);
+    assert_eq!(
+        retained.1.payload, old_job.payload,
+        "supersedes must not re-stamp M1"
+    );
+    assert!(queue.claimed_delivery(old_job_id).await.unwrap().is_none());
+
+    let sent: Value = client
+        .post(format!("http://{addr}/v1/send"))
+        .bearer_auth("native-key")
+        .json(&json!({
+            "from": "pij-peer", "to": {"seat": next_id},
+            "body": "M2 new native session", "msg_id": "native-rollover-m2",
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(sent["data"]["outcome"]["outcome"], "queued");
+    let (new_job_id, new_job) = queue
+        .peek(&[delivery_kind(&next_id)])
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(new_job_id, old_job_id);
+    let new_payload: Value = serde_json::from_str(&new_job.payload).unwrap();
+    assert_eq!(
+        new_payload["native_target_session"],
+        next_identity.native_session.as_deref().unwrap()
+    );
+    let admitted: Envelope<Vec<InboxClaim>> = client
+        .get(claim_url(addr, &next_id, &next_identity))
+        .bearer_auth("native-key")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let claims = admitted.data.expect("new seat inbox must be reachable");
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].job_id, new_job_id);
+    assert_eq!(claims[0].message.body, "M2 new native session");
+    assert_eq!(claims[0].message.to, next_id);
+    assert_eq!(claims[0].native_consumer.as_ref(), Some(&next_identity));
+    assert!(queue.claimed_delivery(new_job_id).await.unwrap().is_some());
+    let ack: Value = client
+        .post(format!("http://{addr}/v1/inbox/ack"))
+        .bearer_auth("native-key")
+        .json(&InboxAckRequest {
+            seat: next_id.clone(),
+            job_id: new_job_id,
+            native: next_identity.clone(),
+        })
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        ack["ok"], true,
+        "new native tuple may acknowledge M2: {ack}"
+    );
+    assert_eq!(ack["data"], new_job_id.0);
+    assert!(queue.claimed_delivery(new_job_id).await.unwrap().is_none());
+    assert!(
+        queue
+            .peek(&[delivery_kind(&next_id)])
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let empty: Envelope<Vec<InboxClaim>> = client
+        .get(format!("http://{addr}/v1/inbox"))
+        .bearer_auth("native-key")
+        .query(&[
+            ("seat", next_id.as_str()),
+            ("wait", "false"),
+            (
+                "native_session",
+                next_identity.native_session.as_deref().unwrap(),
+            ),
+            ("pid", &process.pid.to_string()),
+            ("proc_start", &process.proc_start.to_string()),
+        ])
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        empty
+            .data
+            .expect("new native inbox remains usable")
+            .is_empty()
+    );
+    let retained = queue
+        .peek(&[delivery_kind(&first.id)])
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(retained.0, old_job_id);
+    assert_eq!(
+        retained.1.payload, old_job.payload,
+        "M1 stays on S1, not delivered to S2"
+    );
+    assert!(queue.claimed_delivery(old_job_id).await.unwrap().is_none());
+    assert!(tmux.calls().iter().all(|call| !call.starts_with("submit")
+        && !call.starts_with("type")
+        && !call.starts_with("stage")
+        && !call.starts_with("commit")
+        && !call.starts_with("send_keys")));
+    server.abort();
+}
+
+#[tokio::test]
 async fn queued_native_target_holds_different_session_but_allows_same_session_restart() {
     let store = FreshStore::new();
     let services = sqlite_services(&store).await;
@@ -457,6 +781,17 @@ async fn queued_native_target_holds_different_session_but_allows_same_session_re
         stored["native_target_session"],
         original_identity.native_session.as_deref().unwrap()
     );
+    // Seed a long-lived context hold without a timing-sensitive retry loop.
+    // Its attempt count must never turn a wrong-conversation hold into discard.
+    let pool = pij_store::open(&store.path()).await.unwrap();
+    let seeded = sqlx::query("UPDATE jobs SET attempt = ?1 WHERE id = ?2 AND state = 'pending'")
+        .bind(1_000_000_i64)
+        .bind(i64::try_from(job_id.0).unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(seeded.rows_affected(), 1);
+    pool.close().await;
 
     seat.proc = Some(ProcIdentity {
         pid: 13800,
@@ -487,16 +822,17 @@ async fn queued_native_target_holds_different_session_but_allows_same_session_re
             .is_none(),
         "held row returned to pending"
     );
-    assert_eq!(
-        services
-            .queue
-            .peek(&[delivery_kind(&seat.id)])
-            .await
-            .unwrap()
-            .unwrap()
-            .0,
-        job_id
-    );
+    let (retained_id, retained) = services
+        .queue
+        .peek(&[delivery_kind(&seat.id)])
+        .await
+        .unwrap()
+        .expect("a context hold cannot expire or discard the queued body");
+    assert_eq!(retained_id, job_id);
+    assert!(retained.attempt >= 1_000_000);
+    assert_eq!(retained.payload, queued.payload);
+    let retained_payload: Value = serde_json::from_str(&retained.payload).unwrap();
+    assert_eq!(retained_payload["body"], "original session work");
 
     // Resuming the original native session in a NEW process is permitted.
     seat.harness_session = original_identity.native_session.clone();
@@ -513,6 +849,7 @@ async fn queued_native_target_holds_different_session_but_allows_same_session_re
         .claims;
     assert_eq!(claims.len(), 1);
     assert_eq!(claims[0].job_id, job_id);
+    assert_eq!(claims[0].message.body, "original session work");
     assert_eq!(claims[0].native_consumer.as_ref(), Some(&resumed));
     services
         .delivery
