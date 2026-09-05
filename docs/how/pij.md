@@ -240,7 +240,7 @@ neither current nor old prime. See [pij prime](./pij-prime.md#registry-designati
   after their injection/`onInbound` outcome. Pull consumers claim the same marker
   contract, so all delivery modes skip marked history after restart or reload.
 - **Raw body, framed once on receipt.** `pij send w3 "hi"` writes the raw text; the
-  *receiver* frames it as `[pij from <senderId>] hi` when it injects — so a reply
+  *receiver* frames it as `[pij-rs from <senderId>]\nhi\n[/pij]` when it injects — so a reply
   needs no lookup (the sender id is right there).
 - **The safe body channel — use it for anything you did not author.**
   `pij send <id> "<text>"` is a double-quoted **shell** argument. When the body is
