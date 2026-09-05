@@ -8,7 +8,7 @@
       "value": {
         "title": "Copilot native extension — selected backpressure",
         "plan": "../plan.dd.json#meta",
-        "basis_sha": "a526f5c7e5a9b0b15fce077ba71a0ad96de06d4ae141beadaf9e28bb9a5b7316",
+        "basis_sha": "73935fcc418e800dfd793c5e643c98ed206e6ac44b62b6c76d08bfc60dbe6522",
         "certainty": "Partial"
       }
     },
@@ -44,8 +44,9 @@
           "mode": "BUILD",
           "tier": "computational",
           "proof": "BUILD just copilot-native-smoke --mode spawned --provider local and real. Actual Pij-spawned Copilot same installation, exact preallocated identity and one initial task; observed outgoing native tool reply. Extend Rust spawn/register tests.",
-          "state": "unchecked",
-          "note": "Selection, not completed proof. No numeric confidence score."
+          "state": "checked",
+          "note": "Selection, not completed proof. No numeric confidence score.",
+          "receipt": "pm-native-spawned-probe-02.json passed: actual daemon spawn/preallocation and native same-seat binding, initial task queued before bind wait and received once, native reply with immutable spawned identity, second native receive. Existing --yolo launch policy observed; keyless preauthorized tool execution independently checked, not fabricated human approval. Scoped probe excludes typing/lifecycle; those remain separate criteria."
         },
         {
           "id": "bp-0004",
@@ -85,8 +86,9 @@
           "mode": "EXTEND",
           "tier": "computational",
           "proof": "Extend Rust incarnation/supersedes tests and native JS reconnect/abort/new-session tests; real isolated daemon restart/key rotation and native rollover witness. just copilot-native-rust-test and just copilot-native-test, then native smoke. Opt-in cross-language proof is paved as just copilot-native-contract-test: actual chooseRegistration/FileJournal with real Rust HTTP/SQLite; missing Node/module/platform fails the named invocation. Default Rust-only tests intentionally ignore this extra-language case.",
-          "state": "unchecked",
-          "note": "Selection, not completed proof. No numeric confidence score."
+          "state": "checked",
+          "note": "Selection, not completed proof. No numeric confidence score.",
+          "receipt": "Actual scoped native lifecycle probes passed: pm-native-lifecycle-probe-03.json (manual /new, old-context exclusion/revocation, whole-host owned-pane teardown with real ESRCH, same native/Pij identity on fresh --resume with new proc tuple, subsequent delivery) and pm-native-spawned-lifecycle-01.json (spawned /new preserves spawn correlation, old context excluded). Reconnect/key rotation independently passed local09. Native /exit submission is not mislabelled whole-host death; teardown and ESRCH are separate witnesses. No private abort signal/model-completion claim."
         },
         {
           "id": "bp-0008",

@@ -70,9 +70,10 @@ Two layers:
 - **The daemon switchboard (cross-harness).** A single-instance daemon
   (`pij daemon start|status|stop|kill`) spawns and binds sessions across
   heterogeneous harnesses (`pij spawn --harness pi|claude|copilot|codex`). The
-  **transport seam** is harness-specific: `pi` is driven via an in-process
-  inbox; `claude` / `copilot` / `codex` are driven via tmux send-keys. This is
-  how an orchestrator reaches a worker that isn't even a pi session.
+  **transport seam** is harness-specific: Pi/OMP use their in-process receivers;
+  new Copilot sessions use the [native user extension](copilot-native-extension.md);
+  other harnesses use daemon-selected transports. Copilot's tmux pane remains a
+  presentation and consent-observation surface, never its message transport.
 
 → Full depth: [`pij.md`](pij.md) (CLI reference, message + receipt protocol,
 remote session control, the event stream, parent/worker workflow). The

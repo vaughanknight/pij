@@ -62,8 +62,9 @@
         {
           "id": "ac-0003",
           "claim": "A Pij-spawned new Copilot session uses the same installed extension, binds the preallocated seat/spawn correlation exactly once, receives initial task once, and sends replies with the same Pij identity.",
-          "state": "unchecked",
-          "pressure": "assets/backpressure.dd.json#rows/bp-0003"
+          "state": "checked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0003",
+          "receipt": "pm-native-spawned-probe-02.json passed: actual daemon spawn/preallocation and native same-seat binding, initial task queued before bind wait and received once, native reply with immutable spawned identity, second native receive. Existing --yolo launch policy observed; keyless preauthorized tool execution independently checked, not fabricated human approval. Scoped probe excludes typing/lifecycle; those remain separate criteria."
         },
         {
           "id": "ac-0004",
@@ -88,8 +89,10 @@
         {
           "id": "ac-0007",
           "claim": "Reconnect/key rotation, extension reload/native session rollover and old-process replacement cancel stale consumers, maintain correct identity and do not route old work into a different native session; native idle/event evidence stays separate from acceptance.",
-          "state": "unchecked",
-          "pressure": "assets/backpressure.dd.json#rows/bp-0007"
+          "state": "checked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0007",
+          "note": "All named lifecycle classes have actual client evidence. Scoped probes do not replace the final complete driver run, which remains required for overall acceptance.",
+          "receipt": "Actual scoped native lifecycle probes passed: pm-native-lifecycle-probe-03.json (manual /new, old-context exclusion/revocation, whole-host owned-pane teardown with real ESRCH, same native/Pij identity on fresh --resume with new proc tuple, subsequent delivery) and pm-native-spawned-lifecycle-01.json (spawned /new preserves spawn correlation, old context excluded). Reconnect/key rotation independently passed local09. Native /exit submission is not mislabelled whole-host death; teardown and ESRCH are separate witnesses. No private abort signal/model-completion claim."
         },
         {
           "id": "ac-0008",

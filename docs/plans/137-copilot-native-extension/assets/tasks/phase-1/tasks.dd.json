@@ -72,9 +72,9 @@
         {
           "id": "tk-0005",
           "title": "Managed installation and doctor",
-          "state": "unchecked",
+          "state": "checked",
           "success": "Canonical-main install/link/update surfaces install reviewed artifact into resolved Copilot home, merge experimental setting safely, preserve foreign paths and user values, expose clear doctor result; isolated-home tests prove repeatability.",
-          "notes": "installation; see impl-guide unit fence and assets/contracts/native-extension.json",
+          "notes": "Managed installation/doctor proven by PM33 installer tests and actual isolated manual/spawned auto-load receipts (real-canary04, spawned-probe02). All linked AC1/2/3 assertions checked; no global rollout.",
           "satisfies": [
             "../../../plan.dd.json#acceptance_criteria/ac-0001",
             "../../../plan.dd.json#acceptance_criteria/ac-0002",
@@ -155,8 +155,9 @@
           {
             "id": "dw-0006",
             "assertion": "A Pij-spawned new Copilot session uses the same installed extension, binds the preallocated seat/spawn correlation exactly once, receives initial task once, and sends replies with the same Pij identity.",
-            "state": "unchecked",
-            "pressure": "../../backpressure.dd.json#rows/bp-0003"
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0003",
+            "receipt": "pm-native-spawned-probe-02.json passed: actual daemon spawn/preallocation and native same-seat binding, initial task queued before bind wait and received once, native reply with immutable spawned identity, second native receive. Existing --yolo launch policy observed; keyless preauthorized tool execution independently checked, not fabricated human approval. Scoped probe excludes typing/lifecycle; those remain separate criteria."
           },
           {
             "id": "dw-0007",
@@ -197,8 +198,9 @@
           {
             "id": "dw-000c",
             "assertion": "A Pij-spawned new Copilot session uses the same installed extension, binds the preallocated seat/spawn correlation exactly once, receives initial task once, and sends replies with the same Pij identity.",
-            "state": "unchecked",
-            "pressure": "../../backpressure.dd.json#rows/bp-0003"
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0003",
+            "receipt": "pm-native-spawned-probe-02.json passed: actual daemon spawn/preallocation and native same-seat binding, initial task queued before bind wait and received once, native reply with immutable spawned identity, second native receive. Existing --yolo launch policy observed; keyless preauthorized tool execution independently checked, not fabricated human approval. Scoped probe excludes typing/lifecycle; those remain separate criteria."
           },
           {
             "id": "dw-000d",
@@ -209,8 +211,9 @@
           {
             "id": "dw-000e",
             "assertion": "Reconnect/key rotation, extension reload/native session rollover and old-process replacement cancel stale consumers, maintain correct identity and do not route old work into a different native session; native idle/event evidence stays separate from acceptance.",
-            "state": "unchecked",
-            "pressure": "../../backpressure.dd.json#rows/bp-0007"
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0007",
+            "receipt": "Actual scoped native lifecycle probes passed: pm-native-lifecycle-probe-03.json (manual /new, old-context exclusion/revocation, whole-host owned-pane teardown with real ESRCH, same native/Pij identity on fresh --resume with new proc tuple, subsequent delivery) and pm-native-spawned-lifecycle-01.json (spawned /new preserves spawn correlation, old context excluded). Reconnect/key rotation independently passed local09. Native /exit submission is not mislabelled whole-host death; teardown and ESRCH are separate witnesses. No private abort signal/model-completion claim."
           },
           {
             "id": "dw-001e",
@@ -237,8 +240,9 @@
           {
             "id": "dw-0011",
             "assertion": "A Pij-spawned new Copilot session uses the same installed extension, binds the preallocated seat/spawn correlation exactly once, receives initial task once, and sends replies with the same Pij identity.",
-            "state": "unchecked",
-            "pressure": "../../backpressure.dd.json#rows/bp-0003"
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0003",
+            "receipt": "pm-native-spawned-probe-02.json passed: actual daemon spawn/preallocation and native same-seat binding, initial task queued before bind wait and received once, native reply with immutable spawned identity, second native receive. Existing --yolo launch policy observed; keyless preauthorized tool execution independently checked, not fabricated human approval. Scoped probe excludes typing/lifecycle; those remain separate criteria."
           }
         ],
         "tk-0006": [
@@ -266,8 +270,9 @@
           {
             "id": "dw-0015",
             "assertion": "A Pij-spawned new Copilot session uses the same installed extension, binds the preallocated seat/spawn correlation exactly once, receives initial task once, and sends replies with the same Pij identity.",
-            "state": "unchecked",
-            "pressure": "../../backpressure.dd.json#rows/bp-0003"
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0003",
+            "receipt": "pm-native-spawned-probe-02.json passed: actual daemon spawn/preallocation and native same-seat binding, initial task queued before bind wait and received once, native reply with immutable spawned identity, second native receive. Existing --yolo launch policy observed; keyless preauthorized tool execution independently checked, not fabricated human approval. Scoped probe excludes typing/lifecycle; those remain separate criteria."
           },
           {
             "id": "dw-0016",
@@ -285,8 +290,9 @@
           {
             "id": "dw-0018",
             "assertion": "Reconnect/key rotation, extension reload/native session rollover and old-process replacement cancel stale consumers, maintain correct identity and do not route old work into a different native session; native idle/event evidence stays separate from acceptance.",
-            "state": "unchecked",
-            "pressure": "../../backpressure.dd.json#rows/bp-0007"
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0007",
+            "receipt": "Actual scoped native lifecycle probes passed: pm-native-lifecycle-probe-03.json (manual /new, old-context exclusion/revocation, whole-host owned-pane teardown with real ESRCH, same native/Pij identity on fresh --resume with new proc tuple, subsequent delivery) and pm-native-spawned-lifecycle-01.json (spawned /new preserves spawn correlation, old context excluded). Reconnect/key rotation independently passed local09. Native /exit submission is not mislabelled whole-host death; teardown and ESRCH are separate witnesses. No private abort signal/model-completion claim."
           },
           {
             "id": "dw-0019",

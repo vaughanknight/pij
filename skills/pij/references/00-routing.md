@@ -12,8 +12,8 @@ All probes are deterministic files/commands; remember nothing between calls.
 | B | Live fleet roster | that same newest `run.json` → `roster.<role>.{pijId, spawnedByUs}`; liveness per id via `pij state <id>` or presence of `~/.pij/<id>.json` | `pair` reattach (live) or `ops` heal/teardown (dead, spawnedByUs) |
 | C | Active the-flow mid-build | newest `docs/plans/*/the-flow.json` → `harness flow nav show --path <it>`; `data.nav.now`/`next` on a phase/review node | offer `pair` dispatch for that phase |
 | D | Daemon alive | `pij daemon status` | down + any spawn intent → `ops` boot first (spawn also auto-starts it) |
-| E | Delivery owner | in-process `pij_spawn` callable → pi push; else exact non-empty `$TMUX_PANE` → tmux push; else empty/absent `TMUX_PANE` → external pull | detect before self-registration advice; `peer` uses the matching identity and receive path in C1/C7 |
-| F | Self registration | after E: pi is already owned; tmux may probe `pij whoami`; external runs `pij inbox register --json` first | tmux adopts only exact `$TMUX_PANE`; external registration repairs stale push attachment before any other identity/view action (C1) |
+| E | Delivery owner | Copilot's native `pij_send` callable → native Copilot; else in-process `pij_spawn` callable → pi/omp push; else exact non-empty `$TMUX_PANE` → tmux push; otherwise external pull where supported | detect before self-registration advice; native Copilot never falls back to CLI pull or sendkeys |
+| F | Self registration | after E: native extensions already own registration; remaining tmux peers may probe `pij whoami`; supported external peers register their inbox first | never re-adopt an extension-owned seat to repair delivery; follow its native diagnostics |
 
 **Precedence**: A > B > C > D/F (D/F are preconditions folded into whichever route wins, not destinations). Nothing matches → ask the job in one line, listing the registry.
 
@@ -25,7 +25,9 @@ Cited by route modules as "§ C*n*" — prose lives here only.
 
 ### C1 — Harness and delivery modes
 
-Delivery-owner detection happens before any self-registration advice. Detect **once per run**, in order: callable in-process `pij_spawn` → **pi push mode**; otherwise exact non-empty `$TMUX_PANE` → **tmux control-plane push mode**; otherwise empty or absent `TMUX_PANE` → **external pull mode**. Pi injects in-process. Tmux peers use the CLI plus daemon/send-keys. External Claude/Copilot/Codex sessions have no pane for the daemon to inject, so they receive through the durable inbox CLI.
+Delivery-owner detection happens before self-registration advice. A Copilot session exposing the native `pij_send` tool is **native-extension-owned**: registration and receipt injection are automatic, so do not adopt it or start a competing CLI inbox consumer. Missing native capability queues/refuses, never sendkeys. Copilot programmatic compact/new/reload are unsupported; use native human lifecycle controls, not typed-message fallbacks. Its consent sensor still requires a supported pane unless the operator explicitly disables typing grace.
+
+For the remaining modes, detect once per run: callable in-process `pij_spawn` → **pi/omp push**; otherwise exact non-empty `$TMUX_PANE` → **tmux control-plane push**; otherwise **external pull** where supported. Pi/OMP inject in-process; other harnesses use daemon-selected transports. The table below covers these remaining modes, not native Copilot ownership.
 
 | Intent | pi push | tmux control-plane push | external pull |
 |---|---|---|---|
