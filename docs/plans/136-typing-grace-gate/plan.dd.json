@@ -71,7 +71,7 @@
         {
           "id": "AC6",
           "claim": "Claude seats: human-typing = keystroke recency",
-          "text": "LIVE Claude seat: draft typed then idle 61 s → delivered (was: queued/human-typing indefinitely, plan 134 EEE16F98 shape); keystroke 5 s ago → queued/human-typing with next_retry_at ≤ grace. Interaction-gate unit tests updated; the old draft-present-forever behaviour has a RED control.",
+          "text": "LIVE Claude seat: draft typed then idle 61 s -> delivered (was: queued/human-typing indefinitely, plan 134 EEE16F98 shape); an edit 5 s ago -> queued/human-typing with next_retry_at <= grace. Interaction-gate unit tests updated; the old draft-present-forever behaviour has a RED control. WORDING AMENDED 2026-09-05 (prime ruling on u3's assumption 1): the gate's evidence is OBSERVED EDIT RECENCY — composer content sampled at the pane observer's 600 ms interval — not raw key events, so a keypress that changes nothing observable (arrow keys, a menu) does not refresh the grace. The plan said 'keystroke' and the implementation honestly cannot see keystrokes; the claim is narrowed to what the instrument actually measures rather than the code being credited with more than it does.",
           "state": "unchecked"
         },
         {
