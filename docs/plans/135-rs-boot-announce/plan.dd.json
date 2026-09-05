@@ -6,7 +6,7 @@
     {
       "name": "meta",
       "value": {
-        "title": "rs boot announce \u2014 seats know who they are again",
+        "title": "rs boot announce — seats know who they are again",
         "slug": "rs-boot-announce",
         "ordinal": 135,
         "status": "draft",
@@ -15,7 +15,7 @@
     },
     {
       "name": "summary",
-      "value": "Since c048ebc2 (2026-08-30, rs cutover) every omp/pi seat boots pij-blind: PijSession.boot injects announceText only when `fresh = registry.read(id)===null || dissolved`, and RustRuntimeSession.boot seeds every rs seat row (never reaped) into that registry BEFORE calling session.boot \u2014 so the chosen id always pre-exists (spawn pre-mints it; hand-started seats reuse by pane/process/PIJ_SESSION_ID). Last announce on disk: 2026-08-28. Live proof + mechanism: assets/inputs/diagnosis-2026-09-05.md. Fix: the daemon is the only party that knows whether /v1/register CREATED a row, RE-BOUND an existing id to a new process, or refreshed the same process; it returns that as an additive `binding` field, the TS client passes it through, and PijSession.boot accepts an explicit `fresh` override. Legacy path untouched."
+      "value": "Since c048ebc2 (2026-08-30, rs cutover) every omp/pi seat boots pij-blind: PijSession.boot injects announceText only when `fresh = registry.read(id)===null || dissolved`, and RustRuntimeSession.boot seeds every rs seat row (never reaped) into that registry BEFORE calling session.boot — so the chosen id always pre-exists (spawn pre-mints it; hand-started seats reuse by pane/process/PIJ_SESSION_ID). Last announce on disk: 2026-08-28. Live proof + mechanism: assets/inputs/diagnosis-2026-09-05.md. Fix: the daemon is the only party that knows whether /v1/register CREATED a row, RE-BOUND an existing id to a new process, or refreshed the same process; it returns that as an additive `binding` field, the TS client passes it through, and PijSession.boot accepts an explicit `fresh` override. Legacy path untouched."
     },
     {
       "name": "goals",
@@ -23,7 +23,8 @@
         "A spawned omp seat (pij-rs spawn --harness omp --bin omp) receives announceText as its first injected turn.",
         "A hand-started omp seat that reuses its id (same pane / same PIJ_SESSION_ID) still announces on the first session_start of a NEW process.",
         "/new, /fork, reload on a live seat do not announce twice (the original 'exactly one inject at boot' rule survives).",
-        "The rs register contract carries the fact additively (`binding: created|rebound|same`), shared by both runtimes through one golden fixture."
+        "The rs register contract carries the fact additively (`binding: created|rebound|same`), shared by both runtimes through one golden fixture.",
+        "One wire frame across harnesses: an omp/pi seat renders an inbound peer message exactly as the daemon frames it for a Claude seat."
       ]
     },
     {
@@ -40,37 +41,55 @@
         {
           "id": "AC1",
           "claim": "spawned omp seat announces on first boot",
-          "text": "LIVE on the rs daemon: `pij-rs spawn --harness omp --bin omp` \u2192 the seat's first injected user turn is announceText (`You are pij session <id> \u2026`), captured from the omp session jsonl AND the pane; the spine shows seat.put then the announce inject. CONTROL first on main 46c9314c: same gesture, no announce (paste both).",
-          "state": "unchecked"
+          "text": "LIVE on the rs daemon: `pij-rs spawn --harness omp --bin omp` → the seat's first injected user turn is announceText (`You are pij session <id> …`), captured from the omp session jsonl AND the pane; the spine shows seat.put then the announce inject. CONTROL first on main 46c9314c: same gesture, no announce (paste both).",
+          "state": "checked",
+          "receipt": "live-proof.md § AC1: pij-used-tarsier, session 01a06eee-3434-7000-87d9-9f72460f91b7, exactly 1 announce in its own jsonl + pane; control 09:20 no announce, no jsonl"
         },
         {
           "id": "AC2",
           "claim": "hand-started seat with a reused id announces on a new process",
           "text": "Start omp by hand in a tmux pane whose id already carries an rs seat row (or with PIJ_SESSION_ID set to an existing idle seat): register returns binding=rebound (proc changed) and the announce fires once. Paste register response + session jsonl.",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "live-proof.md § AC2: pij-troubled-wildebeest re-bound pid 66036(dead)->62414, announce fired once (1 match in new session jsonl)"
         },
         {
           "id": "AC3",
           "claim": "no double announce on /new, /fork or reload",
           "text": "On a live seat run /new then /reload: register returns binding=same for the reload and exactly one announce exists per NEW pi session id; rust-runtime.test.ts asserts inject(announceText) count per reason.",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "live-proof.md § AC3 (claim amended by prime): /new + /reload cause NO re-registration (one seat.put, spine seq 7811) hence no second announce; binding=same proven at the wire and by u2 fixture witnesses"
         },
         {
           "id": "AC4",
           "claim": "register contract is additive and shared",
-          "text": "`/v1/register` response gains `binding` (created|rebound|same) with no renamed or removed field; one golden fixture docs/plans/135-rs-boot-announce/assets/contracts/register-response.json is deserialized by a Rust test (crates/daemon) AND parsed by a TS test (core/daemon-wire) \u2014 both cite the same file path in their source.",
-          "state": "unchecked"
+          "text": "`/v1/register` response gains `binding` (created|rebound|same) with no renamed or removed field; one golden fixture docs/plans/135-rs-boot-announce/assets/contracts/register-response.json is deserialized by a Rust test (crates/daemon) AND parsed by a TS test (core/daemon-wire) — both cite the same file path in their source.",
+          "state": "checked",
+          "receipt": "assets/contracts/register-response.json read by both suites: u1 http tests compare parsed serde_json::Value against it; u2 parses it for the fake client. Field additive, nothing renamed."
         },
         {
           "id": "AC5",
           "claim": "the witness was red before it was green",
           "text": "The new rs-path announce test is run against the pre-fix tree first and its failing output is pasted (witness-never-failed rule); then green on the fix.",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "RED excerpts: u1 3 fixture comparisons FAILED + spawned-placeholder left Null right rebound + store E0599; u2 5 behavioral failures. Then green."
         },
         {
           "id": "AC6",
           "claim": "legacy path and full gates untouched",
           "text": "core/session.test.ts unchanged and green; `harness checks` green; `cargo test --workspace`, clippy -D warnings, fmt --check green on the composed branch; outputs pasted.",
+          "state": "checked",
+          "receipt": "Composed branch: harness checks --quick all 7 sensors pass; cargo clippy -D warnings + fmt --check clean; core/session.test.ts unchanged; workspace green apart from one pij-sidecars load artifact passing 10/10 quiet"
+        },
+        {
+          "id": "AC7",
+          "claim": "a Claude seat adopted by pane binds to its claude process and receives over the socket, never pointer-drain",
+          "text": "Control first on today's daemon (pointer-drain job observed). After u3: adopt a Claude seat; `pij-rs state` shows the CLAUDE pid (not the pane shell); /tmp/cc-socks/<pid>.sock exists; a send lands with outcome delivered / origin=injected-to-transport and NO pointer-drain job. Existing rows are not rewritten — a re-adopt fixes a seat.",
+          "state": "unchecked"
+        },
+        {
+          "id": "AC8",
+          "claim": "omp/pi seats render inbound peer messages with the rs frame and still parse the legacy one",
+          "text": "The extension renders `[pij-rs from <id>]` head and `[/pij]` tail, identical to what the daemon frames for Claude seats (crates/core/src/framing.rs RUST_HEAD/TAIL), AND still PARSES the legacy `[pij from <id>] …` head. RED first: a test pinning the old head must fail on the new tree. LIVE: one message to a spawned omp seat captured from its session jsonl showing both head and tail. Rationale: Jordan read the legacy head as the old system — a live-generation message that renders like a dead-generation one is an observability defect at the same altitude as the boot announce.",
           "state": "unchecked"
         }
       ]
@@ -81,7 +100,7 @@
         {
           "id": "p1",
           "title": "Contract, then units, then live proof",
-          "name": "u0 contract \u2192 u1 rust \u2225 u2 ts \u2192 compose + live",
+          "name": "u0 contract → u1 rust ∥ u2 ts → compose + live",
           "brief": "Freeze the binding vocabulary and golden fixture (u0, PM), fan out u1 (Rust: store insert/rebind detection + register response) and u2 (TS: pass-through + fresh override + RED-first test), compose, then the live spawn proof.",
           "state": "unchecked",
           "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
@@ -91,9 +110,7 @@
   ],
   "references": [
     {
-      "id": "ref-diag",
       "path": "assets/inputs/diagnosis-2026-09-05.md",
-      "note": "mechanism + live proof, vendored from prime's memory",
       "sha": "sha256:ee58ff177c48ce682e293095a4b0dc68040debdabe21b1ee808a08e378688f47",
       "mode": "pinned"
     }
