@@ -99,6 +99,7 @@ enum Endpoint {
     Revive,
     Send,
     Inbox,
+    InboxTyping,
     InboxAck,
     Hold,
     Release,
@@ -145,13 +146,14 @@ enum Endpoint {
 }
 
 impl Endpoint {
-    const ALL: [Self; 21] = [
+    const ALL: [Self; 22] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
         Self::Revive,
         Self::Send,
         Self::Inbox,
+        Self::InboxTyping,
         Self::InboxAck,
         Self::Hold,
         Self::Release,
@@ -177,6 +179,7 @@ impl Endpoint {
             Self::Revive => "/v1/revive",
             Self::Send => "/v1/send",
             Self::Inbox => "/v1/inbox",
+            Self::InboxTyping => "/v1/inbox/typing",
             Self::InboxAck => "/v1/inbox/ack",
             Self::Hold => "/v1/hold",
             Self::Release => "/v1/release",
@@ -214,9 +217,12 @@ impl Endpoint {
             Self::Adopt | Self::Whoami | Self::Phonehome => Method::POST,
             Self::State => Method::POST,
             Self::ShimSend | Self::ShimInbox | Self::ShimInboxAck => Method::POST,
-            Self::Health | Self::Inbox | Self::Seats | Self::Events | Self::ShimSessions => {
-                Method::GET
-            }
+            Self::Health
+            | Self::Inbox
+            | Self::InboxTyping
+            | Self::Seats
+            | Self::Events
+            | Self::ShimSessions => Method::GET,
         }
     }
 }
@@ -336,6 +342,7 @@ fn router_with_optional_federation(
             Endpoint::Revive => router.route(endpoint.path(), post(revive_seat)),
             Endpoint::Send => router.route(endpoint.path(), post(send)),
             Endpoint::Inbox => router.route(endpoint.path(), get(inbox)),
+            Endpoint::InboxTyping => router.route(endpoint.path(), get(inbox_typing)),
             Endpoint::InboxAck => router.route(endpoint.path(), post(ack_inbox)),
             Endpoint::Hold => router.route(endpoint.path(), post(hold_inbox)),
             Endpoint::Release => router.route(endpoint.path(), post(release_inbox)),
@@ -1346,6 +1353,35 @@ async fn inbox(State(state): State<AppState>, Query(query): Query<InboxQuery>) -
     };
     match result {
         Ok(page) => native_inbox_response(page),
+        Err(error) => inbox_failure(error),
+    }
+}
+
+#[derive(Deserialize)]
+struct InboxTypingQuery {
+    seat: SeatId,
+    native_session: Option<String>,
+    pid: Option<u32>,
+    proc_start: Option<u64>,
+}
+
+/// Observe native typing without claiming, deferring, releasing, or acknowledging work.
+async fn inbox_typing(
+    State(state): State<AppState>,
+    Query(query): Query<InboxTypingQuery>,
+) -> Response {
+    let identity = crate::delivery::NativeInboxIdentity {
+        native_session: query.native_session,
+        pid: query.pid,
+        proc_start: query.proc_start,
+    };
+    match state
+        .services
+        .delivery
+        .native_typing_snapshot(&query.seat, &identity, state.typing_grace_ms)
+        .await
+    {
+        Ok(snapshot) => envelope(StatusCode::OK, &Envelope::ok("pij inbox", snapshot)),
         Err(error) => inbox_failure(error),
     }
 }

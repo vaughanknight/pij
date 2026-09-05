@@ -32,6 +32,7 @@ const descriptor = {
 	pane: registration.pane,
 	proc: { pid: registration.pid, proc_start: registration.proc_start },
 	native_extension_delivery: true,
+	typing_grace_ms: 60000,
 };
 const claim = {
 	job_id: 137,
@@ -53,6 +54,31 @@ const tuple = {
 	pid: registration.pid,
 	proc_start: registration.proc_start,
 };
+function observedTyping(overrides = {}, consumer = tuple) {
+	return {
+		state: "observed",
+		native_consumer: {
+			native_session: consumer.native_session,
+			pid: consumer.pid,
+			proc_start: consumer.proc_start,
+		},
+		typing_grace_ms: 60000,
+		observed_at_ms: 100000,
+		retry_after_ms: 0,
+		semantic_hold: false,
+		source: "pane-observed-edit-recency",
+		...overrides,
+	};
+}
+function unavailableTyping(overrides = {}) {
+	const { retry_after_ms, source, ...snapshot } = observedTyping();
+	return {
+		...snapshot,
+		state: "unavailable",
+		reason: "native-typing-sensor-unavailable",
+		...overrides,
+	};
+}
 const unavailableRefusal = {
 	ok: false,
 	v: 2,
@@ -101,6 +127,12 @@ function fixture(overrides = {}) {
 		},
 	};
 	const client = {
+		heldJobs: new Set(),
+		async typingSnapshot(consumer, signal) {
+			assert.equal(signal.aborted, false);
+			trace.push("typing");
+			return observedTyping({}, consumer);
+		},
 		async claimInbox(consumer, signal) {
 			const query = new URLSearchParams({ ...consumer, wait: "true" });
 			return { claims: await this.request(`/v1/inbox?${query}`, undefined, signal), hold: null };
@@ -125,6 +157,17 @@ function fixture(overrides = {}) {
 				trace.push("ack");
 				assert.deepEqual(body, { ...tuple, job_id: claim.job_id });
 				return claim.job_id;
+			}
+			if (path === "/v1/hold") {
+				trace.push("hold");
+				client.heldJobs.add(body.job_id);
+				return { msg_id: body.msg_id, held: true };
+			}
+			if (path === "/v1/release") {
+				trace.push("release");
+				return client.heldJobs.delete(body.job_id)
+					? { msg_id: body.msg_id, released: true }
+					: { msg_id: body.msg_id, released: false, noop: true, reason: "not-deferred" };
 			}
 			if (path === "/v1/send") {
 				trace.push("outgoing");
@@ -164,13 +207,15 @@ test("acceptance is persisted before tuple-bound acknowledgement, not model comp
 	await f.accepted.promise;
 	f.bridge.stop();
 	await run;
-	assert.deepEqual(f.trace.slice(0, 7), [
+	assert.deepEqual(f.trace.slice(0, 9), [
 		"subscribe",
 		"register",
 		"claim",
+		"typing",
 		"intent",
 		"send",
 		"persist",
+		"release",
 		"ack",
 	]);
 	assert.equal(f.records.get(claim.message.msg_id).nativeId, "native-message-137");
@@ -183,6 +228,9 @@ test("acceptance is persisted before tuple-bound acknowledgement, not model comp
 
 test("accepted duplicate after restart only acknowledges, never reinjects", async () => {
 	const f = fixture();
+	f.client.typingSnapshot = async () => {
+		assert.fail("Accepted duplicate must not consult the new-injection sensor");
+	};
 	f.records.set(claim.message.msg_id, {
 		state: "accepted",
 		message: claim.message,
@@ -682,6 +730,7 @@ test("real chooseRegistration and filesystem preserve accepted-before-ack across
 	};
 	await first.bridge.run();
 	assert.equal(failedAcks, 1);
+	assert.equal(first.trace.filter((step) => step === "release").length, 1);
 	assert.equal(first.trace.filter((step) => step === "send").length, 1);
 	assert.equal(
 		first.reports.some((event) => event.kind === "inbox-acknowledged"),
@@ -730,6 +779,7 @@ test("real chooseRegistration and filesystem preserve accepted-before-ack across
 	await second.bridge.run();
 	assert.equal(claims, 1);
 	assert.equal(sends, 0);
+	assert.equal(second.trace.filter((step) => step === "release").length, 1);
 	assert.deepEqual(acks, [{ seat: resumed.id, ...live, job_id: claim.job_id }]);
 	assert.ok(
 		second.reports.some(
@@ -796,6 +846,7 @@ async function deadlineHttpFixture(t, handler) {
 		for await (const chunk of request) raw += chunk;
 		const entry = {
 			url: new URL(request.url, "http://localhost"),
+			method: request.method,
 			authorization: request.headers.authorization,
 			body: raw ? JSON.parse(raw) : undefined,
 		};
@@ -830,7 +881,17 @@ test("own inbox wait deadlines renew with bounded delay without re-registering o
 		} else if (url.pathname === "/v1/inbox/ack") {
 			assert.deepEqual(body, { ...tuple, job_id: claim.job_id });
 			response.end(JSON.stringify({ ok: true, v: 2, data: claim.job_id }));
-		} else if (url.pathname === "/v1/send")
+		} else if (url.pathname === "/v1/inbox/typing")
+			response.end(JSON.stringify({ ok: true, v: 2, data: observedTyping() }));
+		else if (url.pathname === "/v1/release")
+			response.end(
+				JSON.stringify({
+					ok: true,
+					v: 2,
+					data: { msg_id: body.msg_id, released: false, noop: true, reason: "not-deferred" },
+				}),
+			);
+		else if (url.pathname === "/v1/send")
 			response.end(JSON.stringify({ ok: true, v: 2, data: { msg_id: body.msg_id } }));
 		else assert.fail(`Unexpected request ${url.pathname}`);
 	});
@@ -873,7 +934,7 @@ test("own inbox wait deadlines renew with bounded delay without re-registering o
 
 test("inbox wait renewal does not reset an existing outage episode", async (t) => {
 	let polls = 0;
-	const { client, requests } = await deadlineHttpFixture(t, ({ url }, response) => {
+	const { client, requests } = await deadlineHttpFixture(t, ({ url, body }, response) => {
 		if (url.pathname === "/v1/register")
 			response.end(JSON.stringify({ ok: true, v: 2, data: descriptor }));
 		else if (url.pathname === "/v1/inbox") {
@@ -882,7 +943,17 @@ test("inbox wait renewal does not reset an existing outage episode", async (t) =
 				response.writeHead(401);
 				response.end(JSON.stringify({ ok: false, v: 2, error: "unauthorized" }));
 			} else if (polls === 4) response.end(JSON.stringify({ ok: true, v: 2, data: [claim] }));
-		} else response.end(JSON.stringify({ ok: true, v: 2, data: claim.job_id }));
+		} else if (url.pathname === "/v1/inbox/typing")
+			response.end(JSON.stringify({ ok: true, v: 2, data: observedTyping() }));
+		else if (url.pathname === "/v1/release")
+			response.end(
+				JSON.stringify({
+					ok: true,
+					v: 2,
+					data: { msg_id: body.msg_id, released: false, noop: true, reason: "not-deferred" },
+				}),
+			);
+		else response.end(JSON.stringify({ ok: true, v: 2, data: claim.job_id }));
 	});
 	const waits = [];
 	const f = fixture({
@@ -1684,9 +1755,26 @@ test("malformed claim hold metadata is not silently downgraded to an empty inbox
 
 test("only the exact native-unavailable inbox refusal is retryable", async () => {
 	const inbox = `/v1/inbox?${new URLSearchParams(tuple)}`;
+	const typing = `/v1/inbox/typing?${new URLSearchParams(tuple)}`;
 	for (const [label, path, status, envelope, expected] of [
 		["claim", inbox, 400, unavailableRefusal, true],
 		["ack", "/v1/inbox/ack", 400, unavailableRefusal, true],
+		["typing snapshot", typing, 400, unavailableRefusal, true],
+		[
+			"typing foreign refusal",
+			typing,
+			400,
+			{ ...unavailableRefusal, meta: "native incarnation mismatch" },
+			false,
+		],
+		[
+			"typing wrong command",
+			typing,
+			400,
+			{ ...unavailableRefusal, command: "pij register" },
+			false,
+		],
+		["typing wrong version", typing, 400, { ...unavailableRefusal, v: 1 }, false],
 		["unrelated endpoint", "/v1/register", 400, unavailableRefusal, false],
 		["different status", inbox, 409, unavailableRefusal, false],
 		["skew", inbox, 400, { ...unavailableRefusal, v: 1 }, false],
@@ -1785,4 +1873,697 @@ test("native-unavailable retries re-register with bounded backoff and stop clean
 	assert.equal(f.trace.includes("ack"), false);
 	assert.equal(f.reports.filter((event) => event.kind === "reconnecting").length, 1);
 	assert.equal(f.trace.at(-1), "unsubscribe");
+});
+
+test("typing snapshot GET binds exact tuple and current bearer key over real HTTP", async (t) => {
+	let snapshot = observedTyping({ retry_after_ms: 1200 });
+	const { client, requests } = await deadlineHttpFixture(t, (_entry, response) => {
+		response.end(JSON.stringify({ ok: true, command: "pij inbox", v: 2, data: snapshot }));
+	});
+	assert.deepEqual(await client.typingSnapshot(tuple), snapshot);
+	client.readKey = async () => "rotated-typing-key";
+	snapshot = unavailableTyping();
+	assert.deepEqual(await client.typingSnapshot(tuple), snapshot);
+	assert.deepEqual(
+		requests.map(({ authorization }) => authorization),
+		["Bearer deadline-key", "Bearer rotated-typing-key"],
+	);
+	for (const request of requests) {
+		assert.equal(request.method, "GET");
+		assert.equal(request.url.pathname, "/v1/inbox/typing");
+		assert.deepEqual(
+			[...request.url.searchParams].sort(),
+			Object.entries(tuple)
+				.map(([key, value]) => [key, String(value)])
+				.sort(),
+		);
+		assert.equal(request.body, undefined);
+	}
+});
+
+test("typing snapshot rejects malformed state tuple grace time retry and source over HTTP", async (t) => {
+	let snapshot;
+	const { client, requests } = await deadlineHttpFixture(t, (_entry, response) => {
+		response.end(JSON.stringify({ ok: true, command: "pij inbox", v: 2, data: snapshot }));
+	});
+	for (const [label, invalid] of [
+		["null", null],
+		["array", []],
+		["unknown state", observedTyping({ state: "quiet" })],
+		["missing proof", observedTyping({ native_consumer: undefined })],
+		[
+			"wrong session",
+			observedTyping({ native_consumer: { ...claim.native_consumer, native_session: "other" } }),
+		],
+		["wrong pid", observedTyping({ native_consumer: { ...claim.native_consumer, pid: 138 } })],
+		[
+			"wrong start",
+			observedTyping({ native_consumer: { ...claim.native_consumer, proc_start: 1 } }),
+		],
+		["string pid", observedTyping({ native_consumer: { ...claim.native_consumer, pid: "137" } })],
+		["missing grace", observedTyping({ typing_grace_ms: undefined })],
+		["negative grace", observedTyping({ typing_grace_ms: -1 })],
+		["fractional grace", observedTyping({ typing_grace_ms: 0.5 })],
+		["unsafe grace", observedTyping({ typing_grace_ms: Number.MAX_SAFE_INTEGER + 1 })],
+		["missing time", observedTyping({ observed_at_ms: undefined })],
+		["negative time", observedTyping({ observed_at_ms: -1 })],
+		["fractional time", observedTyping({ observed_at_ms: 1.5 })],
+		["unsafe time", observedTyping({ observed_at_ms: Number.MAX_SAFE_INTEGER + 1 })],
+		["missing retry", observedTyping({ retry_after_ms: undefined })],
+		["negative retry", observedTyping({ retry_after_ms: -1 })],
+		["fractional retry", observedTyping({ retry_after_ms: 0.5 })],
+		["retry beyond grace", observedTyping({ retry_after_ms: 60001 })],
+		["missing semantic hold", observedTyping({ semantic_hold: undefined })],
+		["string semantic hold", observedTyping({ semantic_hold: "false" })],
+		["missing source", observedTyping({ source: undefined })],
+		["output is not typing", observedTyping({ source: "pane-output" })],
+		["unavailable wrong reason", unavailableTyping({ reason: "unknown" })],
+		[
+			"unavailable mismatched proof",
+			unavailableTyping({ native_consumer: { ...claim.native_consumer, pid: 138 } }),
+		],
+		["unavailable malformed grace", unavailableTyping({ typing_grace_ms: "60000" })],
+		["unavailable missing time", unavailableTyping({ observed_at_ms: undefined })],
+		["unavailable missing semantic hold", unavailableTyping({ semantic_hold: undefined })],
+	]) {
+		snapshot = invalid;
+		await assert.rejects(
+			client.typingSnapshot(tuple),
+			(error) => {
+				assert.notEqual(error.retryable, true, label);
+				return true;
+			},
+			label,
+		);
+	}
+	assert.ok(requests.every(({ url }) => url.pathname === "/v1/inbox/typing"));
+});
+
+test("typing snapshot accepts aged draft quiet and explicit zero grace without adding a second grace", async (t) => {
+	let snapshot = observedTyping();
+	const { client } = await deadlineHttpFixture(t, (_entry, response) => {
+		response.end(JSON.stringify({ ok: true, command: "pij inbox", v: 2, data: snapshot }));
+	});
+	// The daemon has already applied observed-edit recency; no composer content is required.
+	assert.deepEqual(await client.typingSnapshot(tuple), snapshot);
+	snapshot = observedTyping({ typing_grace_ms: 0 });
+	assert.deepEqual(await client.typingSnapshot(tuple), snapshot);
+});
+
+test("new native send waits for current typing snapshot before creating durable intent", async (t) => {
+	const snapshot = deferred();
+	const f = fixture();
+	t.after(() => f.bridge.stop());
+	let reads = 0;
+	f.client.typingSnapshot = (consumer, signal) => {
+		reads++;
+		assert.deepEqual(consumer, tuple);
+		assert.equal(signal.aborted, false);
+		return snapshot.promise;
+	};
+	const run = f.bridge.run();
+	await flush();
+	assert.equal(reads, 1);
+	assert.equal(f.records.size, 0);
+	assert.equal(f.trace.includes("send"), false);
+	assert.equal(f.trace.includes("ack"), false);
+	snapshot.resolve(observedTyping());
+	await f.accepted.promise;
+	f.bridge.stop();
+	await run;
+	assert.equal(f.trace.filter((step) => step === "send").length, 1);
+});
+
+test("recent typing renews holds then quiet releases with injected now and reclaims instead of sending stale claim", async (t) => {
+	const waits = [];
+	const bodies = [];
+	const snapshots = [
+		observedTyping({ retry_after_ms: 1200 }),
+		observedTyping({ observed_at_ms: 101000, retry_after_ms: 60000 }),
+		observedTyping({ observed_at_ms: 161000 }),
+		observedTyping({ observed_at_ms: 161001 }),
+	];
+	const fresh = {
+		...claim,
+		job_id: 138,
+		message: { ...claim.message, msg_id: "fresh-138", body: "ONLY_FRESH_RECLAIM" },
+	};
+	const f = fixture({
+		now: () => 161137,
+		delay: (ms, signal) => {
+			const gate = deferred();
+			waits.push({ ms, signal, ...gate });
+			return gate.promise;
+		},
+	});
+	t.after(() => f.bridge.stop());
+	f.client.typingSnapshot = async (consumer) => {
+		assert.deepEqual(consumer, tuple);
+		f.trace.push("typing");
+		assert.ok(snapshots.length, "Unexpected extra sensor read or local second grace");
+		return snapshots.shift();
+	};
+	let claims = 0;
+	f.client.claimInbox = async () => {
+		f.trace.push("claim");
+		if (++claims === 2) assert.equal(f.trace.includes("release"), true);
+		return { claims: [claims === 1 ? claim : fresh], hold: null };
+	};
+	const request = f.client.request;
+	f.client.request = async (path, body, signal) => {
+		if (path === "/v1/hold" || path === "/v1/release") bodies.push({ path, body });
+		if (path === "/v1/inbox/ack") {
+			assert.deepEqual(body, { ...tuple, job_id: fresh.job_id });
+			f.trace.push("ack");
+			return fresh.job_id;
+		}
+		return request(path, body, signal);
+	};
+	const nativeSend = f.native.send;
+	f.native.send = async (input) => {
+		assert.equal(claims, 2);
+		assert.match(input.prompt, /ONLY_FRESH_RECLAIM/);
+		assert.equal(input.prompt.includes(claim.message.body), false);
+		return nativeSend(input);
+	};
+	const run = f.bridge.run();
+	await flush();
+	assert.deepEqual(bodies[0], {
+		path: "/v1/hold",
+		body: {
+			job_id: 137,
+			seat: tuple.seat,
+			msg_id: claim.message.msg_id,
+			reason: "human-typing",
+			since_ms: 41200,
+		},
+	});
+	assert.equal(f.records.size, 0);
+	assert.equal(f.trace.includes("send"), false);
+	assert.equal(f.trace.includes("ack"), false);
+	assert.equal(
+		(await f.bridge.send({ to: "pij-peer", message: "outgoing while typing" })).ok,
+		true,
+	);
+	waits[0].resolve();
+	await flush();
+	assert.equal(waits.length, 2);
+	assert.equal(f.trace.includes("release"), false);
+	assert.equal(f.records.size, 0);
+	assert.equal(claims, 1);
+	assert.ok(waits.every(({ ms, signal }) => ms >= 250 && ms <= 5000 && !signal.aborted));
+	waits[1].resolve();
+	await f.accepted.promise;
+	f.bridge.stop();
+	await run;
+	assert.deepEqual(
+		bodies.find(({ path }) => path === "/v1/release"),
+		{
+			path: "/v1/release",
+			body: { job_id: 137, seat: tuple.seat, msg_id: claim.message.msg_id, at_ms: 161137 },
+		},
+	);
+	assert.equal(f.records.has(claim.message.msg_id), false);
+	assert.equal(f.records.get(fresh.message.msg_id).state, "accepted");
+	assert.equal(f.trace.filter((step) => step === "send").length, 1);
+	assert.equal(snapshots.length, 0);
+	assert.ok(f.trace.indexOf("release") < f.trace.lastIndexOf("claim"));
+	assert.ok(f.trace.lastIndexOf("typing") < f.trace.indexOf("intent"));
+});
+
+test("typing sensor polling backs off within existing 250 to 5000 cadence", async (t) => {
+	const waits = [];
+	const f = fixture({
+		delay: async (ms) => {
+			waits.push(ms);
+			if (waits.length === 8) f.bridge.stop();
+		},
+	});
+	t.after(() => f.bridge.stop());
+	let reads = 0;
+	f.client.typingSnapshot = async () => {
+		reads++;
+		return observedTyping({ observed_at_ms: 100000 + reads * 5000, retry_after_ms: 60000 });
+	};
+	const run = f.bridge.run();
+	await flush();
+	assert.equal(f.trace.includes("send"), false);
+	await run;
+	assert.deepEqual(waits, [250, 500, 1000, 2000, 4000, 5000, 5000, 5000]);
+	assert.equal(reads, 8);
+	assert.equal(f.records.size, 0);
+	assert.equal(f.trace.includes("release"), false);
+	assert.equal(f.trace.includes("ack"), false);
+});
+
+for (const initiallyTyping of [false, true]) {
+	test(`semantic Hold remains authoritative ${initiallyTyping ? "after recent typing becomes quiet" : "on a quiet snapshot"}`, async (t) => {
+		const waits = [];
+		const f = fixture({
+			delay: (ms, signal) => {
+				const gate = deferred();
+				waits.push({ ms, signal, ...gate });
+				return gate.promise;
+			},
+		});
+		t.after(() => f.bridge.stop());
+		let reads = 0;
+		f.client.typingSnapshot = async () =>
+			observedTyping(
+				initiallyTyping && reads++ === 0 ? { retry_after_ms: 1200 } : { semantic_hold: true },
+			);
+		const run = f.bridge.run();
+		await flush();
+		assert.equal(f.trace.includes("send"), false);
+		if (initiallyTyping) {
+			assert.equal(f.trace.includes("hold"), true);
+			waits[0].resolve();
+			await flush();
+		}
+		assert.equal(f.trace.includes("release"), false);
+		assert.equal(f.trace.includes("ack"), false);
+		assert.equal(f.records.size, 0);
+		assert.equal(
+			(await f.bridge.send({ to: "pij-peer", message: "operator Hold outgoing" })).ok,
+			true,
+		);
+		f.bridge.stop();
+		for (const wait of waits) wait.resolve();
+		await run;
+	});
+}
+
+for (const [label, snapshot] of [
+	["unavailable", unavailableTyping()],
+	["malformed", observedTyping({ retry_after_ms: "quiet" })],
+	["mismatched", observedTyping({ native_consumer: { ...claim.native_consumer, pid: 138 } })],
+]) {
+	test(`${label} typing observation visibly holds receiving while outgoing remains usable`, async (t) => {
+		const paths = [];
+		const client = new DaemonClient({
+			addr: "127.0.0.1:13700",
+			stateDir: "/isolated",
+			readKey: async () => "sensor-secret",
+			fetch: async (input, init) => {
+				const path = new URL(input).pathname;
+				paths.push(path);
+				let data;
+				if (path === "/v1/register") data = descriptor;
+				else if (path === "/v1/inbox") data = [claim];
+				else if (path === "/v1/inbox/typing") data = snapshot;
+				else if (path === "/v1/send") data = { msg_id: JSON.parse(init.body).msg_id };
+				else if (path === "/v1/inbox/ack") data = claim.job_id;
+				else assert.fail(`Unexpected typing-held request ${path}`);
+				return new Response(JSON.stringify({ ok: true, v: 2, data }));
+			},
+		});
+		const f = fixture({ client });
+		t.after(() => f.bridge.stop());
+		const run = f.bridge.run();
+		await flush();
+		assert.equal(f.trace.includes("send"), false);
+		await run;
+		assert.equal(f.records.size, 0);
+		assert.equal(paths.includes("/v1/inbox/ack"), false);
+		assert.equal(paths.filter((path) => path === "/v1/inbox").length, 1);
+		const notices = f.reports.filter((event) => event.kind === "receive-held");
+		assert.equal(notices.length, 1);
+		assert.match(notices[0].diagnostic, /typing[- ]sensor/i);
+		assert.equal(JSON.stringify(notices).includes("sensor-secret"), false);
+		assert.equal(
+			(await f.bridge.send({ to: "pij-peer", message: "sensor held outgoing" })).ok,
+			true,
+		);
+	});
+}
+
+for (const phase of ["snapshot", "poll delay"]) {
+	test(`shutdown during typing ${phase} cancels old-context work without release intent send or ACK`, async (t) => {
+		const blocked = deferred();
+		let observedSignal;
+		const f = fixture({
+			delay: (_ms, signal) => {
+				observedSignal = signal;
+				return new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
+			},
+		});
+		t.after(() => f.bridge.stop());
+		f.client.typingSnapshot = (_consumer, signal) => {
+			observedSignal = signal;
+			return phase === "snapshot" ? blocked.promise : observedTyping({ retry_after_ms: 1200 });
+		};
+		const run = f.bridge.run();
+		await flush();
+		assert.ok(observedSignal);
+		assert.equal(f.trace.includes("send"), false);
+		f.event({ type: "session.shutdown", data: {} });
+		assert.equal(observedSignal.aborted, true);
+		await run;
+		blocked.resolve(observedTyping());
+		await flush();
+		assert.equal(f.records.size, 0);
+		assert.equal(f.trace.includes("release"), false);
+		assert.equal(f.trace.includes("ack"), false);
+		assert.equal(f.trace.filter((step) => step === "claim").length, 1);
+		assert.equal(f.trace.filter((step) => step === "unsubscribe").length, 1);
+	});
+}
+
+test("deferred claim re-offered after restart rechecks sensor before any new intent", async (t) => {
+	const home = await mkdtemp(join(tmpdir(), "pij-native-typing-restart-"));
+	t.after(() => rm(home, { recursive: true, force: true }));
+	for (let incarnation = 0; incarnation < 2; incarnation++) {
+		const journal = new FileJournal(home, registration);
+		const f = fixture({ journal, delay: async () => f.bridge.stop() });
+		t.after(() => f.bridge.stop());
+		let reads = 0;
+		f.client.typingSnapshot = async () => {
+			reads++;
+			return observedTyping({ observed_at_ms: 100000 + incarnation * 1000, retry_after_ms: 60000 });
+		};
+		const run = f.bridge.run();
+		await run;
+		assert.equal(reads, 1);
+		assert.equal(f.trace.includes("send"), false);
+		assert.equal(f.trace.includes("hold"), true);
+		assert.equal(f.trace.includes("ack"), false);
+		assert.equal(await journal.load(claim.message.msg_id), undefined);
+	}
+});
+
+for (const [endpoint, reason] of [
+	["hold", "absent"],
+	["hold", "terminal"],
+	["release", "not-deferred"],
+	["release", "absent"],
+	["release", "terminal"],
+]) {
+	test(`typing ${endpoint} noop ${reason} discards old claim and reclaims without stale delivery`, async (t) => {
+		const f = fixture({ delay: async () => undefined, now: () => 160137 });
+		t.after(() => f.bridge.stop());
+		let reads = 0;
+		let claims = 0;
+		const receipts = [];
+		f.client.typingSnapshot = async () =>
+			observedTyping({ retry_after_ms: reads++ === 0 ? 1200 : 0 });
+		f.client.claimInbox = async () => {
+			if (++claims === 1) return { claims: [claim], hold: null };
+			f.bridge.stop();
+			return { claims: [], hold: null };
+		};
+		const request = f.client.request;
+		f.client.request = async (path, body, signal) => {
+			if (path === `/v1/${endpoint}`) {
+				receipts.push(body);
+				return {
+					msg_id: body.msg_id,
+					[endpoint === "hold" ? "held" : "released"]: false,
+					noop: true,
+					reason,
+				};
+			}
+			return request(path, body, signal);
+		};
+		const run = f.bridge.run();
+		await flush();
+		assert.equal(f.trace.includes("send"), false);
+		await run;
+		assert.equal(claims, 2);
+		assert.equal(reads, endpoint === "hold" ? 1 : 2);
+		assert.equal(receipts.length, 1);
+		assert.equal(receipts[0].msg_id, claim.message.msg_id);
+		assert.equal(f.records.size, 0);
+		assert.equal(f.trace.includes("ack"), false);
+	});
+}
+
+test("typing snapshot HTTP wait is externally abortable and its deadline is not inbox renewal", async (t) => {
+	const controller = new AbortController();
+	const reason = new DOMException("Typing consumer stopped", "AbortError");
+	const { client, requests } = await deadlineHttpFixture(t, () => controller.abort(reason));
+	await assert.rejects(
+		client.typingSnapshot(tuple, controller.signal),
+		(error) => error === reason,
+	);
+	assert.equal(requests.length, 1);
+	const stalled = await deadlineHttpFixture(t, () => undefined);
+	await assert.rejects(stalled.client.typingSnapshot(tuple), { retryable: true });
+});
+
+for (const duplicate of [false, true]) {
+	test(`ACK-stage release declares ${duplicate ? "accepted recovery" : "quiet new acceptance"} on the same claim without reclaim`, async (t) => {
+		const receipt = deferred();
+		const f = fixture({ now: () => 170137 });
+		t.after(() => f.bridge.stop());
+		if (duplicate)
+			f.records.set(claim.message.msg_id, {
+				state: "accepted",
+				message: claim.message,
+				nativeId: "previous-native",
+			});
+		let releases = 0;
+		const request = f.client.request;
+		f.client.request = (path, body, signal) => {
+			if (path === "/v1/release") {
+				releases++;
+				assert.deepEqual(body, {
+					job_id: claim.job_id,
+					seat: tuple.seat,
+					msg_id: claim.message.msg_id,
+					at_ms: 170137,
+				});
+				assert.equal(f.records.get(claim.message.msg_id).state, "accepted");
+				assert.equal(f.trace.filter((step) => step === "claim").length, 1);
+				return receipt.promise;
+			}
+			return request(path, body, signal);
+		};
+		const run = f.bridge.run();
+		await flush();
+		assert.equal(releases, 1);
+		assert.equal(f.trace.includes("ack"), false);
+		assert.equal(f.trace.filter((step) => step === "send").length, duplicate ? 0 : 1);
+		assert.equal(f.trace.filter((step) => step === "typing").length, duplicate ? 0 : 1);
+		receipt.resolve({
+			msg_id: claim.message.msg_id,
+			released: false,
+			noop: true,
+			reason: "not-deferred",
+		});
+		await f.accepted.promise;
+		f.bridge.stop();
+		await run;
+		assert.equal(f.trace.filter((step) => step === "claim").length, 1);
+		assert.equal(f.trace.filter((step) => step === "ack").length, 1);
+	});
+}
+
+test("successful held release is reused before ACK when the same job is freshly reclaimed", async (t) => {
+	const f = fixture({ delay: async () => undefined, now: () => 170137 });
+	t.after(() => f.bridge.stop());
+	let reads = 0;
+	let claims = 0;
+	let releases = 0;
+	f.client.typingSnapshot = async () =>
+		observedTyping({ retry_after_ms: reads++ === 0 ? 1200 : 0 });
+	f.client.claimInbox = async () => {
+		claims++;
+		return { claims: [claim], hold: null };
+	};
+	const request = f.client.request;
+	f.client.request = (path, body, signal) => {
+		if (path === "/v1/release") {
+			releases++;
+			assert.equal(f.records.size, 0, "The one release belongs to the held phase, not ACK");
+		}
+		if (path === "/v1/inbox/ack") assert.equal(claims, 2);
+		return request(path, body, signal);
+	};
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	f.bridge.stop();
+	await run;
+	assert.equal(releases, 1);
+	assert.equal(reads, 3);
+	assert.equal(f.trace.filter((step) => step === "send").length, 1);
+	assert.equal(f.trace.filter((step) => step === "ack").length, 1);
+});
+
+for (const failure of ["release", "ack"]) {
+	test(`ACK-stage ${failure} retry preserves acceptance and reuses only successful release declarations`, async (t) => {
+		const f = fixture({ delay: async () => undefined, now: () => 170137 });
+		t.after(() => f.bridge.stop());
+		const send = f.native.send;
+		f.native.send = async (input) => {
+			const id = await send(input);
+			nativeTerminal(f, nativeUser(f, id));
+			return id;
+		};
+		let claims = 0;
+		let releases = 0;
+		let acks = 0;
+		const claimsAtAck = [];
+		f.client.claimInbox = async (_consumer, signal) => {
+			if (++claims <= 2) return { claims: [claim], hold: null };
+			return new Promise((resolve) =>
+				signal.addEventListener("abort", () => resolve({ claims: [], hold: null }), { once: true }),
+			);
+		};
+		const request = f.client.request;
+		f.client.request = (path, body, signal) => {
+			if (path === "/v1/release") {
+				releases++;
+				assert.equal(f.records.get(claim.message.msg_id).state, "accepted");
+				if (failure === "release" && releases === 1)
+					throw Object.assign(
+						new Error("Release declaration request failed before remote mutation"),
+						{ retryable: true },
+					);
+			}
+			if (path === "/v1/inbox/ack") {
+				claimsAtAck.push(claims);
+				if (failure === "ack" && ++acks === 1)
+					throw Object.assign(new Error("ACK request failed before remote mutation"), {
+						retryable: true,
+					});
+			}
+			return request(path, body, signal);
+		};
+		const run = f.bridge.run();
+		await flush();
+		assert.equal(releases, failure === "release" ? 2 : 1);
+		await f.accepted.promise;
+		f.bridge.stop();
+		await run;
+		assert.deepEqual(claimsAtAck, failure === "release" ? [2] : [1, 2]);
+		assert.equal(f.trace.filter((step) => step === "send").length, 1);
+		assert.equal(f.trace.filter((step) => step === "typing").length, 1);
+		assert.equal(f.trace.filter((step) => step === "persist").length, 1);
+		assert.equal(f.trace.filter((step) => step === "ack").length, 1);
+	});
+}
+
+test("renewed typing on a reclaimed job invalidates its earlier release declaration", async (t) => {
+	const f = fixture({ delay: async () => undefined, now: () => 170137 });
+	t.after(() => f.bridge.stop());
+	const retries = [1200, 0, 60000, 0, 0];
+	let claims = 0;
+	let holds = 0;
+	let releases = 0;
+	f.client.typingSnapshot = async () => {
+		assert.ok(retries.length);
+		return observedTyping({ retry_after_ms: retries.shift() });
+	};
+	f.client.claimInbox = async () => {
+		claims++;
+		return { claims: [claim], hold: null };
+	};
+	const request = f.client.request;
+	f.client.request = (path, body, signal) => {
+		if (path === "/v1/hold") holds++;
+		if (path === "/v1/release") {
+			releases++;
+			assert.equal(f.records.size, 0);
+			assert.equal(releases, holds, "Every new hold needs a fresh release declaration");
+		}
+		if (path === "/v1/inbox/ack") assert.equal(claims, 3);
+		return request(path, body, signal);
+	};
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	f.bridge.stop();
+	await run;
+	assert.equal(holds, 2);
+	assert.equal(releases, 2);
+	assert.equal(retries.length, 0);
+	assert.equal(f.trace.filter((step) => step === "send").length, 1);
+	assert.equal(f.trace.filter((step) => step === "ack").length, 1);
+});
+
+test("initial quiet semantic Hold clearance discards the old claim and gates freshly reclaimed work", async (t) => {
+	const clearance = deferred();
+	const fresh = {
+		...claim,
+		job_id: 138,
+		message: {
+			...claim.message,
+			msg_id: "operator-cleared-138",
+			body: "FRESH_AFTER_OPERATOR_CLEARANCE",
+		},
+	};
+	let waits = 0;
+	const f = fixture({
+		now: () => 170137,
+		delay: (ms, signal) => {
+			waits++;
+			assert.ok(ms >= 250 && ms <= 5000);
+			assert.equal(signal.aborted, false);
+			return clearance.promise;
+		},
+	});
+	t.after(() => f.bridge.stop());
+	let claims = 0;
+	let reads = 0;
+	const releases = [];
+	f.client.claimInbox = async (consumer) => {
+		assert.deepEqual(consumer, tuple);
+		f.trace.push("claim");
+		return { claims: [++claims === 1 ? claim : fresh], hold: null };
+	};
+	f.client.typingSnapshot = async (consumer) => {
+		assert.deepEqual(consumer, tuple);
+		f.trace.push("typing");
+		reads++;
+		assert.equal(reads, claims, "The next sensor check must follow a fresh claim");
+		return observedTyping({ semantic_hold: reads === 1 });
+	};
+	const request = f.client.request;
+	f.client.request = (path, body, signal) => {
+		if (path === "/v1/release") {
+			releases.push(body);
+			assert.equal(f.records.get(fresh.message.msg_id).state, "accepted");
+		}
+		if (path === "/v1/inbox/ack") {
+			assert.deepEqual(body, { ...tuple, job_id: fresh.job_id });
+			f.trace.push("ack");
+			return fresh.job_id;
+		}
+		return request(path, body, signal);
+	};
+	const send = f.native.send;
+	f.native.send = (input) => {
+		assert.equal(claims, 2);
+		assert.equal(reads, 2);
+		assert.match(input.prompt, /FRESH_AFTER_OPERATOR_CLEARANCE/);
+		assert.equal(input.prompt.includes(claim.message.body), false);
+		return send(input);
+	};
+	const run = f.bridge.run();
+	await flush();
+	assert.equal(waits, 1);
+	assert.equal(claims, 1);
+	assert.equal(reads, 1);
+	assert.equal(f.records.size, 0);
+	assert.equal(f.trace.includes("hold"), false);
+	assert.equal(f.trace.includes("release"), false);
+	assert.equal(f.trace.includes("send"), false);
+	assert.equal(f.trace.includes("ack"), false);
+	clearance.resolve();
+	await f.accepted.promise;
+	f.bridge.stop();
+	await run;
+	assert.equal(waits, 1);
+	assert.equal(claims, 2);
+	assert.equal(reads, 2);
+	assert.equal(f.trace.includes("hold"), false);
+	assert.equal(f.records.has(claim.message.msg_id), false);
+	assert.deepEqual(releases, [
+		{ job_id: 138, seat: tuple.seat, msg_id: fresh.message.msg_id, at_ms: 170137 },
+	]);
+	assert.deepEqual(
+		f.trace.filter((step) =>
+			["claim", "typing", "intent", "send", "persist", "release", "ack"].includes(step),
+		),
+		["claim", "typing", "claim", "typing", "intent", "send", "persist", "release", "ack"],
+	);
 });

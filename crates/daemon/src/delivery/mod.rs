@@ -90,6 +90,29 @@ pub struct NativeInboxPage {
     pub held_reason: Option<String>,
 }
 
+/// Identity-bound consent observation; never a queue claim or delivery receipt.
+#[derive(Debug, Serialize)]
+pub(crate) struct NativeTypingSnapshot {
+    native_consumer: NativeInboxIdentity,
+    typing_grace_ms: u64,
+    observed_at_ms: u64,
+    semantic_hold: bool,
+    #[serde(flatten)]
+    observation: NativeTypingObservation,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+enum NativeTypingObservation {
+    Observed {
+        retry_after_ms: u64,
+        source: &'static str,
+    },
+    Unavailable {
+        reason: &'static str,
+    },
+}
+
 type Clock = dyn Fn() -> Result<u64> + Send + Sync;
 
 struct DeliverySources {
@@ -562,7 +585,7 @@ impl DeliveryService {
             .claims)
     }
 
-    /// Claim native work only for the current attested incarnation, with fresh consent.
+    /// Claim native work for the current attested owner; the receiver gates new sends.
     pub async fn claim_native_inbox(
         &self,
         seat: &SeatId,
@@ -602,30 +625,64 @@ impl DeliveryService {
         }
     }
 
-    async fn native_claim_permitted(&self, recipient: &SeatDescriptor) -> Option<String> {
-        if recipient.semantic_state == Some(SemanticState::Hold) {
-            return Some("semantic-hold".into());
-        }
-        if let Some(pane) = recipient.pane.as_deref() {
-            let verdict = match self.interaction.fresh_injection_verdict(pane).await {
-                Ok(verdict) => verdict,
-                Err(error) => return Some(format!("sensor-unavailable:{error}")),
-            };
-            // Native Copilot retains strict draft consent; the shared recency
-            // policy may permit an old draft, but that does not clear this veto.
-            if !verdict.permitted
-                || !verdict.composer_idle
-                || verdict.reason == Some(DeliveryDeferralReason::Unrecognized)
+    /// Observe the existing recency policy without claiming, releasing or ACKing work.
+    /// Slow pane IO runs outside the native lock; only current identity and pane
+    /// may authorize the returned snapshot. Operator Hold is reported separately.
+    pub(crate) async fn native_typing_snapshot(
+        &self,
+        seat: &SeatId,
+        identity: &NativeInboxIdentity,
+        typing_grace_ms: u64,
+    ) -> Result<NativeTypingSnapshot> {
+        let observed = self
+            .native_recipient(seat, identity)
+            .await?
+            .ok_or_else(|| {
+                native_refusal("native typing observation requires current native registration")
+            })?;
+        let unavailable = NativeTypingObservation::Unavailable {
+            reason: "native-typing-sensor-unavailable",
+        };
+        let remaining = match observed.pane.as_deref() {
+            Some(pane) => match self.interaction.fresh_injection_verdict(pane).await {
+                Ok(verdict) if verdict.reason == Some(DeliveryDeferralReason::HumanTyping) => {
+                    verdict.next_retry_at.map(|remaining| {
+                        // Never round a positive sub-millisecond veto down to quiet.
+                        u64::try_from(remaining.as_nanos().div_ceil(1_000_000)).unwrap_or(u64::MAX)
+                    })
+                }
+                Ok(verdict) if verdict.permitted && verdict.reason.is_none() => Some(0),
+                _ => None,
+            },
+            None if typing_grace_ms == 0 => Some(0),
+            None => None,
+        };
+        let observed_at_ms = (self.clock)()?;
+        let _guard = self.native_lock.lock().await;
+        let current = self
+            .native_recipient(seat, identity)
+            .await?
+            .ok_or_else(|| {
+                native_refusal("native typing observation requires current native registration")
+            })?;
+        let observation = match remaining {
+            Some(retry_after_ms)
+                if current.pane == observed.pane && retry_after_ms <= typing_grace_ms =>
             {
-                return Some(
-                    verdict
-                        .reason
-                        .map_or("human-consent", DeliveryDeferralReason::as_str)
-                        .into(),
-                );
+                NativeTypingObservation::Observed {
+                    retry_after_ms,
+                    source: "pane-observed-edit-recency",
+                }
             }
-        }
-        None
+            _ => unavailable,
+        };
+        Ok(NativeTypingSnapshot {
+            native_consumer: identity.clone(),
+            typing_grace_ms,
+            observed_at_ms,
+            semantic_hold: current.semantic_state == Some(SemanticState::Hold),
+            observation,
+        })
     }
 
     /// Revalidate the observation's identity and pane while mutation is excluded.
@@ -659,19 +716,15 @@ impl DeliveryService {
                 .subscribe_live(EventFilter::kinds([OUTCOME_EVENT_KIND]).for_seat(seat.clone()))
         });
         loop {
-            // Slow tmux observations must not exclude unrelated readers. A fresh
-            // roster check under the shared lock binds the verdict to its target.
+            // Native claims are queue ownership, not permission to inject. The
+            // receiver observes typing before NEW sends and owns hold/release.
+            // Keep mutation excluded through handoff; no pane IO occurs here.
+            let native_guard = self.native_lock.lock().await;
             let observed = self.native_recipient(seat, identity).await?;
             let native = observed.is_some();
-            let held_reason = match &observed {
-                Some(recipient) => self.native_claim_permitted(recipient).await,
-                None => None,
-            };
-            let native_guard = self.native_lock.lock().await;
             if let Some(reason) = self
                 .revalidate_native_observation(seat, identity, observed.as_ref())
                 .await?
-                .or(held_reason)
             {
                 return Ok(NativeInboxPage {
                     claims: Vec::new(),
@@ -679,12 +732,9 @@ impl DeliveryService {
                 });
             }
             if let Some((job_id, job)) = self.queue.claim(&kinds, seat.as_str()).await? {
-                let _handoff_guard = if let Some(recipient) = &observed {
-                    drop(native_guard);
-                    let held_reason = self.native_claim_permitted(recipient).await;
-                    let guard = self.native_lock.lock().await;
-                    // ACK or lease expiry/reclaim may finish this attempt while
-                    // observation waits. Neither hand out nor retry its successor.
+                if let Some(recipient) = &observed {
+                    // Lease expiry may invalidate a running attempt independently
+                    // of registration. Never hand out or retry its successor.
                     if self
                         .queue
                         .claimed_delivery(job_id)
@@ -695,8 +745,7 @@ impl DeliveryService {
                     }
                     let permission = self
                         .revalidate_native_observation(seat, identity, Some(recipient))
-                        .await
-                        .map(|current_hold| current_hold.or(held_reason));
+                        .await;
                     match permission {
                         Ok(None) => {}
                         result => {
@@ -708,10 +757,7 @@ impl DeliveryService {
                             });
                         }
                     }
-                    guard
-                } else {
-                    native_guard
-                };
+                }
                 let payload = serde_json::from_str::<ClaimedPayload>(&job.payload);
                 let message = payload.as_ref().map(|payload| &payload.message);
                 let invalid = match &message {
@@ -1209,18 +1255,18 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn blocked_native_consent_allows_unrelated_ack_and_revalidates_before_handoff() {
-        for block_at in [1, 2] {
-            // The second observation also races ACK and retry/reclaim. Neither
-            // terminal work nor a successor attempt belongs to the old observer.
-            for change in 0..if block_at == 2 { 8 } else { 6 } {
+    async fn blocked_native_typing_snapshot_allows_unrelated_ack_and_revalidates_owner() {
+        for claimed in [false, true] {
+            // Observation owns no queue row, including while another reader
+            // ACKs or reclaims the exact job during the slow pane capture.
+            for change in 0..if claimed { 8 } else { 6 } {
                 let mut fixture = fixture_with_gate(
                     FakeTransport::unreachable(),
                     FakeTmux::new().with_clear_composer("%137"),
                 );
                 let observer = Arc::new(BlockingCapture {
                     inner: fixture.tmux.clone(),
-                    block_at,
+                    block_at: 1,
                     captures: AtomicUsize::new(0),
                     entered: Notify::new(),
                     release: Notify::new(),
@@ -1258,9 +1304,18 @@ mod tests {
                     .await
                     .expect("queue")
                     .expect("native body");
-                let pending = fixture
-                    .service
-                    .claim_native_inbox(&recipient.id, false, &identity);
+                if claimed {
+                    let page = fixture
+                        .service
+                        .claim_native_inbox(&recipient.id, false, &identity)
+                        .await
+                        .expect("claim never waits for the sensor");
+                    assert_eq!(page.claims[0].job_id, job_id);
+                }
+                let pending =
+                    fixture
+                        .service
+                        .native_typing_snapshot(&recipient.id, &identity, 60_000);
                 tokio::pin!(pending);
                 tokio::select! {
                     _ = observer.entered.notified() => {}
@@ -1332,67 +1387,56 @@ mod tests {
                         .expect("new consumer claims next attempt");
                     assert_eq!(next.claims[0].job_id, job_id);
                 }
+                let pending_before = fixture
+                    .queue
+                    .peek(&[delivery_kind(&recipient.id)])
+                    .await
+                    .unwrap();
+                let running_before = fixture.queue.claimed_delivery(job_id).await.unwrap();
                 observer.release.notify_one();
                 let result = pending.await;
                 match change {
-                    0 => {
-                        let page = result.expect("unchanged native identity admits");
-                        assert_eq!(page.claims.len(), 1);
-                        assert_eq!(page.claims[0].message.body, "native body");
-                        fixture
-                            .service
-                            .acknowledge_inbox(&recipient.id, job_id, &identity)
-                            .await
-                            .expect("native ack");
+                    2 | 3 | 5 => assert!(result.is_err(), "changed owner must refuse: {change}"),
+                    4 => assert!(matches!(
+                        result.unwrap().observation,
+                        super::NativeTypingObservation::Unavailable { .. }
+                    )),
+                    _ => {
+                        let snapshot = result.unwrap();
+                        assert_eq!(snapshot.native_consumer, identity);
+                        assert_eq!(snapshot.semantic_hold, change == 1);
+                        assert!(matches!(
+                            snapshot.observation,
+                            super::NativeTypingObservation::Observed {
+                                retry_after_ms: 0,
+                                ..
+                            }
+                        ));
                     }
-                    1 => {
-                        let page = result.expect("new semantic hold");
-                        assert!(page.claims.is_empty());
-                        assert_eq!(page.held_reason.as_deref(), Some("semantic-hold"));
-                    }
-                    4 => {
-                        let page = result.expect("same-native pane change is recoverable");
-                        assert!(page.claims.is_empty());
-                        assert_eq!(page.held_reason.as_deref(), Some("native-pane-changed"));
-                    }
-                    6 | 7 => {
-                        let page = result.expect("ordinary claim contention re-observes");
-                        assert!(page.claims.is_empty());
-                        assert!(page.held_reason.is_none());
-                        assert!(observer.captures.load(Ordering::SeqCst) > 2);
-                    }
-                    _ => assert!(
-                        result.is_err(),
-                        "changed/finished native target refused: observation {block_at}, change {change}"
-                    ),
                 }
                 assert_eq!(
-                    fixture.queue.live_len(),
-                    usize::from(matches!(change, 1..=5))
-                );
-                if matches!(change, 1..=5) {
-                    let retained = fixture
-                        .service
-                        .peek_inbox(&recipient.id)
-                        .await
-                        .expect("body stays pending");
-                    assert_eq!(retained[0].job_id, job_id);
-                    assert_eq!(retained[0].message.body, "native body");
-                }
-                if change == 7 {
-                    let current = fixture
-                        .queue
-                        .claimed_delivery(job_id)
-                        .await
-                        .expect("queue")
-                        .expect("old observer must not release successor attempt");
-                    assert_eq!(current.attempt, 1);
                     fixture
-                        .service
-                        .acknowledge_inbox(&recipient.id, job_id, &identity)
+                        .queue
+                        .peek(&[delivery_kind(&recipient.id)])
                         .await
-                        .expect("successor consumer can still finish");
+                        .unwrap(),
+                    pending_before
+                );
+                assert_eq!(
+                    fixture.queue.claimed_delivery(job_id).await.unwrap(),
+                    running_before,
+                    "a sensor may not mutate the old or successor attempt"
+                );
+                if change == 1 {
+                    let held = fixture
+                        .service
+                        .claim_native_inbox(&recipient.id, false, &identity)
+                        .await
+                        .unwrap();
+                    assert!(held.claims.is_empty());
+                    assert_eq!(held.held_reason.as_deref(), Some("semantic-hold"));
                 }
+                assert_eq!(observer.captures.load(Ordering::SeqCst), 1);
             }
         }
     }
@@ -2663,8 +2707,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn native_claim_consent_holds_then_admits_without_touching_composer() {
-        let mut fixture = fixture_with_gate(FakeTransport::unreachable(), typing_pane("%137"));
+    async fn native_typing_snapshot_expires_static_draft_and_renews_only_on_edit() {
+        let mut fixture = fixture_with_gate(
+            FakeTransport::unreachable(),
+            typing_pane("%137")
+                .script_tap(b"rendered output one".to_vec())
+                .script_tap(b"rendered output two".to_vec()),
+        );
         fixture.interaction = Arc::new(InteractionGate::with_typing_grace(
             fixture.tmux.clone(),
             Duration::from_secs(60),
@@ -2688,46 +2737,88 @@ mod tests {
             .expect("queue");
         let identity = native_identity();
         let seat = SeatId::from("pij-native");
-        let held = tokio::time::timeout(
-            Duration::from_millis(100),
-            fixture.service.claim_native_inbox(&seat, true, &identity),
-        )
-        .await
-        .expect("consent hold returns promptly even wait=true")
-        .expect("held");
-        assert!(held.claims.is_empty());
-        assert_eq!(held.held_reason.as_deref(), Some("human-typing"));
-        assert_eq!(fixture.queue.live_len(), 1);
-        tokio::time::sleep(Duration::from_millis(150)).await;
-        assert!(
-            fixture
-                .service
-                .claim_native_inbox(&seat, false, &identity)
-                .await
-                .expect("static draft remains held")
-                .claims
-                .is_empty()
-        );
-        fixture.tmux.arrange_clear_composer("%137");
-        assert!(
-            fixture
-                .service
-                .claim_native_inbox(&seat, false, &identity)
-                .await
-                .expect("clearing is a recent edit")
-                .claims
-                .is_empty()
-        );
-        tokio::time::sleep(Duration::from_millis(150)).await;
-        let claimed = fixture
+        let snapshot = fixture
+            .service
+            .native_typing_snapshot(&seat, &identity, 100)
+            .await
+            .unwrap();
+        assert!(matches!(
+            snapshot.observation,
+            super::NativeTypingObservation::Observed {
+                retry_after_ms: 1..=100,
+                ..
+            }
+        ));
+        let calls_before = fixture.tmux.calls();
+        let claim = fixture
             .service
             .claim_native_inbox(&seat, false, &identity)
             .await
-            .expect("admitted")
-            .claims;
-        assert_eq!(claimed.len(), 1);
-        assert_eq!(claimed[0].message.body, "held body");
-        assert_eq!(claimed[0].native_consumer.as_ref(), Some(&identity));
+            .unwrap();
+        assert_eq!(
+            claim.claims.len(),
+            1,
+            "typing is gated by receiver, not claim"
+        );
+        assert_eq!(
+            fixture.tmux.calls(),
+            calls_before,
+            "claim never observes or types into tmux"
+        );
+        let running = fixture
+            .queue
+            .claimed_delivery(claim.claims[0].job_id)
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        fixture.interaction.record_tap("%137");
+        let aged = fixture
+            .service
+            .native_typing_snapshot(&seat, &identity, 100)
+            .await
+            .unwrap();
+        assert!(
+            matches!(
+                aged.observation,
+                super::NativeTypingObservation::Observed {
+                    retry_after_ms: 0,
+                    ..
+                }
+            ),
+            "output/tap activity does not renew the unchanged draft's edit age"
+        );
+        assert!(
+            !fixture
+                .interaction
+                .fresh_injection_verdict("%137")
+                .await
+                .unwrap()
+                .composer_idle
+        );
+        fixture.tmux.arrange_clear_composer("%137");
+        let edited = fixture
+            .service
+            .native_typing_snapshot(&seat, &identity, 100)
+            .await
+            .unwrap();
+        assert!(
+            matches!(
+                edited.observation,
+                super::NativeTypingObservation::Observed {
+                    retry_after_ms: 1..=100,
+                    ..
+                }
+            ),
+            "clearing a human draft is a newly observed edit"
+        );
+        assert_eq!(
+            fixture
+                .queue
+                .claimed_delivery(claim.claims[0].job_id)
+                .await
+                .unwrap(),
+            running
+        );
         assert!(
             fixture
                 .tmux
@@ -2738,6 +2829,40 @@ mod tests {
                     && !call.starts_with("commit")
                     && !call.starts_with("send_keys"))
         );
+    }
+
+    #[tokio::test]
+    async fn native_typing_paneless_requires_explicit_zero_grace_and_retains_hold() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let mut seat = native_seat(None);
+        seat.semantic_state = Some(SemanticState::Hold);
+        register(&fixture, seat.clone()).await;
+        let identity = native_identity();
+        let unavailable = fixture
+            .service
+            .native_typing_snapshot(&seat.id, &identity, 60_000)
+            .await
+            .unwrap();
+        assert!(matches!(
+            unavailable.observation,
+            super::NativeTypingObservation::Unavailable { .. }
+        ));
+        let disabled = fixture
+            .service
+            .native_typing_snapshot(&seat.id, &identity, 0)
+            .await
+            .unwrap();
+        assert!(matches!(
+            disabled.observation,
+            super::NativeTypingObservation::Observed {
+                retry_after_ms: 0,
+                ..
+            }
+        ));
+        assert!(unavailable.semantic_hold && disabled.semantic_hold);
+        assert_eq!(fixture.registry.get(&seat.id).await.unwrap(), Some(seat));
+        assert!(fixture.tmux.calls().is_empty());
+        assert_eq!(fixture.queue.live_len(), 0);
     }
 
     #[tokio::test]

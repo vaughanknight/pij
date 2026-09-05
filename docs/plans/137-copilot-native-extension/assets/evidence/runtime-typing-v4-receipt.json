@@ -1,0 +1,112 @@
+{
+  "owner": "pij-worldwide-rat",
+  "status": "unit_verified_composition_pending",
+  "source_commit": "c37f45a0a9792ea05f49f7923d805cac4a14ac84",
+  "store_sha256": "d0b2c2ffb62b2109fc8c2bd09db49b4802b5e7f418cdf6a1cca0fd96301aa3da",
+  "prior_checkpoint": {
+    "source": "2b180f4f3a625d8182fb2c214c7688cd15d1a8e7",
+    "evidence": "a5de7cb3999f5da63a6be36a4944ca62b8f04f10",
+    "passed": 95,
+    "scope": "Completion interaction correlation; separately closed before v4 source edits"
+  },
+  "authority": {
+    "packet": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/inputs/pm-typing-sensor-contract-v4.json",
+    "release_addendum": "pij-grotesque-armadillo: current accepted claim declares release before ACK, including recovery; held un-deferral discards/reclaims, current ACK-stage no-op does not invalidate current claim; reuse successful declaration in same local cycle",
+    "canonical_source": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/.pi/extensions/pij/adapters/rust-runtime.ts:423-443,465-472",
+    "restart_addendum": "Re-offer is already freshly reclaimed. No synthetic historical hold/release or new persistent queue is reconstructed; check current sensor for a NEW send, and declare current release before ACK."
+  },
+  "implementation": {
+    "sensor": "DaemonClient.typingSnapshot uses authenticated exact tuple GET /v1/inbox/typing; validates proof echo, state, source/reason, safe nonnegative grace/time/retry, retry<=grace, boolean semantic Hold and nonnegative derived hold timestamp. Canonical missing-native HTTP400 additionally retries on this exact endpoint; other permanent refusals stay permanent.",
+    "before_intent": "Only journal-missing NEW sends pass through #prepareNewSend before journal.begin/prompt/native.send. Accepted/pending recovery never becomes a new injection.",
+    "held_cycle": "POST /v1/hold with original job_id/seat/msg_id, reason human-typing, since_ms=observed_at_ms-(typing_grace_ms-retry_after_ms). Poll sensor abortably using existing250..5000 capped cadence. New edits remain held; no duplicate local grace or composer-content rule. Quiet and no semantic Hold declares release with injected now(), discards held claim and reclaims normally.",
+    "semantic_hold": "Never clear operator Hold. Initial quiet semantic Hold delays then discards the raced claim; fresh claim/snapshot required. During a typing hold, semantic Hold prevents release.",
+    "ack_cycle": "After durable native acceptance, #declareRelease precedes ACK on SAME current claim, including recovered acceptance. Matching msg_id and canonical success/no-op response required. Local Map<job_id,msg_id> reuses confirmed declarations, invalidates before any new hold, deletes after confirmed ACK, and clears on consumer exit. No body or persistent queue copy.",
+    "cancellation": "Snapshot, poll delay and release/hold requests use the existing abortable wait plus post-await cancellation checks. Late quiet cannot inject or ACK old-context work. Unavailable/invalid snapshot stops receiving with fixed typing-sensor advice; explicit outgoing remains usable.",
+    "unchanged": "Native SDK transport, immutable identity, chooser/retirement, FileJournal acceptance durability, completion barrier, observer HOLD and external gate policy are unchanged."
+  },
+  "producer_inspection": {
+    "grade": "Read-only source inspection, not daemon execution",
+    "root": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon",
+    "functions": [
+      "delivery/mod.rs native_typing_snapshot:631-686",
+      "http/mod.rs inbox_typing:1369-1387",
+      "http/mod.rs hold_inbox:1465-1514",
+      "http/mod.rs release_inbox:1519-1549"
+    ],
+    "wire": "Snapshot v2 pij inbox envelope; hold {msg_id,held:true} or named noop; release {msg_id,released:true} or named noop. Release changes queue eligibility/readback, not semantic_state Hold. Native claim has no historical held metadata."
+  },
+  "validation": {
+    "command": "node --test --test-reporter=tap --test-timeout=15000 .copilot/extensions/pij/store.test.mjs .copilot/extensions/pij/identity.test.mjs .copilot/extensions/pij/extension.test.mjs",
+    "environment": {
+      "VITEST_MAX_THREADS": "4",
+      "CARGO_BUILD_JOBS": "4"
+    },
+    "red": {
+      "tap": "runtime-typing-v4-red.tap",
+      "source": "Completion checkpoint2b180f4f with new tests only; no v4 product edits",
+      "exit": 1,
+      "tests": 117,
+      "passed": 93,
+      "failed": 24,
+      "duration_ms": 11689.287,
+      "stderr": "",
+      "sha256": "87423fa0b45a1626a731e511a927272cecc979da35b65d765a40e4d363801954"
+    },
+    "ack_red": {
+      "tap": "runtime-typing-v4-ack-red.tap",
+      "source": "Uncommitted first v4 gate, before ACK-stage declaration integration; no separate source SHA claimed",
+      "exit": 1,
+      "tests": 123,
+      "passed": 114,
+      "failed": 9,
+      "duration_ms": 7023.642417,
+      "stderr": "",
+      "sha256": "b003e09f5b3867ade250686e5840e7e0ccdb3bfeb22af60c426d5a2d2691ab76"
+    },
+    "final": {
+      "tap": "runtime-typing-v4-tests.tap",
+      "exit": 0,
+      "tests": 124,
+      "passed": 124,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 7159.517667,
+      "stderr": "",
+      "sha256": "358092c3977913101c11e18eb3be319b8e66c1649ddfdd12732cb04762cf2cc8",
+      "bytes": 28144
+    },
+    "raw": "All three TAP files saved directly from captured Node stdout, byte-compared to the corresponding streams; no pager exports.",
+    "static": [
+      "Biome3 files97ms/fixed3/exit0; final test-only formatter1 file127ms/fixed1/exit0",
+      "LSP diagnostics OK on all3 changed files; final test file rechecked. Exported .mjs reference queries returned no results; bounded source/fixture inspection used."
+    ],
+    "fixture_corrections": [
+      "Native reporter transforms receive-held to native-log; new shell test corrected to observe the actual public notice rather than a nonexistent capture event.",
+      "One ACK-RED failure was a real-filesystem fixture timing assumption, not product behavior: replaced single flush() with await bridge run/owned stop.",
+      "Pre-remote-mutation retry fixtures relabeled accurately; no post-commit response-loss claim."
+    ]
+  },
+  "review": {
+    "reviewer": "TypingV4BoundaryReview",
+    "verdict": "no_material_findings",
+    "confidence": 0.92,
+    "grade": "Read-only source/test and canonical136/daemon schema inspection; no reviewer execution",
+    "followup": "Parent added and executed initial semantic Hold clearance/fresh-reclaim regression; source unchanged. Reviewer acknowledged unchanged verdict without re-inspection."
+  },
+  "proof_surface": [
+    "Actual Node fetch/loopback HTTP snapshot/auth/identity/numeric/error/cancellation boundaries",
+    "Actual extension entrypoint in owned Node shell fixture: sensor→hold→release→fresh claim→new sensor→native acceptance→ACK-stage release→ACK, exact bodies and empty stdout",
+    "Real FileJournal deferred re-offer and accepted-before-ACK restart behavior",
+    "Foreground completion and all prior runtime contracts retained in full scoped124-test run"
+  ],
+  "cleanup": "Owned HTTP servers, connections, child shells and temporary journals close via test teardown. No real client launch, shared daemon restart, dependency/toolchain/global config/link modification, .pi edit or second persistent body queue. PM owns plan/guide/installer/Rust convergence and full gates.",
+  "harness_improvement": "Permanent actual-HTTP and owned-shell consent handshake regressions, explicit initial semantic Hold clearance proof, filesystem synchronization on completed behavior, and accurate pre-mutation failure labels replace inferred timing/provenance.",
+  "limits": [
+    "No real Copilot composer/aged-nonempty pane or real Rust snapshot mutation test run by runtime; PM/daemon/installer own those witnesses.",
+    "True daemon commit-then-response-loss recovery is not exercised by these simulated pre-mutation retry cases.",
+    "Historical cross-language store hashes and completion-only live witnesses are not execution proof of this newly changed module.",
+    "Final composition, real-provider/lifecycle validation, observer approval and full-gate verdict are not claimed."
+  ]
+}
