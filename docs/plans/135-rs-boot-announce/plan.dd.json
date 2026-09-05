@@ -63,8 +63,9 @@
           "id": "AC4",
           "claim": "register contract is additive and shared",
           "text": "`/v1/register` response gains `binding` (created|rebound|same) with no renamed or removed field; one golden fixture docs/plans/135-rs-boot-announce/assets/contracts/register-response.json is deserialized by a Rust test (crates/daemon) AND parsed by a TS test (core/daemon-wire) — both cite the same file path in their source.",
-          "state": "checked",
-          "receipt": "assets/contracts/register-response.json read by both suites: u1 http tests compare parsed serde_json::Value against it; u2 parses it for the fake client. Field additive, nothing renamed."
+          "state": "unchecked",
+          "receipt": "assets/contracts/register-response.json read by both suites: u1 http tests compare parsed serde_json::Value against it; u2 parses it for the fake client. Field additive, nothing renamed.",
+          "note": "DOWNGRADED 2026-09-05 by reviewer finding: on merged main the Rust suite still cited the pre-move path (deleted), so the two suites did NOT cite the same file and three daemon tests failed deterministically with NotFound. Cause: a git add that aborted on a deleted path with stderr suppressed, so the fix lived only in the working tree. Fixed in 99269b90 by resolving through pij_testkit::fixtures::read so a future move is a compile error; re-check only after merge and a clean run against the COMMITTED tree."
         },
         {
           "id": "AC5",
@@ -77,9 +78,9 @@
           "id": "AC6",
           "claim": "legacy path untouched and full gates green (frame-expectation exception enumerated)",
           "text": "core/session.test.ts unchanged and green; `harness checks` green; `cargo test --workspace`, clippy -D warnings, fmt --check green on the composed branch; outputs pasted.",
-          "state": "checked",
+          "state": "unchecked",
           "receipt": "Composed branch: harness checks --quick all 7 sensors pass; cargo clippy -D warnings + fmt --check clean; core/session.test.ts unchanged; workspace green apart from one pij-sidecars load artifact passing 10/10 quiet",
-          "note": "AMENDED 2026-09-05 by prime ruling, after AC8 was added: the original wording \"core/session.test.ts unchanged and green\" was a FENCE RULE for u2 (do not disturb the legacy freshness path). AC8 deliberately changes what frame() renders, so tests pinning the old frame text must move. Amended intent: session.test.ts and router.test.ts change ONLY where AC8 forces a rendered-frame expectation; every behavioural assertion in them is unchanged and green. The exception is enumerable, not approximate — live-proof.md lists each touched line with before/after of the expected string."
+          "note": "DOWNGRADED 2026-09-05: the composed cargo test --workspace green was produced against an uncommitted working tree, so the claim was false on merged main. Re-run required against the committed tree after 99269b90 merges."
         },
         {
           "id": "AC7",
