@@ -130,6 +130,10 @@ describe("isolated native tool human approval", () => {
 		),
 	);
 	const welcomeTerminal = String(welcome.terminal);
+	const welcomeRows = welcomeTerminal.split("\n");
+	const welcomeBeforeComposer = welcomeRows
+		.slice(0, welcomeRows.findIndex((line) => /^╰─+╯$/.test(line.trim())) + 1)
+		.join("\n");
 	const incomplete = dialog().replace("╰────────────────╯", "");
 
 	it("recognizes the retained real welcome panel as history above the composer", () => {
@@ -142,8 +146,24 @@ describe("isolated native tool human approval", () => {
 		).toBe(false);
 		expect(nativeComposer(welcomeTerminal)).toBe("");
 	});
+	it("treats retained welcome truncated at its closer as an incomplete repaint", () => {
+		expect(verifyToolApproval(welcomeBeforeComposer, args)).toBeUndefined();
+		expect(nativeComposer(welcomeBeforeComposer)).toBeUndefined();
+	});
+	it.each([
+		welcomeBeforeComposer.replace("Getting started", "Confirm folder trust"),
+		welcomeBeforeComposer.replace(
+			"Use the tabs above to explore your sessions and pull requests",
+			"Approve access to files",
+		),
+		welcomeBeforeComposer.replace(/(^╰─+╯$)/m, "│ ❯ 1. Yes │\n$1"),
+	])("still throws for complete unknown or modified welcome-shaped boxes", (terminal) => {
+		expect(() => verifyToolApproval(terminal, args)).toThrow("PIJ_NATIVE_UNEXPECTED_APPROVAL");
+		expect(() => nativeComposer(terminal)).toThrow("PIJ_NATIVE_UNEXPECTED_LIFECYCLE_DIALOG");
+	});
 	it.each([
 		welcomeTerminal,
+		welcomeBeforeComposer,
 		`${dialog()}\n❯ ordinary composer`,
 		incomplete,
 		dialog().replace("╭────────────────╮", "╭────"),
@@ -180,7 +200,14 @@ describe("isolated native tool human approval", () => {
 		);
 	});
 	it("waits through welcome and incomplete repaint before two exact confirmations", async () => {
-		const frames = [welcomeTerminal, incomplete, dialog(), dialog(), welcomeTerminal];
+		const frames = [
+			welcomeTerminal,
+			welcomeBeforeComposer,
+			incomplete,
+			dialog(),
+			dialog(),
+			welcomeTerminal,
+		];
 		const keys: string[][] = [];
 		await confirmSmokeToolInvocation(
 			(command) => {
@@ -214,14 +241,17 @@ describe("isolated native tool human approval", () => {
 		);
 		expect(keys).toHaveLength(1);
 	});
-	it("does not equate a post-key incomplete repaint with dismissal", async () => {
-		const frames = [dialog(), dialog(), incomplete];
+	it.each([
+		incomplete,
+		welcomeBeforeComposer,
+	])("does not equate a post-key incomplete repaint with dismissal", async (repaint) => {
+		const frames = [dialog(), dialog(), repaint];
 		const keys: string[][] = [];
 		const witness: Record<string, unknown> = {};
 		await expect(
 			confirmSmokeToolInvocation(
 				(command) => {
-					if (command[0] === "capture-pane") return frames.shift() ?? incomplete;
+					if (command[0] === "capture-pane") return frames.shift() ?? repaint;
 					keys.push(command);
 					return "";
 				},
@@ -231,7 +261,7 @@ describe("isolated native tool human approval", () => {
 			),
 		).rejects.toThrow("PIJ_NATIVE_TIMEOUT");
 		expect(keys).toHaveLength(1);
-		expect(witness).toMatchObject({ status: "failed", after_input: incomplete });
+		expect(witness).toMatchObject({ status: "failed", after_input: repaint });
 	});
 	it("fails a complete unknown dialog after a post-key repaint without another key", async () => {
 		const unknown = dialog().replace('Run extension tool "pij_send"', "Confirm folder trust");
