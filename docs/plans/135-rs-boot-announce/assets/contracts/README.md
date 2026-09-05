@@ -1,13 +1,21 @@
 # Contract — `/v1/register` `binding` (frozen, plan 135)
 
-**This directory is the seam.** `register-response.json` is the ONE artifact both
+**The fixture is the seam.** `register-response.json` is the ONE artifact both
 runtimes assert against (AC4). Rust (`crates/daemon`) and TypeScript
-(`.pi/extensions/pij/core/daemon-wire.ts` consumers) each **READ this file by
+(`.pi/extensions/pij/core/daemon-wire.ts` consumers) each **READ that file by
 path** in their tests. Neither may restate the literals inline — a restated
 fixture is two contracts wearing one name.
 
 Path both sides cite:
-`docs/plans/135-rs-boot-announce/assets/contracts/register-response.json`
+`crates/testkit/fixtures/register-response.json`
+
+**Why it does not live in this folder** (moved at compose, prime-approved): the
+builder flow ARCHIVES the plan folder at post-flight, so a fixture read at test
+time from `docs/plans/135-rs-boot-announce/assets/contracts/` would break two live
+suites the moment the flow was closed correctly — a plan that breaks the build by
+being filed away. It now lives in `crates/testkit/fixtures/`, the existing shared
+contract-proof home, which survives archival. This document stays here as the
+vocabulary record and the pointer.
 
 ## Vocabulary (frozen — do not widen; a fourth value is stop-and-ask)
 

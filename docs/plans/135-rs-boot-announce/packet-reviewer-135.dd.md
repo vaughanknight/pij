@@ -53,8 +53,8 @@ You are the cross-model reviewer for plan 135-rs-boot-announce. Four units are c
 
 | Field | Value |
 | --- | --- |
-| worktree | /Users/jordanknight/pi-hacking/fs3-rs-boot-announce |
-| branch | 135-rs-boot-announce |
+| worktree | /Users/jordanknight/pi-hacking/pij (MAIN checkout — 135 is MERGED) |
+| branch | main @ 4b000ffb (no-ff merge of fef83b97); base for the diff is the merge parent |
 | fence | READ-ONLY on all code. Write only docs/plans/135-rs-boot-announce/assets/reviews/**. |
 | forbidden_note | No code edits, no commits, no merges, no government files, no daemon operations, no seat spawning, no dependency installs. Do not modify the golden fixture or any test while reviewing — if a test is wrong, that is a finding, not a fix. |
 
