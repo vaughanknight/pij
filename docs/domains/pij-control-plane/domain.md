@@ -15,7 +15,8 @@ receiver). Plan 019.
 | Path | Role |
 |------|------|
 | `.pi/extensions/pij/adapters/tmux-keys.ts` | Shared send-keys/paste/capture primitives over a raw pane target string (`typeLiteral`/`pressKey`/`pasteBuffer`/`capturePane`), injectable `TmuxRunner`. Extracted from `harness/driver/tmux.ts` (parity). |
-| `.pi/extensions/pij/core/harness/types.ts` | `HarnessKind` + `selectTransport()` — `pi`→`inbox`, `claude`/`copilot`/`codex`→`sendkeys`. |
+| `.pi/extensions/pij/core/harness/types.ts` | Legacy TypeScript `HarnessKind` / `selectTransport()` classifier. Its historical Copilot `sendkeys` classification is not native delivery authority or a fallback. |
+| `.copilot/extensions/pij/` | Native Copilot user extension: verified host/session registration, daemon inbox consumption, native SDK injection and explicit outgoing tool. See [current transport contract](../../how/copilot-native-extension.md). |
 | `.pi/extensions/pij/core/readiness.ts` | Pure pane-text → `{ booting, interstitial, ready, busy, dead }` classifier; R-01 footer markers frozen from the live prototype. |
 | `.pi/extensions/pij/core/interstitial.ts` | Known one-time boot prompts → `dismiss` (Esc) / `needs-human` classification. |
 | `.pi/extensions/pij/core/harness/claude.ts` | Claude transport: init template, `claudeTranscriptPath` cwd-mangle, new-transcript discovery (path absent at spawn), send-keys plan. |
@@ -64,7 +65,7 @@ receiver). Plan 019.
 | Pending descriptor | Spawn atomically writes `(pij-id, paneId, cwd, harness, state:pending)` under `~/.pij/`; the daemon dir-watch picks it up. | `SessionDescriptor` += `harness`/`state` (F2 / AC-01). |
 | Spawn expectation | Every Pi, daemon-bound, agent, and focus launch persists `(spawnId, requestedHarness, requestedAt, deadlineAt)` before tmux launch, then joins pane and descriptor/session ids. | Synchronous launch failure removes only its own key; expiry is an expectation-keyed no-show, suppressed once a descriptor has the same `spawnId`. |
 | Terminal observation | Terminal absence is classified from durable intent and probe evidence, never guessed from a missing pane alone. | `requested` (pij close intent), `unrequested-by-pij` (observed absence), or `unavailable` (probe failure); first daemon sweep is historical, later sweeps live. |
-| Transport selection | A target's harness decides how a message reaches it. | `selectTransport(harness)` → `inbox` (pi) \| `sendkeys` (claude/copilot/codex). |
+| Transport selection | Current routing selects the supported harness transport. | Copilot is native-extension-only; missing capability queues/refuses. Legacy `selectTransport` classifications do not authorize Copilot sendkeys. |
 | Readiness | The daemon reads the pane and classifies idle-ready vs busy vs booting vs interstitial — no agent in the loop. | `classifyReadiness(paneText)`; R-01 footer markers (AC-02). |
 | Interstitial handling | Known one-time boot prompts are auto-dismissed (Esc); trust/login are surfaced as needs-human. | `classifyInterstitial` → `dismiss`/`needs-human` (AC-06). |
 | Deterministic binding | Claude/Codex use harness-specific transcript discovery; Copilot spawn uses its chosen UUID and Copilot adopt uses only validated `COPILOT_AGENT_SESSION_ID`. | `bind()`; harness-aware phonehome (`COPILOT_AGENT_SESSION_ID` / `CLAUDE_CODE_SESSION_ID`); watchdog. |
@@ -96,7 +97,7 @@ receiver). Plan 019.
 | Contract | Consumer | Shape / Guarantee |
 |----------|----------|-------------------|
 | `tmux-keys` primitives | daemon, harness Driver | `typeLiteral`/`pressKey`/`pasteBuffer`/`capturePane(target, …, run?)`; argv-only; `TmuxRunner` injectable. |
-| `HarnessKind` + `selectTransport` | router, spawn, CLI | `"pi" \| "claude" \| "copilot" \| "codex"` → `"inbox" \| "sendkeys"`. |
+| Legacy `HarnessKind` + `selectTransport` | TypeScript compatibility callers | Historical `inbox` / `sendkeys` classification; native Copilot routing bypasses it and never uses it as fallback. |
 | `classifyReadiness` | daemon readiness loop | pure `string → ReadinessState`; version-sensitive markers isolated here. |
 | `classifyInterstitial` | daemon readiness loop | pure `string → { kind: "dismiss" \| "needs-human" \| "none" }`. |
 | Binding record | daemon, `pij tail`, creator notice | Durable `(harness,harnessSessionId) ↔ pij-id` plus replaceable `paneId ↔ pid ↔ cwd`; exact zero/one/many resolution, no silent overwrite. |
@@ -116,8 +117,8 @@ receiver). Plan 019.
 ## Boundary Owns
 
 - The single-instance daemon lifecycle + chalk TUI.
-- The harness-type → transport seam (`pi`→inbox, `claude`/`copilot`/`codex`→send-keys).
-- Daemon ownership of push tmux unread/marker outcomes; pull and pi inboxes remain externally owned.
+- Harness-specific transport selection, including native-only Copilot inbox ownership.
+- Daemon ownership of supported push outcomes; Pi/OMP and native Copilot extensions own their receive loops. Legacy sendkeys classification does not authorize Copilot delivery.
 - The tmux key/paste/capture primitives (shared lib).
 - Readiness detection + interstitial handling.
 - Read-only per-pane busy/connect signals and the human-composer-only send hold.

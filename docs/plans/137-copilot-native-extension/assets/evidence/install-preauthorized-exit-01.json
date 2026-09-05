@@ -1,0 +1,94 @@
+{
+  "status": "scoped-checks-passed-source-review-clean-no-live-run",
+  "source_base": "afcdb4c2",
+  "request": "assets/inputs/pm-spawn-permission-exit-ghost.json",
+  "scope": "Smoke driver, its scoped tests, actual retained fixtures, existing installer how-to contract, and installer evidence only",
+  "preauthorized_execution": {
+    "fixture": "harness/scripts/fixtures/copilot-native-preauthorized.json",
+    "source_receipt": "docs/plans/137-copilot-native-extension/assets/evidence/pm-native-spawned-probe-01.json",
+    "source_commit": "51973efc42a1beb5435764d8a57437b1bb3d1f3d",
+    "run": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-SHK7Zg",
+    "source_session": "3f04db77-de4c-4992-991d-9f59600fecce",
+    "incoming_event_id": "fd52bfdc-03e0-47b8-a5c2-3673127ebca1",
+    "tool_call_id": "call_1dac4317-481f-4cd3-9eb7-ef00b498c958",
+    "start_event_id": "4e151616-c99c-4c0b-ae1d-3172abb5d2d9",
+    "completed_event_id": "97e4d963-75ec-4b54-b525-0b9561b807b2",
+    "outgoing_msg_id": "51a3a718-76c5-417b-a0f4-9f20d8f5c133",
+    "outgoing_job_id": 2,
+    "launch_policy": "Observed existing --yolo in Pij-spawned actual ps process evidence, corroborated by native session.permissions_changed. No flag, grant, or permission change introduced.",
+    "temporal_policy": "Require the latest native permission state strictly before tool.execution_start. A later grant cannot retroactively classify the invocation as preauthorized.",
+    "execution_proof": "Exactly one invocation after accepted incoming native event; exact pij_send tool and complete to/message arguments; matching success toolCallId, ordered native IDs, result ok:true and receipt msg_id; same durable jobs dedupe_key with exact source, recipient, body, payload msg_id, serial_key and delivery kind.",
+    "screen_proof": "Capture before observation and recheck before accepting completion. No active dialog may be accepted; unknown/mismatched modal fails, incomplete repaint waits boundedly. No send-keys on this branch.",
+    "witness_kind": "native-tool-preauthorized-execution",
+    "witness_grade": "native-tool-executed-not-human-approved-not-model-complete",
+    "manual_path": "Existing exact-dialog one-time human approval remains separate and strict.",
+    "timing": "Actual retained receipt screen plus subsequently read native events.jsonl and read-only SQLite row; not an atomic snapshot. Original durable payload including native_target_session retained without reconstruction."
+  },
+  "exit_ghost": {
+    "fixture": "harness/scripts/fixtures/copilot-native-exit-command.json",
+    "source_receipt": "docs/plans/137-copilot-native-extension/assets/evidence/pm-native-lifecycle-probe-01.json",
+    "source_commit": "51973efc42a1beb5435764d8a57437b1bb3d1f3d",
+    "run": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-zWR1b9",
+    "capture": "final_pane_captures[pane=%3].pane_capture",
+    "cursor_x": 7,
+    "cursor_y": 45,
+    "pane_width": 160,
+    "pane_height": 48,
+    "selected_row": "  ❯ /exit",
+    "selected_command": "/exit",
+    "alternative": "/exit print  Print the session after exiting",
+    "layout": "Selected bare /exit at physical row38, unselected /exit print at39, four blank rows40-43, composer /exit [print] at45.",
+    "implementation": "Only lifecycle driver accepts the two known command ghosts, using existing nativeComposer and captureSmokePaneViewport unchanged. Exact prefix/cursor, known suffix, full adjacent menu validation and selected whole command are rechecked after staged hook before the sole Enter. /exit print, typed placeholder and malformed or ambiguous controls refuse.",
+    "timing": "Retained final measured frame and earlier failed staged frame are separate observations, not a backfilled atomic capture."
+  },
+  "verification": {
+    "environment": { "VITEST_MAX_WORKERS": "4", "VITEST_MAX_THREADS": "4", "CARGO_BUILD_JOBS": "4" },
+    "exit_red": {
+      "command": "just test harness/scripts/copilot-native-smoke.test.ts -t 'submits only /exit from the retained'",
+      "failed": 1,
+      "skipped": 162,
+      "failure": "PIJ_NATIVE_TIMEOUT: exact native lifecycle command staged",
+      "exit": 1
+    },
+    "review_red": {
+      "command": "just test harness/scripts/copilot-native-smoke.test.ts -t 'late permission grant'",
+      "failed": 1,
+      "skipped": 193,
+      "failure": "Proof resolved despite native permission revoked before invocation and granted again after completion",
+      "exit": 1
+    },
+    "exit_refusals": "12 retained-frame variants, each tested during initial staging and final recheck; prior /new and plain lifecycle paths preserved",
+    "preauthorized_tests": "31 tests: retained success, progressive keyless completion, 25 evidence/identity/permission counterexamples, four active/incomplete-modal variants tested at both screen boundaries",
+    "combined": {
+      "command": "just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts",
+      "passed": 227,
+      "installer": 33,
+      "smoke": 194,
+      "duration_seconds": 14.35,
+      "exit": 0
+    },
+    "typescript": {
+      "command": "node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit": 0
+    },
+    "biome": {
+      "command": "node_modules/.bin/biome check harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts harness/scripts/fixtures/copilot-native-exit-command.json harness/scripts/fixtures/copilot-native-preauthorized.json",
+      "files": 4,
+      "warnings": 0,
+      "fixes_applied": false,
+      "exit": 0
+    },
+    "source_review": {
+      "reviewer": "LifecycleGhostReview",
+      "exit": "No actionable findings in bounded source-only review",
+      "preauthorization_finding": "Using latest permission over the whole log let a later grant authorize earlier execution",
+      "correction": "Scan only preceding permission events, stopping at the selected invocation; RED regression added",
+      "follow_up": "No remaining actionable findings, including spawned callsite and receipt consumers. Reviewer performed no edits or validation."
+    }
+  },
+  "grade": "Source/injected-IO and retained-screen/native-log/SQLite replay proof only. Existing local-provider probe provenance is not a fresh live run or real-provider inference. Native accepted, tool executed, model complete, and human approved remain distinct grades.",
+  "not_run": ["live CLI probes", "real provider inference", "full harness gates", "Rust or cross-language contract suite"],
+  "pm_next": "Compose checkpoint, refresh frozen scoped driver, run scoped spawned/lifecycle probes, then canonical acceptance/full gates. No new live AC6/AC7, rollover or cold-resume acceptance claimed here.",
+  "scope_exclusions": ["product source", "permission grants", "recognizer/footer variants", "queue or transport policy", "composition tree writes", "governance", "global config/auth", "machine daemon repair"],
+  "lesson": { "observation": "DL-001", "fingerprint": "fb2164334bf2", "encoded_in": ["retained actual frames and native/SQLite evidence", "preauthorization-time regression", "keyless refusal tests", "existing how-to", "this receipt"] }
+}

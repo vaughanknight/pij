@@ -1,0 +1,7 @@
+{
+  "authority": "pij-minor-unicorn, 2026-09-05",
+  "decision": "APPROVED: add captured Copilot1.0.84 draft footer @ files · # issues in is_copilot_footer, same fence as idle footer",
+  "constraints": ["RED first", "Additive only; never narrow existing variants", "Policy unchanged; unavailable remains safe stop", "Fixture from actual pane; next live run must retain measured cursor and add it to fixture", "Run cargo test -p pij-harnesses tripwire;136 is closed"],
+  "evidence": "assets/evidence/pm-native-local-06.json: manual roundtrip succeeds; typed draft changes footer, sensor unavailable before next send",
+  "follow_up": "Prime: composer-dependent footer proves recognizer should key on box geometry rather than footer text. Record follow-up; do not add a third variant next time without addressing that architecture. No broader recognizer redesign authorized here."
+}

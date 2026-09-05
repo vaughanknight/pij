@@ -29,9 +29,6 @@ pub struct SpawnPlan {
     pub effort: Option<String>,
     /// True only when the Claude accept setting is present in `args`.
     pub cross_session_inbound_accept: bool,
-    /// Port emitted with Copilot's `--ui-server --port N`, if present in `args`.
-    /// This records argv intent, not listener possession.
-    pub rpc_port_intent: Option<u16>,
 }
 
 /// Inputs used to build one spawn command.
@@ -53,8 +50,6 @@ pub struct SpawnPlanInput {
     pub effort: Option<String>,
     /// Whether to configure Claude to accept cross-session inbound messages.
     pub accept_inbound: bool,
-    /// Copilot RPC port selected by the daemon for this launch.
-    pub copilot_rpc_port_intent: Option<u16>,
 }
 
 /// Build the exact environment launcher and harness argv for one spawn.
@@ -64,11 +59,11 @@ pub struct SpawnPlanInput {
 /// `use pij_harnesses::{SpawnPlanInput, build_spawn_plan};` in the authenticated
 /// `POST /v1/spawn` handler. Assign the seat id under the spawn lock, then build
 /// `SpawnPlanInput` from that exact id and launch correlator plus the request's
-/// harness, executable/model/effort, `accept_inbound`, and any Rust-allocated
-/// Copilot port. Pass the returned `plan.executable` and discrete `plan.args` as
-/// `Some(&LaunchCommand)` to `Services.tmux.new_window`. Only after that call
-/// returns a pane, write the pre-bind descriptor and copy both argv-derived
-/// stamps from the plan; never derive a stamp from the request.
+/// harness, executable/model/effort, and `accept_inbound`. Pass the returned
+/// `plan.executable` and discrete `plan.args` as `Some(&LaunchCommand)` to
+/// `Services.tmux.new_window`. Only after that call returns a pane, write the
+/// pre-bind descriptor and copy the argv-derived accept stamp from the plan;
+/// native extension delivery requires registration, not a launch-time stamp.
 ///
 /// # Errors
 ///
@@ -89,21 +84,6 @@ pub fn build_spawn_plan(input: SpawnPlanInput) -> Result<SpawnPlan> {
                 "--accept-inbound applies only to claude, not {} — omit it for this harness",
                 input.harness
             ),
-        });
-    }
-    if input.copilot_rpc_port_intent.is_some() && input.harness != Harness::Copilot {
-        return Err(PijError::Adapter {
-            adapter: "spawn".to_string(),
-            message: format!(
-                "a Copilot RPC port applies only to copilot, not {}",
-                input.harness
-            ),
-        });
-    }
-    if input.copilot_rpc_port_intent == Some(0) {
-        return Err(PijError::Adapter {
-            adapter: "spawn".to_string(),
-            message: "a Copilot RPC port must be non-zero".to_string(),
         });
     }
 
@@ -141,13 +121,6 @@ pub fn build_spawn_plan(input: SpawnPlanInput) -> Result<SpawnPlan> {
         }
         Harness::Copilot => {
             args.push("--yolo".to_string());
-            if let Some(port) = input.copilot_rpc_port_intent {
-                args.extend([
-                    "--ui-server".to_string(),
-                    "--port".to_string(),
-                    port.to_string(),
-                ]);
-            }
             push_option(&mut args, "--model", input.model.as_deref());
             if input.model.is_some() {
                 args.extend(["--context".to_string(), "long_context".to_string()]);
@@ -166,12 +139,6 @@ pub fn build_spawn_plan(input: SpawnPlanInput) -> Result<SpawnPlan> {
     let cross_session_inbound_accept = args
         .windows(2)
         .any(|pair| pair[0] == "--settings" && pair[1] == CLAUDE_ACCEPT_SETTINGS);
-    let rpc_port_intent = args.windows(3).find_map(|triple| {
-        (triple[0] == "--ui-server" && triple[1] == "--port")
-            .then(|| triple[2].parse::<u16>().ok())
-            .flatten()
-            .filter(|port| *port != 0)
-    });
 
     Ok(SpawnPlan {
         harness: input.harness,
@@ -181,7 +148,6 @@ pub fn build_spawn_plan(input: SpawnPlanInput) -> Result<SpawnPlan> {
         provider: input.resolved_provider,
         effort: input.effort,
         cross_session_inbound_accept,
-        rpc_port_intent,
     })
 }
 
@@ -250,7 +216,6 @@ mod tests {
             resolved_provider: Some("provider".to_string()),
             effort: Some("high".to_string()),
             accept_inbound: false,
-            copilot_rpc_port_intent: None,
         }
     }
 
@@ -325,7 +290,6 @@ mod tests {
                 .concat()
             );
             assert!(!plan.cross_session_inbound_accept);
-            assert_eq!(plan.rpc_port_intent, None);
             assert_eq!(plan.model.as_deref(), Some("provider/model"));
             assert_eq!(plan.provider.as_deref(), Some("provider"));
             assert_eq!(plan.effort.as_deref(), Some("high"));
@@ -352,21 +316,14 @@ mod tests {
     }
 
     #[test]
-    fn copilot_rpc_stamp_is_derived_only_from_the_exact_emitted_argv() {
-        let mut request = input(Harness::Copilot);
-        request.copilot_rpc_port_intent = Some(47_781);
-        let plan = build_spawn_plan(request).expect("Copilot RPC plan");
-
+    fn copilot_launch_never_requests_an_rpc_listener() {
+        let plan = build_spawn_plan(input(Harness::Copilot)).expect("Copilot native plan");
         assert!(
-            plan.args
-                .windows(3)
-                .any(|triple| triple == ["--ui-server", "--port", "47781"])
+            !plan
+                .args
+                .iter()
+                .any(|arg| arg == "--ui-server" || arg == "--port")
         );
-        assert_eq!(plan.rpc_port_intent, Some(47_781));
-
-        let without = build_spawn_plan(input(Harness::Copilot)).expect("pointer-only plan");
-        assert!(!without.args.iter().any(|arg| arg == "--ui-server"));
-        assert_eq!(without.rpc_port_intent, None);
     }
 
     #[test]
@@ -397,27 +354,6 @@ mod tests {
     }
 
     #[test]
-    fn copilot_rpc_port_is_refused_for_other_harnesses_and_port_zero() {
-        let mut wrong_harness = input(Harness::Claude);
-        wrong_harness.copilot_rpc_port_intent = Some(47_781);
-        assert!(
-            build_spawn_plan(wrong_harness)
-                .expect_err("wrong harness")
-                .to_string()
-                .contains("only to copilot")
-        );
-
-        let mut zero = input(Harness::Copilot);
-        zero.copilot_rpc_port_intent = Some(0);
-        assert!(
-            build_spawn_plan(zero)
-                .expect_err("port zero")
-                .to_string()
-                .contains("non-zero")
-        );
-    }
-
-    #[test]
     fn accept_inbound_is_refused_for_every_non_claude_harness() {
         for harness in [Harness::Pi, Harness::Omp, Harness::Copilot, Harness::Codex] {
             let mut request = input(harness);
@@ -438,7 +374,6 @@ mod tests {
             resolved_provider: None,
             effort: None,
             accept_inbound: false,
-            copilot_rpc_port_intent: None,
         })
         .expect("build plan");
 
@@ -456,6 +391,5 @@ mod tests {
         assert_eq!(plan.provider, None);
         assert_eq!(plan.effort, None);
         assert!(!plan.cross_session_inbound_accept);
-        assert_eq!(plan.rpc_port_intent, None);
     }
 }

@@ -1,0 +1,133 @@
+Merge made by the 'ort' strategy.
+ .copilot/extensions/pij/store.mjs                  |  25 +-
+ .copilot/extensions/pij/store.test.mjs             | 181 +++++++
+ .../evidence/runtime-inbox-renewal-receipt.json    |  40 ++
+ .../evidence/runtime-inbox-renewal-tests.tap       | 532 +++++++++++++++++++++
+ 4 files changed, 770 insertions(+), 8 deletions(-)
+ create mode 100644 docs/plans/137-copilot-native-extension/assets/evidence/runtime-inbox-renewal-receipt.json
+ create mode 100644 docs/plans/137-copilot-native-extension/assets/evidence/runtime-inbox-renewal-tests.tap
+Merge made by the 'ort' strategy.
+ docs/how/copilot-native-extension.md               |  10 ++
+ .../assets/evidence/install-consent-guard-01.json  |  55 ++++++
+ harness/scripts/copilot-native-smoke.test.ts       | 188 +++++++++++++++++++++
+ harness/scripts/copilot-native-smoke.ts            | 103 ++++++++++-
+ 4 files changed, 354 insertions(+), 2 deletions(-)
+ create mode 100644 docs/plans/137-copilot-native-extension/assets/evidence/install-consent-guard-01.json
+node --test .copilot/extensions/pij/*.test.mjs
+✔ actual extension shell joins, registers, receives and exposes immutable outgoing tool (120.691042ms)
+✔ actual shell discovers local seats without remote pane collisions (86.068375ms)
+✔ actual extension shell acknowledges then waits for native completion before second delivery (106.766542ms)
+✔ actual HTTP target-session hold stops claims and ack with actionable native diagnostic (412.538292ms)
+✔ actual HTTP empty page differs from human-typing hold and release delivers without another send (843.970625ms)
+✔ actual HTTP empty page differs from native-pane-changed hold and release delivers without another send (840.797041ms)
+✔ ambiguous native roster refreshes without selecting until unique (842.621667ms)
+✔ retired native attachment mints fresh id once across dropped registration response (345.783167ms)
+✔ actual HTTP native-unavailable refusal re-registers and consumes queued work (340.900917ms)
+✔ actual HTTP stale native refusal stays held without reregister or acknowledgement (408.729583ms)
+✔ actual native rollover registers a new seat and consumes successor-targeted work (87.3715ms)
+✔ actual shell cold resume nomination retains address through HTTP (89.345083ms)
+✔ actual shell cold resume nomination respects registration refusal (80.45125ms)
+✔ absent key does not block joined native tools and emits one native timeline diagnostic (900.139375ms)
+✔ absent daemon with readable key stays callable and quiet across network retries (905.1375ms)
+✔ prejoin rejection emits once to stderr without claiming native timeline visibility (40.039166ms)
+✔ native diagnostic sink counts one call per failure episode and never logs raw remote secrets (0.206834ms)
+✔ host is verified Copilot ancestor, not extension loader or pane shell (0.896292ms)
+✔ paneless native host remains truthful without inventing a pane (0.103708ms)
+✔ a pane not in actual ancestry refuses instead of hiding pane metadata (0.293875ms)
+✔ absence of native ancestor is explicit unsupported identity (0.076458ms)
+✔ PID reuse during observation refuses stale host incarnation (0.113667ms)
+✔ acceptance is persisted before tuple-bound acknowledgement, not model completion (1.441833ms)
+✔ accepted duplicate after restart only acknowledges, never reinjects (0.180917ms)
+✔ ambiguous prior send holds without native send or ack; outgoing remains available (0.345583ms)
+✔ recipient mismatch holds without native send or ack; outgoing remains available (0.126333ms)
+✔ unsupported command holds without native send or ack; outgoing remains available (0.572792ms)
+✔ multiple claims holds without native send or ack; outgoing remains available (0.221667ms)
+✔ storage failure holds without native send or ack; outgoing remains available (0.160375ms)
+✔ duplicate id with changed body holds without native send or ack; outgoing remains available (0.192792ms)
+✔ send rejection is ambiguous and never acknowledged or retried (0.178584ms)
+✔ native acceptance followed by failed persistence stays unacknowledged (0.151125ms)
+✔ late native completion after stop cannot acknowledge another generation (0.221292ms)
+✔ two run calls share a single consumer; buffered events never forward replies (0.377333ms)
+✔ outgoing tool ignores spoofed from, mints unique ids and returns queue grade (0.428917ms)
+✔ registration readback refuses {"native_extension_delivery":false} (0.121584ms)
+✔ registration readback refuses {"harness":"omp"} (0.248334ms)
+✔ registration readback refuses {"id":"another"} (0.0835ms)
+✔ registration readback refuses {"session":"another-native"} (0.0665ms)
+✔ registration readback refuses {"proc":{"pid":138,"proc_start":20260905120000}} (0.052875ms)
+✔ registration readback refuses {"pane":"%138"} (0.046209ms)
+✔ registration tolerates additive plan135 binding metadata (0.158708ms)
+✔ manual identity stable; exact process native rollover supersedes predecessor (0.678792ms)
+✔ spawn binding requires exact process, pane and correlation (0.105709ms)
+✔ cold native resume nominates a unique attested address without trusting roster state (0.067834ms)
+✔ ambiguous native addresses and unverified native claims do not authorize resume (0.317208ms)
+✔ explicit retirement reopens as fresh attachment, including same-process A to B to A (31.226834ms)
+✔ fresh native conversation nominates new address without retiring old pane owner locally (0.157375ms)
+✔ valid spawn preallocation precedes resume candidate; cold spawned successor retains correlation (0.075875ms)
+✔ process start uses daemon local C-locale packed stamp with calendar checks (0.24475ms)
+✔ real filesystem journal survives restart and hashes opaque ids with private modes (47.909792ms)
+✔ real chooseRegistration and filesystem preserve accepted-before-ack across changed host (32.210208ms)
+✔ HTTP client reloads key on every request, binds tuple, keeps bounded non-JSON diagnostic (2.183625ms)
+✔ own inbox wait deadlines renew with bounded delay without re-registering or outage logs (1231.195917ms)
+✔ inbox wait renewal does not reset an existing outage episode (160.304625ms)
+✔ HTTP non-wait deadlines, body stalls and connection failures remain retryable (908.558167ms)
+✔ foreign TimeoutError remains retryable even after the own inbox deadline (150.916833ms)
+✔ external inbox abort is cancellation even with a TimeoutError reason (1.83925ms)
+✔ shutdown during inbox renewal delay does not claim or re-register (152.249541ms)
+✔ accepted-but-unacked reconnect reclaims and acknowledges without second native send (0.330875ms)
+✔ empty inbox waits back off with a ceiling rather than busy-loop (0.094958ms)
+✔ consent inbox holds back off with a ceiling rather than busy-loop (0.057458ms)
+✔ user-driven native shutdown cancels the blocked inbox consumer (0.082292ms)
+✔ late stale claim after stop cannot reach native send (0.057375ms)
+✔ native success without native message ID is not accepted (0.071292ms)
+✔ daemon stale-incarnation refusal holds without transport fallback (0.065541ms)
+✔ HTTP skew and refused envelopes are never treated as successful claims (0.32ms)
+✔ native consumer proof rejects undefined before injection and ack (0.090625ms)
+✔ native consumer proof rejects {"native_session":"stale-session","pid":137,"proc_start":20260905120000} before injection and ack (0.045375ms)
+✔ native consumer proof rejects {"native_session":"native-137","pid":999,"proc_start":20260905120000} before injection and ack (0.04875ms)
+✔ native consumer proof rejects {"native_session":"native-137","pid":137,"proc_start":1} before injection and ack (0.043792ms)
+✔ spawned native rollover preserves correlation across extension reload (0.078583ms)
+✔ outage emits one actionable reconnect diagnostic per failure episode (0.108541ms)
+✔ consent hold release delivers the queued claim without a second message (0.097041ms)
+✔ post-ack barrier blocks next claim until current native completion, not outgoing (1.646209ms)
+✔ post-ack barrier retains session.idle before native send resolves (0.351584ms)
+✔ post-ack barrier retains session.error before native send resolves (0.272666ms)
+✔ post-ack barrier captures idle during acknowledgement but cannot overtake ack (0.283083ms)
+✔ post-ack barrier cannot release a later send from earlier generation events (0.342542ms)
+✔ post-ack barrier explicitly holds accepted duplicate without completion evidence (0.18725ms)
+✔ post-ack barrier survives failed ack before reclaiming accepted duplicate (0.317542ms)
+✔ post-ack barrier shutdown disposes subscription and ignores late completion (0.178792ms)
+✔ post-ack barrier follows real native PoC ancestry with sibling ephemeral idles (0.347125ms)
+✔ claim page preserves typed target and transient hold metadata without changing request data (1.073417ms)
+✔ malformed claim hold metadata is not silently downgraded to an empty inbox (0.267833ms)
+✔ only the exact native-unavailable inbox refusal is retryable (1.569833ms)
+✔ native-unavailable retries re-register with bounded backoff and stop cleanly (0.854084ms)
+ℹ tests 87
+ℹ suites 0
+ℹ pass 87
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6506.219833
+node --check "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/.copilot/extensions/pij/store.mjs"
+VITEST_MAX_WORKERS=4 VITEST_MAX_THREADS=4 CARGO_BUILD_JOBS=4 PIJ_NATIVE_RUNTIME_MODULE="/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/.copilot/extensions/pij/store.mjs" CARGO_TARGET_DIR="/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/target" cargo test --locked -p pij-daemon --test native_runtime_cold_resume -- --ignored --nocapture --test-threads=1
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.87s
+     Running tests/native_runtime_cold_resume.rs (target/debug/deps/native_runtime_cold_resume-f79ac103bf5a4dd7)
+
+running 1 test
+test actual_runtime_chooser_and_journal_resume_through_http_sqlite_without_reinjection ... node-initial: {"registration":{"id":"pij-copilot-41d6bd03b9d6255c4c09f279","harness":"copilot","harness_session":"native-cross-language-cold-resume","folder":"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-native-cross-language-10103-1788574620471810000-0","pid":10445,"proc_start":20260905121700,"relay":false,"native_extension_delivery":true,"pane":"%137-cross-old"},"moduleDigest":"872f0f30e13f50c17c85e7b2d1fd9cf0e7b2ab3ddaf7e536b19080742feacce5","jobId":1,"messageId":"cross-language-original-m1","journalDirectory":"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-native-cross-language-10103-1788574620471810000-0/native-extensions/copilot/be9ea820426735ae53f0cb9ab236c42a1d465e164037e677bc6cc812f052e73b","journalPath":"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-native-cross-language-10103-1788574620471810000-0/native-extensions/copilot/be9ea820426735ae53f0cb9ab236c42a1d465e164037e677bc6cc812f052e73b/bda394dd1440caa727ef16305392b597556212e9f8c67c90a36a6f38df3bbd38.json","journalDigest":"e5ab2a861256135cfea5e5f9dd99c23d6b8d3b42820a5c998741a9c219d6e45a","acceptanceBoundaryCalls":1,"acknowledged":false}
+node-live: {"registration":{"id":"pij-copilot-41d6bd03b9d6255c4c09f279","harness":"copilot","harness_session":"native-cross-language-cold-resume","folder":"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-native-cross-language-10103-1788574620471810000-0","pid":10472,"proc_start":20260905121700,"relay":false,"native_extension_delivery":true,"pane":"%137-cross-old"},"moduleDigest":"872f0f30e13f50c17c85e7b2d1fd9cf0e7b2ab3ddaf7e536b19080742feacce5","refusedLiveOwner":true}
+node-resume: {"registration":{"id":"pij-copilot-41d6bd03b9d6255c4c09f279","harness":"copilot","harness_session":"native-cross-language-cold-resume","folder":"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-native-cross-language-10103-1788574620471810000-0","pid":10472,"proc_start":20260905121700,"relay":false,"native_extension_delivery":true,"pane":"%137-cross-new"},"moduleDigest":"872f0f30e13f50c17c85e7b2d1fd9cf0e7b2ab3ddaf7e536b19080742feacce5","jobId":1,"messageId":"cross-language-original-m1","journalDirectory":"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-native-cross-language-10103-1788574620471810000-0/native-extensions/copilot/be9ea820426735ae53f0cb9ab236c42a1d465e164037e677bc6cc812f052e73b","journalPath":"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-native-cross-language-10103-1788574620471810000-0/native-extensions/copilot/be9ea820426735ae53f0cb9ab236c42a1d465e164037e677bc6cc812f052e73b/bda394dd1440caa727ef16305392b597556212e9f8c67c90a36a6f38df3bbd38.json","journalDigest":"e5ab2a861256135cfea5e5f9dd99c23d6b8d3b42820a5c998741a9c219d6e45a","acceptanceBoundaryCalls":1,"acknowledged":true}
+cross-language contract: real HTTP/SQLite + runtime chooser/client/bridge/journal; old=ProcIdentity { pid: 10445, proc_start: 20260905121700 }, new=ProcIdentity { pid: 10472, proc_start: 20260905121700 }; one simulated native acceptance, zero reinjection; not real CLI/model acceptance
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s
+
+    Blocking waiting for file lock on package cache
+   Compiling pij-cli v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/crates/cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.70s
+node_modules/.bin/tsx harness/scripts/copilot-native-smoke.ts "$@"
+(node:13825) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+{"code":1,"output":"/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/evidence/pm-native-local-05.json"}
+error: Recipe `copilot-native-smoke` failed on line 116 with exit code 1

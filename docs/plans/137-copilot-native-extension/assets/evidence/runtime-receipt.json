@@ -1,0 +1,135 @@
+{
+  "unit": "plan137-native-runtime",
+  "seat": "pij-worldwide-rat",
+  "generated_at": "2026-09-04T23:45:59.143104+00:00",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime",
+  "branch": "137-copilot-native-runtime",
+  "base_commit": "36248c58638316c3bc3d4c90aad765eda39b3ba3",
+  "source_commit": "cf26f5a3694650c3847c246704efe18191f79f33",
+  "scope_status": "runtime unit implemented and scoped proof passing; integrated product acceptance remains PM-owned",
+  "runtime": {
+    "harness": "OMP",
+    "model": "github-copilot/gpt-6-astra-1m",
+    "configured_effort": "high",
+    "node": "v24.7.0",
+    "copilot_cli": "1.0.84-0",
+    "observed_platform": "darwin-arm64"
+  },
+  "contract": {
+    "version": 3,
+    "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/contracts/native-extension.json",
+    "sha256": "803748ca473019211f2ceb4f3f6db50dbdafb67cc9eb26444eb52f9c6068cac8",
+    "note": "Read from PM tree by explicit direction; own v2 contract file not edited or merged"
+  },
+  "source_sha256": {
+    ".copilot/extensions/pij/extension.mjs": "374a4a8d4bc261a68b41b0ca806726345f351da625cb43e2e9fb2579c3bc1dcc",
+    ".copilot/extensions/pij/store.mjs": "c414e9ae8f43c94006b6236b9a6da4e132403476634a1ea5d3b96a0325ca046d",
+    ".copilot/extensions/pij/extension.test.mjs": "6d5cddda0f2f42a062f652c2648c35c518ab0af7e8fdc012e29faeeee35ef5bd",
+    ".copilot/extensions/pij/identity.test.mjs": "7be99e5d0437b08494476fce9daf912b0b15e327c7ef785b9446b03296a46b1b",
+    ".copilot/extensions/pij/store.test.mjs": "65cd9f9d8d89c27249bb770dc366a3062c634809b879ad26cfe2bee2067bf551"
+  },
+  "verification": {
+    "tests": {
+      "argv": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/.copilot/extensions/pij/extension.test.mjs",
+        "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/.copilot/extensions/pij/identity.test.mjs",
+        "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/.copilot/extensions/pij/store.test.mjs"
+      ],
+      "exit": 0,
+      "tests": 49,
+      "passed": 49,
+      "failed": 0,
+      "skipped": 0,
+      "artifact": "docs/plans/137-copilot-native-extension/assets/evidence/runtime-tests.tap",
+      "artifact_sha256": "6a296e17fa7b8b927ef20a32777592c3a46938ec730e33293d018db75ad1689d"
+    },
+    "shell_smoke": "Actual extension.mjs launched in owned node subprocess with explicit bundled-SDK/process probe seams, real authenticated loopback HTTP and private real filesystem. Covers join/register/native receive/ack/outgoing tool; absent key, absent daemon, prejoin rejection, quiet native timeline logging and clean stdout. NOT a real Copilot or real daemon witness.",
+    "formatter": {
+      "command": "node_modules/.bin/biome check --write <five owned .mjs paths>",
+      "exit": 0,
+      "output": "Checked 5 files in 61ms. Fixed 5 files.",
+      "ordering": "final49-test run followed this formatting"
+    },
+    "formatter_version_probe": {
+      "command": "node_modules/.bin/biome --version",
+      "exit": 127,
+      "output": "error: command not found: node_modules/.bin/biome",
+      "explanation": "External shared node_modules drift after successful scoped formatting; no repair or lock mutation"
+    },
+    "shell_syntax": {
+      "command": "node --check .copilot/extensions/pij/extension.mjs",
+      "exit": 0
+    },
+    "lsp": "Native references used before exported-symbol modifications; scoped diagnostics reported no issues before final formatting",
+    "negative_witnesses": [
+      {
+        "case": "Absent/stale native_consumer response proof",
+        "before_fix": "4 tests failed: observed native send true where false required",
+        "after_fix": "all4 pass; reject before journal/native send/ack"
+      },
+      {
+        "case": "Real prebind proc=null and preserved multi-rollover spawn correlation",
+        "before_fix": "2 tests failed: pane falsely treated as foreign and spawn_id lost",
+        "after_fix": "both pass against corrected prebind and successor handling"
+      },
+      {
+        "case": "Crash/send/persist ambiguity",
+        "proof": "rejected send, missing native messageId, disk write failure and unresolved prior intent hold without ack/reinjection; outgoing remains available"
+      },
+      {
+        "case": "Accepted-but-unacked reconnect",
+        "proof": "one native send, durable native ID reused, later tuple-bound ack"
+      },
+      {
+        "case": "Session cancellation",
+        "proof": "late claim and late native response cannot ack or deliver after stop; shutdown cancels blocked consumer"
+      },
+      {
+        "case": "Quiet degraded startup",
+        "proof": "actual shell seam tests cross multiple real backoff attempts, count one native-log call, keep tool callable; prejoin rejection emits once only on stderr"
+      }
+    ]
+  },
+  "behavior": [
+    "Native SDK imported at top level; session joined once; tools configured in joinSession; incoming native send uses enqueue",
+    "Host is OS-verified Copilot ancestor, not extension child or pane shell; exact pane ancestry, pid and packed local C-locale process-start stamp",
+    "Prebind id/spawn/pane corroborated; current process/session stable; checked native rollover supersedes predecessor and preserves spawn/parent metadata",
+    "Immutable sender; UUID message IDs; no assistant-event automatic forwarding or typed control fallback",
+    "Claim and ack carry native session/pid/proc_start; response native_consumer and exact recipient checked before delivery or acknowledgement",
+    "Private hashed acceptance namespace, exclusive durable intent, atomic accepted record, no retention/eviction; ambiguous outcomes held explicitly",
+    "Abortable bounded reconnect/key reread; empty consent holds back off250..5000ms with no alternate typing policy",
+    "One [pij native] unavailable: native session.log(info) per post-join failure episode; prejoin error only stderr/loader grade, no timeline claim"
+  ],
+  "pending_integration": [
+    "PM composes daemon ownership+capability+native_consumer claim proof and installer source before real daemon testing",
+    "Real pane-backed manual and Pij-spawned Copilot unique bidirectional tool-originated delivery, duplicate, absence, human-draft hold/release without second nonce",
+    "Real daemon/key restart and native new/resume/reload: public SDK proves stdio close handling but not CLI child kill/relaunch behavior",
+    "Actual native terminal [pij native] unavailable: count once plus ordinary user/assistant nonce while daemon/key absent",
+    "Real model canary distinct from deterministic-provider fixture proof",
+    "Final just copilot-native-test recipe, workspace gates/harness checks and independent Opus review are PM/installer-owned; existing file-watch-notify baseline red retained"
+  ],
+  "constraints": {
+    "no_plan_or_guide_edits": true,
+    "no_rust_installer_pi_or_lock_edits": true,
+    "no_dependency_repair": true,
+    "no_global_config_or_process_changes": true,
+    "no_omp_update": true,
+    "no_push_or_main_merge": true,
+    "no_project_wide_validation": "deferred by explicit concurrent-wave packet"
+  },
+  "retrospective": {
+    "encoded": "Actual-shell stdlib smoke fixture tests SDK wiring and native diagnostic visibility; pure state tests alone could not catch missing shell imports",
+    "difficulty": "Readable npm Copilot SDK0.0.412-2 was stale while actual native binary was1.0.84-0; source-verify current native extension API instead of assuming npm package parity",
+    "tooling": "Shared node_modules disappeared between a successful scoped Biome run and a version probe; local runtime tests intentionally use only stdlib",
+    "recommended_next_encoding": "Installer/PM native smoke should expose and assert child/native session lifecycle IDs at new/resume/reload and an ordinary daemon-absent nonce; no private file-layout assertions"
+  },
+  "supporting_artifacts": [
+    "runtime-ack.md",
+    "runtime-progress.md",
+    "runtime-join-diagnostic.md",
+    "runtime-tests.tap"
+  ]
+}

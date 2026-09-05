@@ -207,6 +207,12 @@ pub trait Queue: Send + Sync {
     /// repeated peeks return the same row until another actor completes it.
     async fn peek(&self, kinds: &[String]) -> Result<Option<(JobId, Job)>>;
 
+    /// Inspect one running destination-delivery job by its authoritative id.
+    /// Unknown, pending, terminal, and non-delivery jobs return `None`.
+    /// This read does not claim, acknowledge, or extend the job's lease;
+    /// acknowledgement must still validate the running claim.
+    async fn claimed_delivery(&self, job: JobId) -> Result<Option<Job>>;
+
     /// Record how a claimed job ended, freeing its serial key.
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()>;
 

@@ -1,0 +1,45 @@
+{
+  "status": "F-F-known-welcome-repaint-corrected-scoped-checks-passed-no-live-rerun",
+  "source_base": "7084fb44",
+  "request": "assets/reviews/opus-paired-v4-5222f518.md F-F",
+  "change": "Only the complete six-row known Copilot welcome layout, when bottom-most before composer paint, is classified undefined/wait. Exact content, row count, logo and boundaries are required; only spacing and numeric CLI version vary. Complete altered or unknown boxes still throw. Waiting never authorizes or proves post-key dismissal.",
+  "fixture": {
+    "path": "harness/scripts/fixtures/copilot-native-welcome.json",
+    "provenance": "Actual pm-native-real-canary-01 welcome capture, intentionally truncated at its first complete closing border for the regression",
+    "grade": "Retained-screen derived repaint simulation; this temporal frame was not observed in a new live run"
+  },
+  "verification": {
+    "environment": {"VITEST_MAX_WORKERS":"4", "VITEST_MAX_THREADS":"4", "CARGO_BUILD_JOBS":"4"},
+    "red": {
+      "command": "just test harness/scripts/copilot-native-smoke.test.ts -t 'welcome|repaint'",
+      "failed": 4, "passed": 16, "skipped": 99, "exit_code": 1
+    },
+    "focused_green": {"passed":20, "skipped":99, "exit_code":0},
+    "final_tests": {
+      "command": "just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts",
+      "passed":152, "smoke":119, "installer":33, "duration_seconds":5.51, "exit_code":0
+    },
+    "typecheck": {
+      "command": "node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code":0
+    },
+    "biome": {
+      "command":"node_modules/.bin/biome check harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code":0, "result":"Checked 2 files. No fixes applied."
+    },
+    "contracts": ["Truncated retained welcome returns waiting for approval and composer readers", "No pre-key authorization on welcome-only frame", "No post-key dismissal proof from welcome-only frame", "Changed title/instructions or inserted approval row still hard-fail", "Two exact native tool confirmations and only one Enter remain required"]
+  },
+  "diagnostics": {
+    "checkpoint":"7084fb44",
+    "receipt":"assets/evidence/install-cursor-capture-01.json",
+    "preserved":"Failed last_observation retains original sensor plus measured pane_capture; final_pane_captures retain independent actual cursor/unjoined viewport receipts even if scrollback fails. These tests passed again in the final suite.",
+    "limit":"No new measured live frames/sensor values here; historical live06 missing cursor data cannot be reconstructed. Next PM run records actual values, never inferred geometry."
+  },
+  "boundaries": {
+    "live_reruns":0, "live_keys_sent":0, "full_gates":"PM-owned, not run",
+    "rust_or_product_changes":false, "permission_policy_changes":false,
+    "unavailable_is_quiet":false, "ac6_live_acceptance_claimed":false,
+    "ac7_live_acceptance_claimed":false
+  },
+  "harness_lesson":"Structural bottom-most is insufficient during a known welcome repaint; recognize only the complete known layout as waiting and retain explicit no-key and no-dismissal regression proofs."
+}

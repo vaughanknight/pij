@@ -106,24 +106,45 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
     };
 
     let proc = row_proc(row)?;
+    // Keep native attestation's raw bounds checks before relying on the
+    // descriptor conversion used by the binding-report path.
+    let pid: Option<i64> = row.try_get("pid").map_err(adapter_error)?;
+    let proc_start: Option<i64> = row.try_get("proc_start").map_err(adapter_error)?;
 
     let relay: i64 = row.try_get("relay").map_err(adapter_error)?;
     let parent: Option<String> = row.try_get("parent").map_err(adapter_error)?;
-    let rpc_port_raw: Option<i64> = row.try_get("rpc_port_intent").map_err(adapter_error)?;
-    let rpc_port_intent = match rpc_port_raw {
-        None => None,
-        Some(port) => match u16::try_from(port) {
-            Ok(port) if port != 0 => Some(port),
-            _ => {
-                return Err(PijError::Adapter {
-                    adapter: "store/registry".to_string(),
-                    message: format!(
-                        "seat row has invalid rpc_port_intent {port}; expected NULL or 1..=65535"
-                    ),
-                });
-            }
-        },
+    let native_flag: i64 = row
+        .try_get("native_extension_delivery")
+        .map_err(adapter_error)?;
+    let native_extension_delivery = match native_flag {
+        0 => false,
+        1 => true,
+        other => {
+            return Err(PijError::Adapter {
+                adapter: "store/registry".to_string(),
+                message: format!(
+                    "seat row has invalid native_extension_delivery {other}; expected 0 or 1"
+                ),
+            });
+        }
     };
+    let harness_session: Option<String> = row.try_get("harness_session").map_err(adapter_error)?;
+    let tombstoned_at: Option<i64> = row.try_get("tombstoned_at").map_err(adapter_error)?;
+    if native_extension_delivery
+        && (harness != Harness::Copilot
+            || !pid.is_some_and(|pid| (1..=i64::from(u32::MAX)).contains(&pid))
+            || !proc_start.is_some_and(|start| start > 0)
+            || !harness_session
+                .as_deref()
+                .is_some_and(|session| !session.is_empty())
+            || tombstoned_at.is_some())
+    {
+        return Err(PijError::Adapter {
+            adapter: "store/registry".to_string(),
+            message: "native_extension_delivery requires a live Copilot process and native session"
+                .to_string(),
+        });
+    }
 
     Ok(SeatDescriptor {
         id: SeatId(row.try_get::<String, _>("id").map_err(adapter_error)?),
@@ -131,7 +152,7 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
         // registry state. The HTTP boundary stamps the daemon's current alias.
         machine: None,
         harness,
-        harness_session: row.try_get("harness_session").map_err(adapter_error)?,
+        harness_session,
         pane: row.try_get("pane").map_err(adapter_error)?,
         proc,
         folder: row.try_get("folder").map_err(adapter_error)?,
@@ -140,10 +161,7 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
         role: row.try_get("role").map_err(adapter_error)?,
         parent: parent.map(SeatId),
         relay: relay != 0,
-        tombstoned_at: row
-            .try_get::<Option<i64>, _>("tombstoned_at")
-            .map_err(adapter_error)?
-            .map(|at| at as u64),
+        tombstoned_at: tombstoned_at.map(|at| at as u64),
         tombstone_reason: row.try_get("tombstone_reason").map_err(adapter_error)?,
         spawn_id: row.try_get("spawn_id").map_err(adapter_error)?,
         model: row.try_get("model").map_err(adapter_error)?,
@@ -153,7 +171,7 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
             .try_get::<Option<i64>, _>("cross_session_inbound_accept")
             .map_err(adapter_error)?
             .map(|flag| flag != 0),
-        rpc_port_intent,
+        native_extension_delivery,
     })
 }
 
@@ -221,7 +239,7 @@ impl Registry for SqliteRegistry {
         sqlx::query(
             "INSERT INTO seats (id, harness, harness_session, pane, pid, proc_start, folder, state, \
              semantic_state, role, parent, relay, tombstoned_at, tombstone_reason, seq, \
-             spawn_id, model, provider, effort, cross_session_inbound_accept, rpc_port_intent) \
+             spawn_id, model, provider, effort, cross_session_inbound_accept, native_extension_delivery) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
              ?17, ?18, ?19, ?20, ?21) \
              ON CONFLICT(id) DO UPDATE SET \
@@ -235,7 +253,7 @@ impl Registry for SqliteRegistry {
              spawn_id=excluded.spawn_id, model=excluded.model, \
              provider=excluded.provider, effort=excluded.effort, \
              cross_session_inbound_accept=excluded.cross_session_inbound_accept, \
-             rpc_port_intent=excluded.rpc_port_intent",
+             native_extension_delivery=excluded.native_extension_delivery",
         )
         .bind(descriptor.id.as_str())
         .bind(descriptor.harness.as_str())
@@ -257,7 +275,7 @@ impl Registry for SqliteRegistry {
         .bind(descriptor.provider.as_deref())
         .bind(descriptor.effort.as_deref())
         .bind(descriptor.cross_session_inbound_accept.map(i64::from))
-        .bind(descriptor.rpc_port_intent.map(i64::from))
+        .bind(i64::from(descriptor.native_extension_delivery))
         .execute(&mut *tx)
         .await
         .map_err(adapter_error)?;
@@ -304,7 +322,7 @@ impl Registry for SqliteRegistry {
 
         let affected = sqlx::query(
             "UPDATE seats SET tombstoned_at = ?2, tombstone_reason = ?3, \
-             rpc_port_intent = NULL, seq = ?4 WHERE id = ?1",
+             native_extension_delivery = 0, seq = ?4 WHERE id = ?1",
         )
         .bind(seat.as_str())
         .bind(seq)

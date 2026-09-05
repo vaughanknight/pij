@@ -66,6 +66,7 @@ pub(crate) struct AppState {
     typing_lock: Arc<tokio::sync::Mutex<()>>,
     typing_grace_ms: u64,
     federation: Option<Arc<FederationService>>,
+    registration: RegistrationService,
 }
 
 /// HTTP configuration supplied by the daemon composition root.
@@ -98,6 +99,7 @@ enum Endpoint {
     Revive,
     Send,
     Inbox,
+    InboxTyping,
     InboxAck,
     Hold,
     Release,
@@ -144,13 +146,14 @@ enum Endpoint {
 }
 
 impl Endpoint {
-    const ALL: [Self; 21] = [
+    const ALL: [Self; 22] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
         Self::Revive,
         Self::Send,
         Self::Inbox,
+        Self::InboxTyping,
         Self::InboxAck,
         Self::Hold,
         Self::Release,
@@ -176,6 +179,7 @@ impl Endpoint {
             Self::Revive => "/v1/revive",
             Self::Send => "/v1/send",
             Self::Inbox => "/v1/inbox",
+            Self::InboxTyping => "/v1/inbox/typing",
             Self::InboxAck => "/v1/inbox/ack",
             Self::Hold => "/v1/hold",
             Self::Release => "/v1/release",
@@ -213,9 +217,12 @@ impl Endpoint {
             Self::Adopt | Self::Whoami | Self::Phonehome => Method::POST,
             Self::State => Method::POST,
             Self::ShimSend | Self::ShimInbox | Self::ShimInboxAck => Method::POST,
-            Self::Health | Self::Inbox | Self::Seats | Self::Events | Self::ShimSessions => {
-                Method::GET
-            }
+            Self::Health
+            | Self::Inbox
+            | Self::InboxTyping
+            | Self::Seats
+            | Self::Events
+            | Self::ShimSessions => Method::GET,
         }
     }
 }
@@ -283,6 +290,13 @@ fn router_with_optional_federation(
     config: HttpConfig,
     federation: Option<Arc<FederationService>>,
 ) -> Router {
+    let registration = RegistrationService::new(
+        Arc::clone(&services.registry),
+        Arc::clone(&services.liveness),
+        Arc::clone(&services.event_bus),
+        pij_harnesses::claude_homes(),
+    )
+    .with_native_lock(services.delivery.native_lock());
     let state = AppState {
         services,
         auth: AuthRing::new(config.local_key, config.peer_keys),
@@ -291,6 +305,7 @@ fn router_with_optional_federation(
         typing_lock: Arc::new(tokio::sync::Mutex::new(())),
         typing_grace_ms: resolve_typing_grace_ms(),
         federation,
+        registration,
     };
     let mut router = Router::new();
     for endpoint in Endpoint::ALL {
@@ -327,6 +342,7 @@ fn router_with_optional_federation(
             Endpoint::Revive => router.route(endpoint.path(), post(revive_seat)),
             Endpoint::Send => router.route(endpoint.path(), post(send)),
             Endpoint::Inbox => router.route(endpoint.path(), get(inbox)),
+            Endpoint::InboxTyping => router.route(endpoint.path(), get(inbox_typing)),
             Endpoint::InboxAck => router.route(endpoint.path(), post(ack_inbox)),
             Endpoint::Hold => router.route(endpoint.path(), post(hold_inbox)),
             Endpoint::Release => router.route(endpoint.path(), post(release_inbox)),
@@ -418,6 +434,8 @@ struct RegistrationRequest {
         alias = "harnessSession"
     )]
     harness_session: Option<String>,
+    #[serde(default)]
+    native_extension_delivery: bool,
 }
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
@@ -522,11 +540,17 @@ async fn register(
     State(state): State<AppState>,
     Json(mut request): Json<RegistrationRequest>,
 ) -> Response {
-    let mut proc_source = None;
-    if let (Some(pane), Some(harness)) = (
-        request.claim.pane.as_deref(),
-        Harness::parse(&request.claim.harness),
-    ) {
+    // Native claims carry their own verified host tuple. Do not replace it with
+    // the pane's shell PID while adding the ordinary registration provenance.
+    let mut proc_source = request
+        .native_extension_delivery
+        .then_some(ProcSource::Harness);
+    if !request.native_extension_delivery
+        && let (Some(pane), Some(harness)) = (
+            request.claim.pane.as_deref(),
+            Harness::parse(&request.claim.harness),
+        )
+    {
         let observed = match state.services.tmux.pane_process(pane).await {
             Ok(observed) => observed,
             Err(error) => return internal("pij register", error),
@@ -564,16 +588,21 @@ async fn register(
             }
         }
     }
-    let registration = RegistrationService::new(
-        Arc::clone(&state.services.registry),
-        Arc::clone(&state.services.liveness),
-        Arc::clone(&state.services.event_bus),
-        pij_harnesses::claude_homes(),
-    );
-    match registration
-        .register_with_harness_session(request.claim, request.harness_session)
-        .await
-    {
+    let registration = &state.registration;
+    let registered = if request.native_extension_delivery {
+        registration
+            .register_native(
+                request.claim,
+                request.harness_session,
+                state.services.tmux.as_ref(),
+            )
+            .await
+    } else {
+        registration
+            .register_with_harness_session(request.claim, request.harness_session)
+            .await
+    };
+    match registered {
         Ok((descriptor, report)) => {
             let meta = descriptor.pane.is_none().then(|| {
                 format!(
@@ -843,29 +872,6 @@ pub(crate) async fn launch_seat(
         None => return refused(command_name, "revive requires an existing seat id"),
     };
 
-    let copilot_rpc_port_intent = if request.harness == Harness::Copilot {
-        let mut unavailable = displaced
-            .as_ref()
-            .and_then(|seat| seat.rpc_port_intent)
-            .into_iter()
-            .collect::<BTreeSet<_>>();
-        let seats = match state.services.registry.list(SeatFilter::default()).await {
-            Ok(seats) => seats,
-            Err(error) => return internal(command_name, error),
-        };
-        unavailable.extend(
-            seats
-                .into_iter()
-                .filter(|seat| seat.tombstoned_at.is_none())
-                .filter_map(|seat| seat.rpc_port_intent),
-        );
-        match state.services.rpc_ports.allocate(&unavailable).await {
-            Ok(port) => Some(port),
-            Err(error) => return internal(command_name, error),
-        }
-    } else {
-        None
-    };
     let plan = match build_spawn_plan(SpawnPlanInput {
         seat_id: seat_id.clone(),
         spawn_id: spawn_id.clone(),
@@ -875,7 +881,6 @@ pub(crate) async fn launch_seat(
         resolved_provider: None,
         effort: request.effort,
         accept_inbound: request.accept_inbound,
-        copilot_rpc_port_intent,
     }) {
         Ok(plan) => plan,
         Err(error) => return refused(command_name, error),
@@ -933,7 +938,6 @@ pub(crate) async fn launch_seat(
     descriptor.pane = Some(pane.id.clone());
     descriptor.parent = request.parent;
     descriptor.cross_session_inbound_accept = Some(plan.cross_session_inbound_accept);
-    descriptor.rpc_port_intent = plan.rpc_port_intent;
     descriptor.spawn_id = Some(spawn_id);
     descriptor.model = plan.model;
     descriptor.provider = plan.provider;
@@ -1239,7 +1243,30 @@ fn last_lines(value: &str, count: usize) -> String {
     lines[lines.len().saturating_sub(count)..].join("\n")
 }
 
-async fn send(State(state): State<AppState>, Json(request): Json<SendRequest>) -> Response {
+#[derive(Deserialize)]
+struct SendBodyRequest {
+    #[serde(flatten)]
+    message: SendRequest,
+    #[serde(default)]
+    command: Option<String>,
+}
+
+async fn send(State(state): State<AppState>, Json(request): Json<SendBodyRequest>) -> Response {
+    // This is a body-messaging endpoint, not a control protocol. Do not silently
+    // drop a Copilot control field and enqueue its empty body as if it succeeded.
+    if request.command.is_some() && request.message.to.machine.is_none() {
+        match state.services.registry.get(&request.message.to.seat).await {
+            Ok(Some(seat)) if seat.harness == Harness::Copilot => {
+                return refused(
+                    "pij send",
+                    "Copilot programmatic controls are unsupported; use native user controls; no legacy or tmux fallback",
+                );
+            }
+            Err(error) => return internal("pij send", error),
+            _ => {}
+        }
+    }
+    let request = request.message;
     if request.to.machine.is_some() {
         let Some(federation) = state.federation.as_ref() else {
             return refused(
@@ -1312,30 +1339,42 @@ struct InboxQuery {
     wait: bool,
     #[serde(default)]
     peek: bool,
+    native_session: Option<String>,
+    pid: Option<u32>,
+    proc_start: Option<u64>,
 }
 
 /// Read one inbox message. The default path claims it for explicit client ack;
 /// `peek=true` is observation-only and never changes queue state.
 async fn inbox(State(state): State<AppState>, Query(query): Query<InboxQuery>) -> Response {
-    // Subscribe before claiming, including the transition that makes a held row
-    // eligible. The delivery service's older waiter only observes new sends.
-    let mut wake = (query.wait && !query.peek).then(|| {
+    if query.peek {
+        return match state.services.delivery.peek_inbox(&query.seat).await {
+            Ok(claims) => envelope(StatusCode::OK, &Envelope::ok("pij inbox", claims)),
+            Err(error) => inbox_failure(error),
+        };
+    }
+    // Subscribe before claiming so both new sends and released holds wake readers.
+    let mut wake = query.wait.then(|| {
         state.services.event_bus.subscribe_live(
             EventFilter::kinds(["delivery.outcome", "delivery.released"])
                 .for_seat(query.seat.clone()),
         )
     });
+    let identity = crate::delivery::NativeInboxIdentity {
+        native_session: query.native_session,
+        pid: query.pid,
+        proc_start: query.proc_start,
+    };
     let result = loop {
-        let result = if query.peek {
-            state.services.delivery.peek_inbox(&query.seat).await
-        } else {
-            state
-                .services
-                .delivery
-                .claim_inbox(&query.seat, false)
-                .await
-        };
-        if !result.as_ref().is_ok_and(Vec::is_empty) {
+        let result = state
+            .services
+            .delivery
+            .claim_native_inbox(&query.seat, false, &identity)
+            .await;
+        if !result
+            .as_ref()
+            .is_ok_and(|page| page.claims.is_empty() && page.held_reason.is_none())
+        {
             break result;
         }
         let Some(subscription) = wake.as_mut() else {
@@ -1346,8 +1385,54 @@ async fn inbox(State(state): State<AppState>, Query(query): Query<InboxQuery>) -
         }
     };
     match result {
-        Ok(claims) => envelope(StatusCode::OK, &Envelope::ok("pij inbox", claims)),
-        Err(error) => internal("pij inbox", error),
+        Ok(page) => native_inbox_response(page),
+        Err(error) => inbox_failure(error),
+    }
+}
+
+#[derive(Deserialize)]
+struct InboxTypingQuery {
+    seat: SeatId,
+    native_session: Option<String>,
+    pid: Option<u32>,
+    proc_start: Option<u64>,
+}
+
+/// Observe native typing without claiming, deferring, releasing, or acknowledging work.
+async fn inbox_typing(
+    State(state): State<AppState>,
+    Query(query): Query<InboxTypingQuery>,
+) -> Response {
+    let identity = crate::delivery::NativeInboxIdentity {
+        native_session: query.native_session,
+        pid: query.pid,
+        proc_start: query.proc_start,
+    };
+    match state
+        .services
+        .delivery
+        .native_typing_snapshot(&query.seat, &identity, state.typing_grace_ms)
+        .await
+    {
+        Ok(snapshot) => envelope(StatusCode::OK, &Envelope::ok("pij inbox", snapshot)),
+        Err(error) => inbox_failure(error),
+    }
+}
+
+fn native_inbox_response(page: crate::delivery::NativeInboxPage) -> Response {
+    let mut answer = Envelope::ok("pij inbox", page.claims);
+    answer.meta = page
+        .held_reason
+        .map(|reason| format!("native-consumer-held:{reason}"));
+    envelope(StatusCode::OK, &answer)
+}
+
+fn inbox_failure(error: PijError) -> Response {
+    match &error {
+        PijError::Adapter { adapter, .. } if adapter == "daemon/native-inbox" => {
+            refused("pij inbox", error)
+        }
+        _ => internal("pij inbox", error),
     }
 }
 
@@ -1530,11 +1615,11 @@ async fn ack_inbox(
     let acknowledged = match state
         .services
         .delivery
-        .acknowledge_inbox(request.job_id)
+        .acknowledge_inbox(&request.seat, request.job_id, &request.native)
         .await
     {
         Ok(acknowledged) => acknowledged,
-        Err(error) => return internal("pij inbox", error),
+        Err(error) => return inbox_failure(error),
     };
     let payload = match serde_json::to_string(&InboxAckAudit {
         job_id: request.job_id,
@@ -2337,6 +2422,8 @@ pub(crate) fn envelope<T: serde::Serialize>(status: StatusCode, body: &Envelope<
 
 #[cfg(test)]
 mod identity_tests;
+#[cfg(test)]
+mod native_tests;
 #[cfg(test)]
 mod tests;
 

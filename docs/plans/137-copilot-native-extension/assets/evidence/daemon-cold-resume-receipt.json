@@ -1,0 +1,57 @@
+{
+  "status": "unit_verified_integration_pending",
+  "source_commit": "dba208cd682656694076336399e5e5df8f9cc55e",
+  "base_source_commit": "4bdadd92f29868827d74d7add82aac46eac6fd85",
+  "rulings": ["pm-cold-resume-ruling.md", "pm-native-retirement-ruling.md", "pm-prebind-precedence-ruling.md", "pm-native-transient-rulings.md"],
+  "authority": [
+    "Existing request shape: register harness_session, claim/ACK native_session plus live pid/proc_start; no wire/schema/provenance field added.",
+    "Only current native-attested Copilot ownership can be automatically rebound after an exact prior incarnation is observed absent/replaced. State text is never death evidence; liveness errors and live/unverified owners refuse.",
+    "Slow host and prior-owner liveness observation stays outside global exclusion. Current ownership fields of dead owner and any exact prebind target are revalidated under the shared mutation lock before writes.",
+    "Ordinary same-native resume retains its Pij address and current metadata/semantic Hold. A different native session gets a new address and may release a proven-dead native pane owner, leaving its jobs untouched.",
+    "Explicit retirement remains terminal. A->B->A reopening uses a fresh Pij address without old queue inheritance; no inference of cleared attestation from session/state.",
+    "Verified exact preallocated S2 is explicit new-address intent and may retire dead native S1 even for the same native session. Live S1 or stale/invalid prebind refuses; S1 queue/journal never becomes S2 work.",
+    "Completed/reclaimed queue attempts re-loop/re-observe rather than failing the consumer. An old observer never hands out, retries or ACKs the successor attempt. Same-native pane change is a held re-observation outcome, not a gate-policy change."
+  ],
+  "producer_tripwires": {
+    "missing_native_registration": {"http": 400, "v": 2, "ok": false, "command": "pij inbox", "error": "refused", "meta": "daemon/native-inbox: native-extension-unavailable: Copilot requires current native registration"},
+    "current_noncopilot_with_native_tuple": {"http": 400, "v": 2, "ok": false, "command": "pij inbox", "error": "refused", "meta": "daemon/native-inbox: native incarnation no longer belongs to a current Copilot seat"},
+    "same_native_pane_changed": {"http": 200, "v": 2, "ok": true, "command": "pij inbox", "data": [], "meta": "native-consumer-held:native-pane-changed"},
+    "tests": ["native_sqlite_http_missing_registration_is_retryable_but_noncopilot_identity_is_refused", "native_http_pane_change_hold_preserves_retryable_wire_discriminator", "blocked_native_consent_allows_unrelated_ack_and_revalidates_before_handoff"]
+  },
+  "proof": {
+    "commands": [
+      "cargo test --locked -p pij-daemon --no-fail-fast -- --test-threads=4",
+      "cargo clippy --locked -p pij-daemon --all-targets -- -D warnings",
+      "rustfmt --check --edition 2024 --config skip_children=true on four changed daemon files"
+    ],
+    "result": "284 tests passed across 12 suites; strict Clippy and rustfmt passed",
+    "log": "daemon-cold-resume-tests-final.log",
+    "raw_log_lines": 360,
+    "raw_log_sha256": "9ef5f2594cef2a31ca29f47f31de12eb053388850df8402a91edcab449f1be59",
+    "evidence_correction": "Recovered byte-identical original artifact157 using explicit raw/full-range read; prior reader-mode export truncated at 300 lines. No tests rerun for this correction. See daemon-proof-log-recovery.json.",
+    "caps": {"CARGO_BUILD_JOBS": "4", "VITEST_MAX_WORKERS": "4", "VITEST_MAX_THREADS": "4", "rust_test_threads": 4},
+    "cargo_target": "worktree-local target directory",
+    "observed_toolchain": {"cargo": "1.95.0 Homebrew", "rustc": "1.95.0 Homebrew", "clippy": "0.1.98", "note": "Observed versions, not an enforced pin. rust-toolchain.toml 1.98.0 is not enforced without rustup. --locked constrains dependency resolution only. No toolchain installation/update."}
+  },
+  "regressions": [
+    "cold_resume_requires_dead_attested_incarnation_and_preserves_hold",
+    "cold_resume_revalidates_owner_after_unlocked_death_observation",
+    "cold_resume_never_treats_previous_process_sensor_failure_as_death",
+    "explicit_prebind_revalidates_both_rows_before_retiring_dead_same_native_owner",
+    "native_sqlite_http_dead_host_rebinds_same_session_and_reclaims_original_body",
+    "native_sqlite_http_live_host_refuses_same_session_process_takeover_without_mutation",
+    "native_sqlite_http_fresh_session_retires_dead_pane_owner_without_retargeting_m1",
+    "native_sqlite_http_dead_legacy_and_uncorrelated_prebind_owners_are_not_taken_over",
+    "native_sqlite_http_exact_prebind_retires_only_dead_same_session_owner_without_inheriting_work"
+  ],
+  "review": "Local read-only reviewer inspected cold ownership, both-row prebind revalidation and P2-G dispatch to runtime; no remaining findings. This is not PM final Opus/runtime acceptance.",
+  "proof_ownership": {
+    "daemon": "Real public HTTP + SQLite, actual test-owned host pid/start/death observations; fake tmux composer/pane observations; no SDK/model claim.",
+    "runtime": "pij-worldwide-rat owns actual chooseRegistration+real filesystem FileJournal restart composition; retirement/P2-G source cd4e5b86, evidence f75826a8, owner-reported 80/80. This daemon fixed-address proof is not falsely labeled whole-path composition.",
+    "pm": "Final real CLI and integrated gate acceptance remain PM-owned."
+  },
+  "historical_logs": ["daemon-cold-resume-tests-before.log", "daemon-cold-resume-lint-before.log"],
+  "harness_improvement": "Actual dead/live ownership and both-row snapshot races replace inferred restart correctness; producer envelope tripwires make retry semantics machine-verifiable.",
+  "scope": ["crates/daemon/src/registration.rs", "crates/daemon/src/delivery/mod.rs", "crates/daemon/src/http/mod.rs", "crates/daemon/src/http/native_tests.rs"],
+  "cleanup": "Test-owned signed inert hosts are killed/reaped and temporary copies removed. No global daemon/link changes, real Pi/OMP launches, dependency/toolchain changes, gate-policy edits, queue migration, merge or push. Footer observer patch is separate and held for PM composition permission."
+}

@@ -1,0 +1,64 @@
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.03s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-18bad1c90de73721)
+
+running 42 tests
+test delivery::tests::copilot_first_arrival_is_native_only_even_without_capability ... ok
+test delivery::tests::native_wait_revalidates_replacement_before_handoff ... ok
+test delivery::tests::blocked_native_consent_allows_unrelated_ack_and_revalidates_before_handoff ... ok
+test http::native_tests::body_only_http_endpoint_explicitly_refuses_copilot_controls_instead_of_dropping_field ... ok
+test http::native_tests::native_http_pane_change_hold_preserves_retryable_wire_discriminator ... ok
+test http::native_tests::failed_native_consent_sensor_is_explicit_hold_not_permission ... ok
+test delivery::tests::native_claim_consent_holds_then_admits_without_touching_composer ... FAILED
+test http::native_tests::native_sqlite_http_dead_host_rebinds_same_session_and_reclaims_original_body ... ok
+test http::native_tests::native_registration_preserves_claimed_host_and_reports_atomic_binding_transitions ... ok
+test http::identity_tests::adopt_persists_generic_and_native_harness_session_aliases ... ok
+test http::native_tests::native_sqlite_http_hold_release_marker_ack_and_duplicate_contract ... ok
+test http::native_tests::native_sqlite_http_dead_legacy_and_uncorrelated_prebind_owners_are_not_taken_over ... ok
+test http::native_tests::native_sqlite_http_missing_registration_is_retryable_but_noncopilot_identity_is_refused ... ok
+test http::native_tests::native_sqlite_http_new_session_supersedes_seat_without_stranding_new_work ... ok
+test http::native_tests::native_sqlite_malformed_claim_is_held_without_ack ... ok
+test http::native_tests::native_sqlite_http_fresh_session_retires_dead_pane_owner_without_retargeting_m1 ... ok
+test http::native_tests::native_sqlite_http_exact_prebind_retires_only_dead_same_session_owner_without_inheriting_work ... ok
+test http::native_tests::queued_native_target_holds_different_session_but_allows_same_session_restart ... ok
+test http::native_tests::native_sqlite_http_live_host_refuses_same_session_process_takeover_without_mutation ... ok
+test http::native_tests::shim_and_direct_service_cannot_bypass_native_claim_or_ack ... ok
+test http::tests::a_native_session_boundary_supersedes_its_own_seat_but_never_another ... ok
+test http::tests::ordinary_registration_clears_native_attestation_but_preserves_claude_consent ... ok
+test http::native_tests::stale_native_ack_cannot_retire_replacement_incarnation_work ... ok
+test pointer::worker::tests::copilot_drain_never_claims_native_body_or_legacy_control ... ok
+test registration::tests::blocked_native_host_observation_does_not_block_unrelated_inbox_ack ... ok
+test registration::tests::explicit_prebind_revalidates_both_rows_before_retiring_dead_same_native_owner ... ok
+test http::tests::registration_does_not_inherit_native_capability_from_another_incarnation ... ok
+test registration::tests::native_ancestry_observation_is_bounded_to_32_processes ... ok
+test registration::tests::native_attests_actual_host_below_shell_but_refuses_shell_pane_pid ... ok
+test registration::tests::native_host_observation_has_a_wall_clock_bound ... ok
+test registration::tests::native_observation_revalidates_cross_seat_process_takeover_before_commit ... ok
+test registration::tests::native_rechecks_process_start_after_actual_host_observation ... ok
+test registration::tests::native_prebind_requires_exact_spawn_id_pane_and_harness ... ok
+test registration::tests::native_reconnect_retains_address_and_explicit_new_session_retires_old_capability ... ok
+test registration::tests::native_refuses_active_identity_process_session_harness_and_pane_collisions ... ok
+test registration::tests::native_requires_exact_observed_pane_ancestry_but_supports_paneless_hosts ... ok
+test registration::tests::native_requires_truthful_harness_session_and_complete_observed_tuple ... ok
+test registration::tests::ordinary_registration_never_inherits_native_capability ... ok
+test registration::tests::native_supersedes_refuses_same_id_same_session_wrong_process_or_existing_target ... ok
+test registration::tests::shared_native_lock_prevents_concurrent_process_takeover ... ok
+test http::native_tests::unstamped_prebind_task_reaches_first_verified_native_session ... ok
+test http::native_tests::retired_or_prebind_copilot_cannot_be_relabelled_to_bypass_native_inbox ... ok
+
+failures:
+
+---- delivery::tests::native_claim_consent_holds_then_admits_without_touching_composer stdout ----
+
+thread 'delivery::tests::native_claim_consent_holds_then_admits_without_touching_composer' (900140231) panicked at crates/daemon/src/delivery/mod.rs:2698:9:
+assertion failed: fixture.service.claim_native_inbox(&seat, false,
+                    &identity).await.expect("static draft remains held").claims.is_empty()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    delivery::tests::native_claim_consent_holds_then_admits_without_touching_composer
+
+test result: FAILED. 41 passed; 1 failed; 0 ignored; 0 measured; 191 filtered out; finished in 1.00s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

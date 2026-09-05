@@ -1,0 +1,84 @@
+{
+  "unit": "installation",
+  "status": "unit-source-ready-for-composition",
+  "seat": "pij-intellectual-mosquito",
+  "runtime": {"harness": "OMP", "model": "github-copilot/gpt-6-astra-1m", "configured_effort": "high"},
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-install",
+  "branch": "137-copilot-native-install",
+  "base_commit": "36248c58638316c3bc3d4c90aad765eda39b3ba3",
+  "source_commit": "333d95997971f00e502c9b039f17ae924626b2a1",
+  "contract_version": 3,
+  "contract_rulings": ["pm-ack-rulings.md", "pm-opus-preflight-rulings.md", "pm-lifecycle-rulings.md", "PM stable native-session diagnostic prefix ruling"],
+  "implemented": [
+    "Canonical-main linker includes Copilot directory ownership, safe unlink, read-only doctor, and COPILOT_HOME including empty-value default semantics",
+    "Experimental-only atomic settings merge preserves unrelated settings, idempotency, foreign links/files and malformed configuration",
+    "Native node:test and scoped Rust recipes; native-test sensor in both self-check and harness checks; no missing-test skip",
+    "Isolated actual CLI driver with manual/spawned modes, deterministic-local versus real-provider grading, actual process/version/build hashes, and owned process cleanup",
+    "Spawned initial task sent before binding wait; native message/event IDs, outgoing native pij_send, exact sender/recipient job evidence, duplicate checks",
+    "Positive human draft hold and same-message release without another send; disabled consumer no-fallback control; isolated restart/key rotation",
+    "V3 pre-daemon/key ordinary CLI witness requires user/assistant same native interaction and one public terminal unavailable diagnostic per episode",
+    "Focused README/how-to and scoped positive/negative proof fixtures"
+  ],
+  "verification": [
+    {
+      "command": "just test harness/scripts/link-global.test.ts",
+      "phase": "before implementation",
+      "result": "15 failed / 6 passed, demonstrating missing installation/diagnostic/preservation behavior"
+    },
+    {
+      "command": "just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts",
+      "phase": "final source",
+      "exit_code": 0,
+      "result": "29 passed: 22 installer + 7 native fixture/witness tests",
+      "covers_negative_controls": ["foreign real/dangling paths", "invalid/non-object settings", "symlinked roots/settings", "absent native tool", "wrong ordinary interaction", "missing/repeated outage diagnostic", "malformed native event identity", "missing compiled binary", "receipt overwrite refusal", "inherited identity/credential contamination"]
+    },
+    {
+      "command": "node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0,
+      "scope": "owned five TypeScript source/test files and their imports, not workspace-wide"
+    },
+    {
+      "command": "node_modules/.bin/biome check harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0,
+      "result": "Checked 5 files. No fixes applied."
+    },
+    {
+      "command": "just copilot-native-smoke --help",
+      "exit_code": 0,
+      "scope": "actual CLI command surface"
+    },
+    {
+      "command": "just copilot-native-smoke --mode both --provider local --output <worktree>/docs/plans/137-copilot-native-extension/assets/evidence/install-smoke-prerequisites.json",
+      "exit_code": 2,
+      "result": "PIJ_NATIVE_PREREQUISITE_BINARY; no composed binary, no fabricated success",
+      "receipt": "install-smoke-prerequisites.json"
+    },
+    {
+      "command": "copilot -p 'Say PIJ_NATIVE_OBSERVED. Do not call tools.' --allow-all-tools --no-experimental --no-custom-instructions --disable-builtin-mcps --no-remote --no-auto-update --output-format json",
+      "environment": "private HOME/COPILOT_HOME, no Pij identity, COPILOT_OFFLINE=true, isolated deterministic HTTP provider; no credentials",
+      "exit_code": 0,
+      "result": "actual native user and assistant messages plus session result exit0",
+      "receipt": "install-provider-client.json",
+      "grade": "actual CLI/provider protocol only; NOT native extension/daemon integration or real-model inference"
+    }
+  ],
+  "toolchain": {"node": "v24.7.0", "typescript": "5.9.3", "biome": "2.4.14", "vitest": "4.1.10", "copilot": "1.0.84-0"},
+  "source_sha256": {
+    "harness/scripts/link-global.ts": "d0d0764eda7dbaac1a65d3610bc29d62d03edd3c5b52fcbc30966616bebfb489",
+    "harness/scripts/copilot-native-fixture.ts": "ae0437b8bed6162445970bfd9a16cf89eb838a4914fea9637a8adf284ee1da2c",
+    "harness/scripts/copilot-native-smoke.ts": "2e9b2d1d678287205fd2d40769b63b87ca3bda2dfe5d771d157c5edf1e4b31a9",
+    "harness/scripts/copilot-native-smoke.test.ts": "a15b28676be4e66df99ee973283831c2e8cb2f1b7eab5be98c7ff35e5cf420d7",
+    "harness/scripts/link-global.test.ts": "6cf1b09772e55ccddb986095534c4b898641d4a1cda515d684fe6576a0d8ee8d"
+  },
+  "remaining_integration": [
+    "PM composes shipping .copilot modules and native-capable Rust binary; installer-only tree has neither and does not create shipping placeholders",
+    "Run actual manual/spawned native round trips, initial task, duplicate, absence, draft hold/release, daemon-down startup and reconnect controls against composed commit",
+    "PM supplies in-memory GitHub token and verified model for separately graded real-provider canary; no auth file copying",
+    "Native-session rollover and same-session revive queue targeting remain daemon/runtime units' lifecycle proof; this driver specifically covers restart/key rotation",
+    "PM runs integrated native node:test/Rust recipes and full harness checks after composition; inherited file-watch-notify baseline red remains explicitly reported"
+  ],
+  "dependency_incident": "Shared node_modules/.bin disappeared during final validation, causing Biome/Vitest exit127. PM/prime restored exact-lock dependencies; this seat did not install, repair, repoint, or modify locks. All final scoped checks reran successfully afterward. See install-tooling-blocker.md.",
+  "harness_improvement": "Native JS tests are now a first-class inventory sensor rather than invisible to Vitest; real-client smoke returns positive held/refused evidence and named missing prerequisites instead of silence. Further improvement candidate: owner-managed immutable validation dependency snapshots prevent concurrent shared-dependency drift.",
+  "safety": ["No global install/config update or daemon restart", "No legacy daemon or flowspace3 daemon launched", "No OMP/binary update", "No dependency or lock mutation", "No PM plan/guide/contracts/governance mutation", "No Rust or .copilot source edits", "No push/main merge", "No model-completion claim from reader-read", "Owned fixture provider stopped; one-off actual CLI exited0"],
+  "acceptance_states": "PM-owned ACs unchanged; unit readiness is not full product acceptance"
+}

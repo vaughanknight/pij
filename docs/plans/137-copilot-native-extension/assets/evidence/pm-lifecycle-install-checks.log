@@ -1,0 +1,130 @@
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run harness/scripts/copilot-native-smoke.test.ts harness/scripts/link-global.test.ts
+
+(node:63688) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-copilot-native-extension
+
+(node:63831) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ harness/scripts/copilot-native-smoke.test.ts (52 tests) 551ms
+     ✓ times out without a modal and never resends approval if dismissal stalls  502ms
+ ✓ harness/scripts/link-global.test.ts (33 tests) 4721ms
+     ✓ keeps the absent CLI outcome distinct from strict doctor  1354ms
+     ✓ keeps the present CLI outcome distinct from strict doctor  1937ms
+     ✓ keeps the broken CLI outcome distinct from strict doctor  1047ms
+
+ Test Files  2 passed (2)
+      Tests  85 passed (85)
+   Start at  12:26:05
+   Duration  4.91s (transform 126ms, setup 0ms, import 184ms, tests 5.27s, environment 0ms)
+
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.65s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-18bad1c90de73721)
+
+running 27 tests
+test registration::tests::absent_actual_model_is_unknown_while_explicit_no_model_is_a_mismatch ... ok
+test registration::tests::actual_host_matches_executable_and_entrypoint_not_shell_command_text ... ok
+test registration::tests::cold_resume_never_treats_previous_process_sensor_failure_as_death ... ok
+test registration::tests::cold_resume_requires_dead_attested_incarnation_and_preserves_hold ... ok
+test registration::tests::blocked_native_host_observation_does_not_block_unrelated_inbox_ack ... ok
+test registration::tests::native_ancestry_observation_is_bounded_to_32_processes ... ok
+test registration::tests::explicit_prebind_revalidates_both_rows_before_retiring_dead_same_native_owner ... ok
+test registration::tests::native_attests_actual_host_below_shell_but_refuses_shell_pane_pid ... ok
+test registration::tests::cold_resume_revalidates_owner_after_unlocked_death_observation ... ok
+test registration::tests::native_host_observation_has_a_wall_clock_bound ... ok
+test registration::tests::native_observation_revalidates_cross_seat_process_takeover_before_commit ... ok
+test registration::tests::native_rechecks_process_start_after_actual_host_observation ... ok
+test registration::tests::native_reconnect_retains_address_and_explicit_new_session_retires_old_capability ... ok
+test registration::tests::native_prebind_requires_exact_spawn_id_pane_and_harness ... ok
+test registration::tests::native_requires_exact_observed_pane_ancestry_but_supports_paneless_hosts ... ok
+test registration::tests::native_requires_truthful_harness_session_and_complete_observed_tuple ... ok
+test registration::tests::native_refuses_active_identity_process_session_harness_and_pane_collisions ... ok
+test registration::tests::ordinary_registration_cannot_relabel_or_supersede_active_copilot_seat ... ok
+test registration::tests::ordinary_other_harness_registration_retains_existing_rebind_behavior ... ok
+test registration::tests::native_supersedes_refuses_same_id_same_session_wrong_process_or_existing_target ... ok
+test registration::tests::ordinary_registration_never_inherits_native_capability ... ok
+test registration::tests::ordinary_registration_preserves_unchanged_attested_native_owner_and_binding ... ok
+test registration::tests::ordinary_registration_refuses_changed_native_owner_after_readoption ... ok
+test registration::tests::ordinary_withdrawal_preserves_session_and_does_not_enable_later_takeover ... ok
+test registration::tests::shared_native_lock_prevents_concurrent_process_takeover ... ok
+test registration::tests::real_shell_process_is_not_an_actual_copilot_host ... ok
+test registration::tests::claude_inbound_registration_changes_once_and_publishes_once ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 208 filtered out; finished in 0.06s
+
+     Running tests/admission_agreement.rs (target/debug/deps/admission_agreement-a47972b16b21ecfc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/caller_context_wire.rs (target/debug/deps/caller_context_wire-1fa2c15429f074ea)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/events_bus.rs (target/debug/deps/events_bus-1313f1807b3aa649)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/first_light.rs (target/debug/deps/first_light-cabf2dbcd8715850)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/first_light_wave1.rs (target/debug/deps/first_light_wave1-0b7b2ca7780532ed)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/first_light_wave2.rs (target/debug/deps/first_light_wave2-b34c85a7058d0145)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/native_runtime_cold_resume.rs (target/debug/deps/native_runtime_cold_resume-f79ac103bf5a4dd7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/orchestration_repo.rs (target/debug/deps/orchestration_repo-5899bd54a8f27721)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/report_http.rs (target/debug/deps/report_http-c7c6c46ddc5dfa96)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 25 filtered out; finished in 0.00s
+
+     Running tests/review_regressions.rs (target/debug/deps/review_regressions-d103fb9186909f13)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+
+     Running tests/shim_http.rs (target/debug/deps/shim_http-806c4f9de6542a70)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+npm run typecheck
+
+> pij@0.1.0 typecheck
+> tsc --noEmit
+

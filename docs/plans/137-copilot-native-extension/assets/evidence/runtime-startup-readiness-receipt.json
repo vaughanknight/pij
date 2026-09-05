@@ -1,0 +1,170 @@
+{
+  "baseline": "c454cbfb57b27f69ec864f8b4f98de4edc1d4898",
+  "packet": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/inputs/pm-startup-sensor-readiness.json",
+  "owner": "pij-worldwide-rat",
+  "limits": [
+    "No native client/live launches or full gates; PM owns final actual/composed proof.",
+    "Pane-tap readiness race is PM inference consistent with timestamps, not independently proven root cause."
+  ],
+  "recovery": "Availability gates all initial/reconnect acquisition, including recovery; already accepted records bypass QUIET permission after reclaim and retain release→ACK without reinjection.",
+  "status": "scoped_verified_live_pin_ready",
+  "module": {
+    "path": ".copilot/extensions/pij/store.mjs",
+    "bytes": 34100,
+    "sha256": "2cc04cb1ea7ae7fac481711dad1a088c8fbe072e27a1707c9ea37564b57d7b4c"
+  },
+  "changed_tests": [
+    {
+      "path": ".copilot/extensions/pij/store.test.mjs",
+      "bytes": 109768,
+      "sha256": "a8a8b43d4d962da27a3ce423f4baf94812e58f724139cc30330a983f9a1af0a8"
+    },
+    {
+      "path": ".copilot/extensions/pij/extension.test.mjs",
+      "bytes": 30804,
+      "sha256": "4ae4be3e91153c81a7c1ac9bcf3ed320caa0113c30c936509605088b3d56f72a"
+    }
+  ],
+  "implementation": {
+    "acquisition": "NativeBridge.consume calls #waitForTypingAvailability after successful initial/reconnect registration and before acquiring any claim. No body/journal reads, intent, native send, release or ACK during unavailable startup.",
+    "observation": "Existing DaemonClient.typingSnapshot performs tuple/schema/auth validation. Only validated unavailable waits; observed permits ordinary claim, including recent edit and semantic Hold. No quiet fallback, alternate grace, timeout-driven delivery or copied body.",
+    "retry": "Abortable snapshot and delay;250/500/1000/2000/4000/5000 capped cadence. Post-await and preclaim cancellation checks prevent late old-generation work. Retryable errors retain existing registration recovery; valid unavailable does not churn registration.",
+    "diagnostic": "typing-sensor-wait emitted once per unavailable episode, with episode reset only after observed. Fixed native timeline notice says waiting for sensor availability, retrying before claiming inbox, and outgoing remains available. Readiness notices do not mask a later invalid-sensor refusal. Terminal receive-held bypasses retry-warning suppression, so an earlier reconnect cannot leave a stopped consumer described as waiting. Repeated retry warnings still coalesce.",
+    "preserved": "Fresh pre-intent snapshot, typed hold/release/fresh-reclaim ordering, acceptance persistence, current-claim release→ACK, completion correlation and owned inbox-deadline renewal remain unchanged."
+  },
+  "proof": {
+    "environment": {
+      "VITEST_MAX_THREADS": "4",
+      "CARGO_BUILD_JOBS": "4"
+    },
+    "focused_command": "node --test --test-reporter=tap --test-timeout=2000 --test-name-pattern=startup readiness .copilot/extensions/pij/store.test.mjs",
+    "scoped_command": "node --test --test-reporter=tap --test-timeout=15000 .copilot/extensions/pij/store.test.mjs .copilot/extensions/pij/identity.test.mjs .copilot/extensions/pij/extension.test.mjs",
+    "red": {
+      "path": "docs/plans/137-copilot-native-extension/assets/evidence/runtime-startup-readiness-red.tap",
+      "bytes": 11724,
+      "sha256": "56c2ce12e772a176989b922a5d4ceda6fe37523f1bb2a6aad73d2cfe891357df",
+      "exit": 1,
+      "stderr": "",
+      "tests": 12,
+      "pass": 0,
+      "fail": 12,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 106.409666,
+      "meaning": "Twelve direct ordering/count/claim/diagnostic assertions fail before source edit, without cancellations or timeouts."
+    },
+    "focused": {
+      "path": "docs/plans/137-copilot-native-extension/assets/evidence/runtime-startup-readiness-focused-final.tap",
+      "bytes": 3485,
+      "sha256": "69d4d988d08e2386ffd169710f02c5153d5cd0ea70ac9ea209fb56297847d550",
+      "exit": 0,
+      "stderr": "",
+      "tests": 13,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 118.567834
+    },
+    "scoped": {
+      "path": "docs/plans/137-copilot-native-extension/assets/evidence/runtime-startup-readiness-tests-final.tap",
+      "bytes": 32437,
+      "sha256": "ee30a01f88db185384436f5748e7fdf11be0456ebd3f61531907412b6fda0355",
+      "exit": 0,
+      "stderr": "",
+      "tests": 141,
+      "pass": 141,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 6854.625833
+    },
+    "coverage": [
+      "Actual loopback HTTP unavailable until explicitly observed: zero claims/journal loads/intents/send/ACK, one registration, outgoing usable,250..5000 cap; then one receive/ACK only after a distinct fresh snapshot.",
+      "Observed recent typing or semantic Hold permits ordinary claim but fresh permission still holds; initially quiet observation followed by postclaim unavailable stops rather than injecting.",
+      "Actual HTTP401 and destroyed connection retain reconnect; re-registration must observe readiness before another claim and never churn registration during valid unavailable waits.",
+      "Accepted recovery waits before journal access, then observed recent edit plus semantic Hold bypasses QUIET permission after reclaim: no intent/reinjection/typing hold, release before one ACK.",
+      "Uncooperative snapshot and delay cancel; late observed resolution cannot claim. Actual HTTP malformed/forged snapshots stop before claim, and the prior29-case validation table remains.",
+      "Fixed waiting/retrying diagnostic retains outgoing advice and privacy; later invalidity remains visible. Existing shell sequences explicitly include startup observation without hiding fresh consent checks.",
+      "Reconnect warning → readiness wait → malformed terminal notice: retry warnings coalesce, terminal stopped notice remains visible, no remote secrets exposed."
+    ],
+    "static": {
+      "biome": "node_modules/.bin/biome check --write .copilot/extensions/pij/store.mjs .copilot/extensions/pij/store.test.mjs .copilot/extensions/pij/extension.test.mjs: exit0; Checked3 files in98ms; Fixed3. After terminal correction: two changed files checked in108ms, no fixes applied; diagnostics OK again.",
+      "lsp": "Changed store.mjs/store.test.mjs/extension.test.mjs diagnostics all OK. NativeBridge/createNativeReporter references returned no references; exact extension.mjs callsite check confirmed direct bridge.run and existing reporter wiring."
+    },
+    "provenance": "Each TAP saved from captured raw stdout and byte-compared to that stdout. No reader export or rerun for provenance. All command execution by runtime owner; test author/reviewer run no validation.",
+    "initial_green": {
+      "path": "docs/plans/137-copilot-native-extension/assets/evidence/runtime-startup-readiness-focused.tap",
+      "bytes": 3250,
+      "sha256": "c3260bf22ff9f8ab760f71d35683b769d48ff6a49ffe8727bf92bf297ed9a465",
+      "exit": 0,
+      "stderr": "",
+      "tests": 12,
+      "pass": 12,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 114.262042
+    },
+    "initial_scoped": {
+      "path": "docs/plans/137-copilot-native-extension/assets/evidence/runtime-startup-readiness-tests.tap",
+      "bytes": 32191,
+      "sha256": "cb880597d0b81dac688ff121d3868de8a7fa06c6cba4cd9baa43afeb709ab5bb",
+      "exit": 0,
+      "stderr": "",
+      "tests": 140,
+      "pass": 140,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 6849.834666
+    },
+    "initial_green_module": {
+      "path": ".copilot/extensions/pij/store.mjs",
+      "bytes": 34067,
+      "sha256": "5e00a54b433ff3386a0c0fae38537b56d998bf5c1479852f945062faa000f014"
+    },
+    "reporter_red_command": "node --test --test-reporter=tap --test-timeout=2000 --test-name-pattern=startup readiness diagnostic .copilot/extensions/pij/store.test.mjs",
+    "reporter_red": {
+      "path": "docs/plans/137-copilot-native-extension/assets/evidence/runtime-startup-readiness-reporter-red.tap",
+      "bytes": 1266,
+      "sha256": "dc128f28758b8a2abe5ca598a9c6adbba3b81a45001c79cedfc7a07bb62268de",
+      "exit": 1,
+      "stderr": "",
+      "tests": 2,
+      "pass": 1,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 57.71875,
+      "meaning": "After retry warnings and readiness wait, malformed terminal notice is missing (2 lines instead of3). The no-reconnect case passes."
+    }
+  },
+  "history": {
+    "source": "runtime-typing-v4-receipt.json:12-25",
+    "classification": "Applicable postclaim contract; superseded only for bootstrap/reconnect valid-unavailable behavior.",
+    "preserved": "Only NEW sends use #prepareNewSend; accepted current claims declare release before ACK. PM explicitly approved availability delaying recovery acquisition, without adding QUIET permission to recovered records."
+  },
+  "review": {
+    "status": "no_material_findings",
+    "reviewer": "StartupReadinessReview",
+    "scope": "Read-only source/contract/test review; no independent execution.",
+    "correction": "Reviewer identified reconnect-warning suppression of terminal receive-held; independently reproduced via RED reporter case, fixed one guard and reverified focused13/13 plus scoped141/141.",
+    "overall_correctness": "correct",
+    "confidence": 0.98,
+    "final_evidence": "Reviewer re-read store.mjs:945-981 and store.test.mjs:650-695; original terminal-diagnostic finding resolved and superseded. Source-only; no independent execution."
+  },
+  "cleanup": {
+    "fixtures": "Owned loopback HTTP connections/servers, Node-shell children and temporary journals use existing teardown. New controlled promises are aborted or resolved; no daemon/native-client launch or shared-process mutation.",
+    "scope": "Only store.mjs, store.test.mjs, extension.test.mjs and runtime evidence. No .pi, Rust, recognizer, installer, dependency, lockfile, global, flow or governance edits."
+  },
+  "harness_improvement": "The delayed-availability HTTP regression keeps a queued message unclaimed while the sensor starts, instead of assuming every registered seat already has a usable sample. Explicit postclaim responses preserve the distinct consent boundary.",
+  "freeze": "Source committed and frozen at source_commit and module SHA. PM owns composed/live proof; no further source additions planned.",
+  "source_commit": "f5003ed78d0adb0f3994fe7e3ff9fd3a602e8feb"
+}

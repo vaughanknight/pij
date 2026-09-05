@@ -35,7 +35,7 @@ use super::{
     AppState, Registration, RegistrationResponse, allocate_memorable_id, envelope, internal,
     pane_harness_identity, refused,
 };
-use crate::registration::{RegistrationError, RegistrationService};
+use crate::registration::RegistrationError;
 
 /// The caller's environment, forwarded by the shim as a FIXED ALLOWLIST.
 ///
@@ -530,12 +530,7 @@ pub(crate) async fn adopt(
         parent,
         relay: incumbent.is_some_and(|seat| seat.relay),
     };
-    let registration = RegistrationService::new(
-        std::sync::Arc::clone(&state.services.registry),
-        std::sync::Arc::clone(&state.services.liveness),
-        std::sync::Arc::clone(&state.services.event_bus),
-        pij_harnesses::claude_homes(),
-    );
+    let registration = &state.registration;
     if let Err(error) = registration
         .register_with_harness_session(claim, harness_session)
         .await

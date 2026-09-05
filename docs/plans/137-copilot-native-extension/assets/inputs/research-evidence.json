@@ -1,0 +1,155 @@
+{
+  "result": "passed",
+  "scope": "research-only scratch prototype",
+  "provider": "local deterministic OpenAI-compatible test provider, not real LLM inference",
+  "daemon": "actual installed pij-rs, offline=false, isolated real SQLite store",
+  "daemon_addr": "127.0.0.1:62471",
+  "seats": {
+    "driver": {
+      "seat": "pij-poc-driver-dadcdf90",
+      "nativeSession": "dadcdf90-5f0f-4f0d-9b42-6a3ad7d6e638",
+      "pid": 45638,
+      "procStart": 20260905085415,
+      "descriptor": {
+        "id": "pij-poc-driver-dadcdf90",
+        "harness": "copilot",
+        "session": "dadcdf90-5f0f-4f0d-9b42-6a3ad7d6e638",
+        "pane": null,
+        "proc": {
+          "pid": 45638,
+          "proc_start": 20260905085415
+        },
+        "folder": "/Users/jordanknight/pi-hacking/pij/scratch/copilot-pij-daemon-poc",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": false
+      }
+    },
+    "target": {
+      "seat": "pij-poc-target-a5608dea",
+      "nativeSession": "a5608dea-b8e9-4d09-96c3-b3283a502227",
+      "pid": 45641,
+      "procStart": 20260905085415,
+      "descriptor": {
+        "id": "pij-poc-target-a5608dea",
+        "harness": "copilot",
+        "session": "a5608dea-b8e9-4d09-96c3-b3283a502227",
+        "pane": null,
+        "proc": {
+          "pid": 45641,
+          "proc_start": 20260905085415
+        },
+        "folder": "/Users/jordanknight/pi-hacking/pij/scratch/copilot-pij-daemon-poc",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": false
+      }
+    }
+  },
+  "original_message_id": "poc-c3e82a",
+  "reply_receipt": {
+    "msg_id": "825640cf-d6f9-4772-8d91-4374ffe022a2",
+    "outcome": {
+      "outcome": "queued",
+      "reason": "unreachable",
+      "next_retry_at": 0
+    },
+    "at": 1788562468867
+  },
+  "native_messages": {
+    "driver": [
+      {
+        "type": "user.message",
+        "messageId": "ae4057c8-8187-4419-837c-47d664ede4f2",
+        "content": "[pij from pij-poc-target-a5608dea]\nACK PIJ_DAEMON_PROBE_C3E82A"
+      },
+      {
+        "type": "assistant.message",
+        "messageId": "7fd7f4df-52f8-4346-bb64-d52b4cbdd1da",
+        "content": "ACK PIJ_DAEMON_PROBE_C3E82A"
+      }
+    ],
+    "target": [
+      {
+        "type": "user.message",
+        "messageId": "e0c8a142-8919-4797-a61e-41002c68e98f",
+        "content": "[pij from pij-poc-driver-dadcdf90]\nReply ACK PIJ_DAEMON_PROBE_C3E82A. Do not call tools."
+      },
+      {
+        "type": "assistant.message",
+        "messageId": "e4a7cd13-61f7-42df-ace9-61abd6d7dcbf",
+        "content": "ACK PIJ_DAEMON_PROBE_C3E82A"
+      }
+    ]
+  },
+  "acknowledgements": {
+    "driver": [
+      {
+        "at": "2026-09-04T22:54:28.878Z",
+        "kind": "inbox-acknowledged",
+        "jobId": 3,
+        "evidenceGrade": "harness-accepted-not-model-complete"
+      }
+    ],
+    "target": [
+      {
+        "at": "2026-09-04T22:54:28.783Z",
+        "kind": "inbox-acknowledged",
+        "jobId": 2,
+        "evidenceGrade": "harness-accepted-not-model-complete"
+      }
+    ]
+  },
+  "duplicate_retry": {
+    "outcome": "delivered",
+    "origin": "reader-read",
+    "native_user_message_count_per_seat": 1
+  },
+  "inboxes_after_round_trip": {
+    "driver": [],
+    "target": []
+  },
+  "cli_launch_args": [
+    "--no-custom-instructions",
+    "--disable-builtin-mcps",
+    "--no-remote",
+    "--no-auto-update"
+  ],
+  "not_used": [
+    "pij spawn",
+    "tmux pane",
+    "tmux send-keys",
+    "Copilot --ui-server",
+    "Copilot --port",
+    "VS Code Agent Host/AHP"
+  ],
+  "protocol": "user extension joins current session; registers harness=copilot and true parent pid/start; blocking Pij inbox claim; native session.send; explicit Pij ack; wait for session.idle; target bridge forwards assistant response with in_reply_to",
+  "production_boundary": "Paneless Copilot seats use existing generic inbox path; pane-backed Copilot needs explicit extension delivery ownership to prevent tmux double-delivery. No product code changed.",
+  "unproven": [
+    "pane-backed production routing",
+    "real model behavior",
+    "human composer consent",
+    "busy/steering concurrency",
+    "crash between send and ack",
+    "daemon reconnect and native session rollover",
+    "automated lifecycle integration with Pij spawn"
+  ],
+  "first_attempt": {
+    "result": "native injection succeeded; ack request failed because PoC omitted required seat field",
+    "correction": "add seat to acknowledgement; retain non-JSON HTTP error body; first delivered job explicitly acknowledged before fresh-seat retry"
+  },
+  "daemon_boot_note": "--bind 127.0.0.1:0 refused; used a separately allocated free loopback port",
+  "sources": [
+    "copilot-home/extensions/pij/extension.mjs",
+    "provider.mjs",
+    "target-bridge.jsonl",
+    "driver-bridge.jsonl",
+    "target-events.jsonl",
+    "driver-events.jsonl",
+    "daemon/pij.sqlite"
+  ]
+}

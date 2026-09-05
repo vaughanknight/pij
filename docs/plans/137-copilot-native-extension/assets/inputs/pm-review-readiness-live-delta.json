@@ -1,0 +1,18 @@
+{
+  "root": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension",
+  "pin": "da727fcd19a315b136ef4c387c769396f1ff6072",
+  "task": "Review remaining production/readiness/diagnostic deltas plus new actual proof; source verdict, not release until remaining native modes pass",
+  "review": [
+    "Startup/reconnect readiness: valid unavailable waits before any claim at existing cadence; malformed/forged data still terminal; observed recent/semantic Hold is availability only and does not waive fresh intent permission. Recovery acquisition waits availability but recovered acceptance never waits for quiet or reinjects.",
+    "Diagnostic suppression correction: terminal sensor refusal remains visible even after prior reconnect/readiness warnings; no repeated transcript spam or false permanent-stop message during readiness retries.",
+    "F-C existing native-event fields now retain pre-observe ancestry/native identity and post terminal without new timers/events/policy or body/secret fields.",
+    "Approved draft footer @ files · # issues is additive only; unavailable still safe. Latest measured live08 typing frame proves box geometry with cursor50,45,160x48; corresponding fixture follow-up currently being added, no grammar rewrite.",
+    "Upstream de9c8bb5 consumed: release attribution fix ae427e2d/6f5d33c6 comes from main, no duplicate137 fix. Check native/shared integration remains intact.",
+    "Measured final viewport/cursor + later final typing snapshots are diagnostic only, retained before teardown, errors preserve original outcome; no queue/input mutation.",
+    "Keep all earlier accepted invariants: exact owner/tuple/target/attempt, journal-before-ACK, current release declaration, completion correlation, no sendkeys body/control fallback."
+  ],
+  "proof": ["pm-native-real-canary-04.json: passed real gpt-5.6-luna native roundtrip + second receive, module2cc04cb1; scoped excludes full typing/lifecycle", "pm-native-local-08.json witnesses[6]: actual default60000 held→aged nonempty admission passed, one native message/ACK, draft retained, measured cursor; whole run later failed old disabled-ready glyph", "Full harness checks9/9 and Rust742 passed, artifact://529; no skip in harness checks. Later driver/test-only patches will be rerun."],
+  "pending": ["Disabled CLI readiness fixture still uses /❯|>/; installer replacing with existing nativeComposer predicate and retained regression", "Measured draft fixture follow-up", "Remaining missing-consumer/spawned/rollover/cold-host-resume actual proof", "Final acceptance/document closure"],
+  "constraints": ["Read committed pin, not moving tree", "No product edits, launches, tests/builds/lint/formatters/new peers", "Write assets/reviews/opus-readiness-live-da727fcd.md only", "No .the-flow-state.json/the-flow.json/the-flow.md/governance edits"],
+  "output": "Material findings, current source verdict, exact proof grades and remaining acceptance limits"
+}

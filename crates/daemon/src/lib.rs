@@ -24,11 +24,8 @@ pub mod http;
 #[path = "orchestration/repo.rs"]
 pub mod orchestration_repo;
 
-use std::collections::BTreeSet;
-use std::future::Future;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -68,53 +65,6 @@ pub struct DaemonRuntime {
     pub machine: String,
     /// Whether the daemon was launched with all adapters fake.
     pub offline: bool,
-}
-
-/// Supplies one loopback port for a Copilot UI-server launch while excluding
-/// endpoint intents already stamped on live seats.
-pub trait RpcPortAllocator: Send + Sync {
-    /// Allocate a non-zero port not present in `unavailable`.
-    fn allocate<'a>(
-        &'a self,
-        unavailable: &'a BTreeSet<u16>,
-    ) -> Pin<Box<dyn Future<Output = Result<u16>> + Send + 'a>>;
-}
-
-#[derive(Default)]
-struct KernelRpcPortAllocator;
-
-impl RpcPortAllocator for KernelRpcPortAllocator {
-    fn allocate<'a>(
-        &'a self,
-        unavailable: &'a BTreeSet<u16>,
-    ) -> Pin<Box<dyn Future<Output = Result<u16>> + Send + 'a>> {
-        Box::pin(async move {
-            let mut held_collisions = Vec::new();
-            loop {
-                let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
-                    .await
-                    .map_err(|error| PijError::Adapter {
-                        adapter: "spawn".to_string(),
-                        message: format!(
-                            "could not allocate a loopback port for Copilot RPC: {error}"
-                        ),
-                    })?;
-                let port = listener
-                    .local_addr()
-                    .map_err(|error| PijError::Adapter {
-                        adapter: "spawn".to_string(),
-                        message: format!("could not read the allocated Copilot RPC port: {error}"),
-                    })?
-                    .port();
-                if !unavailable.contains(&port) {
-                    return Ok(port);
-                }
-                // Keep a rejected candidate bound while asking the kernel again,
-                // so the next allocation cannot hand back the same numeric port.
-                held_collisions.push(listener);
-            }
-        })
-    }
 }
 
 /// Everything the routes are allowed to touch: ALL SEVEN ports.
@@ -165,8 +115,6 @@ pub struct Services {
     /// service composed FROM one (the spine). There was no `not_yet` refusal to
     /// delete here — its coder said so rather than inventing one.
     pub event_bus: Arc<events::EventBus>,
-    /// Kernel-backed Copilot UI-server port allocation.
-    pub rpc_ports: Arc<dyn RpcPortAllocator>,
     /// Governance: batons, projects, streams, ordinals, roles — and the
     /// equivalence merge that stops one seat becoming six descriptors.
     ///
@@ -360,7 +308,6 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         Arc::clone(&spine),
         config.event_buffer_capacity,
     )?);
-    let rpc_ports: Arc<dyn RpcPortAllocator> = Arc::new(KernelRpcPortAllocator);
 
     let orchestration = Arc::new(OrchestrationService::new());
 
@@ -376,7 +323,6 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         registry,
         spine,
         event_bus,
-        rpc_ports,
         orchestration,
         queue,
         transport,

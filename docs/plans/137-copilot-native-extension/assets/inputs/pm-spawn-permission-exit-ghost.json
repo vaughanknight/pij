@@ -1,0 +1,19 @@
+{
+  "owner": "pij-intellectual-mosquito",
+  "task": "Two actual fixture boundaries, same driver fence; preserve production behavior",
+  "spawned_permission": {
+    "receipt": "pm-native-spawned-probe-01.json",
+    "observed": "Both actual spawned command lines include EXISTING --yolo from Pij. Initial task and native tool reply completed, PIJ_NATIVE_DONE visible, but driver timed out waiting for a dialog that this policy never opens.",
+    "change": "Support preauthorized native tool execution as distinct evidence, not simulated human approval. Do NOT add --yolo/grants or infer approval from absent dialog. Retain actual launch policy and require exact matching native tool execution/success plus durable outgoing from/to/body or equivalent actual completion evidence before passing. Manual exact-dialog one-time path remains strict; unknown/mismatched active modal must not be approved. No keys on preauthorized path.",
+    "proof": "Retain actual spawned flags/frame and test preauthorized completion, absence-without-completion timeout, mismatched tool/args refusal, and existing manual dialog path. No fabricated human approval witness."
+  },
+  "exit_ghost": {
+    "receipt": "pm-native-lifecycle-probe-01.json",
+    "observed": "Actual /new rollover now succeeded, fresh successor received; cold-host-resume stage stops because /exit renders /exit [print] with selected /exit, separate /exit print alternative. Measured cursor is in final pane_capture; read it, do not infer.",
+    "change": "Extend lifecycle-only measured ghost handling to documented/captured /exit [print]. Typed prefix and pane-absolute cursor AND exact selected /exit must match; selected /exit print or wrong cursor/text must refuse. Never type the placeholder or change nativeComposer emptiness/draft behavior.",
+    "proof": "Actual retained exit frame/cursor regression plus wrong-selection/typed-suffix/malformed-frame negatives."
+  },
+  "scope": ["harness/scripts/copilot-native-smoke.ts", "harness/scripts/copilot-native-smoke.test.ts", "harness/scripts/fixtures actual captures", "installer evidence"],
+  "constraints": ["No product/permission/recognizer/policy changes", "No live/full gates; PM runs scoped probes then full canonical acceptance", "No .the-flow-state.json/the-flow.json/the-flow.md/governance edits"],
+  "acceptance": "Scoped source/tests and receipt; preauthorized tool and human approval remain distinct proof grades; both lifecycle controls remain exact and key-safe."
+}

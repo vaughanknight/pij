@@ -1,0 +1,112 @@
+{
+  "owner": "pij-worldwide-rat",
+  "status": "scoped_verified_live_pin_ready",
+  "assignment": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/inputs/pm-completion-diagnostic-refinement.json",
+  "baseline": "051f76664993fd6ba288acd46192031fdea84067",
+  "source_commit": "bfe1202659d5d6d0741be7d98db307b22ee58489",
+  "module": {
+    "path": ".copilot/extensions/pij/store.mjs",
+    "sha256": "93804b5dca2b5155a1fb1cc3074bb7be60a335c4f6237c1c1a5b40f7b78c42d3",
+    "bytes": 32911
+  },
+  "tests": {
+    "path": ".copilot/extensions/pij/store.test.mjs",
+    "sha256": "a2b213ca8b913797862bdd4ed8f0ecf183fe17ab05aa01163d46a2374cad9865",
+    "bytes": 91234
+  },
+  "contract": {
+    "event": "Existing native-event only; user.message, assistant.message, session.idle, session.error. Existing kind/seat/nativeSession/type/eventId/nativeMessageId/grade field names retained.",
+    "before_observe": [
+      "completionNativeId",
+      "completionLive",
+      "parentKnown",
+      "descendantCount"
+    ],
+    "event_metadata": [
+      "parentId",
+      "agentId",
+      "interactionId"
+    ],
+    "after_observe": "terminal: null or a projected {type,eventId}; never the full completion object or buffered event state.",
+    "ancestry": "parentKnown and descendantCount are captured BEFORE completion.observe clears descendants on healthy terminal observation. The count includes roots and descendants, not an independent root census.",
+    "privacy": "Event ID fields accept strings only; malformed objects become null. No prompt/content/body/tool args/credential fields or full data objects are emitted.",
+    "no_change": "No timeout, deadline, timer, retry, auto-unblock, environment flag, additional event kind/type/call count, UI notice, correlation change or v4 consent policy change."
+  },
+  "proof": {
+    "environment": {
+      "VITEST_MAX_THREADS": "4",
+      "CARGO_BUILD_JOBS": "4"
+    },
+    "focused_command": "node --test --test-reporter=tap --test-timeout=15000 --test-name-pattern=native-event diagnostics .copilot/extensions/pij/store.test.mjs",
+    "scoped_command": "node --test --test-reporter=tap --test-timeout=15000 .copilot/extensions/pij/store.test.mjs .copilot/extensions/pij/identity.test.mjs .copilot/extensions/pij/extension.test.mjs",
+    "red": {
+      "file": "runtime-completion-diagnostic-red.tap",
+      "exit": 1,
+      "tests": 4,
+      "passed": 0,
+      "failed": 4,
+      "stderr": "",
+      "duration_ms": 58.928916,
+      "sha256": "d5b5e0ae0e819351644461af87690fe06cdb7fe2c85c0740273f281d46ff0dde",
+      "bytes": 7571,
+      "meaning": "New focused assertions fail on missing diagnostic metadata before product edit."
+    },
+    "focused": {
+      "file": "runtime-completion-diagnostic-focused.tap",
+      "exit": 0,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "stderr": "",
+      "duration_ms": 59.623917,
+      "sha256": "a244f9c3f3c8ed9eea31da49fc613a8c64ee851712da5b9c7296d8a62175cfcf",
+      "bytes": 1025
+    },
+    "scoped": {
+      "file": "runtime-completion-diagnostic-tests.tap",
+      "exit": 0,
+      "tests": 128,
+      "passed": 128,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "stderr": "",
+      "duration_ms": 6909.298458,
+      "sha256": "990632cb3af28e5921fca2e5b541e5cbc707d64c73c9013bd8cf621b3552cc38",
+      "bytes": 29051
+    },
+    "coverage": [
+      "Healthy idle and error retain pre-parentKnown=true/count2 while post terminal is set and actual descendant Set is cleared; exactly3 callback reports and1 completion; next claim proceeds.",
+      "Unknown-parent idle reports false/null with active native ID and foreign interaction ID; known-parent subagent idle reports true/null with agentId. Claim remains blocked, outgoing usable, no receive-held/reconnecting/completed false alarm.",
+      "No active completion reports null/false/count0. Before send returns, buffered events report live=true/nativeId=null/count0 without exposing pending data.",
+      "Allowed event count6 for six allowed callbacks; unsupported message_delta/tool execution produce no extra native-event. Strict key whitelist and malformed-object IDs prevent nested body/credential leakage.",
+      "Full scoped runtime store/identity/actual owned Node-shell suite remains128/128, including existing completion, acceptance/ACK, renewal, restart and v4 sensor/hold/release behavior."
+    ],
+    "static": {
+      "biome": "node_modules/.bin/biome check --write .copilot/extensions/pij/store.mjs .copilot/extensions/pij/store.test.mjs: exit0; Checked2 files in112ms, fixed2.",
+      "lsp": "Both changed-file diagnostics returned OK; NativeBridge reference lookup returned no references (existing .mjs discovery limitation)."
+    },
+    "provenance": "All TAPs saved from captured raw stdout and byte-compared to it; no pager exports or reruns for provenance."
+  },
+  "review": {
+    "reviewer": "TypingV4BoundaryReview",
+    "verdict": "no_material_findings",
+    "overall_correctness": "correct",
+    "confidence": 0.97,
+    "scope": "Read-only source/test review against the F-C packet and c37f45a0 baseline; no independent execution.",
+    "artifact": "agent://TypingV4BoundaryReview"
+  },
+  "cleanup": {
+    "fixtures": "New tests stop and await the bridge using async test teardown; no new external service or native-client launch. Existing scoped suite owns and closes its loopback HTTP/Node-shell/temp-journal fixtures.",
+    "source": "No scratch source instrumentation; only store.mjs callback projection and adjacent tests changed. No .pi, Rust, installer, dependency, lockfile, global, plan/guide or governance changes.",
+    "evidence": "Raw RED/focused/scoped TAPs plus this receipt inside runtime-owned evidence fence."
+  },
+  "harness_improvement": "Permanent pre-observe ancestry diagnostics and strict callback-metadata tests eliminate the need to patch private product copies merely to distinguish healthy completion from missing-parent rejection.",
+  "limits": [
+    "No real native CLI/model/composer exercise or full project gate run in this assignment; PM owns final composed/live proof.",
+    "This metadata describes observed callback state, not stalled work, a timeout policy, or model success.",
+    "Prior live or cross-language executions against older store hashes are not proof of these new module bytes."
+  ],
+  "freeze": "No further source edits unless requested; PM may pin module SHA above for final live proof."
+}

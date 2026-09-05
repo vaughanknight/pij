@@ -1,0 +1,39 @@
+{
+  "status": "verified_and_restored",
+  "witnesses": [
+    {
+      "mutation": "native_claim_permitted returns unconditional permission",
+      "test": "delivery::tests::native_claim_consent_holds_then_admits_without_touching_composer",
+      "result": "expected failure: held.claims.is_empty()",
+      "log": "daemon-consent-mutation.log",
+      "source_restored": true
+    },
+    {
+      "mutation": "remove Copilot from initial extension-stream ownership",
+      "test": "delivery::tests::copilot_first_arrival_is_native_only_even_without_capability",
+      "result": "expected failure: arrival must never consult or submit tmux",
+      "source_restored": true,
+      "log": "daemon-routing-mutations.log"
+    },
+    {
+      "mutation": "remove Copilot from drain exclusion filter",
+      "test": "pointer::worker::tests::copilot_drain_never_claims_native_body_or_legacy_control",
+      "result": "expected failure: handled 1 instead of 0",
+      "log": "daemon-routing-mutations.log",
+      "source_restored": true
+    },
+    {
+      "mutation": "is_copilot_host accepts every executable",
+      "test": "registration::tests::real_shell_process_is_not_an_actual_copilot_host",
+      "result": "expected failure: actual shell was accepted with native_extension_delivery true",
+      "log": "daemon-host-mutation.log",
+      "source_restored": true
+    }
+  ],
+  "restored_verification": {
+    "command": "CARGO_BUILD_JOBS=4 cargo test --locked -p pij-daemon --lib",
+    "result": "198 passed",
+    "log": "daemon-restored-guards.log"
+  },
+  "source_commit": "f82a3d6c0348e13d774a4e22507addb49b7122c1"
+}

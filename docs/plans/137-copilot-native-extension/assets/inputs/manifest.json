@@ -1,0 +1,66 @@
+[
+  {
+    "path": "research-evidence.json",
+    "sha256": "3bdcf1f79a3cda006a90393afde756ed617cb262739c3cd8451bc81d4322fae7"
+  },
+  {
+    "path": "prime-constraints-2026-09-05.md",
+    "sha256": "0ce63e615967c19ea851f6255a339e7a54871db159073a54f7882359f69e034f"
+  },
+  {
+    "path": "pm-prebind-precedence-ruling.md",
+    "sha256": "3ccd103b3ec1026a5b698037e567273bd5fd712cf0d63329ec77e1f96bcbde79"
+  },
+  {
+    "path": "pm-code-review-rulings.md",
+    "sha256": "b62e283ca568d13a73112c3f9f2a7206f599a0cf3b470cd4c395fa343b23e714"
+  },
+  {
+    "path": "research-brief.md",
+    "sha256": "88e43774b5f7f57d13eca41bce7ed01d8947beaf0e9f7dcff9388d1912c390f2"
+  },
+  {
+    "path": "pm-native-transient-rulings.md",
+    "sha256": "89349ee0b509984eed2aeb28832ab47535dbe239c157f5fa11a48bd794f8ad69"
+  },
+  {
+    "path": "pm-native-retirement-ruling.md",
+    "sha256": "2e98c509fdaa3fb87bffcd3ba691f0485678d943ca7023f114d5289205b9c28d"
+  },
+  {
+    "path": "pm-ack-rulings.md",
+    "sha256": "8800f39bad61a22d4a2732349717cd70f81dfd3d7162d0ef14a26cc767c069dc"
+  },
+  {
+    "path": "pm-queue-lookup-ruling.md",
+    "sha256": "18a1ed4be55352067d4db68dbe8413fd2bab914dbb14fd51bfd546093900d49a"
+  },
+  {
+    "path": "prime-load-rule-correction.md",
+    "sha256": "78067e92adfe327e2104d7a7b2fa493a7ea65abc4ee087408ffc3dbe90dbadf8"
+  },
+  {
+    "path": "manual-extension-evidence.json",
+    "sha256": "250aa604fc93d4439600ab9585d307b82314bdcc8c9d48ce89c5bd84468f00c6"
+  },
+  {
+    "path": "prime-toolchain-correction.md",
+    "sha256": "6d3c6f7e40025120c98f5af9e909726b24bd04bde6a0114c60652d1741f3dd9a"
+  },
+  {
+    "path": "pm-cold-resume-ruling.md",
+    "sha256": "df2afa1c52228ea6564fa62f4a717561d2f545023b042f300e18c1112fb10022"
+  },
+  {
+    "path": "pm-opus-preflight-rulings.md",
+    "sha256": "a1ae17c05db334c530549d7c0da52225a09f99a24f2101164fd35ce7f71493ed"
+  },
+  {
+    "path": "prime-load-rule.md",
+    "sha256": "8b7145800a1148d681f05e7a44e689a38acbabc5674a61e06c460778d7ece9bd"
+  },
+  {
+    "path": "pm-lifecycle-rulings.md",
+    "sha256": "0eba0b1fb5e1860c312f6119f9b6d2d9bdb80e99f98ebc1205e66b01a36f7553"
+  }
+]

@@ -38,6 +38,12 @@ const SENSORS: Sensor[] = [
 	{ name: "lint", cmd: "just", args: ["lint"], proves: "Biome (errors + warnings) is clean" },
 	{ name: "test", cmd: "just", args: ["test"], proves: "the vitest suite passes" },
 	{
+		name: "copilot-native",
+		cmd: "just",
+		args: ["copilot-native-test"],
+		proves: "native Copilot extension node:test contracts pass",
+	},
+	{
 		name: "windows-compat",
 		cmd: "just",
 		args: ["windows-compat"],

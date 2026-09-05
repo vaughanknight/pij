@@ -1,0 +1,65 @@
+{
+  "state": "verified-not-deployed",
+  "source_commit": "f9b55c26490feba4b332106e42d8bf3a130f9702",
+  "source_modules": {
+    "extension.mjs": "567fccce84c2c8c5f173123ec46492bb6a79e72af1c1d656a1270ebd334b30a3",
+    "store.mjs": "2cc04cb1ea7ae7fac481711dad1a088c8fbe072e27a1707c9ea37564b57d7b4c"
+  },
+  "source_digests_checked_against_worktree": true,
+  "native_full_smoke": {
+    "command": "just copilot-native-smoke --mode both --provider local --timeout-seconds 120",
+    "status": "passed",
+    "receipt": "pm-native-local-11.json",
+    "coverage": [
+      "manual and Pij-spawned native registration/message roundtrip",
+      "initial task and duplicate suppression",
+      "default60000 typing hold and aged unchanged-draft admission",
+      "isolated disabled-consumer no-fallback control",
+      "daemon restart/key rotation",
+      "native rollover and old-context exclusion",
+      "actual owned whole-host death and same-identity cold resume"
+    ]
+  },
+  "real_provider": {
+    "status": "passed",
+    "receipt": "pm-native-real-canary-04.json",
+    "mode": "manual only",
+    "model": "gpt-5.6-luna",
+    "coverage": "native roundtrip and subsequent receive",
+    "limit": "Spawned mode used the real Copilot CLI/SDK with a deterministic provider, not real-model inference."
+  },
+  "final_gate": {
+    "command": "harness checks --json",
+    "status": "ok",
+    "timestamp": "2026-09-05T05:04:35.076Z",
+    "ran": [
+      "local-paths",
+      "typecheck",
+      "lint",
+      "test",
+      "copilot-native",
+      "windows-compat",
+      "smoke",
+      "pkg-audit",
+      "snapshots"
+    ],
+    "skipped": [],
+    "evidence": "Observed final tool verdict; all nine sensors reported pass."
+  },
+  "rust_evidence": {
+    "workspace_passed": 742,
+    "workspace_ignored": 8,
+    "receipt": "pm-current-harness-and-rust.log",
+    "scope": "Earlier full workspace proof; subsequent measured composer fixture was separately verified with107 harness tests. No claim of a new full Rust run at closeout."
+  },
+  "review": "Independent Opus source approval through opus-final-source-7eabbb3d.md; no further review/test expansion after Jordan direction. Final small fixture isolation and existing gate failures were corrected and confirmed by the complete smoke/gate.",
+  "remaining_required_work": [],
+  "limits": [
+    "No universal exactly-once guarantee across an unprovable native-acceptance crash boundary",
+    "Unavailable post-claim typing observations fail closed; broader geometry-based recognition remains deferred",
+    "Existing Copilot sessions are not retrofitted"
+  ],
+  "no_global_rollout": true,
+  "no_public_push": true,
+  "no_main_merge": true
+}

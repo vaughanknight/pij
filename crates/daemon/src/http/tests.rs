@@ -79,6 +79,10 @@ impl Queue for CountingQueue {
         Ok(None)
     }
 
+    async fn claimed_delivery(&self, _job: JobId) -> Result<Option<Job>> {
+        Ok(None)
+    }
+
     async fn ack(&self, _job: JobId, _outcome: Outcome) -> Result<()> {
         Ok(())
     }
@@ -220,6 +224,13 @@ async fn typing_release_wakes_an_already_waiting_inbox_reader() {
         .expect("claim")
         .remove(0);
     let state = AppState {
+        registration: RegistrationService::new(
+            Arc::clone(&services.registry),
+            Arc::clone(&services.liveness),
+            Arc::clone(&services.event_bus),
+            Vec::new(),
+        )
+        .with_native_lock(services.delivery.native_lock()),
         services,
         auth: AuthRing::new("key".to_string(), Vec::new()),
         machine_alias: "local".to_string(),
@@ -248,6 +259,9 @@ async fn typing_release_wakes_an_already_waiting_inbox_reader() {
             seat: seat.clone(),
             wait: true,
             peek: false,
+            native_session: None,
+            pid: None,
+            proc_start: None,
         }),
     );
     tokio::pin!(waiting);
@@ -428,7 +442,15 @@ async fn typing_not_live_names_absent_and_terminal_noops_on_both_routes() {
         .remove(0);
     services
         .delivery
-        .acknowledge_inbox(claimed.job_id)
+        .acknowledge_inbox(
+            &seat,
+            claimed.job_id,
+            &crate::delivery::NativeInboxIdentity {
+                native_session: None,
+                pid: None,
+                proc_start: None,
+            },
+        )
         .await
         .expect("terminal");
     let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
@@ -969,6 +991,11 @@ async fn typing_receipt_is_queued_until_ack_then_reader_read_for_omp_and_pi() {
             .json(&InboxAckRequest {
                 seat: message.to.clone(),
                 job_id: claims[0].job_id,
+                native: crate::delivery::NativeInboxIdentity {
+                    native_session: None,
+                    pid: None,
+                    proc_start: None,
+                },
             })
             .send()
             .await
@@ -1306,12 +1333,7 @@ async fn assert_registration_binding_fixture(expected_key: &str, previous_key: O
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let accepted: Envelope<serde_json::Value> = response.json().await.expect("register envelope");
     server.abort();
-    // CONVERGENCE 135 + 136. The fixture pins plan 135's BINDING semantics; it
-    // was captured before plan 136 added `typing_grace_ms` to the same response.
-    // A whole-object equality here would mean every additive wire field breaks a
-    // captured fixture — the opposite of the additive-change rule the wire is
-    // built on. So: every key the fixture records must match EXACTLY, and the
-    // only key the response may add is the one 136 documents.
+    // Captured135 fields stay exact;136 and137 add these documented wire fields.
     let observed = accepted.data.as_ref().expect("register response body");
     let expected_object = expected.as_object().expect("fixture object");
     let observed_object = observed.as_object().expect("response object");
@@ -1324,11 +1346,21 @@ async fn assert_registration_binding_fixture(expected_key: &str, previous_key: O
     }
     let unexpected: Vec<&String> = observed_object
         .keys()
-        .filter(|key| !expected_object.contains_key(*key) && key.as_str() != "typing_grace_ms")
+        .filter(|key| {
+            !expected_object.contains_key(*key)
+                && !matches!(
+                    key.as_str(),
+                    "typing_grace_ms" | "native_extension_delivery"
+                )
+        })
         .collect();
     assert!(
         unexpected.is_empty(),
         "{expected_key} fixture: response grew undocumented keys {unexpected:?}"
+    );
+    assert_eq!(
+        observed.get("native_extension_delivery"),
+        Some(&serde_json::json!(false))
     );
     let stored = registry
         .get(&descriptor.id)
@@ -1437,9 +1469,11 @@ async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
         .into_iter()
         .find(|seat| seat.id.as_str() == launched_seat_id)
         .expect("pre-bind row");
-    let allocated_port = prebind
-        .rpc_port_intent
-        .expect("Copilot launch allocates a port intent");
+    assert!(
+        !prebind.native_extension_delivery,
+        "spawn is not runtime attestation"
+    );
+    assert!(!launch.contains("--ui-server") && !launch.contains("--port"));
     assert_eq!(
         prebind.spawn_id.as_deref(),
         Some(launched_spawn_id.as_str())
@@ -1489,10 +1523,10 @@ async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
         (
             seats.len(),
             bound.map(|seat| seat.id.as_str()),
-            bound.and_then(|seat| seat.rpc_port_intent),
+            bound.map(|seat| seat.native_extension_delivery),
         ),
-        (1, Some(launched_seat_id.as_str()), Some(allocated_port)),
-        "the launched identity is adopted as one row with its allocated port"
+        (1, Some(launched_seat_id.as_str()), Some(false)),
+        "the launched identity is adopted once without inventing native attestation"
     );
     let bound = bound.expect("bound launched row");
     assert_eq!(bound.spawn_id.as_deref(), Some(launched_spawn_id.as_str()));
@@ -1832,7 +1866,6 @@ async fn reregistration_prefers_exact_id_over_spawn_match_without_fresh_allocati
     let mut unrelated = SeatDescriptor::new("pij-a-prebind", Harness::Copilot, "/abs/tree");
     unrelated.pane = Some("%44".to_string());
     unrelated.spawn_id = Some("spawn-shared".to_string());
-    unrelated.rpc_port_intent = Some(47_781);
     let mut existing = SeatDescriptor::new("pij-z-existing", Harness::Copilot, "/abs/tree");
     existing.pane = Some("%44".to_string());
     existing.proc = Some(identity);
@@ -1874,9 +1907,9 @@ async fn reregistration_prefers_exact_id_over_spawn_match_without_fresh_allocati
     let accepted: Envelope<SeatDescriptor> = response.json().await.expect("descriptor envelope");
     let accepted = accepted.data.expect("descriptor");
     assert_eq!(accepted.id.as_str(), "pij-z-existing");
-    assert_eq!(
-        accepted.rpc_port_intent, None,
-        "an ordinary re-registration has no fresh port allocation to inherit"
+    assert!(
+        !accepted.native_extension_delivery,
+        "ordinary registration is not attestation"
     );
 
     let seats = registry
@@ -1888,23 +1921,14 @@ async fn reregistration_prefers_exact_id_over_spawn_match_without_fresh_allocati
         .find(|seat| seat.id.as_str() == "pij-a-prebind")
         .expect("unrelated pre-bind row");
     assert_eq!(unrelated.proc, None, "repeat registration cannot adopt it");
-    assert_eq!(unrelated.rpc_port_intent, Some(47_781));
+    assert!(!unrelated.native_extension_delivery);
 
     server.abort();
 }
 
-/// THE PORT-INHERITANCE ARM. Found missing by the reviewer: mutating
-/// `binds_spawned_incarnation` to always-true left the ENTIRE daemon http suite
-/// green, because the only re-registration arm used a row whose
-/// `rpc_port_intent` was already `None` — the refusal was exercised vacuously.
-///
-/// This is the case where the gate actually decides: an exact-id match onto a row
-/// that CARRIES a port stamped for incarnation S1, claimed by a registration whose
-/// spawn_id is S2. The port was reserved for a different incarnation and must not
-/// travel to this one — the allocator treats live rows' intents as the reserved
-/// set, so inheriting one hands out a port another process may be listening on.
+/// Ordinary registration must not copy an old incarnation's native attestation.
 #[tokio::test]
-async fn registration_does_not_inherit_a_port_stamped_for_another_incarnation() {
+async fn registration_does_not_inherit_native_capability_from_another_incarnation() {
     let identity = ProcIdentity {
         pid: 47,
         proc_start: 20260831090005,
@@ -1912,9 +1936,13 @@ async fn registration_does_not_inherit_a_port_stamped_for_another_incarnation() 
     let mut stamped = SeatDescriptor::new("pij-ported", Harness::Copilot, "/abs/tree");
     stamped.pane = Some("%47".to_string());
     stamped.spawn_id = Some("spawn-old".to_string());
-    // A port reserved for the OLD incarnation.
-    stamped.rpc_port_intent = Some(47_790);
-    let registry = Arc::new(FakeRegistry::new().with_seat(stamped));
+    stamped.proc = Some(ProcIdentity {
+        pid: 46,
+        proc_start: 46,
+    });
+    stamped.harness_session = Some("native-old".into());
+    stamped.native_extension_delivery = true;
+    let registry = Arc::new(FakeRegistry::new().with_seat(stamped.clone()));
     let mut services = test_services(
         registry.clone(),
         Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
@@ -1936,7 +1964,7 @@ async fn registration_does_not_inherit_a_port_stamped_for_another_incarnation() 
             pane: Some("%47".to_string()),
             pid: Some(identity.pid),
             proc_start: Some(identity.proc_start),
-            // A DIFFERENT incarnation than the one the port was stamped for.
+            // A different incarnation must not inherit native ownership.
             spawn_id: Some("spawn-new".to_string()),
             model: None,
             actual_model: None,
@@ -1949,13 +1977,10 @@ async fn registration_does_not_inherit_a_port_stamped_for_another_incarnation() 
         .send()
         .await
         .expect("registration with a mismatched spawn id");
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
-    let accepted: Envelope<SeatDescriptor> = response.json().await.expect("descriptor envelope");
-    let accepted = accepted.data.expect("descriptor");
-    assert_eq!(
-        accepted.rpc_port_intent, None,
-        "a port reserved for incarnation spawn-old must not travel to spawn-new"
-    );
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let refused: Envelope<SeatDescriptor> = response.json().await.expect("refusal envelope");
+    assert!(!refused.ok);
+    assert_eq!(registry.get(&stamped.id).await.unwrap(), Some(stamped));
 
     server.abort();
 }
@@ -1981,7 +2006,8 @@ async fn registration_cannot_adopt_a_spawn_match_that_is_already_bound() {
     let mut live = SeatDescriptor::new("pij-already-bound", Harness::Copilot, "/abs/tree");
     live.pane = Some("%46".to_string());
     live.spawn_id = Some("spawn-bound".to_string());
-    live.rpc_port_intent = Some(47_782);
+    live.native_extension_delivery = true;
+    live.harness_session = Some("native-incumbent".into());
     // The row is BOUND: its process is alive and it is nobody's pre-bind row.
     live.proc = Some(incumbent);
     let registry = Arc::new(FakeRegistry::new().with_seat(live));
@@ -2025,9 +2051,9 @@ async fn registration_cannot_adopt_a_spawn_match_that_is_already_bound() {
         "pij-runtime-squatter",
         "a bound row must never be adopted — the registration gets its own row"
     );
-    assert_eq!(
-        accepted.rpc_port_intent, None,
-        "and it must not inherit a port stamped for somebody else's incarnation"
+    assert!(
+        !accepted.native_extension_delivery,
+        "no capability inherited from another seat"
     );
 
     let seats = registry.list(SeatFilter::default()).await.expect("roster");
@@ -2040,7 +2066,7 @@ async fn registration_cannot_adopt_a_spawn_match_that_is_already_bound() {
         Some(incumbent),
         "the live seat must still own its own process"
     );
-    assert_eq!(incumbent_row.rpc_port_intent, Some(47_782));
+    assert!(incumbent_row.native_extension_delivery);
 
     server.abort();
 }
@@ -2055,7 +2081,6 @@ async fn registration_cannot_adopt_a_spawn_match_from_another_pane() {
         SeatDescriptor::new("pij-prebind-other-pane", Harness::Copilot, "/abs/tree");
     unrelated.pane = Some("%44".to_string());
     unrelated.spawn_id = Some("spawn-shared".to_string());
-    unrelated.rpc_port_intent = Some(47_781);
     let registry = Arc::new(FakeRegistry::new().with_seat(unrelated));
     let mut services = test_services(
         registry.clone(),
@@ -2093,9 +2118,9 @@ async fn registration_cannot_adopt_a_spawn_match_from_another_pane() {
     let accepted: Envelope<SeatDescriptor> = response.json().await.expect("descriptor envelope");
     let accepted = accepted.data.expect("descriptor");
     assert_eq!(accepted.id.as_str(), "pij-runtime-other-pane");
-    assert_eq!(
-        accepted.rpc_port_intent, None,
-        "a matching spawn id on another pane owns no port for this registration"
+    assert!(
+        !accepted.native_extension_delivery,
+        "another pane does not confer attestation"
     );
 
     let unrelated = registry
@@ -2106,13 +2131,13 @@ async fn registration_cannot_adopt_a_spawn_match_from_another_pane() {
         .find(|seat| seat.id.as_str() == "pij-prebind-other-pane")
         .expect("unrelated pre-bind row remains");
     assert_eq!(unrelated.proc, None);
-    assert_eq!(unrelated.rpc_port_intent, Some(47_781));
+    assert!(!unrelated.native_extension_delivery);
 
     server.abort();
 }
 
 #[tokio::test]
-async fn re_registration_preserves_live_resource_and_consent_stamps() {
+async fn ordinary_registration_preserves_native_attestation_and_claude_consent() {
     let copilot_proc = ProcIdentity {
         pid: 43,
         proc_start: 20260831103043,
@@ -2126,7 +2151,8 @@ async fn re_registration_preserves_live_resource_and_consent_stamps() {
     copilot.pane = Some("%43".to_string());
     copilot.proc = Some(copilot_proc);
     copilot.spawn_id = Some("spawn-copilot".to_string());
-    copilot.rpc_port_intent = Some(47_781);
+    copilot.native_extension_delivery = true;
+    copilot.harness_session = Some("native-copilot".into());
     registry.put(copilot).await.unwrap();
     let mut claude = SeatDescriptor::new("pij-claude", Harness::Claude, "/abs/tree");
     claude.pane = Some("%44".to_string());
@@ -2185,14 +2211,13 @@ async fn re_registration_preserves_live_resource_and_consent_stamps() {
         assert_eq!(response.status(), reqwest::StatusCode::OK);
     }
 
-    assert_eq!(
+    assert!(
         registry
             .get(&"pij-copilot".into())
             .await
             .unwrap()
             .unwrap()
-            .rpc_port_intent,
-        Some(47_781)
+            .native_extension_delivery
     );
     assert_eq!(
         registry
@@ -2637,6 +2662,7 @@ async fn inbox_claims_without_evidence_then_ack_records_machine_graded_reader_re
         // seat. Attribution must come from the queue authority's claimed job.
         seat: "pij-forged-reader".into(),
         job_id: claims[0].job_id,
+        native: Default::default(),
     };
     let ack = client
         .post(format!("http://{addr}/v1/inbox/ack"))
@@ -2677,6 +2703,7 @@ async fn inbox_claims_without_evidence_then_ack_records_machine_graded_reader_re
         .json(&InboxAckRequest {
             seat: "pij-forged-reader".into(),
             job_id: pij_core::model::JobId(999_999),
+            native: Default::default(),
         })
         .send()
         .await

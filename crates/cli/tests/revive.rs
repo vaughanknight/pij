@@ -174,10 +174,16 @@ async fn shipped_revive_derives_identity_and_launches_one_prebind_incarnation() 
         pid: 4242,
         proc_start: 20260831030000,
     });
-    old.tombstoned_at = Some(20260831030100);
-    old.tombstone_reason = Some("prior process exited".to_string());
-    old.rpc_port_intent = Some(47_777);
-    registry.put(old).await.expect("seed tombstoned row");
+    old.harness_session = Some("00000000-0000-4000-8000-000000000137".to_string());
+    old.native_extension_delivery = true;
+    registry
+        .put(old)
+        .await
+        .expect("seed prior native registration");
+    registry
+        .tombstone(&SeatId::from("pij-returning-seat"), "prior process exited")
+        .await
+        .expect("retire prior native registration");
 
     let registered_proc = ProcIdentity {
         pid: 4343,
@@ -232,11 +238,10 @@ async fn shipped_revive_derives_identity_and_launches_one_prebind_incarnation() 
     );
     assert_eq!(persisted.tombstoned_at, None);
     assert_eq!(persisted.tombstone_reason, None);
-    let fresh_port = persisted
-        .rpc_port_intent
-        .expect("Copilot revive must stamp fresh RPC launch intent");
-    assert_ne!(fresh_port, 0);
-    assert_ne!(fresh_port, 47_777, "revive must replace the old port");
+    assert!(
+        !persisted.native_extension_delivery,
+        "Copilot revive requires fresh native registration, not the previous capability"
+    );
     let fresh_spawn_id = persisted
         .spawn_id
         .clone()
@@ -252,8 +257,8 @@ async fn shipped_revive_derives_identity_and_launches_one_prebind_incarnation() 
     assert!(calls[0].contains("__spawn-child"));
     assert!(calls[0].contains("\"env\""));
     assert!(calls[0].contains("copilot"));
-    assert!(calls[0].contains("--ui-server"));
-    assert!(calls[0].contains("--port"));
+    assert!(!calls[0].contains("--ui-server"));
+    assert!(!calls[0].contains("--port"));
     let launched_args = launched_environment(&calls[0]);
     let launched_seat_id = required_environment_value(&launched_args, "PIJ_SESSION_ID");
     let launched_spawn_id = required_environment_value(&launched_args, "PIJ_SPAWN_ID");
@@ -290,10 +295,10 @@ async fn shipped_revive_derives_identity_and_launches_one_prebind_incarnation() 
         .await
         .expect("read after first bind")
         .expect("bound row exists");
-    assert_eq!(
-        after_first_bind.rpc_port_intent,
-        Some(fresh_port),
-        "the revived seat's own matching first bind must preserve fresh launch intent"
+    assert_eq!(after_first_bind.proc, Some(registered_proc));
+    assert!(
+        !after_first_bind.native_extension_delivery,
+        "matching CLI registration binds the process but does not attest a native extension"
     );
 
     let later_incarnation = run_cli(
@@ -315,9 +320,9 @@ async fn shipped_revive_derives_identity_and_launches_one_prebind_incarnation() 
         ],
     );
     assert!(
-        later_incarnation.status.success(),
-        "later incarnation registration failed: {}",
-        String::from_utf8_lossy(&later_incarnation.stderr)
+        !later_incarnation.status.success(),
+        "an unsolicited process replacement must refuse: {}",
+        String::from_utf8_lossy(&later_incarnation.stdout)
     );
     let after_later_incarnation = registry
         .get(&SeatId::from("pij-returning-seat"))
@@ -325,13 +330,12 @@ async fn shipped_revive_derives_identity_and_launches_one_prebind_incarnation() 
         .expect("read after later incarnation")
         .expect("later incarnation row exists");
     assert_eq!(
-        after_later_incarnation.rpc_port_intent, None,
-        "a later incarnation with no matching allocation must not inherit port intent"
+        after_later_incarnation, after_first_bind,
+        "refusal preserves bound identity"
     );
-    assert_ne!(
-        after_later_incarnation.rpc_port_intent,
-        Some(47_777),
-        "the old pre-revive port must remain unreachable"
+    assert!(
+        !after_later_incarnation.native_extension_delivery,
+        "a later incarnation cannot inherit the previous native extension capability"
     );
 
     server.abort();

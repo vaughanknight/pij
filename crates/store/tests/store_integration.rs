@@ -10,11 +10,229 @@
 //! order and fail alone.
 
 use pij_core::error::PijError;
-use pij_core::model::{Event, Harness, SeatDescriptor, SeatId, SemanticState, Seq, SystemState};
+use pij_core::model::{
+    Event, Harness, ProcIdentity, SeatDescriptor, SeatId, SemanticState, Seq, SystemState,
+};
 use pij_core::ports::{Registry, SeatFilter, Spine};
 use pij_store::{SqliteRegistry, SqliteSpine};
 use pij_testkit::FreshStore;
 use pij_testkit::contract::{registry_contract, spine_contract};
+use sqlx::{Column, Row};
+
+fn native_copilot(id: &str) -> SeatDescriptor {
+    let mut seat = SeatDescriptor::new(id, Harness::Copilot, "/abs/tree");
+    seat.proc = Some(ProcIdentity {
+        pid: 13700,
+        proc_start: 20260905120000,
+    });
+    seat.harness_session = Some("00000000-0000-4000-8000-000000000137".to_string());
+    seat.native_extension_delivery = true;
+    seat
+}
+
+#[tokio::test]
+async fn native_delivery_migration_preserves_schema_12_rows_and_history_without_attestation() {
+    let fresh = FreshStore::new();
+    let options = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(fresh.path())
+        .create_if_missing(true);
+    let legacy_pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .expect("open historical store");
+    let schema_12 = sqlx::migrate::Migrator {
+        migrations: std::borrow::Cow::Owned(
+            pij_store::migrate::MIGRATIONS
+                .iter()
+                .filter(|migration| migration.version <= 12)
+                .cloned()
+                .collect(),
+        ),
+        ..sqlx::migrate::Migrator::DEFAULT
+    };
+    schema_12
+        .run(&legacy_pool)
+        .await
+        .expect("apply the actual historical migrations");
+    // Version 12's daemon maintained this cache after running the ledger.
+    sqlx::query("PRAGMA user_version = 12")
+        .execute(&legacy_pool)
+        .await
+        .expect("record schema-12 daemon version");
+    sqlx::raw_sql(
+        "INSERT INTO seats (id, harness, harness_session, pane, pid, proc_start, folder, state, \
+         semantic_state, role, parent, relay, tombstoned_at, tombstone_reason, seq, spawn_id, \
+         model, provider, effort, cross_session_inbound_accept, rpc_port_intent) VALUES \
+         ('legacy-native', 'copilot', '00000000-0000-4000-8000-000000000137', '%137', \
+          13700, 20260905120000, '/abs/tree', 'working', 'question', 'worker', 'prime', 0, \
+          NULL, NULL, 7, 'spawn-137', 'native-model', 'provider-137', 'high', 1, 47781); \
+         INSERT INTO seats (id, harness, harness_session, pid, proc_start, folder, state, \
+         tombstoned_at, tombstone_reason, seq, rpc_port_intent) VALUES \
+         ('legacy-retired', 'copilot', '00000000-0000-4000-8000-000000000138', \
+          13800, 20260905120001, '/retired', 'idle', 50, 'process exited', 8, NULL); \
+         INSERT INTO seats (id, harness, folder, state, seq, rpc_port_intent) VALUES \
+         ('legacy-omp', 'omp', '/other', 'idle', 9, 51948); \
+         INSERT INTO spine_events (seq, v, at, kind, seat, payload) VALUES \
+         (7, 1, 10, 'seat.put', 'legacy-native', '{\"rpc_port_intent\":47781}'); \
+         INSERT INTO descriptor_merge_history \
+         (id, survivor_id, alias_id, survivor_json, alias_json, mismatched_fields, verified_at) \
+         VALUES (3, 'legacy-native', 'legacy-retired', '{\"rpc_port_intent\":47781}', \
+                 '{\"rpc_port_intent\":null}', '[\"folder\"]', 20); \
+         INSERT INTO delivered_messages (seq, recipient, msg_id, origin, delivered_at) VALUES \
+         (5, 'legacy-native', 'historic-message', 'injected-to-transport', 30);",
+    )
+    .execute(&legacy_pool)
+    .await
+    .expect("seed historical rows and evidence");
+    legacy_pool.close().await;
+
+    let mut live = native_copilot("legacy-native");
+    live.native_extension_delivery = false;
+    live.pane = Some("%137".to_string());
+    live.state = SystemState::Working;
+    live.semantic_state = Some(SemanticState::Question);
+    live.role = Some("worker".to_string());
+    live.parent = Some(SeatId::from("prime"));
+    live.spawn_id = Some("spawn-137".to_string());
+    live.model = Some("native-model".to_string());
+    live.provider = Some("provider-137".to_string());
+    live.effort = Some("high".to_string());
+    live.cross_session_inbound_accept = Some(true);
+    let mut retired = SeatDescriptor::new("legacy-retired", Harness::Copilot, "/retired");
+    retired.harness_session = Some("00000000-0000-4000-8000-000000000138".to_string());
+    retired.proc = Some(ProcIdentity {
+        pid: 13800,
+        proc_start: 20260905120001,
+    });
+    retired.tombstoned_at = Some(50);
+    retired.tombstone_reason = Some("process exited".to_string());
+    let expected = [
+        live,
+        retired,
+        SeatDescriptor::new("legacy-omp", Harness::Omp, "/other"),
+    ];
+
+    for _ in 0..2 {
+        let pool = pij_store::open(&fresh.path())
+            .await
+            .expect("upgrade or reopen schema 13");
+        // Exercise every pooled connection's first seat projection after boot.
+        // A version read alone cannot detect sqlx column metadata cached from
+        // the pre-migration schema on a sibling connection.
+        let mut connections = Vec::new();
+        for _ in 0..pool.options().get_max_connections() {
+            connections.push(pool.acquire().await.expect("acquire migrated connection"));
+        }
+        for connection in &mut connections {
+            let row = sqlx::query("SELECT * FROM seats WHERE id='legacy-native'")
+                .fetch_one(&mut **connection)
+                .await
+                .expect("read first migrated projection");
+            assert_eq!(
+                row.try_get::<i64, _>("native_extension_delivery")
+                    .expect("every connection exposes native capability"),
+                0
+            );
+            assert!(
+                row.columns()
+                    .iter()
+                    .all(|column| column.name() != "rpc_port_intent"),
+                "every connection uses current column metadata"
+            );
+        }
+        drop(connections);
+        assert_eq!(pij_store::schema_version(&pool).await.expect("version"), 13);
+        let registry = SqliteRegistry::new(pool.clone());
+        for seat in &expected {
+            assert_eq!(
+                registry.get(&seat.id).await.expect("read migrated seat"),
+                Some(seat.clone())
+            );
+        }
+        let obsolete: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM pragma_table_info('seats') WHERE name='rpc_port_intent'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("inspect migrated schema");
+        assert_eq!(obsolete, 0, "obsolete launch intent has no live column");
+        let seqs: Vec<(String, i64)> = sqlx::query_as("SELECT id, seq FROM seats ORDER BY seq")
+            .fetch_all(&pool)
+            .await
+            .expect("read retained row sequences");
+        assert_eq!(
+            seqs,
+            vec![
+                ("legacy-native".to_string(), 7),
+                ("legacy-retired".to_string(), 8),
+                ("legacy-omp".to_string(), 9)
+            ]
+        );
+        let event: (i64, i64, i64, String, String, String) =
+            sqlx::query_as("SELECT seq, v, at, kind, seat, payload FROM spine_events")
+                .fetch_one(&pool)
+                .await
+                .expect("read preserved event");
+        assert_eq!(
+            event,
+            (
+                7,
+                1,
+                10,
+                "seat.put".to_string(),
+                "legacy-native".to_string(),
+                "{\"rpc_port_intent\":47781}".to_string()
+            )
+        );
+        let history: (i64, String, String, String, String, String, i64) = sqlx::query_as(
+            "SELECT id, survivor_id, alias_id, survivor_json, alias_json, mismatched_fields, verified_at \
+             FROM descriptor_merge_history",
+        ).fetch_one(&pool).await.expect("read preserved merge evidence");
+        assert_eq!(
+            history,
+            (
+                3,
+                "legacy-native".to_string(),
+                "legacy-retired".to_string(),
+                "{\"rpc_port_intent\":47781}".to_string(),
+                "{\"rpc_port_intent\":null}".to_string(),
+                "[\"folder\"]".to_string(),
+                20
+            )
+        );
+        let delivered: (i64, String, String, String, i64) = sqlx::query_as(
+            "SELECT seq, recipient, msg_id, origin, delivered_at FROM delivered_messages",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read preserved delivery evidence");
+        assert_eq!(
+            delivered,
+            (
+                5,
+                "legacy-native".to_string(),
+                "historic-message".to_string(),
+                "injected-to-transport".to_string(),
+                30
+            )
+        );
+        drop(registry);
+        pool.close().await;
+    }
+
+    let pool = pij_store::open(&fresh.path())
+        .await
+        .expect("open upgraded store");
+    sqlx::query("INSERT INTO seats (id, harness, folder, state, seq) VALUES ('default', 'pi', '/new', 'idle', 10)")
+        .execute(&pool).await.expect("insert without native capability column");
+    let default: i64 =
+        sqlx::query_scalar("SELECT native_extension_delivery FROM seats WHERE id='default'")
+            .fetch_one(&pool)
+            .await
+            .expect("read SQL default");
+    assert_eq!(default, 0);
+}
 
 #[tokio::test]
 async fn the_daemon_self_migrates_a_brand_new_store_at_boot() {
@@ -259,10 +477,17 @@ async fn harness_session_migration_round_trips_up_and_down() {
     .await
     .expect("seed schema-10 seat");
 
-    pij_store::migrate::MIGRATIONS
-        .run(&pool)
-        .await
-        .expect("migrate schema 10 to 11");
+    let schema_11 = sqlx::migrate::Migrator {
+        migrations: std::borrow::Cow::Owned(
+            pij_store::migrate::MIGRATIONS
+                .iter()
+                .filter(|migration| migration.version <= 11)
+                .cloned()
+                .collect(),
+        ),
+        ..sqlx::migrate::Migrator::DEFAULT
+    };
+    schema_11.run(&pool).await.expect("migrate schema 10 to 11");
     assert_eq!(pij_store::schema_version(&pool).await.expect("version"), 11);
     let session: Option<String> =
         sqlx::query_scalar("SELECT harness_session FROM seats WHERE id = 'pij-schema-10'")
@@ -271,7 +496,7 @@ async fn harness_session_migration_round_trips_up_and_down() {
             .expect("new nullable column");
     assert_eq!(session, None, "migration invents no session for an old row");
 
-    pij_store::migrate::MIGRATIONS
+    schema_11
         .undo(&pool, 10)
         .await
         .expect("revert schema 11 to 10");
@@ -314,46 +539,61 @@ async fn a_seat_round_trips_with_every_optional_fact_intact() {
     let pool = pij_store::open(&fresh.path()).await.expect("open");
     let registry = SqliteRegistry::new(pool);
 
-    let mut seat = SeatDescriptor::new("pij-full", Harness::Omp, "/abs/tree");
+    let mut seat = native_copilot("pij-full");
     seat.pane = Some("%255".to_string());
-    seat.proc = Some(pij_core::model::ProcIdentity {
-        pid: 4242,
-        proc_start: 1_724_800_000,
-    });
     seat.state = SystemState::Working;
     seat.semantic_state = Some(SemanticState::Question);
     seat.role = Some("pm".to_string());
     seat.parent = Some(SeatId::from("pij-prime"));
     seat.relay = true;
-    seat.rpc_port_intent = Some(47_781);
-    seat.harness_session = Some("omp-session-255".to_string());
 
     registry.put(seat.clone()).await.expect("put");
     assert_eq!(registry.get(&seat.id).await.expect("get"), Some(seat));
 }
 
 #[tokio::test]
-async fn rpc_port_intent_updates_to_a_different_value_and_tombstone_clears_it() {
+async fn native_capability_defaults_closed_upserts_and_tombstone_clears_it() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
     let registry = SqliteRegistry::new(pool);
-    let mut seat = SeatDescriptor::new("pij-rpc-upsert", Harness::Copilot, "/abs/tree");
-    assert_eq!(seat.rpc_port_intent, None, "absence is the closed default");
-
-    seat.rpc_port_intent = Some(47_781);
-    registry.put(seat.clone()).await.expect("insert port A");
-    seat.rpc_port_intent = Some(51_948);
-    registry.put(seat.clone()).await.expect("update to port B");
-    assert_eq!(
-        registry
-            .get(&seat.id)
-            .await
-            .expect("read updated descriptor")
-            .expect("descriptor")
-            .rpc_port_intent,
-        Some(51_948),
-        "a real SQLite upsert must replace the old incarnation's port intent"
+    let default = SeatDescriptor::new("pij-native-upsert", Harness::Copilot, "/abs/tree");
+    assert!(
+        !default.native_extension_delivery,
+        "absence is the closed default"
     );
+    registry
+        .put(default.clone())
+        .await
+        .expect("insert unattested seat");
+    assert_eq!(
+        registry.get(&default.id).await.expect("get default"),
+        Some(default)
+    );
+
+    let mut seat = native_copilot("pij-native-upsert");
+    registry
+        .put(seat.clone())
+        .await
+        .expect("attest current incarnation");
+    assert_eq!(
+        registry.get(&seat.id).await.expect("get attested"),
+        Some(seat.clone())
+    );
+
+    seat.native_extension_delivery = false;
+    registry
+        .put(seat.clone())
+        .await
+        .expect("withdraw capability");
+    assert_eq!(
+        registry.get(&seat.id).await.expect("get withdrawn"),
+        Some(seat.clone())
+    );
+    seat.native_extension_delivery = true;
+    registry
+        .put(seat.clone())
+        .await
+        .expect("reattest current incarnation");
 
     registry
         .tombstone(&seat.id, "process exited")
@@ -365,47 +605,158 @@ async fn rpc_port_intent_updates_to_a_different_value_and_tombstone_clears_it() 
         .expect("read tombstone")
         .expect("descriptor remains as post-mortem");
     assert!(tombstoned.tombstoned_at.is_some());
+    assert!(!tombstoned.native_extension_delivery);
+    assert_eq!(tombstoned.proc, seat.proc, "retain process history");
     assert_eq!(
-        tombstoned.rpc_port_intent, None,
-        "tombstone clearing is observed from registry truth"
+        tombstoned.harness_session, seat.harness_session,
+        "retain session history"
     );
 }
 
 #[tokio::test]
-async fn rpc_port_intent_schema_refuses_zero_negative_and_out_of_range_values() {
+async fn incarnation_replacement_never_inherits_native_capability() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let registry = SqliteRegistry::new(pool);
+    for change in ["pid", "proc_start", "native_session", "revive"] {
+        let mut seat = native_copilot(change);
+        registry
+            .put(seat.clone())
+            .await
+            .expect("seed attested incarnation");
+        match change {
+            "pid" => seat.proc.as_mut().expect("process").pid += 1,
+            "proc_start" => seat.proc.as_mut().expect("process").proc_start += 1,
+            "native_session" => {
+                seat.harness_session = Some("00000000-0000-4000-8000-000000000138".to_string());
+            }
+            "revive" => {
+                registry
+                    .tombstone(&seat.id, "process exited")
+                    .await
+                    .expect("tombstone");
+            }
+            _ => unreachable!(),
+        }
+        // Registration supplies the current incarnation's explicit capability;
+        // storage must never coalesce false with the previous row's true.
+        seat.native_extension_delivery = false;
+        registry
+            .put(seat.clone())
+            .await
+            .expect("replace incarnation without attestation");
+        assert_eq!(
+            registry.get(&seat.id).await.expect("get replacement"),
+            Some(seat.clone())
+        );
+        seat.native_extension_delivery = true;
+        registry
+            .put(seat.clone())
+            .await
+            .expect("attest replacement incarnation");
+        assert_eq!(
+            registry.get(&seat.id).await.expect("get reattested"),
+            Some(seat)
+        );
+    }
+    let mut seat = native_copilot("explicit-replacement");
+    registry
+        .put(seat.clone())
+        .await
+        .expect("seed original incarnation");
+    seat.proc.as_mut().expect("process").proc_start += 1;
+    seat.harness_session = Some("00000000-0000-4000-8000-000000000139".to_string());
+    registry
+        .put(seat.clone())
+        .await
+        .expect("persist explicitly attested replacement in one put");
+    assert_eq!(
+        registry
+            .get(&seat.id)
+            .await
+            .expect("get explicit replacement"),
+        Some(seat)
+    );
+}
+
+#[tokio::test]
+async fn native_capability_requires_a_live_copilot_process_and_native_session() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
     let registry = SqliteRegistry::new(pool.clone());
-    let mut seat = SeatDescriptor::new("pij-rpc-range", Harness::Copilot, "/abs/tree");
-    seat.rpc_port_intent = Some(47_781);
-    registry.put(seat).await.expect("seed valid port");
+    for invalid in [
+        "harness",
+        "process",
+        "pid",
+        "proc_start",
+        "session",
+        "empty_session",
+        "tombstone",
+    ] {
+        let mut seat = native_copilot(invalid);
+        match invalid {
+            "harness" => seat.harness = Harness::Omp,
+            "process" => seat.proc = None,
+            "pid" => seat.proc.as_mut().expect("process").pid = 0,
+            "proc_start" => seat.proc.as_mut().expect("process").proc_start = 0,
+            "session" => seat.harness_session = None,
+            "empty_session" => seat.harness_session = Some(String::new()),
+            "tombstone" => seat.tombstoned_at = Some(1),
+            _ => unreachable!(),
+        }
+        let id = seat.id.clone();
+        let error = registry
+            .put(seat)
+            .await
+            .expect_err("invalid attestation must be refused");
+        assert!(
+            error.to_string().contains("native_extension_delivery"),
+            "{error}"
+        );
+        assert_eq!(registry.get(&id).await.expect("get refused seat"), None);
+    }
+    let events: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM spine_events")
+        .fetch_one(&pool)
+        .await
+        .expect("read failed puts");
+    assert_eq!(
+        events, 0,
+        "invalid capability rolls back the paired spine event"
+    );
+}
 
-    for invalid in [0_i64, -1, 65_536, 70_000] {
-        let result = sqlx::query("UPDATE seats SET rpc_port_intent=?2 WHERE id=?1")
-            .bind("pij-rpc-range")
+#[tokio::test]
+async fn native_capability_schema_refuses_non_boolean_values() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let registry = SqliteRegistry::new(pool.clone());
+    registry
+        .put(native_copilot("pij-native-range"))
+        .await
+        .expect("seed attested seat");
+
+    for invalid in [-1_i64, 2, 65_536, i64::MAX] {
+        let result = sqlx::query("UPDATE seats SET native_extension_delivery=?2 WHERE id=?1")
+            .bind("pij-native-range")
             .bind(invalid)
             .execute(&pool)
             .await;
         assert!(
             result.is_err(),
-            "migration CHECK must refuse invalid rpc_port_intent={invalid}"
+            "migration CHECK must refuse native_extension_delivery={invalid}"
         );
     }
 }
 
 #[tokio::test]
-async fn corrupt_rpc_port_intent_is_a_named_read_error_never_a_narrowed_presence() {
+async fn corrupt_native_capability_is_a_named_read_error_never_attestation() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
     let registry = SqliteRegistry::new(pool.clone());
     registry
-        .put(SeatDescriptor::new(
-            "pij-rpc-corrupt",
-            Harness::Copilot,
-            "/abs/tree",
-        ))
+        .put(native_copilot("pij-native-corrupt"))
         .await
-        .expect("seed descriptor");
+        .expect("seed attested seat");
     let mut connection = pool
         .acquire()
         .await
@@ -415,23 +766,48 @@ async fn corrupt_rpc_port_intent_is_a_named_read_error_never_a_narrowed_presence
         .await
         .expect("model an already-corrupt store");
 
-    for invalid in [0_i64, -1, 65_536, 70_000] {
-        sqlx::query("UPDATE seats SET rpc_port_intent=?2 WHERE id=?1")
-            .bind("pij-rpc-corrupt")
+    for invalid in [-1_i64, 2, 65_536, i64::MAX] {
+        sqlx::query("UPDATE seats SET native_extension_delivery=?2 WHERE id=?1")
+            .bind("pij-native-corrupt")
             .bind(invalid)
             .execute(&mut *connection)
             .await
-            .expect("plant corrupt port");
-        let error = registry
-            .get(&SeatId::from("pij-rpc-corrupt"))
-            .await
-            .expect_err("corrupt port must not become a present u16");
-        assert!(
-            error.to_string().contains("rpc_port_intent")
-                && error.to_string().contains(&invalid.to_string()),
-            "error must name the corrupt field and value: {error}"
-        );
+            .expect("plant corrupt flag");
+        for error in [
+            registry
+                .get(&SeatId::from("pij-native-corrupt"))
+                .await
+                .expect_err("corrupt flag must not become attestation"),
+            registry
+                .list(SeatFilter::default())
+                .await
+                .expect_err("list must refuse the same corrupt flag"),
+        ] {
+            assert!(
+                error.to_string().contains("native_extension_delivery")
+                    && error.to_string().contains(&invalid.to_string()),
+                "error must name the corrupt field and value: {error}"
+            );
+        }
     }
+
+    sqlx::query("UPDATE seats SET native_extension_delivery=1, harness_session=NULL WHERE id=?1")
+        .bind("pij-native-corrupt")
+        .execute(&mut *connection)
+        .await
+        .expect("plant capability without native identity");
+    let error = registry
+        .get(&SeatId::from("pij-native-corrupt"))
+        .await
+        .expect_err("a boolean alone is not native attestation");
+    assert!(
+        error.to_string().contains("native_extension_delivery"),
+        "{error}"
+    );
+    sqlx::query("PRAGMA ignore_check_constraints = OFF")
+        .execute(&mut *connection)
+        .await
+        .expect("restore connection constraints");
 }
 
 #[tokio::test]

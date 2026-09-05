@@ -5,7 +5,7 @@ use pij_core::delivery::{DeliveryRung, MAX_TYPED_FRAME_BYTES, delivery_kind, sel
 use pij_core::error::{PijError, Result};
 use pij_core::framing::frame_message;
 use pij_core::model::{
-    DeliveryOrigin, DeliveryOutcome, Event, Job, JobId, Msg, Outcome, SemanticState,
+    DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, SemanticState,
 };
 use pij_core::ports::{Queue, Registry, SeatFilter, TmuxPort, Transport};
 use pij_harnesses::{InteractionGate, StagedSubmission};
@@ -101,12 +101,7 @@ impl DrainWorker {
         let seats = self.registry.list(SeatFilter::default()).await?;
         let mut kinds: Vec<String> = seats
             .iter()
-            .filter(|seat| {
-                !matches!(
-                    seat.harness,
-                    pij_core::model::Harness::Omp | pij_core::model::Harness::Pi
-                )
-            })
+            .filter(|seat| !matches!(seat.harness, Harness::Copilot | Harness::Omp | Harness::Pi))
             .filter(|seat| seat.pane.is_some() || seat.tombstoned_at.is_some())
             .map(|seat| delivery_kind(&seat.id))
             .collect();
@@ -194,6 +189,11 @@ impl DrainWorker {
                     ),
                 )
                 .await;
+        }
+        // Re-read after claiming: registration may have changed the harness since
+        // the inventory. Native seats never enter any pane or socket rung.
+        if recipient.harness == Harness::Copilot {
+            return self.release_body(job_id).await;
         }
         if recipient.semantic_state == Some(SemanticState::Hold) {
             return self.release_or_backoff(job_id, job, &msg).await;
@@ -1665,6 +1665,10 @@ mod tests {
             self.inner.peek(kinds).await
         }
 
+        async fn claimed_delivery(&self, job: JobId) -> pij_core::error::Result<Option<Job>> {
+            self.inner.claimed_delivery(job).await
+        }
+
         async fn ack(&self, job: JobId, outcome: Outcome) -> pij_core::error::Result<()> {
             self.inner.ack(job, outcome).await
         }
@@ -2171,5 +2175,35 @@ mod tests {
             [Duration::ZERO],
             "a release the worker CHOSE must stay immediately claimable"
         );
+    }
+
+    #[tokio::test]
+    async fn copilot_drain_never_claims_native_body_or_legacy_control() {
+        for attached in [false, true] {
+            for command in [None, Some("compact")] {
+                let fixture = fixture(FakeTransport::reachable(), FakeTmux::new());
+                let mut recipient = seat("pij-native-drain", Some("%137"));
+                recipient.harness = Harness::Copilot;
+                recipient.harness_session = Some("native-137".into());
+                recipient.native_extension_delivery = attached;
+                register(&fixture, recipient).await;
+                enqueue(
+                    &fixture,
+                    &message("pij-native-drain", "native only", command),
+                )
+                .await;
+                assert_eq!(
+                    fixture.worker.drain_once().await.expect("native exclusion"),
+                    0
+                );
+                assert_eq!(fixture.queue.live_len(), 1);
+                assert!(fixture.queue.retried().is_empty());
+                assert!(fixture.transport.delivered().is_empty());
+                assert!(
+                    fixture.tmux.calls().is_empty(),
+                    "drain must not even consult tmux for native work"
+                );
+            }
+        }
     }
 }

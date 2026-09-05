@@ -1,0 +1,71 @@
+{
+  "status": "paired_composer_replay_verified",
+  "source_commit": "f13f243b9c33edde3d849c740ca5912d97ad22d5",
+  "baseline": "d8e39e35",
+  "scope": "Fixture follow-up and one composer_region regression only; no production grammar or policy change.",
+  "fixture": "crates/harnesses/tests/fixtures/2026-09-05-copilot-v1.0.84-live06-draft.json",
+  "source_capture": {
+    "receipt": "docs/plans/137-copilot-native-extension/assets/evidence/pm-native-local-08.json",
+    "capture_pointer": "/witnesses/6/accepted/pane_capture",
+    "draft_pointer": "/witnesses/6/draft",
+    "copilot_version": "1.0.84-0",
+    "provider": "deterministic-local-fixture-not-real-inference",
+    "receipt_started": "2026-09-05T03:50:10.494Z",
+    "receipt_finished": "2026-09-05T03:53:29.173Z",
+    "receipt_status": "failed",
+    "typing_witness_status": "passed",
+    "receipt_sha256": "25080bca32330809e5b5ece23d3251ca7776c5a38b58ba963f743c8e72adab1a",
+    "original_terminal_sha256": "7931707b836069810efcd5e8a438401308a9eca17bedb52744063260076846bb",
+    "sanitization": "Only the workspace path in terminal is replaced by <workspace>; line breaks, cursor, dimensions and all other capture bytes are unchanged."
+  },
+  "paired_metadata": {
+    "pane": "%3",
+    "captured_at_ms": 1788580288606,
+    "metadata_raw": "50\t45\t160\t48",
+    "cursor_x": 50,
+    "cursor_y": 45,
+    "pane_width": 160,
+    "pane_height": 48
+  },
+  "expected_draft": "HUMAN_DRAFT_651b1804-7b57-4a50-931c-d782624b954d",
+  "test": "composer::tests::copilot_v1_0_84_live08_paired_capture_recognizes_full_draft",
+  "validation": {
+    "command": "cargo test --locked -p pij-harnesses -- --test-threads=4",
+    "unit_passed": 105,
+    "proc_integration_passed": 2,
+    "total_passed": 107,
+    "existing_ignored_doctests": 3,
+    "exit_code": 0,
+    "clippy": "cargo clippy --locked -p pij-harnesses --all-targets -- -D warnings",
+    "clippy_exit_code": 0,
+    "format": "rustfmt --check --edition 2024 --config skip_children=true crates/harnesses/src/composer.rs",
+    "format_exit_code": 0,
+    "environment": {
+      "CARGO_BUILD_JOBS": "4",
+      "VITEST_MAX_WORKERS": "4",
+      "VITEST_MAX_THREADS": "4",
+      "CARGO_TARGET_DIR": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/target"
+    },
+    "log": {
+      "path": "daemon-paired-composer-green.log",
+      "artifact": "artifact://251",
+      "sha256": "26def90ee4a66caf1f73381b837b4dc02d0091f2c08b20d80adc35c43e30bf03",
+      "lines": 138
+    }
+  },
+  "fidelity_checks": [
+    "Removing only the additive follow_up block yields the byte-identical original live06 fixture.",
+    "All original live06 JSON fields remain equal, including null cursor and terminal.",
+    "follow_up.pane_capture equals receipt accepted.pane_capture except the single workspace-path substitution.",
+    "Reversing workspace sanitization produces the original terminal bytes matching the recorded hash.",
+    "metadata_raw parses to cursor_x50,cursor_y45,pane_width160,pane_height48; unjoined terminal has48rows.",
+    "Measured cursor row45 columns2..50 equals the exact witness draft."
+  ],
+  "review": {
+    "agent": "PairedComposerReview",
+    "verdict": "no_material_findings",
+    "read_only": true,
+    "provenance": "Reviewer read actual receipt and diff; hash/equality assertions were executed by Main."
+  },
+  "proof_limit": "Offline composer_region replay only. No local live rerun or full gate; no independent live timing, native delivery or real-model proof. Root live08 status remains failed; its typing witness passed. Original live06 predicate-only provenance is not relabeled."
+}

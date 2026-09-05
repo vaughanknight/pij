@@ -1,0 +1,40 @@
+{
+  "owner": "pij-worldwide-rat",
+  "status": "scoped_verified_integration_pending",
+  "source_commit": "9f6e63424961226d16dbafafd72513a0dce61c00",
+  "store_sha256": "872f0f30e13f50c17c85e7b2d1fd9cf0e7b2ab3ddaf7e536b19080742feacce5",
+  "review": { "reviewer": "RenewalBoundaryReview", "verdict": "no_material_findings", "correctness": "correct", "confidence": 0.96, "scope": "Read-only source/test review; no independent validation execution" },
+  "trigger": {
+    "authority": "PM live04: healthy sender's own65s inbox deadline emits false unavailable/reconnecting; only this deadline may renew silently",
+    "receipt": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/evidence/pm-native-local-04.json",
+    "inspection": "Sender final_pane_captures pane%2 shows unavailable/reconnecting; recipient pane%3 shows pij_send approval.65s cause/timing is PM-reported, not independently reproduced; permission fixture is installer-owned."
+  },
+  "implementation": {
+    "deadline": "DaemonClient constructor requestTimeoutMs defaults65000; tests inject150. No environment setting or daemon API change.",
+    "classification": "Private claimInbox path marks inboxWait. Only before a response exists, timeout.aborted and exact error===timeout.reason become InboxWaitDeadline. External signal cancellation is checked first.",
+    "renewal": "NativeBridge retains registration and failureEpisode, awaits existing cancellable250..5000ms capped delay, then claims again. No synthetic successful envelope, re-registration, outage or false connection-ready notice.",
+    "preserved": "Network/auth failures, response-body stalls, foreign TimeoutError objects and other request deadlines retain existing errors; external abort retains original reason. Chooser, journal, acceptance/ACK and completion barriers unchanged."
+  },
+  "validation": {
+    "command": "node --test --test-reporter=tap --test-timeout=15000 .copilot/extensions/pij/store.test.mjs .copilot/extensions/pij/identity.test.mjs .copilot/extensions/pij/extension.test.mjs",
+    "environment": { "VITEST_MAX_THREADS": "4", "CARGO_BUILD_JOBS": "4" },
+    "result": { "exit": 0, "tests": 87, "passed": 87, "failed": 0, "cancelled": 0, "skipped": 0, "todo": 0, "stderr": "", "duration_ms": 6560.307833 },
+    "tap": "runtime-inbox-renewal-tests.tap",
+    "tap_bytes": 19403,
+    "tap_sha256": "0b078a8b6d21558f8adaadb17d2c9069d84e23542f12a26d7f437cc7e886de85",
+    "raw_verification": "Saved directly from Node subprocess stdout; independently compared saved bytes to captured stream. No reader-mode export.",
+    "biome": "check --write on store.mjs/store.test.mjs: Checked2 files in73ms. Fixed1 file; exit0",
+    "lsp": "Diagnostics OK on both changed files. References query returned no results; bounded exact call-site search used. Import code_actions returned none."
+  },
+  "new_http_proofs": [
+    "Eight unanswered claim deadlines, waits[250,500,1000,2000,4000,5000,5000,5000], one registration, outgoing usable, ninth claim delivered/ACKed once, no outage/connection-ready/hold notices",
+    "401, own deadline,401, successful claim: exactly3 registrations, one reconnect episode and one real connection-ready notice",
+    "Registration/send/ACK/local-roster/nonwaiting-inbox deadlines, partial response body and socket disconnect remain retryable failures",
+    "Foreign TimeoutError after the owned deadline is not mistaken for renewal",
+    "External abort with TimeoutError reason rejects with that same reason",
+    "Shutdown during renewal delay leaves one registration/claim, no send or retry and subscription disposed"
+  ],
+  "cleanup": "Owned loopback connections/servers close in test teardown; bridges stop/unsubscribe. New fixture uses injected key and no filesystem state. No shared daemon, real client, global config, dependency, toolchain or other-harness mutation.",
+  "harness_improvement": "Injectable deadline and permanent no-response HTTP fixture expose the65s idle-path diagnostic bug within the scoped suite, without a live-client wait.",
+  "proof_ceiling": "Actual Node fetch/HTTP + runtime client/bridge, with existing simulated native and journal fixture. Delay values are asserted via injection, not wall-clock backoff measurement. Existing actual-extension tests pass, but no new real Copilot/SDK/model smoke or full gate was run. Prior cross-language daemon proof pins the older store hash33119791; it is not execution proof of this new module hash. Final composition/review/gates remain PM-owned; observer correction remains separately held."
+}

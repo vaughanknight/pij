@@ -1,0 +1,11 @@
+{
+  "status": "prerequisite-missing",
+  "provider": "deterministic-local-fixture-not-real-inference",
+  "mode": "both",
+  "run": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-PSKg01",
+  "started": "2026-09-04T23:38:31.392Z",
+  "witnesses": [],
+  "error": "PIJ_NATIVE_PREREQUISITE_BINARY: build the composed tree with CARGO_TARGET_DIR=$PWD/target cargo build -p pij-cli --bin pij-rs",
+  "daemon_log": "",
+  "finished": "2026-09-04T23:38:31.393Z"
+}

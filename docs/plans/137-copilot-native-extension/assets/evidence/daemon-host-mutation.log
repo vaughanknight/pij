@@ -1,0 +1,45 @@
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/daemon)
+warning: unused import: `Path`
+ --> crates/daemon/src/registration.rs:3:17
+  |
+3 | use std::path::{Path, PathBuf};
+  |                 ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `executable` and `argv` are never read
+   --> crates/daemon/src/registration.rs:586:5
+    |
+584 | struct NativeProcess {
+    |        ------------- fields in this struct
+585 |     parent: u32,
+586 |     executable: String,
+    |     ^^^^^^^^^^
+587 |     argv: Vec<String>,
+    |     ^^^^
+    |
+    = note: `NativeProcess` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `pij-daemon` (lib test) generated 2 warnings (run `cargo fix --lib -p pij-daemon --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.89s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-18bad1c90de73721)
+
+running 1 test
+test registration::tests::real_shell_process_is_not_an_actual_copilot_host ... FAILED
+
+failures:
+
+---- registration::tests::real_shell_process_is_not_an_actual_copilot_host stdout ----
+
+thread 'registration::tests::real_shell_process_is_not_an_actual_copilot_host' (891323980) panicked at crates/daemon/src/registration.rs:1037:18:
+real shell refused: SeatDescriptor { id: SeatId("pij-real-shell"), machine: None, harness: Copilot, harness_session: Some("00000000-0000-4000-8000-000000000137"), pane: None, proc: Some(ProcIdentity { pid: 527, proc_start: 1 }), folder: "/isolated/native-registration", state: Idle, semantic_state: None, role: None, parent: None, relay: false, tombstoned_at: None, tombstone_reason: None, cross_session_inbound_accept: None, native_extension_delivery: true, spawn_id: None, model: None, provider: None, effort: None }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    registration::tests::real_shell_process_is_not_an_actual_copilot_host
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 197 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

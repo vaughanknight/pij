@@ -1,0 +1,99 @@
+{
+  "mode": "actual pij-rs executable; --offline adapters; isolated state/port; not native Copilot SDK proof",
+  "spawn": {
+    "status": 200,
+    "envelope": {
+      "ok": true,
+      "command": "pij spawn",
+      "v": 2,
+      "data": {
+        "id": "pij-native-smoke",
+        "harness": "copilot",
+        "session": null,
+        "pane": "%100",
+        "proc": null,
+        "folder": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": false,
+        "cross_session_inbound_accept": false,
+        "native_extension_delivery": false,
+        "spawn_id": "s-cf3f94f037e920e661675f48a30d0d9c",
+        "dispatched": true,
+        "bound": false
+      }
+    }
+  },
+  "send": {
+    "status": 200,
+    "envelope": {
+      "ok": true,
+      "command": "pij send",
+      "v": 2,
+      "data": {
+        "msg_id": "daemon137-proof-message",
+        "outcome": {
+          "outcome": "queued",
+          "reason": "pre-bind",
+          "next_retry_at": 0
+        },
+        "at": 1788565764315
+      }
+    }
+  },
+  "controls": [
+    {
+      "status": 200,
+      "envelope": {
+        "ok": true,
+        "command": "pij send",
+        "v": 2,
+        "data": {
+          "msg_id": "daemon137-compact",
+          "outcome": {
+            "outcome": "queued",
+            "reason": "pre-bind",
+            "next_retry_at": 0
+          },
+          "at": 1788565764317
+        }
+      }
+    },
+    {
+      "status": 200,
+      "envelope": {
+        "ok": true,
+        "command": "pij send",
+        "v": 2,
+        "data": {
+          "msg_id": "daemon137-new",
+          "outcome": {
+            "outcome": "queued",
+            "reason": "pre-bind",
+            "next_retry_at": 0
+          },
+          "at": 1788565764318
+        }
+      }
+    },
+    {
+      "status": 200,
+      "envelope": {
+        "ok": true,
+        "command": "pij send",
+        "v": 2,
+        "data": {
+          "msg_id": "daemon137-reload",
+          "outcome": {
+            "outcome": "queued",
+            "reason": "pre-bind",
+            "next_retry_at": 0
+          },
+          "at": 1788565764318
+        }
+      }
+    }
+  ]
+}

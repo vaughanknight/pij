@@ -1,0 +1,17 @@
+{
+  "task": "Implement Opus F-C metadata-only diagnostic refinement after completed v4; this is a new bounded assignment",
+  "root": "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime",
+  "scope": [".copilot/extensions/pij/store.mjs", ".copilot/extensions/pij/store.test.mjs", "plan137 runtime evidence receipt"],
+  "baseline": "051f76664993fd6ba288acd46192031fdea84067",
+  "change": [
+    "In NativeBridge.consume existing native.on callback, retain pre-observe completion metadata for the already logged native-event types (user.message,assistant.message,session.idle,session.error).",
+    "Enrich the EXISTING native-event payload with event parentId, agentId and interactionId plus completion nativeId/live, pre-observe parentKnown and descendant/root count, and post-observe terminal. Preserve existing field names/event counts.",
+    "Pre-state must be captured BEFORE completion.observe(event), because successful terminal observation clears descendants. Do not misreport healthy completion as unknown parent.",
+    "Only metadata/IDs/booleans/counts/type; never prompts, model text, tool args, keys, full data objects or buffered payloads.",
+    "No completion deadline, timer, retry, auto-unblock, new environment flag, UI spam or generic debug framework. Completion correlation and v4 consent behavior unchanged.",
+    "Add focused tests proving a healthy idle has pre-parentKnown=true/post-terminal, a rejected idle has false/null with enough IDs to diagnose, and callback metadata excludes body/credentials."
+  ],
+  "acceptance": "Code and focused tests pass; source/evidence checkpoint with module SHA. Existing long model work is not falsely labelled stalled; no new emitted event count. No live launch or full gate.",
+  "coordination": "PM is holding source pin for final live tests. Return this bounded checkpoint, then no further source edits unless requested. No .pi/daemon/global changes; skip project-wide validation.",
+  "forbidden": [".the-flow-state.json", "the-flow.json", "the-flow.md", "governance ledgers"]
+}

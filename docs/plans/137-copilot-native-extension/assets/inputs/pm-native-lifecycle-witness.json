@@ -1,0 +1,18 @@
+{
+  "owner": "pij-intellectual-mosquito",
+  "task": "After consent-driver checkpoint and PM-source merge, complete the existing AC7 real native rollover witness in the same smoke driver; no change to product policy or native transport.",
+  "root": "/Users/jordanknight/pi-hacking/fs3-copilot-native-install",
+  "scope": ["harness/scripts/copilot-native-smoke.ts", "harness/scripts/copilot-native-smoke.test.ts", "plan137 assets/evidence installer receipts"],
+  "requirements": [
+    "Current smoke covers key rotation but not real native rollover; BP7 explicitly promises a native rollover witness.",
+    "Use documented Copilot /new as a simulated human lifecycle command, never a Pij control fallback. copilot help commands confirms /new, /resume, /restart and /exit on1.0.84.",
+    "After existing rounds, prove native session change yields truthful new registration, cancels old consumer, does not route an old-context queued nonce into new context, and accepts a fresh nonce exactly once. Cover manually launched and spawned session environment semantics.",
+    "For an owned manual target, also exercise actual host exit and fresh CLI --resume=<native-session> without Pij identity preallocation; record old/new process tuples, preserved native/Pij identity when owner is proven dead, and a subsequent delivery. Do not fake PID death or classify this as fulfilled by Node stand-ins.",
+    "Keep native acceptance separate from model completion; store native events, registry rows, queue/ACK evidence and human-control before/after captures.",
+    "Record lifecycle commands under configurable fixture-human controls. No literal message body through tmux, no grant-all permissions, no SDK monkeypatch.",
+    "If an unexpected native dialog requires a new policy decision, preserve it and report; never blindly press Enter."
+  ],
+  "coordination": "Checkpoint consent fix first so PM can run05 while lifecycle addition proceeds on installer branch. Do not mutate PM tree. No global daemon/link changes or new Pi/OMP seats;136 freeze active. PM owns actual live runs; skip full gates, use scoped unit/syntax checks only.",
+  "forbidden": [".the-flow-state.json", "the-flow.json", "the-flow.md", "governance ledgers", "product runtime/daemon files"],
+  "acceptance": "Runnable deterministic smoke lifecycle assertions and honest proof grades; source/evidence commit pointers. No acceptance marked checked until PM live execution."
+}

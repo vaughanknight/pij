@@ -85,17 +85,19 @@ async fn descriptor_merge_is_atomic_and_retains_both_inputs_and_mismatches() {
         pid: 9191,
         proc_start: 12345,
     };
-    let mut old = SeatDescriptor::new("old-alias", Harness::Omp, "/old");
+    let mut old = SeatDescriptor::new("old-alias", Harness::Copilot, "/old");
     old.proc = Some(process);
     old.model = Some("old-model".to_string());
-    old.rpc_port_intent = Some(47_781);
-    let mut fresh_descriptor = SeatDescriptor::new("fresh-seat", Harness::Omp, "/fresh");
+    old.harness_session = Some("00000000-0000-4000-8000-000000000137".to_string());
+    old.native_extension_delivery = true;
+    let mut fresh_descriptor = SeatDescriptor::new("fresh-seat", Harness::Copilot, "/fresh");
     fresh_descriptor.proc = Some(process);
     fresh_descriptor.model = Some("new-model".to_string());
-    fresh_descriptor.rpc_port_intent = Some(51_948);
+    fresh_descriptor.harness_session = old.harness_session.clone();
+    fresh_descriptor.native_extension_delivery = true;
     registry.put(old.clone()).await.expect("put old");
     let mut stored_fresh = fresh_descriptor.clone();
-    stored_fresh.rpc_port_intent = Some(41_001);
+    stored_fresh.native_extension_delivery = false;
     registry
         .put(stored_fresh)
         .await
@@ -131,19 +133,18 @@ async fn descriptor_merge_is_atomic_and_retains_both_inputs_and_mismatches() {
             .as_deref()
             .is_some_and(|reason| reason.contains("fresh-seat"))
     );
-    assert_eq!(
-        alias.rpc_port_intent, None,
-        "reconciled alias must not retain a dead incarnation's port intent"
+    assert!(
+        !alias.native_extension_delivery,
+        "reconciled alias must not retain a retired incarnation's capability"
     );
-    assert_eq!(
+    assert!(
         registry
             .get(&fresh_descriptor.id)
             .await
             .expect("get survivor")
             .expect("survivor row")
-            .rpc_port_intent,
-        Some(51_948),
-        "survivor update must carry the verified descriptor's port intent"
+            .native_extension_delivery,
+        "survivor update carries attestation for the same stored process/session"
     );
     let history: (String, String, String, String, String) = sqlx::query_as(
         "SELECT survivor_id, alias_id, survivor_json, alias_json, mismatched_fields \
@@ -158,6 +159,100 @@ async fn descriptor_merge_is_atomic_and_retains_both_inputs_and_mismatches() {
     );
     assert!(history.2.contains("fresh-seat") && history.3.contains("old-alias"));
     assert!(history.4.contains("folder") && history.4.contains("model"));
+}
+
+#[tokio::test]
+async fn reconciliation_never_transfers_native_capability_to_another_incarnation() {
+    for changed in [
+        "pid",
+        "proc_start",
+        "native_session",
+        "pane",
+        "pane_missing",
+        "pane_added",
+        "harness",
+        "tombstone",
+        "alias_only",
+    ] {
+        let fresh = FreshStore::new();
+        let pool = pij_store::open(&fresh.path()).await.expect("open");
+        let registry = SqliteRegistry::new(pool.clone());
+        let store = SqliteOrchestration::new(pool);
+        let mut alias = SeatDescriptor::new("alias", Harness::Copilot, "/abs/tree");
+        alias.proc = Some(ProcIdentity {
+            pid: 13700,
+            proc_start: 20260905120000,
+        });
+        alias.harness_session = Some("00000000-0000-4000-8000-000000000137".to_string());
+        alias.native_extension_delivery = true;
+        alias.pane = Some("%137".to_string());
+        let mut candidate = alias.clone();
+        candidate.id = SeatId::from("survivor");
+        let mut stored = candidate.clone();
+        match changed {
+            "pid" => stored.proc.as_mut().expect("process").pid += 1,
+            "proc_start" => stored.proc.as_mut().expect("process").proc_start += 1,
+            "native_session" => {
+                stored.harness_session = Some("00000000-0000-4000-8000-000000000138".to_string());
+            }
+            "pane" => stored.pane = Some("%138".to_string()),
+            "pane_missing" => stored.pane = None,
+            "pane_added" => candidate.pane = None,
+            "harness" => {
+                stored.harness = Harness::Omp;
+                stored.native_extension_delivery = false;
+            }
+            "tombstone" => {
+                stored.tombstoned_at = Some(1);
+                stored.native_extension_delivery = false;
+            }
+            "alias_only" => candidate.native_extension_delivery = false,
+            _ => unreachable!(),
+        }
+        registry
+            .put(alias.clone())
+            .await
+            .expect("put attested alias");
+        registry
+            .put(stored.clone())
+            .await
+            .expect("put current survivor incarnation");
+        let decision = store
+            .reconcile_descriptors(
+                VerifiedDescriptor {
+                    descriptor: alias.clone(),
+                    verified_at: Some(10),
+                },
+                VerifiedDescriptor {
+                    descriptor: candidate,
+                    verified_at: Some(20),
+                },
+            )
+            .await
+            .expect("reconcile");
+        assert!(matches!(decision, ReconcileDecision::Merge(_)));
+        let survivor = registry
+            .get(&stored.id)
+            .await
+            .expect("read survivor")
+            .expect("survivor row");
+        assert!(
+            !survivor.native_extension_delivery,
+            "{changed} must not inherit attestation"
+        );
+        assert_eq!(
+            survivor.proc, stored.proc,
+            "reconciliation preserves stored process"
+        );
+        assert_eq!(survivor.harness_session, stored.harness_session);
+        let retired = registry
+            .get(&alias.id)
+            .await
+            .expect("read alias")
+            .expect("alias row");
+        assert_eq!(retired.tombstoned_at, Some(20));
+        assert!(!retired.native_extension_delivery);
+    }
 }
 
 #[tokio::test]

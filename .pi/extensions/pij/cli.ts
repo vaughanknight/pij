@@ -37,6 +37,7 @@ import { ShellChoreProbe } from "./adapters/chore-probe.js";
 import { FsChoreStore } from "./adapters/chore-store.js";
 import { FsContextReader } from "./adapters/context-reader.js";
 import { TmuxContextWindowReader } from "./adapters/context-window-reader.js";
+import { PijDaemonClient } from "./adapters/daemon-http.js";
 import { FsDispatchStore } from "./adapters/dispatch-store.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsFenceStore } from "./adapters/fence-store.js";
@@ -135,6 +136,7 @@ import {
 } from "./core/discovery.js";
 import { formatFocusList, launchFocus, listFocuses, saveFocus } from "./core/focus.js";
 import {
+	copilotControlRefusal,
 	describeOutcome,
 	findRoute,
 	isDirectPanelessAdopt,
@@ -2591,8 +2593,8 @@ function runSpawn(argv: readonly string[]): void {
  *  ITSELF. With an `instruction`, after firing `/compact` it waits `--delay-ms`
  *  (default ~1.5s, so compaction has begun) then types the instruction + Enter —
  *  the harness QUEUES input entered during compaction, so the follow-up runs as the
- *  first turn of the fresh context. Works for any harness (pi/claude/copilot all
- *  run `/compact` + queue typed input). No daemon/registry: just send-keys. */
+ *  first turn of the fresh context. The entry guard permits only known
+ *  non-Copilot targets; Copilot controls never fall back to send-keys. */
 function runCompactSelf(argv: readonly string[]): void {
 	const req = parseCompactSelfArgs(argv, process.env.TMUX_PANE);
 	const pane = req.pane;
@@ -4592,6 +4594,74 @@ function main(): void {
 	process.exitCode = res.exitCode;
 }
 
+interface CopilotControlGuardDeps {
+	readonly env: NodeJS.ProcessEnv;
+	readonly legacySeats: () => readonly Pick<SessionDescriptor, "id" | "harness" | "paneId">[];
+	readonly nativeSeats: () => Promise<
+		readonly { readonly id: string; readonly harness: string; readonly pane?: string }[]
+	>;
+}
+
+/** Run before either generation can dispatch a control or type into a pane. */
+export async function copilotControlRefusalForInvocation(
+	argv: readonly string[],
+	guard: CopilotControlGuardDeps = {
+		env: process.env,
+		legacySeats: () => new FsRegistry(pijHome).list(),
+		nativeSeats: async () => {
+			const location = daemonLocationForRouting(process.env, homedir());
+			const client = new PijDaemonClient(location, "");
+			await client.refreshKey();
+			return client.seats();
+		},
+	},
+): Promise<string | undefined> {
+	let command: string;
+	let id: string | undefined;
+	let pane: string | undefined;
+	if (argv[0] === "compact-self") {
+		pane = parseCompactSelfArgs(argv.slice(1), guard.env.TMUX_PANE).pane;
+		if (!pane || !/^%\d+$/.test(pane)) return undefined; // Existing argument error.
+		command = "compact";
+		if (pane === guard.env.TMUX_PANE && guard.env.COPILOT_AGENT_SESSION_ID?.trim()) {
+			return copilotControlRefusal("copilot", command);
+		}
+	} else if (argv[0] === "send") {
+		const parsed = parseArgs(argv);
+		if (!parsed.ok || parsed.value.verb !== "send" || parsed.value.command === undefined)
+			return undefined;
+		command = parsed.value.command;
+		if (copilotControlRefusal("copilot", command) === undefined) return undefined;
+		id = parsed.value.to;
+	} else {
+		return undefined;
+	}
+
+	const subject = id ?? pane;
+	try {
+		let matched = false;
+		for (const seat of guard.legacySeats()) {
+			if (id !== undefined ? seat.id !== id : seat.paneId !== pane) continue;
+			matched = true;
+			const refusal = copilotControlRefusal(seat.harness, command);
+			if (refusal !== undefined) return refusal;
+		}
+		// Legacy descriptors without a harness name are Pi. Do not make an
+		// established non-Copilot control depend on a different daemon's health.
+		if (matched) return undefined;
+		for (const seat of await guard.nativeSeats()) {
+			if (id !== undefined ? seat.id !== id : seat.pane !== pane) continue;
+			matched = true;
+			const refusal = copilotControlRefusal(seat.harness, command);
+			if (refusal !== undefined) return refusal;
+		}
+		if (matched) return undefined;
+	} catch {
+		// Unreadable target evidence is not permission to try another transport.
+	}
+	return `Cannot verify the harness for ${subject}; programmatic ${command} is unsupported without target evidence. No legacy or tmux fallback is permitted.`;
+}
+
 /** Generation-aware entry (plan 114, u-route).
  *
  *  One `pij` command, two daemon generations. This is the ONLY place routing
@@ -4619,6 +4689,12 @@ async function bootThroughGenerationRouting(): Promise<void> {
 	// both in core (pure, behaviourally tested); this only performs them.
 	if (isDirectPanelessAdopt(verb, process.argv.slice(3))) {
 		process.stderr.write(PANELESS_ADOPT_REFUSAL);
+		process.exitCode = 2;
+		return;
+	}
+	const controlRefusal = await copilotControlRefusalForInvocation(process.argv.slice(2));
+	if (controlRefusal !== undefined) {
+		process.stderr.write(`E-UNSUPPORTED: ${controlRefusal}\n`);
 		process.exitCode = 2;
 		return;
 	}

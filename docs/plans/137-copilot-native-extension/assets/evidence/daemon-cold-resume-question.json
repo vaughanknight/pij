@@ -1,0 +1,12 @@
+{
+  "status": "resolved_by_pm_native_retirement_ruling",
+  "resolution": "Only current native-attested descriptors with observed-dead previous processes may keep their address. Explicit tombstone/supersedes remains retired; reopened native context needs a fresh address without oldqueue inheritance. No new field/schema. Daemon owns HTTP/SQLite, runtime actual chooser+realFS, PM final real CLI.",
+  "question": "Does same-native cold resume include already explicitly tombstoned predecessors, or only current native-attested descriptors whose previous process is dead?",
+  "evidence": [
+    "Automatic liveness reads leave native_extension_delivery true and the dead ProcIdentity on untombstoned descriptors.",
+    "Explicit tombstone and supersedes clear native_extension_delivery; migration0013 forbids a true flag on a tombstoned row.",
+    "Fresh-native dead-pane retirement using existing tombstone semantics also clears that provenance; state/session text alone cannot prove prior native attestation."
+  ],
+  "current_scope": "Proven-dead current native-attested rebind and stale native occupancy retirement. Explicit retired/withdrawn rows remain ineligible for old-address recovery; no state/session-only inference or gate-policy change.",
+  "owner": "pij-grim-gurgeh"
+}

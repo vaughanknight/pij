@@ -1,0 +1,16 @@
+{
+  "owner": "pij-intellectual-mosquito",
+  "task": "Correct actual whole-host death witness without changing product or weakening identity proof",
+  "evidence": "pm-native-lifecycle-probe-02.json: /new rollover and successor delivery passed; exact /exit [print] staging+Enter now succeeds, but CLI returns to the older conversation and host remains alive. Final%3 shows original conversation, not the successor. /exit is not whole-process death in this multi-session host.",
+  "change": [
+    "Keep witnessed native /exit action and record what actually happens; do not claim it killed the host.",
+    "Before cold --resume, explicitly close the fixture-owned pane on its dedicated private tmux socket if it still exists. This is owned resource teardown, not message transport or a global process kill.",
+    "Retain exact old proc tuple, ownership/teardown evidence, and observe actual ESRCH before launching replacement; no fake liveness, no old-PID mutation or identity waiver.",
+    "If /exit already removed the owned pane/process, record that and avoid a spurious kill failure. Never act on another socket/pane or an unverified arbitrary PID.",
+    "Then run existing fresh manual --resume path without Pij preallocation, verify same native/Pij identity with new proc tuple and actual subsequent delivery.",
+    "Add bounded helper tests for tab-only exit requiring owned pane closure, already-exited case and teardown failure retaining the original proof failure. Keep no message body through tmux."
+  ],
+  "scope": ["harness/scripts/copilot-native-smoke.ts", "harness/scripts/copilot-native-smoke.test.ts", "installer evidence/docs wording"],
+  "constraints": ["No product/daemon/SDK changes", "No live/full runs", "No global daemon/config/links", "No .the-flow-state.json/the-flow.json/the-flow.md/governance edits"],
+  "acceptance": "Truthful whole-host death and resume fixture; source/scoped proof. PM reruns scoped lifecycle, then full canonical acceptance."
+}

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pij_core::delivery::{
     DeliveryDeferralReason, DeliveryRoute, DeliveryRung, MAX_TYPED_FRAME_BYTES, QueueReason,
@@ -12,7 +12,8 @@ use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::framing::frame_message;
 use pij_core::model::{
-    DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, Receipt, SeatId,
+    DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, Receipt,
+    SeatDescriptor, SeatId, SemanticState,
 };
 use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, Transport};
 use pij_harnesses::{InteractionGate, StagedSubmission};
@@ -31,14 +32,85 @@ const OUTCOME_EVENT_KIND: &str = "delivery.outcome";
 /// message had been delivered to it without ever being able to read it.
 const PUSHED_EVENT_KIND: &str = "message.pushed";
 
-/// One claimed inbox row. The client must acknowledge `job_id` only after it
-/// has received and decoded `message`.
+/// One claimed inbox row. Native clients acknowledge only after SDK acceptance;
+/// other readers acknowledge after decoding. Neither is evidence of model completion.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InboxClaim {
     /// Queue identity used by the explicit acknowledgement step.
     pub job_id: JobId,
     /// Message body claimed for the recipient.
     pub message: Msg,
+    /// Echo of the native incarnation validated at handoff; absent on legacy/peek rows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_consumer: Option<NativeInboxIdentity>,
+}
+
+/// Runtime identity supplied on native Copilot claims and acknowledgements.
+/// Optional wire fields preserve existing non-Copilot clients; Copilot requires all three.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeInboxIdentity {
+    /// Native session supplied by the attached Copilot runtime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_session: Option<String>,
+    /// Actual Copilot host PID, never the extension child or pane shell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
+    /// Observed start stamp of that host process.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proc_start: Option<u64>,
+}
+
+impl NativeInboxIdentity {
+    fn supplied(&self) -> bool {
+        self.native_session.is_some() || self.pid.is_some() || self.proc_start.is_some()
+    }
+
+    fn matches(&self, seat: &SeatDescriptor) -> bool {
+        seat.proc.is_some_and(|identity| {
+            self.pid == Some(identity.pid) && self.proc_start == Some(identity.proc_start)
+        }) && self.native_session.as_deref().is_some_and(|session| {
+            !session.is_empty() && seat.harness_session.as_deref() == Some(session)
+        })
+    }
+}
+
+fn native_refusal(reason: impl Into<String>) -> PijError {
+    PijError::Adapter {
+        adapter: "daemon/native-inbox".to_string(),
+        message: reason.into(),
+    }
+}
+
+/// Claims plus the exact held verdict, so HTTP does not re-observe mutable consent.
+#[derive(Debug, Default)]
+pub struct NativeInboxPage {
+    /// Zero or one durable claims.
+    pub claims: Vec<InboxClaim>,
+    /// Stable consent reason when the native consumer must retry with backoff.
+    pub held_reason: Option<String>,
+}
+
+/// Identity-bound consent observation; never a queue claim or delivery receipt.
+#[derive(Debug, Serialize)]
+pub(crate) struct NativeTypingSnapshot {
+    native_consumer: NativeInboxIdentity,
+    typing_grace_ms: u64,
+    observed_at_ms: u64,
+    semantic_hold: bool,
+    #[serde(flatten)]
+    observation: NativeTypingObservation,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+enum NativeTypingObservation {
+    Observed {
+        retry_after_ms: u64,
+        source: &'static str,
+    },
+    Unavailable {
+        reason: &'static str,
+    },
 }
 
 type Clock = dyn Fn() -> Result<u64> + Send + Sync;
@@ -69,6 +141,7 @@ pub struct DeliveryService {
     id_prefix: u64,
     next_id: AtomicU64,
     clock: Arc<Clock>,
+    native_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl DeliveryService {
@@ -118,7 +191,12 @@ impl DeliveryService {
             id_prefix: sources.id_prefix,
             next_id: AtomicU64::new(0),
             clock: sources.clock,
+            native_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
+    }
+
+    pub(crate) fn native_lock(&self) -> Arc<tokio::sync::Mutex<()>> {
+        Arc::clone(&self.native_lock)
     }
 
     fn queued_outcome(reason: Option<&str>, not_before_ms: u64) -> DeliveryOutcome {
@@ -213,6 +291,22 @@ impl DeliveryService {
                 }
             }
         };
+        if recipient.harness == Harness::Copilot
+            && recipient.tombstoned_at.is_none()
+            && msg.command.is_some()
+        {
+            let receipt = Receipt {
+                msg_id: msg.msg_id,
+                outcome: DeliveryOutcome::Refused {
+                    reason:
+                        "Copilot programmatic controls are unsupported; use native user controls"
+                            .into(),
+                },
+                at,
+            };
+            self.publish_outcome(&to, &receipt).await?;
+            return Ok(receipt);
+        }
         let mut publish_to_recipient = true;
         let outcome = match selected {
             DeliveryRoute::Tombstoned { reason } => {
@@ -231,7 +325,11 @@ impl DeliveryService {
             // A duplicate is a duplicate. Where it entered from does not change
             // whether the recipient has already been given it.
             DeliveryRoute::Queue(reason) => {
-                match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
+                match self
+                    .queue
+                    .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
+                    .await?
+                {
                     DeliveryEnqueue::Queued { not_before_ms, .. } => {
                         Self::queued_outcome(Some(reason.as_str()), not_before_ms)
                     }
@@ -242,11 +340,12 @@ impl DeliveryService {
                 }
             }
             DeliveryRoute::Transport => {
-                // Omp/Pi consume the durable row through `message.pushed`, then
-                // claim and acknowledge it through the inbox API. That extension
-                // stream is not a `Transport`; routing here avoids both composer
-                // gates and the pane-oriented rung selector.
-                let extension_stream = matches!(recipient.harness, Harness::Omp | Harness::Pi);
+                // Extension consumers exclusively own these durable rows. Copilot
+                // additionally checks native incarnation and human consent at claim.
+                let extension_stream = matches!(
+                    recipient.harness,
+                    Harness::Omp | Harness::Pi | Harness::Copilot
+                );
                 let (rung, interaction_reason, draft_sha) = if extension_stream {
                     (DeliveryRung::Observe, None, None)
                 } else {
@@ -304,7 +403,11 @@ impl DeliveryService {
                             None => match self.transport.deliver(&recipient, &msg).await {
                                 Ok(DeliveryOutcome::Queued { reason, .. }) => {
                                     self.queue.forget_delivered(&to, &msg.msg_id).await?;
-                                    match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
+                                    match self
+                                        .queue
+                                        .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
+                                        .await?
+                                    {
                                         DeliveryEnqueue::Queued { not_before_ms, .. } => {
                                             Self::queued_outcome(
                                                 reason.as_deref().or(Some("unreachable")),
@@ -333,7 +436,11 @@ impl DeliveryService {
                         let framed =
                             frame_message(&msg.from, msg.from_machine.as_deref(), &msg.body);
                         if framed.len() > MAX_TYPED_FRAME_BYTES {
-                            match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
+                            match self
+                                .queue
+                                .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
+                                .await?
+                            {
                                 DeliveryEnqueue::Queued { not_before_ms, .. } => {
                                     Self::queued_outcome(Some("frame-too-large"), not_before_ms)
                                 }
@@ -364,7 +471,7 @@ impl DeliveryService {
                                         self.queue.forget_delivered(&to, &msg.msg_id).await?;
                                         match self
                                             .queue
-                                            .enqueue_delivery(delivery_job(&msg)?)
+                                            .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
                                             .await?
                                         {
                                             DeliveryEnqueue::Queued { not_before_ms, .. } => {
@@ -392,10 +499,22 @@ impl DeliveryService {
                     | DeliveryRung::Queue
                     | DeliveryRung::Pty
                     | DeliveryRung::ControlBodyPull => {
-                        match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
+                        match self
+                            .queue
+                            .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
+                            .await?
+                        {
                             DeliveryEnqueue::Queued { not_before_ms, .. } => {
                                 let reason = if extension_stream {
-                                    Some("extension-stream")
+                                    Some(
+                                        if recipient.harness == Harness::Copilot
+                                            && !recipient.native_extension_delivery
+                                        {
+                                            "native-extension-unavailable"
+                                        } else {
+                                            "extension-stream"
+                                        },
+                                    )
                                 } else {
                                     interaction_reason.map(DeliveryDeferralReason::as_str).or(
                                         match rung {
@@ -460,19 +579,203 @@ impl DeliveryService {
     /// # Errors
     /// Queue failures or a corrupt/misdirected delivery payload.
     pub async fn claim_inbox(&self, seat: &SeatId, wait: bool) -> Result<Vec<InboxClaim>> {
-        let kind = delivery_kind(seat);
-        let kinds = [kind];
+        Ok(self
+            .claim_inbox_inner(seat, wait, &NativeInboxIdentity::default())
+            .await?
+            .claims)
+    }
+
+    /// Claim native work for the current attested owner; the receiver gates new sends.
+    pub async fn claim_native_inbox(
+        &self,
+        seat: &SeatId,
+        wait: bool,
+        identity: &NativeInboxIdentity,
+    ) -> Result<NativeInboxPage> {
+        self.claim_inbox_inner(seat, wait, identity).await
+    }
+
+    async fn native_recipient(
+        &self,
+        seat: &SeatId,
+        identity: &NativeInboxIdentity,
+    ) -> Result<Option<SeatDescriptor>> {
+        let recipient = self.registry.get(seat).await?;
+        match recipient {
+            Some(recipient) if recipient.harness == Harness::Copilot => {
+                if recipient.tombstoned_at.is_some() || !recipient.native_extension_delivery {
+                    return Err(native_refusal(
+                        "native-extension-unavailable: Copilot requires current native registration",
+                    ));
+                }
+                if !identity.matches(&recipient) {
+                    return Err(native_refusal(
+                        "native incarnation mismatch: native_session, pid and proc_start must match the current Copilot seat",
+                    ));
+                }
+                Ok(Some(recipient))
+            }
+            None if identity.supplied() => Err(native_refusal(
+                "native-extension-unavailable: Copilot requires current native registration",
+            )),
+            _ if identity.supplied() => Err(native_refusal(
+                "native incarnation no longer belongs to a current Copilot seat",
+            )),
+            _ => Ok(None),
+        }
+    }
+
+    /// Observe the existing recency policy without claiming, releasing or ACKing work.
+    /// Slow pane IO runs outside the native lock; only current identity and pane
+    /// may authorize the returned snapshot. Operator Hold is reported separately.
+    pub(crate) async fn native_typing_snapshot(
+        &self,
+        seat: &SeatId,
+        identity: &NativeInboxIdentity,
+        typing_grace_ms: u64,
+    ) -> Result<NativeTypingSnapshot> {
+        let observed = self
+            .native_recipient(seat, identity)
+            .await?
+            .ok_or_else(|| {
+                native_refusal("native typing observation requires current native registration")
+            })?;
+        let unavailable = NativeTypingObservation::Unavailable {
+            reason: "native-typing-sensor-unavailable",
+        };
+        let remaining = match observed.pane.as_deref() {
+            Some(pane) => match self.interaction.fresh_injection_verdict(pane).await {
+                Ok(verdict) if verdict.reason == Some(DeliveryDeferralReason::HumanTyping) => {
+                    verdict.next_retry_at.map(|remaining| {
+                        // Never round a positive sub-millisecond veto down to quiet.
+                        u64::try_from(remaining.as_nanos().div_ceil(1_000_000)).unwrap_or(u64::MAX)
+                    })
+                }
+                Ok(verdict) if verdict.permitted && verdict.reason.is_none() => Some(0),
+                _ => None,
+            },
+            None if typing_grace_ms == 0 => Some(0),
+            None => None,
+        };
+        let observed_at_ms = (self.clock)()?;
+        let _guard = self.native_lock.lock().await;
+        let current = self
+            .native_recipient(seat, identity)
+            .await?
+            .ok_or_else(|| {
+                native_refusal("native typing observation requires current native registration")
+            })?;
+        let observation = match remaining {
+            Some(retry_after_ms)
+                if current.pane == observed.pane && retry_after_ms <= typing_grace_ms =>
+            {
+                NativeTypingObservation::Observed {
+                    retry_after_ms,
+                    source: "pane-observed-edit-recency",
+                }
+            }
+            _ => unavailable,
+        };
+        Ok(NativeTypingSnapshot {
+            native_consumer: identity.clone(),
+            typing_grace_ms,
+            observed_at_ms,
+            semantic_hold: current.semantic_state == Some(SemanticState::Hold),
+            observation,
+        })
+    }
+
+    /// Revalidate the observation's identity and pane while mutation is excluded.
+    /// Semantic hold can only veto; clearing it never overrides an observed veto.
+    async fn revalidate_native_observation(
+        &self,
+        seat: &SeatId,
+        identity: &NativeInboxIdentity,
+        observed: Option<&SeatDescriptor>,
+    ) -> Result<Option<String>> {
+        let current = self.native_recipient(seat, identity).await?;
+        if current.as_ref().map(|seat| seat.pane.as_deref())
+            != observed.map(|seat| seat.pane.as_deref())
+        {
+            return Ok(Some("native-pane-changed".into()));
+        }
+        Ok(current
+            .filter(|seat| seat.semantic_state == Some(SemanticState::Hold))
+            .map(|_| "semantic-hold".into()))
+    }
+
+    async fn claim_inbox_inner(
+        &self,
+        seat: &SeatId,
+        wait: bool,
+        identity: &NativeInboxIdentity,
+    ) -> Result<NativeInboxPage> {
+        let kinds = [delivery_kind(seat)];
         let mut wake = wait.then(|| {
             self.event_bus
                 .subscribe_live(EventFilter::kinds([OUTCOME_EVENT_KIND]).for_seat(seat.clone()))
         });
-
         loop {
-            if let Some((job_id, job)) = self.queue.claim(&kinds, seat.0.as_str()).await? {
-                let message: Msg = match serde_json::from_str(&job.payload) {
-                    Ok(message) => message,
-                    Err(error) => {
-                        let reason = format!("invalid delivery payload: {error}");
+            // Native claims are queue ownership, not permission to inject. The
+            // receiver observes typing before NEW sends and owns hold/release.
+            // Keep mutation excluded through handoff; no pane IO occurs here.
+            let native_guard = self.native_lock.lock().await;
+            let observed = self.native_recipient(seat, identity).await?;
+            let native = observed.is_some();
+            if let Some(reason) = self
+                .revalidate_native_observation(seat, identity, observed.as_ref())
+                .await?
+            {
+                return Ok(NativeInboxPage {
+                    claims: Vec::new(),
+                    held_reason: Some(reason),
+                });
+            }
+            if let Some((job_id, job)) = self.queue.claim(&kinds, seat.as_str()).await? {
+                if let Some(recipient) = &observed {
+                    // Lease expiry may invalidate a running attempt independently
+                    // of registration. Never hand out or retry its successor.
+                    if self
+                        .queue
+                        .claimed_delivery(job_id)
+                        .await?
+                        .is_none_or(|current| current.attempt != job.attempt)
+                    {
+                        continue;
+                    }
+                    let permission = self
+                        .revalidate_native_observation(seat, identity, Some(recipient))
+                        .await;
+                    match permission {
+                        Ok(None) => {}
+                        result => {
+                            self.queue.retry(job_id, Duration::ZERO).await?;
+                            let held_reason = result?;
+                            return Ok(NativeInboxPage {
+                                claims: Vec::new(),
+                                held_reason,
+                            });
+                        }
+                    }
+                }
+                let payload = serde_json::from_str::<ClaimedPayload>(&job.payload);
+                let message = payload.as_ref().map(|payload| &payload.message);
+                let invalid = match &message {
+                    Err(error) => Some(format!("invalid delivery payload: {error}")),
+                    Ok(message) if &message.to != seat || job.serial_key != seat.as_str() => {
+                        Some(format!(
+                            "delivery kind {} contained message for {}",
+                            kinds[0], message.to
+                        ))
+                    }
+                    Ok(message) if native && message.command.is_some() => Some(
+                        "Copilot remote control is unsupported; native claim held without ack"
+                            .into(),
+                    ),
+                    _ => None,
+                };
+                if let Some(reason) = invalid {
+                    if !native {
                         self.queue
                             .ack(
                                 job_id,
@@ -481,46 +784,62 @@ impl DeliveryService {
                                 },
                             )
                             .await?;
-                        return Err(PijError::Adapter {
-                            adapter: "daemon/delivery".to_string(),
-                            message: reason,
-                        });
                     }
-                };
-                if &message.to != seat {
-                    let reason = format!(
-                        "delivery kind {} contained message for {}",
-                        kinds[0], message.to
-                    );
-                    self.queue
-                        .ack(
-                            job_id,
-                            Outcome::Failed {
-                                reason: reason.clone(),
-                            },
-                        )
-                        .await?;
                     return Err(PijError::Adapter {
-                        adapter: "daemon/delivery".to_string(),
+                        adapter: "daemon/delivery".into(),
                         message: reason,
                     });
                 }
-                // A READ is the only thing that un-parks a seat (wave-6 ruling):
-                // a new msg_id must not let a sender mint their way past a cap
-                // the human has not satisfied. Published here rather than at ack,
-                // because the seat has now been GIVEN its message — the pointer's
-                // job is done whether or not the client gets as far as acking.
+                let payload = payload.expect("validated delivery payload");
+                if native
+                    && let Some(reason) =
+                        native_target_mismatch(payload.native_target_session.as_deref(), identity)
+                {
+                    // Durable CONTEXT HOLD, not a failed delivery: retry only
+                    // releases this claim. Attempt count must never discard the
+                    // body; only its original native context may consume it.
+                    self.queue.retry(job_id, Duration::ZERO).await?;
+                    return Ok(NativeInboxPage {
+                        claims: Vec::new(),
+                        held_reason: Some(reason),
+                    });
+                }
+                let message = payload.message;
                 self.publish_pointer_unparked_if_parked(seat, 1).await?;
-                return Ok(vec![InboxClaim { job_id, message }]);
+                if native {
+                    match self
+                        .revalidate_native_observation(seat, identity, observed.as_ref())
+                        .await
+                    {
+                        Ok(None) => {}
+                        result => {
+                            self.queue.retry(job_id, Duration::ZERO).await?;
+                            return Ok(NativeInboxPage {
+                                claims: Vec::new(),
+                                held_reason: result?,
+                            });
+                        }
+                    }
+                }
+                return Ok(NativeInboxPage {
+                    claims: vec![InboxClaim {
+                        job_id,
+                        message,
+                        native_consumer: native.then(|| identity.clone()),
+                    }],
+                    held_reason: None,
+                });
             }
+            drop(native_guard);
             if !wait {
-                return Ok(Vec::new());
+                return Ok(NativeInboxPage::default());
             }
             let Some(subscription) = wake.as_mut() else {
-                return Ok(Vec::new());
+                return Ok(NativeInboxPage::default());
             };
-            if subscription.next().await.is_none() {
-                return Ok(Vec::new());
+            tokio::select! {
+                event = subscription.next() => { if event.is_none() { return Ok(NativeInboxPage::default()); } }
+                _ = tokio::time::sleep(Duration::from_millis(500)), if native => {}
             }
         }
     }
@@ -546,14 +865,59 @@ impl DeliveryService {
                 ),
             });
         }
-        Ok(vec![InboxClaim { job_id, message }])
+        Ok(vec![InboxClaim {
+            job_id,
+            message,
+            native_consumer: None,
+        }])
     }
 
     /// Record `ReaderRead` and return the authority-owned job identity committed.
     ///
     /// # Errors
     /// Queue failures or an id that is not a running delivery claim.
-    pub async fn acknowledge_inbox(&self, job_id: JobId) -> Result<DeliveryAck> {
+    pub async fn acknowledge_inbox(
+        &self,
+        seat: &SeatId,
+        job_id: JobId,
+        identity: &NativeInboxIdentity,
+    ) -> Result<DeliveryAck> {
+        let _native_guard = self.native_lock.lock().await;
+        let job = self
+            .queue
+            .claimed_delivery(job_id)
+            .await?
+            .ok_or_else(|| PijError::Adapter {
+                adapter: "daemon/delivery".into(),
+                message: format!("job {} is not a running delivery claim", job_id.0),
+            })?;
+        let recipient = SeatId::from(job.serial_key);
+        if self.native_recipient(&recipient, identity).await?.is_some() {
+            if seat != &recipient {
+                return Err(native_refusal(
+                    "native acknowledgement seat must match the claimed job recipient",
+                ));
+            }
+            let payload: ClaimedPayload = serde_json::from_str(&job.payload).map_err(|error| {
+                native_refusal(format!(
+                    "malformed native claim remains unacknowledged: {error}"
+                ))
+            })?;
+            if let Some(reason) =
+                native_target_mismatch(payload.native_target_session.as_deref(), identity)
+            {
+                return Err(native_refusal(reason));
+            }
+            let message = payload.message;
+            if message.to != recipient
+                || job.kind != delivery_kind(&recipient)
+                || message.command.is_some()
+            {
+                return Err(native_refusal(
+                    "native acknowledgement does not match a valid body claim",
+                ));
+            }
+        }
         self.queue
             .ack_delivery(job_id, DeliveryOrigin::ReaderRead)
             .await
@@ -657,8 +1021,37 @@ impl DeliveryService {
     }
 }
 
-fn delivery_job(msg: &Msg) -> Result<Job> {
-    let payload = serde_json::to_string(msg).map_err(|error| PijError::Adapter {
+#[derive(Serialize)]
+struct DeliveryPayload<'a> {
+    #[serde(flatten)]
+    message: &'a Msg,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    native_target_session: Option<&'a str>,
+}
+
+#[derive(Deserialize)]
+struct ClaimedPayload {
+    #[serde(flatten)]
+    message: Msg,
+    #[serde(default)]
+    native_target_session: Option<String>,
+}
+
+fn native_target_mismatch(target: Option<&str>, identity: &NativeInboxIdentity) -> Option<String> {
+    target.filter(|target| Some(*target) != identity.native_session.as_deref()).map(|target| format!(
+        "native-target-session:{target}; resume that native session or use a new seat and intentionally reissue the message"
+    ))
+}
+
+fn delivery_job(msg: &Msg, recipient: Option<&SeatDescriptor>) -> Result<Job> {
+    let native_target_session = recipient
+        .filter(|seat| seat.harness == Harness::Copilot && seat.native_extension_delivery)
+        .and_then(|seat| seat.harness_session.as_deref());
+    let payload = serde_json::to_string(&DeliveryPayload {
+        message: msg,
+        native_target_session,
+    })
+    .map_err(|error| PijError::Adapter {
         adapter: "daemon/delivery".to_string(),
         message: format!("could not encode message {}: {error}", msg.msg_id),
     })?;
@@ -747,28 +1140,34 @@ fn system_time_ms() -> Result<u64> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
     use pij_core::delivery::{MAX_TYPED_FRAME_BYTES, delivery_kind};
     use pij_core::error::PijError;
     use pij_core::events::EventFilter;
     use pij_core::framing::frame_message;
-    use pij_core::model::Pane;
     use pij_core::model::{
         DeliveryOrigin, DeliveryOutcome, Event, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId,
         SemanticState, Seq, SystemState,
     };
-    use pij_core::ports::{DeliveryEnqueue, Queue, Registry, Spine, TmuxPort};
+    use pij_core::model::{Pane, PaneProcess};
+    use pij_core::ports::{
+        DeliveryEnqueue, LaunchCommand, Queue, Registry, Spine, StagedSubmit, TmuxPort,
+    };
     use pij_harnesses::InteractionGate;
     use pij_testkit::fakes::{
         CountingSpine, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
     };
     use serde_json::Value;
+    use tokio::sync::Notify;
     use tokio_stream::StreamExt;
 
     use super::{
-        DeliveryService, DeliverySources, OUTCOME_EVENT_KIND, PUSHED_EVENT_KIND, delivery_job,
+        DeliveryService, DeliverySources, NativeInboxIdentity, OUTCOME_EVENT_KIND,
+        PUSHED_EVENT_KIND, delivery_job,
     };
     use crate::events::EventBus;
     use crate::pointer::{POINTER_PARKED_EVENT_KIND, POINTER_UNPARKED_EVENT_KIND};
@@ -778,6 +1177,268 @@ mod tests {
         let overhead = frame_message(from, None, "").len();
         assert!(bytes >= overhead);
         "x".repeat(bytes - overhead)
+    }
+
+    /// Suspend one exact capture, before or after the durable queue claim.
+    struct BlockingCapture {
+        inner: Arc<FakeTmux>,
+        block_at: usize,
+        captures: AtomicUsize,
+        entered: Notify,
+        release: Notify,
+    }
+
+    #[async_trait::async_trait]
+    impl TmuxPort for BlockingCapture {
+        async fn list_panes(&self) -> pij_core::error::Result<Vec<Pane>> {
+            self.inner.list_panes().await
+        }
+        async fn pane_process(&self, pane: &str) -> pij_core::error::Result<Option<PaneProcess>> {
+            self.inner.pane_process(pane).await
+        }
+        async fn acquire_submit(&self, pane: &str) -> pij_core::error::Result<StagedSubmit> {
+            self.inner.acquire_submit(pane).await
+        }
+        async fn stage_submit(
+            &self,
+            staged: &mut StagedSubmit,
+            text: &str,
+        ) -> pij_core::error::Result<()> {
+            self.inner.stage_submit(staged, text).await
+        }
+        async fn commit_submit(&self, staged: &StagedSubmit) -> pij_core::error::Result<()> {
+            self.inner.commit_submit(staged).await
+        }
+        async fn abort_submit(&self, staged: &StagedSubmit) -> pij_core::error::Result<()> {
+            self.inner.abort_submit(staged).await
+        }
+        async fn submit(&self, pane: &str, text: &str) -> pij_core::error::Result<()> {
+            self.inner.submit(pane, text).await
+        }
+        async fn send_keys(&self, pane: &str, keys: &str) -> pij_core::error::Result<()> {
+            self.inner.send_keys(pane, keys).await
+        }
+        async fn capture(&self, pane: &str, lines: u32) -> pij_core::error::Result<String> {
+            if self.captures.fetch_add(1, Ordering::SeqCst) + 1 == self.block_at {
+                self.entered.notify_one();
+                self.release.notified().await;
+            }
+            self.inner.capture(pane, lines).await
+        }
+        async fn attach_pane_tap(&self, pane: &str, sink: &Path) -> pij_core::error::Result<()> {
+            self.inner.attach_pane_tap(pane, sink).await
+        }
+        async fn pane_tap_sink(&self, pane: &str) -> pij_core::error::Result<Option<PathBuf>> {
+            self.inner.pane_tap_sink(pane).await
+        }
+        async fn drain_pane_tap(&self, pane: &str) -> pij_core::error::Result<Vec<u8>> {
+            self.inner.drain_pane_tap(pane).await
+        }
+        async fn detach_pane_tap(&self, pane: &str) -> pij_core::error::Result<()> {
+            self.inner.detach_pane_tap(pane).await
+        }
+        async fn kill(&self, pane: &str) -> pij_core::error::Result<()> {
+            self.inner.kill(pane).await
+        }
+        async fn new_window(
+            &self,
+            session: &str,
+            name: &str,
+            cwd: &str,
+            command: Option<&LaunchCommand>,
+        ) -> pij_core::error::Result<Pane> {
+            self.inner.new_window(session, name, cwd, command).await
+        }
+        async fn user_typing(&self, pane: &str) -> pij_core::error::Result<bool> {
+            self.inner.user_typing(pane).await
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn blocked_native_typing_snapshot_allows_unrelated_ack_and_revalidates_owner() {
+        for claimed in [false, true] {
+            // Observation owns no queue row, including while another reader
+            // ACKs or reclaims the exact job during the slow pane capture.
+            for change in 0..if claimed { 8 } else { 6 } {
+                let mut fixture = fixture_with_gate(
+                    FakeTransport::unreachable(),
+                    FakeTmux::new().with_clear_composer("%137"),
+                );
+                let observer = Arc::new(BlockingCapture {
+                    inner: fixture.tmux.clone(),
+                    block_at: 1,
+                    captures: AtomicUsize::new(0),
+                    entered: Notify::new(),
+                    release: Notify::new(),
+                });
+                fixture.interaction = Arc::new(InteractionGate::new(observer.clone()));
+                fixture.service = Arc::new(
+                    DeliveryService::new(
+                        fixture.registry.clone(),
+                        fixture.queue.clone(),
+                        fixture.transport.clone(),
+                        fixture.interaction.clone(),
+                        Arc::new(EventBus::new(fixture.spine.clone(), 16).expect("bus")),
+                    )
+                    .expect("delivery"),
+                );
+                let mut recipient = bound("pij-native");
+                recipient.harness = Harness::Copilot;
+                recipient.pane = Some("%137".to_string());
+                recipient.harness_session = Some("native-session".to_string());
+                recipient.native_extension_delivery = true;
+                let identity = NativeInboxIdentity {
+                    native_session: recipient.harness_session.clone(),
+                    pid: Some(7),
+                    proc_start: Some(11),
+                };
+                register(&fixture, recipient.clone()).await;
+                fixture
+                    .service
+                    .send("pij-peer".into(), recipient.id.clone(), "native body")
+                    .await
+                    .expect("enqueue native");
+                let (job_id, _) = fixture
+                    .queue
+                    .peek(&[delivery_kind(&recipient.id)])
+                    .await
+                    .expect("queue")
+                    .expect("native body");
+                if claimed {
+                    let page = fixture
+                        .service
+                        .claim_native_inbox(&recipient.id, false, &identity)
+                        .await
+                        .expect("claim never waits for the sensor");
+                    assert_eq!(page.claims[0].job_id, job_id);
+                }
+                let pending =
+                    fixture
+                        .service
+                        .native_typing_snapshot(&recipient.id, &identity, 60_000);
+                tokio::pin!(pending);
+                tokio::select! {
+                    _ = observer.entered.notified() => {}
+                    result = &mut pending => panic!("capture did not block: {result:?}"),
+                }
+                for harness in [Harness::Omp, Harness::Pi] {
+                    let reader = SeatDescriptor::new(
+                        format!("pij-{}", harness.as_str()),
+                        harness,
+                        "/isolated/reader",
+                    );
+                    register(&fixture, reader.clone()).await;
+                    fixture
+                        .service
+                        .send("pij-peer".into(), reader.id.clone(), "unrelated")
+                        .await
+                        .expect("enqueue reader");
+                    tokio::time::timeout(Duration::from_secs(1), async {
+                        let claims = fixture
+                            .service
+                            .claim_inbox(&reader.id, false)
+                            .await
+                            .expect("unrelated claim");
+                        assert_eq!(claims.len(), 1);
+                        fixture
+                            .service
+                            .acknowledge_inbox(&reader.id, claims[0].job_id, &Default::default())
+                            .await
+                            .expect("unrelated ack");
+                    })
+                    .await
+                    .expect("unrelated reader progresses while native consent is blocked");
+                }
+                {
+                    let _guard = fixture.service.native_lock.lock().await;
+                    match change {
+                        0 | 6 | 7 => {}
+                        1 => recipient.semantic_state = Some(SemanticState::Hold),
+                        2 => recipient.native_extension_delivery = false,
+                        3 => recipient.proc.as_mut().expect("native proc").proc_start += 1,
+                        4 => recipient.pane = Some("%replacement".to_string()),
+                        5 => recipient.harness_session = Some("replacement-session".to_string()),
+                        _ => unreachable!(),
+                    }
+                    fixture
+                        .registry
+                        .put(recipient.clone())
+                        .await
+                        .expect("lifecycle mutation");
+                }
+                if change == 6 {
+                    fixture
+                        .service
+                        .acknowledge_inbox(&recipient.id, job_id, &identity)
+                        .await
+                        .expect("current tuple may acknowledge");
+                }
+                if change == 7 {
+                    // Requeue advances the same attempt field as lease expiry.
+                    fixture
+                        .queue
+                        .retry(job_id, Duration::ZERO)
+                        .await
+                        .expect("release old attempt");
+                    let next = fixture
+                        .service
+                        .claim_native_inbox(&recipient.id, false, &identity)
+                        .await
+                        .expect("new consumer claims next attempt");
+                    assert_eq!(next.claims[0].job_id, job_id);
+                }
+                let pending_before = fixture
+                    .queue
+                    .peek(&[delivery_kind(&recipient.id)])
+                    .await
+                    .unwrap();
+                let running_before = fixture.queue.claimed_delivery(job_id).await.unwrap();
+                observer.release.notify_one();
+                let result = pending.await;
+                match change {
+                    2 | 3 | 5 => assert!(result.is_err(), "changed owner must refuse: {change}"),
+                    4 => assert!(matches!(
+                        result.unwrap().observation,
+                        super::NativeTypingObservation::Unavailable { .. }
+                    )),
+                    _ => {
+                        let snapshot = result.unwrap();
+                        assert_eq!(snapshot.native_consumer, identity);
+                        assert_eq!(snapshot.semantic_hold, change == 1);
+                        assert!(matches!(
+                            snapshot.observation,
+                            super::NativeTypingObservation::Observed {
+                                retry_after_ms: 0,
+                                ..
+                            }
+                        ));
+                    }
+                }
+                assert_eq!(
+                    fixture
+                        .queue
+                        .peek(&[delivery_kind(&recipient.id)])
+                        .await
+                        .unwrap(),
+                    pending_before
+                );
+                assert_eq!(
+                    fixture.queue.claimed_delivery(job_id).await.unwrap(),
+                    running_before,
+                    "a sensor may not mutate the old or successor attempt"
+                );
+                if change == 1 {
+                    let held = fixture
+                        .service
+                        .claim_native_inbox(&recipient.id, false, &identity)
+                        .await
+                        .unwrap();
+                    assert!(held.claims.is_empty());
+                    assert_eq!(held.held_reason.as_deref(), Some("semantic-hold"));
+                }
+                assert_eq!(observer.captures.load(Ordering::SeqCst), 1);
+            }
+        }
     }
 
     struct Fixture {
@@ -843,7 +1504,7 @@ mod tests {
             command: None,
         };
         queue
-            .enqueue(delivery_job(&msg).expect("delivery job"))
+            .enqueue(delivery_job(&msg, None).expect("delivery job"))
             .await
             .expect("enqueue mail");
         let transport = Arc::new(FakeTransport::unreachable());
@@ -891,7 +1552,7 @@ mod tests {
         };
         fixture
             .queue
-            .enqueue(delivery_job(&message).expect("delivery job"))
+            .enqueue(delivery_job(&message, None).expect("delivery job"))
             .await
             .expect("enqueue message");
 
@@ -919,7 +1580,7 @@ mod tests {
             msg_id: "peek-2".to_string(),
             ..message
         };
-        let mut wrong_kind = delivery_job(&misdirected).expect("delivery job");
+        let mut wrong_kind = delivery_job(&misdirected, None).expect("delivery job");
         wrong_kind.kind = delivery_kind(&wrong_recipient);
         fixture
             .queue
@@ -1158,7 +1819,7 @@ mod tests {
         };
         let DeliveryEnqueue::Queued { job_id, .. } = fixture
             .queue
-            .enqueue_delivery(delivery_job(&msg).expect("delivery job"))
+            .enqueue_delivery(delivery_job(&msg, None).expect("delivery job"))
             .await
             .expect("pre-enqueue delivery")
         else {
@@ -1663,7 +2324,7 @@ mod tests {
         assert_eq!(claimed.len(), 1);
         fixture
             .service
-            .acknowledge_inbox(claimed[0].job_id)
+            .acknowledge_inbox(&msg.to, claimed[0].job_id, &Default::default())
             .await
             .expect("recipient acknowledges decoded page");
 
@@ -1845,7 +2506,7 @@ mod tests {
 
         fixture
             .service
-            .acknowledge_inbox(first[0].job_id)
+            .acknowledge_inbox(&seat, first[0].job_id, &Default::default())
             .await
             .expect("ack first");
         let second = fixture
@@ -1993,5 +2654,280 @@ mod tests {
             "a claim whose delivery failed must NOT suppress the retry of a message nobody got"
         );
         assert_eq!(fixture.transport.delivered().len(), 1);
+    }
+
+    fn native_seat(pane: Option<&str>) -> SeatDescriptor {
+        let mut seat = SeatDescriptor::new("pij-native", Harness::Copilot, "/abs/tree");
+        seat.proc = Some(ProcIdentity {
+            pid: 137,
+            proc_start: 1370,
+        });
+        seat.harness_session = Some("native-137".to_string());
+        seat.pane = pane.map(str::to_string);
+        seat.native_extension_delivery = true;
+        seat
+    }
+
+    fn native_identity() -> super::NativeInboxIdentity {
+        super::NativeInboxIdentity {
+            native_session: Some("native-137".to_string()),
+            pid: Some(137),
+            proc_start: Some(1370),
+        }
+    }
+
+    #[tokio::test]
+    async fn copilot_first_arrival_is_native_only_even_without_capability() {
+        for attached in [false, true] {
+            let fixture = fixture(FakeTransport::reachable());
+            let mut seat = native_seat(Some("%137"));
+            seat.native_extension_delivery = attached;
+            register(&fixture, seat).await;
+            let receipt = fixture
+                .service
+                .send("pij-from".into(), "pij-native".into(), "native body")
+                .await
+                .expect("durably queued");
+            assert!(matches!(receipt.outcome, DeliveryOutcome::Queued { .. }));
+            assert!(
+                fixture.transport.delivered().is_empty(),
+                "no transport fallback"
+            );
+            assert!(
+                fixture.tmux.calls().is_empty(),
+                "arrival must never consult or submit tmux"
+            );
+            assert_eq!(fixture.queue.live_len(), 1);
+            fixture
+                .service
+                .claim_inbox(&"pij-native".into(), false)
+                .await
+                .expect_err("unattested caller cannot claim native work");
+        }
+    }
+
+    #[tokio::test]
+    async fn native_typing_snapshot_expires_static_draft_and_renews_only_on_edit() {
+        let mut fixture = fixture_with_gate(
+            FakeTransport::unreachable(),
+            typing_pane("%137")
+                .script_tap(b"rendered output one".to_vec())
+                .script_tap(b"rendered output two".to_vec()),
+        );
+        fixture.interaction = Arc::new(InteractionGate::with_typing_grace(
+            fixture.tmux.clone(),
+            Duration::from_secs(60),
+            100,
+        ));
+        fixture.service = Arc::new(
+            DeliveryService::new(
+                fixture.registry.clone(),
+                fixture.queue.clone(),
+                fixture.transport.clone(),
+                fixture.interaction.clone(),
+                Arc::new(EventBus::new(fixture.spine.clone(), 16).expect("event bus")),
+            )
+            .expect("native consent fixture"),
+        );
+        register(&fixture, native_seat(Some("%137"))).await;
+        fixture
+            .service
+            .send("pij-from".into(), "pij-native".into(), "held body")
+            .await
+            .expect("queue");
+        let identity = native_identity();
+        let seat = SeatId::from("pij-native");
+        let snapshot = fixture
+            .service
+            .native_typing_snapshot(&seat, &identity, 100)
+            .await
+            .unwrap();
+        assert!(matches!(
+            snapshot.observation,
+            super::NativeTypingObservation::Observed {
+                retry_after_ms: 1..=100,
+                ..
+            }
+        ));
+        let calls_before = fixture.tmux.calls();
+        let claim = fixture
+            .service
+            .claim_native_inbox(&seat, false, &identity)
+            .await
+            .unwrap();
+        assert_eq!(
+            claim.claims.len(),
+            1,
+            "typing is gated by receiver, not claim"
+        );
+        assert_eq!(
+            fixture.tmux.calls(),
+            calls_before,
+            "claim never observes or types into tmux"
+        );
+        let running = fixture
+            .queue
+            .claimed_delivery(claim.claims[0].job_id)
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        fixture.interaction.record_tap("%137");
+        let aged = fixture
+            .service
+            .native_typing_snapshot(&seat, &identity, 100)
+            .await
+            .unwrap();
+        assert!(
+            matches!(
+                aged.observation,
+                super::NativeTypingObservation::Observed {
+                    retry_after_ms: 0,
+                    ..
+                }
+            ),
+            "output/tap activity does not renew the unchanged draft's edit age"
+        );
+        assert!(
+            !fixture
+                .interaction
+                .fresh_injection_verdict("%137")
+                .await
+                .unwrap()
+                .composer_idle
+        );
+        fixture.tmux.arrange_clear_composer("%137");
+        let edited = fixture
+            .service
+            .native_typing_snapshot(&seat, &identity, 100)
+            .await
+            .unwrap();
+        assert!(
+            matches!(
+                edited.observation,
+                super::NativeTypingObservation::Observed {
+                    retry_after_ms: 1..=100,
+                    ..
+                }
+            ),
+            "clearing a human draft is a newly observed edit"
+        );
+        assert_eq!(
+            fixture
+                .queue
+                .claimed_delivery(claim.claims[0].job_id)
+                .await
+                .unwrap(),
+            running
+        );
+        assert!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .all(|call| !call.starts_with("type")
+                    && !call.starts_with("stage")
+                    && !call.starts_with("commit")
+                    && !call.starts_with("send_keys"))
+        );
+    }
+
+    #[tokio::test]
+    async fn native_typing_paneless_requires_explicit_zero_grace_and_retains_hold() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let mut seat = native_seat(None);
+        seat.semantic_state = Some(SemanticState::Hold);
+        register(&fixture, seat.clone()).await;
+        let identity = native_identity();
+        let unavailable = fixture
+            .service
+            .native_typing_snapshot(&seat.id, &identity, 60_000)
+            .await
+            .unwrap();
+        assert!(matches!(
+            unavailable.observation,
+            super::NativeTypingObservation::Unavailable { .. }
+        ));
+        let disabled = fixture
+            .service
+            .native_typing_snapshot(&seat.id, &identity, 0)
+            .await
+            .unwrap();
+        assert!(matches!(
+            disabled.observation,
+            super::NativeTypingObservation::Observed {
+                retry_after_ms: 0,
+                ..
+            }
+        ));
+        assert!(unavailable.semantic_hold && disabled.semantic_hold);
+        assert_eq!(fixture.registry.get(&seat.id).await.unwrap(), Some(seat));
+        assert!(fixture.tmux.calls().is_empty());
+        assert_eq!(fixture.queue.live_len(), 0);
+    }
+
+    #[tokio::test]
+    async fn native_wait_revalidates_replacement_before_handoff() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let seat = native_seat(None);
+        register(&fixture, seat.clone()).await;
+        let identity = native_identity();
+        let service = Arc::clone(&fixture.service);
+        let waiting = tokio::spawn(async move {
+            service
+                .claim_native_inbox(&"pij-native".into(), true, &identity)
+                .await
+        });
+        tokio::task::yield_now().await;
+        let mut replacement = seat;
+        replacement.proc = Some(ProcIdentity {
+            pid: 138,
+            proc_start: 1380,
+        });
+        replacement.harness_session = Some("native-138".into());
+        fixture
+            .registry
+            .put(replacement)
+            .await
+            .expect("replacement attested");
+        fixture
+            .service
+            .send("pij-from".into(), "pij-native".into(), "new session only")
+            .await
+            .expect("queue");
+        tokio::time::timeout(Duration::from_secs(1), waiting)
+            .await
+            .expect("bounded wake")
+            .expect("task")
+            .expect_err("old tuple refused");
+        assert_eq!(
+            fixture.queue.live_len(),
+            1,
+            "old consumer did not take new work"
+        );
+    }
+
+    #[tokio::test]
+    async fn copilot_programmatic_controls_refuse_without_enqueue_or_tmux() {
+        let fixture = fixture(FakeTransport::reachable());
+        register(&fixture, native_seat(Some("%137"))).await;
+        for command in ["compact", "new", "reload"] {
+            let result = fixture
+                .service
+                .accept(Msg {
+                    from: "pij-from".into(),
+                    to: "pij-native".into(),
+                    body: String::new(),
+                    msg_id: format!("native-{command}"),
+                    from_machine: None,
+                    in_reply_to: None,
+                    command: Some(command.into()),
+                })
+                .await
+                .expect("explicit refusal receipt");
+            assert!(matches!(result.outcome, DeliveryOutcome::Refused { .. }));
+        }
+        assert_eq!(fixture.queue.live_len(), 0);
+        assert!(fixture.tmux.calls().is_empty());
+        assert!(fixture.transport.delivered().is_empty());
     }
 }

@@ -1,0 +1,98 @@
+{
+  "status": "scoped-checks-passed-source-review-clean-no-live-run",
+  "source_base": "0131cd6e",
+  "request": "assets/inputs/pm-native-host-exit-proof.json",
+  "source_evidence": {
+    "receipt": "assets/evidence/pm-native-lifecycle-probe-02.json",
+    "source_commit": "b49c2a5e551370d09c0cc427f7cdae41bf75147a",
+    "run": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-ZNGWK0",
+    "witness": "witnesses[kind=manual-native-dead-host-resume]",
+    "old_owner": {
+      "id": "pij-copilot-5295b67cdece6b3bbb0a1e5e",
+      "session": "e63d317a-58e6-4d4d-95d6-ab5d3c7ad0ac",
+      "pane": "%3",
+      "proc": { "pid": 73709, "proc_start": 20260905143017 }
+    },
+    "native_action": {
+      "command": "/exit",
+      "command_submitted": true,
+      "submit_keys": ["Enter"],
+      "status": "submitted-not-yet-lifecycle-proven"
+    },
+    "original_error": "PIJ_NATIVE_TIMEOUT: actual native host exits before resume",
+    "final_panes": "%0 70070 sleep\n%2 72891 node\n%3 73686 node",
+    "final_frame_pointer": "final_pane_captures[pane=%3]",
+    "observed_boundary": "PM reports /new and successor delivery passed, then /exit closed the foreground conversation and restored the older conversation while the host survived. Final frame shows earlier roundtrip msg_id 76ea9bd1-4d8c-4baf-a33e-389d5076375d. This is not whole-host death.",
+    "grade": "Prior actual deterministic-local-fixture probe evidence, not a new live run or real-provider inference. No historical liveness or geometry backfilled."
+  },
+  "implementation": {
+    "helper": "harness/scripts/copilot-native-smoke.ts:stopSmokeNativeHost",
+    "native_exit": "Existing driveSmokeLifecycleCommand and human_control receipt remain unchanged; /exit submission is not relabelled host death.",
+    "ownership": "Original launchProofs entry for the pre-/new target supplies fixture-owned pane/process identity. Successor pane and full original process tuple must match it. The observed tmux socket must match this run's dedicated private socket. Native launch attestation and valid exact pane/process fields are required before probing or teardown.",
+    "destructive_check_classification": "One-directional safety brakes: removing ownership checks could broaden teardown. Not product lifecycle or retention policy.",
+    "teardown": "If the owned pane remains in the private socket's pane list, retain its measured viewport and exact kill-pane command before closing only that pane. Already absent means no close. A raced close error is provisional only when recheck confirms the pane disappeared and actual ESRCH subsequently proves original host death.",
+    "death": "Retain old native/Pij identity and unmodified original process tuple. Production probe calls process.kill(originalPid, 0); only thrown code ESRCH proves death. No global PID kill, no fake liveness, no tuple mutation, no identity waiver. Pane disappearance alone is insufficient.",
+    "failure": "Retain original teardown exception across failed recheck, death timeout, or permission-denied probe. Secondary diagnostics stay in teardown_recheck_error/death_proof_error. Failed proof prevents resume; original native-control evidence remains separate.",
+    "resume": "Await stopSmokeNativeHost before existing fresh manual --resume; no Pij preallocation. Existing same native session/Pij address, fresh process tuple, subsequent native delivery, single acknowledgement and old-context exclusion assertions are unchanged.",
+    "witness_kind": "fixture-owned-native-host-teardown",
+    "witness_status": "host-death-proven-not-resume-proven",
+    "scope": ["smoke driver", "scoped smoke tests", "existing installer how-to", "this evidence receipt"]
+  },
+  "verification": {
+    "environment": { "VITEST_MAX_WORKERS": "4", "VITEST_MAX_THREADS": "4", "CARGO_BUILD_JOBS": "4" },
+    "new_helper_tests": 17,
+    "coverage": [
+      "tab-only native exit then owned pane closure and original tuple ESRCH",
+      "already-exited pane/process without spurious kill",
+      "natural exit racing close, accepted only with ESRCH",
+      "surviving process despite absent or successfully closed pane",
+      "original teardown error retained if pane remains or recheck fails",
+      "original teardown error retained after raced pane disappearance plus timeout or EPERM",
+      "EPERM, EACCES and unknown probe errors are not death",
+      "wrong socket, unowned pane, wrong PID/start and unattested launch refused before probing/teardown"
+    ],
+    "review_red": {
+      "command": "just test harness/scripts/copilot-native-smoke.test.ts -t 'preserves teardown failure when raced death proof'",
+      "failed": 2,
+      "skipped": 209,
+      "exit": 1,
+      "failure": "Timeout/probe-denied exception replaced original owned-pane teardown exception"
+    },
+    "final_regressions": {
+      "command": "just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts",
+      "passed": 244,
+      "installer": 33,
+      "smoke": 211,
+      "duration_seconds": 15.13,
+      "exit": 0
+    },
+    "typescript": {
+      "command": "node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit": 0
+    },
+    "biome": {
+      "command": "node_modules/.bin/biome check harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "files": 2,
+      "warnings": 0,
+      "fixes_applied": false,
+      "exit": 0
+    },
+    "review": {
+      "reviewer": "HostDeathReview",
+      "finding": "P2: retain original teardown exception across failed ESRCH wait after pane disappearance",
+      "correction": "Retain provisional teardownFailure, record death_proof_error separately, and rethrow original failure unless actual ESRCH completes proof",
+      "final_verdict": "correct",
+      "remaining_findings": [],
+      "scope": "Source-only helper, caller ownership provenance, resume ordering and tests; reviewer ran no validation/live commands"
+    }
+  },
+  "proof_grade": "Source and injected-IO contract tests only. Fake test probe outcomes are not actual ESRCH witnesses. Production adapter uses actual process.kill(pid, 0); live host death, fresh resume, and resumed delivery still require PM's scoped lifecycle probe.",
+  "not_run": ["live native CLI", "real-provider inference", "full harness checks", "Rust or cross-language contract suite"],
+  "not_changed": ["product/daemon/SDK", "permission grants", "composer recognizer", "queue/transport policy", "global daemon/config/links/auth", "governance or flow state", "composition worktree"],
+  "lesson": {
+    "observation": "DL-001",
+    "fingerprint": "af5cacdf2d76",
+    "encoded": "Conversation exit and process death now have separate receipts and executable checks; original-error preservation is defended by two review-derived regressions."
+  },
+  "pm_next": "Compose checkpoint and refresh frozen driver; rerun scoped lifecycle for real owned-pane host death and fresh resume delivery, then full canonical acceptance. Prior spawned-probe02 success is PM evidence, not rerun here."
+}
