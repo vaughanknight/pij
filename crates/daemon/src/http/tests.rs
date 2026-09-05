@@ -441,12 +441,14 @@ fn registration_binding_absent_preserves_descriptor_shape() {
 }
 
 async fn assert_registration_binding_fixture(expected_key: &str, previous_key: Option<&str>) {
-    let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/plans/135-rs-boot-announce/assets/contracts/register-response.json");
-    let fixture: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(fixture_path).expect("read shared register response fixture"),
-    )
-    .expect("parse shared register response fixture");
+    // Resolved through the testkit corpus helper, NOT a relative path string:
+    // this fixture already moved once (out of the plan folder, which post-flight
+    // archives), and the path-string version of this line silently pointed at a
+    // deleted file while the working tree still had the fix. A helper makes the
+    // next move a COMPILE error instead of a NotFound panic at test time.
+    let fixture: serde_json::Value =
+        serde_json::from_str(&pij_testkit::fixtures::read("register-response.json"))
+            .expect("parse shared register response fixture");
     let expected = &fixture[expected_key];
     let descriptor: SeatDescriptor =
         serde_json::from_value(expected.clone()).expect("fixture descriptor");
