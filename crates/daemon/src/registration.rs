@@ -544,9 +544,14 @@ impl RegistrationService {
             descriptor.parent = Some(parent);
         }
         descriptor.relay = claim.relay;
-        // Ordinary registration cannot transfer or revive native capability.
-        // Only this request's verified process/session observation can grant it.
-        descriptor.native_extension_delivery = native;
+        // Ordinary registration preserves only an unchanged current attested owner.
+        // Grants, transfers and revivals require verified native observation.
+        descriptor.native_extension_delivery = native
+            || existing.is_some_and(|owner| {
+                owner.native_extension_delivery
+                    && owner.tombstoned_at.is_none()
+                    && same_native_owner(owner, &descriptor)
+            });
 
         // Retire only a proven-dead native resource owner, never its queued work.
         // Same-conversation resume updates its original address instead.
@@ -1469,13 +1474,87 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ordinary_registration_preserves_unchanged_attested_native_owner_and_binding() {
+        let (service, registry) = native_service(Vec::new(), native_liveness());
+        let owner = attest(
+            &service,
+            native_claim("pij-native"),
+            Some(SESSION),
+            &native_tmux(),
+        )
+        .await
+        .expect("verified native owner");
+        for session in [Some(SESSION), None, Some("   ")] {
+            let (adopted, binding) = service
+                .register_with_harness_session(
+                    native_claim("pij-native"),
+                    session.map(str::to_string),
+                )
+                .await
+                .expect("unchanged ordinary adoption");
+            assert!(adopted.native_extension_delivery);
+            assert_eq!(adopted, owner);
+            assert!(!binding.inserted);
+            assert_eq!(binding.previous_proc, owner.proc);
+            assert_eq!(
+                registry.get(&owner.id).await.expect("roster"),
+                Some(owner.clone())
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn ordinary_registration_refuses_changed_native_owner_after_readoption() {
+        for replacement in [
+            OTHER_HOST,
+            ProcIdentity {
+                proc_start: HOST.proc_start + 1,
+                ..HOST
+            },
+        ] {
+            let (mut service, registry) = native_service(Vec::new(), native_liveness());
+            let owner = attest(
+                &service,
+                native_claim("pij-native"),
+                Some(SESSION),
+                &native_tmux(),
+            )
+            .await
+            .expect("verified native owner");
+            assert_eq!(
+                service.register(native_claim("pij-native")).await.unwrap(),
+                owner
+            );
+            // Both a new PID and a recycled PID require native re-attestation,
+            // even when the old exact incarnation is no longer observed alive.
+            service.liveness = Arc::new(FakeLiveness::new().with_proc(replacement));
+            let mut claim = native_claim("pij-native");
+            claim.pid = Some(replacement.pid);
+            claim.proc_start = Some(replacement.proc_start);
+            let error = service
+                .register_with_harness_session(claim, Some(SESSION.to_string()))
+                .await
+                .expect_err("ordinary registration cannot transfer native ownership");
+            assert!(
+                error
+                    .to_string()
+                    .contains("ordinary registration cannot change")
+            );
+            assert_eq!(
+                registry.list(SeatFilter::default()).await.unwrap(),
+                vec![owner]
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn ordinary_registration_never_inherits_native_capability() {
-        for change in 0..5 {
+        for change in 0..7 {
             let mut old = native_seat("pij-native");
             let mut claim = native_claim("pij-native");
             let mut session = Some(SESSION.to_string());
             match change {
-                0 => {}
+                0 => old.native_extension_delivery = false,
                 1 => {
                     claim.pid = Some(OTHER_HOST.pid);
                     claim.proc_start = Some(OTHER_HOST.proc_start);
@@ -1487,19 +1566,35 @@ mod tests {
                     session = None;
                 }
                 4 => old.tombstoned_at = Some(1),
+                5 => {}
+                6 => {
+                    old.proc = None;
+                    old.native_extension_delivery = false;
+                }
                 _ => unreachable!(),
             }
-            let (service, registry) = native_service(vec![old.clone()], native_liveness());
+            let prior = if change == 5 {
+                Vec::new()
+            } else {
+                vec![old.clone()]
+            };
+            let (service, registry) = native_service(prior, native_liveness());
             let ordinary = service.register_with_harness_session(claim, session).await;
             if matches!(change, 1..=3) {
                 refused(ordinary);
                 assert_eq!(registry.get(&old.id).await.expect("roster"), Some(old));
             } else {
-                assert!(
-                    !ordinary
-                        .expect("ordinary registration unchanged")
-                        .0
-                        .native_extension_delivery
+                let (registered, binding) = ordinary.expect("ordinary registration without grant");
+                assert!(!registered.native_extension_delivery, "case {change}");
+                assert_eq!(binding.inserted, change == 5);
+                assert_eq!(
+                    binding.previous_proc,
+                    if change == 5 { None } else { old.proc }
+                );
+                assert_eq!(registered.tombstoned_at, old.tombstoned_at);
+                assert_eq!(
+                    registry.get(&old.id).await.expect("roster"),
+                    Some(registered)
                 );
             }
         }
@@ -1772,12 +1867,13 @@ mod tests {
     #[tokio::test]
     async fn ordinary_withdrawal_preserves_session_and_does_not_enable_later_takeover() {
         for bypass in 0..5 {
-            let old = native_seat("pij-native");
+            let mut old = native_seat("pij-native");
+            old.native_extension_delivery = false;
             let (service, registry) = native_service(vec![old], native_liveness());
             let withdrawn = service
                 .register(native_claim("pij-native"))
                 .await
-                .expect("same incarnation may omit session when withdrawing capability");
+                .expect("ordinary registration cannot revive withdrawn capability");
             assert_eq!(withdrawn.harness, Harness::Copilot);
             assert_eq!(withdrawn.harness_session.as_deref(), Some(SESSION));
             assert!(!withdrawn.native_extension_delivery);
