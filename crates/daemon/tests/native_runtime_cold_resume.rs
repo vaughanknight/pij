@@ -36,10 +36,10 @@ const signal = AbortSignal.timeout(4000);
 const client = new DaemonClient({ addr: input.addr, readKey: async () => input.key });
 const roster = await client.request('/v1/seats?scope=local', undefined, signal);
 assert.ok(Array.isArray(roster.seats));
-const registration = chooseRegistration({
+const registration = await resolveRegistration(client, chooseRegistration({
     sessionId: input.session, host: input.host, folder: input.folder,
     seats: roster.seats, env: {},
-});
+}), signal);
 const tuple = {
     seat: registration.id, native_session: registration.harness_session,
     pid: registration.pid, proc_start: registration.proc_start,
@@ -200,7 +200,7 @@ impl Fixture {
         let stderr_path = self.directory.join(format!("node-{stage}.stderr"));
         let module_url = reqwest::Url::from_file_path(module).expect("absolute module path");
         let source = format!(
-            "import {{ chooseRegistration, DaemonClient, FileJournal, NativeBridge }} from {};\n{RUNNER}",
+            "import {{ chooseRegistration, resolveRegistration, DaemonClient, FileJournal, NativeBridge }} from {};\n{RUNNER}",
             serde_json::to_string(module_url.as_str()).unwrap(),
         );
         let child = Command::new("node")

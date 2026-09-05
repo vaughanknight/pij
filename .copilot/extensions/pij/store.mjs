@@ -117,15 +117,9 @@ export function chooseRegistration({ sessionId, host, folder, seats, env }) {
 	if (requestedSpawn && (!prior || prior.spawn_id !== requestedSpawn))
 		throw new NativeError("Spawn correlation does not match observed process identity");
 	const replacing = prior && nonempty(prior.session) && prior.session !== sessionId;
-	let id =
-		!replacing && prior
-			? prior.id
-			: `pij-copilot-${hash(JSON.stringify([sessionId])).slice(0, 24)}`;
-	// Explicitly retired attachments never regain their old address, even for A -> B -> A.
-	if ((!prior || replacing) && seats.some((seat) => seat.id === id && seat.tombstoned_at != null))
-		id = `pij-copilot-${randomUUID().replaceAll("-", "").slice(0, 24)}`;
-	if (seats.some((seat) => seat !== prior && seat.id === id))
-		throw new NativeError("Native identity collides with another process");
+	// New identities are allocated by the daemon's normal memorable-name allocator.
+	// Existing addresses, including older hash names, remain stable on resume.
+	const id = !replacing && prior ? prior.id : "";
 	return Object.freeze({
 		id,
 		harness: "copilot",
@@ -140,6 +134,32 @@ export function chooseRegistration({ sessionId, host, folder, seats, env }) {
 		...(prior?.spawn_id ? { spawn_id: prior.spawn_id } : {}),
 		...(prior?.parent ? { parent: prior.parent } : {}),
 	});
+}
+
+function verifyRegisteredSeat(seat, registration) {
+	if (
+		!nonempty(seat?.id) ||
+		(registration.id !== "" && seat.id !== registration.id) ||
+		seat.harness !== "copilot" ||
+		seat.session !== registration.harness_session ||
+		!sameProcess(seat, registration) ||
+		!samePane(seat, registration) ||
+		seat.native_extension_delivery !== true
+	)
+		throw new NativeError(
+			"Daemon registration identity/capability readback mismatch; native receiving refused",
+		);
+}
+
+/** Resolve a new address before creating its durable journal namespace. */
+export async function resolveRegistration(client, registration, signal) {
+	if (registration.id !== "") return registration;
+	const seat = await client.request("/v1/register", registration, signal);
+	throwIfStopped(signal);
+	verifyRegisteredSeat(seat, registration);
+	const bound = { ...registration, id: seat.id };
+	delete bound.supersedes;
+	return Object.freeze(bound);
 }
 
 class TypingSensorError extends NativeError {
@@ -565,17 +585,7 @@ export class NativeBridge {
 			signal,
 		);
 		throwIfStopped(signal);
-		if (
-			seat?.id !== registration.id ||
-			seat.harness !== "copilot" ||
-			seat.session !== registration.harness_session ||
-			!sameProcess(seat, registration) ||
-			!samePane(seat, registration) ||
-			seat.native_extension_delivery !== true
-		)
-			throw new NativeError(
-				"Daemon registration identity/capability readback mismatch; native receiving refused",
-			);
+		verifyRegisteredSeat(seat, registration);
 		this.registered = true;
 		if (!this.reconnectRegistration) {
 			this.reconnectRegistration = { ...registration };

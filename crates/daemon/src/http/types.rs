@@ -18,7 +18,7 @@ pub struct Registration {
     /// impostor naming someone else's seat is exactly what #19 is about.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supersedes: Option<SeatId>,
-    /// Claimed seat id.
+    /// Claimed seat id. An empty native Copilot claim requests canonical allocation.
     pub id: String,
     /// Claimed harness spelling; admission refuses unknown values rather than guessing.
     pub harness: String,

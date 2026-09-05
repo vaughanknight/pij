@@ -42,6 +42,11 @@ The native `pij_send({to, message})` tool returns a Pij receipt. Ordinary assist
 turns are not forwarded automatically. Compact/new/reload remote controls are
 unsupported for Copilot; native user-driven session lifecycle remains separate.
 
+New manual sessions receive an ordinary memorable Pij ID from the daemon, just
+like spawned seats. The native session ID remains the internal resume key.
+Existing addresses, including earlier hash-style IDs, are preserved; this does
+not rename live seats or move their queued messages and acceptance journals.
+
 ## Receipt grades and failures
 
 A daemon `reader-read` receipt means the native harness accepted a message. It is

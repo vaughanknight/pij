@@ -6,6 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pij_core::error::PijError;
 use pij_core::model::{Event, Harness, ProcIdentity, SeatDescriptor, SeatId};
+use pij_core::names::memorable_pij_id_candidates;
 use pij_core::ports::{LivenessPort, PutBinding, Registry, SeatFilter, TmuxPort};
 use pij_core::wire;
 use pij_harnesses::ensure_claude_inbound_accept;
@@ -186,8 +187,8 @@ impl RegistrationService {
             if previous == identity {
                 continue;
             }
-            let same_address_resume =
-                seat.id.as_str() == claim.id && seat.harness_session.as_deref() == Some(session);
+            let same_address_resume = (claim.id.is_empty() || seat.id.as_str() == claim.id)
+                && seat.harness_session.as_deref() == Some(session);
             let stale_pane_owner = seat.id.as_str() != claim.id
                 && claim.pane.is_some()
                 && seat.pane == claim.pane
@@ -318,7 +319,7 @@ impl RegistrationService {
 
     async fn register_inner(
         &self,
-        claim: Registration,
+        mut claim: Registration,
         harness_session: Option<String>,
         handoff: Option<&NativeHandoff>,
     ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError> {
@@ -369,6 +370,40 @@ impl RegistrationService {
             return Err(native_refusal(
                 "native owner changed during death observation; retry registration",
             ));
+        }
+        if native && claim.id.is_empty() {
+            let session = harness_session
+                .as_deref()
+                .expect("validated native session");
+            let target = if let Some(prebind) = registration_target(&claim, true, &seats) {
+                Some(prebind)
+            } else {
+                let mut matches = seats.iter().filter(|seat| {
+                    seat.harness == Harness::Copilot
+                        && seat.harness_session.as_deref() == Some(session)
+                        && seat.tombstoned_at.is_none()
+                });
+                let target = matches.next();
+                if matches.next().is_some() {
+                    return Err(native_refusal("native session has multiple Pij addresses"));
+                }
+                target
+            };
+            if let Some(target) = target {
+                claim.id = target.id.to_string();
+                // A repeated allocation request can arrive after its first response was lost.
+                if target.native_extension_delivery
+                    && target.proc == proc
+                    && target.pane == claim.pane
+                {
+                    claim.supersedes = None;
+                }
+            } else {
+                claim.id = memorable_pij_id_candidates(&format!("copilot\0{session}"))
+                    .find(|candidate| seats.iter().all(|seat| seat.id != *candidate))
+                    .ok_or_else(|| native_refusal("memorable Pij ID space is exhausted"))?
+                    .to_string();
+            }
         }
         let claimed_id = SeatId::from(claim.id.clone());
         let existing = registration_target(&claim, native, &seats);
@@ -1407,18 +1442,35 @@ mod tests {
     async fn native_reconnect_retains_address_and_explicit_new_session_retires_old_capability() {
         let (service, registry) = native_service(Vec::new(), native_liveness());
         let tmux = native_tmux();
-        let first = attest(&service, native_claim("pij-first"), Some(SESSION), &tmux)
+        let first = attest(&service, native_claim(""), Some(SESSION), &tmux)
             .await
             .expect("first");
-        let reconnected = attest(&service, native_claim("pij-first"), Some(SESSION), &tmux)
+        assert_eq!(
+            first.id,
+            pij_core::names::memorable_pij_id_candidates(&format!("copilot\0{SESSION}"))
+                .next()
+                .expect("memorable name")
+        );
+        let reconnected = attest(&service, native_claim(""), Some(SESSION), &tmux)
             .await
             .expect("reconnect");
         assert_eq!(first, reconnected);
-        let mut next = native_claim("pij-next");
+        let mut next = native_claim("");
         next.supersedes = Some(first.id.clone());
-        let successor = attest(&service, next, Some("user-created-new-session"), &tmux)
-            .await
-            .expect("checked supersedes");
+        let successor = attest(
+            &service,
+            next.clone(),
+            Some("user-created-new-session"),
+            &tmux,
+        )
+        .await
+        .expect("checked supersedes");
+        assert_eq!(
+            attest(&service, next, Some("user-created-new-session"), &tmux)
+                .await
+                .expect("retry after a lost allocation response"),
+            successor
+        );
         assert_ne!(successor.id, first.id);
         assert_eq!(successor.proc, first.proc);
         assert!(successor.native_extension_delivery);
@@ -1432,7 +1484,7 @@ mod tests {
         assert_eq!(
             attest(
                 &service,
-                native_claim("pij-next"),
+                native_claim(successor.id.as_str()),
                 Some("user-created-new-session"),
                 &tmux
             )
@@ -1440,7 +1492,15 @@ mod tests {
             .expect("reconnect ignores retired collision"),
             successor,
         );
-        refused(attest(&service, native_claim("pij-first"), Some(SESSION), &tmux).await);
+        refused(
+            attest(
+                &service,
+                native_claim(first.id.as_str()),
+                Some(SESSION),
+                &tmux,
+            )
+            .await,
+        );
     }
 
     #[tokio::test]
@@ -1636,7 +1696,7 @@ mod tests {
     async fn cold_resume_requires_dead_attested_incarnation_and_preserves_hold() {
         for observed_start in [None, Some(HOST.proc_start), Some(HOST.proc_start + 1)] {
             for attested in [false, true] {
-                let mut old = native_seat("pij-cold-resume");
+                let mut old = native_seat("pij-copilot-0123456789abcdef01234567");
                 old.native_extension_delivery = attested;
                 old.semantic_state = Some(SemanticState::Hold);
                 let mut liveness = FakeLiveness::new().with_proc(SHELL).with_proc(OTHER_HOST);
@@ -1647,7 +1707,7 @@ mod tests {
                     });
                 }
                 let (service, registry) = native_service(vec![old.clone()], Arc::new(liveness));
-                let mut claim = native_claim(old.id.as_str());
+                let mut claim = native_claim("");
                 claim.pid = Some(OTHER_HOST.pid);
                 claim.proc_start = Some(OTHER_HOST.proc_start);
                 claim.pane = Some("%cold-resume".into());
