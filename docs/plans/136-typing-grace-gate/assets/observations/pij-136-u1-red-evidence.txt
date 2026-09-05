@@ -1,0 +1,551 @@
+ORIGINAL SEVEN WITNESSES (before product edits)
+
+> pij@0.1.0 test
+> vitest run /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts --maxWorkers=4
+
+(node:77812) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts (15 tests | 7 failed) 792ms
+     ✓ registers structural identity, forwards unknown events, injects a push, and correlates reply 68ms
+     ✓ binds startup to the daemon row for the spawned pane 1ms
+     ✓ suppresses injection when another worker already owns the queued row 54ms
+     ✓ leaves an in-flight claim unacked when a new session replaces its seat 52ms
+     ✓ delivers the authority-owned claim when the pushed event names a different message 50ms
+     ✓ does not acknowledge when the runtime injection fails 50ms
+     ✓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false) 255ms
+     ✓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true) 255ms
+     × holds at 59 seconds and releases at 60 with exact hold/release payloads 4ms
+     × preserves claim order across two holds 1ms
+     × bypasses compact, new, reload and urgent while ordinary rows stay held 1ms
+     × never acknowledges a claimed held row 0ms
+     × redelivers two unacked holds after shutdown and re-register in order 0ms
+     × uses the daemon grace rather than the fallback 0ms
+     × ignores onChange immediately following its own injection 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > holds at 59 seconds and releases at 60 with exact hold/release payloads
+AssertionError: expected [ { …(2) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "mode": "immediate",
++     "text": "[pij from pij-sender] boundary",
++   },
++ ]
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:695:22
+    693|   await vi.advanceTimersByTimeAsync(59_000);
+    694|   await client.push(message("boundary"));
+    695|   expect(pi.injects).toEqual([]);
+       |                      ^
+    696|   expect(client.holds).toEqual([{ seat: "pij-grace-test", msg_id: "bou…
+    697|   expect(pi.statuses.at(-1)).toBe("⏸ 1 held · typing");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > preserves claim order across two holds
+AssertionError: expected [ { …(2) }, { …(2) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "mode": "immediate",
++     "text": "[pij from pij-sender] first",
++   },
++   {
++     "mode": "immediate",
++     "text": "[pij from pij-sender] second",
++   },
++ ]
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:711:22
+    709|   await vi.advanceTimersByTimeAsync(1_000);
+    710|   await client.push(message("second"));
+    711|   expect(pi.injects).toEqual([]);
+       |                      ^
+    712|   expect(pi.statuses.at(-1)).toBe("⏸ 2 held · typing");
+    713|   await vi.advanceTimersByTimeAsync(59_000);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > bypasses compact, new, reload and urgent while ordinary rows stay held
+AssertionError: expected [ …(2) ] to deeply equal [ '[pij from pij-sender] urgent' ]
+
+- Expected
++ Received
+
+  [
++   "[pij from pij-sender] ordinary",
+    "[pij from pij-sender] urgent",
+  ]
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:724:45
+    722|   for (const command of ["compact", "new", "reload"]) await client.pus…
+    723|   await client.push(message("urgent", { urgent: true }));
+    724|   expect(pi.injects.map((row) => row.text)).toEqual(["[pij from pij-se…
+       |                                             ^
+    725|   expect(pi.compactCount).toBe(1);
+    726|   expect(pi.controlCalls).toEqual(["new", "reload"]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/7]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > never acknowledges a claimed held row
+AssertionError: expected [ 1 ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   1,
++ ]
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:735:23
+    733|   pi.edit();
+    734|   await client.push(message("unacked"));
+    735|   expect(client.acks).toEqual([]);
+       |                       ^
+    736|   expect(client.jobs[0]).toMatchObject({ claimed: true, acked: false }…
+    737|   await vi.advanceTimersByTimeAsync(59_000);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/7]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > redelivers two unacked holds after shutdown and re-register in order
+AssertionError: expected [ 1, 2 ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   1,
++   2,
++ ]
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:746:23
+    744|   await client.push(message("first"));
+    745|   await client.push(message("second"));
+    746|   expect(client.acks).toEqual([]);
+       |                       ^
+    747|   runtime.shutdown("quit");
+    748|   const restarted = await start(client);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/7]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > uses the daemon grace rather than the fallback
+AssertionError: expected [ { …(2) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "mode": "immediate",
++     "text": "[pij from pij-sender] wire-grace",
++   },
++ ]
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:761:22
+    759|   await vi.advanceTimersByTimeAsync(65_000);
+    760|   await client.push(message("wire-grace"));
+    761|   expect(pi.injects).toEqual([]);
+       |                      ^
+    762|   await vi.advanceTimersByTimeAsync(10_000);
+    763|   expect(pi.injects.map((row) => row.text)).toEqual(["[pij from pij-se…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/7]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > ignores onChange immediately following its own injection
+AssertionError: expected [ { …(2) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "mode": "immediate",
++     "text": "[pij from pij-sender] ordinary",
++   },
++ ]
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:770:22
+    768|   pi.edit();
+    769|   await client.push(message("ordinary"));
+    770|   expect(pi.injects).toEqual([]);
+       |                      ^
+    771|   await vi.advanceTimersByTimeAsync(59_000);
+    772|   pi.echoChanges = true;
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/7]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  7 failed | 8 passed (15)
+   Start at  09:55:51
+   Duration  1.02s (transform 118ms, setup 0ms, import 149ms, tests 792ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > holds at 59 seconds and releases at 60 with exact hold/release payloads,line=695,column=22::AssertionError: expected [ { …(2) } ] to deeply equal []%0A%0A- Expected%0A+ Received%0A%0A- []%0A+ [%0A+   {%0A+     "mode": "immediate",%0A+     "text": "[pij from pij-sender] boundary",%0A+   },%0A+ ]%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:695:22%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > preserves claim order across two holds,line=711,column=22::AssertionError: expected [ { …(2) }, { …(2) } ] to deeply equal []%0A%0A- Expected%0A+ Received%0A%0A- []%0A+ [%0A+   {%0A+     "mode": "immediate",%0A+     "text": "[pij from pij-sender] first",%0A+   },%0A+   {%0A+     "mode": "immediate",%0A+     "text": "[pij from pij-sender] second",%0A+   },%0A+ ]%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:711:22%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > bypasses compact%2C new%2C reload and urgent while ordinary rows stay held,line=724,column=45::AssertionError: expected [ …(2) ] to deeply equal [ '[pij from pij-sender] urgent' ]%0A%0A- Expected%0A+ Received%0A%0A  [%0A+   "[pij from pij-sender] ordinary",%0A    "[pij from pij-sender] urgent",%0A  ]%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:724:45%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > never acknowledges a claimed held row,line=735,column=23::AssertionError: expected [ 1 ] to deeply equal []%0A%0A- Expected%0A+ Received%0A%0A- []%0A+ [%0A+   1,%0A+ ]%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:735:23%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > redelivers two unacked holds after shutdown and re-register in order,line=746,column=23::AssertionError: expected [ 1, 2 ] to deeply equal []%0A%0A- Expected%0A+ Received%0A%0A- []%0A+ [%0A+   1,%0A+   2,%0A+ ]%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:746:23%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > uses the daemon grace rather than the fallback,line=761,column=22::AssertionError: expected [ { …(2) } ] to deeply equal []%0A%0A- Expected%0A+ Received%0A%0A- []%0A+ [%0A+   {%0A+     "mode": "immediate",%0A+     "text": "[pij from pij-sender] wire-grace",%0A+   },%0A+ ]%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:761:22%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > ignores onChange immediately following its own injection,line=770,column=22::AssertionError: expected [ { …(2) } ] to deeply equal []%0A%0A- Expected%0A+ Received%0A%0A- []%0A+ [%0A+   {%0A+     "mode": "immediate",%0A+     "text": "[pij from pij-sender] ordinary",%0A+   },%0A+ ]%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:770:22%0A%0A
+
+REAL ADAPTER WITNESS (before sensor edit)
+
+> pij@0.1.0 test
+> vitest run /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts --maxWorkers=4 -t the real adapter
+
+(node:93804) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts (16 tests | 1 failed | 15 skipped) 8ms
+     ↓ registers structural identity, forwards unknown events, injects a push, and correlates reply
+     ↓ binds startup to the daemon row for the spawned pane
+     ↓ suppresses injection when another worker already owns the queued row
+     ↓ leaves an in-flight claim unacked when a new session replaces its seat
+     ↓ delivers the authority-owned claim when the pushed event names a different message
+     ↓ does not acknowledge when the runtime injection fails
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true)
+     ↓ holds at 59 seconds and releases at 60 with exact hold/release payloads
+     ↓ preserves claim order across two holds
+     ↓ bypasses compact, new, reload and urgent while ordinary rows stay held
+     ↓ never acknowledges a claimed held row
+     ↓ redelivers two unacked holds after shutdown and re-register in order
+     ↓ uses the daemon grace rather than the fallback
+     ↓ programmatic injection does not postpone a terminal-input grace
+     × the real adapter observes terminal keys, not programmatic editor writes 8ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > the real adapter observes terminal keys, not programmatic editor writes
+AssertionError: expected [ { …(2) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "mode": "immediate",
++     "text": "[pij from pij-sender] terminal-held",
++   },
++ ]
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:793:22
+    791|   onInput?.("\u001b[D"); // Cursor movement counts even without a text…
+    792|   await client.push(message("terminal-held"));
+    793|   expect(pi.injects).toEqual([]);
+       |                      ^
+    794|   await vi.advanceTimersByTimeAsync(59_000);
+    795|   await client.push(message("urgent", { urgent: true }));
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 skipped (16)
+   Start at  09:59:16
+   Duration  368ms (transform 233ms, setup 0ms, import 270ms, tests 8ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > the real adapter observes terminal keys%2C not programmatic editor writes,line=793,column=22::AssertionError: expected [ { …(2) } ] to deeply equal []%0A%0A- Expected%0A+ Received%0A%0A- []%0A+ [%0A+   {%0A+     "mode": "immediate",%0A+     "text": "[pij from pij-sender] terminal-held",%0A+   },%0A+ ]%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:793:22%0A%0A
+
+INVERSION WITNESSES (before reclaim/idempotency fix)
+
+> pij@0.1.0 test
+> vitest run /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts --maxWorkers=4
+
+(node:24127) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts (17 tests | 5 failed) 866ms
+     ✓ registers structural identity, forwards unknown events, injects a push, and correlates reply 68ms
+     ✓ binds startup to the daemon row for the spawned pane 1ms
+     ✓ suppresses injection when another worker already owns the queued row 52ms
+     ✓ leaves an in-flight claim unacked when a new session replaces its seat 53ms
+     ✓ delivers the authority-owned claim when the pushed event names a different message 52ms
+     ✓ does not acknowledge when the runtime injection fails 53ms
+     ✓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false) 258ms
+     ✓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true)  309ms
+     × holds at 59 seconds and releases at 60 with exact hold/release payloads 6ms
+     × preserves claim order across two holds 2ms
+     ✓ bypasses compact, new, reload and urgent while ordinary rows stay held 1ms
+     ✓ returns held claims to pending without acknowledging them 2ms
+     ✓ redelivers two unacked holds after shutdown and re-register in order 2ms
+     ✓ uses the daemon grace rather than the fallback 2ms
+     × programmatic injection does not postpone a terminal-input grace 2ms
+     × the real adapter observes terminal keys, not programmatic editor writes 2ms
+     × re-holds a repeated push without another held event or duplicate delivery 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > holds at 59 seconds and releases at 60 with exact hold/release payloads
+AssertionError: expected [ 'hold:boundary', 'release:boundary' ] to deeply equal [ 'hold:boundary', …(2) ]
+
+- Expected
++ Received
+
+  [
+    "hold:boundary",
+    "release:boundary",
+-   "ack:boundary",
+  ]
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:713:29
+    711|   expect(pi.injects.map((row) => row.text)).toEqual(["[pij from pij-se…
+    712|   expect(client.releases).toEqual([{ seat: "pij-grace-test", msg_id: "…
+    713|   expect(client.operations).toEqual(["hold:boundary", "release:boundar…
+       |                             ^
+    714|   expect(pi.statuses.at(-1)).toBeUndefined();
+    715|  });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > preserves claim order across two holds
+AssertionError: expected [] to deeply equal [ 1, 2 ]
+
+- Expected
++ Received
+
+- [
+-   1,
+-   2,
+- ]
++ []
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:727:23
+    725|   await vi.advanceTimersByTimeAsync(59_000);
+    726|   expect(pi.injects.map((row) => row.text)).toEqual(["[pij from pij-se…
+    727|   expect(client.acks).toEqual([1, 2]);
+       |                       ^
+    728|  });
+    729|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > programmatic injection does not postpone a terminal-input grace
+AssertionError: expected [ 2 ] to deeply equal [ 2, 1 ]
+
+- Expected
++ Received
+
+  [
+    2,
+-   1,
+  ]
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:788:23
+    786|   await vi.advanceTimersByTimeAsync(1_000);
+    787|   expect(pi.injects.map((row) => row.text)).toEqual(["[pij from pij-se…
+    788|   expect(client.acks).toEqual([2, 1]);
+       |                       ^
+    789|  });
+    790|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > the real adapter observes terminal keys, not programmatic editor writes
+AssertionError: expected [ 2 ] to deeply equal [ 2, 1 ]
+
+- Expected
++ Received
+
+  [
+    2,
+-   1,
+  ]
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:815:23
+    813|   await vi.advanceTimersByTimeAsync(1_000);
+    814|   expect(pi.injects.map((row) => row.text)).toEqual(["[pij from pij-se…
+    815|   expect(client.acks).toEqual([2, 1]);
+       |                       ^
+    816|   runtime.shutdown("quit");
+    817|   expect(onInput).toBeUndefined();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > re-holds a repeated push without another held event or duplicate delivery
+AssertionError: expected [ { seat: 'pij-grace-test', …(3) } ] to have a length of 2 but got 1
+
+- Expected
++ Received
+
+- 2
++ 1
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:827:31
+    825|   pi.edit();
+    826|   await client.repeat("repeat");
+    827|   expect(client.holdRequests).toHaveLength(2);
+       |                               ^
+    828|   expect(client.holds).toHaveLength(1);
+    829|   expect(client.jobs[0]).toMatchObject({ claimed: false, acked: false,…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 12 passed (17)
+   Start at  10:03:10
+   Duration  1.09s (transform 111ms, setup 0ms, import 141ms, tests 866ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > holds at 59 seconds and releases at 60 with exact hold/release payloads,line=713,column=29::AssertionError: expected [ 'hold:boundary', 'release:boundary' ] to deeply equal [ 'hold:boundary', …(2) ]%0A%0A- Expected%0A+ Received%0A%0A  [%0A    "hold:boundary",%0A    "release:boundary",%0A-   "ack:boundary",%0A  ]%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:713:29%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > preserves claim order across two holds,line=727,column=23::AssertionError: expected [] to deeply equal [ 1, 2 ]%0A%0A- Expected%0A+ Received%0A%0A- [%0A-   1,%0A-   2,%0A- ]%0A+ []%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:727:23%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > programmatic injection does not postpone a terminal-input grace,line=788,column=23::AssertionError: expected [ 2 ] to deeply equal [ 2, 1 ]%0A%0A- Expected%0A+ Received%0A%0A  [%0A    2,%0A-   1,%0A  ]%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:788:23%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > the real adapter observes terminal keys%2C not programmatic editor writes,line=815,column=23::AssertionError: expected [ 2 ] to deeply equal [ 2, 1 ]%0A%0A- Expected%0A+ Received%0A%0A  [%0A    2,%0A-   1,%0A  ]%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:815:23%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > re-holds a repeated push without another held event or duplicate delivery,line=827,column=31::AssertionError: expected [ { seat: 'pij-grace-test', …(3) } ] to have a length of 2 but got 1%0A%0A- Expected%0A+ Received%0A%0A- 2%0A+ 1%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:827:31%0A%0A
+
+PRE-FIX POLLING WITNESS (peek later removed by ruling)
+
+> pij@0.1.0 test
+> vitest run /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts --maxWorkers=4 -t peeks while held
+
+(node:8692) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts (18 tests | 1 failed | 17 skipped) 7ms
+     ↓ registers structural identity, forwards unknown events, injects a push, and correlates reply
+     ↓ binds startup to the daemon row for the spawned pane
+     ↓ suppresses injection when another worker already owns the queued row
+     ↓ leaves an in-flight claim unacked when a new session replaces its seat
+     ↓ delivers the authority-owned claim when the pushed event names a different message
+     ↓ does not acknowledge when the runtime injection fails
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true)
+     ↓ holds at 59 seconds and releases at 60 with exact hold/release payloads
+     ↓ preserves claim order across two holds
+     ↓ bypasses compact, new, reload and urgent while ordinary rows stay held
+     ↓ returns held claims to pending without acknowledging them
+     ↓ redelivers two unacked holds after shutdown and re-register in order
+     ↓ uses the daemon grace rather than the fallback
+     ↓ programmatic injection does not postpone a terminal-input grace
+     ↓ the real adapter observes terminal keys, not programmatic editor writes
+     ↓ re-holds a repeated push without another held event or duplicate delivery
+     × peeks while held and promptly claims a command even without a pushed frame 7ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > peeks while held and promptly claims a command even without a pushed frame
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:848:27
+    846|   await client.push(message("compact", { command: "compact" }), false);
+    847|   await vi.advanceTimersByTimeAsync(1_000);
+    848|   expect(pi.compactCount).toBe(1);
+       |                           ^
+    849|   expect(client.acks).toEqual([2]);
+    850|   expect(pi.injects).toEqual([]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 17 skipped (18)
+   Start at  10:05:33
+   Duration  219ms (transform 109ms, setup 0ms, import 136ms, tests 7ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > peeks while held and promptly claims a command even without a pushed frame,line=848,column=27::AssertionError: expected +0 to be 1 // Object.is equality%0A%0A- Expected%0A+ Received%0A%0A- 1%0A+ 0%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:848:27%0A%0A
+
+FINAL JOB-ID CONTRACT RED
+
+> pij@0.1.0 test
+> vitest run /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts --maxWorkers=4 -t holds at 59
+
+(node:98697) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts (18 tests | 1 failed | 17 skipped) 8ms
+     ↓ registers structural identity, forwards unknown events, injects a push, and correlates reply
+     ↓ binds startup to the daemon row for the spawned pane
+     ↓ suppresses injection when another worker already owns the queued row
+     ↓ leaves an in-flight claim unacked when a new session replaces its seat
+     ↓ delivers the authority-owned claim when the pushed event names a different message
+     ↓ does not acknowledge when the runtime injection fails
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true)
+     × holds at 59 seconds and releases at 60 with exact hold/release payloads 8ms
+     ↓ preserves claim order across two holds
+     ↓ bypasses compact, new, reload and urgent while ordinary rows stay held
+     ↓ returns held claims to pending without acknowledging them
+     ↓ redelivers two unacked holds after shutdown and re-register in order
+     ↓ uses the daemon grace rather than the fallback
+     ↓ programmatic injection does not postpone a terminal-input grace
+     ↓ the real adapter observes terminal keys, not programmatic editor writes
+     ↓ re-holds a repeated push without another held event or duplicate delivery
+     ↓ polls eligible claims while held and bypasses a deferred head without a pushed frame
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > holds at 59 seconds and releases at 60 with exact hold/release payloads
+AssertionError: hold carries the authoritative job id: expected undefined to be 1 // Object.is equality
+
+- Expected:
+1
+
++ Received:
+undefined
+
+ ❯ GraceClient.hold .pi/extensions/pij/adapters/rust-runtime.test.ts:638:64
+    636|   const job = this.jobs.find((candidate) => candidate.message.msg_id =…
+    637|   if (!job) throw new Error("unknown fake held message");
+    638|   expect(body.job_id, "hold carries the authoritative job id").toBe(jo…
+       |                                                                ^
+    639|   this.holdRequests.push(body);
+    640|   if (!job.held) this.holds.push(body);
+ ❯ RustRuntimeSession.routeClaim .pi/extensions/pij/adapters/rust-runtime.ts:346:17
+ ❯ RustRuntimeSession.consumePushed .pi/extensions/pij/adapters/rust-runtime.ts:339:14
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 17 skipped (18)
+   Start at  10:08:17
+   Duration  225ms (transform 111ms, setup 0ms, import 140ms, tests 8ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > holds at 59 seconds and releases at 60 with exact hold/release payloads,line=638,column=64::AssertionError: hold carries the authoritative job id: expected undefined to be 1 // Object.is equality%0A%0A- Expected:%0A1%0A%0A+ Received:%0Aundefined%0A%0A ❯ GraceClient.hold .pi/extensions/pij/adapters/rust-runtime.test.ts:638:64%0A ❯ RustRuntimeSession.routeClaim .pi/extensions/pij/adapters/rust-runtime.ts:346:17%0A ❯ RustRuntimeSession.consumePushed .pi/extensions/pij/adapters/rust-runtime.ts:339:14%0A%0A
