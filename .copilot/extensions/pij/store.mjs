@@ -141,12 +141,15 @@ export function chooseRegistration({ sessionId, host, folder, seats, env }) {
 	});
 }
 
+class InboxWaitDeadline extends Error {}
+
 export class DaemonClient {
 	constructor({
 		addr,
 		stateDir,
 		fetch: fetcher = globalThis.fetch,
 		readKey = () => readFile(join(stateDir, "daemon.key"), "utf8"),
+		requestTimeoutMs = 65000,
 	}) {
 		if (!/^(?:[a-zA-Z0-9_.-]+|\[[a-fA-F0-9:]+\]):\d+$/.test(addr))
 			throw new NativeError("PIJ_RS_ADDR must be host:port, without a URL path");
@@ -157,6 +160,7 @@ export class DaemonClient {
 		this.url = url.origin;
 		this.fetch = fetcher;
 		this.readKey = readKey;
+		this.requestTimeoutMs = requestTimeoutMs;
 	}
 
 	async request(path, body, signal) {
@@ -166,7 +170,7 @@ export class DaemonClient {
 	/** @returns {Promise<{claims: unknown[], hold: {kind: "consent" | "native-target", reason: string} | null}>} */
 	async claimInbox(tuple, signal) {
 		const query = new URLSearchParams({ ...tuple, wait: "true" });
-		const envelope = await this.#requestEnvelope(`/v1/inbox?${query}`, undefined, signal);
+		const envelope = await this.#requestEnvelope(`/v1/inbox?${query}`, undefined, signal, true);
 		if (envelope.meta != null && typeof envelope.meta !== "string")
 			throw new NativeError(
 				"Malformed native inbox hold metadata; receiving held without acknowledgement",
@@ -185,7 +189,7 @@ export class DaemonClient {
 		};
 	}
 
-	async #requestEnvelope(path, body, signal) {
+	async #requestEnvelope(path, body, signal, inboxWait = false) {
 		let key;
 		try {
 			key = (await this.readKey()).trim();
@@ -196,7 +200,7 @@ export class DaemonClient {
 			);
 		}
 		if (!key) throw new NativeError("Pij daemon.key is empty", true);
-		const timeout = AbortSignal.timeout(65000);
+		const timeout = AbortSignal.timeout(this.requestTimeoutMs);
 		const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
 		let response;
 		let raw;
@@ -213,6 +217,9 @@ export class DaemonClient {
 			raw = await response.text();
 		} catch (error) {
 			if (signal?.aborted) throw signal.reason;
+			// Only our unanswered long-poll deadline renews; body/read and foreign errors still fail.
+			if (inboxWait && !response && timeout.aborted && error === timeout.reason)
+				throw new InboxWaitDeadline();
 			throw new NativeError(
 				`Pij transport unavailable (${error?.name ?? "network error"}); retrying with refreshed credentials`,
 				true,
@@ -572,11 +579,13 @@ export class NativeBridge {
 					retry = INITIAL_RETRY_MS;
 				} catch (error) {
 					if (signal.aborted) return;
-					if (!error.retryable) throw error;
-					this.registered = false;
-					if (!failureEpisode)
-						this.emit("reconnecting", { diagnostic: error.message, retryMs: retry });
-					failureEpisode = true;
+					if (!(error instanceof InboxWaitDeadline)) {
+						if (!error.retryable) throw error;
+						this.registered = false;
+						if (!failureEpisode)
+							this.emit("reconnecting", { diagnostic: error.message, retryMs: retry });
+						failureEpisode = true;
+					}
 					await this.delay(retry, signal);
 					retry = Math.min(retry * 2, MAX_RETRY_MS);
 				}
