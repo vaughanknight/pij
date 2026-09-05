@@ -373,12 +373,15 @@ export async function confirmSmokeToolInvocation(
 		witness.confirmation_sent = true;
 		const afterInput = capture();
 		witness.after_input = afterInput;
-		verifyToolApproval(afterInput, args);
-		await until("one-time native tool approval dismissed", timeout, () => {
-			const terminal = capture();
-			witness.after = terminal;
-			return verifyToolApproval(terminal, args) ? undefined : true;
-		});
+		witness.after = afterInput;
+		// No modal means already dismissed; a visible malformed/unknown dialog still throws.
+		if (verifyToolApproval(afterInput, args)) {
+			await until("one-time native tool approval dismissed", timeout, () => {
+				const terminal = capture();
+				witness.after = terminal;
+				return verifyToolApproval(terminal, args) ? undefined : true;
+			});
+		}
 		witness.status = "dismissed";
 	} catch (error) {
 		if (!witness.decision) witness.decision = "withhold";
