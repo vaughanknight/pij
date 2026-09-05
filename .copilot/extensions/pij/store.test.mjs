@@ -7,6 +7,7 @@ import test from "node:test";
 import { setImmediate as flush } from "node:timers/promises";
 import {
 	chooseRegistration,
+	createNativeReporter,
 	DaemonClient,
 	FileJournal,
 	NativeBridge,
@@ -201,15 +202,499 @@ function fixture(overrides = {}) {
 	};
 }
 
+test("startup readiness waits over real HTTP without claims and requires a fresh pre-intent observation", {
+	timeout: 3000,
+}, async (t) => {
+	let available = false;
+	let freshResponse;
+	const freshEntered = deferred();
+	const waitEntered = Array.from({ length: 7 }, deferred);
+	const waits = [];
+	let snapshots = 0;
+	const { client, requests } = await deadlineHttpFixture(t, ({ url, body }, response) => {
+		const path = url.pathname;
+		let data;
+		if (path === "/v1/register") data = descriptor;
+		else if (path === "/v1/inbox/typing") {
+			snapshots++;
+			if (snapshots === 9) {
+				f.trace.push("fresh-snapshot-request");
+				freshResponse = response;
+				freshEntered.resolve();
+				return;
+			}
+			f.trace.push(available ? "readiness-observed" : "readiness-unavailable");
+			data = available ? observedTyping() : unavailableTyping();
+		} else if (path === "/v1/inbox") {
+			f.trace.push("claim");
+			data = [claim];
+		} else if (path === "/v1/release") {
+			data = { msg_id: body.msg_id, released: false, noop: true, reason: "not-deferred" };
+		} else if (path === "/v1/inbox/ack") data = claim.job_id;
+		else if (path === "/v1/send") data = { msg_id: body.msg_id };
+		else assert.fail(`Unexpected readiness request ${path}`);
+		response.end(JSON.stringify({ ok: true, v: 2, data }));
+	});
+	client.requestTimeoutMs = 2000;
+	const f = fixture({
+		client,
+		delay: (ms, signal) => {
+			const gate = deferred();
+			waits.push({ ms, signal, ...gate });
+			waitEntered[waits.length - 1]?.resolve();
+			return gate.promise;
+		},
+	});
+	t.after(() => f.bridge.stop());
+	let loads = 0;
+	const load = f.journal.load;
+	f.journal.load = async (id) => {
+		loads++;
+		return load(id);
+	};
+	const count = (path) => requests.filter(({ url }) => url.pathname === path).length;
+	const run = f.bridge.run();
+	for (let index = 0; index < 7; index++) {
+		await Promise.race([waitEntered[index].promise, run]);
+		assert.equal(waits.length, index + 1, "valid unavailable must keep retrying readiness");
+		assert.equal(f.bridge.registered, true);
+		assert.equal(count("/v1/register"), 1);
+		assert.equal(count("/v1/inbox"), 0);
+		assert.equal(count("/v1/inbox/ack"), 0);
+		assert.equal(loads, 0);
+		assert.equal(f.records.size, 0);
+		assert.equal(f.trace.includes("intent"), false);
+		assert.equal(f.trace.includes("send"), false);
+		assert.equal(waits[index].signal.aborted, false);
+		if (index < 6) waits[index].resolve();
+	}
+	assert.deepEqual(
+		waits.map(({ ms }) => ms),
+		[250, 500, 1000, 2000, 4000, 5000, 5000],
+	);
+	assert.equal(f.reports.filter(({ kind }) => kind === "typing-sensor-wait").length, 1);
+	assert.equal(
+		f.reports.some(({ kind }) => ["receive-held", "reconnecting"].includes(kind)),
+		false,
+	);
+	assert.equal(
+		(await f.bridge.send({ to: "pij-peer", message: "outgoing during startup" })).ok,
+		true,
+	);
+	assert.equal(count("/v1/send"), 1);
+	assert.equal(count("/v1/inbox"), 0);
+	// Releasing time alone never authorizes a claim; only this explicit observation does.
+	available = true;
+	waits[6].resolve();
+	await Promise.race([freshEntered.promise, run]);
+	assert.ok(freshResponse, "the claimed message requires a second, fresh snapshot");
+	assert.equal(snapshots, 9);
+	assert.equal(count("/v1/inbox"), 1);
+	assert.equal(loads, 1);
+	assert.ok(f.trace.indexOf("readiness-observed") < f.trace.indexOf("claim"));
+	assert.ok(f.trace.indexOf("claim") < f.trace.indexOf("fresh-snapshot-request"));
+	assert.equal(f.records.size, 0);
+	assert.equal(f.trace.includes("send"), false);
+	assert.equal(count("/v1/inbox/ack"), 0);
+	f.trace.push("fresh-observed");
+	freshResponse.end(
+		JSON.stringify({ ok: true, v: 2, data: observedTyping({ observed_at_ms: 100001 }) }),
+	);
+	await Promise.race([f.accepted.promise, run]);
+	assert.equal(count("/v1/inbox/ack"), 1);
+	assert.equal(count("/v1/register"), 1);
+	assert.equal(f.trace.filter((step) => step === "send").length, 1);
+	assert.ok(f.trace.indexOf("fresh-observed") < f.trace.indexOf("intent"));
+	f.bridge.stop();
+	await run;
+});
+
+for (const [label, observation] of [
+	["recent edit", observedTyping({ retry_after_ms: 1200 })],
+	["semantic Hold", observedTyping({ semantic_hold: true })],
+]) {
+	test(`startup readiness accepts ${label} availability but a fresh observation still holds delivery`, {
+		timeout: 2000,
+	}, async (t) => {
+		let snapshots = 0;
+		const waitEntered = deferred();
+		const blocked = deferred();
+		const { client, requests } = await deadlineHttpFixture(t, ({ url, body }, response) => {
+			let data;
+			if (url.pathname === "/v1/register") data = descriptor;
+			else if (url.pathname === "/v1/inbox/typing") {
+				snapshots++;
+				data = observation;
+			} else if (url.pathname === "/v1/inbox") data = [claim];
+			else if (url.pathname === "/v1/hold") data = { msg_id: body.msg_id, held: true };
+			else assert.fail(`Unexpected held-readiness request ${url.pathname}`);
+			response.end(JSON.stringify({ ok: true, v: 2, data }));
+		});
+		const f = fixture({
+			client,
+			delay: () => {
+				waitEntered.resolve();
+				return blocked.promise;
+			},
+		});
+		t.after(() => f.bridge.stop());
+		const run = f.bridge.run();
+		await Promise.race([waitEntered.promise, run]);
+		assert.equal(snapshots, 2, "availability and fresh consent are separate observations");
+		assert.equal(requests.filter(({ url }) => url.pathname === "/v1/inbox").length, 1);
+		assert.equal(
+			requests.filter(({ url }) => url.pathname === "/v1/hold").length,
+			label === "recent edit" ? 1 : 0,
+		);
+		assert.equal(
+			f.reports.some(({ kind }) => kind === "typing-sensor-wait"),
+			false,
+		);
+		assert.equal(
+			f.reports.some(({ kind }) => kind === "consent-held"),
+			true,
+		);
+		assert.equal(f.records.size, 0);
+		assert.equal(f.trace.includes("send"), false);
+		assert.equal(
+			requests.some(({ url }) => url.pathname === "/v1/inbox/ack"),
+			false,
+		);
+		f.bridge.stop();
+		await run;
+		blocked.resolve();
+	});
+}
+
+test("startup readiness quiet observation cannot authorize an unavailable fresh pre-intent gate", {
+	timeout: 2000,
+}, async (t) => {
+	let snapshots = 0;
+	const { client, requests } = await deadlineHttpFixture(t, ({ url }, response) => {
+		let data;
+		if (url.pathname === "/v1/register") data = descriptor;
+		else if (url.pathname === "/v1/inbox/typing")
+			data = ++snapshots === 1 ? observedTyping() : unavailableTyping();
+		else if (url.pathname === "/v1/inbox") data = [claim];
+		else assert.fail(`Unexpected fresh-gate request ${url.pathname}`);
+		response.end(JSON.stringify({ ok: true, v: 2, data }));
+	});
+	const f = fixture({
+		client,
+		delay: async () => assert.fail("post-claim unavailable must not retry"),
+	});
+	t.after(() => f.bridge.stop());
+	const nativeSend = f.native.send;
+	f.native.send = async (input) => {
+		const nativeId = await nativeSend(input);
+		f.bridge.stop();
+		return nativeId;
+	};
+	await f.bridge.run();
+	assert.equal(snapshots, 2);
+	assert.equal(requests.filter(({ url }) => url.pathname === "/v1/inbox").length, 1);
+	assert.equal(f.records.size, 0);
+	assert.equal(f.trace.includes("send"), false);
+	assert.equal(
+		requests.some(({ url }) => url.pathname === "/v1/inbox/ack"),
+		false,
+	);
+	assert.equal(
+		f.reports.filter(
+			({ kind, holdKind }) => kind === "receive-held" && holdKind === "typing-sensor",
+		).length,
+		1,
+	);
+});
+
+for (const [failure, endpoint] of [
+	["auth", "/v1/inbox/typing"],
+	["transport", "/v1/inbox"],
+]) {
+	test(`startup readiness rechecks after ${failure} reconnect without registration churn while unavailable`, {
+		timeout: 3000,
+	}, async (t) => {
+		let registrations = 0;
+		let failed = false;
+		let available = false;
+		const waits = [];
+		const waitEntered = [deferred(), deferred(), deferred()];
+		const { client, requests } = await deadlineHttpFixture(t, ({ url, body }, response) => {
+			let data;
+			if (url.pathname === "/v1/register") {
+				registrations++;
+				data = descriptor;
+			} else if (!failed && url.pathname === endpoint) {
+				failed = true;
+				if (failure === "transport") response.destroy();
+				else {
+					response.writeHead(401);
+					response.end(JSON.stringify({ ok: false, v: 2, error: "unauthorized" }));
+				}
+				return;
+			} else if (url.pathname === "/v1/inbox/typing") {
+				data = registrations === 1 || available ? observedTyping() : unavailableTyping();
+			} else if (url.pathname === "/v1/inbox") data = [claim];
+			else if (url.pathname === "/v1/release")
+				data = { msg_id: body.msg_id, released: false, noop: true, reason: "not-deferred" };
+			else if (url.pathname === "/v1/inbox/ack") data = claim.job_id;
+			else assert.fail(`Unexpected reconnect-readiness request ${url.pathname}`);
+			response.end(JSON.stringify({ ok: true, v: 2, data }));
+		});
+		const f = fixture({
+			client,
+			delay: (ms, signal) => {
+				const gate = deferred();
+				waits.push({ ms, signal, ...gate });
+				waitEntered[waits.length - 1]?.resolve();
+				return gate.promise;
+			},
+		});
+		t.after(() => {
+			f.bridge.stop();
+			for (const wait of waits) wait.resolve();
+		});
+		const run = f.bridge.run();
+		await Promise.race([waitEntered[0].promise, run]);
+		assert.equal(waits.length, 1);
+		assert.equal(f.reports.filter(({ kind }) => kind === "reconnecting").length, 1);
+		waits[0].resolve();
+		for (let index = 1; index <= 2; index++) {
+			await Promise.race([waitEntered[index].promise, run]);
+			assert.equal(waits.length, index + 1);
+			assert.equal(registrations, 2);
+			assert.equal(f.bridge.registered, true);
+			assert.equal(
+				requests.filter(({ url }) => url.pathname === "/v1/inbox").length,
+				failure === "transport" ? 1 : 0,
+			);
+			assert.equal(f.records.size, 0);
+			assert.equal(f.trace.includes("send"), false);
+			assert.equal(
+				requests.some(({ url }) => url.pathname === "/v1/inbox/ack"),
+				false,
+			);
+			if (index === 1) waits[index].resolve();
+		}
+		assert.equal(f.reports.filter(({ kind }) => kind === "typing-sensor-wait").length, 1);
+		available = true;
+		waits[2].resolve();
+		await Promise.race([f.accepted.promise, run]);
+		assert.equal(registrations, 2);
+		assert.equal(f.trace.filter((step) => step === "send").length, 1);
+		assert.equal(requests.filter(({ url }) => url.pathname === "/v1/inbox/ack").length, 1);
+		f.bridge.stop();
+		await run;
+	});
+}
+
+test("startup readiness waits before loading recovered acceptance but never waits for quiet or reinjects it", {
+	timeout: 2000,
+}, async (t) => {
+	const blocked = deferred();
+	const waitEntered = deferred();
+	let available = false;
+	let reads = 0;
+	let loads = 0;
+	const f = fixture({
+		delay: () => {
+			waitEntered.resolve();
+			return blocked.promise;
+		},
+	});
+	t.after(() => f.bridge.stop());
+	f.records.set(claim.message.msg_id, {
+		state: "accepted",
+		message: claim.message,
+		nativeId: "recovered-native",
+	});
+	f.client.typingSnapshot = async () => {
+		reads++;
+		assert.equal(
+			f.trace.includes("claim"),
+			false,
+			"accepted records never run the new-injection gate",
+		);
+		return available
+			? observedTyping({ retry_after_ms: 60000, semantic_hold: true })
+			: unavailableTyping();
+	};
+	const load = f.journal.load;
+	f.journal.load = async (id) => {
+		loads++;
+		return load(id);
+	};
+	const run = f.bridge.run();
+	await Promise.race([waitEntered.promise, run]);
+	assert.equal(loads, 0);
+	assert.equal(f.trace.includes("claim"), false);
+	assert.equal(f.trace.includes("ack"), false);
+	available = true;
+	blocked.resolve();
+	await Promise.race([f.accepted.promise, run]);
+	assert.equal(reads, 2);
+	assert.equal(loads, 1);
+	assert.equal(f.trace.includes("send"), false);
+	assert.equal(f.trace.includes("intent"), false);
+	assert.equal(f.trace.includes("hold"), false);
+	assert.ok(f.trace.indexOf("release") < f.trace.indexOf("ack"));
+	assert.equal(f.trace.filter((step) => step === "ack").length, 1);
+	f.bridge.stop();
+	await run;
+});
+
+for (const phase of ["snapshot", "poll delay"]) {
+	test(`startup readiness shutdown cancels uncooperative ${phase} and ignores late observed resolution`, {
+		timeout: 1000,
+	}, async (t) => {
+		const blocked = deferred();
+		const entered = deferred();
+		let signal;
+		let reads = 0;
+		let loads = 0;
+		const f = fixture({
+			delay: (_ms, currentSignal) => {
+				signal = currentSignal;
+				entered.resolve();
+				return blocked.promise;
+			},
+		});
+		t.after(() => {
+			f.bridge.stop();
+			blocked.resolve(observedTyping());
+		});
+		f.journal.load = async () => {
+			loads++;
+		};
+		f.client.typingSnapshot = (_consumer, currentSignal) => {
+			reads++;
+			signal = currentSignal;
+			if (phase === "snapshot") {
+				entered.resolve();
+				return blocked.promise;
+			}
+			return unavailableTyping();
+		};
+		const run = f.bridge.run();
+		await Promise.race([entered.promise, run]);
+		assert.ok(signal);
+		assert.equal(f.trace.includes("claim"), false);
+		assert.equal(loads, 0);
+		f.event({ type: "session.shutdown", data: {} });
+		assert.equal(signal.aborted, true);
+		await run;
+		blocked.resolve(observedTyping());
+		await flush();
+		assert.equal(reads, 1);
+		assert.equal(loads, 0);
+		assert.equal(f.records.size, 0);
+		for (const step of ["claim", "hold", "release", "intent", "send", "ack"])
+			assert.equal(f.trace.includes(step), false, step);
+		assert.equal(f.trace.filter((step) => step === "unsubscribe").length, 1);
+	});
+}
+
+for (const [label, snapshot] of [
+	["malformed", observedTyping({ retry_after_ms: "quiet" })],
+	["forged", unavailableTyping({ native_consumer: { ...claim.native_consumer, pid: 138 } })],
+]) {
+	test(`startup readiness ${label} actual HTTP snapshot stops explicitly without retry or claim`, {
+		timeout: 2000,
+	}, async (t) => {
+		const { client, requests } = await deadlineHttpFixture(t, ({ url, body }, response) => {
+			let data;
+			if (url.pathname === "/v1/register") data = descriptor;
+			else if (url.pathname === "/v1/inbox/typing") data = snapshot;
+			else if (url.pathname === "/v1/inbox") data = [claim];
+			else if (url.pathname === "/v1/send") data = { msg_id: body.msg_id };
+			else assert.fail(`Unexpected invalid-readiness request ${url.pathname}`);
+			response.end(JSON.stringify({ ok: true, v: 2, data }));
+		});
+		let loads = 0;
+		let delays = 0;
+		const f = fixture({
+			client,
+			delay: async () => {
+				delays++;
+				f.bridge.stop();
+			},
+		});
+		t.after(() => f.bridge.stop());
+		f.journal.load = async () => {
+			loads++;
+		};
+		await f.bridge.run();
+		assert.equal(delays, 0);
+		assert.equal(loads, 0);
+		assert.equal(requests.filter(({ url }) => url.pathname === "/v1/register").length, 1);
+		assert.equal(requests.filter(({ url }) => url.pathname === "/v1/inbox/typing").length, 1);
+		assert.equal(
+			requests.some(({ url }) => url.pathname === "/v1/inbox"),
+			false,
+		);
+		assert.equal(f.records.size, 0);
+		assert.equal(f.trace.includes("send"), false);
+		assert.equal(
+			requests.some(({ url }) => url.pathname === "/v1/inbox/ack"),
+			false,
+		);
+		assert.equal(
+			f.reports.filter(
+				({ kind, holdKind }) => kind === "receive-held" && holdKind === "typing-sensor",
+			).length,
+			1,
+		);
+		assert.equal(
+			f.reports.some(({ kind }) => ["typing-sensor-wait", "reconnecting"].includes(kind)),
+			false,
+		);
+		assert.equal(
+			(await f.bridge.send({ to: "pij-peer", message: "outgoing after invalid sensor" })).ok,
+			true,
+		);
+	});
+}
+
+for (const reconnect of [false, true]) {
+	test(`startup readiness diagnostic says waiting and retrying without hiding later invalidity${reconnect ? " after reconnect" : ""}`, async () => {
+		const lines = [];
+		const report = createNativeReporter({
+			log: async (message) => lines.push(message),
+			capture: () => undefined,
+		});
+		const offset = reconnect ? 1 : 0;
+		if (reconnect) {
+			await report({ kind: "reconnecting", diagnostic: "SECRET_REMOTE_BODY" });
+			await report({ kind: "reconnecting", diagnostic: "SECRET_REMOTE_BODY" });
+			assert.equal(lines.length, 1, "retry warnings still coalesce");
+		}
+		await report({ kind: "typing-sensor-wait", diagnostic: "SECRET_REMOTE_BODY stopped" });
+		assert.equal(lines.length, offset + 1);
+		assert.match(lines[offset], /waiting/i);
+		assert.match(lines[offset], /retrying/i);
+		assert.match(lines[offset], /outgoing.*(?:usable|available)/i);
+		assert.doesNotMatch(lines[offset], /stopped|SECRET_REMOTE_BODY/);
+		await report({
+			kind: "receive-held",
+			holdKind: "typing-sensor",
+			diagnostic: "SECRET_REMOTE_BODY",
+		});
+		assert.equal(lines.length, offset + 2, "retrying must not hide a terminal sensor failure");
+		assert.match(lines[offset + 1], /stopped/);
+		assert.ok(lines.every((line) => !line.includes("SECRET_REMOTE_BODY")));
+	});
+}
+
 test("acceptance is persisted before tuple-bound acknowledgement, not model completion", async () => {
 	const f = fixture();
 	const run = f.bridge.run();
 	await f.accepted.promise;
 	f.bridge.stop();
 	await run;
-	assert.deepEqual(f.trace.slice(0, 9), [
+	assert.deepEqual(f.trace.slice(0, 10), [
 		"subscribe",
 		"register",
+		"typing",
 		"claim",
 		"typing",
 		"intent",
@@ -228,8 +713,11 @@ test("acceptance is persisted before tuple-bound acknowledgement, not model comp
 
 test("accepted duplicate after restart only acknowledges, never reinjects", async () => {
 	const f = fixture();
+	let reads = 0;
 	f.client.typingSnapshot = async () => {
-		assert.fail("Accepted duplicate must not consult the new-injection sensor");
+		assert.equal(++reads, 1, "Accepted duplicate may check readiness, never new-injection consent");
+		assert.equal(f.trace.includes("claim"), false);
+		return observedTyping({ retry_after_ms: 60000, semantic_hold: true });
 	};
 	f.records.set(claim.message.msg_id, {
 		state: "accepted",
@@ -240,6 +728,7 @@ test("accepted duplicate after restart only acknowledges, never reinjects", asyn
 	await f.accepted.promise;
 	f.bridge.stop();
 	await run;
+	assert.equal(reads, 1);
 	assert.equal(f.trace.includes("send"), false);
 	assert.equal(f.trace.includes("ack"), true);
 });
@@ -1021,6 +1510,8 @@ test("shutdown during inbox renewal delay does not claim or re-register", async 
 	const { client, requests } = await deadlineHttpFixture(t, ({ url }, response) => {
 		if (url.pathname === "/v1/register")
 			response.end(JSON.stringify({ ok: true, v: 2, data: descriptor }));
+		else if (url.pathname === "/v1/inbox/typing")
+			response.end(JSON.stringify({ ok: true, v: 2, data: observedTyping() }));
 	});
 	const f = fixture({
 		client,
@@ -1032,6 +1523,7 @@ test("shutdown during inbox renewal delay does not claim or re-register", async 
 	await f.bridge.run();
 	assert.equal(requests.filter(({ url }) => url.pathname === "/v1/register").length, 1);
 	assert.equal(requests.filter(({ url }) => url.pathname === "/v1/inbox").length, 1);
+	assert.equal(requests.filter(({ url }) => url.pathname === "/v1/inbox/typing").length, 1);
 	assert.equal(f.trace.includes("send"), false);
 	assert.equal(
 		f.reports.some(({ kind }) => ["reconnecting", "receive-held"].includes(kind)),
@@ -1063,6 +1555,7 @@ test("accepted-but-unacked reconnect reclaims and acknowledges without second na
 	await run;
 	assert.equal(f.trace.filter((x) => x === "send").length, 1);
 	assert.equal(f.trace.filter((x) => x === "register").length, 2);
+	assert.equal(f.trace.filter((x) => x === "typing").length, 3); // Two readiness checks, one fresh-send gate.
 	assert.ok(f.reports.some((e) => e.kind === "reconnecting"));
 });
 
@@ -2024,6 +2517,7 @@ test("only the exact native-unavailable inbox refusal is retryable", async () =>
 test("native-unavailable retries re-register with bounded backoff and stop cleanly", async () => {
 	let registrations = 0;
 	let claims = 0;
+	let readinessReads = 0;
 	const waits = [];
 	const client = new DaemonClient({
 		addr: "127.0.0.1:13700",
@@ -2034,8 +2528,17 @@ test("native-unavailable retries re-register with bounded backoff and stop clean
 				registrations++;
 				return new Response(JSON.stringify({ ok: true, v: 2, data: descriptor }));
 			}
+			if (new URL(url).pathname === "/v1/inbox/typing") {
+				readinessReads++;
+				return new Response(JSON.stringify({ ok: true, v: 2, data: observedTyping() }));
+			}
 			assert.equal(new URL(url).pathname, "/v1/inbox");
 			claims++;
+			assert.equal(
+				readinessReads,
+				registrations,
+				"Every re-registration checks readiness before claiming",
+			);
 			return new Response(JSON.stringify(unavailableRefusal), { status: 400 });
 		},
 	});
@@ -2050,6 +2553,7 @@ test("native-unavailable retries re-register with bounded backoff and stop clean
 	assert.deepEqual(waits, [250, 500, 1000, 2000, 4000, 5000, 5000, 5000]);
 	assert.equal(registrations, 8);
 	assert.equal(claims, 8);
+	assert.equal(readinessReads, 8);
 	assert.equal(f.trace.includes("send"), false);
 	assert.equal(f.trace.includes("ack"), false);
 	assert.equal(f.reports.filter((event) => event.kind === "reconnecting").length, 1);
@@ -2160,11 +2664,13 @@ test("new native send waits for current typing snapshot before creating durable 
 		reads++;
 		assert.deepEqual(consumer, tuple);
 		assert.equal(signal.aborted, false);
+		if (reads === 1) return observedTyping(); // Explicit registration readiness, not send permission.
 		return snapshot.promise;
 	};
 	const run = f.bridge.run();
 	await flush();
-	assert.equal(reads, 1);
+	assert.equal(reads, 2);
+	assert.equal(f.trace.filter((step) => step === "claim").length, 1);
 	assert.equal(f.records.size, 0);
 	assert.equal(f.trace.includes("send"), false);
 	assert.equal(f.trace.includes("ack"), false);
@@ -2179,6 +2685,7 @@ test("recent typing renews holds then quiet releases with injected now and recla
 	const waits = [];
 	const bodies = [];
 	const snapshots = [
+		observedTyping(), // Registration readiness before the first claim.
 		observedTyping({ retry_after_ms: 1200 }),
 		observedTyping({ observed_at_ms: 101000, retry_after_ms: 60000 }),
 		observedTyping({ observed_at_ms: 161000 }),
@@ -2284,6 +2791,7 @@ test("typing sensor polling backs off within existing 250 to 5000 cadence", asyn
 	let reads = 0;
 	f.client.typingSnapshot = async () => {
 		reads++;
+		if (reads === 1) return observedTyping(); // Registration readiness.
 		return observedTyping({ observed_at_ms: 100000 + reads * 5000, retry_after_ms: 60000 });
 	};
 	const run = f.bridge.run();
@@ -2291,7 +2799,7 @@ test("typing sensor polling backs off within existing 250 to 5000 cadence", asyn
 	assert.equal(f.trace.includes("send"), false);
 	await run;
 	assert.deepEqual(waits, [250, 500, 1000, 2000, 4000, 5000, 5000, 5000]);
-	assert.equal(reads, 8);
+	assert.equal(reads, 9);
 	assert.equal(f.records.size, 0);
 	assert.equal(f.trace.includes("release"), false);
 	assert.equal(f.trace.includes("ack"), false);
@@ -2309,12 +2817,15 @@ for (const initiallyTyping of [false, true]) {
 		});
 		t.after(() => f.bridge.stop());
 		let reads = 0;
-		f.client.typingSnapshot = async () =>
-			observedTyping(
-				initiallyTyping && reads++ === 0 ? { retry_after_ms: 1200 } : { semantic_hold: true },
+		f.client.typingSnapshot = async () => {
+			if (++reads === 1) return observedTyping(); // Registration readiness.
+			return observedTyping(
+				initiallyTyping && reads === 2 ? { retry_after_ms: 1200 } : { semantic_hold: true },
 			);
+		};
 		const run = f.bridge.run();
 		await flush();
+		assert.equal(reads, 2);
 		assert.equal(f.trace.includes("send"), false);
 		if (initiallyTyping) {
 			assert.equal(f.trace.includes("hold"), true);
@@ -2341,6 +2852,7 @@ for (const [label, snapshot] of [
 ]) {
 	test(`${label} typing observation visibly holds receiving while outgoing remains usable`, async (t) => {
 		const paths = [];
+		let reads = 0;
 		const client = new DaemonClient({
 			addr: "127.0.0.1:13700",
 			stateDir: "/isolated",
@@ -2351,7 +2863,7 @@ for (const [label, snapshot] of [
 				let data;
 				if (path === "/v1/register") data = descriptor;
 				else if (path === "/v1/inbox") data = [claim];
-				else if (path === "/v1/inbox/typing") data = snapshot;
+				else if (path === "/v1/inbox/typing") data = ++reads === 1 ? observedTyping() : snapshot;
 				else if (path === "/v1/send") data = { msg_id: JSON.parse(init.body).msg_id };
 				else if (path === "/v1/inbox/ack") data = claim.job_id;
 				else assert.fail(`Unexpected typing-held request ${path}`);
@@ -2367,6 +2879,7 @@ for (const [label, snapshot] of [
 		assert.equal(f.records.size, 0);
 		assert.equal(paths.includes("/v1/inbox/ack"), false);
 		assert.equal(paths.filter((path) => path === "/v1/inbox").length, 1);
+		assert.equal(reads, 2, "The failure is the fresh post-claim observation, not readiness");
 		const notices = f.reports.filter((event) => event.kind === "receive-held");
 		assert.equal(notices.length, 1);
 		assert.match(notices[0].diagnostic, /typing[- ]sensor/i);
@@ -2389,13 +2902,16 @@ for (const phase of ["snapshot", "poll delay"]) {
 			},
 		});
 		t.after(() => f.bridge.stop());
+		let reads = 0;
 		f.client.typingSnapshot = (_consumer, signal) => {
+			if (++reads === 1) return observedTyping(); // Registration readiness.
 			observedSignal = signal;
 			return phase === "snapshot" ? blocked.promise : observedTyping({ retry_after_ms: 1200 });
 		};
 		const run = f.bridge.run();
 		await flush();
 		assert.ok(observedSignal);
+		assert.equal(reads, 2);
 		assert.equal(f.trace.includes("send"), false);
 		f.event({ type: "session.shutdown", data: {} });
 		assert.equal(observedSignal.aborted, true);
@@ -2420,11 +2936,12 @@ test("deferred claim re-offered after restart rechecks sensor before any new int
 		let reads = 0;
 		f.client.typingSnapshot = async () => {
 			reads++;
+			if (reads === 1) return observedTyping(); // This incarnation's registration readiness.
 			return observedTyping({ observed_at_ms: 100000 + incarnation * 1000, retry_after_ms: 60000 });
 		};
 		const run = f.bridge.run();
 		await run;
-		assert.equal(reads, 1);
+		assert.equal(reads, 2);
 		assert.equal(f.trace.includes("send"), false);
 		assert.equal(f.trace.includes("hold"), true);
 		assert.equal(f.trace.includes("ack"), false);
@@ -2445,8 +2962,10 @@ for (const [endpoint, reason] of [
 		let reads = 0;
 		let claims = 0;
 		const receipts = [];
-		f.client.typingSnapshot = async () =>
-			observedTyping({ retry_after_ms: reads++ === 0 ? 1200 : 0 });
+		f.client.typingSnapshot = async () => {
+			if (++reads === 1) return observedTyping(); // Registration readiness.
+			return observedTyping({ retry_after_ms: reads === 2 ? 1200 : 0 });
+		};
 		f.client.claimInbox = async () => {
 			if (++claims === 1) return { claims: [claim], hold: null };
 			f.bridge.stop();
@@ -2470,7 +2989,7 @@ for (const [endpoint, reason] of [
 		assert.equal(f.trace.includes("send"), false);
 		await run;
 		assert.equal(claims, 2);
-		assert.equal(reads, endpoint === "hold" ? 1 : 2);
+		assert.equal(reads, endpoint === "hold" ? 2 : 3);
 		assert.equal(receipts.length, 1);
 		assert.equal(receipts[0].msg_id, claim.message.msg_id);
 		assert.equal(f.records.size, 0);
@@ -2524,7 +3043,7 @@ for (const duplicate of [false, true]) {
 		assert.equal(releases, 1);
 		assert.equal(f.trace.includes("ack"), false);
 		assert.equal(f.trace.filter((step) => step === "send").length, duplicate ? 0 : 1);
-		assert.equal(f.trace.filter((step) => step === "typing").length, duplicate ? 0 : 1);
+		assert.equal(f.trace.filter((step) => step === "typing").length, duplicate ? 1 : 2);
 		receipt.resolve({
 			msg_id: claim.message.msg_id,
 			released: false,
@@ -2545,8 +3064,10 @@ test("successful held release is reused before ACK when the same job is freshly 
 	let reads = 0;
 	let claims = 0;
 	let releases = 0;
-	f.client.typingSnapshot = async () =>
-		observedTyping({ retry_after_ms: reads++ === 0 ? 1200 : 0 });
+	f.client.typingSnapshot = async () => {
+		if (++reads === 1) return observedTyping(); // Registration readiness.
+		return observedTyping({ retry_after_ms: reads === 2 ? 1200 : 0 });
+	};
 	f.client.claimInbox = async () => {
 		claims++;
 		return { claims: [claim], hold: null };
@@ -2565,7 +3086,7 @@ test("successful held release is reused before ACK when the same job is freshly 
 	f.bridge.stop();
 	await run;
 	assert.equal(releases, 1);
-	assert.equal(reads, 3);
+	assert.equal(reads, 4);
 	assert.equal(f.trace.filter((step) => step === "send").length, 1);
 	assert.equal(f.trace.filter((step) => step === "ack").length, 1);
 });
@@ -2618,7 +3139,7 @@ for (const failure of ["release", "ack"]) {
 		await run;
 		assert.deepEqual(claimsAtAck, failure === "release" ? [2] : [1, 2]);
 		assert.equal(f.trace.filter((step) => step === "send").length, 1);
-		assert.equal(f.trace.filter((step) => step === "typing").length, 1);
+		assert.equal(f.trace.filter((step) => step === "typing").length, 3); // Initial readiness, fresh gate, reconnect readiness.
 		assert.equal(f.trace.filter((step) => step === "persist").length, 1);
 		assert.equal(f.trace.filter((step) => step === "ack").length, 1);
 	});
@@ -2627,7 +3148,7 @@ for (const failure of ["release", "ack"]) {
 test("renewed typing on a reclaimed job invalidates its earlier release declaration", async (t) => {
 	const f = fixture({ delay: async () => undefined, now: () => 170137 });
 	t.after(() => f.bridge.stop());
-	const retries = [1200, 0, 60000, 0, 0];
+	const retries = [0, 1200, 0, 60000, 0, 0]; // Explicit readiness, then fresh post-claim observations.
 	let claims = 0;
 	let holds = 0;
 	let releases = 0;
@@ -2695,8 +3216,12 @@ test("initial quiet semantic Hold clearance discards the old claim and gates fre
 		assert.deepEqual(consumer, tuple);
 		f.trace.push("typing");
 		reads++;
-		assert.equal(reads, claims, "The next sensor check must follow a fresh claim");
-		return observedTyping({ semantic_hold: reads === 1 });
+		if (reads === 1) {
+			assert.equal(claims, 0, "Readiness must precede the first claim");
+			return observedTyping();
+		}
+		assert.equal(reads, claims + 1, "Each post-readiness sensor check must follow a fresh claim");
+		return observedTyping({ semantic_hold: reads === 2 });
 	};
 	const request = f.client.request;
 	f.client.request = (path, body, signal) => {
@@ -2714,7 +3239,7 @@ test("initial quiet semantic Hold clearance discards the old claim and gates fre
 	const send = f.native.send;
 	f.native.send = (input) => {
 		assert.equal(claims, 2);
-		assert.equal(reads, 2);
+		assert.equal(reads, 3);
 		assert.match(input.prompt, /FRESH_AFTER_OPERATOR_CLEARANCE/);
 		assert.equal(input.prompt.includes(claim.message.body), false);
 		return send(input);
@@ -2723,7 +3248,7 @@ test("initial quiet semantic Hold clearance discards the old claim and gates fre
 	await flush();
 	assert.equal(waits, 1);
 	assert.equal(claims, 1);
-	assert.equal(reads, 1);
+	assert.equal(reads, 2);
 	assert.equal(f.records.size, 0);
 	assert.equal(f.trace.includes("hold"), false);
 	assert.equal(f.trace.includes("release"), false);
@@ -2735,7 +3260,7 @@ test("initial quiet semantic Hold clearance discards the old claim and gates fre
 	await run;
 	assert.equal(waits, 1);
 	assert.equal(claims, 2);
-	assert.equal(reads, 2);
+	assert.equal(reads, 3);
 	assert.equal(f.trace.includes("hold"), false);
 	assert.equal(f.records.has(claim.message.msg_id), false);
 	assert.deepEqual(releases, [
@@ -2745,6 +3270,6 @@ test("initial quiet semantic Hold clearance discards the old claim and gates fre
 		f.trace.filter((step) =>
 			["claim", "typing", "intent", "send", "persist", "release", "ack"].includes(step),
 		),
-		["claim", "typing", "claim", "typing", "intent", "send", "persist", "release", "ack"],
+		["typing", "claim", "typing", "claim", "typing", "intent", "send", "persist", "release", "ack"],
 	);
 });

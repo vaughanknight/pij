@@ -301,7 +301,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				.filter((path) =>
 					["/v1/inbox", "/v1/inbox/typing", "/v1/release", "/v1/inbox/ack"].includes(path),
 				),
-			["/v1/inbox", "/v1/inbox/typing", "/v1/release", "/v1/inbox/ack"],
+			["/v1/inbox/typing", "/v1/inbox", "/v1/inbox/typing", "/v1/release", "/v1/inbox/ack"],
 		);
 		f.child.stdin.write(
 			`${JSON.stringify({ to: "pij-peer", message: "SHELL_REPLY_137", from: "forged" })}\n`,
@@ -393,7 +393,11 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		const before = Date.now();
 		const f = await launch(t, {
 			messages: 2,
-			typingSnapshots: [{ retry_after_ms: 1200 }, { observed_at_ms: 160000, retry_after_ms: 0 }],
+			typingSnapshots: [
+				{ state: "observed", retry_after_ms: 0 }, // Registration readiness before claiming.
+				{ retry_after_ms: 1200 },
+				{ observed_at_ms: 160000, retry_after_ms: 0 },
+			],
 		});
 		await f.waitFor("completion-wait");
 		const registered = f.requests.find((request) => request.path === "/v1/register").body;
@@ -431,6 +435,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				)
 				.map((request) => new URL(request.path, "http://fixture").pathname),
 			[
+				"/v1/inbox/typing",
 				"/v1/inbox",
 				"/v1/inbox/typing",
 				"/v1/hold",
@@ -454,7 +459,12 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 	});
 
 	test("actual extension shell unavailable typing sensor emits fixed notice and keeps outgoing usable", async (t) => {
-		const f = await launch(t, { typingSnapshots: [{ state: "unavailable" }] });
+		const f = await launch(t, {
+			typingSnapshots: [
+				{ state: "observed", retry_after_ms: 0 }, // Registration readiness is not fresh-send consent.
+				{ state: "unavailable" },
+			],
+		});
 		const notice = await f.waitFor("native-log");
 		assert.match(notice.message, /typing[- ]sensor/i);
 		assert.equal(notice.message.includes("fixture-secret"), false);
@@ -465,6 +475,10 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.equal(f.events.filter((event) => event.kind === "native-send").length, 0);
 		assert.equal(f.requests.filter((request) => request.path.startsWith("/v1/inbox?")).length, 1);
 		assert.equal(f.requests.filter((request) => request.path === "/v1/inbox/ack").length, 0);
+		assert.equal(
+			f.requests.filter((request) => request.path.startsWith("/v1/inbox/typing?")).length,
+			2,
+		);
 		assert.equal(f.events.filter((event) => event.kind === "native-log").length, 1);
 		const exited = once(f.child, "exit");
 		f.child.stdin.end();
@@ -606,6 +620,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.deepEqual(registrations[0].body, registrations[1].body);
 		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 2);
 		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 1);
+		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox/typing?")).length, 3);
 		assert.equal(f.events.filter((event) => event.kind === "native-send").length, 1);
 		assert.equal(f.events.filter((event) => event.kind === "native-log").length, 1);
 		const exited = once(f.child, "exit");

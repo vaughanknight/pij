@@ -532,6 +532,7 @@ export class NativeBridge {
 		this.now = now;
 		this.controller = new AbortController();
 		this.registered = false;
+		this.typingReadinessWaiting = false;
 		this.running = undefined;
 		this.unsubscribe = undefined;
 		this.completion = undefined;
@@ -634,8 +635,12 @@ export class NativeBridge {
 			});
 			while (!signal.aborted) {
 				try {
-					if (!this.registered) await this.register();
+					if (!this.registered) {
+						await this.register();
+						await this.#waitForTypingAvailability();
+					}
 					if (this.completion) await this.waitForCompletion();
+					throwIfStopped(signal);
 					const { claims, hold } = await this.client.claimInbox(this.tuple(), signal);
 					throwIfStopped(signal);
 					if (!Array.isArray(claims) || claims.length > 1)
@@ -685,6 +690,28 @@ export class NativeBridge {
 			this.unsubscribe = undefined;
 			this.completion = undefined;
 			this.declaredReleases.clear();
+		}
+	}
+	async #waitForTypingAvailability() {
+		const signal = this.controller.signal;
+		const tuple = this.tuple();
+		let retry = INITIAL_RETRY_MS;
+		for (;;) {
+			throwIfStopped(signal);
+			const snapshot = await abortable(this.client.typingSnapshot(tuple, signal), signal);
+			throwIfStopped(signal);
+			// Availability permits acquisition, not injection; every new send still checks fresh consent.
+			if (snapshot.state === "observed") {
+				this.typingReadinessWaiting = false;
+				return;
+			}
+			if (!this.typingReadinessWaiting) {
+				this.typingReadinessWaiting = true;
+				this.emit("typing-sensor-wait", { retryMs: retry });
+			}
+			await abortable(this.delay(retry, signal), signal);
+			throwIfStopped(signal);
+			retry = Math.min(retry * 2, MAX_RETRY_MS);
 		}
 	}
 	async waitForCompletion() {
@@ -922,14 +949,22 @@ export function createNativeReporter({ log, capture }) {
 		if (event.kind === "registered" || event.kind === "connection-ready") unavailable = false;
 		if (event.kind === "connection-ready") return;
 		if (
-			["registration-wait", "reconnecting", "receive-held", "extension-unavailable"].includes(
-				event.kind,
-			)
+			[
+				"registration-wait",
+				"reconnecting",
+				"receive-held",
+				"extension-unavailable",
+				"typing-sensor-wait",
+			].includes(event.kind)
 		) {
-			if (unavailable) return;
-			unavailable = true;
-			const advice =
-				event.kind === "receive-held"
+			const waiting = event.kind === "typing-sensor-wait";
+			if (!waiting) {
+				if (unavailable && event.kind !== "receive-held") return;
+				unavailable = true;
+			}
+			const advice = waiting
+				? "waiting for native typing-sensor availability; retrying before claiming inbox work; outgoing pij_send remains available"
+				: event.kind === "receive-held"
 					? event.holdKind === "native-target"
 						? "queued work targets another native session; resume that native session or use a new seat and intentionally reissue the message; receiving stopped without acknowledgement; outgoing pij_send remains available"
 						: event.holdKind === "typing-sensor"
