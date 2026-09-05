@@ -303,7 +303,9 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(peer).toContain(
 			"pij inbox --wait [ms]    # non-tmux receive path; first use auto-registers",
 		);
-		expect(peer).toContain("Pi/tmux replies arrive as `[pij from <id>]` injected turns.");
+		expect(peer).toContain(
+			"Pi/tmux replies arrive as `[pij-rs from <id>] … [/pij]` injected turns.",
+		);
 		expect(peer).toContain("This is pull delivery, not `pij state` polling (§ C7).");
 		const deliveryOwner = routing.indexOf("| E | Delivery owner |");
 		const selfRegistration = routing.indexOf("| F | Self registration |");

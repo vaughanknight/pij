@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -172,4 +175,73 @@ describe("announceText", () => {
 		expect(t).toContain("[/pij]");
 		expect(t).not.toMatch(/\[pij from <id>\]/);
 	});
+});
+
+// AC8: one authored allowlist, consumed by the extension-wide vocabulary guard.
+const LEGACY_FRAME_ALLOWLIST: ReadonlyArray<{
+	path: string;
+	prefix?: boolean;
+	lines?: readonly string[];
+	reason: string;
+}> = [
+	{ path: "core/message.ts", reason: "The wire parser accepts legacy frames." },
+	{ path: "core/message.test.ts", reason: "The wire contract owns independent literal fixtures." },
+	{
+		path: "core/daemon/__fixtures__/pane-signals/",
+		prefix: true,
+		reason: "Captured historical terminal bytes must not be rewritten.",
+	},
+	{
+		path: "core/daemon/typing-guard-contract.test.ts",
+		reason: "These exact payload lines are arbitrary typing-guard inputs, not wire renderings.",
+		lines: [
+			'const injected = "[pij from pij-boss] status please";',
+			'tracker.markSelfInjection(PANE, "[pij from pij-boss] barging in", T0 + 20);',
+			'tracker.markSelfInjection(PANE, "[pij from pij-boss] status", T0 + 5);',
+			'tracker.markSelfInjection(PANE, "[pij from pij-boss] late", T0);',
+			'expect(tracker.observe(PANE, "[pij from pij-boss] late", after).hold).toBe(true);',
+			'const PAYLOAD = "[pij from pij-boss] first";',
+		],
+	},
+	{
+		path: "core/daemon/pane-signals.test.ts",
+		reason: "Exact arbitrary self-injection payloads exercise typing detection, not framing.",
+		lines: [
+			'tracker.markSelfInjection("[pij from peer] injected", 1_100);',
+			'expect(tracker.observeRenderedComposer("[pij from peer] injected", 1_101)).toBeUndefined();',
+		],
+	},
+	{
+		path: "adapters/daemon-tmux.test.ts",
+		reason: "Exact diagnostic payloads and historical pane text exercise terminal transport.",
+		lines: [
+			'const SENT = "[pij from pij-5lztp8] (pij delivery diagnostic — please ignore)";',
+			'const NON_BMP_SENT = "[pij from pij-x] hi 😀";',
+			'"[pij from pij-omp] HEAD-SENTINEL α 😀",',
+			'"❯ [pij from pij-5lztp8] (pij delivery diagnostic —",',
+			'"[pij from pij-5lztp8] (pij delivery diagnostic — please ignore)",',
+			'"❯ [pij from pij-5lztp8] (pij delivery diagnostic — please ignore)   18:31",',
+		],
+	},
+];
+
+it("keeps legacy frame heads out of the extension outside the explicit allowlist", () => {
+	const root = fileURLToPath(new URL("../", import.meta.url));
+	const violations: string[] = [];
+	for (const entry of readdirSync(root, { recursive: true, withFileTypes: true })) {
+		if (!entry.isFile()) continue;
+		const absolute = join(entry.parentPath, entry.name);
+		const path = relative(root, absolute).split(sep).join("/");
+		const allowance = LEGACY_FRAME_ALLOWLIST.find((rule) =>
+			rule.prefix ? path.startsWith(rule.path) : path === rule.path,
+		);
+		if (allowance && !allowance.lines) continue;
+		const lines = readFileSync(absolute, "utf8").split("\n");
+		for (const [index, line] of lines.entries()) {
+			if (line.includes("[pij from") && !allowance?.lines?.includes(line.trim())) {
+				violations.push(`${path}:${index + 1}: ${line.trim()}`);
+			}
+		}
+	}
+	expect(violations.sort()).toEqual([]);
 });

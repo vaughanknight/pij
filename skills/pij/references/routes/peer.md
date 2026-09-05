@@ -101,7 +101,7 @@ pij send <id> --command compact                      # control command (compact/
 pij tail <id> [--since N] [--follow]                 # peek its transcript without disturbing it
 ```
 
-Pi/tmux replies arrive as `[pij from <id>]` injected turns. For a non-tmux external peer, establish the durable address with `pij inbox register` (or let the first wait auto-register), send normally, then receive with:
+Pi/tmux replies arrive as `[pij-rs from <id>] … [/pij]` injected turns. For a non-tmux external peer, establish the durable address with `pij inbox register` (or let the first wait auto-register), send normally, then receive with:
 
 ```bash
 pij inbox --wait          # block indefinitely

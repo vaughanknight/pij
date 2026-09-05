@@ -255,7 +255,7 @@ describe("consumeInbox", () => {
 			},
 		});
 		if (!result.ok) throw new Error(result.message);
-		expect(renderInboxResult(result.value, false)).toContain("[pij from pij-sender] body-m1");
+		expect(renderInboxResult(result.value, false)).toContain("pij-sender: body-m1");
 		expect(backing.markers.has("pij-self\u0000m1")).toBe(true);
 		expect(backing.markers.has("pij-self\u0000m2")).toBe(false);
 	});
@@ -457,8 +457,8 @@ describe("inbox rendering", () => {
 	it("renders stable human and JSON output", () => {
 		expect(renderInboxResult(result, false)).toBe(
 			[
-				"[pij from pij-sender] review this",
-				"[pij from pij-sender] (command: /compact)",
+				"pij-sender: review this",
+				"pij-sender: (command: /compact)",
 				"  attachment: /tmp/chart.png (review)",
 				"2 messages read",
 			].join("\n"),

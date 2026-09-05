@@ -748,7 +748,7 @@ describe("dispatch send", () => {
 		expect(d.delivery.outbox).toHaveLength(1);
 		expect(d.delivery.outbox[0]?.message).toEqual({ from: "a1", to: "w3", body: "do X then test" });
 		// crucially NOT framed:
-		expect(d.delivery.outbox[0]?.message.body).not.toContain("[pij from");
+		expect(d.delivery.outbox[0]?.message.body).not.toContain("[pij");
 	});
 
 	it("--command compact delivers a command message (no pi handle, no body frame)", () => {
@@ -765,7 +765,7 @@ describe("dispatch send", () => {
 	// CONTRACT CHANGE (plan 093 T006, issue pij#132). This test used to pin
 	// "attachment-only always delivers an empty body" as correct for EVERY
 	// target. That is what let `--file` report `queued`/`delivered` while a
-	// pushed peer received the literal string `[pij from <id>] ` and nothing
+	// pushed peer received an empty framed message and nothing
 	// else. The contract is now CAPABILITY-AWARE, not global (plan 093 D2):
 	// reference-passing still delivers to a target that can render attachments
 	// (pull-inbox / telegram — the shipped Plan-026 capability), and is refused
@@ -1018,7 +1018,7 @@ describe("dispatch send", () => {
 		// The first cut of the guard tested `body === ""`, which is the shape of
 		// the defect rather than the defect itself. `pij send peer "$(cat notes)"`
 		// against a blank or newline-only file produces a body of "\n" — the
-		// pushed peer then receives `[pij from a1] ` behind a success receipt,
+		// pushed peer then receives an empty framed message behind a success receipt,
 		// which is precisely the dishonest receipt this plan exists to close.
 		//
 		// The asymmetry that makes this safe: the EMPTINESS TEST trims, the
