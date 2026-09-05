@@ -88,5 +88,64 @@
   "source_commit": "f82a3d6c0348e13d774a4e22507addb49b7122c1",
   "source_files_changed": 33,
   "deferred_project_validation": "harness checks and full independent Opus/integrated native client acceptance intentionally PM-owned; no project-wide gate executed by this unit",
+  "review_repairs": {
+    "status": "unit_verified_integration_pending",
+    "source_commit": "4bdadd92f29868827d74d7add82aac46eac6fd85",
+    "base_source_commit": "f82a3d6c0348e13d774a4e22507addb49b7122c1",
+    "rulings": "PM pm-code-review-rulings.md P2-D/P1-A, durable context-hold clarification, and actual absolute-path registration failure",
+    "changes": [
+      "OS process/ancestry and both tmux consent observations run outside shared exclusion. Complete roster collision checks and claim/ack mutation revalidation remain under the same global lock; no per-seat lock shortcut.",
+      "After unlocked observation, revalidate current capability, native tuple, pane, semantic hold, and authoritative running Job.attempt before handoff or retry. A terminalized or reclaimed attempt is refused without changing its successor.",
+      "Normal same-host new-session registration creates S2 and supersedes S1. HTTP/SQLite proof retains M1 on retired S1 while S2 claims and acknowledges M2 with its new native tuple.",
+      "Explicit same-seat different-session revive remains a durable CONTEXT HOLD. A SQLite fixture seeded at attempt 1000000 retains exact job id, payload and body; resuming the original native session in a new process consumes it.",
+      "Darwin composite ps comm output truncates long absolute executable paths. Observation now uses kernel ucomm basename while retaining independent argv/entrypoint checks, PID/start sandwich, per-PID bounds and no fallback.",
+      "Long-absolute-path host fixture is retained. macOS ad-hoc signing touches only a copied inert test executable; no real Copilot SDK or installed binary is changed. A real shell with forged argv0=copilot still fails attestation."
+    ],
+    "proofs": [
+      {
+        "command": "CARGO_BUILD_JOBS=4 VITEST_MAX_WORKERS=4 VITEST_MAX_THREADS=4 cargo test --locked -p pij-daemon --no-fail-fast",
+        "result": "273 passed, 12 suites",
+        "log": "daemon-review-tests-final.log"
+      },
+      {
+        "command": "CARGO_BUILD_JOBS=4 VITEST_MAX_WORKERS=4 VITEST_MAX_THREADS=4 cargo clippy --locked -p pij-daemon --all-targets -- -D warnings",
+        "result": "passed",
+        "log": "daemon-review-tests-final.log"
+      },
+      {
+        "command": "rustfmt --check --edition 2024 --config skip_children=true on the four changed Rust files",
+        "result": "passed before source commit"
+      }
+    ],
+    "regressions": [
+      "registration::tests::blocked_native_host_observation_does_not_block_unrelated_inbox_ack",
+      "registration::tests::native_observation_revalidates_cross_seat_process_takeover_before_commit",
+      "delivery::tests::blocked_native_consent_allows_unrelated_ack_and_revalidates_before_handoff: both capture boundaries, OMP/Pi claim+ACK progress, capability/process/pane/session changes, semantic hold, terminal ACK and successor attempt",
+      "http::native_tests::native_sqlite_http_new_session_supersedes_seat_without_stranding_new_work",
+      "http::native_tests::queued_native_target_holds_different_session_but_allows_same_session_restart: 1000000-attempt retention",
+      "registration::tests::real_shell_process_is_not_an_actual_copilot_host: forged argv0 refused"
+    ],
+    "local_review": {
+      "scope": "read-only concurrency review, not PM Opus integration acceptance",
+      "finding": "same job id can identify a reclaimed attempt after unlocked observation",
+      "repair": "compare existing Job.attempt before handoff/retry; successor claim remains running and can ACK",
+      "disposition": "reviewer re-read fix and regression, resolved sole finding; final tests and strict clippy passed"
+    },
+    "historical_failures": [
+      "daemon-review-tests-before.log: copied macOS platform executable killed before attestation",
+      "daemon-review-tests-intermediate.log: test mistakenly counted running successor as pending; corrected against documented FakeQueue::live_len semantics",
+      "daemon-review-tests-pre-absolute-path.log: green short-path fixture is superseded by final long-absolute-path proof",
+      "daemon-review-clippy-before.log: guard binding and existing unit-owned assertion/config initialization warnings fixed without suppression"
+    ],
+    "harness_improvement": "Encoded blocked-observer progress and exact-attempt ownership witnesses, million-attempt context retention, long-absolute-path OS observation and forged-argv shell rejection. Captured DL-001/DL-002 are preserved here as resolved source/test lessons.",
+    "scope": [
+      "crates/daemon/src/registration.rs",
+      "crates/daemon/src/delivery/mod.rs",
+      "crates/daemon/src/http/native_tests.rs",
+      "crates/daemon/src/http/tests.rs"
+    ],
+    "cleanup": "All probe/test children are test-owned, killed and reaped; temporary signed copies removed. No dependency, global link, daemon, plan, contract, protected policy or queue API changes; no real Pi/OMP spawns.",
+    "integration_pending": "PM actual Copilot retry with rebuilt composed binary, remaining runtime acceptance and full harness checks after the spawn freeze. HTTP claim/ACK proof is acceptance-grade, not model completion."
+  },
   "source_scope_note": "Only daemon/Rust persistence/spawn/CLI control guard and corresponding tests/fixtures changed. Native extension SDK and installer artifacts belong to sibling units. Legacy index.ts tool source not edited: its Rust-runtime command refusal already exists; no existing-session compatibility claim."
 }
