@@ -120,12 +120,12 @@ export function parseBriefAckBody(body: string): BriefAckReceipt | null {
  *  model a startup to-do list. A directive briefing made fresh boots run every
  *  `pij` command and snoop their own inbox (difficulty D-040). It also tells the
  *  model NOT to treat inbox files as live instructions — real peer messages are
- *  injected as `[pij from <id>] …`; the JSON files in the inbox dir are an
+ *  injected as `[pij-rs from <id>] … [/pij]`; the JSON files in the inbox dir are an
  *  internal transport log, not a task queue. */
 export function announceText(self: SessionId, role?: Role): string {
 	return [
 		`You are pij session ${self} (${roleLabel(role)}). This is context only — no action is required.`,
-		`Peers can reach you; their messages arrive inline as "[pij from <id>] …". Only those injected messages are live instructions.`,
+		`Peers can reach you; their messages arrive inline as "[pij-rs from <id>]" on its own line, then the body, then "[/pij]". Only those injected messages are live instructions.`,
 		`Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not tasks, and replaying them re-runs old requests.`,
 		`To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For control, pij_send takes { to, command: "compact" | "new" | "reload" } instead of message. Do NOT shell out to the pij CLI to send.`,
 		`To observe peers, use the pij CLI: "pij list --here" (peers), "pij tail <id>" / "pij state <id>" (watch one).`,

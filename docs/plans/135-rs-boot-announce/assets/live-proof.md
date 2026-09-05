@@ -203,3 +203,79 @@ a full `cargo test --workspace` run and then passed **10/10 on a quiet
 single-package re-run of the same tree**. Untouched crate, timing-sensitive around
 real process exit. Third such artifact of the day, all downstream of a
 concurrency cap (`VITEST_MAX_THREADS`) that is inert on Vitest 4.
+
+---
+
+# Second window — AC7 and AC8 (units u3, u4)
+
+Prime granted a 15-minute window at 10:52 (plan 136 held its own bounce); closed
+at **10:59**, 8 minutes inside the cap.
+
+```
+$ cargo build --release -p pij-cli          # composed tree: u1+u2+u3+u4
+    Finished `release` profile [optimized] target(s) in 23.43s
+$ kill 9633   # previous worktree daemon
+$ (PIJ_TELEGRAM_ENV="$HOME/.pij/telegram.env" nohup .../fs3-rs-boot-announce/target/release/pij-rs daemon &)
+$ lsof -nP -iTCP:7461 -sTCP:LISTEN -t
+17013
+$ ps -o command= -p 17013
+/Users/jordanknight/pi-hacking/fs3-rs-boot-announce/target/release/pij-rs daemon
+$ pij-rs ping
+pij ping: ok — {"build":"pij-rs 0.1.0","status":"healthy", …}
+
+readlink ~/.omp/agent/extensions/pij
+  before: /Users/jordanknight/pi-hacking/pij/.pi/extensions/pij
+  during: /Users/jordanknight/pi-hacking/fs3-rs-boot-announce/.pi/extensions/pij
+  after:  /Users/jordanknight/pi-hacking/pij/.pi/extensions/pij
+```
+
+## AC8 — one wire frame across harnesses — **PROVEN**
+
+`pij-rs spawn --harness omp --bin omp` → `pij-flexible-pelican`, session
+`01a06f11-1b29-7000-9e07-00aad7007425`; one message sent to it. Exact bytes from
+**that seat's own transcript**:
+
+```
+"[pij-rs from pij-verbal-silverfish]\nAC8 live frame probe from the PM. No action needed, no reply required.\n[/pij]"
+```
+
+Head **and** tail, identical to what the daemon frames for Claude seats. Also
+confirmed rendered in the pane.
+
+## AC7 — Claude seat binds to its claude process, receives over the socket — **PROVEN**
+
+**The first attempt was an invalid experiment and is recorded because catching it
+mattered more than the pass would have.** `claude` was launched AS the pane
+command, so the pane pid *was* the claude pid: no shell layer existed, the test
+could not have failed, and a pass would have proven nothing. Redone properly — a
+pane running a shell, with `claude` started inside it:
+
+```
+pane %3568   shell pid 90801   claude child pid 93017
+
+$ pij-rs adopt --harness claude %3568
+pij adopt: ok — {"id":"pij-subsequent-pheasant","harness":"claude",
+                 "proc":{"pid":93017,"proc_start":20260905105830}, …}
+                        ^^^^^^^^^^^ the CLAUDE process, not the shell (90801)
+
+$ ls /tmp/cc-socks/93017.sock
+/tmp/cc-socks/93017.sock          # socket is keyed on the claude pid — why discovery used to miss
+
+$ pij send pij-subsequent-pheasant 'AC7 transport probe from the PM.'
+$ sqlite3 ~/.pij-rs/pij.sqlite "SELECT kind, payload FROM spine_events WHERE seat='pij-subsequent-pheasant' ORDER BY seq DESC"
+delivery.outcome | {"outcome":{"outcome":"delivered","origin":"injected-to-transport"},"transport":"claude-uds"}
+message.pushed   | {"from":"pij-verbal-silverfish", …}
+```
+
+**No pointer-drain job.** This is the exact symptom reported this morning — 18 of
+19 live Claude seats bound to their pane's shell, deliveries falling back to
+`tmux send-keys` — fixed and measured end to end.
+
+## Open finding, raised to prime rather than fixed unilaterally
+
+`announceText` still tells every booting seat that peer messages arrive as
+`[pij from <id>] …` — the legacy shape this plan just stopped emitting. It was
+visible in the AC8 seat's pane directly above the canonical frame it had just
+received. `announceText` content is an explicit NON-GOAL of this plan, so it was
+left alone: the plan that exists to make seats know which system they are on now
+ships a boot message describing the other one. Smallest fix is one string.

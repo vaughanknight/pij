@@ -158,8 +158,18 @@ describe("announceText", () => {
 	it("is non-imperative and warns against acting on the inbox (D-040)", () => {
 		const t = announceText("w3", "worker");
 		expect(t).toContain("no action is required");
-		expect(t).toMatch(/\[pij from <id>\]/);
 		expect(t.toLowerCase()).toContain("do not read");
 		expect(t.toLowerCase()).toContain("inbox");
+	});
+
+	// AC8: the announce describes the frame we EMIT. A boot message that documents
+	// the legacy shape teaches every fresh seat to expect the generation it is not
+	// on — the same observability defect AC8 exists to close, shipped in the one
+	// message every seat reads first.
+	it("describes the frame peers actually arrive in, not the legacy one", () => {
+		const t = announceText("w3", "worker");
+		expect(t).toContain("[pij-rs from <id>]");
+		expect(t).toContain("[/pij]");
+		expect(t).not.toMatch(/\[pij from <id>\]/);
 	});
 });

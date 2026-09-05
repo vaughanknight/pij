@@ -44,7 +44,7 @@ Since c048ebc2 (2026-08-30, rs cutover) every omp/pi seat boots pij-blind: PijSe
 ## Non-goals
 
 - Reaping or tombstoning stale rs seat rows (separate roadmap question, plan 095 evidence pointer).
-- Changing announceText content or the ready-ping protocol (PIJ_ANNOUNCE_TO path).
+- announceText content and the ready-ping protocol (PIJ_ANNOUNCE_TO path) stay unchanged, EXCEPT the one sentence describing the inbound frame, which must describe the frame we actually emit (amended by prime ruling 2026-09-05 when AC8 landed: a boot message documenting the legacy shape teaches every fresh seat to expect the generation it is not on).
 - Any legacy-daemon behaviour; the legacy TS daemon is stopped for good.
 
 <a id="acceptance-criteria"></a>
