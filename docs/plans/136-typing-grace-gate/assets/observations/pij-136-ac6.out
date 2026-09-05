@@ -1,0 +1,26 @@
+=== AC6(a): parked draft, no edit for hours -> must DELIVER (world B refused for 200s+) ===
+--- composer before (draft parked since ~09:35) ---
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ DRAFT-CLAUDE-CONTROL-136 parked draft never submitted
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  7% pij ⎇ main rs ⛓ pij-dear-primate • Sonnet 5 • medium • 70k/1.0M • 39% ↻13:00                                                                /rc
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
+since=1788574410781 send_at=1788574410781
+sent (rs) — msg 804532273e40de32-0000000000000013 — receipt delivered
+--- spine ---
+{"seq":9483,"at":1788574411569,"kind":"message.pushed","payload":"{\"msg_id\":\"804532273e40de32-0000000000000013\",\"from\":\"pij-fellow-whale\",\"body\":\"AC6-136-A: parked draft must no longer block me\"}"}
+{"seq":9484,"at":1788574411569,"kind":"delivery.outcome","payload":"{\"msg_id\":\"804532273e40de32-0000000000000013\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"injected-to-transport\"},\"transport\":\"claude-uds\"}"}
+--- composer after ---
+                                                                                                              ✔ Update installed · Restart to update
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ DRAFT-CLAUDE-CONTROL-136 parked draft never submitted
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  7% pij ⎇ main rs ⛓ pij-dear-primate • Sonnet 5 • medium • 70k/1.0M • 39% ↻13:00                                                                /rc
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
+
+=== AC6(b): edit 5s ago -> queued/human-typing, bounded retry ===
+t_edit=1788574423951
+send_at=1788574429016 (t+5065ms)
+sent (rs) — msg 804532273e40de32-0000000000000015 — receipt queued
+{"seq":9488,"at":1788574429872,"kind":"message.pushed","payload":"{\"msg_id\":\"804532273e40de32-0000000000000015\",\"from\":\"pij-fellow-whale\",\"body\":\"AC6-136-B: sent 5s after an edit\"}"}
+{"seq":9489,"at":1788574429872,"kind":"delivery.outcome","payload":"{\"msg_id\":\"804532273e40de32-0000000000000015\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"human-typing\",\"next_retry_at\":0,\"draft_sha\":\"825fdcf649aa\"},\"transport\":\"claude-uds\"}"}
