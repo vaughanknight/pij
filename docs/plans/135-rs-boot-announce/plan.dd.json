@@ -63,8 +63,8 @@
           "id": "AC4",
           "claim": "register contract is additive and shared",
           "text": "`/v1/register` response gains `binding` (created|rebound|same) with no renamed or removed field; one golden fixture docs/plans/135-rs-boot-announce/assets/contracts/register-response.json is deserialized by a Rust test (crates/daemon) AND parsed by a TS test (core/daemon-wire) — both cite the same file path in their source.",
-          "state": "unchecked",
-          "receipt": "assets/contracts/register-response.json read by both suites: u1 http tests compare parsed serde_json::Value against it; u2 parses it for the fake client. Field additive, nothing renamed.",
+          "state": "checked",
+          "receipt": "RE-CHECKED on main aa697235 from the COMMITTED tree: git show HEAD:crates/daemon/src/http/tests.rs -> pij_testkit::fixtures::read(\"register-response.json\"); git show HEAD:.pi/extensions/pij/adapters/rust-runtime.test.ts -> ../../../../crates/testkit/fixtures/register-response.json. cargo test -p pij-daemon --lib registration_binding 4 passed; vitest rust-runtime.test.ts 18 passed. One file, both suites, both green.",
           "note": "DOWNGRADED 2026-09-05 by reviewer finding: on merged main the Rust suite still cited the pre-move path (deleted), so the two suites did NOT cite the same file and three daemon tests failed deterministically with NotFound. Cause: a git add that aborted on a deleted path with stderr suppressed, so the fix lived only in the working tree. Fixed in 99269b90 by resolving through pij_testkit::fixtures::read so a future move is a compile error; re-check only after merge and a clean run against the COMMITTED tree."
         },
         {
