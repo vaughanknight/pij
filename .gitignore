@@ -210,3 +210,6 @@ pocs/*/out/
 
 # Per-worktree cargo target dirs (impl-guide mandates CARGO_TARGET_DIR per coder)
 .cargo-target/
+
+# machine-local Claude Code permissions (never versioned; lints red in the canonical checkout otherwise)
+.claude/settings.local.json
