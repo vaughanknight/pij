@@ -12,7 +12,7 @@
 | title | typing grace gate — hold delivery while a human is typing |
 | slug | typing-grace-gate |
 | ordinal | 136 |
-| status | draft |
+| status | shipped |
 | complexity | — |
 | summary | Pushed messages to omp/pi seats are held while the human has typed within PIJ_TYPING_GRACE_MS (default 60 s) and delivered once idle; the hold is visible from both ends and control commands bypass it. Claude/send-keys seats move their veto from 'draft present' to the same recent-keystroke rule, retiring plan 134's AC7 pathology. |
 | backpressure | — |
@@ -68,7 +68,7 @@ Jordan 2026-09-05: 'pij messages to omp seats step on me if I'm already typing. 
 
 | id | title | brief | state | note | receipt | depends_on | tasks | objective | delivers | key_risks | name |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| p1 | Contract, three units, compose, live | Freeze the hold/release event shape + grace source (u0, PM); fan out u1 (TS extension sensor+hold queue), u2 (Rust daemon: held/released rows, grace exposure, honest push receipt), u3 (Rust interaction gate recency); compose; live proofs. | [ ] unchecked | — | — | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — | u0 contract → u1 ext ∥ u2 daemon ∥ u3 gate → compose |
+| p1 | Contract, three units, compose, live | Freeze the hold/release event shape + grace source (u0, PM); fan out u1 (TS extension sensor+hold queue), u2 (Rust daemon: held/released rows, grace exposure, honest push receipt), u3 (Rust interaction gate recency); compose; live proofs. | [x] checked | — | All five tasks checked with receipts. Composed, merged to main (be778b9c, then 1142c87e, 677c118b and 6f5d33c6 for the delta, u5 and the review remediation), with harness checks 8/8 green at every gate and the live proofs in assets/live-proof.md. Cross-model review: APPROVE WITH FINDINGS, 13 findings, all dispositioned — f1 struck after a live single-release proof, f2/f3/f10/f11 fixed in ae427e2d, and one follow-up left deliberately open with its problem statement written down (a failed hold leaves the row claimed-and-running, so its five frame retries cannot succeed while the seat's serial key is held by that same claim). 7 of 8 ACs proven live; AC4 recorded unreachable rather than ticked on unit evidence. | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — | u0 contract → u1 ext ∥ u2 daemon ∥ u3 gate → compose |
 
 <a id="references"></a>
 
