@@ -367,3 +367,48 @@
       status: open
       source: agent-self
       first_seen_at: "2026-09-05T02:41:18.794Z"
+- id: DL-041
+  kind: difficulty
+  description: "A PROHIBITION WRITTEN AS AN ENUMERATION CANNOT BE OBEYED AS A CLASS. My coder/reviewer packets said \"do NOT run the full tmux smoke and do NOT run cargo test --workspace; the PM serializes those\" — two commands, where I meant the category \"anything that drives real tmux or the live fleet\". The reviewer complied with both literally and then ran cargo test -p pij-tmux, which SILENTLY includes crates/tmux/tests/adapter.rs and drives REAL tmux panes on a machine carrying a live fleet; it only learned the target was real-resource from the failure output twenty minutes later. Nothing at the call site distinguishes that invocation from unit tests. Two fixes, and the second is the durable one: (1) packets name the RESOURCE, not the command; (2) make real-resource targets impossible to sweep in by accident - a required feature flag, #[ignore] with an explicit --ignored opt-in, or a separate integration target a default cargo test -p X does not build. That converts \"you had to know\" into \"you have to ask\", which is the difference between a rule and a guard rail. Same INS-003 shape yet again: the knowledge that adapter.rs is dangerous exists only in peoples heads and in a packet sentence about something else."
+  fp: 0d237f0407e8
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-05T02:53:42.196Z"
+- id: DL-042
+  kind: difficulty
+  description: "THE SAME DEFECT AT THREE ALTITUDES, each fix scoped to where someone had already looked (reviewer r2f4, plan 135): AC8 corrected the frame description a seat reads at BOOT (announceText); f6 corrected the description it reads on the SEND TOOL (five index.ts metadata strings); r2f4 found .pi/APPEND_SYSTEM.md:162 still teaching the dead generation in the MACHINE-GLOBAL SYSTEM-PROMPT APPEND — synced by just install to ~/.pi/agent/ for every pi session on the box, i.e. ABOVE both previous fixes. Plus four agent-read docs including the domain doc for the very module that changed. Each round fixed the surface in view and none asked \"what is the complete set of places that DESCRIBE this to an agent\". The durable fix is not the sentences: it is adding every such surface to the automated guard, so the answer is enforced rather than remembered. Generalisable rule: when a wire format changes, enumerate the description surfaces by SCOPE (system prompt, tool metadata, boot text, docs, listings, comments) and put the enumeration in a check - otherwise each fix teaches you only that there is another one above it."
+  fp: 9adef8253573
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-05T02:57:46.563Z"
+- id: DL-043
+  kind: difficulty
+  description: "A FILESYSTEM-WALKING SENSOR MUST NOT TAKE A GITIGNORE-HEAVY DIRECTORY AS A SURFACE. The frame-vocabulary guard walks with readdirSync, not git, so `.pi` looks like ~460 committed files while the real directory on any machine that has run `pi install` holds 5,642 files under .pi/npm and 19,964 more outside it — .pi/git at 233M and .pi/npm at 126M against 5.9M of actual extension source, all gitignored and therefore invisible in the committed tree. Taking `.pi` as a surface would scan third-party vendored bytes nobody in the repo controls and fail the moment any package contained the guarded string (plausibly a vendored copy of this repo own docs), and would double-scan .pi/extensions/pij which is already surface one. Caught by the reviewer BEFORE the surface was wired; the PM measurement was two orders of magnitude worse than the estimate that prompted it. Encodable fix: sensors take explicit FILE entries for single files ({path,isFile} or stat-and-scan) and only narrow, named, tracked directories; and any sensor that walks the filesystem should be tested on a machine with installed state, not only in a clean checkout - a guard people delete because it fires on vendored bytes protects nothing."
+  fp: 98c991d2e491
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-05T02:59:48.941Z"
+- id: DL-044
+  kind: difficulty
+  description: "REVIEWER-CONTRIBUTED, the good kind of finding - not a defect but a corner created by the fix that closed the previous one: the unused-allowance check (r2f2) keys fired allowances by allowance.path, which is unambiguous only while allowances exist on ONE surface. The moment the guard gained multiple surfaces (r2f4), two surfaces sharing a relative path would collide in that Set and one could silently mask the other unused-detection - the exact masking mechanism r2f2 was built to prevent, reintroduced by the generalisation that closed r2f2. Prefixing the key with the surface costs nothing today and is unbounded later. Generalisable: when a check is generalised to N of something, re-examine every identity/key it uses that was implicitly scoped by there having been one."
+  fp: a62a0d329778
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-05T02:59:49.121Z"
+- id: DL-045
+  kind: difficulty
+  description: "A FIX IN THE REPO IS NOT A FIX IN THE FIELD, and this plan hit three separate machine-global surfaces each with a DIFFERENT trigger and no single place documenting them: (1) the omp extension symlink ~/.omp/agent/extensions/pij points at the MAIN checkout, so a merged TS fix is invisible to every live seat until the link or the checkout moves; (2) PATH pij-rs symlinks to mains target/release binary, so a worktree bounce restarts the STALE daemon unless started by explicit path; (3) .pi/APPEND_SYSTEM.md is synced to ~/.pi/agent/ by just install, so correcting the system-prompt sentence in the repo leaves every live pi session carrying the old one until someone runs the sync. Each was discovered separately, mid-plan, by a different route. Same family as the gestures nobody makes (re-adopt the seat, restart Claude on the current build, sweep the fleet): the change is correct and inert. Encodable fix: one document listing every machine-global surface with its propagation trigger and how to verify it took effect, and a plan template question - which global surfaces does this change touch, and what makes it live?"
+  fp: d82d25994745
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-05T03:00:34.219Z"

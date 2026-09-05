@@ -61,3 +61,21 @@
       status: open
       source: agent-self
       first_seen_at: "2026-09-05T02:30:32.477Z"
+- id: WIN-002
+  kind: win
+  description: "u4 r2f1+r2f2 extended frame-vocabulary guard from extension to maintained skills, while historical plans stay excluded by root. A deliberately stale exact-line exemption failed the new fired-Set assertion; removing it revealed four stale skills sentences, all fixed. Original14 exact exemptions unchanged; guard now detects both unexpected legacy mentions and unused allowances."
+  fp: 8507c71a84d1
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-05T02:44:17.368Z"
+- id: WIN-003
+  kind: win
+  description: "u4 r2f4 guard now covers system-prompt append source, maintained how-to and domain docs, as well as extension and skills. Expanded-root RED named all5 new offenders; source fixes restored31/31 green. Single-file and directory traversal both exercised; authored extension-only allowances and historical-plan exclusion retained. Global installed append intentionally not synced by this fenced worker."
+  fp: b2085b376ad6
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-05T03:00:43.610Z"

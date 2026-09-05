@@ -43,3 +43,12 @@
       status: open
       source: agent-self
       first_seen_at: "2026-09-05T02:11:44.131Z"
+- id: DL-006
+  kind: difficulty
+  description: "r2n7: corpus verify_manifest hashes every listed path and rejects unindexed files under its own root, so explicit ../../transport fixture addresses are valid and the corpus gate passes them. Fixture.bytes is recorded but not checked by that verifier; new SHA/byte metadata was independently computed from committed bytes. Potential harness improvement: validate recorded byte lengths alongside SHA in the existing corpus gate."
+  fp: d393a31c61e8
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-05T02:47:36.371Z"
