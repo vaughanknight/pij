@@ -1,0 +1,92 @@
+{
+  "status": "unit_complete_integration_pending",
+  "base": "36248c58638316c3bc3d4c90aad765eda39b3ba3",
+  "branch": "137-copilot-native-daemon",
+  "contract_version": 3,
+  "observations": [
+    "Actual offline executable smoke exposed /v1/send silently dropping a supplied command field and queueing an empty Copilot message. Captured daemon-offline-smoke-before.json; added Copilot-only HTTP boundary refusal and regression test. No general remote-control protocol added.",
+    "Historical schema12 upgrade intermittently read stale SQLite column metadata after migration13 despite PRAGMA13. Fixed store bootstrap by holding one connection across version read, migrations and version write; regression inspects every runtime-pool connection. No retries/suppression or historical migration edits.",
+    "Broader scoped TS run: 152 passed, 1 skipped, 1 failed. Failure is existing archived-seat test's subprocess ERR_MODULE_NOT_FOUND for shared node_modules/node_modules/esbuild/index.js via tsx, reported to PM; no dependency writes. Changed-control tests are rerun separately, not claimed as full-gate proof.",
+    "PM/prime restored canonical node_modules from exact lockfile; existing worktree symlink retained. Scoped TS proofs resumed; no npm install/ci/just install run by this coder.",
+    "Read PM pm-lifecycle-rulings.md: target queued work to original native SESSION, not immutable PID; explicit revive cannot adopt different native conversation. Same-session resumed process may claim with new validated tuple. Different target holds with actionable diagnostic; unstamped prebind tasks remain eligible.",
+    "Contract v3 and pm-opus-preflight-rulings.md received from PM source tree. Native claim/ack SERVICE guards include shim; every claim echoes native_consumer; consent hold promptly returns [] with stable meta even wait=true. Queue::claimed_delivery plus real/fake/test-wrapper scope approved. Plan136 no longer owns delivery/mod.rs match; no baton required.",
+    "PM approved GO and contract v2 incarnation tuples, exact ack recipient, checked supersedes, named .pi control guard exceptions.",
+    "PM measured pane_pid often identifies shell, not harness. Native attestation must verify actual Copilot process and include a negative shell-pid witness; no fleet census reproduced.",
+    "Harness pre-flight/status: governance and CLI instructions read. Full boot/checks are project-wide and deliberately PM-owned during this concurrent wave. Prior baseline file-watch-notify red retained; no baseline rerun to reconfirm.",
+    "Native LSP rust-analyzer configured, but references, hover and symbols on worktree core/model.rs return empty, including declared SeatDescriptor. Not accepted as evidence of no callsites; exact-text source mapping is required.",
+    "Actual flowspace3 status found this indexed worktree with empty queue and include_hidden=false. Scoped semantic search located DeliveryService::claim_inbox and HTTP inbox, followed by actual flowspace3 get. Hidden .pi sources require explicit text scope; index absence there is not source absence."
+  ],
+  "proofs": [
+    {
+      "command": "CARGO_BUILD_JOBS=4 VITEST_MAX_WORKERS=4 VITEST_MAX_THREADS=4 cargo test --locked -p pij-core -p pij-store -p pij-harnesses -p pij-daemon -p pij-cli --no-fail-fast",
+      "result": "542 passed, 41 suites, 3 ignored",
+      "log": "daemon-rust-tests-final.log"
+    },
+    {
+      "command": "cargo test --locked -p pij-sidecars --test sidecars",
+      "result": "10 passed",
+      "log": "daemon-rust-tests.log"
+    },
+    {
+      "command": "just test .pi/extensions/pij/core/generation-routing.test.ts --no-cache",
+      "result": "44 passed"
+    },
+    {
+      "command": "VITEST_MAX_THREADS=4 CARGO_BUILD_JOBS=4 just test .pi/extensions/pij/cli.integration.test.ts -t 'refuses Copilot reload before|refuses ambient Copilot and unknown compact-self' --no-cache",
+      "result": "2 passed, 108 filtered after prime runtime repair",
+      "log": "daemon-js-focused-after.log"
+    },
+    {
+      "command": "target/debug/pij-rs daemon --offline --bind <isolated-port> --state-dir <isolated-dir>",
+      "result": "spawn/body queue passed; compact/new/reload HTTP400; unattested claim HTTP400; original body retained",
+      "artifact": "daemon-offline-smoke.json",
+      "ceiling": "real executable and HTTP, fake adapters; no native SDK/model proof"
+    },
+    {
+      "command": "VITEST_MAX_THREADS=4 CARGO_BUILD_JOBS=4 just test .pi/extensions/pij/core/generation-routing.test.ts .pi/extensions/pij/cli.integration.test.ts --no-cache --maxWorkers=4",
+      "result": "153 passed, 1 skipped",
+      "log": "daemon-js-broad-after.log"
+    },
+    {
+      "command": "scoped biome check and rustfmt --check on owned paths",
+      "result": "passed; no fixes on final check"
+    },
+    {
+      "command": "four deliberate guard mutations followed by restoration",
+      "result": "all counterexamples failed as expected, restored daemon suite198 passed",
+      "artifact": "daemon-mutations.json"
+    }
+  ],
+  "integration_pending": [
+    "PM composed real manual/spawned Copilot SDK/client and real-model witnesses, typing/reconnect/daemon-absent scenarios",
+    "PM final harness checks and independent Opus acceptance",
+    "Plan135 additive registration binding metadata at composition; untouched by this unit"
+  ],
+  "toolchain": {
+    "cargo": "1.95.0 (f2d3ce0bd 2026-03-21)",
+    "rustc": "1.95.0 (59807616e 2026-04-14)",
+    "node": "v24.7.0",
+    "vitest": "4.1.10",
+    "just": "1.42.4"
+  },
+  "test_caps": {
+    "CARGO_BUILD_JOBS": "4",
+    "VITEST_MAX_WORKERS": "4",
+    "VITEST_MAX_THREADS": "4",
+    "note": "Prime correction credited135: Vitest4 ignores VITEST_MAX_THREADS. Final broader scoped run explicitly used --maxWorkers=4; earlier env-only timing is not claimed capped."
+  },
+  "review": {
+    "scope": "local read-only safety review, not PM Opus acceptance",
+    "retained_finding": "retired/prebind Copilot ordinary relabel bypasses native inbox classification",
+    "reproduced": "daemon-lifecycle-relabel-before.log",
+    "fix": "refuse harness change for any existing Copilot descriptor before active/native registration branches",
+    "final_verification": "542 scoped Rust tests passed after fix; local reviewer re-read fix/regression and resolved finding",
+    "disposition": "resolved; reviewer re-read exact guard and regression after observed pre-fix ACK bypass"
+  },
+  "harness_improvement": "Encoded service-level native proof markers, explicit hold metadata, shell-PID and no-tmux falsification witnesses, and all-connections historical-migration regression; the runnable tests catch formerly inferred identity/ownership guarantees.",
+  "cleanup": "All mutation edits restored. Owned offline daemon stopped; its isolated state/key directory removed. No global daemon, settings, toolchain, dependency, plan, guide, contract, or governance edits by this coder.",
+  "source_commit": "f82a3d6c0348e13d774a4e22507addb49b7122c1",
+  "source_files_changed": 33,
+  "deferred_project_validation": "harness checks and full independent Opus/integrated native client acceptance intentionally PM-owned; no project-wide gate executed by this unit",
+  "source_scope_note": "Only daemon/Rust persistence/spawn/CLI control guard and corresponding tests/fixtures changed. Native extension SDK and installer artifacts belong to sibling units. Legacy index.ts tool source not edited: its Rust-runtime command refusal already exists; no existing-session compatibility claim."
+}

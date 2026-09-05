@@ -1,0 +1,35 @@
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.59s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-18bad1c90de73721)
+
+running 6 tests
+test registration::tests::ordinary_registration_cannot_relabel_or_supersede_active_copilot_seat ... ok
+test delivery::tests::copilot_programmatic_controls_refuse_without_enqueue_or_tmux ... ok
+test delivery::tests::copilot_first_arrival_is_native_only_even_without_capability ... FAILED
+test pointer::worker::tests::copilot_drain_never_claims_native_body_or_legacy_control ... FAILED
+test registration::tests::real_shell_process_is_not_an_actual_copilot_host ... ok
+test http::native_tests::body_only_http_endpoint_explicitly_refuses_copilot_controls_instead_of_dropping_field ... ok
+
+failures:
+
+---- delivery::tests::copilot_first_arrival_is_native_only_even_without_capability stdout ----
+
+thread 'delivery::tests::copilot_first_arrival_is_native_only_even_without_capability' (891262443) panicked at crates/daemon/src/delivery/mod.rs:2319:13:
+arrival must never consult or submit tmux
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- pointer::worker::tests::copilot_drain_never_claims_native_body_or_legacy_control stdout ----
+
+thread 'pointer::worker::tests::copilot_drain_never_claims_native_body_or_legacy_control' (891262446) panicked at crates/daemon/src/pointer/worker.rs:2025:17:
+assertion `left == right` failed
+  left: 1
+ right: 0
+
+
+failures:
+    delivery::tests::copilot_first_arrival_is_native_only_even_without_capability
+    pointer::worker::tests::copilot_drain_never_claims_native_body_or_legacy_control
+
+test result: FAILED. 4 passed; 2 failed; 0 ignored; 0 measured; 192 filtered out; finished in 0.06s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

@@ -1,0 +1,109 @@
+{
+  "source_commit": "f82a3d6c0348e13d774a4e22507addb49b7122c1",
+  "binary_sha256": "61fdbfb781740d0ad77d506d933bf6cc1267d96b25c0372fb2a6fcef44124965",
+  "mode": "actual source-pinned pij-rs executable; --offline adapters; isolated state/port; not native Copilot SDK proof",
+  "spawn": {
+    "status": 200,
+    "envelope": {
+      "ok": true,
+      "command": "pij spawn",
+      "v": 2,
+      "data": {
+        "id": "pij-native-smoke",
+        "harness": "copilot",
+        "session": null,
+        "pane": "%100",
+        "proc": null,
+        "folder": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": false,
+        "cross_session_inbound_accept": false,
+        "native_extension_delivery": false,
+        "spawn_id": "s-4ceb3ba57daf39e2091218655f992c18",
+        "dispatched": true,
+        "bound": false
+      }
+    }
+  },
+  "send": {
+    "status": 200,
+    "envelope": {
+      "ok": true,
+      "command": "pij send",
+      "v": 2,
+      "data": {
+        "msg_id": "daemon137-proof-message",
+        "outcome": {
+          "outcome": "queued",
+          "reason": "pre-bind",
+          "next_retry_at": 0
+        },
+        "at": 1788566749828
+      }
+    }
+  },
+  "controls": [
+    {
+      "status": 400,
+      "envelope": {
+        "ok": false,
+        "command": "pij send",
+        "v": 2,
+        "meta": "Copilot programmatic controls are unsupported; use native user controls; no legacy or tmux fallback",
+        "error": "refused"
+      }
+    },
+    {
+      "status": 400,
+      "envelope": {
+        "ok": false,
+        "command": "pij send",
+        "v": 2,
+        "meta": "Copilot programmatic controls are unsupported; use native user controls; no legacy or tmux fallback",
+        "error": "refused"
+      }
+    },
+    {
+      "status": 400,
+      "envelope": {
+        "ok": false,
+        "command": "pij send",
+        "v": 2,
+        "meta": "Copilot programmatic controls are unsupported; use native user controls; no legacy or tmux fallback",
+        "error": "refused"
+      }
+    }
+  ],
+  "missing_consumer": {
+    "status": 400,
+    "envelope": {
+      "ok": false,
+      "command": "pij inbox",
+      "v": 2,
+      "meta": "daemon/native-inbox: native-extension-unavailable: Copilot requires current native registration",
+      "error": "refused"
+    }
+  },
+  "retained_body": {
+    "status": 200,
+    "envelope": {
+      "ok": true,
+      "command": "pij inbox",
+      "v": 2,
+      "data": [
+        {
+          "job_id": 1,
+          "message": {
+            "from": "pij-proof-peer",
+            "to": "pij-native-smoke",
+            "body": "PIJ137_OFFLINE_NATIVE_OWNERSHIP",
+            "msg_id": "daemon137-proof-message"
+          }
+        }
+      ]
+    }
+  }
+}
