@@ -150,6 +150,18 @@ retain before/rechecked/after terminal evidence and the exact decision, alongsid
 the existing final-pane captures. This is test-human consent, not a permission
 bypass or tmux message-body delivery; product policy/default grants are unchanged.
 
+AC6 types one fixture-human draft, then sends the message only through the daemon.
+The driver requires the exact native-owner echo from `/v1/inbox/typing`, a positive
+daemon-reported typing grace, and a durable `delivery.held` receipt with no native
+acceptance or ACK. The **same nonempty draft stays unchanged** while recency expires
+and `delivery.released` precedes the original job's `delivery.inbox-ack`. Exactly
+one native user message and one `reader-read` row are required; release alone is
+not delivery. Missing/unavailable observations fail explicitly. No second send,
+driver-issued release, or draft clear can satisfy this proof. Only after it passes
+does a separately recorded human-control cleanup clear the fixture draft so the
+existing lifecycle scenarios can continue. Allow enough timeout for the observed
+grace; scoped assertion tests are not live AC6 or lifecycle acceptance.
+
 Witnesses retain exact source and executable hashes, versions, processes/panes,
 Pij msg/job IDs, public native events, bidirectional tool-originated replies,
 initial spawned task/duplicate checks, held/admitted draft evidence, missing

@@ -1,0 +1,63 @@
+{
+  "status": "v4-installer-proof-implemented-scoped-checks-passed-PM-live-proof-outstanding",
+  "source_base": "379e54b9cd373cfec4f071a063d34d9328b062b6",
+  "contract": "assets/inputs/pm-typing-sensor-contract-v4.json",
+  "ac6_accepted": false,
+  "ac7_accepted": false,
+  "implementation": {
+    "symbol": "driveSmokeTypingWitness",
+    "consumer": "runSmoke manual and spawned AC6 scenarios",
+    "sensor": "GET /v1/inbox/typing with exact seat/native_session/pid/proc_start; observed native owner echo, source, semantic Hold, daemon grace, retry bounds and monotonic observation time checked",
+    "hold": "one API send; same nonempty fixture draft, pending unclaimed original job, zero native messages and ACKs, correlated delivery.held human-typing receipt",
+    "expiry": "draft unchanged; daemon retry reaches zero after observed initial/held deadline; positive-sensor/later-receipt boundary reread with both samples retained",
+    "release": "every correlated release follows held sequence and the full sensor-derived and held-event grace; held timestamp tied to observed edit window",
+    "acceptance": "one native user event/message ID, one reader-read ledger row, original job done and one correlated delivery.inbox-ack after release",
+    "correlation": "spine_events joined to jobs by recipient and msg_id/dedupe_key, or ACK job_id; no invented job_id in held/released payloads",
+    "cleanup": "C-u only after completed unchanged-draft acceptance proof; separately retained before/after controls permit existing lifecycle scenarios",
+    "preserved": "exact tool consent, final-pane captures, manual/spawned rollover isolation and real-dead-host resume driver remain present"
+  },
+  "verification": {
+    "environment": {"VITEST_MAX_WORKERS":"4", "VITEST_MAX_THREADS":"4", "CARGO_BUILD_JOBS":"4"},
+    "initial_red": {
+      "command": "just test harness/scripts/copilot-native-smoke.test.ts -t 'AC6 unchanged-draft'",
+      "exit_code": 1,
+      "failed": 29,
+      "skipped": 54,
+      "reason": "TypeError: driveSmokeTypingWitness is not a function",
+      "boundary": "new driver contract RED, not a live missing-route or native transport reproduction"
+    },
+    "review_red": {
+      "command": "just test harness/scripts/copilot-native-smoke.test.ts -t 'early release|expiry boundary'",
+      "exit_code": 1,
+      "failed": 3,
+      "cases": ["stale held timestamp hides early release", "later valid release hides earlier premature release", "sensor/files sampling crosses real expiry boundary"]
+    },
+    "final_tests": {
+      "command": "just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0,
+      "passed": 128,
+      "smoke": 95,
+      "installer": 33,
+      "ac6_cases": 41,
+      "result": "2 files passed; duration 2.28s"
+    },
+    "typecheck": {
+      "command": "node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0
+    },
+    "biome": {"command":"node_modules/.bin/biome check harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts", "exit_code":0, "result":"Checked 2 files. No fixes applied."},
+    "review": {"agent":"AC6ProofReview", "initial_findings":2, "adjudication":"both reproduced RED and corrected", "final_source_confirmation":"Both reported groups addressed; no further actionable findings; no commands or live launches by reviewer"}
+  },
+  "harness_lesson": "Clearing a draft proves quiet-composer release, not recency expiry. Encode unchanged-draft checks plus correlated held/released/ACK chronology; independently timed sensor and receipt reads need an explicit boundary reread.",
+  "boundaries": {
+    "live_launches": 0,
+    "live_keys_sent": 0,
+    "full_gates": "PM-owned and not run",
+    "product_edits": false,
+    "global_changes": false,
+    "new_typing_policy_constant": false,
+    "real_provider_inference_proven_here": false,
+    "pending_composition": "v4 sensor route and receiver are sibling-owned; fixture assertions do not prove their actual HTTP or native runtime integration",
+    "separate_following_work": "PM real-canary-01 welcome-panel approval discrimination correction will be a separate checkpoint"
+  }
+}
