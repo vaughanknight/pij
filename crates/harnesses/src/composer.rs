@@ -189,6 +189,7 @@ fn is_copilot_footer(line: &str) -> bool {
     let lower = line.trim().to_lowercase();
     lower.starts_with("/ commands")
         || lower.starts_with("← open sidebar · / commands · ? help · tab next tab")
+        || lower.starts_with("@ files · # issues")
         || lower.contains("esc interrupt")
         || lower.contains("context")
 }
@@ -265,6 +266,22 @@ mod tests {
     }
 
     #[test]
+    fn copilot_v1_0_84_captured_draft_footer_is_recognized() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/2026-09-05-copilot-v1.0.84-live06-draft.json"
+        ))
+        .expect("captured Copilot fixture is valid JSON");
+        let capture = fixture["terminal"]
+            .as_str()
+            .expect("fixture retains the actual terminal capture");
+        let footer = capture.lines().last().expect("capture contains a footer");
+        assert!(
+            is_copilot_footer(footer),
+            "Copilot v1.0.84-0 live06 captured draft footer: {footer:?}"
+        );
+    }
+
+    #[test]
     fn copilot_footer_preserves_existing_variants() {
         for footer in [
             "/ commands · ? help",
@@ -280,6 +297,20 @@ mod tests {
         assert!(!is_copilot_footer(
             "Use / commands to open the menu and ? help for documentation."
         ));
+    }
+
+    #[test]
+    fn copilot_footer_rejects_draft_help_in_prose_or_partial_hints() {
+        for line in [
+            "See @ files · # issues for details.",
+            "@ files",
+            "# issues",
+            "@ files # issues",
+            "@ files · # issue",
+            "# issues · @ files",
+        ] {
+            assert!(!is_copilot_footer(line), "not a draft footer: {line:?}");
+        }
     }
 
     #[test]
