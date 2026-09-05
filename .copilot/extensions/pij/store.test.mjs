@@ -657,11 +657,12 @@ for (const [label, snapshot] of [
 }
 
 for (const reconnect of [false, true]) {
-	test(`startup readiness diagnostic says waiting and retrying without hiding later invalidity${reconnect ? " after reconnect" : ""}`, async () => {
+	test(`startup readiness stays diagnostic without hiding later invalidity${reconnect ? " after reconnect" : ""}`, async () => {
 		const lines = [];
+		const diagnostics = [];
 		const report = createNativeReporter({
 			log: async (message) => lines.push(message),
-			capture: () => undefined,
+			capture: (event) => diagnostics.push(event),
 		});
 		const offset = reconnect ? 1 : 0;
 		if (reconnect) {
@@ -669,19 +670,16 @@ for (const reconnect of [false, true]) {
 			await report({ kind: "reconnecting", diagnostic: "SECRET_REMOTE_BODY" });
 			assert.equal(lines.length, 1, "retry warnings still coalesce");
 		}
-		await report({ kind: "typing-sensor-wait", diagnostic: "SECRET_REMOTE_BODY stopped" });
-		assert.equal(lines.length, offset + 1);
-		assert.match(lines[offset], /waiting/i);
-		assert.match(lines[offset], /retrying/i);
-		assert.match(lines[offset], /outgoing.*(?:usable|available)/i);
-		assert.doesNotMatch(lines[offset], /stopped|SECRET_REMOTE_BODY/);
+		await report({ kind: "typing-sensor-wait", retryMs: 250 });
+		assert.equal(lines.length, offset, "normal readiness must not warn in the timeline");
+		assert.deepEqual(diagnostics, [{ kind: "typing-sensor-wait", retryMs: 250 }]);
 		await report({
 			kind: "receive-held",
 			holdKind: "typing-sensor",
 			diagnostic: "SECRET_REMOTE_BODY",
 		});
-		assert.equal(lines.length, offset + 2, "retrying must not hide a terminal sensor failure");
-		assert.match(lines[offset + 1], /stopped/);
+		assert.equal(lines.length, offset + 1, "readiness must not hide a terminal sensor failure");
+		assert.match(lines[offset], /stopped/);
 		assert.ok(lines.every((line) => !line.includes("SECRET_REMOTE_BODY")));
 	});
 }
