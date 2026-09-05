@@ -1,0 +1,19 @@
+{
+  "source": {
+    "receipt": "docs/plans/137-copilot-native-extension/assets/evidence/pm-native-local-06.json",
+    "capture_pointer": "/final_pane_captures/2/terminal",
+    "matching_capture_pointer": "/witnesses/6/after",
+    "pane": "%3",
+    "copilot_version": "1.0.84-0",
+    "provider": "deterministic-local-fixture-not-real-inference",
+    "receipt_started": "2026-09-05T03:20:10.147Z",
+    "receipt_finished": "2026-09-05T03:20:19.889Z",
+    "receipt_sha256": "188bd547566949524d08b0934b59a7de294d9c0a8da83b0e9a4ecb4b15c0d442",
+    "original_terminal_sha256": "6d538f637d7204d1419467422fbd1e2a0a4651d1d9d5410d636ce215c8659189",
+    "sanitization": "Only the workspace path in terminal is replaced by <workspace>; all other capture bytes are unchanged."
+  },
+  "cursor": null,
+  "cursor_note": "The receipt does not record cursor_x or cursor_y for this capture. No snapshot cursor is synthesized. A later live witness must retain a measured paired cursor.",
+  "proof_limit": "The direct test proves footer recognition only. Snapshot cursor metadata is absent, so this fixture does not establish whole-composer recognition or native message delivery.",
+  "terminal": "Current   Sessions   Issues   Pull requests   Gists \n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-0 uses AI.\n  █ ▘▝ █  /experimental\n   ▔▔▔▔ \n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens \n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n\n ● Tip: /autopilot\n   └ Toggle autopilot mode, or set an autopilot objective with an optional AI-credit limit (--max-ai-credits)\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ [pij from \"pij-copilot-3ae31637c7814e687fb9aca1\"; msg_id=\"07dddef6-55fe-4c22-bbd8-783756354836\"]                                                   13:20  \n    Native transport smoke. Call the pij_send tool exactly once with the following JSON, then say PIJ_NATIVE_DONE. Do not call other tools.                   \n    PIJ_NATIVE_SEND:{\"to\":\"pij-copilot-3ae31637c7814e687fb9aca1\",\"message\":\"PIJ_NATIVE_7c22c475-4d6a-40e6-a3de-0a1130c8b215\"}                                 \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● pij_send to: \"pij-copilot-3ae31637c7814e687fb9aca1\", message: \"PIJ_NATIVE… {\"ok\":true,\"receipt\":{\"msg_id\":\"1f0ddd37-d032-4ae8-bf84-eed7e72b1126\",\"outcom...\n\n ● PIJ_NATIVE_DONE\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n <workspace>                                                                   \n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃ HUMAN_DRAFT_0719bbec-55d5-4cec-9b28-5a23428541cf                                                                                                              \n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                          pij-native-fixture"
+}
