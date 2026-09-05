@@ -6,10 +6,16 @@
 //! stops "green with the fake" and "green for real" from drifting apart, and it
 //! is why the contract ships in wave 0 rather than with the first adapter.
 
+use std::time::Duration;
+
 use pij_core::model::{
-    DeliveryOrigin, DeliveryOutcome, Harness, Job, Liveness, Msg, ProcIdentity, Readiness,
+    DeliveryOrigin, DeliveryOutcome, Harness, Job, JobId, Liveness, Msg, Outcome, ProcIdentity,
+    Readiness, SeatId,
 };
-use pij_core::ports::{DeliveryEnqueue, HarnessPort, LivenessPort, Queue, TmuxPort, Transport};
+use pij_core::ports::{
+    DeferNoopReason, DeferOutcome, DeliveryEnqueue, HarnessPort, LivenessPort, Queue,
+    ReleaseOutcome, TmuxPort, Transport,
+};
 use pij_testkit::block_on;
 use pij_testkit::contract::{queue_contract, registry_contract, sample_seat, spine_contract};
 use pij_testkit::fakes::{
@@ -32,6 +38,672 @@ fn fake_spine_honours_the_spine_contract() {
 fn fake_queue_honours_the_queue_contract() {
     let queue = FakeQueue::new(1_024).expect("valid fake queue policy");
     block_on(queue_contract(&queue));
+}
+
+#[test]
+fn fake_queue_defer_running_preserves_identity_body_attempt_and_delay() {
+    block_on(async {
+        let queue = FakeQueue::new(1_024).expect("valid queue policy");
+        let original = Job {
+            kind: "delivery:pij-recipient".to_string(),
+            serial_key: "pij-recipient".to_string(),
+            payload: r#"{"recipient":"not-authority","msg_id":"not-authority","body":"keep me"}"#
+                .to_string(),
+            dedupe_key: "stored-message".to_string(),
+            attempt: 0,
+        };
+        assert_eq!(
+            queue
+                .note_delivered(
+                    &SeatId::from("pij-recipient"),
+                    "prior-message",
+                    DeliveryOrigin::ReaderRead,
+                )
+                .await
+                .expect("seed prior delivery evidence"),
+            None
+        );
+        let DeliveryEnqueue::Queued { job_id, .. } = queue
+            .enqueue_delivery(original.clone())
+            .await
+            .expect("enqueue delivery")
+        else {
+            panic!("new delivery must queue");
+        };
+        let kinds = std::slice::from_ref(&original.kind);
+        assert_eq!(
+            queue.claim(kinds, "old-worker").await.expect("claim"),
+            Some((job_id, original.clone()))
+        );
+        queue.retry(job_id, Duration::ZERO).await.expect("retry");
+        let expected = Job {
+            attempt: 1,
+            ..original.clone()
+        };
+        assert_eq!(
+            queue.claim(kinds, "old-worker").await.expect("reclaim"),
+            Some((job_id, expected.clone()))
+        );
+        queue.advance(Duration::from_millis(50));
+
+        assert_eq!(
+            queue
+                .defer(job_id, Duration::from_millis(10))
+                .await
+                .expect("defer running delivery"),
+            DeferOutcome::Deferred {
+                recipient: SeatId::from("pij-recipient"),
+                msg_id: "stored-message".to_string(),
+            }
+        );
+        queue
+            .ack(job_id, Outcome::Done)
+            .await
+            .expect_err("defer cleared running ownership");
+        queue
+            .ack_delivery(job_id, DeliveryOrigin::ReaderRead)
+            .await
+            .expect_err("the old delivery claim is no longer authoritative");
+        queue
+            .retry(job_id, Duration::ZERO)
+            .await
+            .expect_err("defer does not leave a retryable claim");
+        assert_eq!(queue.attempts(job_id), 1);
+        assert_eq!(queue.retried(), vec![(job_id, Duration::ZERO)]);
+        assert!(queue.acked().is_empty());
+        assert_eq!(queue.live_len(), 1);
+        assert_eq!(
+            queue.peek(kinds).await.expect("peek delayed row"),
+            Some((job_id, expected.clone()))
+        );
+        assert_eq!(
+            queue
+                .enqueue_delivery(Job {
+                    payload: "duplicate must not replace the body".to_string(),
+                    ..original.clone()
+                })
+                .await
+                .expect("dedupe deferred delivery without recording delivery"),
+            DeliveryEnqueue::Queued {
+                job_id,
+                not_before_ms: 60,
+            }
+        );
+        assert_eq!(
+            queue
+                .enqueue_delivery(Job {
+                    dedupe_key: "prior-message".to_string(),
+                    ..original.clone()
+                })
+                .await
+                .expect("prior evidence survives live deferral"),
+            DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::ReaderRead)
+        );
+        queue.advance(Duration::from_millis(9));
+        assert_eq!(queue.claim(kinds, "new-worker").await.expect("claim"), None);
+        queue.advance(Duration::from_millis(1));
+        assert_eq!(
+            queue
+                .claim(kinds, "new-worker")
+                .await
+                .expect("claim due row"),
+            Some((job_id, expected))
+        );
+    });
+}
+
+#[test]
+fn fake_queue_defer_pending_replaces_the_schedule_from_the_current_clock() {
+    block_on(async {
+        let queue = FakeQueue::new(1_024).expect("valid queue policy");
+        let original = Job {
+            kind: "delivery:pij-pending".to_string(),
+            serial_key: "pij-pending".to_string(),
+            payload: "pending body".to_string(),
+            dedupe_key: "pending-message".to_string(),
+            attempt: 0,
+        };
+        let job_id = queue.enqueue(original.clone()).await.expect("enqueue");
+        let expected_outcome = DeferOutcome::Deferred {
+            recipient: SeatId::from("pij-pending"),
+            msg_id: "pending-message".to_string(),
+        };
+        assert_eq!(
+            queue
+                .defer(job_id, Duration::from_millis(30))
+                .await
+                .expect("defer pending row"),
+            expected_outcome
+        );
+        queue.advance(Duration::from_millis(5));
+        assert_eq!(
+            queue
+                .defer(job_id, Duration::from_millis(10))
+                .await
+                .expect("replace pending delay"),
+            expected_outcome
+        );
+        assert_eq!(
+            queue
+                .enqueue_delivery(original.clone())
+                .await
+                .expect("observe persisted deadline"),
+            DeliveryEnqueue::Queued {
+                job_id,
+                not_before_ms: 15,
+            }
+        );
+        let kinds = std::slice::from_ref(&original.kind);
+        assert_eq!(
+            queue.peek(kinds).await.expect("peek delayed pending row"),
+            Some((job_id, original.clone()))
+        );
+        assert_eq!(queue.attempts(job_id), 0);
+        assert!(queue.retried().is_empty());
+        assert_eq!(queue.live_len(), 1);
+        queue.advance(Duration::from_millis(9));
+        assert_eq!(queue.claim(kinds, "worker").await.expect("claim"), None);
+        queue.advance(Duration::from_millis(1));
+        assert_eq!(
+            queue
+                .claim(kinds, "worker")
+                .await
+                .expect("claim at deadline"),
+            Some((job_id, original.clone()))
+        );
+    });
+}
+
+#[test]
+fn fake_queue_defer_zero_releases_pending_and_running_without_reordering_fifo() {
+    block_on(async {
+        for running in [false, true] {
+            let queue = FakeQueue::new(1_024).expect("valid queue policy");
+            let first = Job {
+                kind: "delivery:pij-fifo".to_string(),
+                serial_key: "pij-fifo".to_string(),
+                payload: "first body".to_string(),
+                dedupe_key: "first-message".to_string(),
+                attempt: 0,
+            };
+            let second = Job {
+                payload: "second body".to_string(),
+                dedupe_key: "second-message".to_string(),
+                ..first.clone()
+            };
+            let first_id = queue.enqueue(first.clone()).await.expect("enqueue first");
+            let kinds = std::slice::from_ref(&first.kind);
+            if running {
+                assert_eq!(
+                    queue.claim(kinds, "old-worker").await.expect("claim first"),
+                    Some((first_id, first.clone()))
+                );
+            } else {
+                queue
+                    .defer(first_id, Duration::from_millis(30))
+                    .await
+                    .expect("delay pending first row");
+            }
+            let second_id = queue.enqueue(second.clone()).await.expect("enqueue second");
+            queue.advance(Duration::from_millis(3));
+            assert_eq!(
+                queue
+                    .defer(first_id, Duration::ZERO)
+                    .await
+                    .expect("release now"),
+                DeferOutcome::Deferred {
+                    recipient: SeatId::from("pij-fifo"),
+                    msg_id: "first-message".to_string(),
+                }
+            );
+            assert_eq!(
+                queue
+                    .enqueue_delivery(first.clone())
+                    .await
+                    .expect("observe immediate schedule"),
+                DeliveryEnqueue::Queued {
+                    job_id: first_id,
+                    not_before_ms: 3,
+                }
+            );
+            assert_eq!(
+                queue
+                    .claim(kinds, "new-worker")
+                    .await
+                    .expect("claim released first"),
+                Some((first_id, first.clone())),
+                "deferring does not move the oldest row behind a newer delivery"
+            );
+            queue.ack(first_id, Outcome::Done).await.expect("ack first");
+            assert_eq!(
+                queue
+                    .claim(kinds, "new-worker")
+                    .await
+                    .expect("claim second"),
+                Some((second_id, second))
+            );
+            assert_eq!(queue.attempts(first_id), 0);
+            assert!(queue.retried().is_empty());
+        }
+    });
+}
+
+#[test]
+fn fake_queue_defer_absent_or_terminal_is_not_live_and_preserves_delivery_evidence() {
+    block_on(async {
+        let original = Job {
+            kind: "delivery:pij-terminal".to_string(),
+            serial_key: "pij-terminal".to_string(),
+            payload: "terminal body".to_string(),
+            dedupe_key: "terminal-message".to_string(),
+            attempt: 0,
+        };
+        let kinds = std::slice::from_ref(&original.kind);
+        for outcome in [
+            Outcome::Done,
+            Outcome::Failed {
+                reason: "failed".to_string(),
+            },
+        ] {
+            let queue = FakeQueue::new(1_024).expect("valid queue policy");
+            assert_eq!(
+                queue
+                    .defer(JobId(u64::MAX), Duration::ZERO)
+                    .await
+                    .expect("absent"),
+                DeferOutcome::NotLive {
+                    reason: DeferNoopReason::Absent,
+                }
+            );
+            let job_id = queue.enqueue(original.clone()).await.expect("enqueue");
+            queue
+                .claim(kinds, "worker")
+                .await
+                .expect("claim")
+                .expect("row");
+            queue
+                .ack(job_id, outcome.clone())
+                .await
+                .expect("terminal ack");
+            assert_eq!(
+                queue.defer(job_id, Duration::ZERO).await.expect("terminal"),
+                DeferOutcome::NotLive {
+                    reason: DeferNoopReason::Terminal,
+                }
+            );
+            assert_eq!(queue.acked(), vec![(job_id, outcome)]);
+            assert_eq!(queue.live_len(), 0);
+            assert_eq!(queue.peek(kinds).await.expect("peek terminal"), None);
+            assert_eq!(
+                queue.claim(kinds, "worker").await.expect("claim terminal"),
+                None
+            );
+        }
+
+        let queue = FakeQueue::new(1).expect("one retained delivery id");
+        let job_id = queue.enqueue(original.clone()).await.expect("enqueue");
+        queue
+            .claim(kinds, "worker")
+            .await
+            .expect("claim")
+            .expect("row");
+        queue
+            .ack_delivery(job_id, DeliveryOrigin::ReaderRead)
+            .await
+            .expect("record delivered evidence");
+        for (id, reason) in [
+            (job_id, DeferNoopReason::Terminal),
+            (JobId(u64::MAX), DeferNoopReason::Absent),
+        ] {
+            assert_eq!(
+                queue.defer(id, Duration::ZERO).await.expect("not live"),
+                DeferOutcome::NotLive { reason }
+            );
+        }
+        assert_eq!(
+            queue
+                .enqueue_delivery(original)
+                .await
+                .expect("replay delivery evidence"),
+            DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::ReaderRead)
+        );
+    });
+}
+
+#[test]
+fn fake_queue_defer_refuses_non_delivery_without_mutating_pending_or_running_rows() {
+    block_on(async {
+        for kind in ["maintenance", "delivery:wrong-recipient"] {
+            for running in [false, true] {
+                let queue = FakeQueue::new(1_024).expect("valid queue policy");
+                let original = Job {
+                    kind: kind.to_string(),
+                    serial_key: "pij-actual-recipient".to_string(),
+                    payload: "must survive rejection".to_string(),
+                    dedupe_key: "non-delivery-message".to_string(),
+                    attempt: 0,
+                };
+                let job_id = queue.enqueue(original.clone()).await.expect("enqueue");
+                let kinds = std::slice::from_ref(&original.kind);
+                if running {
+                    queue
+                        .claim(kinds, "worker")
+                        .await
+                        .expect("claim")
+                        .expect("row");
+                }
+                queue
+                    .defer(job_id, Duration::from_secs(60))
+                    .await
+                    .expect_err("only matching delivery kinds can be deferred");
+                assert_eq!(
+                    queue.peek(kinds).await.expect("peek untouched row"),
+                    Some((job_id, original.clone()))
+                );
+                if !running {
+                    assert_eq!(
+                        queue
+                            .claim(kinds, "worker")
+                            .await
+                            .expect("claim still due row"),
+                        Some((job_id, original.clone()))
+                    );
+                }
+                queue
+                    .ack(job_id, Outcome::Done)
+                    .await
+                    .expect("rejection retained running ownership");
+                assert_eq!(queue.attempts(job_id), 0);
+                assert!(queue.retried().is_empty());
+                assert_eq!(queue.live_len(), 0);
+            }
+        }
+    });
+}
+
+#[test]
+fn fake_queue_defer_overflow_refuses_without_poisoning_or_mutating() {
+    block_on(async {
+        let queue = FakeQueue::new(1_024).expect("queue");
+        let original = Job {
+            kind: "delivery:pij-overflow".to_string(),
+            serial_key: "pij-overflow".to_string(),
+            payload: "preserved".to_string(),
+            dedupe_key: "overflow".to_string(),
+            attempt: 0,
+        };
+        let id = queue.enqueue(original.clone()).await.expect("enqueue");
+        let kinds = std::slice::from_ref(&original.kind);
+        queue.claim(kinds, "reader").await.expect("claim");
+        queue.advance(Duration::from_nanos(1));
+        queue
+            .defer(id, Duration::MAX)
+            .await
+            .expect_err("overflow is an error, never a panic");
+        assert_eq!(
+            queue.peek(kinds).await.expect("queue remains usable"),
+            Some((id, original))
+        );
+        queue
+            .ack(id, Outcome::Done)
+            .await
+            .expect("claim ownership preserved");
+    });
+}
+
+#[test]
+fn fake_queue_release_deferred_preserves_body_attempt_ledger_and_active_reader() {
+    block_on(async {
+        let queue = FakeQueue::new(1_024).expect("queue");
+        let original = Job {
+            kind: "delivery:pij-release".to_string(),
+            serial_key: "pij-release".to_string(),
+            payload: r#"{"recipient":"not-authority","msg_id":"not-authority"}"#.to_string(),
+            dedupe_key: "release-message".to_string(),
+            attempt: 0,
+        };
+        let recipient = SeatId::from("pij-release");
+        queue
+            .note_delivered(&recipient, "prior-message", DeliveryOrigin::ReaderRead)
+            .await
+            .expect("seed prior delivery evidence");
+        let id = queue.enqueue(original.clone()).await.expect("enqueue");
+        let kinds = std::slice::from_ref(&original.kind);
+        queue
+            .claim(kinds, "old-worker")
+            .await
+            .expect("claim")
+            .expect("row");
+        queue
+            .retry(id, Duration::ZERO)
+            .await
+            .expect("increment retry attempt");
+        let expected = Job {
+            attempt: 1,
+            ..original.clone()
+        };
+        queue
+            .defer(id, Duration::from_secs(30))
+            .await
+            .expect("hold pending");
+        queue.advance(Duration::from_millis(5));
+        assert_eq!(
+            queue.claim(kinds, "reader").await.expect("held claim"),
+            None
+        );
+        for _ in 0..2 {
+            assert_eq!(
+                queue.release_deferred(id).await.expect("release pending"),
+                ReleaseOutcome::Released {
+                    recipient: recipient.clone(),
+                    msg_id: original.dedupe_key.clone(),
+                }
+            );
+        }
+        assert_eq!(
+            queue
+                .enqueue_delivery(original.clone())
+                .await
+                .expect("same pending row"),
+            DeliveryEnqueue::Queued {
+                job_id: id,
+                not_before_ms: 5
+            }
+        );
+        assert_eq!(
+            queue.peek(kinds).await.expect("peek"),
+            Some((id, expected.clone()))
+        );
+        assert_eq!(
+            queue
+                .claim(kinds, "reader")
+                .await
+                .expect("claim released row"),
+            Some((id, expected.clone()))
+        );
+        let next = queue
+            .enqueue(Job {
+                dedupe_key: "next-message".to_string(),
+                ..original.clone()
+            })
+            .await
+            .expect("enqueue another delivery");
+        for _ in 0..2 {
+            assert_eq!(
+                queue
+                    .release_deferred(id)
+                    .await
+                    .expect("duplicate release after claim"),
+                ReleaseOutcome::NotDeferred
+            );
+            assert_eq!(
+                queue.peek(kinds).await.expect("reader row intact"),
+                Some((id, expected.clone()))
+            );
+            assert_eq!(
+                queue
+                    .claim(kinds, "competitor")
+                    .await
+                    .expect("serial ownership retained"),
+                None
+            );
+        }
+        assert_eq!(queue.attempts(id), 1);
+        assert_eq!(queue.retried(), vec![(id, Duration::ZERO)]);
+        let ack = queue
+            .ack_delivery(id, DeliveryOrigin::ReaderRead)
+            .await
+            .expect("reader still owns ack");
+        assert_eq!(ack.recipient, recipient);
+        assert_eq!(ack.msg_id, original.dedupe_key);
+        assert_eq!(
+            queue.release_deferred(id).await.expect("terminal release"),
+            ReleaseOutcome::NotLive {
+                reason: DeferNoopReason::Terminal
+            }
+        );
+        assert_eq!(
+            queue
+                .enqueue_delivery(original.clone())
+                .await
+                .expect("recorded evidence"),
+            DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::ReaderRead)
+        );
+        assert_eq!(
+            queue
+                .enqueue_delivery(Job {
+                    dedupe_key: "prior-message".to_string(),
+                    ..original.clone()
+                })
+                .await
+                .expect("prior evidence untouched"),
+            DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::ReaderRead)
+        );
+        assert_eq!(
+            queue
+                .claim(kinds, "competitor")
+                .await
+                .expect("claim next after ack")
+                .expect("next row")
+                .0,
+            next
+        );
+    });
+}
+
+#[test]
+fn fake_queue_release_deferred_distinguishes_absent_and_terminal_without_resurrection() {
+    block_on(async {
+        for outcome in [
+            Outcome::Done,
+            Outcome::Failed {
+                reason: "failed".to_string(),
+            },
+        ] {
+            let queue = FakeQueue::new(1_024).expect("queue");
+            assert_eq!(
+                queue
+                    .release_deferred(JobId(u64::MAX))
+                    .await
+                    .expect("absent release"),
+                ReleaseOutcome::NotLive {
+                    reason: DeferNoopReason::Absent
+                }
+            );
+            let original = Job {
+                kind: "delivery:pij-terminal".to_string(),
+                serial_key: "pij-terminal".to_string(),
+                payload: "terminal body".to_string(),
+                dedupe_key: "terminal-message".to_string(),
+                attempt: 0,
+            };
+            let id = queue.enqueue(original.clone()).await.expect("enqueue");
+            let kinds = std::slice::from_ref(&original.kind);
+            queue
+                .claim(kinds, "worker")
+                .await
+                .expect("claim")
+                .expect("row");
+            queue.ack(id, outcome.clone()).await.expect("finish");
+            assert_eq!(
+                queue.release_deferred(id).await.expect("terminal release"),
+                ReleaseOutcome::NotLive {
+                    reason: DeferNoopReason::Terminal
+                }
+            );
+            assert_eq!(queue.acked(), vec![(id, outcome)]);
+            assert_eq!(queue.peek(kinds).await.expect("no resurrection"), None);
+            assert_eq!(queue.claim(kinds, "worker").await.expect("no claim"), None);
+            assert_eq!(queue.live_len(), 0);
+        }
+    });
+}
+
+#[test]
+fn fake_queue_release_deferred_refuses_non_delivery_without_mutation() {
+    block_on(async {
+        for kind in ["maintenance", "delivery:wrong-recipient"] {
+            for running in [false, true] {
+                let queue = FakeQueue::new(1_024).expect("queue");
+                let original = Job {
+                    kind: kind.to_string(),
+                    serial_key: "pij-actual-recipient".to_string(),
+                    payload: "preserve non-delivery".to_string(),
+                    dedupe_key: "non-delivery-message".to_string(),
+                    attempt: 0,
+                };
+                let id = queue.enqueue(original.clone()).await.expect("enqueue");
+                let kinds = std::slice::from_ref(&original.kind);
+                queue
+                    .claim(kinds, "worker")
+                    .await
+                    .expect("claim")
+                    .expect("row");
+                queue
+                    .retry(id, Duration::from_secs(60))
+                    .await
+                    .expect("delay non-delivery");
+                let expected = Job {
+                    attempt: 1,
+                    ..original.clone()
+                };
+                if running {
+                    queue.advance(Duration::from_secs(60));
+                    queue
+                        .claim(kinds, "worker")
+                        .await
+                        .expect("reclaim")
+                        .expect("row");
+                }
+                queue
+                    .release_deferred(id)
+                    .await
+                    .expect_err("refuse non-delivery");
+                assert_eq!(
+                    queue.peek(kinds).await.expect("row unchanged"),
+                    Some((id, expected.clone()))
+                );
+                assert_eq!(queue.attempts(id), 1);
+                assert_eq!(queue.retried(), vec![(id, Duration::from_secs(60))]);
+                if !running {
+                    assert_eq!(
+                        queue.claim(kinds, "worker").await.expect("delay unchanged"),
+                        None
+                    );
+                    queue.advance(Duration::from_secs(60));
+                    assert_eq!(
+                        queue.claim(kinds, "worker").await.expect("claim when due"),
+                        Some((id, expected))
+                    );
+                }
+                queue
+                    .ack(id, Outcome::Done)
+                    .await
+                    .expect("ownership intact");
+                assert_eq!(queue.live_len(), 0);
+            }
+        }
+    });
 }
 
 #[test]

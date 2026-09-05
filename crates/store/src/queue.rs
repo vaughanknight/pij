@@ -16,11 +16,13 @@
 use async_trait::async_trait;
 use sqlx::{Pool, Row, Sqlite};
 
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pij_core::error::{PijError, Result};
 use pij_core::model::{DeliveryOrigin, Job, JobId, Outcome, SeatId};
-use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue};
+use pij_core::ports::{
+    DeferNoopReason, DeferOutcome, DeliveryAck, DeliveryEnqueue, Queue, ReleaseOutcome,
+};
 
 use crate::migrate::require_current_schema;
 
@@ -373,6 +375,131 @@ impl Queue for SqliteQueue {
             });
         }
         Ok(())
+    }
+
+    async fn defer(&self, job: JobId, delay: Duration) -> Result<DeferOutcome> {
+        require_current_schema(&self.pool).await?;
+        let Ok(id) = i64::try_from(job.0) else {
+            return Ok(DeferOutcome::NotLive {
+                reason: DeferNoopReason::Absent,
+            });
+        };
+        let mut tx = self.begin_write().await?;
+        let row = sqlx::query("SELECT kind, serial_key, dedupe_key, state FROM jobs WHERE id = ?1")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+        let Some(row) = row else {
+            tx.commit().await.map_err(adapter_error)?;
+            return Ok(DeferOutcome::NotLive {
+                reason: DeferNoopReason::Absent,
+            });
+        };
+        let state: String = row.try_get("state").map_err(adapter_error)?;
+        if !matches!(state.as_str(), "pending" | "running") {
+            tx.commit().await.map_err(adapter_error)?;
+            return Ok(DeferOutcome::NotLive {
+                reason: DeferNoopReason::Terminal,
+            });
+        }
+        let delivery = Job {
+            kind: row.try_get("kind").map_err(adapter_error)?,
+            serial_key: row.try_get("serial_key").map_err(adapter_error)?,
+            payload: String::new(),
+            dedupe_key: row.try_get("dedupe_key").map_err(adapter_error)?,
+            attempt: 0,
+        };
+        require_delivery_job(&delivery)?;
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| PijError::Adapter {
+                adapter: "store/queue".to_string(),
+                message: format!("cannot schedule deferral before the Unix epoch: {error}"),
+            })?;
+        // Eligibility compares whole epoch seconds. Round the absolute positive
+        // deadline UP, not just the delay: truncating now can release even a
+        // whole-second delay early. Zero must remain immediately eligible.
+        let not_before = now
+            .checked_add(delay)
+            .and_then(|deadline| {
+                deadline
+                    .as_secs()
+                    .checked_add(u64::from(!delay.is_zero() && deadline.subsec_nanos() != 0))
+            })
+            .and_then(|seconds| i64::try_from(seconds).ok())
+            .ok_or_else(|| PijError::Adapter {
+                adapter: "store/queue".to_string(),
+                message: "deferral deadline exceeds SQLite's integer timestamp range".to_string(),
+            })?;
+        sqlx::query(
+            "UPDATE jobs \
+             SET state = 'pending', worker = NULL, claimed_at = NULL, not_before = ?2 \
+             WHERE id = ?1 AND state IN ('pending', 'running')",
+        )
+        .bind(id)
+        .bind(not_before)
+        .execute(&mut *tx)
+        .await
+        .map_err(adapter_error)?;
+        tx.commit().await.map_err(adapter_error)?;
+        Ok(DeferOutcome::Deferred {
+            recipient: SeatId(delivery.serial_key),
+            msg_id: delivery.dedupe_key,
+        })
+    }
+
+    async fn release_deferred(&self, job: JobId) -> Result<ReleaseOutcome> {
+        require_current_schema(&self.pool).await?;
+        let Ok(id) = i64::try_from(job.0) else {
+            return Ok(ReleaseOutcome::NotLive {
+                reason: DeferNoopReason::Absent,
+            });
+        };
+        // Hold the write lock across classification and release: a reader must
+        // not claim the row between our state check and the deadline update.
+        let mut tx = self.begin_write().await?;
+        let row = sqlx::query("SELECT kind, serial_key, dedupe_key, state FROM jobs WHERE id = ?1")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+        let Some(row) = row else {
+            tx.commit().await.map_err(adapter_error)?;
+            return Ok(ReleaseOutcome::NotLive {
+                reason: DeferNoopReason::Absent,
+            });
+        };
+        let state: String = row.try_get("state").map_err(adapter_error)?;
+        if !matches!(state.as_str(), "pending" | "running") {
+            tx.commit().await.map_err(adapter_error)?;
+            return Ok(ReleaseOutcome::NotLive {
+                reason: DeferNoopReason::Terminal,
+            });
+        }
+        let delivery = Job {
+            kind: row.try_get("kind").map_err(adapter_error)?,
+            serial_key: row.try_get("serial_key").map_err(adapter_error)?,
+            payload: String::new(),
+            dedupe_key: row.try_get("dedupe_key").map_err(adapter_error)?,
+            attempt: 0,
+        };
+        require_delivery_job(&delivery)?;
+        if state == "running" {
+            tx.commit().await.map_err(adapter_error)?;
+            return Ok(ReleaseOutcome::NotDeferred);
+        }
+        sqlx::query("UPDATE jobs SET not_before = unixepoch() WHERE id = ?1 AND state = 'pending'")
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+        tx.commit().await.map_err(adapter_error)?;
+        Ok(ReleaseOutcome::Released {
+            recipient: SeatId(delivery.serial_key),
+            msg_id: delivery.dedupe_key,
+        })
     }
 
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {
