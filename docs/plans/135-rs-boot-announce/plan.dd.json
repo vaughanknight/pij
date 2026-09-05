@@ -75,10 +75,11 @@
         },
         {
           "id": "AC6",
-          "claim": "legacy path and full gates untouched",
+          "claim": "legacy path untouched and full gates green (frame-expectation exception enumerated)",
           "text": "core/session.test.ts unchanged and green; `harness checks` green; `cargo test --workspace`, clippy -D warnings, fmt --check green on the composed branch; outputs pasted.",
           "state": "checked",
-          "receipt": "Composed branch: harness checks --quick all 7 sensors pass; cargo clippy -D warnings + fmt --check clean; core/session.test.ts unchanged; workspace green apart from one pij-sidecars load artifact passing 10/10 quiet"
+          "receipt": "Composed branch: harness checks --quick all 7 sensors pass; cargo clippy -D warnings + fmt --check clean; core/session.test.ts unchanged; workspace green apart from one pij-sidecars load artifact passing 10/10 quiet",
+          "note": "AMENDED 2026-09-05 by prime ruling, after AC8 was added: the original wording \"core/session.test.ts unchanged and green\" was a FENCE RULE for u2 (do not disturb the legacy freshness path). AC8 deliberately changes what frame() renders, so tests pinning the old frame text must move. Amended intent: session.test.ts and router.test.ts change ONLY where AC8 forces a rendered-frame expectation; every behavioural assertion in them is unchanged and green. The exception is enumerable, not approximate — live-proof.md lists each touched line with before/after of the expected string."
         },
         {
           "id": "AC7",
