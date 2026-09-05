@@ -284,10 +284,10 @@ answer = "type=control with action=peer_message_status and status=held maps to H
 
 [[fixture]]
 path = "golden/cli/register-envelope.json"
-sha256 = "42f17126123e0f11377745902efcaea3a411e83fe4c225b0fa89e92c7e578cf0"
-bytes = 371
+sha256 = "7df6bf7fa263b535b6a459438a1a6cf312e6da98fd10564106bade28c405d5a6"
+bytes = 405
 note = "Computed pij register success envelope rendered by u-cli from the accepted SeatDescriptor; editorial text is deliberately absent."
-answer = "Must match render(Envelope::ok(\"pij register\", descriptor), true) byte-for-byte, including envelope v2, explicit session:null when unknown, absent optional fields staying absent, and error staying absent on success."
+answer = "Must match render(Envelope::ok(\"pij register\", descriptor), true) byte-for-byte, including envelope v2, explicit session:null when unknown, native_extension_delivery:false for a non-native consumer, absent optional fields staying absent, and error staying absent on success."
 
 [[fixture]]
 path = "golden/cli/send-envelope.json"
@@ -298,10 +298,10 @@ answer = "Must emit envelope v2 and preserve msg_id, the tagged queued outcome, 
 
 [[fixture]]
 path = "golden/cli/list-envelope.json"
-sha256 = "e399f57eddcc939a94cfd1fab4af81b87648b9ea586e1dc9fd0f27be9dacc359"
-bytes = 551
+sha256 = "45d4e6594a9561315586611ebb081b825b56527a51aa2bd099f06e1013f96458"
+bytes = 619
 note = "Computed pij list success envelope rendered by u-cli from two daemon-owned SeatDescriptors."
-answer = "Must emit envelope v2, preserve registry order, carry explicit session:null when unknown, and preserve absent fields including a paneless relay; the CLI relays descriptors rather than recomputing liveness or state."
+answer = "Must emit envelope v2, preserve registry order, carry explicit session:null and native_extension_delivery:false when not attested, and preserve absent fields including a paneless relay; the CLI relays descriptors rather than recomputing liveness or state."
 
 [[fixture]]
 path = "uds/status-denied.ndjson"
