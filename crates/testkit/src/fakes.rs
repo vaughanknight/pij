@@ -98,12 +98,25 @@ impl Registry for FakeRegistry {
     }
 
     async fn put(&self, descriptor: SeatDescriptor) -> Result<Seq> {
+        self.put_reporting(descriptor).await.map(|(seq, _)| seq)
+    }
+
+    async fn put_reporting(
+        &self,
+        descriptor: SeatDescriptor,
+    ) -> Result<(Seq, pij_core::ports::PutBinding)> {
         let mut state = self.state.lock().expect("fake registry mutex");
         state.recorder.record(format!("put:{}", descriptor.id));
         state.seq += 1;
         let seq = Seq(state.seq);
-        state.seats.insert(descriptor.id.0.clone(), descriptor);
-        Ok(seq)
+        let previous = state.seats.insert(descriptor.id.0.clone(), descriptor);
+        Ok((
+            seq,
+            pij_core::ports::PutBinding {
+                inserted: previous.is_none(),
+                previous_proc: previous.and_then(|seat| seat.proc),
+            },
+        ))
     }
 
     async fn list(&self, filter: SeatFilter) -> Result<Vec<SeatDescriptor>> {

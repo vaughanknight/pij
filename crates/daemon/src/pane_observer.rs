@@ -464,7 +464,14 @@ mod tests {
         }
 
         async fn put(&self, descriptor: SeatDescriptor) -> Result<pij_core::model::Seq> {
-            self.inner.put(descriptor).await
+            self.put_reporting(descriptor).await.map(|(seq, _)| seq)
+        }
+
+        async fn put_reporting(
+            &self,
+            descriptor: SeatDescriptor,
+        ) -> Result<(pij_core::model::Seq, pij_core::ports::PutBinding)> {
+            self.inner.put_reporting(descriptor).await
         }
 
         async fn list(&self, filter: SeatFilter) -> Result<Vec<SeatDescriptor>> {

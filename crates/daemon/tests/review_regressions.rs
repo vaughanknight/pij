@@ -25,17 +25,31 @@ fn state_dir() -> PathBuf {
 
 fn write_uds_record(dir: &Path, socket: &Path) {
     const HASH: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let pid = std::process::id();
+    let output = std::process::Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "lstart="])
+        .env("LC_ALL", "C")
+        .env("TZ", "UTC")
+        .output()
+        .expect("observe live fixture");
+    assert!(output.status.success());
+    let start = String::from_utf8(output.stdout).expect("start text");
+    let start = start.trim();
     std::fs::write(
-        dir.join("4242.json"),
-        format!(
-            "{{\"pid\":4242,\"procStart\":\"observed-start\",\"pidDomain\":\"darwin\",\"tmux\":\"pij:@1.%108\",\"messagingSocketPath\":{}}}\n",
-            serde_json::to_string(&socket.to_string_lossy()).expect("socket path JSON")
-        ),
+        dir.join(format!("{pid}.json")),
+        serde_json::json!({
+            "pid": pid, "procStart": start, "pidDomain": "darwin", "tmux": "pij:@1.%108",
+            "messagingSocketPath": socket,
+        })
+        .to_string(),
     )
     .expect("session record");
     std::fs::write(
-        dir.join(format!("4242.{HASH}.key")),
-        "{\"peerToken\":\"observed-token\",\"procStart\":\"observed-start\",\"pidDomain\":\"darwin\"}\n",
+        dir.join(format!("{pid}.{HASH}.key")),
+        serde_json::json!({
+            "peerToken": "observed-token", "procStart": start, "pidDomain": "darwin",
+        })
+        .to_string(),
     )
     .expect("peer key");
 }
@@ -247,6 +261,7 @@ async fn selecting_the_real_transport_ships_closed_until_a_seat_opts_in() {
 /// argv-derived stamp is the exact fact the real adapter consumes.
 #[tokio::test]
 async fn emitted_spawn_argv_is_the_stamp_that_opens_the_real_transport() {
+    use pij_core::ports::LivenessPort as _;
     let plan = |accept_inbound| {
         build_spawn_plan(SpawnPlanInput {
             // The seat id the launcher assigned: spawn emits it as
@@ -270,8 +285,12 @@ async fn emitted_spawn_argv_is_the_stamp_that_opens_the_real_transport() {
     let transport = UdsTransport::from_sessions_dir(dir.clone());
     let mut seat = SeatDescriptor::new("pij-claude-seat", Harness::Claude, "/abs/tree");
     seat.proc = Some(ProcIdentity {
-        pid: 4242,
-        proc_start: 1,
+        pid: std::process::id(),
+        proc_start: pij_harnesses::proc::ProcLiveness::new()
+            .proc_start(std::process::id())
+            .await
+            .expect("observe fixture")
+            .expect("fixture process alive"),
     });
     seat.pane = Some("%108".to_string());
     let msg = Msg {

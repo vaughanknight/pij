@@ -59,6 +59,7 @@ export interface RustSeatDescriptor {
 	readonly spawn_id?: string;
 	/** Register-response-only addition; not persisted into the local registry. */
 	readonly typing_grace_ms?: number;
+	readonly binding?: "created" | "rebound" | "same";
 }
 
 export interface SendRequest {

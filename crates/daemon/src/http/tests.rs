@@ -1243,6 +1243,117 @@ async fn paneless_registration_returns_the_identity_export_it_requires() {
     server.abort();
 }
 
+#[test]
+fn registration_binding_absent_preserves_descriptor_shape() {
+    let descriptor = SeatDescriptor::new("pij-old-response", Harness::Omp, "/tmp/binding");
+    let old_wire = serde_json::to_value(descriptor).expect("old descriptor response");
+    let response: RegistrationResponse =
+        serde_json::from_value(old_wire.clone()).expect("binding defaults absent");
+    assert!(response.binding.is_none());
+    assert_eq!(
+        serde_json::to_value(response).expect("serialize response"),
+        old_wire
+    );
+}
+
+async fn assert_registration_binding_fixture(expected_key: &str, previous_key: Option<&str>) {
+    let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../testkit/fixtures/register-response.json");
+    let fixture: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture_path).expect("read shared register response fixture"),
+    )
+    .expect("parse shared register response fixture");
+    let expected = &fixture[expected_key];
+    let descriptor: SeatDescriptor =
+        serde_json::from_value(expected.clone()).expect("fixture descriptor");
+    let identity = descriptor.proc.expect("fixture process identity");
+    let registry = Arc::new(FakeRegistry::new());
+    if let Some(previous_key) = previous_key {
+        registry
+            .put(
+                serde_json::from_value(fixture[previous_key].clone()).expect("previous descriptor"),
+            )
+            .await
+            .expect("seed previous binding");
+    }
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(identity));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({
+            "id": descriptor.id,
+            "harness": descriptor.harness,
+            "folder": descriptor.folder,
+            "pane": descriptor.pane,
+            "pid": identity.pid,
+            "proc_start": identity.proc_start,
+            "model": descriptor.model,
+            "provider": descriptor.provider,
+            "effort": descriptor.effort,
+        }))
+        .send()
+        .await
+        .expect("register fixture claim");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let accepted: Envelope<serde_json::Value> = response.json().await.expect("register envelope");
+    server.abort();
+    // CONVERGENCE 135 + 136. The fixture pins plan 135's BINDING semantics; it
+    // was captured before plan 136 added `typing_grace_ms` to the same response.
+    // A whole-object equality here would mean every additive wire field breaks a
+    // captured fixture — the opposite of the additive-change rule the wire is
+    // built on. So: every key the fixture records must match EXACTLY, and the
+    // only key the response may add is the one 136 documents.
+    let observed = accepted.data.as_ref().expect("register response body");
+    let expected_object = expected.as_object().expect("fixture object");
+    let observed_object = observed.as_object().expect("response object");
+    for (key, value) in expected_object {
+        assert_eq!(
+            observed_object.get(key),
+            Some(value),
+            "{expected_key} fixture: key `{key}`"
+        );
+    }
+    let unexpected: Vec<&String> = observed_object
+        .keys()
+        .filter(|key| !expected_object.contains_key(*key) && key.as_str() != "typing_grace_ms")
+        .collect();
+    assert!(
+        unexpected.is_empty(),
+        "{expected_key} fixture: response grew undocumented keys {unexpected:?}"
+    );
+    let stored = registry
+        .get(&descriptor.id)
+        .await
+        .expect("read committed descriptor");
+    assert_eq!(
+        stored,
+        Some(descriptor),
+        "binding is response-only, not durable state"
+    );
+}
+
+#[tokio::test]
+async fn registration_binding_created_matches_shared_fixture() {
+    assert_registration_binding_fixture("created", None).await;
+}
+
+#[tokio::test]
+async fn registration_binding_rebound_matches_shared_fixture() {
+    assert_registration_binding_fixture("rebound", Some("created")).await;
+}
+
+#[tokio::test]
+async fn registration_binding_same_matches_shared_fixture() {
+    assert_registration_binding_fixture("same", Some("rebound")).await;
+}
+
 #[tokio::test]
 async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
     let registry = Arc::new(FakeRegistry::new());
@@ -1357,6 +1468,15 @@ async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
         .await
         .expect("registration");
     assert_eq!(registered.status(), reqwest::StatusCode::OK);
+    let accepted: Envelope<serde_json::Value> = registered
+        .json()
+        .await
+        .expect("spawned registration envelope");
+    assert_eq!(
+        accepted.data.expect("bound descriptor")["binding"],
+        "rebound",
+        "a spawned placeholder row is rebound, not created"
+    );
 
     let seats = registry
         .list(SeatFilter::default())

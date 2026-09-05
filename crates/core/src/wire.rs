@@ -18,21 +18,10 @@
 //!    envelope is a contract this build must satisfy, an event is a fact that
 //!    happened whether or not this build has heard of it.
 
+use serde::Serialize;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 
-use crate::model::{ENVELOPE_VERSION, Envelope, Event, SeatDescriptor};
-
-/// Registration-only settings, flattened beside the descriptor on the wire.
-/// Settings are not registry facts and must never appear in `seat.put` records.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RegisterResponse {
-    /// The accepted registry descriptor, unchanged.
-    #[serde(flatten)]
-    pub descriptor: SeatDescriptor,
-    /// Effective daemon-owned quiet interval after a human keystroke.
-    pub typing_grace_ms: u64,
-}
+use crate::model::{ENVELOPE_VERSION, Envelope, Event};
 
 /// Why a wire value could not be read.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]

@@ -34,7 +34,8 @@ use pij_core::delivery::{DEFAULT_TYPING_GRACE_MS, HeldEvent, ReleasedEvent};
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::model::{
-    Envelope, ErrorKind, Event, Harness, Msg, SeatDescriptor, SeatId, SemanticState, Seq,
+    Envelope, ErrorKind, Event, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId, SemanticState,
+    Seq,
 };
 use pij_core::names::memorable_pij_id_candidates;
 use pij_core::ports::{Registry, SeatFilter};
@@ -242,8 +243,8 @@ pub fn router(services: Services, token: String) -> Router {
 /// ```text
 /// Endpoint::Hold => router.route(endpoint.path(), post(hold_inbox)),
 /// Endpoint::Release => router.route(endpoint.path(), post(release_inbox)),
-/// Envelope::ok("pij register", wire::RegisterResponse {
-///     descriptor, typing_grace_ms: state.typing_grace_ms,
+/// Envelope::ok("pij register", RegistrationResponse {
+///     descriptor, binding, proc_source, typing_grace_ms: Some(state.typing_grace_ms),
 /// })
 /// ```
 /// The outer daemon composition root needs no extra queue or worker: keep its
@@ -419,10 +420,117 @@ struct RegistrationRequest {
     harness_session: Option<String>,
 }
 
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum RegistrationBinding {
+    Created,
+    Rebound,
+    Same,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum ProcSource {
+    Harness,
+    Pane,
+}
+
+/// Pane evidence wins over caller assertions; failed child discovery is an
+/// explicitly labelled pane fallback, never a fabricated harness identity.
+async fn pane_harness_identity(
+    state: &AppState,
+    pane_pid: u32,
+    harness: Harness,
+) -> Result<Option<(ProcIdentity, ProcSource)>> {
+    let candidate =
+        tokio::task::spawn_blocking(move || pij_tmux::harness_process(pane_pid, harness))
+            .await
+            .map_err(|error| PijError::Adapter {
+                adapter: "harness-process".to_string(),
+                message: error.to_string(),
+            })?;
+    if let Some(proc) = candidate
+        && state.services.liveness.proc_start(proc.pid).await? == Some(proc.proc_start)
+    {
+        let source = if proc.pid == pane_pid {
+            ProcSource::Pane
+        } else {
+            ProcSource::Harness
+        };
+        return Ok(Some((proc, source)));
+    }
+    Ok(state
+        .services
+        .liveness
+        .proc_start(pane_pid)
+        .await?
+        .map(|proc_start| {
+            (
+                ProcIdentity {
+                    pid: pane_pid,
+                    proc_start,
+                },
+                ProcSource::Pane,
+            )
+        }))
+}
+
+/// Registration-only metadata; it never becomes durable descriptor state.
+#[derive(Deserialize, Serialize)]
+struct RegistrationResponse {
+    #[serde(flatten)]
+    descriptor: SeatDescriptor,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    binding: Option<RegistrationBinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    proc_source: Option<ProcSource>,
+    /// The daemon-owned quiet interval after a human edit, in milliseconds
+    /// (plan 136). The extension reads it here rather than restating 60000:
+    /// one definition (`pij_core::delivery::DEFAULT_TYPING_GRACE_MS`), one
+    /// resolver (`resolve_typing_grace_ms`), one answer.
+    ///
+    /// OPTIONAL ON THE WIRE, and deliberately so: this daemon always sends it,
+    /// but a response captured before plan 136 has no such key, and a required
+    /// field would make every old fixture fail to parse while a `default` would
+    /// silently mint a grace of ZERO — a number nobody chose, meaning "never
+    /// hold". Absent stays absent, and the extension's own fallback applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    typing_grace_ms: Option<u64>,
+}
+
+/// Composition: the service returns `(descriptor, report)` from its committed
+/// `put_reporting`; derive `created` on insert, `rebound` on a changed process,
+/// otherwise `same`, and flatten the descriptor into this response only.
 async fn register(
     State(state): State<AppState>,
-    Json(request): Json<RegistrationRequest>,
+    Json(mut request): Json<RegistrationRequest>,
 ) -> Response {
+    let mut proc_source = None;
+    if let (Some(pane), Some(harness)) = (
+        request.claim.pane.as_deref(),
+        Harness::parse(&request.claim.harness),
+    ) {
+        let observed = match state.services.tmux.pane_process(pane).await {
+            Ok(observed) => observed,
+            Err(error) => return internal("pij register", error),
+        };
+        if let Some(observed) = observed {
+            match pane_harness_identity(&state, observed.pid, harness).await {
+                Ok(Some((proc, source))) => {
+                    request.claim.pid = Some(proc.pid);
+                    request.claim.proc_start = Some(proc.proc_start);
+                    proc_source = Some(source);
+                }
+                Ok(None) => {
+                    return refused(
+                        "pij register",
+                        "pane process disappeared before registration; nothing was written",
+                    );
+                }
+                Err(error) => return internal("pij register", error),
+            }
+        }
+    }
     let registration = RegistrationService::new(
         Arc::clone(&state.services.registry),
         Arc::clone(&state.services.liveness),
@@ -433,18 +541,31 @@ async fn register(
         .register_with_harness_session(request.claim, request.harness_session)
         .await
     {
-        Ok(descriptor) => {
+        Ok((descriptor, report)) => {
             let meta = descriptor.pane.is_none().then(|| {
                 format!(
                     "export PIJ_SESSION_ID={} — this paneless seat has no observable pane, so subsequent commands require the registered id",
                     descriptor.id
                 )
             });
+            let binding = if report.inserted {
+                RegistrationBinding::Created
+            } else if report.previous_proc != descriptor.proc {
+                RegistrationBinding::Rebound
+            } else {
+                RegistrationBinding::Same
+            };
+            // Convergence 135 + 136: ONE response type carries every additive
+            // field. 135 added binding/proc_source here and 136 added
+            // typing_grace_ms in `wire`; two structs serializing the same
+            // response is how two answers to one question start drifting.
             let mut answer = Envelope::ok(
                 "pij register",
-                wire::RegisterResponse {
+                RegistrationResponse {
                     descriptor,
-                    typing_grace_ms: state.typing_grace_ms,
+                    binding: Some(binding),
+                    proc_source,
+                    typing_grace_ms: Some(state.typing_grace_ms),
                 },
             );
             answer.meta = meta;

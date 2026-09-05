@@ -166,7 +166,16 @@ export class RustRuntimeSession {
 		const continuityRegistration = registrationFor(acceptedId, procStart, input);
 		for (const seat of seats) this.registry.seed(fromRustDescriptor(seat));
 		if (replacing && previousSelf) this.registry.dissolve(previousSelf);
-		const boot = this.session.boot({ ...input, id: acceptedId });
+		/** Snap-in: keep roster seeding before boot; the daemon owns freshness.
+		 * Missing binding passes undefined so PijSession retains
+		 * `input.fresh ?? (liveDescriptor === null || wasDissolved)`.
+		 * Both created and rebound announce; same never does.
+		 */
+		const boot = this.session.boot({
+			...input,
+			id: acceptedId,
+			fresh: accepted.binding === undefined ? undefined : accepted.binding !== "same",
+		});
 		this.registry.seed(fromRustDescriptor(accepted));
 		this.self = acceptedId;
 		process.env.PIJ_SESSION_ID = acceptedId;
@@ -506,7 +515,9 @@ export class RustRuntimeSession {
 		if (this.self !== "" && !replacing) return this.self;
 		if (!replacing) {
 			const samePane =
-				input.paneId === undefined ? undefined : seats.find((seat) => seat.pane === input.paneId);
+				input.paneId === undefined
+					? undefined
+					: seats.find((seat) => seat.pane === input.paneId && seat.harness === input.runtimeBin);
 			if (samePane) return samePane.id;
 			const sameProcess = seats.find(
 				(seat) => seat.proc?.pid === process.pid && seat.proc.proc_start === procStart,
