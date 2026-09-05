@@ -374,7 +374,7 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 				args: [],
 				stdout: (line) => installLog.push(line),
 				stderr: (line) => installLog.push(line),
-			}),
+			}).skipped,
 			0,
 			installLog.join("\n"),
 		);
@@ -386,7 +386,7 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 				args: ["--doctor-copilot"],
 				stdout: (line) => installLog.push(line),
 				stderr: (line) => installLog.push(line),
-			}),
+			}).skipped,
 			0,
 		);
 		receipt.identity = {

@@ -66,7 +66,7 @@ install:
     @echo
     @echo "=== 6/6 pi-doctor ==="
     just pi-doctor
-    just copilot-native-doctor
+    just _copilot-native-install-check
     @echo
     @echo "✓ install complete. pi is set up on this machine."
 
@@ -114,6 +114,17 @@ copilot-native-smoke *ARGS:
 copilot-native-doctor:
     copilot --version
     npm run link -- --doctor-copilot
+
+# Bootstrap reports an absent optional CLI; an installed but broken CLI still fails.
+_copilot-native-install-check:
+    #!/bin/sh
+    set -eu
+    if command -v copilot >/dev/null 2>&1; then
+        just copilot-native-doctor
+    else
+        echo "Copilot CLI not installed; skipping optional native doctor."
+    fi
+
 # Cross-platform static + focused inbox/CLI proof used by the Windows CI lane.
 windows-compat:
     npm run windows:check
