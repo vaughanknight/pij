@@ -476,8 +476,122 @@ describe("isolated native tool human approval", () => {
 
 describe("native lifecycle assertion boundaries, not live CLI proof", () => {
 	const composer = (text = "") =>
-		`Previous user /new\n╻▄▄▄▄▄▄\n┃  ${text}\n╹▀▀▀▀▀▀\n← open sidebar · / commands`;
+		`Previous user /new\n╻▄▄▄▄▄▄\n┃ ${text}\n╹▀▀▀▀▀▀\n← open sidebar · / commands`;
 	const dialog = "╭────────╮\n│ Confirm folder trust │\n╰────────╯";
+	const measured = (terminal: string) => {
+		const lines = terminal.split("\n");
+		const y = lines.findIndex((line) => line.startsWith("┃"));
+		return `${(lines[y] ?? "").trimEnd().length}\t${Math.max(0, y)}\t160\t48\n${terminal}`;
+	};
+	const newFixture = object(
+		JSON.parse(
+			readFileSync(new URL("./fixtures/copilot-native-new-command.json", import.meta.url), "utf8"),
+		),
+	);
+	const newFrame = object(newFixture.pane_capture);
+
+	it.each<[string, string, (screen: string) => string]>([
+		["cursor before command end", "5\t45\t160\t48", (screen) => screen],
+		["cursor inside placeholder", "7\t45\t160\t48", (screen) => screen],
+		["placeholder actually typed", "15\t45\t160\t48", (screen) => screen],
+		["cursor on suggestion", "6\t38\t160\t48", (screen) => screen],
+		["cursor outside pane", "6\t45\t160\t45", (screen) => screen],
+		["missing measured cursor", "", (screen) => screen],
+		[
+			"unknown ghost",
+			"6\t45\t160\t48",
+			(screen) => screen.replace("┃ /new [prompt]", "┃ /new [other]"),
+		],
+		[
+			"wrong selected command",
+			"6\t45\t160\t48",
+			(screen) => screen.replace("  ❯ /new ", "  ❯ /fork "),
+		],
+		[
+			"prefix-only selection match",
+			"6\t45\t160\t48",
+			(screen) => screen.replace("  ❯ /new ", "  ❯ /newer "),
+		],
+		[
+			"plain command with wrong selection",
+			"6\t45\t160\t48",
+			(screen) => screen.replace("┃ /new [prompt]", "┃ /new").replace("  ❯ /new ", "  ❯ /fork "),
+		],
+		["missing selection", "6\t45\t160\t48", (screen) => screen.replace("  ❯ /new ", "    /new ")],
+		[
+			"duplicate selection",
+			"6\t45\t160\t48",
+			(screen) => screen.replace("    /fork ", "  ❯ /fork "),
+		],
+		[
+			"malformed selection row",
+			"6\t45\t160\t48",
+			(screen) => screen.replace("  ❯ /new ", " ❯ /new "),
+		],
+		[
+			"hidden duplicate selection across malformed indentation",
+			"6\t45\t160\t48",
+			(screen) => {
+				const lines = screen.split("\n");
+				lines[38] = "  ❯ /fork  Fork";
+				lines[39] = "   /after  Schedule";
+				lines[40] = "  ❯ /new  Start";
+				return lines.join("\n");
+			},
+		],
+		[
+			"hidden duplicate selection across unknown menu text",
+			"6\t45\t160\t48",
+			(screen) => {
+				const lines = screen.split("\n");
+				lines[38] = "  ❯ /fork  Fork";
+				lines[39] = "  unexpected menu repaint";
+				lines[40] = "  ❯ /new  Start";
+				return lines.join("\n");
+			},
+		],
+		["incomplete composer repaint", "6\t45\t160\t48", (screen) => screen.replace(/^╹▀.*$/m, "")],
+		[
+			"historical selection only",
+			"6\t45\t160\t48",
+			(screen) => {
+				const lines = screen.split("\n");
+				lines[20] = "  ❯ /new                                Start a new conversation";
+				lines.fill("", 38, 43);
+				return lines.join("\n");
+			},
+		],
+	])("never submits a measured lifecycle command with %s", async (_label, metadata, change) => {
+		for (const atRecheck of [false, true]) {
+			const keys: string[][] = [];
+			const witness: Record<string, unknown> = {};
+			let captures = 0;
+			const changed = change(String(newFrame.terminal));
+			await expect(
+				driveSmokeLifecycleCommand(
+					(args) => {
+						if (args[0] === "display-message") {
+							if (atRecheck && captures++ === 0)
+								return `${newFrame.metadata_raw}\n${newFrame.terminal}`;
+							return `${metadata}\n${changed}`;
+						}
+						if (args[0] === "capture-pane") return String(newFixture.before);
+						keys.push(args);
+						return "";
+					},
+					{ pane: "%3", action: "newSession" },
+					1,
+					witness,
+				),
+			).rejects.toThrow(/PIJ_NATIVE_/);
+			expect(keys).toEqual([["send-keys", "-t", "%3", "-l", "--", "/new"]]);
+			expect(witness.command_submitted).toBeUndefined();
+			expect(witness.status).toBe("failed");
+			expect(
+				witness[atRecheck ? "before_submit_pane_capture" : "staged_pane_capture"],
+			).toMatchObject({ terminal: changed, metadata_raw: metadata });
+		}
+	});
 
 	it("recognizes the retained disabled CLI frame as an empty ready composer", () => {
 		const frame = object(
@@ -486,6 +600,64 @@ describe("native lifecycle assertion boundaries, not live CLI proof", () => {
 			),
 		);
 		expect(nativeComposer(String(frame.terminal))).toBe("");
+	});
+
+	it("submits only /new from the retained measured ghost frame", async () => {
+		const fixture = object(
+			JSON.parse(
+				readFileSync(
+					new URL("./fixtures/copilot-native-new-command.json", import.meta.url),
+					"utf8",
+				),
+			),
+		);
+		const frame = object(fixture.pane_capture);
+		const keys: string[][] = [];
+		const witness: Record<string, unknown> = {};
+		let held = false;
+		await driveSmokeLifecycleCommand(
+			(args, preserveOutput) => {
+				if (args[0] === "display-message") {
+					expect(preserveOutput).toBe(true);
+					expect(args).toEqual([
+						"display-message",
+						"-p",
+						"-t",
+						"%3",
+						"#{cursor_x}\t#{cursor_y}\t#{pane_width}\t#{pane_height}",
+						";",
+						"capture-pane",
+						"-p",
+						"-t",
+						"%3",
+					]);
+					return `${frame.metadata_raw}\n${frame.terminal}`;
+				}
+				if (args[0] === "capture-pane") {
+					return keys.length === 0 ? String(fixture.before) : String(fixture.staged);
+				}
+				if (args.at(-1) === "Enter") expect(held).toBe(true);
+				keys.push(args);
+				return "";
+			},
+			{ pane: "%3", action: "newSession" },
+			1,
+			witness,
+			async () => {
+				held = true;
+			},
+		);
+		expect(keys).toEqual([
+			["send-keys", "-t", "%3", "-l", "--", "/new"],
+			["send-keys", "-t", "%3", "Enter"],
+		]);
+		expect(witness).toMatchObject({
+			staged: frame.terminal,
+			staged_pane_capture: { cursor_x: 6, cursor_y: 45, terminal: frame.terminal },
+			before_submit_pane_capture: { cursor_x: 6, cursor_y: 45, terminal: frame.terminal },
+			command_submitted: true,
+			status: "submitted-not-yet-lifecycle-proven",
+		});
 	});
 
 	it.each([
@@ -500,6 +672,7 @@ describe("native lifecycle assertion boundaries, not live CLI proof", () => {
 		await driveSmokeLifecycleCommand(
 			(args) => {
 				if (args[0] === "capture-pane") return frames.shift() ?? composer();
+				if (args[0] === "display-message") return measured(frames.shift() ?? composer());
 				if (args.at(-1) === "Enter") expect(heldBeforeSubmit).toBe(true);
 				keys.push(args);
 				return "";
@@ -558,6 +731,7 @@ describe("native lifecycle assertion boundaries, not live CLI proof", () => {
 			driveSmokeLifecycleCommand(
 				(args) => {
 					if (args[0] === "capture-pane") return frames.shift() ?? changed;
+					if (args[0] === "display-message") return measured(frames.shift() ?? changed);
 					keys.push(args);
 					return "";
 				},
@@ -574,10 +748,10 @@ describe("native lifecycle assertion boundaries, not live CLI proof", () => {
 		const witness: Record<string, unknown> = {};
 		await driveSmokeLifecycleCommand(
 			(args) => {
-				if (args[0] !== "capture-pane") return "";
+				if (args[0] !== "capture-pane" && args[0] !== "display-message") return "";
 				const frame = frames.shift();
 				if (frame === undefined) throw new Error("owned pane exited");
-				return frame;
+				return args[0] === "display-message" ? measured(frame) : frame;
 			},
 			{ pane: "%9", action: "exit" },
 			1,

@@ -622,7 +622,7 @@ export function nativeComposer(terminal: string): string | undefined {
 
 /** Stage only a documented lifecycle command; an optional hook proves a queue hold before submit. */
 export async function driveSmokeLifecycleCommand(
-	tmux: (args: string[]) => string,
+	tmux: (args: string[], preserveOutput?: boolean) => string,
 	expected: { pane: string; action: "newSession" | "exit" },
 	timeout: number,
 	witness: Record<string, unknown>,
@@ -630,6 +630,60 @@ export async function driveSmokeLifecycleCommand(
 ): Promise<void> {
 	const capture = () => tmux(["capture-pane", "-p", "-J", "-t", expected.pane]);
 	const command = HUMAN_KEYS[expected.action];
+	const stagedCommand = (field: "staged" | "before_submit") => {
+		const frame = captureSmokePaneViewport(tmux, expected.pane);
+		witness[field] = frame.terminal;
+		witness[`${field}_pane_capture`] = frame;
+		if ("error" in frame) throw new Error(frame.error);
+		const { terminal, cursor_x, cursor_y, pane_width, pane_height } = frame;
+		assert(
+			terminal !== undefined &&
+				cursor_x !== undefined &&
+				cursor_y !== undefined &&
+				pane_width !== undefined &&
+				pane_height !== undefined,
+			"PIJ_NATIVE_LIFECYCLE_COMMAND_CHANGED: missing measured viewport",
+		);
+		const composer = nativeComposer(terminal);
+		const ghost = command === "/new" && composer === "/new [prompt]";
+		if (composer !== command && !ghost) return false;
+		// Bind the existing parser's command to its single physical row, not transcript text.
+		const lines = terminal.split("\n");
+		let top = -1;
+		for (let index = lines.length - 1; index >= 0; index--) {
+			if (/^╻▄+$/.test(lines[index]?.trim() ?? "")) {
+				top = index;
+				break;
+			}
+		}
+		const prefix = `┃ ${command}`;
+		if (
+			cursor_y !== top + 1 ||
+			cursor_y >= pane_height ||
+			cursor_x >= pane_width ||
+			cursor_x !== prefix.length ||
+			!/^╹▀+$/.test(lines[cursor_y + 1]?.trim() ?? "") ||
+			lines[cursor_y]?.slice(0, cursor_x) !== prefix ||
+			lines[cursor_y]?.slice(cursor_x).trimEnd() !== (ghost ? " [prompt]" : "")
+		)
+			return false;
+		// Only the adjacent command menu can authorize a ghost; older transcript selections cannot.
+		let end = top - 1;
+		if (lines[end]?.trim() === "") end--;
+		let start = end;
+		// A blank row (possibly with the transcript scrollbar) is a boundary; malformed text is not.
+		while (start >= 0 && !/^\s*┃?\s*$/.test(lines[start] ?? "")) start--;
+		const menu = lines.slice(start + 1, end + 1);
+		const selected = menu.filter((line) => line.trimStart().startsWith("❯"));
+		if (ghost || selected.length > 0 || menu.some((line) => /^ {2,}\//.test(line))) {
+			return (
+				menu.every((line) => /^ {2}(?:❯ | {2})\/[a-z][a-z-]* {2,}\S.*$/.test(line)) &&
+				selected.length === 1 &&
+				/^ {2}❯ (\/[a-z][a-z-]*) {2,}/.exec(selected[0] ?? "")?.[1] === command
+			);
+		}
+		return true;
+	};
 	Object.assign(witness, {
 		kind: "native-lifecycle-human-control",
 		...expected,
@@ -646,15 +700,11 @@ export async function driveSmokeLifecycleCommand(
 			return true;
 		});
 		tmux(["send-keys", "-t", expected.pane, "-l", "--", command]);
-		await until("exact native lifecycle command staged", timeout, () => {
-			const terminal = capture();
-			witness.staged = terminal;
-			return nativeComposer(terminal) === command ? true : undefined;
-		});
+		await until("exact native lifecycle command staged", timeout, () =>
+			stagedCommand("staged") ? true : undefined,
+		);
 		if (whileStaged) await whileStaged();
-		const terminal = capture();
-		witness.before_submit = terminal;
-		assert.equal(nativeComposer(terminal), command, "PIJ_NATIVE_LIFECYCLE_COMMAND_CHANGED");
+		assert.equal(stagedCommand("before_submit"), true, "PIJ_NATIVE_LIFECYCLE_COMMAND_CHANGED");
 		witness.submit_keys = [HUMAN_KEYS.submitCommand];
 		tmux(["send-keys", "-t", expected.pane, HUMAN_KEYS.submitCommand]);
 		witness.command_submitted = true;

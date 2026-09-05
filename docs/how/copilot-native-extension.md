@@ -177,6 +177,15 @@ this nearby harness capture is not an atomic snapshot of the daemon's earlier
 sensor read. Capture errors remain explicit, never inferred coordinates or quiet
 typing. This evidence does not change composer recognition or hold/release policy.
 
+Lifecycle controls retain `staged_pane_capture` and `before_submit_pane_capture`.
+The driver binds the typed command to the measured cursor in the actual composer
+row. Copilot's known `/new [prompt]` ghost is accepted only with the cursor directly
+after `/new` and exactly one adjacent selected `/new` suggestion. The placeholder
+is never typed. Changed cursor, suffix, selection, or capture failure prevents
+Enter; the driver rechecks after the staged hook and immediately before submission.
+This is lifecycle fixture validation, not a product recognizer change. Retained
+frame/unit tests do not establish a successful native rollover.
+
 Witnesses retain exact source and executable hashes, versions, processes/panes,
 Pij msg/job IDs, public native events, bidirectional tool-originated replies,
 initial spawned task/duplicate checks, held/admitted draft evidence, missing
