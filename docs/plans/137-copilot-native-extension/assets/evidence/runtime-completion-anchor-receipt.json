@@ -1,0 +1,76 @@
+{
+  "owner": "pij-worldwide-rat",
+  "status": "completion_checkpoint_verified_v4_not_started",
+  "source_commit": "2b180f4f3a625d8182fb2c214c7688cd15d1a8e7",
+  "store_sha256": "8c3f892da8d501560084ea3c4b2cc348e84a6f2fc5f7a3cf1fb8f921867f2f27",
+  "authority": "PM direct PRODUCT subscription proof and explicit instruction to implement matched-user interactionId anchor; no further live reproduction required",
+  "input": {
+    "log": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/evidence/pm-native-product-recipient.log",
+    "jsonl": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/evidence/pm-native-product-recipient.jsonl",
+    "log_sha256": "5fc6e0a1833c4d618b36d098a532680c2d3199cac3113bf27e2654c2a5209a1f",
+    "jsonl_sha256": "40dcc399cc3d15cc03211c6279935819a8d12279cae0d20198ef4d2a562d6c29",
+    "observed": "Original product subscription: matching user seq6; permission.requested absent, external_tool.requested visible seq21; idle seq44 live=true,descendants14,parentKnown=false,terminal=null before/after. Attribution gap from second-observer proof is closed."
+  },
+  "change": "Only NativeCompletion binds nonempty interactionId from foreground user.message matching returned nativeId; foreground assistant.turn_start/assistant.message/tool.execution_complete with that same binding can re-anchor ancestry. Early metadata buffer retains interactionId. All terminal events still need known parent; no numeric-turn/text/global-idle inference.",
+  "preserved": [
+    "Per-send object/epoch and native identity",
+    "First nonempty owned interaction binding cannot be replaced",
+    "No pre-root, foreign or subagent anchor",
+    "Missing/blank interaction has no fallback match; complete ancestry still works",
+    "Recovered acceptance remains live=false and held even if matching events arrive during ACK",
+    "Durable acceptance before ACK and native completion before next claim",
+    "Outgoing usability, shutdown and bounded HTTP renewal unchanged"
+  ],
+  "validation": {
+    "command": "node --test --test-reporter=tap --test-timeout=15000 .copilot/extensions/pij/store.test.mjs .copilot/extensions/pij/identity.test.mjs .copilot/extensions/pij/extension.test.mjs",
+    "environment": {
+      "VITEST_MAX_THREADS": "4",
+      "CARGO_BUILD_JOBS": "4"
+    },
+    "exit": 0,
+    "tests": 95,
+    "passed": 95,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "stderr": "",
+    "duration_ms": 6765.880917,
+    "tap": "runtime-completion-anchor-tests.tap",
+    "tap_sha256": "0e60f15a87df55c47803a8743b2d344ab583c8186a7cefa4b5f3afeae97ca6fa",
+    "raw_bytes": 21213,
+    "biome": "Checked2 files in77ms. Fixed1 file; exit0",
+    "lsp": "Both changed source/test files diagnostics OK"
+  },
+  "replay": {
+    "command": "node --input-type=module (script on stdin)",
+    "environment": {
+      "VITEST_MAX_THREADS": "4",
+      "CARGO_BUILD_JOBS": "4",
+      "PIJ_TRACE": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/evidence/pm-native-product-recipient.jsonl"
+    },
+    "script": "import assert from 'node:assert/strict';\nimport { readFile } from 'node:fs/promises';\nimport { NativeBridge } from '/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/.copilot/extensions/pij/store.mjs';\nconst rows = (await readFile(process.env.PIJ_TRACE,'utf8')).trim().split('\\n').map(JSON.parse);\nconst root=rows.find(e=>e.type==='user.message'); const idle=rows.find(e=>e.type==='session.idle');\nconst reports=[]; const registration={id:'pij-replay',harness_session:'replay-session',pid:1,proc_start:1};\nconst bridge=new NativeBridge({registration,native:{send:async()=>root.messageId},client:{request:async()=>1},journal:{load:async()=>undefined,begin:async()=>true,accept:async()=>{}},report:e=>reports.push(e)});\ntry {\n  await bridge.deliver({job_id:1,message:{msg_id:'replay-message',from:'pij-sender',to:'pij-replay',body:'metadata-only replay'},native_consumer:{native_session:'replay-session',pid:1,proc_start:1}});\n  let parentKnownBeforeIdle=false;\n  for(const e of rows) {if(e.type==='session.idle') parentKnownBeforeIdle=bridge.completion.descendants.has(e.parentId); bridge.completion.observe({type:e.type,id:e.eventId,parentId:e.parentId,agentId:e.agentId,ephemeral:e.ephemeral,data:{messageId:e.messageId,interactionId:e.interactionId,turnId:e.turnId,mode:e.mode}});}\n  assert.equal(parentKnownBeforeIdle,true); assert.equal(bridge.completion.terminal?.eventId,idle.eventId);\n  await bridge.waitForCompletion();\n  assert.equal(reports.filter(e=>e.kind==='native-completed').length,1);\n  console.log(JSON.stringify({events:rows.length,parentKnownBeforeIdle,terminal:bridge.completion.terminal,completionReports:1,acknowledgements:reports.filter(e=>e.kind==='inbox-acknowledged').length}));\n} finally { bridge.stop(); }",
+    "exit": 0,
+    "stderr": "",
+    "result": {
+      "events": 45,
+      "parentKnownBeforeIdle": true,
+      "terminal": {
+        "type": "session.idle",
+        "eventId": "fc272026-5c00-492f-bc35-f736efeab1a4"
+      },
+      "completionReports": 1,
+      "acknowledgements": 1
+    },
+    "limits": "Actual changed NativeBridge/NativeCompletion replay of all45 projected product callbacks; native/client/journal simulated. Not a new live client or Rust daemon execution."
+  },
+  "review": {
+    "reviewer": "CompletionAnchorReview",
+    "verdict": "no_material_findings",
+    "confidence": 0.95,
+    "grade": "Read-only source/test/trace review; reviewer ran no validation"
+  },
+  "cleanup": "All scoped Node fixtures exit; bridge waits are stopped/unsubscribed. No new dependencies, temporary product instrumentation or global resources left by runtime. Only two owned source/test files plus runtime evidence changed.",
+  "harness_improvement": "Permanent compact direct-product callback regression retains omitted permission ancestor and visible external_tool.requested; foreground-anchor tests independently protect all3 allowed event types and rejection boundaries.",
+  "limits": "No full gate/live rerun; PM owns final composition. Historical cross-language store hash remains older-source proof. Observer correction separately held. V4 typing policy begins only after this checkpoint; no sensor/hold/release changes in this source commit."
+}

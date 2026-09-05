@@ -1186,12 +1186,12 @@ test("consent hold release delivers the queued claim without a second message", 
 	assert.equal(f.trace.filter((x) => x === "send").length, 1);
 });
 
-function nativeUser(f, nativeId, id = `user-${nativeId}`) {
+function nativeUser(f, nativeId, id = `user-${nativeId}`, interactionId) {
 	f.event({
 		type: "user.message",
 		id,
 		parentId: "previous",
-		data: { messageId: nativeId, turnId: `turn-${nativeId}` },
+		data: { messageId: nativeId, turnId: `turn-${nativeId}`, interactionId },
 	});
 	return id;
 }
@@ -1302,22 +1302,35 @@ test("post-ack barrier cannot release a later send from earlier generation event
 	f.native.send = async () => `native-${++sends}`;
 	const run = f.bridge.run();
 	await f.accepted.promise;
-	nativeTerminal(f, nativeUser(f, "native-1"));
+	nativeTerminal(f, nativeUser(f, "native-1", "user-native-1", "interaction-1"));
 	await flush();
 	assert.equal(sends, 2);
 	assert.equal(claims, 2);
-	const currentUser = nativeUser(f, "native-2");
+	const currentUser = nativeUser(f, "native-2", "user-native-2", "interaction-2");
 	nativeTerminal(f, "user-native-1");
 	f.event({
 		type: "user.message",
 		id: "user-native-1",
 		parentId: currentUser,
-		data: { messageId: "native-1" },
+		data: { messageId: "native-1", interactionId: "interaction-1" },
 	});
 	nativeTerminal(f, "user-native-1");
+	f.event({
+		type: "assistant.message",
+		id: "old-interaction",
+		parentId: "omitted-old-parent",
+		data: { interactionId: "interaction-1", turnId: "0" },
+	});
+	nativeTerminal(f, "old-interaction");
 	await flush();
 	assert.equal(claims, 2);
-	nativeTerminal(f, currentUser);
+	f.event({
+		type: "assistant.message",
+		id: "current-interaction",
+		parentId: "omitted-current-parent",
+		data: { interactionId: "interaction-2", turnId: "0" },
+	});
+	nativeTerminal(f, "current-interaction");
 	await flush();
 	assert.equal(claims, 3);
 	f.bridge.stop();
@@ -1334,6 +1347,20 @@ test("post-ack barrier explicitly holds accepted duplicate without completion ev
 		message: claim.message,
 		nativeId: "previous-native",
 	});
+	const request = f.client.request;
+	f.client.request = (path, body, signal) => {
+		if (path === "/v1/inbox/ack") {
+			nativeUser(f, "previous-native", "recovered-user", "recovered-interaction");
+			f.event({
+				type: "assistant.message",
+				id: "recovered-assistant",
+				parentId: "omitted-parent",
+				data: { interactionId: "recovered-interaction" },
+			});
+			nativeTerminal(f, "recovered-assistant");
+		}
+		return request(path, body, signal);
+	};
 	await f.bridge.run();
 	assert.equal(f.trace.includes("ack"), true);
 	assert.equal(f.trace.includes("send"), false);
@@ -1418,6 +1445,190 @@ test("post-ack barrier follows real native PoC ancestry with sibling ephemeral i
 	await flush();
 	assert.equal(f.trace.filter((x) => x === "claim").length, 2);
 	assert.ok(f.reports.some((e) => e.kind === "native-completed" && e.eventId === "poc-54"));
+	f.bridge.stop();
+	await run;
+});
+
+test("post-ack interaction anchor repairs the direct product permission gap without inferring idle", async (t) => {
+	const f = fixture();
+	t.after(() => f.bridge.stop());
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	// PM pm-native-product-recipient.jsonl seq6-44, opaque IDs remapped.
+	// permission.requested is absent; external_tool.requested IS visible to the product.
+	nativeUser(f, "native-message-137", "product-6", "product-interaction");
+	const events = [
+		{ type: "system.message", id: "product-7", parentId: "product-6", data: {} },
+		{
+			type: "assistant.turn_start",
+			id: "product-9",
+			parentId: "product-7",
+			data: { interactionId: "product-interaction", turnId: "0" },
+		},
+		{
+			type: "assistant.message",
+			id: "product-18",
+			parentId: "product-9",
+			data: { interactionId: "product-interaction" },
+		},
+		{ type: "tool.execution_start", id: "product-19", parentId: "product-18", data: {} },
+		{ type: "permission.completed", id: "product-20", parentId: "omitted-permission", data: {} },
+		{ type: "external_tool.requested", id: "product-21", parentId: "product-20", data: {} },
+		{ type: "external_tool.completed", id: "product-22", parentId: "product-21", data: {} },
+		{
+			type: "tool.execution_complete",
+			id: "product-24",
+			parentId: "product-22",
+			data: { interactionId: "product-interaction", turnId: "0" },
+		},
+		{ type: "assistant.turn_end", id: "product-27", parentId: "product-24", data: { turnId: "0" } },
+		{
+			type: "assistant.turn_start",
+			id: "product-29",
+			parentId: "product-27",
+			data: { interactionId: "product-interaction", turnId: "1" },
+		},
+		{
+			type: "assistant.message",
+			id: "product-38",
+			parentId: "product-29",
+			data: { interactionId: "product-interaction" },
+		},
+		{ type: "assistant.turn_end", id: "product-41", parentId: "product-38", data: { turnId: "1" } },
+		{ type: "assistant.idle", id: "product-43", parentId: "product-41", ephemeral: true, data: {} },
+	];
+	for (const event of events) f.event(event);
+	await flush();
+	assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+	assert.equal(f.trace.filter((x) => x === "ack").length, 1);
+	assert.equal(
+		(await f.bridge.send({ to: "pij-peer", message: "explicit while waiting" })).ok,
+		true,
+	);
+	f.event({
+		type: "session.idle",
+		id: "product-44",
+		parentId: "product-41",
+		ephemeral: true,
+		data: { mode: "interactive" },
+	});
+	await flush();
+	assert.equal(f.trace.filter((x) => x === "claim").length, 2);
+	assert.equal(
+		f.reports.filter((e) => e.kind === "native-completed" && e.eventId === "product-44").length,
+		1,
+	);
+	f.bridge.stop();
+	await run;
+});
+
+for (const type of ["assistant.turn_start", "assistant.message", "tool.execution_complete"]) {
+	test(`post-ack interaction anchor accepts only the matched foreground ${type}`, async (t) => {
+		const f = fixture();
+		t.after(() => f.bridge.stop());
+		const run = f.bridge.run();
+		await f.accepted.promise;
+		const anchor = {
+			type,
+			id: "unbound",
+			parentId: "omitted-parent",
+			data: { interactionId: "owned-interaction", turnId: "0" },
+		};
+		// Neither pre-root metadata nor a foreign/subagent user may establish the binding.
+		f.event(anchor);
+		nativeTerminal(f, anchor.id);
+		nativeUser(f, "foreign-native", "foreign-user", "owned-interaction");
+		f.event({
+			type: "user.message",
+			id: "child-user",
+			agentId: "child",
+			data: { messageId: "native-message-137", interactionId: "owned-interaction" },
+		});
+		f.event({ ...anchor, id: "still-unbound" });
+		nativeTerminal(f, "still-unbound");
+		await flush();
+		assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+		nativeUser(f, "native-message-137", "owned-user", "owned-interaction");
+		for (const terminal of ["session.idle", "session.error"]) {
+			f.event({ ...anchor, type: terminal, id: terminal });
+		}
+		for (const rejected of [
+			{ ...anchor, id: "foreign", data: { interactionId: "foreign-interaction", turnId: "0" } },
+			{ ...anchor, id: "child", agentId: "child" },
+			{ ...anchor, id: "turn-only", data: { turnId: "0" } },
+		]) {
+			f.event(rejected);
+			nativeTerminal(f, rejected.id);
+		}
+		await flush();
+		assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+		f.event({ ...anchor, id: "owned-anchor" });
+		f.event({
+			type: "assistant.turn_end",
+			id: "owned-end",
+			parentId: "owned-anchor",
+			data: { turnId: "0" },
+		});
+		await flush();
+		assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+		nativeTerminal(f, "owned-end");
+		await flush();
+		assert.equal(f.trace.filter((x) => x === "claim").length, 2);
+		f.bridge.stop();
+		await run;
+	});
+}
+
+for (const interactionId of [undefined, "", "   "]) {
+	test(`post-ack interaction anchor rejects absent or blank binding ${JSON.stringify(interactionId)}`, async (t) => {
+		const f = fixture();
+		t.after(() => f.bridge.stop());
+		const run = f.bridge.run();
+		await f.accepted.promise;
+		const root = nativeUser(f, "native-message-137", "owned-user", interactionId);
+		f.event({
+			type: "assistant.message",
+			id: "unbound-message",
+			parentId: "omitted-parent",
+			data: { interactionId },
+		});
+		nativeTerminal(f, "unbound-message");
+		await flush();
+		assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+		// Existing complete ancestry still works without interaction metadata.
+		nativeTerminal(f, root);
+		await flush();
+		assert.equal(f.trace.filter((x) => x === "claim").length, 2);
+		f.bridge.stop();
+		await run;
+	});
+}
+
+test("post-ack interaction anchor retains correlation before send acceptance", async (t) => {
+	const f = fixture();
+	t.after(() => f.bridge.stop());
+	const sending = deferred();
+	const acceptance = deferred();
+	f.native.send = () => {
+		nativeUser(f, "early-native", "early-user", "early-interaction");
+		f.event({
+			type: "tool.execution_complete",
+			id: "early-tool",
+			parentId: "omitted-permission",
+			data: { interactionId: "early-interaction" },
+		});
+		nativeTerminal(f, "early-tool");
+		sending.resolve();
+		return acceptance.promise;
+	};
+	const run = f.bridge.run();
+	await sending.promise;
+	assert.equal(f.trace.includes("ack"), false);
+	acceptance.resolve("early-native");
+	await f.accepted.promise;
+	await flush();
+	assert.equal(f.trace.filter((x) => x === "claim").length, 2);
+	assert.equal(f.reports.filter((e) => e.kind === "native-completed").length, 1);
 	f.bridge.stop();
 	await run;
 });
