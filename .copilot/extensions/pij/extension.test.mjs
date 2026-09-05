@@ -9,7 +9,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { createNativeReporter } from "./store.mjs";
+import { chooseRegistration, createNativeReporter } from "./store.mjs";
 
 // Preloaded only in the owned test subprocess. Real extension source, HTTP and disk;
 // explicit SDK/process seams, NOT proof of native CLI installation or real model behavior.
@@ -76,6 +76,8 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			messages = 1,
 			inboxPages = [],
 			seats = [],
+			rosters = [],
+			dropRegistrations = 0,
 			registerRefusal,
 		} = {},
 	) {
@@ -96,10 +98,14 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				let data;
 				let meta;
 				let refusal;
-				if (request.url === "/v1/seats") data = { seats };
+				if (request.url === "/v1/seats") data = { seats: rosters.length ? rosters.shift() : seats };
 				else if (request.url === "/v1/register") {
 					refusal = registerRefusal;
 					registered = body;
+					if (dropRegistrations-- > 0) {
+						response.destroy();
+						return;
+					}
 					data = {
 						id: body.id,
 						harness: "copilot",
@@ -323,22 +329,80 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.equal(f.stdout(), "");
 	});
 
-	test("actual HTTP empty page differs from consent hold and release delivers without another send", async (t) => {
-		const f = await launch(t, {
-			inboxPages: [{ data: [] }, { data: [], meta: "native-consumer-held:human-typing" }],
+	for (const reason of ["human-typing", "native-pane-changed"]) {
+		test(`actual HTTP empty page differs from ${reason} hold and release delivers without another send`, async (t) => {
+			const f = await launch(t, {
+				inboxPages: [{ data: [] }, { data: [], meta: `native-consumer-held:${reason}` }],
+			});
+			const hold = await f.waitFor("consent-held");
+			assert.equal(hold.reason, reason);
+			assert.equal(hold.retryMs, 500);
+			assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 2);
+			assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 0);
+			assert.equal(f.events.filter((e) => e.kind === "native-send").length, 0);
+			await f.waitFor("completion-wait");
+			assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 3);
+			assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 1);
+			assert.equal(f.events.filter((e) => e.kind === "native-send").length, 1);
+			assert.equal(f.events.filter((e) => e.kind === "consent-held").length, 1);
+			assert.equal(f.events.filter((e) => e.kind === "native-log").length, 0);
+			const exited = once(f.child, "exit");
+			f.child.stdin.end();
+			assert.equal((await exited)[0], 0);
+			assert.equal(f.stdout(), "");
 		});
-		const hold = await f.waitFor("consent-held");
-		assert.equal(hold.reason, "human-typing");
-		assert.equal(hold.retryMs, 500);
-		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 2);
-		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 0);
+	}
+
+	test("ambiguous native roster refreshes without selecting until unique", async (t) => {
+		const candidate = {
+			id: "pij-cold-candidate",
+			harness: "copilot",
+			session: "native-shell-137",
+			proc: { pid: process.pid + 1, proc_start: 20260905115900 },
+			native_extension_delivery: true,
+		};
+		const ambiguous = [candidate, { ...candidate, id: "pij-other-candidate" }];
+		const f = await launch(t, { rosters: [ambiguous, ambiguous, [candidate]] });
+		await f.waitFor("native-log");
+		assert.equal(f.requests.filter((r) => r.path === "/v1/register").length, 0);
 		assert.equal(f.events.filter((e) => e.kind === "native-send").length, 0);
 		await f.waitFor("completion-wait");
-		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 3);
+		assert.equal(f.requests.filter((r) => r.path === "/v1/seats").length, 3);
+		assert.equal(f.requests.filter((r) => r.path === "/v1/register").length, 1);
+		assert.equal(f.requests.find((r) => r.path === "/v1/register").body.id, candidate.id);
+		assert.equal(f.events.filter((e) => e.kind === "native-log").length, 1);
+		const exited = once(f.child, "exit");
+		f.child.stdin.end();
+		assert.equal((await exited)[0], 0);
+		assert.equal(f.stdout(), "");
+	});
+
+	test("retired native attachment mints fresh id once across dropped registration response", async (t) => {
+		const old = chooseRegistration({
+			sessionId: "native-shell-137",
+			host: { pid: process.pid, proc_start: 20260905120000 },
+			folder: "/work",
+			env: {},
+			seats: [],
+		});
+		const retired = {
+			id: old.id,
+			harness: "copilot",
+			session: old.harness_session,
+			proc: { pid: old.pid, proc_start: old.proc_start },
+			native_extension_delivery: false,
+			tombstoned_at: 1,
+			state: "tombstoned",
+		};
+		const f = await launch(t, { seats: [retired], dropRegistrations: 1 });
+		await f.waitFor("completion-wait");
+		const attempts = f.requests.filter((r) => r.path === "/v1/register");
+		assert.equal(attempts.length, 2);
+		assert.notEqual(attempts[0].body.id, retired.id);
+		assert.deepEqual(attempts[0].body, attempts[1].body);
+		assert.equal(f.requests.filter((r) => r.path === "/v1/seats").length, 1);
 		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 1);
 		assert.equal(f.events.filter((e) => e.kind === "native-send").length, 1);
-		assert.equal(f.events.filter((e) => e.kind === "consent-held").length, 1);
-		assert.equal(f.events.filter((e) => e.kind === "native-log").length, 0);
 		const exited = once(f.child, "exit");
 		f.child.stdin.end();
 		assert.equal((await exited)[0], 0);

@@ -470,7 +470,7 @@ test("ambiguous native addresses and unverified native claims do not authorize r
 	assert.throws(
 		() =>
 			chooseRegistration({ ...input, seats: [descriptor, { ...descriptor, id: "other-address" }] }),
-		/multiple candidate/,
+		(error) => /multiple candidate/.test(error.message) && error.retryable === true,
 	);
 	for (const change of [{ native_extension_delivery: false }, { proc: null }, { harness: "pi" }]) {
 		assert.notEqual(
@@ -487,6 +487,67 @@ test("ambiguous native addresses and unverified native claims do not authorize r
 			/Pane belongs/,
 		);
 	}
+});
+
+test("explicit retirement reopens as fresh attachment, including same-process A to B to A", async (t) => {
+	const home = await mkdtemp(join(tmpdir(), "pij-native-retired-"));
+	t.after(() => rm(home, { recursive: true, force: true }));
+	const input = {
+		sessionId: "native-A",
+		host: { ...descriptor.proc, pane: descriptor.pane },
+		folder: "/work",
+		env: {},
+	};
+	const first = chooseRegistration({ ...input, seats: [] });
+	const firstSeat = { ...descriptor, id: first.id, session: first.harness_session };
+	const message = { ...claim.message, to: first.id };
+	const oldJournal = new FileJournal(home, first);
+	assert.equal(await oldJournal.begin(message), true);
+	await oldJournal.accept(message, "old-acceptance");
+	const next = chooseRegistration({ ...input, sessionId: "native-B", seats: [firstSeat] });
+	assert.equal(next.supersedes, first.id);
+	const retired = {
+		...firstSeat,
+		tombstoned_at: 1,
+		native_extension_delivery: false,
+		state: "tombstoned",
+	};
+	const current = { ...descriptor, id: next.id, session: next.harness_session };
+	const reopened = chooseRegistration({ ...input, seats: [retired, current] });
+	assert.notEqual(reopened.id, first.id);
+	assert.notEqual(reopened.id, next.id);
+	assert.equal(reopened.supersedes, next.id);
+	assert.equal(await new FileJournal(home, reopened).load(message.msg_id), undefined);
+	assert.equal((await oldJournal.load(message.msg_id)).nativeId, "old-acceptance");
+	const reopenedSeat = { ...firstSeat, id: reopened.id };
+	assert.equal(
+		chooseRegistration({
+			...input,
+			host: { ...input.host, pid: 999 },
+			seats: [retired, reopenedSeat],
+		}).id,
+		reopened.id,
+	);
+	const coldReopen = chooseRegistration({
+		...input,
+		host: { ...input.host, pid: 999 },
+		seats: [retired],
+	});
+	assert.notEqual(coldReopen.id, retired.id);
+	assert.equal(coldReopen.supersedes, undefined);
+	assert.throws(
+		() =>
+			chooseRegistration({
+				...input,
+				seats: [retired],
+				env: { PIJ_SESSION_ID: retired.id, PIJ_SPAWN_ID: "retired-launch" },
+			}),
+		/prebind|corroborat/,
+	);
+	assert.notEqual(
+		chooseRegistration({ ...input, seats: [{ ...retired, native_extension_delivery: true }] }).id,
+		retired.id,
+	);
 });
 
 test("fresh native conversation nominates new address without retiring old pane owner locally", () => {
@@ -1189,6 +1250,7 @@ test("claim page preserves typed target and transient hold metadata without chan
 		["observation-only note", null],
 		...[
 			"human-typing",
+			"native-pane-changed",
 			"semantic-hold",
 			"sensor-unavailable:tap missing",
 			"human-consent",
@@ -1257,6 +1319,16 @@ test("only the exact native-unavailable inbox refusal is retryable", async () =>
 			{
 				...unavailableRefusal,
 				meta: "daemon/native-inbox: native incarnation mismatch: native_session, pid and proc_start must match the current Copilot seat",
+			},
+			false,
+		],
+		[
+			"missing or non-Copilot shared legacy diagnostic",
+			inbox,
+			400,
+			{
+				...unavailableRefusal,
+				meta: "daemon/native-inbox: native incarnation no longer belongs to a current Copilot seat",
 			},
 			false,
 		],
