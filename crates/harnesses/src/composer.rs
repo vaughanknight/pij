@@ -282,6 +282,35 @@ mod tests {
     }
 
     #[test]
+    fn copilot_v1_0_84_live08_paired_capture_recognizes_full_draft() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/2026-09-05-copilot-v1.0.84-live06-draft.json"
+        ))
+        .expect("captured Copilot fixture is valid JSON");
+        assert!(
+            fixture["cursor"].is_null(),
+            "live08 cursor must not be attached to the original live06 frame"
+        );
+        let follow_up = &fixture["follow_up"];
+        let frame = &follow_up["pane_capture"];
+        let capture = frame["terminal"]
+            .as_str()
+            .expect("follow-up retains its own unjoined terminal frame");
+        let cursor_x = u32::try_from(frame["cursor_x"].as_u64().expect("measured cursor x"))
+            .expect("cursor x fits u32");
+        let cursor_y = u32::try_from(frame["cursor_y"].as_u64().expect("measured cursor y"))
+            .expect("cursor y fits u32");
+        let draft = follow_up["draft"]
+            .as_str()
+            .expect("expected draft comes from the live08 typing witness");
+        assert_eq!(
+            composer_region(capture, cursor_x, cursor_y),
+            ComposerRegion::Recognized(draft.to_owned()),
+            "Copilot v1.0.84-0 live08 accepted frame at its measured cursor"
+        );
+    }
+
+    #[test]
     fn copilot_footer_preserves_existing_variants() {
         for footer in [
             "/ commands · ? help",
