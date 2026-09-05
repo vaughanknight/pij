@@ -1,5 +1,7 @@
 {
-  "dd": { "schema": "builder/review" },
+  "dd": {
+    "schema": "builder/review"
+  },
   "sections": [
     {
       "name": "meta",
@@ -10,7 +12,7 @@
         "round": "2",
         "date": "2026-09-05",
         "plan": "../../plan.dd.json#meta",
-        "note": "VERDICT: both fixes are CORRECT and several exceed what was commissioned. All eleven round-2 targets PASS. Three new MINOR findings, none blocking, one of which is a partial execution of AC8's own widened scope. SUBJECTS: u3 897b7cd771bebe4632ef7883aa628b9b33a2e7db (branch 135-rs-boot-announce-u3, parent 54342bf1) and u4 0979d3316567be57223abad7609e79f2a512e57c (branch 135-rs-boot-announce-u4-r2, parent be778b9c). HOW I VERIFIED, and it is the round-1 lesson applied to myself: u3's branch is based on a STALE main — 54342bf1 is an ancestor of today's main (1142c87e) but roughly 13,000 lines behind it, missing all of plan 136 AND the f1 fixture fix that this very review produced. Testing on the branch would therefore have proved something about a tree nobody will ship. I trial-merged each fix into main with `git merge-tree --write-tree` (no repo mutation, zero conflicts, disjoint file sets), materialised the resulting trees with `git archive`, and ran every suite THERE. That is the tree that ships. Results on the merged trees: pij-daemon --lib 187 passed 0 failed, including both the new behavioural witness and the T8 canary; pij-tmux + pij-transport 26 passed; the seven TS suites touching frame vocabulary 672 passed, 2 skipped. I also re-derived the recogniser change against a fresh 1663-process live sweep and independently re-implemented u4's vocabulary guard to check it from the outside. TWO OF MY OWN INSTRUMENTS FAILED TODAY and both were caught by re-measuring before reporting — a TZ probe whose shell quoting made local and UTC look identical, and a `grep` whose unbracketed `[pij from` pattern is a regex character class and silently matched nothing. The second one materially changed a finding: with `grep -F` the scope sweep returns four live seat-facing legacy heads that the broken form reported as zero."
+        "note": "VERDICT: both fixes are CORRECT and several exceed what was commissioned. All eleven round-2 targets PASS. Three new MINOR findings, none blocking, one of which is a partial execution of AC8's own widened scope. SUBJECTS: u3 897b7cd771bebe4632ef7883aa628b9b33a2e7db (branch 135-rs-boot-announce-u3, parent 54342bf1) and u4 0979d3316567be57223abad7609e79f2a512e57c (branch 135-rs-boot-announce-u4-r2, parent be778b9c). HOW I VERIFIED, and it is the round-1 lesson applied to myself: u3's branch is based on a STALE main — 54342bf1 is an ancestor of today's main (1142c87e) but roughly 13,000 lines behind it, missing all of plan 136 AND the f1 fixture fix that this very review produced. Testing on the branch would therefore have proved something about a tree nobody will ship. I trial-merged each fix into main with `git merge-tree --write-tree` (no repo mutation, zero conflicts, disjoint file sets), materialised the resulting trees with `git archive`, and ran every suite THERE. That is the tree that ships. Results on the merged trees: pij-daemon --lib 187 passed 0 failed, including both the new behavioural witness and the T8 canary; pij-tmux + pij-transport 26 passed; the seven TS suites touching frame vocabulary 672 passed, 2 skipped. I also re-derived the recogniser change against a fresh 1663-process live sweep and independently re-implemented u4's vocabulary guard to check it from the outside. TWO OF MY OWN INSTRUMENTS FAILED TODAY and both were caught by re-measuring before reporting — a TZ probe whose shell quoting made local and UTC look identical, and a `grep` whose unbracketed `[pij from` pattern is a regex character class and silently matched nothing. The second one materially changed a finding: with `grep -F` the scope sweep returns four live seat-facing legacy heads that the broken form reported as zero. AMENDMENT: this record's headline verdict stands, but it must be read with r2o1 — one real-tmux adapter test (`watchdog_expiry_before_disable_cannot_strand_input`) was observed RED on u3's stale tree, in a file neither commit touches, in a run I should not have launched. Unreproduced, unattributed, and handed to the PM rather than dressed as a finding or omitted."
       }
     },
     {
@@ -150,27 +152,133 @@
           "address": "proc_source consumer (target 3)",
           "finding": "TARGET 3 — proc_source gets a real consumer, with its limitation stated rather than hidden. `RustSeatDescriptor` gains a typed `proc_source?: \"harness\" | \"pane\"`, so the TypeScript type stops being an incomplete description of the wire, and `rust-runtime.ts` emits a runtime notice on boot when the value is `pane`: 'pij: harness discovery fell back to the pane; registered pid …'. That closes the silent half of f2 — a pane-bound seat now says so at the moment it happens. The PM's ruling that the limitation be stated explicitly (proc_source is response-only and not persisted on the seat row, so `pij-rs state` and `pij list` cannot show it without a schema change that is out of scope) is the right call and is what makes this reviewable: a stated boundary can be checked, an invisible field cannot. The residual is honest and worth naming for prime: the signal exists only at the boot moment in one seat's own notice stream, so an operator auditing the FLEET for pane-bound seats still has no query — which is f4's gap, unchanged and still open.",
           "receipt": ".pi/extensions/pij/core/daemon-wire.ts and adapters/rust-runtime.ts at 897b7cd7; `daemon-wire.test.ts` gains coverage (10 tests). Green in the TS run on main+u3."
+        },
+        {
+          "id": "r2o1",
+          "kind": "question",
+          "severity": "NIT",
+          "state": "unchecked",
+          "address": "crates/tmux/tests/adapter.rs:657 watchdog_expiry_before_disable_cannot_strand_input",
+          "finding": "AN OBSERVED RED THAT I AM NOT ATTRIBUTING, recorded because an unexplained failure I chose not to mention would be the same category of omission as a green describing the wrong tree. Early in round 2 I launched `cargo test -p pij-tmux -p pij-transport` WITHOUT `--lib`, which pulled in crates/tmux/tests/adapter.rs — real tmux integration tests — on a machine carrying a live fleet. 31 passed, 1 FAILED: `watchdog_expiry_before_disable_cannot_strand_input` panicking at adapter.rs:657 with 'submit marker did not clear'. THE OVERREACH IS MINE: the packet reserves the tmux smoke to the PM because it is serialized, and driving real panes is the same shared-resource class as the register curl the PM correctly stopped. I applied that rule to a registry write and not to a test binary that drives tmux. WHY IT IS PROBABLY NOT A REGRESSION, as evidence rather than reassurance: neither commit touches adapter.rs (0 hits for both SHAs; its last change is 1257c32f, unrelated to 135); u3's crates/tmux/src/lib.rs change is harness_process/harness_process_tree, which the submit-marker watchdog path does not call; it ran on u3's STALE tree rather than the merged tree, so it is not evidence about the merge target at all; and the machine carries debris from earlier runs of this exact test binary — four `adapter-53d95b069a4e770c` helper processes from Tue Sep 1 (pids 659, 22378, 87433, 96860) still running out of pij-worktrees/s122-tmux-full-body, plus a Sep 2 `pij-rs-submit-forced-adapter-cas-…` reservation shell at pid 97103. Stranded helpers holding `@pij-submit-owner` pane options is a plausible mechanism for this precise failure, which would make it environment-dependent rather than tree-dependent. I did NOT re-run it: that means driving real tmux against the live fleet again, and once was already a mistake. If it is re-run it should be by the PM on a quiet pane, and the four-day-old helper processes are worth killing first. I have deliberately NOT called it a load artifact: that is a claim about repetition and I ran it once.",
+          "receipt": "`cargo test -p pij-tmux -p pij-transport` in /tmp/pij-u3 (u3's own tree, parent 54342bf1): 31 passed, 1 failed. `git show --name-only` for 897b7cd7 and 0979d331: neither lists crates/tmux/tests/adapter.rs. `ps -Awwo pid=,lstart=,command= | grep -F acquire_watchdog_race_helper_process` → 4 processes dated Tue Sep 1 from a different worktree. All `--lib`-scoped runs reported elsewhere in this record are unaffected."
         }
       ]
     },
     {
       "name": "verdict",
       "value": [
-        { "id": "rv1", "finding": "phase-1-review-r2.dd.json#findings/r2t1", "resolution": "fixed", "state": "checked", "rationale": "Behavioural witness asserts rebound-not-same for a new process in a stable pane, proves the recogniser genuinely fails first, and adds three refusal arms each checking the row is unchanged. Exceeds the commission." },
-        { "id": "rv2", "finding": "phase-1-review-r2.dd.json#findings/r2t2", "resolution": "fixed", "state": "checked", "rationale": "Variant C shipped exactly: stem constraint dropped, interpreter list untouched. Zero workers admitted on a fresh 1663-process sweep. Evidence captured as a test because it is no longer observable live." },
-        { "id": "rv3", "finding": "phase-1-review-r2.dd.json#findings/r2t4", "resolution": "fixed", "state": "checked", "rationale": "f3 fixed with the named one-liner plus an injectable entry stream, and eleven rejection classes tested with the rejected entry forced to enumerate first." },
-        { "id": "rv4", "finding": "phase-1-review-r2.dd.json#findings/r2t6", "resolution": "fixed", "state": "checked", "rationale": "Preference lives in register only; the shared helper carries evidence and makes no claim decision; adopt cannot reach it. Pinned by a test, not left to the comment." },
-        { "id": "rv5", "finding": "phase-1-review-r2.dd.json#findings/r2t7", "resolution": "fixed", "state": "checked", "rationale": "Claim demoted from evidence to selector: full-identity subtree membership, refusal with nothing written, and the complete descendant set retained so a self-registering seat keeps its own identity." },
-        { "id": "rv6", "finding": "phase-1-review-r2.dd.json#findings/r2t8", "resolution": "fixed", "state": "checked", "rationale": "Canary byte-for-byte unmodified (70 lines, diff identical) and green on the merged tree — the outcome that only a correctly narrow preference produces." },
-        { "id": "rv7", "finding": "phase-1-review-r2.dd.json#findings/r2n1", "resolution": "fixed", "state": "checked", "rationale": "Stronger than asked: equally-near matches fall back to the pane root, and order-independence is proven by reversing the rows rather than asserted." },
-        { "id": "rv8", "finding": "phase-1-review-r2.dd.json#findings/r2n4", "resolution": "fixed", "state": "checked", "rationale": "UTC hosts now report the property as unexercised on stderr, and a divergent host additionally proves the pane fallback cannot rescue a wrong timebase comparison." },
-        { "id": "rv9", "finding": "phase-1-review-r2.dd.json#findings/r2n5", "resolution": "fixed", "state": "checked", "rationale": "Third form taken: `<id>: content`, neither head, no tail, listing structure preserved. D-040 confusion surface removed rather than migrated." },
-        { "id": "rv10", "finding": "phase-1-review-r2.dd.json#findings/r2n6", "resolution": "fixed", "state": "checked", "rationale": "Substring negative adopted; all five LLM-facing strings and both stale comments corrected; and the vocabulary rule became a sensor, which is the durable half. Verified by independent re-implementation, not by its own green." },
-        { "id": "rv11", "finding": "phase-1-review-r2.dd.json#findings/r2d1", "resolution": "fixed", "state": "checked", "rationale": "Typed field plus a boot-time notice; limitation stated rather than hidden. Fleet-level visibility remains f4's open gap." },
-        { "id": "rv12", "finding": "phase-1-review-r2.dd.json#findings/r2f1", "resolution": "confirmed", "state": "unchecked", "rationale": "Open. Four live seat-facing legacy heads remain in skills/pij/references/routes/, including one documenting the very inbox output u4 changed. Fix the lines; better, extend the guard's root to skills/pij/** and exclude docs/plans/**." },
-        { "id": "rv13", "finding": "phase-1-review-r2.dd.json#findings/r2f2", "resolution": "confirmed", "state": "unchecked", "rationale": "Open and prophylactic — zero drift today, verified independently. Add an unused-exemption assertion so a dead allowlist entry fails the guard the way an unused suppression fails a linter." },
-        { "id": "rv14", "finding": "phase-1-review-r2.dd.json#findings/r2f3", "resolution": "confirmed", "state": "unchecked", "rationale": "Open as process, not code. u3's green describes a tree 13k lines behind main. Everything passes on the trial-merge tree, so nothing is broken — but a done report should name the merge-base it ran against." },
-        { "id": "rv15", "finding": "phase-1-review-r2.dd.json#findings/r2n7", "resolution": "confirmed", "state": "unchecked", "rationale": "Ship the widening; update the MANIFEST answer it falsifies, and consider registering the 2.1.241 captures in the corpus that exists for exactly this kind of evidence." }
+        {
+          "id": "rv1",
+          "finding": "phase-1-review-r2.dd.json#findings/r2t1",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Behavioural witness asserts rebound-not-same for a new process in a stable pane, proves the recogniser genuinely fails first, and adds three refusal arms each checking the row is unchanged. Exceeds the commission."
+        },
+        {
+          "id": "rv2",
+          "finding": "phase-1-review-r2.dd.json#findings/r2t2",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Variant C shipped exactly: stem constraint dropped, interpreter list untouched. Zero workers admitted on a fresh 1663-process sweep. Evidence captured as a test because it is no longer observable live."
+        },
+        {
+          "id": "rv3",
+          "finding": "phase-1-review-r2.dd.json#findings/r2t4",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "f3 fixed with the named one-liner plus an injectable entry stream, and eleven rejection classes tested with the rejected entry forced to enumerate first."
+        },
+        {
+          "id": "rv4",
+          "finding": "phase-1-review-r2.dd.json#findings/r2t6",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Preference lives in register only; the shared helper carries evidence and makes no claim decision; adopt cannot reach it. Pinned by a test, not left to the comment."
+        },
+        {
+          "id": "rv5",
+          "finding": "phase-1-review-r2.dd.json#findings/r2t7",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Claim demoted from evidence to selector: full-identity subtree membership, refusal with nothing written, and the complete descendant set retained so a self-registering seat keeps its own identity."
+        },
+        {
+          "id": "rv6",
+          "finding": "phase-1-review-r2.dd.json#findings/r2t8",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Canary byte-for-byte unmodified (70 lines, diff identical) and green on the merged tree — the outcome that only a correctly narrow preference produces."
+        },
+        {
+          "id": "rv7",
+          "finding": "phase-1-review-r2.dd.json#findings/r2n1",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Stronger than asked: equally-near matches fall back to the pane root, and order-independence is proven by reversing the rows rather than asserted."
+        },
+        {
+          "id": "rv8",
+          "finding": "phase-1-review-r2.dd.json#findings/r2n4",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "UTC hosts now report the property as unexercised on stderr, and a divergent host additionally proves the pane fallback cannot rescue a wrong timebase comparison."
+        },
+        {
+          "id": "rv9",
+          "finding": "phase-1-review-r2.dd.json#findings/r2n5",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Third form taken: `<id>: content`, neither head, no tail, listing structure preserved. D-040 confusion surface removed rather than migrated."
+        },
+        {
+          "id": "rv10",
+          "finding": "phase-1-review-r2.dd.json#findings/r2n6",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Substring negative adopted; all five LLM-facing strings and both stale comments corrected; and the vocabulary rule became a sensor, which is the durable half. Verified by independent re-implementation, not by its own green."
+        },
+        {
+          "id": "rv11",
+          "finding": "phase-1-review-r2.dd.json#findings/r2d1",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Typed field plus a boot-time notice; limitation stated rather than hidden. Fleet-level visibility remains f4's open gap."
+        },
+        {
+          "id": "rv12",
+          "finding": "phase-1-review-r2.dd.json#findings/r2f1",
+          "resolution": "confirmed",
+          "state": "unchecked",
+          "rationale": "Open. Four live seat-facing legacy heads remain in skills/pij/references/routes/, including one documenting the very inbox output u4 changed. Fix the lines; better, extend the guard's root to skills/pij/** and exclude docs/plans/**."
+        },
+        {
+          "id": "rv13",
+          "finding": "phase-1-review-r2.dd.json#findings/r2f2",
+          "resolution": "confirmed",
+          "state": "unchecked",
+          "rationale": "Open and prophylactic — zero drift today, verified independently. Add an unused-exemption assertion so a dead allowlist entry fails the guard the way an unused suppression fails a linter."
+        },
+        {
+          "id": "rv14",
+          "finding": "phase-1-review-r2.dd.json#findings/r2f3",
+          "resolution": "confirmed",
+          "state": "unchecked",
+          "rationale": "Open as process, not code. u3's green describes a tree 13k lines behind main. Everything passes on the trial-merge tree, so nothing is broken — but a done report should name the merge-base it ran against."
+        },
+        {
+          "id": "rv15",
+          "finding": "phase-1-review-r2.dd.json#findings/r2n7",
+          "resolution": "confirmed",
+          "state": "unchecked",
+          "rationale": "Ship the widening; update the MANIFEST answer it falsifies, and consider registering the 2.1.241 captures in the corpus that exists for exactly this kind of evidence."
+        },
+        {
+          "id": "rv16",
+          "finding": "phase-1-review-r2.dd.json#findings/r2o1",
+          "resolution": "deferred",
+          "state": "unchecked",
+          "rationale": "Deferred to the PM, who owns real-tmux runs. Not attributed to either commit: untouched file, uncalled code path, stale tree, and documented four-day-old debris from the same test binary. The record exists so the round-2 verdict is not read as 'nothing was red anywhere'."
+        }
       ]
     }
   ]
