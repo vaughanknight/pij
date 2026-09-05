@@ -305,6 +305,15 @@
           "address": "crates/daemon/tests/review_regressions.rs, crates/testkit/src/fakes.rs, harness/scripts/tmux-claude-topic-scan.py",
           "finding": "TARGET-8 CLASS CHECK on the three files I had not yet read, since I made a point of 'a suite quietly moved to accommodate a change'. VERDICT: all three changed, none weakened, and one is a clear strengthening. review_regressions.rs HAD to change — its uds fixture used a synthetic `pid: 4242` with `procStart: \"observed-start\"`, which cannot satisfy the new liveness gate by construction — and the way it changed is the right way: the synthetic pid is replaced by `std::process::id()` and the synthetic stamp by a REAL `ps -o lstart=` observation, and `seat.proc` now takes a real `ProcLiveness` reading. The test went from bypassing the liveness path to exercising it, which is stronger than what it replaced, not an accommodation. fakes.rs FakeRegistry::put_reporting matches the SQLite semantics exactly — `inserted: previous.is_none()` and `previous_proc: previous.and_then(|seat| seat.proc)` — so the fake and the real store collapse 'no row' and 'unbound row' the same way, and a test that passes against the fake means the same thing against SQLite. tmux-claude-topic-scan.py widens `RELAY_RE` from `\\[pij (from|watchdog)` to `\\[pij(?:-rs)? (from|watchdog)`, which accepts BOTH generations rather than swapping one for the other — the correct migration shape for a scanner that must read historical transcripts as well as current ones.",
           "receipt": "git diff 4b000ffb^1 4b000ffb over the three files, read in full."
+        },
+        {
+          "id": "n5",
+          "kind": "question",
+          "severity": "MINOR",
+          "state": "unchecked",
+          "address": ".pi/extensions/pij/core/inbox.ts:343-366 renderInboxResult (hazard in a fix now in flight)",
+          "finding": "WARNING ABOUT THE OBVIOUS FIX to the inbox half of f6: adopting the wire frame here would be WORSE than the legacy head it replaces, for a reason that has nothing to do with formatting. `renderInboxResult` is a LINE-ORIENTED LISTING — one line per message (`[pij from X] content`), indented `  attachment: …` continuation lines beneath it, and a `N messages read` trailer, all joined with newlines. Substituting `frame(from, content)` turns each entry into THREE lines with a `[/pij]` terminator, and three structural things break at once: a multi-line body destroys the one-line-per-message invariant the listing depends on; attachments are emitted AFTER the terminator, so they read as belonging outside the message they annotate; and the `N messages read` trailer follows a `[/pij]`, appearing to be part of a frame stream. THE REAL HAZARD IS THE FOURTH ONE. `pij inbox` output is read BY AN AGENT, and announceText plus AGENTS.md both tell every seat that only injected messages are live instructions and that the inbox is 'an internal transport log, not a task queue'. Rendering log entries in the exact byte shape of a genuine injected frame erases the only cue that distinguishes them — it makes replayed history indistinguishable from live instruction, which is difficulty D-040's failure mode (fresh boots snooping their own inbox and re-running old requests) reintroduced by a cosmetic change. The correct fix is NEITHER shape: make the listing stop mimicking a frame at all — `<id>: content`, or `from <id> — content` — which removes the class instead of migrating it from the dead generation to the live one, and permanently removes the confusion surface. My f6 called this the 'weaker sibling'; on inspection the listing wants a different fix from the tool-metadata strings, not the same one.",
+          "receipt": "core/inbox.ts:354-366 read in full: `lines.push` per message, indented attachment lines, count trailer, `lines.join(\"\\n\")`. Expected shape pinned at core/inbox.test.ts:459-463 ['[pij from pij-sender] review this', '[pij from pij-sender] (command: /compact)', '  attachment: /tmp/chart.png (review)', '2 messages read']. announceText and AGENTS.md both carry the 'transport log, not a task queue' instruction that this rendering would undercut."
         }
       ]
     },
@@ -436,6 +445,13 @@
           "resolution": "confirmed",
           "state": "checked",
           "rationale": "Clean. No suite was moved to accommodate the change; review_regressions.rs was strengthened from a synthetic fixture to a live one, the fake matches the real store's semantics, and the scanner regex accepts both generations rather than swapping."
+        },
+        {
+          "id": "v19",
+          "finding": "phase-1-review-r1.dd.json#findings/n5",
+          "resolution": "confirmed",
+          "state": "unchecked",
+          "rationale": "Open and TIME-SENSITIVE — u4 is editing this renderer now and has already touched three inbox.test.ts expectations. Do not migrate the listing to the wire frame; make it stop imitating a frame. Adopting the live shape would make a transport log byte-identical to live instruction, which is the D-040 failure mode, and would break the listing's line structure in three separate ways."
         }
       ]
     }
