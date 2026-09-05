@@ -1,0 +1,12 @@
+{
+  "status": "failed",
+  "provider": "deterministic-local-fixture-not-real-inference",
+  "mode": "manual",
+  "run": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-eRZIrC",
+  "started": "2026-09-05T02:35:27.702Z",
+  "witnesses": [],
+  "error": "Expected values to be strictly equal:\n\n1 !== 0\n",
+  "fixture_requests": [],
+  "daemon_log": "",
+  "finished": "2026-09-05T02:35:27.740Z"
+}

@@ -32,7 +32,7 @@
           "id": "tk-0002",
           "title": "Exclusive daemon ownership and identity",
           "state": "unchecked",
-          "success": "Native Copilot registration attests capability against exact observed process incarnation; initial arrival and DrainWorker never type for Copilot after cutover; claim admission honors current consent gate and safe wake/retry, while Pi/OMP/Claude are unchanged.",
+          "success": "Native Copilot registration attests exact host; arrival and drain never type Copilot. Native claim/ack enforce identity, target and operator Hold while native extension drives ruled recent-typing hold/release. Other harness contracts unchanged; no composer/tap claim gate or ungated native send.",
           "notes": "daemon; see impl-guide unit fence and assets/contracts/native-extension.json",
           "satisfies": [
             "../../../plan.dd.json#acceptance_criteria/ac-0002",
@@ -165,7 +165,7 @@
           },
           {
             "id": "dw-0008",
-            "assertion": "Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence.",
+            "assertion": "Native-owned Copilot delivery follows OMP recent-typing policy: the extension consumes observed human edits (136 pane-side recency is authorized because the actual SDK lacks pre-submit input hooks), uses daemon-resolved PIJ_TYPING_GRACE_MS and136 hold/release, retains explicit operator Hold, and admits after grace despite a static draft; unowned Copilot stays queued/refused without sendkeys fallback.",
             "state": "unchecked",
             "pressure": "../../backpressure.dd.json#rows/bp-0006"
           }
@@ -271,7 +271,7 @@
           },
           {
             "id": "dw-0017",
-            "assertion": "Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence.",
+            "assertion": "Native-owned Copilot delivery follows OMP recent-typing policy: the extension consumes observed human edits (136 pane-side recency is authorized because the actual SDK lacks pre-submit input hooks), uses daemon-resolved PIJ_TYPING_GRACE_MS and136 hold/release, retains explicit operator Hold, and admits after grace despite a static draft; unowned Copilot stays queued/refused without sendkeys fallback.",
             "state": "unchecked",
             "pressure": "../../backpressure.dd.json#rows/bp-0006"
           },

@@ -77,10 +77,10 @@
         },
         {
           "id": "ac-0006",
-          "claim": "Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence.",
+          "claim": "Native-owned Copilot delivery follows OMP recent-typing policy: the extension consumes observed human edits (136 pane-side recency is authorized because the actual SDK lacks pre-submit input hooks), uses daemon-resolved PIJ_TYPING_GRACE_MS and136 hold/release, retains explicit operator Hold, and admits after grace despite a static draft; unowned Copilot stays queued/refused without sendkeys fallback.",
           "state": "unchecked",
           "pressure": "assets/backpressure.dd.json#rows/bp-0006",
-          "note": "Existing strict draft/typing policy is retained; no approval to weaken it has been assumed. Prime approved an additive observer-footer accuracy fix, now composed after135/aa697235; actual live native smoke04 is running. Shared60s policy proposal remains a separate pending user choice, not a prerequisite to proving the current strict contract."
+          "note": "Jordan ruling in assets/inputs/jordan-ruling-consent-2026-09-05.md; prime-preauthorized pane sensor and actual injected SDK evidence in assets/inputs/pm-typing-sensor-contract-v4.json. Supersedes strict draft blocking. Implementation and RED/live proofs remain pending; never permission for ungated send."
         },
         {
           "id": "ac-0007",

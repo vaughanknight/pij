@@ -1,6 +1,6 @@
 {
   "state": "not-release-ready",
-  "source_integration": "0de7932273d1f3577cc64177bd1a8abe6442daba includes135/aa697235, native host preservation with atomic binding reports, cold resume, local-only discovery, approved footer correction and explicit cross-language contract recipe. Subsequent idle-poll and consent-driver corrections pending.",
+  "source_integration": "Composed main135/136 through1142c87e, renewal fix, C1 same-owner attestation preservation, consent/lifecycle drivers and completion anchor a5de7cb3. Ruled v4 typing snapshot/hold/release is in progress; no release claim.",
   "engineering_gate": {
     "currency": "Historical pass; predates current convergence and must be rerun on final source",
     "command": "harness checks --json",
@@ -38,7 +38,8 @@
     "native_cross_language": "just copilot-native-contract-test: explicitly ran ignored test,1 passed,0 ignored; real HTTP/SQLite and JS chooser/client/bridge/journal, simulated native.send",
     "raw_output": "pm-composed-contract-0de79322.log",
     "raw_sha256": "154fb2809ed098a01dfef4ce9fc1d5c68dccc5d3c897222efbc7c86464d82fa8",
-    "adjacent136": "Owner reports103 unit+2 integration passed with footer8f56be95 temporarily applied on136 composed1969511e plusmain; reverted after measurement, not adopted"
+    "adjacent136": "Owner reports103 unit+2 integration passed with footer8f56be95 temporarily applied on136 composed1969511e plusmain; reverted after measurement, not adopted",
+    "currency": "Historical checkpoint; not final source gate"
   },
   "live_native": {
     "receipts": [
@@ -46,26 +47,34 @@
       "pm-native-local-02.json",
       "pm-native-local-03.json",
       "pm-native-local-04.json",
-      "pm-native-local-04-ack.json"
+      "pm-native-local-04-ack.json",
+      "pm-native-local-05.json",
+      "pm-native-callback-probe-01.json",
+      "pm-native-product-callback-02.json"
     ],
     "passed_boundaries": [
       "real Copilot ordinary use with daemon/key absent",
       "one outage diagnostic",
       "real daemon health offline=false",
       "two manual native host/session/pane registrations after ucomm fix",
-      "actual CLI receives native user message under unchanged strict draft policy",
-      "SQLite job done and reader-read receipt prove native acceptance; model tool waits for user consent"
+      "actual CLI native user message under then-current strict policy",
+      "manual bidirectional native roundtrip, exact simulated one-time tool consent, duplicate suppression and separate deterministic-provider completion in live05"
     ],
-    "blocked_boundary": "Outgoing pij_send waits for native CLI per-tool approval; isolated driver is being corrected to approve only exact expected dialog arguments. Separate normal inbox65s renewal falsely reported outage; runtime correction pending.",
+    "blocked_boundary": "Live05 subsequent receive stalled despite idle; direct product callback trace proves missing-parent closure failure. Correlated interactionId fix composed, live retest pending. New shared typing policy requires receiver hold/release, currently being implemented.",
     "not_proven": [
-      "pane-backed body round trip",
       "Pij-spawned native full path",
       "real-model canary through new transport",
       "complete real host-resume/rollover proof"
     ]
   },
-  "decisions_pending": [
-    "Jordan: optional shared60s recent-typing grace versus existing strict draft gate; neither permits sendkeys fallback. Existing strict contract can be verified without changing policy."
-  ],
-  "no_global_rollout": true
+  "decisions_pending": [],
+  "no_global_rollout": true,
+  "later_targeted_proofs": {
+    "136_convergence": "7ee44f77:479 Rust tests passed,4 ignored; strict daemon clippy passed; pm-136-convergence-green.log",
+    "renewal_and_contract": "2a36a799:87 native JS tests passed; explicit cross-language1 passed with moduleDigest872f0f30e13f50c17c85e7b2d1fd9cf0e7b2ab3ddaf7e536b19080742feacce5; pm-native-05-validation.log",
+    "C1_and_lifecycle": "PM passed85 installer/smoke tests,27 registration tests and just typecheck; artifact://427. F2 refinement later composed; final rerun pending.",
+    "completion": "Owner95 tests passed; PM scoped actual-client successive-receive proof running, not yet claimed",
+    "review": "Opus0de79322 and2a36a799 approve source correctness only. C1/F2 fixes composed; source after pins needs delta review."
+  },
+  "consent_ruling": "Jordan yes: ../inputs/jordan-ruling-consent-2026-09-05.md. Actual SDK lacks pre-submit input hooks; prime authorizes136 pane-side edit-recency SENSOR. ../inputs/pm-typing-sensor-contract-v4.json. No ungated send, permanent draft veto or sendkeys transport."
 }

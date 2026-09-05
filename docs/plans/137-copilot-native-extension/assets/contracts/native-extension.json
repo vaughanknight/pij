@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "scope": "copilot native user extension; new sessions; other harnesses unchanged",
   "source_files": [
     ".copilot/extensions/pij/extension.mjs",
@@ -44,7 +44,7 @@
       "actual_model",
       "actual_model_observed"
     ],
-    "response_rule": "existing descriptor fields unchanged; additive native_extension_delivery boolean and any135 binding metadata tolerated",
+    "response_rule": "existing descriptor fields unchanged; additive native_extension_delivery boolean,135 binding metadata and136 daemon-resolved typing_grace_ms; native typing policy consumes the daemon value, never an independent client default",
     "identity_rule": "PIJ_SESSION_ID/PIJ_SPAWN_ID when present must be corroborated as exact pre-bind/current process; manual native session+exact host process+pane resolves one stable seat; never newest-by-mtime; duplicate process mismatch refuses; same native-session reconnect retains address, user-driven new native session explicitly supersedes prior same-process seat through existing checked supersedes mechanism; mismatches otherwise refuse"
   },
   "claim": {
@@ -66,7 +66,7 @@
         }
       }
     ],
-    "ownership": "Copilot requires current native-extension attestation and never tmux fallback; pane claim gated by existing InteractionGate, failed observation is not permission",
+    "ownership": "Copilot requires current native-extension attestation and never tmux fallback. Native CLAIM omits composer/tap admission; native extension observes actual human typing and drives136 hold/release before native.send. Explicit operator Hold and identity/target safety still veto.",
     "bound": "0 or1 claims; serialized session consumer; client handles0 by bounded wait/backoff, not failure/busy-loop",
     "incarnation_rule": "Native Copilot claims require native_session/pid/proc_start equal current attested descriptor; revalidate after waits before handing off. Other harness clients keep existing request compatibility. Missing/mismatched native tuple refuses explicitly; no fallback.",
     "enforcement_layer": "DeliveryService native-aware claim admission, shared by all routes. Legacy /v1/shim/inbox must refuse Copilot if it cannot supply the tuple; it must not call an unguarded claim path. No entrypoint bypass, including future direct service callers.",
@@ -75,8 +75,9 @@
       "data": [],
       "meta": "native-consumer-held:<reason>",
       "queue_effect": "message stays pending/unacknowledged",
-      "wait_rule": "A pane-backed Copilot consent-held verdict returns promptly with zero claims even when wait=true; never park across that verdict waiting solely for unrelated outcome events. Normal empty inbox may long-poll, revalidate after wake before handoff.",
-      "retry": "client bounded backoff (default250ms, max5000ms) before next claim; no empty-result tight loop, no second consent policy"
+      "wait_rule": "Native operator/identity/target holds return promptly with zero claims even when wait=true. Normal empty inbox may long-poll; revalidate after wake. Human typing is extension-owned via136 hold/release, not a native CLAIM composer/tap gate.",
+      "retry": "client rate-bounded backoff (default250ms, max5000ms), abortable, no attempt ceiling; no empty-result tight loop",
+      "typing_rule": "Jordan ruling assets/inputs/jordan-ruling-consent-2026-09-05.md and approved sensor contract assets/inputs/pm-typing-sensor-contract-v4.json: actual injected SDK lacks pre-submit input events, so use136 pane-side observed-edit recency as sensor only. Receiver consumes daemon grace and drives /v1/hold + /v1/release; expiry admits unchanged drafts. No unavailable-sensor-as-quiet or sendkeys transport."
     }
   },
   "ack": {
@@ -129,7 +130,7 @@
       "record Pij-to-native acceptance before daemon ack",
       "separate native idle from acceptance",
       "abort old pending loop on native session shutdown/replacement",
-      "no direct artificial /clear or typed slash commands",
+      "no artificial /clear or typed slash commands as product transport; isolated fixture-human lifecycle commands are separately witnessed controls",
       "private acceptance namespace under state-dir/native-extensions/copilot hashed from stable seat/native session (process tuple is live validation and optional diagnostic metadata only); exact file layout unit-local",
       "ambiguous or malformed claim stops affected receive work with diagnostic and no ack; outgoing tool remains usable; no new nack API",
       "After a fresh native send, await observed completion/idle in the same generation before claiming the next message; acknowledge after acceptance separately. Subscribe before send so early idle cannot be lost. Accepted-duplicate recovery must use completion evidence or explicitly hold, not blindly send subsequent work.",

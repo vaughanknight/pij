@@ -1,0 +1,16 @@
+{
+  "root": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension",
+  "base": "0de7932273d1f3577cc64177bd1a8abe6442daba",
+  "pin": "2a36a799ca63593a4f252177db3219b838a683ad",
+  "scope": [
+    "Runtime07a8f9af: own unanswered inbox deadline renews with existing capped delay; external abort/body-read/foreign timeout/other endpoints retain failures. No false recovery notification or registration reset.",
+    "Installer5efd0ccc: consent only from exact active modal JSON/title/selected one-time Yes; transcript text cannot authorize, no repeat keys, before/recheck/after evidence. Simulated human consent only, never message transport.",
+    "Main136 convergence7ee44f77: HTTP subscribes before native-validated nonwaiting claim; delivery.released wakes empty readers; native holds return promptly with metadata. Pointer skip union Copilot|OMP|Pi.",
+    "Native strict consent explicitly checks !composer_idle after136 changed shared recency semantics. Test proved old static draft incorrectly admitted before this fix; now aged draft holds and clear waits its typing grace. Source tests use100ms configured grace, no production policy override.",
+    "Captured135 response permits exactly typing_grace_ms and native_extension_delivery extras; old captured values unchanged."
+  ],
+  "evidence": ["assets/evidence/pm-136-consent-red.log", "assets/evidence/pm-136-convergence-green.log", "assets/evidence/runtime-inbox-renewal-receipt.json", "assets/evidence/install-consent-guard-01.json"],
+  "known_pending": ["C1 repair assigned daemon owner; not yet in pin", "Actual lifecycle smoke driver additions assigned installer; not yet in pin", "PM live05 executing; final full gates and real-provider witness still pending"],
+  "constraints": ["Pin committed content; tree may move. Existing reviewer seat only, no additional peers.", "Read-only source; no builds/tests/lint/formatters or live launches.", "Write only new assets/reviews/opus-delta-2a36a799.md, with source pin, material findings and explicit proof ceiling.", "Never modify .the-flow-state.json, the-flow.json, the-flow.md, or governance ledgers."],
+  "acceptance": "Independent source-correctness verdict on listed deltas, not a release verdict; no known pending evidence misrepresented as complete."
+}

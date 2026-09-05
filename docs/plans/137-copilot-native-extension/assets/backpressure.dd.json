@@ -8,7 +8,7 @@
       "value": {
         "title": "Copilot native extension — selected backpressure",
         "plan": "../plan.dd.json#meta",
-        "basis_sha": "1febfc94d19905ec1cfd8cbd11e0107f4b538204d1f63ce76372cf0699678a29",
+        "basis_sha": "82f119a5bc015d7ed3ca6ce25276c1e22546c9d559d27950b1d4e92b4a9ac8a1",
         "certainty": "Partial"
       }
     },
@@ -67,13 +67,13 @@
         },
         {
           "id": "bp-0006",
-          "criterion": "ac-0006: Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence.",
+          "criterion": "ac-0006: Native-owned Copilot delivery follows OMP recent-typing policy: the extension consumes observed human edits (136 pane-side recency is authorized because the actual SDK lacks pre-submit input hooks), uses daemon-resolved PIJ_TYPING_GRACE_MS and136 hold/release, retains explicit operator Hold, and admits after grace despite a static draft; unowned Copilot stays queued/refused without sendkeys fallback.",
           "phase": "ph-66f1",
           "mode": "BUILD",
           "tier": "computational",
-          "proof": "Existing InteractionGate consumer contract tests plus real native smoke with nonempty human draft held then permitted delivery. Both worlds emit positive evidence, original text preserved. No changes to136 typing policy; just copilot-native-rust-test and copilot-native-smoke.",
+          "proof": "RED first: fresh human typing holds native claimed work via136 hold/release; expiry admits exactly once despite unchanged nonempty draft; fresh edits renew hold; synthetic injection does not count as human typing; explicit operator Hold still vetoes; unowned Copilot cannot fall back. Real Copilot callback/UI observation is required, then actual client hold/release and daemon spine receipts. One daemon grace resolver; no independent client default.",
           "state": "unchecked",
-          "note": "Existing strict draft/typing policy is retained; no approval to weaken it has been assumed. Prime approved an additive observer-footer accuracy fix, now composed after135/aa697235; actual live native smoke04 is running. Shared60s policy proposal remains a separate pending user choice, not a prerequisite to proving the current strict contract."
+          "note": "Authoritative ruling plus approved pane sensor: ../assets/inputs/pm-typing-sensor-contract-v4.json. Actual1.0.84 SDK has no pre-submit hook; use136 observed-edit recency, never rendered-output-as-keypress or sendkeys transport. Unchecked until composed execution proof."
         },
         {
           "id": "bp-0007",
