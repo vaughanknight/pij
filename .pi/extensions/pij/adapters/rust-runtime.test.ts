@@ -267,21 +267,63 @@ describe("RustRuntimeSession", () => {
 			}
 		});
 
-		it("announces a rebound seat once and never again on same-binding reload", async () => {
-			const { runtime, pi, input } = announceRuntime(
-				[REGISTER_RESPONSES.created],
-				[REGISTER_RESPONSES.rebound, REGISTER_RESPONSES.same],
-			);
+		it.each([
+			"pane",
+			"harness",
+			undefined,
+		] as const)("reports only pane provenance (%s) while announcing rebound once and same never", async (procSource) => {
+			const provenance = procSource === undefined ? {} : { proc_source: procSource };
+			const rebound = { ...REGISTER_RESPONSES.rebound, ...provenance };
+			const same = { ...REGISTER_RESPONSES.same, ...provenance };
+			const { runtime, pi, input } = announceRuntime([REGISTER_RESPONSES.created], [rebound, same]);
+			const notices: string[] = [];
+			const notice = (text: string) => notices.push(text);
 			try {
-				const boot = await runtime.boot(input);
+				const boot = await runtime.boot({ ...input, notice });
 				expect(pi.injects).toEqual([{ text: announceText(boot.id), mode: "immediate" }]);
+				expect(notices).toEqual(
+					procSource === "pane"
+						? [`pij: harness discovery fell back to the pane; registered pid ${rebound.proc?.pid}.`]
+						: [],
+				);
 				runtime.shutdown("reload");
 				const reloaded = await runtime.boot({
 					...input,
+					notice,
 					reason: "reload",
 					resetRuntimeState: false,
 				});
 				expect(reloaded.id).toBe(boot.id);
+				expect(pi.injects).toEqual([{ text: announceText(boot.id), mode: "immediate" }]);
+				expect(notices).toEqual(
+					procSource === "pane"
+						? [
+								`pij: harness discovery fell back to the pane; registered pid ${rebound.proc?.pid}.`,
+								`pij: harness discovery fell back to the pane; registered pid ${same.proc?.pid}.`,
+							]
+						: [],
+				);
+			} finally {
+				runtime.shutdown("quit");
+			}
+		});
+
+		it("reports unbound when pane provenance has no process identity", async () => {
+			const response: RustSeatDescriptor = {
+				id: REGISTER_RESPONSES.rebound.id,
+				harness: "omp",
+				folder: "/abs/tree",
+				state: "idle",
+				binding: "rebound",
+				proc_source: "pane",
+			};
+			const { runtime, pi, input } = announceRuntime([REGISTER_RESPONSES.created], [response]);
+			const notice = vi.fn();
+			try {
+				const boot = await runtime.boot({ ...input, notice });
+				expect(notice.mock.calls).toEqual([
+					["pij: harness discovery fell back to the pane; registered pid unbound."],
+				]);
 				expect(pi.injects).toEqual([{ text: announceText(boot.id), mode: "immediate" }]);
 			} finally {
 				runtime.shutdown("quit");

@@ -96,6 +96,11 @@ export class RustRuntimeSession {
 			replacing ? previousSelf : undefined,
 		);
 		const accepted = await this.client.register(registration);
+		if (accepted.proc_source === "pane") {
+			input.notice?.(
+				`pij: harness discovery fell back to the pane; registered pid ${accepted.proc?.pid ?? "unbound"}.`,
+			);
+		}
 		const acceptedId = accepted.id;
 		const continuityRegistration = registrationFor(acceptedId, procStart, input);
 		for (const seat of seats) this.registry.seed(fromRustDescriptor(seat));

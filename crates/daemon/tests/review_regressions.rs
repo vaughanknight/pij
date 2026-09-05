@@ -23,7 +23,7 @@ fn state_dir() -> PathBuf {
     pij_testkit::fresh_dir("pij-rs-regression")
 }
 
-fn write_uds_record(dir: &Path, socket: &Path) {
+fn write_uds_record(dir: &Path, socket: &Path) -> u64 {
     const HASH: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     let pid = std::process::id();
     let output = std::process::Command::new("ps")
@@ -52,6 +52,7 @@ fn write_uds_record(dir: &Path, socket: &Path) {
         .to_string(),
     )
     .expect("peer key");
+    pij_core::model::parse_process_start(start).expect("captured UTC start")
 }
 
 fn offline(bind: &str) -> Config {
@@ -281,7 +282,7 @@ async fn emitted_spawn_argv_is_the_stamp_that_opens_the_real_transport() {
     let dir = state_dir();
     let socket = std::env::temp_dir().join(format!("pij-uds-agree-{}.sock", std::process::id()));
     let listener = UnixListener::bind(&socket).expect("bind socket witness");
-    write_uds_record(&dir, &socket);
+    let utc_start = write_uds_record(&dir, &socket);
     let transport = UdsTransport::from_sessions_dir(dir.clone());
     let mut seat = SeatDescriptor::new("pij-claude-seat", Harness::Claude, "/abs/tree");
     seat.proc = Some(ProcIdentity {
@@ -341,6 +342,29 @@ async fn emitted_spawn_argv_is_the_stamp_that_opens_the_real_transport() {
             .await
             .expect("open capability")
     );
+    let local_start = seat.proc.expect("fixture identity").proc_start;
+    if local_start == utc_start {
+        use std::io::Write as _;
+        // Direct stderr bypasses libtest's successful-test output capture.
+        // Only this sub-property skips: capability agreement still runs below.
+        writeln!(std::io::stderr().lock(),
+            "SKIP timezone-separation property: local == UTC ({local_start}); this host cannot exercise the local/UTC split. Capability agreement still runs."
+        ).expect("report unexercised timezone property");
+    } else {
+        assert_ne!(
+            local_start, utc_start,
+            "this host exercises two distinct timebases"
+        );
+        let mut exact_identity = seat.clone();
+        exact_identity.pane = None;
+        assert!(
+            transport
+                .can_deliver(&exact_identity, &msg)
+                .await
+                .expect("exact local identity plus UTC record"),
+            "pane fallback must not rescue an incorrect local/UTC comparison"
+        );
+    }
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.expect("transport connects");
         let mut reader = BufReader::new(stream);

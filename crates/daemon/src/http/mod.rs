@@ -391,29 +391,44 @@ enum ProcSource {
     Pane,
 }
 
-/// Pane evidence wins over caller assertions; failed child discovery is an
-/// explicitly labelled pane fallback, never a fabricated harness identity.
+struct PaneHarnessIdentity {
+    proc: ProcIdentity,
+    source: ProcSource,
+    subtree: Vec<ProcIdentity>,
+}
+
+/// Daemon-derived selection and subtree evidence, never caller assertions.
+/// Only register may select a claimed member; adopt does not carry a claim here.
 async fn pane_harness_identity(
     state: &AppState,
     pane_pid: u32,
     harness: Harness,
-) -> Result<Option<(ProcIdentity, ProcSource)>> {
+) -> Result<Option<PaneHarnessIdentity>> {
     let candidate =
-        tokio::task::spawn_blocking(move || pij_tmux::harness_process(pane_pid, harness))
+        tokio::task::spawn_blocking(move || pij_tmux::harness_process_tree(pane_pid, harness))
             .await
             .map_err(|error| PijError::Adapter {
                 adapter: "harness-process".to_string(),
                 message: error.to_string(),
             })?;
-    if let Some(proc) = candidate
-        && state.services.liveness.proc_start(proc.pid).await? == Some(proc.proc_start)
+    if let Some(observed) = candidate
+        && state
+            .services
+            .liveness
+            .proc_start(observed.identity.pid)
+            .await?
+            == Some(observed.identity.proc_start)
     {
-        let source = if proc.pid == pane_pid {
+        let source = if observed.identity.pid == pane_pid {
             ProcSource::Pane
         } else {
             ProcSource::Harness
         };
-        return Ok(Some((proc, source)));
+        return Ok(Some(PaneHarnessIdentity {
+            proc: observed.identity,
+            source,
+            subtree: observed.subtree,
+        }));
     }
     Ok(state
         .services
@@ -421,13 +436,15 @@ async fn pane_harness_identity(
         .proc_start(pane_pid)
         .await?
         .map(|proc_start| {
-            (
-                ProcIdentity {
-                    pid: pane_pid,
-                    proc_start,
-                },
-                ProcSource::Pane,
-            )
+            let proc = ProcIdentity {
+                pid: pane_pid,
+                proc_start,
+            };
+            PaneHarnessIdentity {
+                proc,
+                source: ProcSource::Pane,
+                subtree: vec![proc],
+            }
         }))
 }
 
@@ -460,10 +477,26 @@ async fn register(
         };
         if let Some(observed) = observed {
             match pane_harness_identity(&state, observed.pid, harness).await {
-                Ok(Some((proc, source))) => {
-                    request.claim.pid = Some(proc.pid);
-                    request.claim.proc_start = Some(proc.proc_start);
-                    proc_source = Some(source);
+                Ok(Some(observed)) => {
+                    if matches!(observed.source, ProcSource::Pane) && request.claim.pid.is_some() {
+                        // The claim selects daemon-observed evidence; liveness
+                        // alone cannot authorize an unrelated process in a pane.
+                        let claim = request
+                            .claim
+                            .pid
+                            .zip(request.claim.proc_start)
+                            .map(|(pid, proc_start)| ProcIdentity { pid, proc_start });
+                        if !claim.is_some_and(|claim| observed.subtree.contains(&claim)) {
+                            return refused(
+                                "pij register",
+                                "claimed pid/proc_start is not in the daemon-observed pane process subtree; nothing was written",
+                            );
+                        }
+                    } else {
+                        request.claim.pid = Some(observed.proc.pid);
+                        request.claim.proc_start = Some(observed.proc.proc_start);
+                    }
+                    proc_source = Some(observed.source);
                 }
                 Ok(None) => {
                     return refused(
