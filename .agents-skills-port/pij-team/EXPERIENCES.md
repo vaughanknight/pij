@@ -524,4 +524,39 @@ we hand the pattern to pij and the harness. Also `harness observe` each one.
   `/reload` caused no re-registration at all, so `binding=same` was never
   requested live). An AC that is literally false at merge time teaches everyone
   that ACs are approximate.
+- 2026-09-05 (xoxarle reviewing 135 — **KEEP, prime-ruled into the reviewer
+  template**): **re-derive RED-first by archiving the merge parent, not by reading
+  the author's receipts.** `git archive` the merge parent into `/tmp/pij-base-<ord>`,
+  symlink `node_modules`, overlay ONLY the new test files and any new fixture, then
+  run. That is the strongest available form of the AC5 check and it proves something
+  a pasted receipt never can: that the witnesses fail **for the right reasons** —
+  twelve failed here on `rebound` getting `[]` where an announce belongs, `same`
+  getting an announce it should not have, and the frame family failing on the old
+  head, with **not one** exploding on a missing import. A read-only reviewer
+  otherwise has no supported path to do this (every obvious move mutates the repo),
+  so the recipe belongs in the harness rather than being reinvented under a fence.
+- 2026-09-05 (xoxarle, 135 — **KEEP**): **report the CLEAN verdicts with the same
+  evidence as the defects.** This review probed the frame parser by execution
+  (9 body classes round-tripped, including a body containing and a body *ending in*
+  a literal `[/pij]`) and established the failure direction is **refusal, never
+  corruption**; it verified the store's `BEGIN IMMEDIATE` pre-read is raced by two
+  pools in a real test; it confirmed the local-vs-UTC timebase split was deliberate.
+  Naming what was examined and found sound is what makes `no_material_findings` a
+  usable answer instead of a shrug, and it stops the NEXT reviewer re-doing six
+  checks that already came back clean.
+- 2026-09-05 (silverfish/xoxarle, 135 — the finding that justified the whole
+  review): **a field that is emitted and never read looks load-bearing in its own
+  unit's tests and is inert in composition.** `proc_source` was serialized by the
+  daemon with ZERO consumers (not in the TS descriptor, not in `pij-rs state`, not
+  in `pij list` — only daemon tests), and `parseFrame` had no production callers at
+  all. Both passed every unit gate. The inert `proc_source` is precisely what let a
+  MAJOR seam defect hide: nothing could observe that `register` had overwritten a
+  caller's asserted pid with a **pane-shell** identity, which yields
+  `binding: same` → no announce → the exact bug the plan removed. **Rule: a new
+  wire field ships with a consumer in the same plan, or it ships as a documented
+  known-inert surface — never silently.** Corollary the reviewer proved by ps
+  sweep: a branch tested only with synthetic strings is a fixture authored by its
+  own consumer (this repo's own `crates/testkit/fixtures/uds/README.md` warns about
+  it) — the interpreter allowlist accepted basenames `node`/`bun` while 17 live
+  processes on the machine ran as `bun.exe`.
 - (add as they arise)
