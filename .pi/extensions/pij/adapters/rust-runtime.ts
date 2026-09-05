@@ -40,7 +40,11 @@ interface RustBootInput extends Omit<BootInput, "id"> {
 interface TypingRuntimePort extends PiRuntimePort {
 	onEditorChange?(cb: (at: number) => void): () => void;
 	setStatus?(text: string | undefined): void;
+	notify?(text: string, level?: "info" | "warning" | "error"): void;
 }
+
+/** How much of an arriving body the announcement shows. */
+const ANNOUNCE_BODY_CHARS = 80;
 
 /**
  * Snap-in recipe (composition owner: PM, index.ts unchanged):
@@ -94,6 +98,8 @@ export class RustRuntimeSession {
 	private readonly lastInbound = new Map<string, string>();
 	private holdQueue: HoldQueue | undefined;
 	private readonly heldIds = new Map<string, number>();
+	/** Delivered into a BUSY runtime and therefore not yet on screen. */
+	private readonly unseenIds = new Set<string>();
 	private readonly declaredReleaseJobs = new Set<number>();
 	private lastEditAt: number | undefined;
 	private stopEdits: (() => void) | undefined;
@@ -220,6 +226,7 @@ export class RustRuntimeSession {
 		this.holdTicker = setInterval(() => {
 			const client = this.client;
 			const seat = this.self;
+			this.clearSeenIfIdle();
 			this.pushedChain = this.pushedChain
 				.then(() => this.pollHeld(seat, client, lifecycle))
 				.catch((error: unknown) =>
@@ -401,6 +408,12 @@ export class RustRuntimeSession {
 		lifecycle: number,
 	): Promise<void> {
 		if (this.self !== seat || this.lifecycle !== lifecycle) return;
+		// ANNOUNCE FIRST, decide second. Delivery to a busy seat is immediate on the
+		// wire and INVISIBLE in the pane until the step boundary, which on a slow
+		// model is minutes: the message is there and the human cannot see it. The
+		// notification is not delivery, it is the arrival becoming observable, so it
+		// happens before any hold or steer decision can defer the visible part.
+		this.announceArrival(claim);
 		const bypass = claim.message.command !== undefined || claim.message.urgent === true;
 		if (!bypass && this.holdQueue?.shouldHold(this.clock()) && this.lastEditAt !== undefined) {
 			await client.hold({
@@ -451,8 +464,13 @@ export class RustRuntimeSession {
 	): Promise<void> {
 		if (this.self !== seat || this.lifecycle !== lifecycle) return;
 		this.lastInbound.set(claim.message.from, claim.message.messageId);
+		const busy = this.pi.isIdle?.() === false;
 		this.session.onInbound(claim.message, claim.message.messageId);
 		this.heldIds.delete(claim.message.messageId);
+		// A steered message was delivered and remains unseen; an immediate one is
+		// already on screen and is never counted.
+		if (busy) this.unseenIds.add(claim.message.messageId);
+		this.showHeld();
 		if (this.self !== seat || this.lifecycle !== lifecycle) {
 			this.session.capture("daemon_event_claim_stale", {
 				currentSeat: this.self,
@@ -480,9 +498,32 @@ export class RustRuntimeSession {
 		if (this.self === seat) await this.flush();
 	}
 
+	private announceArrival(claim: HeldRow): void {
+		const body = claim.message.body ?? "";
+		const shown =
+			body.length > ANNOUNCE_BODY_CHARS ? `${body.slice(0, ANNOUNCE_BODY_CHARS)}…` : body;
+		this.pi.notify?.(`📨 pij from ${claim.message.from}: ${shown}`, "info");
+	}
+
+	/** Messages the seat has been GIVEN but cannot yet SEE: steered into a busy
+	 * runtime, which renders them only at the next step boundary. Held rows are
+	 * deliberately excluded — they are counted by the ⏸ half, and a message
+	 * counted twice reads as two messages. */
 	private showHeld(): void {
-		const count = this.heldIds.size;
-		this.pi.setStatus(count === 0 ? undefined : `⏸ ${count} held · typing`);
+		const held = this.heldIds.size;
+		const parts: string[] = [];
+		if (this.unseenIds.size > 0) parts.push(`📨 ${this.unseenIds.size} pending`);
+		if (held > 0) parts.push(`⏸ ${held} held · typing`);
+		this.pi.setStatus(parts.length === 0 ? undefined : parts.join(" · "));
+	}
+
+	/** Cleared the moment the runtime is idle again: idle means the step boundary
+	 * passed, which is exactly when a steered message becomes visible. */
+	private clearSeenIfIdle(): void {
+		if (this.unseenIds.size === 0) return;
+		if (this.pi.isIdle?.() === false) return;
+		this.unseenIds.clear();
+		this.showHeld();
 	}
 
 	private async releaseHeld(
@@ -683,6 +724,12 @@ class MutablePiRuntime implements PiRuntimePort {
 	private current: TypingRuntimePort | undefined;
 	setStatus(text: string | undefined): void {
 		this.current?.setStatus?.(text);
+	}
+
+	/** Optional on the port: a runtime with no notification surface simply does
+	 * not announce, and the status count still reports what it cannot show. */
+	notify(text: string, level?: "info" | "warning" | "error"): void {
+		this.current?.notify?.(text, level);
 	}
 
 	set(pi: TypingRuntimePort): void {
