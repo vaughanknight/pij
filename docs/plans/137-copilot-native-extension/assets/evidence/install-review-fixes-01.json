@@ -1,0 +1,50 @@
+{
+  "source_commit": "236d75077dac43c0da16ec09ee911ccf33050568",
+  "trust_checkpoint": "3129845f",
+  "composed_live_source": "991161acbc570cbad854ee03d79778379a62883f",
+  "status": "owned-review-fixes-verified-full-native-acceptance-open",
+  "changes": [
+    "Bootstrap checks optional Copilot only when its binary is on PATH. Installed-but-broken still fails; standalone doctor always remains strict.",
+    "Settings temporary file is fsynced before rename; parent directory is synced afterward. Unsupported directory sync EINVAL/ENOTSUP/EISDIR is tolerated; real errors, including EIO and EPERM, propagate. File sync failures preserve prior settings; post-rename failure reports applied changes; descriptors and temporary files are cleaned up.",
+    "Copilot returns changed/skipped counts, consumed by all repository callers. Copilot-only link/settings mutation no longer prints everything already linked.",
+    "Native config.json trust is scoped to the new canonical temporary workspace. The full-driver trust discriminator rejects reused HOME, wrong/missing native config, negative-control provider activity, and non-exact prompt paths.",
+    "The earlier same-HOME settings.json seed attribution is explicitly retracted in install-startup-trust.json."
+  ],
+  "verification": {
+    "environment": {"VITEST_MAX_WORKERS":"4","VITEST_MAX_THREADS":"4","CARGO_BUILD_JOBS":"4"},
+    "tests": {
+      "command": "just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0,
+      "result": "41 passed: 33 installer/recipe, 8 native fixture/witness",
+      "recipe_isolation": "Actual just recipes run from a copied justfile with temporary HOME/PATH and fixture copilot/npm executables; no real global install/link or agent spawn.",
+      "durability_cases": "Real isolated file/directory sync ordering, enabled no-write, closed descriptors, file EIO/EINVAL preserving old bytes, directory EIO/EPERM failing after rename, unsupported directory EINVAL/ENOTSUP succeeding, no leaked temporary files."
+    },
+    "typecheck": {
+      "command": "node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0
+    },
+    "biome": {
+      "command": "node_modules/.bin/biome check harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0,
+      "result": "5 files clean"
+    },
+    "live": {
+      "command_base": "just copilot-native-smoke --mode both --provider local --pij-bin /Users/jordanknight/pi-hacking/fs3-copilot-native-extension/target/debug/pij-rs",
+      "unseeded": "--workspace-trust prompt --timeout-seconds 20 --output /Users/jordanknight/pi-hacking/fs3-copilot-native-install/docs/plans/137-copilot-native-extension/assets/evidence/install-trust-unseeded-01.json",
+      "seeded": "--workspace-trust seeded --timeout-seconds 90 --output /Users/jordanknight/pi-hacking/fs3-copilot-native-install/docs/plans/137-copilot-native-extension/assets/evidence/install-trust-seeded-01.json",
+      "unseeded_exit_code": 1,
+      "seeded_exit_code": 1,
+      "startup_discriminator_exit_code": 0,
+      "discriminator": "install-trust-discriminator-01.json",
+      "result": "Distinct new HOMEs and identical source/binary identities. Unseeded: exact-workspace trust prompt, no provider requests, no ordinary-use witness or daemon startup. Seeded: native ordinary-use witness with correlated user/assistant IDs and one outage diagnostic before daemon/key creation; then isolated daemon health.",
+      "next_failure": "Seeded full run subsequently timed out waiting for truthful native registration; final pane reports receive-held. Retained daemon SQLite has zero seats/jobs. No roundtrip, acceptance, reconnect, or real-inference claim.",
+      "boundary": "These full-driver receipts attest composed991161ac including the trust checkpoint. Later installer durability/reporting/API adjustments at236d7507 are covered by scoped tests and typecheck, not a repeated full native run."
+    }
+  },
+  "retrospective": {
+    "difficulties": ["DL-001: timeout cleanup lost the startup UI; now terminal captures survive teardown.","DL-002: new-session evidence reused remembered HOME trust; now a two-new-HOME full-driver discriminator rejects that confound.","DL-003: rmSync rejected a link-only fixture cleanup as a directory; unlinkSync now removes only that exact symlink without recursive deletion."],
+    "magicWand": "Every startup workaround should have a fresh-state negative control against the actual driver.",
+    "encoded_by": "verifyWorkspaceTrustDiscriminator and --workspace-trust prompt"
+  },
+  "boundaries": ["No copied sibling source edits", "No global links/config/auth changes", "No real just install/link", "No Pi/OMP spawns", "No dependency/toolchain changes", "PM owns remaining native fixes and final full gates"]
+}
