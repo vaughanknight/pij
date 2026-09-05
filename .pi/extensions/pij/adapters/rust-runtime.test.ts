@@ -1080,6 +1080,19 @@ describe("typing grace delivery", () => {
 			pi.notices.map((row) => row.text),
 			"a held message is still ANNOUNCED — the human should know it arrived",
 		).toEqual(["📨 pij from pij-sender: held-not-double-counted"]);
+
+		// PAST THE GRACE, because the property is about the SECOND pass: a held row
+		// re-enters routeClaim when releaseHeld re-claims it, and announcing again
+		// would put two identical toasts a minute apart on screen for one delivery
+		// — "counted twice reads as two" on the louder surface (reviewer f12).
+		await vi.advanceTimersByTimeAsync(HOLD_CONTRACT.grace.default_ms + 1_000);
+		expect(pi.injects.map((row) => row.text)).toEqual([
+			frame("pij-sender", "held-not-double-counted"),
+		]);
+		expect(
+			pi.notices.map((row) => row.text),
+			"one message, one delivery, ONE announcement",
+		).toEqual(["📨 pij from pij-sender: held-not-double-counted"]);
 	});
 
 	it("holds at 59 seconds and releases at 60 with exact hold/release payloads", async () => {
