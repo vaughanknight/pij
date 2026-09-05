@@ -5,6 +5,7 @@ use pij_core::config::{AdapterChoice, Config};
 use pij_core::delivery::delivery_kind;
 use pij_core::model::{
     Envelope, Harness, Job, JobId, Pane, PaneProcess, ProcIdentity, SeatDescriptor, SeatId,
+    SemanticState,
 };
 use pij_core::ports::LivenessPort;
 use pij_harnesses::proc::ProcLiveness;
@@ -260,6 +261,10 @@ async fn native_registration_preserves_claimed_host_and_reports_atomic_binding_t
         assert_eq!(body["data"]["proc_source"], "harness");
         assert_eq!(body["data"]["proc"]["pid"], first_process.pid);
         assert_eq!(body["data"]["native_extension_delivery"], true);
+        assert_eq!(
+            body["data"]["typing_grace_ms"],
+            super::resolve_typing_grace_ms()
+        );
     }
 
     first_host.kill_and_reap(first_process).await;
@@ -1193,6 +1198,16 @@ fn claim_url(addr: std::net::SocketAddr, seat: &SeatId, identity: &NativeInboxId
     url.into()
 }
 
+fn typing_url(
+    addr: std::net::SocketAddr,
+    seat: &SeatId,
+    identity: &NativeInboxIdentity,
+) -> reqwest::Url {
+    let mut url = reqwest::Url::parse(&claim_url(addr, seat, identity)).unwrap();
+    url.set_path("/v1/inbox/typing");
+    url
+}
+
 #[tokio::test]
 async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
     let store = FreshStore::new();
@@ -1222,7 +1237,7 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
     services.interaction = Arc::new(pij_harnesses::InteractionGate::with_typing_grace(
         tmux.clone(),
         Duration::from_secs(60),
-        100,
+        super::resolve_typing_grace_ms(),
     ));
     services.delivery = Arc::new(
         DeliveryService::new(
@@ -1235,6 +1250,7 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
         .unwrap(),
     );
     let queue = services.queue.clone();
+    let registry = services.registry.clone();
     let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
     let client = reqwest::Client::new();
     let send = json!({"from":"pij-peer", "to":{"seat":seat.id}, "body":"PIJ_137_NONCE", "msg_id":"poc-137"});
@@ -1278,24 +1294,23 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
             .unwrap();
         assert_eq!(refused["ok"], false, "{field} mismatch must refuse");
     }
-    let held: Envelope<Vec<InboxClaim>> = tokio::time::timeout(
-        Duration::from_secs(1),
-        client
-            .get(claim_url(addr, &seat.id, &identity))
-            .bearer_auth("native-key")
-            .send(),
+    // Operator Hold remains a claim veto; observing typing cannot clear it.
+    seat.semantic_state = Some(SemanticState::Hold);
+    registry.put(seat.clone()).await.unwrap();
+    let snapshot = native_http_response(
+        client.get(typing_url(addr, &seat.id, &identity)),
+        reqwest::StatusCode::OK,
     )
-    .await
-    .expect("held wait=true is prompt")
-    .unwrap()
-    .json()
-    .await
-    .unwrap();
-    assert!(held.data.unwrap().is_empty());
-    assert_eq!(
-        held.meta.as_deref(),
-        Some("native-consumer-held:human-typing")
-    );
+    .await;
+    assert_eq!(snapshot["data"]["semantic_hold"], true);
+    assert_eq!(registry.get(&seat.id).await.unwrap(), Some(seat.clone()));
+    let held = native_http_response(
+        client.get(claim_url(addr, &seat.id, &identity)),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(held["data"], json!([]));
+    assert_eq!(held["meta"], "native-consumer-held:semantic-hold");
     assert!(
         queue
             .peek(&[delivery_kind(&seat.id)])
@@ -1304,34 +1319,102 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
             .is_some()
     );
 
-    // Clearing is itself a recent edit; native delivery waits for its grace too.
-    tmux.arrange_clear_composer("%137");
-    let clearing: Envelope<Vec<InboxClaim>> = client
-        .get(claim_url(addr, &seat.id, &identity))
-        .bearer_auth("native-key")
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert!(clearing.data.unwrap().is_empty());
-    assert!(clearing.meta.is_some());
-    tokio::time::sleep(Duration::from_millis(150)).await;
-    let admitted: Envelope<Vec<InboxClaim>> = client
-        .get(claim_url(addr, &seat.id, &identity))
-        .bearer_auth("native-key")
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let claims = admitted.data.unwrap();
-    assert_eq!(claims.len(), 1);
+    seat.semantic_state = None;
+    registry.put(seat.clone()).await.unwrap();
+    let claims = native_http_claims(&client, addr, &seat.id, &identity).await;
+    assert_eq!(
+        claims.len(),
+        1,
+        "composer recency no longer gates native claim"
+    );
     assert_eq!(claims[0].message.body, "PIJ_137_NONCE");
     assert_eq!(claims[0].native_consumer.as_ref(), Some(&identity));
     let job = claims[0].job_id;
+    let snapshot = native_http_response(
+        client.get(typing_url(addr, &seat.id, &identity)),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(snapshot["data"]["state"], "observed");
+    assert_eq!(snapshot["data"]["semantic_hold"], false);
+    let grace = snapshot["data"]["typing_grace_ms"].as_u64().unwrap();
+    let remaining = snapshot["data"]["retry_after_ms"].as_u64().unwrap();
+    assert!(remaining <= grace);
+    if grace > 0 {
+        assert!(
+            remaining > 0,
+            "recent composer edit is observed: {snapshot}"
+        );
+    }
+    let since_ms = snapshot["data"]["observed_at_ms"]
+        .as_u64()
+        .unwrap()
+        .saturating_sub(grace - remaining);
+    let deferred = native_http_response(
+        client.post(format!("http://{addr}/v1/hold")).json(&json!({
+            "seat": seat.id, "job_id": job, "msg_id": "poc-137",
+            "reason": "human-typing", "since_ms": since_ms,
+        })),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(deferred["data"]["held"], true);
+    assert!(
+        queue.claimed_delivery(job).await.unwrap().is_none(),
+        "hold returns ownership to queue"
+    );
+    assert_eq!(
+        queue
+            .peek(&[delivery_kind(&seat.id)])
+            .await
+            .unwrap()
+            .unwrap()
+            .0,
+        job
+    );
+    if grace > 0 {
+        assert!(
+            native_http_claims(&client, addr, &seat.id, &identity)
+                .await
+                .is_empty(),
+            "136 hold, not composer policy, owns native claim deferral"
+        );
+    }
+
+    // Clearing is still an edit, but only the receiver's hold owns the defer.
+    tmux.arrange_clear_composer("%137");
+    let clearing = native_http_response(
+        client.get(typing_url(addr, &seat.id, &identity)),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(clearing["data"]["state"], "observed");
+    if grace > 0 {
+        assert!(clearing["data"]["retry_after_ms"].as_u64().unwrap() > 0);
+    }
+    assert!(queue.claimed_delivery(job).await.unwrap().is_none());
+
+    // Exercise the existing release declaration; sensor aging is proved separately.
+    let released = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/release"))
+            .json(&json!({
+                "seat": seat.id, "job_id": job, "msg_id": "poc-137",
+                "at_ms": clearing["data"]["observed_at_ms"],
+            })),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(released["data"]["released"], true);
+    assert!(
+        queue.claimed_delivery(job).await.unwrap().is_none(),
+        "release is not a claim or ACK"
+    );
+    let reclaimed = native_http_claims(&client, addr, &seat.id, &identity).await;
+    assert_eq!(reclaimed.len(), 1);
+    assert_eq!(reclaimed[0].job_id, job);
+    assert_eq!(reclaimed[0].message, claims[0].message);
+    assert_eq!(reclaimed[0].native_consumer.as_ref(), Some(&identity));
     assert!(
         queue.claimed_delivery(job).await.unwrap().is_some(),
         "claim is not ack"
@@ -1987,7 +2070,7 @@ async fn unstamped_prebind_task_reaches_first_verified_native_session() {
 }
 
 #[tokio::test]
-async fn failed_native_consent_sensor_is_explicit_hold_not_permission() {
+async fn failed_native_consent_sensor_is_explicit_unavailable_not_claim_permission() {
     let store = FreshStore::new();
     let mut services = sqlite_services(&store).await;
     let (mut seat, identity) = contract_identity();
@@ -1998,36 +2081,72 @@ async fn failed_native_consent_sensor_is_explicit_hold_not_permission() {
             .with_clear_composer("%137")
             .script_tap_error("sensor offline"),
     );
-    services.interaction = Arc::new(pij_harnesses::InteractionGate::new(tmux.clone()));
-    let delivery = DeliveryService::new(
-        services.registry.clone(),
-        services.queue.clone(),
-        services.transport.clone(),
-        services.interaction.clone(),
-        services.event_bus.clone(),
-    )
-    .unwrap();
-    delivery
+    services.interaction = Arc::new(pij_harnesses::InteractionGate::with_typing_grace(
+        tmux.clone(),
+        Duration::from_secs(60),
+        super::resolve_typing_grace_ms(),
+    ));
+    services.delivery = Arc::new(
+        DeliveryService::new(
+            services.registry.clone(),
+            services.queue.clone(),
+            services.transport.clone(),
+            services.interaction.clone(),
+            services.event_bus.clone(),
+        )
+        .unwrap(),
+    );
+    services
+        .delivery
         .send("pij-peer".into(), seat.id.clone(), "must remain queued")
         .await
         .unwrap();
-    let held = delivery
-        .claim_native_inbox(&seat.id, true, &identity)
-        .await
-        .unwrap();
-    assert!(held.claims.is_empty());
-    assert!(held.held_reason.unwrap().starts_with("sensor-unavailable:"));
-    let claims = delivery
-        .claim_native_inbox(&seat.id, false, &identity)
+    let queue = services.queue.clone();
+    let before = queue
+        .peek(&[delivery_kind(&seat.id)])
         .await
         .unwrap()
-        .claims;
+        .unwrap();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let unavailable = native_http_response(
+        client.get(typing_url(addr, &seat.id, &identity)),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(unavailable["data"]["state"], "unavailable");
     assert_eq!(
-        claims.len(),
-        1,
-        "restored observation admits without another message"
+        unavailable["data"]["reason"],
+        "native-typing-sensor-unavailable"
     );
+    assert_eq!(
+        unavailable["data"]["native_consumer"],
+        serde_json::to_value(&identity).unwrap()
+    );
+    assert!(unavailable["data"].get("retry_after_ms").is_none());
+    assert!(unavailable["data"].get("source").is_none());
+    assert!(!unavailable.to_string().contains("must remain queued"));
+    assert_eq!(
+        queue
+            .peek(&[delivery_kind(&seat.id)])
+            .await
+            .unwrap()
+            .unwrap(),
+        before
+    );
+    assert!(queue.claimed_delivery(before.0).await.unwrap().is_none());
+    let restored = native_http_response(
+        client.get(typing_url(addr, &seat.id, &identity)),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(restored["data"]["state"], "observed");
+    assert_eq!(restored["data"]["retry_after_ms"], 0);
+    let claims = native_http_claims(&client, addr, &seat.id, &identity).await;
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].job_id, before.0);
     assert_eq!(claims[0].message.body, "must remain queued");
+    server.abort();
 }
 
 #[tokio::test]
@@ -2144,6 +2263,470 @@ async fn retired_or_prebind_copilot_cannot_be_relabelled_to_bypass_native_inbox(
                 .unwrap()
                 .is_some()
         );
+        server.abort();
+    }
+}
+
+#[tokio::test]
+async fn native_typing_http_snapshot_is_authenticated_read_only_and_echoes_owner() {
+    let store = FreshStore::new();
+    let mut services = sqlite_services(&store).await;
+    let (mut seat, identity) = contract_identity();
+    seat.pane = Some("%137".into());
+    services.registry.put(seat.clone()).await.unwrap();
+    let tmux = Arc::new(FakeTmux::new().with_clear_composer("%137"));
+    services.interaction = Arc::new(pij_harnesses::InteractionGate::with_typing_grace(
+        tmux.clone(),
+        Duration::from_secs(60),
+        super::resolve_typing_grace_ms(),
+    ));
+    services.delivery = Arc::new(
+        DeliveryService::new(
+            services.registry.clone(),
+            services.queue.clone(),
+            services.transport.clone(),
+            services.interaction.clone(),
+            services.event_bus.clone(),
+        )
+        .unwrap(),
+    );
+    services
+        .delivery
+        .send("pij-peer".into(), seat.id.clone(), "private queued body")
+        .await
+        .unwrap();
+    let queue = services.queue.clone();
+    let before = queue
+        .peek(&[delivery_kind(&seat.id)])
+        .await
+        .unwrap()
+        .unwrap();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let url = typing_url(addr, &seat.id, &identity);
+    let response = client
+        .get(url.clone())
+        .bearer_auth("native-key")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::OK,
+        "typing read route must exist"
+    );
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["command"], "pij inbox");
+    assert_eq!(body["v"], 2);
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["data"]["state"], "observed");
+    assert_eq!(
+        body["data"]["native_consumer"],
+        serde_json::to_value(&identity).unwrap()
+    );
+    assert_eq!(
+        body["data"]["typing_grace_ms"],
+        super::resolve_typing_grace_ms()
+    );
+    assert_eq!(body["data"]["retry_after_ms"], 0);
+    assert_eq!(body["data"]["semantic_hold"], false);
+    assert_eq!(body["data"]["source"], "pane-observed-edit-recency");
+    assert!(body["data"]["observed_at_ms"].as_u64().unwrap() > 0);
+    assert!(!body.to_string().contains("private queued body"));
+    assert_eq!(
+        queue
+            .peek(&[delivery_kind(&seat.id)])
+            .await
+            .unwrap()
+            .unwrap(),
+        before
+    );
+    assert!(queue.claimed_delivery(before.0).await.unwrap().is_none());
+    let claims = native_http_claims(&client, addr, &seat.id, &identity).await;
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].job_id, before.0);
+    let claimed_before = queue.claimed_delivery(before.0).await.unwrap().unwrap();
+    let claimed_snapshot =
+        native_http_response(client.get(url.clone()), reqwest::StatusCode::OK).await;
+    assert_eq!(
+        claimed_snapshot["data"],
+        json!({
+            "state": "observed", "native_consumer": identity,
+            "typing_grace_ms": super::resolve_typing_grace_ms(),
+            "observed_at_ms": claimed_snapshot["data"]["observed_at_ms"],
+            "retry_after_ms": 0, "semantic_hold": false,
+            "source": "pane-observed-edit-recency",
+        }),
+        "snapshot exposes only the v4 contract, not queue or pane content"
+    );
+    assert!(!claimed_snapshot.to_string().contains("private queued body"));
+    assert_eq!(
+        queue.claimed_delivery(before.0).await.unwrap(),
+        Some(claimed_before)
+    );
+    assert_eq!(
+        queue
+            .peek(&[delivery_kind(&seat.id)])
+            .await
+            .unwrap()
+            .unwrap(),
+        before
+    );
+    assert_eq!(
+        client.get(url).send().await.unwrap().status(),
+        reqwest::StatusCode::UNAUTHORIZED
+    );
+    assert!(tmux.calls().iter().all(|call| !call.starts_with("type")
+        && !call.starts_with("stage")
+        && !call.starts_with("send_keys")));
+    server.abort();
+}
+
+#[tokio::test]
+async fn native_typing_aged_nonempty_draft_does_not_gate_native_claim() {
+    let store = FreshStore::new();
+    let mut services = sqlite_services(&store).await;
+    let (mut seat, identity) = contract_identity();
+    seat.pane = Some("%137".into());
+    services.registry.put(seat.clone()).await.unwrap();
+    let tmux = Arc::new(
+        FakeTmux::new()
+            .with_pane(Pane {
+                id: "%137".into(),
+                session: "s".into(),
+                window: "w".into(),
+                title: "native".into(),
+                cursor_x: Some(11),
+                cursor_y: Some(0),
+            })
+            .with_attached_tap("%137")
+            .with_standing_capture("╰──── hello ─╯"),
+    );
+    services.interaction = Arc::new(pij_harnesses::InteractionGate::with_typing_grace(
+        tmux.clone(),
+        Duration::from_secs(60),
+        10,
+    ));
+    services.delivery = Arc::new(
+        DeliveryService::new(
+            services.registry.clone(),
+            services.queue.clone(),
+            services.transport.clone(),
+            services.interaction.clone(),
+            services.event_bus.clone(),
+        )
+        .unwrap(),
+    );
+    let recent = services
+        .interaction
+        .fresh_injection_verdict("%137")
+        .await
+        .unwrap();
+    assert!(!recent.permitted);
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    let aged = services
+        .interaction
+        .fresh_injection_verdict("%137")
+        .await
+        .unwrap();
+    assert!(aged.permitted);
+    assert!(!aged.composer_idle, "draft was NOT cleared");
+    services
+        .delivery
+        .send("pij-peer".into(), seat.id.clone(), "native body")
+        .await
+        .unwrap();
+    let claims = services
+        .delivery
+        .claim_native_inbox(&seat.id, false, &identity)
+        .await
+        .unwrap();
+    assert_eq!(
+        claims.claims.len(),
+        1,
+        "an aged draft cannot block native claim: {claims:?}"
+    );
+    assert_eq!(claims.claims[0].native_consumer.as_ref(), Some(&identity));
+}
+
+#[tokio::test]
+async fn native_typing_http_rejects_missing_mismatched_and_noncurrent_identity_without_mutation() {
+    let store = FreshStore::new();
+    let mut services = sqlite_services(&store).await;
+    let (mut seat, identity) = contract_identity();
+    seat.pane = Some("%137".into());
+    services.registry.put(seat.clone()).await.unwrap();
+    let tmux = Arc::new(FakeTmux::new().with_clear_composer("%137"));
+    services.interaction = Arc::new(pij_harnesses::InteractionGate::with_typing_grace(
+        tmux.clone(),
+        Duration::from_secs(60),
+        super::resolve_typing_grace_ms(),
+    ));
+    services.delivery = Arc::new(
+        DeliveryService::new(
+            services.registry.clone(),
+            services.queue.clone(),
+            services.transport.clone(),
+            services.interaction.clone(),
+            services.event_bus.clone(),
+        )
+        .unwrap(),
+    );
+    services
+        .delivery
+        .send(
+            "pij-peer".into(),
+            seat.id.clone(),
+            "private identity fixture",
+        )
+        .await
+        .unwrap();
+    let registry = services.registry.clone();
+    let queue = services.queue.clone();
+    let before = queue
+        .peek(&[delivery_kind(&seat.id)])
+        .await
+        .unwrap()
+        .unwrap();
+    let calls_before = tmux.calls();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    for field in ["all", "native_session", "pid", "proc_start"] {
+        let mut missing = identity.clone();
+        match field {
+            "native_session" => missing.native_session = None,
+            "pid" => missing.pid = None,
+            "proc_start" => missing.proc_start = None,
+            _ => missing = NativeInboxIdentity::default(),
+        }
+        let refused = native_http_response(
+            client.get(typing_url(addr, &seat.id, &missing)),
+            reqwest::StatusCode::BAD_REQUEST,
+        )
+        .await;
+        assert_eq!(refused["v"], 2);
+        assert_eq!(refused["command"], "pij inbox");
+        assert!(
+            refused["meta"]
+                .as_str()
+                .unwrap()
+                .contains("native incarnation mismatch"),
+            "{field}: {refused}"
+        );
+    }
+    for field in ["native_session", "pid", "proc_start"] {
+        let mut wrong = identity.clone();
+        match field {
+            "native_session" => wrong.native_session = Some("another-native-session".into()),
+            "pid" => wrong.pid = Some(identity.pid.unwrap() + 1),
+            _ => wrong.proc_start = Some(identity.proc_start.unwrap() + 1),
+        }
+        let refused = native_http_response(
+            client.get(typing_url(addr, &seat.id, &wrong)),
+            reqwest::StatusCode::BAD_REQUEST,
+        )
+        .await;
+        assert_eq!(refused["v"], 2);
+        assert_eq!(refused["command"], "pij inbox");
+        assert!(
+            refused["meta"]
+                .as_str()
+                .unwrap()
+                .contains("native incarnation mismatch"),
+            "{field}: {refused}"
+        );
+    }
+    let absent = SeatId::from("pij-unregistered-native");
+    let missing = native_http_response(
+        client.get(typing_url(addr, &absent, &identity)),
+        reqwest::StatusCode::BAD_REQUEST,
+    )
+    .await;
+    assert_eq!(missing["command"], "pij inbox");
+    assert!(
+        missing["meta"]
+            .as_str()
+            .unwrap()
+            .contains("native-extension-unavailable")
+    );
+    assert!(registry.get(&absent).await.unwrap().is_none());
+    for state in ["retired", "noncopilot", "unattested"] {
+        let mut invalid = seat.clone();
+        match state {
+            "retired" => {
+                invalid.tombstoned_at = Some(1);
+                invalid.native_extension_delivery = false;
+            }
+            "noncopilot" => {
+                invalid.harness = Harness::Omp;
+                invalid.native_extension_delivery = false;
+            }
+            _ => invalid.native_extension_delivery = false,
+        }
+        registry.put(invalid.clone()).await.unwrap();
+        let refused = native_http_response(
+            client.get(typing_url(addr, &seat.id, &identity)),
+            reqwest::StatusCode::BAD_REQUEST,
+        )
+        .await;
+        assert_eq!(refused["v"], 2);
+        assert_eq!(refused["command"], "pij inbox");
+        assert!(
+            refused["meta"]
+                .as_str()
+                .unwrap()
+                .starts_with("daemon/native-inbox:"),
+            "{state}: {refused}"
+        );
+        assert_eq!(registry.get(&seat.id).await.unwrap(), Some(invalid));
+        assert_eq!(
+            queue
+                .peek(&[delivery_kind(&seat.id)])
+                .await
+                .unwrap()
+                .unwrap(),
+            before
+        );
+        assert!(queue.claimed_delivery(before.0).await.unwrap().is_none());
+    }
+    assert_eq!(
+        tmux.calls(),
+        calls_before,
+        "unproven owner never observes a pane"
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn native_typing_http_unavailable_observation_preserves_operator_hold_and_queue_ownership() {
+    for unavailable in ["unrecognized", "tap-unavailable", "no-pane"] {
+        let store = FreshStore::new();
+        let mut services = sqlite_services(&store).await;
+        let (mut seat, identity) = contract_identity();
+        seat.pane = (unavailable != "no-pane").then(|| "%137".into());
+        services.registry.put(seat.clone()).await.unwrap();
+        let pane = Pane {
+            id: "%137".into(),
+            session: "s".into(),
+            window: "w".into(),
+            title: "native".into(),
+            cursor_x: Some(0),
+            cursor_y: Some(0),
+        };
+        let tmux = Arc::new(match unavailable {
+            "unrecognized" => FakeTmux::new()
+                .with_pane(pane)
+                .with_attached_tap("%137")
+                .with_standing_capture("private unrecognized pane content"),
+            "tap-unavailable" => FakeTmux::new()
+                .with_pane(pane)
+                .with_standing_capture("╰────────╯"),
+            _ => FakeTmux::new(),
+        });
+        services.interaction = Arc::new(pij_harnesses::InteractionGate::with_typing_grace(
+            tmux.clone(),
+            Duration::ZERO,
+            super::resolve_typing_grace_ms(),
+        ));
+        if unavailable == "unrecognized" {
+            let legacy = services
+                .interaction
+                .fresh_injection_verdict("%137")
+                .await
+                .unwrap();
+            assert!(
+                legacy.permitted,
+                "legacy unknown-layout idle latch has expired"
+            );
+            assert_eq!(
+                legacy.reason,
+                Some(pij_core::delivery::DeliveryDeferralReason::Unrecognized)
+            );
+        }
+        services.delivery = Arc::new(
+            DeliveryService::new(
+                services.registry.clone(),
+                services.queue.clone(),
+                services.transport.clone(),
+                services.interaction.clone(),
+                services.event_bus.clone(),
+            )
+            .unwrap(),
+        );
+        services
+            .delivery
+            .send(
+                "pij-peer".into(),
+                seat.id.clone(),
+                "private unavailable body",
+            )
+            .await
+            .unwrap();
+        let registry = services.registry.clone();
+        let queue = services.queue.clone();
+        let before = queue
+            .peek(&[delivery_kind(&seat.id)])
+            .await
+            .unwrap()
+            .unwrap();
+        let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+        let client = reqwest::Client::new();
+        for claimed in [false, true] {
+            if claimed {
+                seat.semantic_state = None;
+                registry.put(seat.clone()).await.unwrap();
+                let claims = native_http_claims(&client, addr, &seat.id, &identity).await;
+                assert_eq!(
+                    claims.len(),
+                    1,
+                    "{unavailable} cannot silently gate native claim"
+                );
+                assert_eq!(claims[0].job_id, before.0);
+            }
+            seat.semantic_state = Some(SemanticState::Hold);
+            registry.put(seat.clone()).await.unwrap();
+            let claimed_before = queue.claimed_delivery(before.0).await.unwrap();
+            assert_eq!(claimed_before.is_some(), claimed);
+            let snapshot = native_http_response(
+                client.get(typing_url(addr, &seat.id, &identity)),
+                reqwest::StatusCode::OK,
+            )
+            .await;
+            let data = &snapshot["data"];
+            let mut expected = json!({
+                "state": "unavailable", "native_consumer": identity,
+                "typing_grace_ms": super::resolve_typing_grace_ms(),
+                "observed_at_ms": data["observed_at_ms"], "semantic_hold": true,
+                "reason": "native-typing-sensor-unavailable",
+            });
+            if unavailable == "no-pane" && super::resolve_typing_grace_ms() == 0 {
+                expected["state"] = json!("observed");
+                expected.as_object_mut().unwrap().remove("reason");
+                expected["retry_after_ms"] = json!(0);
+                expected["source"] = json!("pane-observed-edit-recency");
+            }
+            assert_eq!(data, &expected, "{unavailable}, claimed={claimed}");
+            assert!(data["observed_at_ms"].as_u64().unwrap() > 0);
+            assert!(!snapshot.to_string().contains("private"));
+            assert_eq!(registry.get(&seat.id).await.unwrap(), Some(seat.clone()));
+            assert_eq!(
+                queue
+                    .peek(&[delivery_kind(&seat.id)])
+                    .await
+                    .unwrap()
+                    .unwrap(),
+                before
+            );
+            assert_eq!(
+                queue.claimed_delivery(before.0).await.unwrap(),
+                claimed_before
+            );
+        }
+        assert!(tmux.calls().iter().all(|call| !call.starts_with("submit")
+            && !call.starts_with("type")
+            && !call.starts_with("stage")
+            && !call.starts_with("commit")
+            && !call.starts_with("send_keys")));
         server.abort();
     }
 }

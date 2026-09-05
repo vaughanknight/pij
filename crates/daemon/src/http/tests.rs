@@ -2137,7 +2137,7 @@ async fn registration_cannot_adopt_a_spawn_match_from_another_pane() {
 }
 
 #[tokio::test]
-async fn ordinary_registration_clears_native_attestation_but_preserves_claude_consent() {
+async fn ordinary_registration_preserves_native_attestation_and_claude_consent() {
     let copilot_proc = ProcIdentity {
         pid: 43,
         proc_start: 20260831103043,
@@ -2212,7 +2212,7 @@ async fn ordinary_registration_clears_native_attestation_but_preserves_claude_co
     }
 
     assert!(
-        !registry
+        registry
             .get(&"pij-copilot".into())
             .await
             .unwrap()
