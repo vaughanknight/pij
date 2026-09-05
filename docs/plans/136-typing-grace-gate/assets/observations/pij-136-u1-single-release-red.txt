@@ -1,0 +1,71 @@
+
+> pij@0.1.0 test
+> vitest run /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts --maxWorkers=4 -t holds at 59
+
+(node:86361) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts (31 tests | 1 failed | 30 skipped) 11ms
+     ↓ does not overwrite a claude seat when omp boots in the same pane
+       ↓ binding=created, pre-existing row=false injects announceText 1 times
+       ↓ binding=rebound, pre-existing row=true injects announceText 1 times
+       ↓ binding=same, pre-existing row=true injects announceText 0 times
+       ↓ binding=same, pre-existing row=false injects announceText 0 times
+       ↓ announces a rebound seat once and never again on same-binding reload
+       ↓ announces the new session id once on new, not again on reload
+       ↓ announces the new session id once on fork, not again on reload
+       ↓ preserves old-daemon inference with no binding (pre-existing row=false)
+       ↓ preserves old-daemon inference with no binding (pre-existing row=true)
+     ↓ registers structural identity, forwards unknown events, injects a push, and correlates reply
+     ↓ binds startup to the daemon row for the spawned pane
+     ↓ suppresses injection when another worker already owns the queued row
+     ↓ leaves an in-flight claim unacked when a new session replaces its seat
+     ↓ delivers the authority-owned claim when the pushed event names a different message
+     ↓ does not acknowledge when the runtime injection fails
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true)
+     × holds at 59 seconds and releases at 60 with exact hold/release payloads 11ms
+     ↓ preserves claim order across two holds
+     ↓ bypasses compact, new, reload and urgent while ordinary rows stay held
+     ↓ returns held claims to pending without acknowledging them
+     ↓ redelivers after restart and clears sender held evidence despite losing local notes
+     ↓ uses the daemon grace rather than the fallback
+     ↓ programmatic injection does not postpone a terminal-input grace
+     ↓ the real adapter observes terminal keys, not programmatic editor writes
+     ↓ re-holds a repeated push without another held event or duplicate delivery
+     ↓ polls eligible claims while held and bypasses a deferred head without a pushed frame
+     ↓ does not ack when the release declaration fails
+     ↓ recovers oldest-first when the older held job is deferred later than the newer job
+     ↓ re-holds the oldest recovery row during active grace and stops instead of spinning
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > holds at 59 seconds and releases at 60 with exact hold/release payloads
+AssertionError: exactly one delivery.released row per hold/release/ack cycle: expected [ …(2) ] to have a length of 1 but got 2
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1054:5
+    1052|    client.releases.filter((row) => row.msg_id === "boundary"),
+    1053|    "exactly one delivery.released row per hold/release/ack cycle",
+    1054|   ).toHaveLength(1);
+       |     ^
+    1055|   expect(client.releases).toEqual([releaseBody]);
+    1056|   expect(client.operations).toEqual([
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 30 skipped (31)
+   Start at  12:10:18
+   Duration  259ms (transform 127ms, setup 0ms, import 162ms, tests 11ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > holds at 59 seconds and releases at 60 with exact hold/release payloads,line=1054,column=5::AssertionError: exactly one delivery.released row per hold/release/ack cycle: expected [ …(2) ] to have a length of 1 but got 2%0A%0A- Expected%0A+ Received%0A%0A- 1%0A+ 2%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1054:5%0A%0A

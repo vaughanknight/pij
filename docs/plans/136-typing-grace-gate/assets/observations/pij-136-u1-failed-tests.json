@@ -1,0 +1,26 @@
+[
+  {
+    "name": "/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/index.test.ts",
+    "message": "",
+    "failed": [
+      {
+        "name": "pij index \u2014 footer status bar marks the selected default Rust generation in Pi's status segment",
+        "failureMessages": [
+          "TypeError: this.ctx.ui.onTerminalInput is not a function\n    at PiRuntimeAdapter.onEditorChange (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/pi-runtime.ts:49:22)\n    at RustRuntimeSession.setPi (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.ts:133:23)\n    at /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/index.ts:364:16\n    at processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/index.test.ts:219:3"
+        ]
+      },
+      {
+        "name": "pij index \u2014 footer status bar publishes the selected default Rust id through OMP's session_name segment",
+        "failureMessages": [
+          "TypeError: this.ctx.ui.onTerminalInput is not a function\n    at PiRuntimeAdapter.onEditorChange (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/pi-runtime.ts:49:22)\n    at RustRuntimeSession.setPi (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.ts:133:23)\n    at /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/index.ts:364:16\n    at processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/index.test.ts:237:3"
+        ]
+      },
+      {
+        "name": "pij index \u2014 footer status bar announces recovery when the first turn succeeds after the retry notice",
+        "failureMessages": [
+          "TypeError: this.ctx.ui.onTerminalInput is not a function\n    at PiRuntimeAdapter.onEditorChange (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/pi-runtime.ts:49:22)\n    at RustRuntimeSession.setPi (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.ts:133:23)\n    at /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/index.ts:364:16\n    at /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/index.test.ts:306:4"
+        ]
+      }
+    ]
+  }
+]

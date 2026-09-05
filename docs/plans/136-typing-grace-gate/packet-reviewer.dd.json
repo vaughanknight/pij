@@ -6,43 +6,47 @@
 		{
 			"name": "meta",
 			"value": {
-				"title": "Reviewer packet — <plan slug>",
+				"title": "Reviewer packet — 136-typing-grace-gate",
 				"role": "reviewer",
-				"plan": "docs/plans/<ord>-<slug>/plan.dd.json",
-				"seat": "<pij seat name once spawned>",
-				"updated": "<date>"
+				"plan": "docs/plans/136-typing-grace-gate/plan.dd.json",
+				"seat": "<filled at spawn>",
+				"updated": "2026-09-05"
 			}
 		},
 		{
 			"name": "mission",
-			"value": "You are the cross-model reviewer for plan <ord>-<slug>. The composed implementation is complete on the branch below. Judge whether the code makes the plan's promises TRUE — plan fidelity, correctness, and composition seams (where units meet is where it breaks) — and return findings the PM can act on. You are read-only on the code."
+			"value": "You are the cross-model reviewer for plan 136-typing-grace-gate: pushed messages are now HELD while the human has typed within PIJ_TYPING_GRACE_MS (60 s) and delivered once they stop; Claude/send-keys seats moved their veto from 'a draft exists' to 'an edit was observed recently'. The work is composed on branch 136-typing-grace-gate and ALREADY MERGED TO MAIN at be778b9c — one later commit (the duplicate-released fix) is on the branch and not yet on main. Judge whether the code makes the plan's promises TRUE: plan fidelity, correctness, and above all the composition seams, because this plan's three units met at the queue and that is where every defect of the day came from. You are READ-ONLY on code. STANDING RULES: never run `flowspace3 daemon` in any form; never start or restart a pij daemon (rs is the only one, it serves live seats right now, and a second one breaks production); do not run `npm install` in /Users/jordanknight/pi-hacking/pij."
 		},
 		{
 			"name": "instructions",
 			"value": [
 				{
 					"id": "i1",
-					"text": "Orient: read the plan (rendered .dd.md), the impl-guide (the intended decomposition + interfaces), and then the full diff of the branch against its base. DOGFOOD FLOWSPACE: use `flowspace3 search` to locate consumers/related code by meaning while reviewing; report misses as friction."
+					"text": "Orient: read docs/plans/136-typing-grace-gate/plan.dd.md (ACs), impl-guide.dd.md (the intended decomposition and the amended seams), assets/live-proof.md (the world-B controls and the world-A proofs), assets/inputs/ruling-hold-inversion-2026-09-05.md (the architecture ruling that replaced the original design mid-flight), and crates/testkit/fixtures/delivery/hold-events.json (the frozen contract, amended six times on coder evidence). Then read the branch diff against merge-base with main. DOGFOOD FLOWSPACE: `flowspace3 search` for meaning-shaped questions before grep; report misses as friction."
 				},
 				{
 					"id": "i2",
-					"text": "Review with the /builder review discipline: verify claims against fresh evidence — run targeted tests yourself, read exit status, never trust a green claim you did not see."
-				},
-				{
-					"id": "i2b",
-					"text": "Your dispatcher OWES you three lists in this packet, and you should refuse to start without them: (1) WHERE THE AUTHOR IS LEAST CONFIDENT (hunt there first), (2) an instruction to DISBELIEVE THE AUTHOR'S OWN RECEIPTS (re-derive, don't audit prose), (3) WHAT IS ALREADY KNOWN-OPEN (spend zero findings re-reporting it). Proven 2026-08-28: this brief shape bought a 4-for-4 all-confirmed zero-noise review, including a defect the author hunted for in writing and could not see from inside."
+					"text": "Verify claims against FRESH evidence: run targeted tests yourself, read exit status, never trust a green claim you did not see. Scoped runs only (`cargo test -p <crate>`, single vitest files) — ask the PM before any full `harness checks`, one runs at a time on this box. Caps: the vitest worker cap is now in vitest.config.ts; for cargo use CARGO_BUILD_JOBS=4."
 				},
 				{
 					"id": "i3",
-					"text": "Priority order: (1) plan promises that are not actually true, (2) composition-seam defects between units, (3) interface drift from the impl-guide, (4) correctness/safety in the changed code, (5) test gaps on the contract. Style noise is unwanted."
+					"text": "WHERE THE AUTHOR IS LEAST CONFIDENT — hunt here first, in this order. (a) THE QUEUE SEAM: `Queue::defer` and `Queue::release_deferred` were added mid-plan after the original design was proven impossible; defer must NOT increment attempt, release_deferred must be pending-only and atomic (a check-then-mutate would revoke a live reader's claim and double-deliver). (b) RECOVERY ORDERING: session_start peek->release->claim restores FIFO because `Queue::claim` orders only ELIGIBLE rows; I believe the loop cannot spin or inject during an active grace, but that is the newest code in the plan. (c) THE SINGLE RELEASE DECLARATION: the last commit made one owner for delivery.released after my live proof produced duplicates — check it did not weaken the release-before-ack guarantee that stops a stranded hold after a restart. (d) THE GRACE RESOLVER: I wired http::resolve_typing_grace_ms as the one env read shared by the register response and the interaction gate; check nothing else resolves it and no second literal exists."
 				},
 				{
 					"id": "i4",
-					"text": "Findings: at most the material ones, each with severity (CRITICAL/HIGH/MEDIUM), exact location, the claim, the proof, and the smallest fix. `no_material_findings` is a valid verdict."
+					"text": "DISBELIEVE THE AUTHOR'S RECEIPTS — including mine. Re-derive rather than audit prose: do not accept 'harness checks 8/8' or any pasted RED without re-running the specific thing you care about. The live proofs in assets/live-proof.md are spine rows I captured; the daemon is live and you can read ~/.pij-rs/pij.sqlite yourself (read-only) to confirm the sequence numbers say what I claim they say. If a receipt and the code disagree, the code wins and I want to know."
 				},
 				{
 					"id": "i5",
-					"text": "Deliver as a ddoc review record in the plan folder (assets/reviews/), build it, and send the PM the path + a one-line verdict."
+					"text": "ALREADY KNOWN-OPEN — spend zero findings re-reporting these. (1) AC4 bypass is UNCHECKED and structurally unreachable: rs refuses `--command`, `Msg` has no `urgent` field, `/v1/send` hardcodes `command: None`; prime ruled a follow-up plan. (2) AC6's `next_retry_at` is 0 rather than last_edit+grace, because threading it would require delivery/mod.rs which plan 137 owns. (3) The Claude-side sensor is SAMPLED composer content at 600 ms, not keystrokes; AC6's text was narrowed to match. (4) The toolchain pin is not enforced (no rustup): observed cargo 1.98.0, rustc 1.95.0 Homebrew, clippy 0.1.98. (5) The 135 register fixture is compared key-by-key rather than whole-object, deliberately, so additive wire fields do not break captured fixtures."
+				},
+				{
+					"id": "i6",
+					"text": "Priority order: (1) plan promises that are not actually true, (2) composition-seam defects, (3) interface drift from the frozen contract, (4) correctness/safety in changed code — especially anything that could lose a message or deliver one twice, (5) test gaps on the contract. Style noise is unwanted. Findings: severity (CRITICAL/HIGH/MEDIUM), exact location, the claim, the proof you ran, the smallest fix. `no_material_findings` is a valid verdict."
+				},
+				{
+					"id": "i7",
+					"text": "Deliver as a ddoc review record in docs/plans/136-typing-grace-gate/assets/reviews/, build it with `ddocs build`, and send the PM the path plus a one-line verdict via `pij send pij-fellow-whale \"<text>\"`. At canary time, quote `pij whoami` verbatim and your seat footer's model line."
 				}
 			]
 		},
@@ -51,52 +55,53 @@
 			"value": [
 				{
 					"id": "w1",
-					"text": "The PM is your counterpart: verdict and findings go to the PM; the PM may refute findings with evidence — re-judge refutations on the evidence, not on rank."
+					"text": "The PM (pij-fellow-whale) is your counterpart: verdict and findings go there; the PM may refute with evidence and you re-judge on the evidence, not on rank."
 				},
 				{
 					"id": "w2",
-					"text": "You do not fix code, commit, or open PRs. If you find something outside the plan's scope, name it as a note for prime rather than expanding the review."
+					"text": "You do not fix code, commit, or open PRs. Something outside the plan's scope: name it as a note for prime rather than expanding the review."
+				},
+				{
+					"id": "w3",
+					"text": "Three units and two sibling plans (135 boot-announce, 137 Copilot native) touched this neighbourhood today. If a defect is 135's or 137's, say so and stop — do not chase it."
 				}
 			]
 		},
 		{
 			"name": "scope",
 			"value": {
-				"worktree": "<read-only checkout or the pm's worktree path>",
-				"branch": "<branch under review>",
-				"fence": "read-only on code; write only assets/reviews/ in the plan folder",
-				"forbidden_note": "No code edits, no merges, no government files."
+				"worktree": "/Users/jordanknight/pi-hacking/fs3-typing-grace-gate",
+				"branch": "136-typing-grace-gate",
+				"fence": "read-only on code; write only docs/plans/136-typing-grace-gate/assets/reviews/",
+				"forbidden_note": "No code edits, no merges, no PRs, no government files, no daemon starts or restarts of any kind, no npm install in the main checkout. Use ABSOLUTE paths under the worktree root for every read."
 			}
 		},
 		{
 			"name": "done_bar",
 			"value": [
-				{ "id": "d1", "text": "Every plan AC judged true/false with evidence cited." },
-				{ "id": "d2", "text": "Composition seams between units explicitly examined and reported." },
+				{
+					"id": "d1",
+					"text": "Every AC judged true/false with evidence YOU generated, including AC4's unreachability (verify the three citations rather than trusting them)."
+				},
+				{
+					"id": "d2",
+					"text": "The composition seams examined explicitly: queue verbs, recovery ordering, the single release declaration, the one grace resolver, and the pointer-worker Omp|Pi skip."
+				},
 				{
 					"id": "d3",
-					"text": "Review record ddoc written, built, and path delivered to the PM with a verdict line."
+					"text": "Review record ddoc written, built, and its path delivered to the PM with a one-line verdict."
 				}
 			]
 		},
 		{
 			"name": "refs",
 			"value": [
-				{
-					"id": "r0",
-					"path": ".agents-skills-port/pij-team/TENETS.md",
-					"note": "the doctrine — tenet 5: you judge diffs against contracts, not philosophy"
-				},
-				{
-					"id": "r1",
-					"path": "docs/plans/<ord>-<slug>/impl-guide.dd.json",
-					"note": "intended units + interfaces — drift from this is a finding"
-				},
-				{
-					"id": "r2",
-					"path": "docs/plans/<ord>-<slug>/plan.dd.md",
-					"note": "the promises under judgment"
-				}
+				{ "id": "r0", "path": "docs/plans/136-typing-grace-gate/plan.dd.md", "note": "the promises" },
+				{ "id": "r1", "path": "docs/plans/136-typing-grace-gate/impl-guide.dd.md", "note": "intended decomposition and amended seams" },
+				{ "id": "r2", "path": "crates/testkit/fixtures/delivery/hold-events.json", "note": "the frozen contract every unit fills" },
+				{ "id": "r3", "path": "docs/plans/136-typing-grace-gate/assets/live-proof.md", "note": "world-B controls and world-A proofs — disbelieve and re-derive" },
+				{ "id": "r4", "path": "docs/plans/136-typing-grace-gate/assets/inputs/ruling-hold-inversion-2026-09-05.md", "note": "why held means pending-and-unclaimed" },
+				{ "id": "r5", "path": "docs/plans/136-typing-grace-gate/assets/u2-done-report.md", "note": "u2's own receipts and assumptions" }
 			]
 		}
 	]
