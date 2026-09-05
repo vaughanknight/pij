@@ -69,7 +69,14 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 } else {
 	async function launch(
 		t,
-		{ daemon = true, key = true, joinFails = false, messages = 1, inboxPages = [] } = {},
+		{
+			daemon = true,
+			key = true,
+			joinFails = false,
+			messages = 1,
+			inboxPages = [],
+			seats = [],
+		} = {},
 	) {
 		const home = await mkdtemp(join(tmpdir(), "pij-native-shell-"));
 		const requests = [];
@@ -87,7 +94,8 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				assert.equal(request.headers.authorization, "Bearer fixture-secret");
 				let data;
 				let meta;
-				if (request.url === "/v1/seats") data = { seats: [] };
+				let refusal;
+				if (request.url === "/v1/seats") data = { seats };
 				else if (request.url === "/v1/register") {
 					registered = body;
 					data = {
@@ -106,7 +114,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 					assert.equal(Number(query.get("pid")), registered.pid);
 					assert.equal(Number(query.get("proc_start")), registered.proc_start);
 					if (inboxPages.length > 0) {
-						({ data, meta } = inboxPages.shift());
+						({ data, meta, refusal } = inboxPages.shift());
 					} else {
 						data =
 							claimed >= messages
@@ -142,7 +150,8 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 					data = { msg_id: body.msg_id, outcome: { outcome: "queued" }, at: 137 };
 				else throw new Error(`Unexpected native endpoint ${request.url}`);
 				response.setHeader("Content-Type", "application/json");
-				response.end(JSON.stringify({ ok: true, v: 2, data, meta }));
+				response.statusCode = refusal ? 400 : 200;
+				response.end(JSON.stringify(refusal ?? { ok: true, v: 2, data, meta }));
 			});
 			server.listen(0, "127.0.0.1");
 			await once(server, "listening");
@@ -328,6 +337,100 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.equal(f.events.filter((e) => e.kind === "native-send").length, 1);
 		assert.equal(f.events.filter((e) => e.kind === "consent-held").length, 1);
 		assert.equal(f.events.filter((e) => e.kind === "native-log").length, 0);
+		const exited = once(f.child, "exit");
+		f.child.stdin.end();
+		assert.equal((await exited)[0], 0);
+		assert.equal(f.stdout(), "");
+	});
+
+	test("actual HTTP native-unavailable refusal re-registers and consumes queued work", async (t) => {
+		const f = await launch(t, {
+			inboxPages: [
+				{
+					refusal: {
+						ok: false,
+						v: 2,
+						command: "pij inbox",
+						error: "refused",
+						meta: "daemon/native-inbox: native-extension-unavailable: Copilot requires current native registration",
+					},
+				},
+			],
+		});
+		const notice = await f.waitFor("native-log");
+		assert.match(notice.message, /unavailable: reconnecting;.*retrying when available/);
+		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 0);
+		assert.equal(f.events.filter((event) => event.kind === "native-send").length, 0);
+		await f.waitFor("completion-wait");
+		const registrations = f.requests.filter((r) => r.path === "/v1/register");
+		assert.equal(registrations.length, 2);
+		assert.deepEqual(registrations[0].body, registrations[1].body);
+		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 2);
+		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 1);
+		assert.equal(f.events.filter((event) => event.kind === "native-send").length, 1);
+		assert.equal(f.events.filter((event) => event.kind === "native-log").length, 1);
+		const exited = once(f.child, "exit");
+		f.child.stdin.end();
+		assert.equal((await exited)[0], 0);
+		assert.equal(f.stdout(), "");
+	});
+
+	test("actual HTTP stale native refusal stays held without reregister or acknowledgement", async (t) => {
+		const f = await launch(t, {
+			inboxPages: [
+				{
+					refusal: {
+						ok: false,
+						v: 2,
+						command: "pij inbox",
+						error: "refused",
+						meta: "daemon/native-inbox: native incarnation mismatch: native_session, pid and proc_start must match the current Copilot seat",
+					},
+				},
+			],
+		});
+		const notice = await f.waitFor("native-log");
+		assert.match(
+			notice.message,
+			/unavailable: receive-held;.*do not blindly resend or acknowledge/,
+		);
+		await sleep(350);
+		assert.equal(f.requests.filter((r) => r.path === "/v1/register").length, 1);
+		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 1);
+		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 0);
+		assert.equal(f.events.filter((event) => event.kind === "native-send").length, 0);
+		assert.equal(f.events.filter((event) => event.kind === "native-log").length, 1);
+		const exited = once(f.child, "exit");
+		f.child.stdin.end();
+		assert.equal((await exited)[0], 0);
+		assert.equal(f.stdout(), "");
+	});
+
+	test("actual native rollover registers a new seat and consumes successor-targeted work", async (t) => {
+		const predecessor = {
+			id: "pij-predecessor",
+			harness: "copilot",
+			session: "native-shell-before",
+			folder: "/work",
+			pane: null,
+			proc: { pid: process.pid, proc_start: 20260905120000 },
+			native_extension_delivery: true,
+		};
+		const f = await launch(t, { seats: [predecessor] });
+		await f.waitFor("completion-wait");
+		const successor = f.requests.find((r) => r.path === "/v1/register").body;
+		assert.equal(successor.supersedes, predecessor.id);
+		assert.notEqual(successor.id, predecessor.id);
+		assert.equal(successor.harness_session, "native-shell-137");
+		const requests = f.requests.filter((r) => r.path.startsWith("/v1/inbox?"));
+		assert.equal(requests.length, 1);
+		assert.equal(new URLSearchParams(requests[0].path.split("?")[1]).get("seat"), successor.id);
+		assert.equal(f.requests.find((r) => r.path === "/v1/inbox/ack").body.seat, successor.id);
+		assert.equal(f.events.filter((event) => event.kind === "native-send").length, 1);
+		assert.match(
+			f.events.find((event) => event.kind === "native-send").input.prompt,
+			/SHELL_NONCE_137/,
+		);
 		const exited = once(f.child, "exit");
 		f.child.stdin.end();
 		assert.equal((await exited)[0], 0);

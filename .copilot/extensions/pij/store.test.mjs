@@ -52,6 +52,13 @@ const tuple = {
 	pid: registration.pid,
 	proc_start: registration.proc_start,
 };
+const unavailableRefusal = {
+	ok: false,
+	v: 2,
+	command: "pij inbox",
+	error: "refused",
+	meta: "daemon/native-inbox: native-extension-unavailable: Copilot requires current native registration",
+};
 function deferred() {
 	let resolve;
 	const promise = new Promise((r) => {
@@ -427,17 +434,110 @@ test("real filesystem journal survives restart and hashes opaque ids with privat
 	t.after(() => rm(home, { recursive: true, force: true }));
 	const journal = new FileJournal(home, registration);
 	const message = { ...claim.message, msg_id: "../../opaque/message" };
+	const resumed = {
+		...registration,
+		pid: registration.pid + 1,
+		proc_start: registration.proc_start + 100,
+	};
 	assert.equal(await journal.begin(message), true);
-	assert.equal(await new FileJournal(home, registration).begin(message), false);
+	assert.equal(await new FileJournal(home, resumed).begin(message), false);
 	await journal.accept(message, "native-durable");
-	const restarted = new FileJournal(home, registration);
+	const restarted = new FileJournal(home, resumed);
 	assert.equal((await restarted.load(message.msg_id)).nativeId, "native-durable");
 	assert.equal((await stat(journal.directory)).mode & 0o777, 0o700);
 	assert.equal((await stat(journal.path(message.msg_id))).mode & 0o777, 0o600);
 	assert.ok(journal.path(message.msg_id).startsWith(journal.directory));
 	const next = new FileJournal(home, { ...registration, harness_session: "different" });
 	assert.equal(await next.load(message.msg_id), undefined);
+	assert.equal(await next.begin(message), true);
+	const otherSeat = new FileJournal(home, { ...resumed, id: "different-seat" });
+	assert.equal(await otherSeat.load(message.msg_id), undefined);
 	assert.match(await readFile(journal.path(message.msg_id), "utf8"), /native-durable/);
+});
+
+test("real filesystem accepted-before-ack restart uses new live tuple without reinjection", {
+	timeout: 2000,
+}, async (t) => {
+	const home = await mkdtemp(join(tmpdir(), "pij-native-restart-"));
+	t.after(() => rm(home, { recursive: true, force: true }));
+	const journal = new FileJournal(home, registration);
+	const first = fixture({ journal });
+	t.after(() => first.bridge.stop());
+	const request = first.client.request;
+	let failedAcks = 0;
+	first.client.request = async (path, body, signal) => {
+		if (path === "/v1/inbox/ack") {
+			failedAcks++;
+			assert.equal((await journal.load(claim.message.msg_id)).state, "accepted");
+			first.bridge.stop();
+			throw new Error("Process stopped after durable acceptance before daemon acknowledgement");
+		}
+		return request(path, body, signal);
+	};
+	await first.bridge.run();
+	assert.equal(failedAcks, 1);
+	assert.equal(first.trace.filter((step) => step === "send").length, 1);
+	assert.equal(
+		first.reports.some((event) => event.kind === "inbox-acknowledged"),
+		false,
+	);
+
+	const resumed = {
+		...registration,
+		pid: registration.pid + 1,
+		proc_start: registration.proc_start + 100,
+	};
+	const live = {
+		native_session: resumed.harness_session,
+		pid: resumed.pid,
+		proc_start: resumed.proc_start,
+	};
+	const second = fixture({ registration: resumed, journal: new FileJournal(home, resumed) });
+	t.after(() => second.bridge.stop());
+	let claims = 0;
+	let sends = 0;
+	const acks = [];
+	second.client.claimInbox = async (consumer) => {
+		claims++;
+		assert.deepEqual(consumer, { seat: resumed.id, ...live });
+		return { claims: [{ ...claim, native_consumer: live }], hold: null };
+	};
+	const resumedRequest = second.client.request;
+	second.client.request = async (path, body, signal) => {
+		if (path === "/v1/register") {
+			assert.deepEqual(body, resumed);
+			return { ...descriptor, proc: { pid: resumed.pid, proc_start: resumed.proc_start } };
+		}
+		if (path === "/v1/inbox/ack") {
+			acks.push(body);
+			return claim.job_id;
+		}
+		return resumedRequest(path, body, signal);
+	};
+	second.native.send = async () => {
+		sends++;
+		throw new Error("Duplicate native send after process restart");
+	};
+	await second.bridge.run();
+	assert.equal(claims, 1);
+	assert.equal(sends, 0);
+	assert.deepEqual(acks, [{ seat: resumed.id, ...live, job_id: claim.job_id }]);
+	assert.ok(
+		second.reports.some(
+			(event) =>
+				event.kind === "inbox-acknowledged" && event.grade === "native-accepted-not-model-complete",
+		),
+	);
+	assert.ok(
+		second.reports.some(
+			(event) =>
+				event.kind === "receive-held" && /lacks observed native completion/.test(event.diagnostic),
+		),
+	);
+	assert.equal(
+		(await second.bridge.send({ to: "pij-peer", message: "restart-held outgoing" })).ok,
+		true,
+	);
 });
 
 test("HTTP client reloads key on every request, binds tuple, keeps bounded non-JSON diagnostic", async () => {
@@ -971,4 +1071,99 @@ test("malformed claim hold metadata is not silently downgraded to an empty inbox
 			),
 	});
 	await assert.rejects(client.claimInbox(tuple), /Malformed native inbox hold metadata/);
+});
+
+test("only the exact native-unavailable inbox refusal is retryable", async () => {
+	const inbox = `/v1/inbox?${new URLSearchParams(tuple)}`;
+	for (const [label, path, status, envelope, expected] of [
+		["claim", inbox, 400, unavailableRefusal, true],
+		["ack", "/v1/inbox/ack", 400, unavailableRefusal, true],
+		["unrelated endpoint", "/v1/register", 400, unavailableRefusal, false],
+		["different status", inbox, 409, unavailableRefusal, false],
+		["skew", inbox, 400, { ...unavailableRefusal, v: 1 }, false],
+		["wrong category", inbox, 400, { ...unavailableRefusal, error: "adapter" }, false],
+		["wrong command", inbox, 400, { ...unavailableRefusal, command: "pij register" }, false],
+		["not refusal", inbox, 400, { ...unavailableRefusal, ok: true }, false],
+		["missing category", inbox, 400, { ...unavailableRefusal, error: undefined }, false],
+		[
+			"wrong adapter",
+			inbox,
+			400,
+			{
+				...unavailableRefusal,
+				meta: unavailableRefusal.meta.replace("daemon/native-inbox", "unrelated"),
+			},
+			false,
+		],
+		[
+			"stale tuple",
+			inbox,
+			400,
+			{
+				...unavailableRefusal,
+				meta: "daemon/native-inbox: native incarnation mismatch: native_session, pid and proc_start must match the current Copilot seat",
+			},
+			false,
+		],
+		[
+			"quoted marker",
+			inbox,
+			400,
+			{ ...unavailableRefusal, meta: `stale tuple; previously ${unavailableRefusal.meta}` },
+			false,
+		],
+		[
+			"malformed metadata",
+			inbox,
+			400,
+			{ ...unavailableRefusal, meta: { reason: unavailableRefusal.meta } },
+			false,
+		],
+	]) {
+		const client = new DaemonClient({
+			addr: "127.0.0.1:13700",
+			stateDir: "/isolated",
+			readKey: async () => "fixture-key",
+			fetch: async () => new Response(JSON.stringify(envelope), { status }),
+		});
+		await assert.rejects(client.request(path), (error) => {
+			assert.equal(error.retryable, expected, label);
+			return true;
+		});
+	}
+});
+
+test("native-unavailable retries re-register with bounded backoff and stop cleanly", async () => {
+	let registrations = 0;
+	let claims = 0;
+	const waits = [];
+	const client = new DaemonClient({
+		addr: "127.0.0.1:13700",
+		stateDir: "/isolated",
+		readKey: async () => "fixture-key",
+		fetch: async (url) => {
+			if (new URL(url).pathname === "/v1/register") {
+				registrations++;
+				return new Response(JSON.stringify({ ok: true, v: 2, data: descriptor }));
+			}
+			assert.equal(new URL(url).pathname, "/v1/inbox");
+			claims++;
+			return new Response(JSON.stringify(unavailableRefusal), { status: 400 });
+		},
+	});
+	const f = fixture({
+		client,
+		delay: async (ms) => {
+			waits.push(ms);
+			if (waits.length === 8) f.bridge.stop();
+		},
+	});
+	await f.bridge.run();
+	assert.deepEqual(waits, [250, 500, 1000, 2000, 4000, 5000, 5000, 5000]);
+	assert.equal(registrations, 8);
+	assert.equal(claims, 8);
+	assert.equal(f.trace.includes("send"), false);
+	assert.equal(f.trace.includes("ack"), false);
+	assert.equal(f.reports.filter((event) => event.kind === "reconnecting").length, 1);
+	assert.equal(f.trace.at(-1), "unsubscribe");
 });
