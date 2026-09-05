@@ -69,10 +69,11 @@ interface TypingRuntimePort extends PiRuntimePort {
  *   must remain owned when the daemon returns not-deferred (contract 2fe71151).
  * - Local notes are not ownership. Only a fresh normal claim permits inject
  *   and ack; all event and ticker work shares pushedChain.
- * - Every registration returns the authoritative grace. Boot discards local
- *   notes, not daemon jobs. Registration/event replay must re-offer durable
- *   pending rows (including superseded seats on new/fork); tests use a fake
- *   daemon, so real restart/supersession recovery belongs to composed proof.
+ * - Boot discards local notes, then recovers the oldest LIVE row after
+ *   registration and before the stream/ticker can claim ordinarily. This loop
+ *   restores ORDER, not forced delivery: current grace may re-hold the head,
+ *   ending recovery rather than spinning or injecting into active typing.
+ *   The daemon still owns migration to successor seats on new/fork.
  * - The caller supplies current pi/OMP UI context before each boot. Raw input
  *   includes cursor/menu keys; direct inject/setEditorText is not terminal input.
  */
@@ -170,6 +171,7 @@ export class RustRuntimeSession {
 		this.self = acceptedId;
 		process.env.PIJ_SESSION_ID = acceptedId;
 		await this.flush();
+		await this.recoverInbox(acceptedId, this.client, lifecycle);
 		this.stopEvents?.();
 		this.stopEvents = await this.client.watchEvents(
 			(frame) => {
@@ -291,6 +293,31 @@ export class RustRuntimeSession {
 		if (this.self !== seat || seats.some((candidate) => candidate.id === seat)) return;
 		const accepted = await client.register(registration);
 		if (this.self === seat) this.registry.writeExact(fromRustDescriptor(accepted));
+	}
+
+	/** Startup only. Oldest LIVE order includes deferred rows; ordinary claims
+	 * alone would allow a newer eligible row to overtake a re-held older one.
+	 * Recovery restores ORDER, not immediacy: routeClaim retains active grace. */
+	private async recoverInbox(
+		seat: string,
+		client: PijDaemonClient,
+		lifecycle: number,
+	): Promise<void> {
+		while (this.self === seat && this.lifecycle === lifecycle) {
+			const oldest = pushedInboxClaim(await client.peekInbox(seat), seat);
+			if (!oldest || this.self !== seat || this.lifecycle !== lifecycle) return;
+			await client.release({
+				seat,
+				job_id: oldest.jobId,
+				msg_id: oldest.message.messageId,
+				at_ms: this.clock(),
+			});
+			if (this.self !== seat || this.lifecycle !== lifecycle) return;
+			const claim = pushedInboxClaim(await client.claimInbox(seat), seat);
+			if (!claim) return; // A running reader still owns the oldest live row.
+			await this.routeClaim(claim, seat, client, lifecycle);
+			if (this.heldIds.has(claim.message.messageId)) return;
+		}
 	}
 
 	private async consumePushed(

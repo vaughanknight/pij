@@ -20,6 +20,11 @@ function releaseEnvelope(init?: RequestInit): Response {
 	});
 }
 
+function isRecoveryPeek(url: string | URL | Request): boolean {
+	const parsed = new URL(String(url));
+	return parsed.pathname === "/v1/inbox" && parsed.searchParams.get("peek") === "true";
+}
+
 function eventResponse(text: string, keepOpen = true): Response {
 	const encoder = new TextEncoder();
 	return new Response(
@@ -74,6 +79,7 @@ async function bootPushedEvent(
 	let eventStreams = 0;
 	const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 		const path = new URL(String(url)).pathname;
+		if (isRecoveryPeek(url)) return envelope("pij inbox", []);
 		if (path === "/v1/seats") return envelope("pij seats", { seats: [], unavailable: [] });
 		if (path === "/v1/register") {
 			const claim = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -148,6 +154,7 @@ describe("RustRuntimeSession", () => {
 		const claimRequests: string[] = [];
 		const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 			const path = new URL(String(url)).pathname;
+			if (isRecoveryPeek(url)) return envelope("pij inbox", []);
 			if (path === "/v1/seats") return envelope("pij seats", { seats: [], unavailable: [] });
 			if (path === "/v1/register") {
 				const claim = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -282,6 +289,7 @@ describe("RustRuntimeSession", () => {
 		const registrations: Array<Record<string, unknown>> = [];
 		const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 			const path = new URL(String(url)).pathname;
+			if (isRecoveryPeek(url)) return envelope("pij inbox", []);
 			if (path === "/v1/seats") {
 				return envelope("pij seats", {
 					seats: [
@@ -458,6 +466,7 @@ describe("RustRuntimeSession", () => {
 		const notices: string[] = [];
 		const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 			const parsed = new URL(String(url));
+			if (isRecoveryPeek(url)) return envelope("pij inbox", []);
 			if (parsed.pathname === "/v1/seats") {
 				seatReads += 1;
 				const seats =
@@ -658,6 +667,12 @@ class GraceClient extends PijDaemonClient {
 			...(this.graceMs === undefined ? {} : { typing_grace_ms: this.graceMs }),
 		};
 	}
+	recoveryPeeks = 0;
+	override async peekInbox(): Promise<unknown> {
+		this.recoveryPeeks += 1;
+		const job = this.jobs.find((candidate) => !candidate.acked);
+		return job ? [{ job_id: job.job_id, message: job.message }] : [];
+	}
 	override async watchEvents(listener: (frame: EventFrame) => unknown): Promise<() => void> {
 		this.listener = listener;
 		return () => {
@@ -780,7 +795,9 @@ describe("typing grace delivery", () => {
 			resetRuntimeState: true,
 			reason: "startup",
 		});
-		pi.injects.length = 0;
+		// Drop only the boot announcement, not peer deliveries recovered by boot.
+		const recovered = pi.injects.filter((row) => row.text.startsWith("[pij from "));
+		pi.injects.splice(0, pi.injects.length, ...recovered);
 		return { runtime, pi, client };
 	}
 	beforeEach(() => {
@@ -886,9 +903,11 @@ describe("typing grace delivery", () => {
 			client.jobs.map((job) => job.held),
 			"sender held evidence must be cleared",
 		).toEqual([false, false]);
-		expect(client.operations.slice(-4)).toEqual([
+		expect(client.operations.slice(-6)).toEqual([
+			"release:first",
 			"release:first",
 			"ack:first",
+			"release:second",
 			"release:second",
 			"ack:second",
 		]);
@@ -988,6 +1007,7 @@ describe("typing grace delivery", () => {
 
 	it("polls eligible claims while held and bypasses a deferred head without a pushed frame", async () => {
 		const { pi, client } = await start();
+		const peeksAtBoot = client.recoveryPeeks;
 		pi.edit();
 		await client.push(message("ordinary"));
 		await client.push(message("compact", { command: "compact" }), false);
@@ -996,6 +1016,7 @@ describe("typing grace delivery", () => {
 		expect(client.acks).toEqual([2]);
 		expect(pi.injects).toEqual([]);
 		expect(client.holds).toHaveLength(1);
+		expect(client.recoveryPeeks).toBe(peeksAtBoot);
 	});
 
 	it("does not ack when the release declaration fails", async () => {
@@ -1005,5 +1026,67 @@ describe("typing grace delivery", () => {
 		expect(pi.injects.map((row) => row.text)).toEqual(["[pij from pij-sender] declare-first"]);
 		expect(client.acks).toEqual([]);
 		expect(runtime.eventCount("daemon_event_ack_error")).toBe(1);
+	});
+
+	it("recovers oldest-first when the older held job is deferred later than the newer job", async () => {
+		const { runtime, pi, client } = await start();
+		const t0 = Date.now();
+		pi.edit();
+		await client.push(message("older"));
+		await vi.advanceTimersByTimeAsync(1_000);
+		pi.edit();
+		await client.push(message("newer"));
+		// At t0+60s the older row is re-offered while the human's t0+1s
+		// keystroke is still inside grace, extending only that row to t0+120s.
+		await vi.advanceTimersByTimeAsync(59_000);
+		expect(client.jobs.map((job) => job.not_before)).toEqual([
+			t0 + HOLD_CONTRACT.grace.default_ms * 2,
+			t0 + HOLD_CONTRACT.grace.default_ms + 1_000,
+		]);
+		runtime.shutdown("quit");
+		await vi.advanceTimersByTimeAsync(1_000);
+		const restarted = await start(client);
+		await client.replay();
+		await vi.advanceTimersByTimeAsync(59_000);
+		await client.replay();
+		expect(restarted.pi.injects).toHaveLength(2);
+		expect(restarted.pi.injects.map((row) => row.text)).toEqual([
+			"[pij from pij-sender] older",
+			"[pij from pij-sender] newer",
+		]);
+		expect(client.acks).toEqual([1, 2]);
+	});
+
+	it("re-holds the oldest recovery row during active grace and stops instead of spinning", async () => {
+		const { runtime, pi, client } = await start();
+		pi.edit();
+		await client.push(message("still-typing"));
+		await vi.advanceTimersByTimeAsync(1_000);
+		const peek = client.peekInbox.bind(client);
+		let recoveryPeeks = 0;
+		vi.spyOn(client, "peekInbox").mockImplementation(async () => {
+			expect(++recoveryPeeks, "recovery must stop on a re-held head").toBeLessThan(3);
+			return peek();
+		});
+		await runtime.boot({
+			folder: "/abs/tree",
+			dataDir: "",
+			eventsPath: "",
+			harness: "pi",
+			harnessSessionId: "native-grace",
+			piSessionId: "native-grace",
+			runtimeBin: "omp",
+			paneId: "%42",
+			resetRuntimeState: false,
+			reason: "reload",
+		});
+		expect(client.jobs[0]?.not_before).toBe(Date.now() + HOLD_CONTRACT.grace.default_ms);
+		expect(client.holdRequests).toHaveLength(2);
+		expect(recoveryPeeks).toBe(1);
+		expect(pi.injects.filter((row) => row.text.startsWith("[pij from "))).toEqual([]);
+		await vi.advanceTimersByTimeAsync(58_000);
+		expect(client.acks).toEqual([]);
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(client.acks).toEqual([1]);
 	});
 });

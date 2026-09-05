@@ -103,6 +103,9 @@ function rustEnvelope(command: string, data: unknown): Response {
 function fakeRustGeneration(): daemonHttp.DaemonGeneration {
 	const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 		const path = new URL(String(url)).pathname;
+		if (path === "/v1/inbox" && new URL(String(url)).searchParams.get("peek") === "true") {
+			return rustEnvelope("pij inbox", []);
+		}
 		if (path === "/v1/seats") {
 			return rustEnvelope("pij seats", { seats: [], unavailable: [] });
 		}
