@@ -29,6 +29,7 @@ import { manageCopilotExtension } from "./link-global.js";
 interface Options {
 	mode: "manual" | "spawned" | "both";
 	provider: "local" | "real";
+	workspaceTrust: "seeded" | "prompt";
 	model?: string;
 	pijBin: string;
 	copilotBin: string;
@@ -57,6 +58,7 @@ export function parseSmokeArgs(args: string[]): Options {
 	const options: Options = {
 		mode: "both",
 		provider: "local",
+		workspaceTrust: "seeded",
 		pijBin: join(ROOT, "target/debug/pij-rs"),
 		copilotBin: "copilot",
 		timeoutMs: 90_000,
@@ -68,6 +70,10 @@ export function parseSmokeArgs(args: string[]): Options {
 			case "--mode":
 				assert(["manual", "spawned", "both"].includes(value), "--mode manual|spawned|both");
 				options.mode = value as Options["mode"];
+				break;
+			case "--workspace-trust":
+				assert(["seeded", "prompt"].includes(value), "--workspace-trust seeded|prompt");
+				options.workspaceTrust = value as Options["workspaceTrust"];
 				break;
 			case "--provider":
 				assert(["local", "real"].includes(value), "--provider local|real");
@@ -152,6 +158,69 @@ export function verifyOrdinaryUsability(
 		terminal.split("[pij native] unavailable:").length - 1,
 		1,
 		"one diagnostic per outage episode, not per retry",
+	);
+}
+
+/** Compare full-driver startup runs, never two sessions sharing remembered trust. */
+export function verifyWorkspaceTrustDiscriminator(
+	seeded: Record<string, unknown>,
+	prompt: Record<string, unknown>,
+): void {
+	const seededIsolation = object(seeded.isolation);
+	const promptIsolation = object(prompt.isolation);
+	assert(
+		typeof seededIsolation.home === "string" &&
+			typeof promptIsolation.home === "string" &&
+			seededIsolation.home !== promptIsolation.home &&
+			seeded.run !== prompt.run,
+		"trust discriminator requires distinct private HOMEs and runs",
+	);
+	assert.equal(
+		typeof seededIsolation.trust_config_before,
+		"string",
+		"seeded native config must be captured before launch",
+	);
+	assert.deepEqual(
+		object(JSON.parse(seededIsolation.trust_config_before as string)).trustedFolders,
+		[seededIsolation.workspace],
+		"native config must trust only the isolated workspace",
+	);
+	assert.equal(
+		promptIsolation.trust_config_before,
+		null,
+		"unseeded run must start without native config",
+	);
+	assert(Array.isArray(seeded.witnesses), "seeded run requires an ordinary-use witness");
+	const ordinary = seeded.witnesses
+		.map(object)
+		.find((row) => row.kind === "daemon-key-absent-ordinary-use");
+	assert(ordinary && Array.isArray(ordinary.events), "seeded run requires an ordinary-use witness");
+	assert.equal(ordinary.daemon_started, false);
+	assert.equal(ordinary.key_present, false);
+	verifyOrdinaryUsability(
+		ordinary.events as NativeEvent[],
+		String(ordinary.nonce),
+		String(ordinary.terminal),
+	);
+	assert.deepEqual(
+		prompt.witnesses,
+		[],
+		"unseeded run must remain before ordinary use and daemon startup",
+	);
+	assert.deepEqual(prompt.fixture_requests, [], "unseeded run must have no provider activity");
+	assert(Array.isArray(prompt.final_pane_captures), "unseeded run needs terminal evidence");
+	const workspace = promptIsolation.workspace;
+	assert(
+		typeof workspace === "string" &&
+			prompt.final_pane_captures
+				.map(object)
+				.some(
+					(row) =>
+						typeof row.terminal === "string" &&
+						row.terminal.includes("Confirm folder trust") &&
+						row.terminal.split("\n").some((line) => line.replaceAll("│", "").trim() === workspace),
+				),
+		"trust prompt must name the exact isolated workspace",
 	);
 }
 
@@ -287,13 +356,15 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 				COPILOT_MODEL: "pij-native-fixture",
 			});
 		} else env.COPILOT_MODEL = options.model;
-		// Trust only this new, empty fixture workspace, never a global folder or all tools.
-		const trustedFolders = [realpathSync(cwd)];
+		// Native remembered trust lives in config.json, not user settings.json.
+		const trustedFolders = options.workspaceTrust === "seeded" ? [realpathSync(cwd)] : [];
 		mkdirSync(copilotHome, { recursive: true, mode: 0o700 });
-		writeFileSync(join(copilotHome, "settings.json"), `${JSON.stringify({ trustedFolders })}\n`, {
-			flag: "wx",
-			mode: 0o600,
-		});
+		if (trustedFolders.length) {
+			writeFileSync(join(copilotHome, "config.json"), `${JSON.stringify({ trustedFolders })}\n`, {
+				flag: "wx",
+				mode: 0o600,
+			});
+		}
 		const installLog: string[] = [];
 		assert.equal(
 			manageCopilotExtension({
@@ -343,7 +414,12 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 			state,
 			addr,
 			socket,
+			workspace: realpathSync(cwd),
+			workspace_trust: options.workspaceTrust,
 			trusted_folders: trustedFolders,
+			trust_config_before: existsSync(join(copilotHome, "config.json"))
+				? readFileSync(join(copilotHome, "config.json"), "utf8")
+				: null,
 			manual_identity_env_keys: Object.keys(env).filter(
 				(key) => key.startsWith("PIJ_") && !["PIJ_RS_ADDR", "PIJ_RS_STATE_DIR"].includes(key),
 			),
@@ -884,7 +960,7 @@ const entry = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : u
 if (entry === import.meta.url) {
 	if (process.argv.includes("--help")) {
 		console.log(
-			"copilot-native-smoke --mode manual|spawned|both --provider local|real [--model MODEL] [--pij-bin PATH] [--copilot-bin PATH] [--output RECEIPT.json] [--timeout-seconds 90]\nUses isolated HOME/COPILOT_HOME, dedicated tmux socket and owned real Rust daemon. Real provider requires inherited token; never copies auth. Exit 0 passed, 1 failed, 2 prerequisite missing. No global setup or restart.",
+			"copilot-native-smoke --mode manual|spawned|both --provider local|real [--workspace-trust seeded|prompt] [--model MODEL] [--pij-bin PATH] [--copilot-bin PATH] [--output RECEIPT.json] [--timeout-seconds 90]\nUses isolated HOME/COPILOT_HOME, dedicated tmux socket and owned real Rust daemon. Real provider requires inherited token; never copies auth. Exit 0 passed, 1 failed, 2 prerequisite missing. No global setup or restart. Workspace trust defaults to seeded; prompt is a negative control expected to time out before provider activity.",
 		);
 	} else {
 		try {
