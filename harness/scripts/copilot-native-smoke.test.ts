@@ -479,6 +479,15 @@ describe("native lifecycle assertion boundaries, not live CLI proof", () => {
 		`Previous user /new\n╻▄▄▄▄▄▄\n┃  ${text}\n╹▀▀▀▀▀▀\n← open sidebar · / commands`;
 	const dialog = "╭────────╮\n│ Confirm folder trust │\n╰────────╯";
 
+	it("recognizes the retained disabled CLI frame as an empty ready composer", () => {
+		const frame = object(
+			JSON.parse(
+				readFileSync(new URL("./fixtures/copilot-native-disabled.json", import.meta.url), "utf8"),
+			),
+		);
+		expect(nativeComposer(String(frame.terminal))).toBe("");
+	});
+
 	it.each([
 		"newSession",
 		"exit",

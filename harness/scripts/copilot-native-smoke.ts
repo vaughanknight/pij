@@ -1387,7 +1387,7 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 			assert(/^%\d+$/.test(pane), "actual tmux pane id required");
 			if (disabled) {
 				await until("disabled CLI composer ready", options.timeoutMs, () =>
-					/❯|>/.test(tmux(["capture-pane", "-p", "-t", pane])) ? true : undefined,
+					nativeComposer(tmux(["capture-pane", "-p", "-t", pane])) === "" ? true : undefined,
 				);
 				command(
 					options.pijBin,
