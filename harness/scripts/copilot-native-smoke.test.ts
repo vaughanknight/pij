@@ -158,6 +158,34 @@ describe("isolated native tool human approval", () => {
 		});
 	});
 
+	it("accepts immediate dismissal without another capture or approval key", async () => {
+		const after = "PIJ_NATIVE_DONE\n❯";
+		const frames = [dialog(), dialog(), after];
+		const commands: string[][] = [];
+		const witness: Record<string, unknown> = {};
+		await confirmSmokeToolInvocation(
+			(command) => {
+				commands.push(command);
+				if (command[0] !== "capture-pane") return "";
+				const frame = frames.shift();
+				if (frame === undefined) throw new Error("capture after observed dismissal");
+				return frame;
+			},
+			expected,
+			1,
+			witness,
+		);
+		expect(commands.filter((command) => command[0] === "send-keys")).toEqual([
+			["send-keys", "-t", expected.pane, "Enter"],
+		]);
+		expect(witness).toMatchObject({
+			status: "dismissed",
+			confirmation_sent: true,
+			after_input: after,
+			after,
+		});
+	});
+
 	it.each([
 		["wrong peer despite correct transcript", dialog({ ...args, to: "pij-wrong-peer" })],
 		[
@@ -224,9 +252,11 @@ describe("isolated native tool human approval", () => {
 		expect(witness).toMatchObject({ status: "failed", before, before_confirm: changed });
 	});
 
-	it("fails an unknown dialog immediately after the one-time confirmation", async () => {
-		const unknown = dialog().replace('Run extension tool "pij_send"', "Confirm folder trust");
-		const frames = [dialog(), dialog(), unknown, "ordinary composer"];
+	it.each([
+		["unknown dialog", dialog().replace('Run extension tool "pij_send"', "Confirm folder trust")],
+		["malformed dialog", dialog().replace('│   "to":', '│   "to" INVALID:')],
+	])("fails %s immediately after the one-time confirmation", async (_label, terminal) => {
+		const frames = [dialog(), dialog(), terminal, "ordinary composer"];
 		const commands: string[][] = [];
 		const witness: Record<string, unknown> = {};
 		await expect(
@@ -241,7 +271,7 @@ describe("isolated native tool human approval", () => {
 			),
 		).rejects.toThrow("PIJ_NATIVE_UNEXPECTED_APPROVAL");
 		expect(commands.filter((command) => command[0] === "send-keys")).toHaveLength(1);
-		expect(witness).toMatchObject({ status: "failed", after_input: unknown });
+		expect(witness).toMatchObject({ status: "failed", after_input: terminal });
 	});
 
 	it("times out without a modal and never resends approval if dismissal stalls", async () => {
