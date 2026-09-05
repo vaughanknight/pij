@@ -29,10 +29,7 @@ const INBOX_CLAIM_WIRE = readFileSync(
 ).trim();
 const REGISTER_RESPONSES = JSON.parse(
 	readFileSync(
-		new URL(
-			"../../../../docs/plans/135-rs-boot-announce/assets/contracts/register-response.json",
-			import.meta.url,
-		),
+		new URL("../../../../crates/testkit/fixtures/register-response.json", import.meta.url),
 		"utf8",
 	),
 ) as Record<"created" | "rebound" | "same", RustSeatDescriptor>;
