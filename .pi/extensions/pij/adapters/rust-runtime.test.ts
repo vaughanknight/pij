@@ -10,6 +10,16 @@ function envelope(command: string, data: unknown): Response {
 	return new Response(JSON.stringify({ ok: true, command, v: 2, data }));
 }
 
+function releaseEnvelope(init?: RequestInit): Response {
+	const body = JSON.parse(String(init?.body)) as { msg_id: string };
+	return envelope("pij release", {
+		msg_id: body.msg_id,
+		released: false,
+		noop: true,
+		reason: "not-deferred",
+	});
+}
+
 function eventResponse(text: string, keepOpen = true): Response {
 	const encoder = new TextEncoder();
 	return new Response(
@@ -92,6 +102,7 @@ async function bootPushedEvent(
 			claimRequests.push(String(url));
 			return envelope("pij inbox", await claimResponse);
 		}
+		if (path === "/v1/release") return releaseEnvelope(init);
 		if (path === "/v1/inbox/ack") {
 			const acknowledgement = JSON.parse(String(init?.body)) as Record<string, unknown>;
 			acknowledgements.push(acknowledgement);
@@ -167,6 +178,7 @@ describe("RustRuntimeSession", () => {
 				claimRequests.push(String(url));
 				return envelope("pij inbox", inboxClaimFixture());
 			}
+			if (path === "/v1/release") return releaseEnvelope(init);
 			if (path === "/v1/inbox/ack") {
 				expect(pi.injects.some((item) => item.text === "[pij from pij-from] before bind")).toBe(
 					true,
@@ -497,6 +509,7 @@ describe("RustRuntimeSession", () => {
 				);
 			}
 			if (parsed.pathname === "/v1/inbox") return envelope("pij inbox", inboxClaimFixture());
+			if (parsed.pathname === "/v1/release") return releaseEnvelope(init);
 			if (parsed.pathname === "/v1/inbox/ack") {
 				const acknowledgement = JSON.parse(String(init?.body)) as Record<string, unknown>;
 				acknowledgements.push(acknowledgement);
@@ -664,6 +677,9 @@ class GraceClient extends PijDaemonClient {
 		const job = this.jobs.find((candidate) => candidate.job_id === jobId);
 		if (!job) throw new Error("unknown fake inbox job");
 		expect(job.claimed, "ack must follow an authoritative reclaim").toBe(true);
+		expect(this.operations.at(-1), "release declaration must precede every ack").toBe(
+			`release:${job.message.msg_id}`,
+		);
 		job.acked = true;
 		this.acks.push(jobId);
 		this.operations.push(`ack:${job.message.msg_id}`);
@@ -684,13 +700,19 @@ class GraceClient extends PijDaemonClient {
 	override async release(body: typeof HOLD_CONTRACT.release_request.body) {
 		const job = this.jobs.find((candidate) => candidate.message.msg_id === body.msg_id);
 		if (job) expect(body.job_id, "release carries the authoritative job id").toBe(job.job_id);
-		if (job?.held) {
-			job.not_before = body.at_ms;
-			job.held = false;
-		}
+		const released = job !== undefined && !job.claimed && !job.acked;
+		if (job) job.held = false; // Evidence clears even when the queue is already claimed.
+		if (job && released) job.not_before = body.at_ms;
 		this.releases.push(body);
 		this.operations.push(`release:${body.msg_id}`);
-		return { msg_id: body.msg_id, released: true };
+		return released
+			? { msg_id: body.msg_id, released: true }
+			: {
+					msg_id: body.msg_id,
+					released: false,
+					noop: true,
+					reason: job === undefined ? "absent" : job.acked ? "terminal" : "not-deferred",
+				};
 	}
 	async push(message: GraceMessage, announce = true): Promise<void> {
 		this.jobs.push({
@@ -789,15 +811,19 @@ describe("typing grace delivery", () => {
 		expect(pi.statuses.at(-1)).toBe("⏸ 1 held · typing");
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(pi.injects.map((row) => row.text)).toEqual(["[pij from pij-sender] boundary"]);
-		expect(client.releases).toEqual([
-			{
-				seat: "pij-grace-test",
-				job_id: 1,
-				msg_id: "boundary",
-				at_ms: since + HOLD_CONTRACT.grace.default_ms,
-			},
+		const releaseBody = {
+			seat: "pij-grace-test",
+			job_id: 1,
+			msg_id: "boundary",
+			at_ms: since + HOLD_CONTRACT.grace.default_ms,
+		};
+		expect(client.releases).toEqual([releaseBody, releaseBody]);
+		expect(client.operations).toEqual([
+			"hold:boundary",
+			"release:boundary",
+			"release:boundary",
+			"ack:boundary",
 		]);
-		expect(client.operations).toEqual(["hold:boundary", "release:boundary", "ack:boundary"]);
 		expect(pi.statuses.at(-1)).toBeUndefined();
 	});
 
@@ -841,7 +867,7 @@ describe("typing grace delivery", () => {
 		expect(client.acks).toEqual([]);
 	});
 
-	it("redelivers two unacked holds after shutdown and re-register in order", async () => {
+	it("redelivers after restart and clears sender held evidence despite losing local notes", async () => {
 		const { runtime, pi, client } = await start();
 		pi.edit();
 		await client.push(message("first"));
@@ -856,6 +882,16 @@ describe("typing grace delivery", () => {
 			"[pij from pij-sender] second",
 		]);
 		expect(client.acks).toEqual([1, 2]);
+		expect(
+			client.jobs.map((job) => job.held),
+			"sender held evidence must be cleared",
+		).toEqual([false, false]);
+		expect(client.operations.slice(-4)).toEqual([
+			"release:first",
+			"ack:first",
+			"release:second",
+			"ack:second",
+		]);
 		await vi.advanceTimersByTimeAsync(HOLD_CONTRACT.grace.default_ms);
 		expect(pi.injects).toEqual([]);
 	});
@@ -960,5 +996,14 @@ describe("typing grace delivery", () => {
 		expect(client.acks).toEqual([2]);
 		expect(pi.injects).toEqual([]);
 		expect(client.holds).toHaveLength(1);
+	});
+
+	it("does not ack when the release declaration fails", async () => {
+		const { pi, client, runtime } = await start();
+		vi.spyOn(client, "release").mockRejectedValueOnce(new Error("release unavailable"));
+		await client.push(message("declare-first"));
+		expect(pi.injects.map((row) => row.text)).toEqual(["[pij from pij-sender] declare-first"]);
+		expect(client.acks).toEqual([]);
+		expect(runtime.eventCount("daemon_event_ack_error")).toBe(1);
 	});
 });

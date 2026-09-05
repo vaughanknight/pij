@@ -64,6 +64,9 @@ interface TypingRuntimePort extends PiRuntimePort {
  *   claims per seat in job-id order, skipping pending rows whose not_before is future.
  * - hold returns a claim to pending and defers it; release makes it eligible
  *   immediately. Both requests carry job_id; repeated holds are idempotent per job.
+ *   Release also declares cleared hold evidence even when its queue mutation is
+ *   a typed no-op. Every ack is preceded by this declaration; RUNNING claims
+ *   must remain owned when the daemon returns not-deferred (contract 2fe71151).
  * - Local notes are not ownership. Only a fresh normal claim permits inject
  *   and ack; all event and ticker work shares pushedChain.
  * - Every registration returns the authoritative grace. Boot discards local
@@ -397,6 +400,16 @@ export class RustRuntimeSession {
 			return;
 		}
 		try {
+			// A restarted reader has no local note for a formerly held job.
+			// Declare release regardless; the daemon clears evidence even when
+			// un-deferral is a no-op and preserves this running claim.
+			await client.release({
+				seat,
+				job_id: claim.jobId,
+				msg_id: claim.message.messageId,
+				at_ms: this.clock(),
+			});
+			if (this.self !== seat || this.lifecycle !== lifecycle) return;
 			await client.ackInbox(seat, claim.jobId);
 		} catch (error) {
 			this.session.capture("daemon_event_ack_error", {
