@@ -267,15 +267,61 @@ delivery.outcome | {"outcome":{"outcome":"delivered","origin":"injected-to-trans
 message.pushed   | {"from":"pij-verbal-silverfish", …}
 ```
 
-**No pointer-drain job.** This is the exact symptom reported this morning — 18 of
-19 live Claude seats bound to their pane's shell, deliveries falling back to
-`tmux send-keys` — fixed and measured end to end.
+**No pointer-drain job.**
 
-## Open finding, raised to prime rather than fixed unilaterally
+**What this measured, precisely** (wording corrected after the reviewer's f4):
+ONE new adopt, on ONE pane, binding correctly. It is proof that the *mechanism*
+is fixed. It is **not** proof that the fleet was remediated, and the earlier
+wording — "the exact symptom reported this morning, fixed and measured end to
+end" — could be read as the latter. The reviewer audited main and found the
+distinction mattered: **52 registered Claude seats, 3 bound to a claude process,
+18 still bound to a shell, 31 dead pids.** Every one of those 18 had a live
+claude descendant at that moment, so all 18 would bind correctly on a re-adopt —
+and nothing performed one. A fix that requires a gesture nobody makes is not yet
+a fix in the field.
 
-`announceText` still tells every booting seat that peer messages arrive as
-`[pij from <id>] …` — the legacy shape this plan just stopped emitting. It was
-visible in the AC8 seat's pane directly above the canonical frame it had just
-received. `announceText` content is an explicit NON-GOAL of this plan, so it was
-left alone: the plan that exists to make seats know which system they are on now
-ships a boot message describing the other one. Smallest fix is one string.
+### Remediation sweep — prime (`pij-minor-unicorn`), 2026-09-05
+
+Run on main's daemon and binary: for every live Claude seat whose recorded pid
+had no socket, `pij-rs adopt --harness claude <pane>` from outside the pane.
+
+| outcome | count |
+| --- | --- |
+| re-bound to the claude pid, `/tmp/cc-socks/<pid>.sock` present | **17** |
+| already correct | 4 |
+| skipped (pane gone) | 1 |
+
+Examples: `genar` 3357 → 6572, `magpie` 86356 → 13020.
+
+**So: AC7's mechanism + this sweep = the fleet is remediated.** The two are
+separate facts and are recorded separately, because the plan only earned the
+first. Rebind-on-drift — so that a seat repairs itself instead of waiting for a
+sweep — remains a follow-up.
+
+## Resolved finding — announceText described the other generation
+
+`announceText` told every booting seat that peer messages arrive as
+`[pij from <id>] …` — the legacy shape this plan had just stopped emitting,
+visible in the AC8 seat's pane directly above the canonical frame it had received.
+Raised to prime rather than fixed unilaterally (announceText content was a
+non-goal); prime ruled it in and amended the non-goal. RED first, then one string,
+then green.
+
+## Known-inert surfaces, recorded rather than hidden (reviewer f5, n2)
+
+These passed every unit gate and are honest about what they do; they are written
+down because a field that is emitted and never read *looks* load-bearing in its
+own unit's tests and is inert in composition — which is exactly how the f2 seam
+defect stayed invisible.
+
+- **`parseFrame` has no production callers.** AC8's rendering half is real and
+  load-bearing; its legacy-*parse* half is a property of dead code, because the
+  extension receives `from`/`body` as separate event fields and frames on inject.
+  Prime ruled: **delete in a follow-up**, not here.
+- **`PutBinding.previous_proc: None` conflates two states** — no row, and a row
+  with no bound process. `inserted` separates the first; nothing separates
+  unbound → unbound, which yields `same`. Not reachable through today's callers,
+  recorded so the next change to that struct starts from the truth.
+- **`proc_source` is response-only and not persisted**, so `pij-rs state` and
+  `pij list` cannot show it without a schema change. Being unobservable to an
+  operator is what let f2 hide; u3 is giving it a typed consumer in this round.

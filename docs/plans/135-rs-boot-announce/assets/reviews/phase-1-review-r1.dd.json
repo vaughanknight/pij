@@ -1,0 +1,370 @@
+{
+  "dd": {
+    "schema": "builder/review"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Cross-model review — rs-boot-announce (135), phase 1, round 1 (post-merge)",
+        "reviewer": "pij-wild-xoxarle",
+        "model": "github-copilot/claude-opus-5 (effort high)",
+        "round": "1",
+        "date": "2026-09-05",
+        "plan": "../../plan.dd.json#meta",
+        "note": "VERDICT: material findings — 2 MAJOR, 3 MINOR, 2 NIT. Plan 135 is ALREADY MERGED (main 4b000ffb, no-ff merge of fef83b97; reviewed at main tip 5b40ed76, diffed against merge parent 59748c17). Both MAJOR findings are real and one of them means MAIN IS RED. f1: the golden fixture was relocated to crates/testkit/fixtures/ and the Rust half of AC4's shared-fixture citation was never updated, so three pij-daemon tests panic with NotFound on the merged tree — AC4 is false as stated and AC6's `cargo test --workspace green` is false on main. Reported early; the PM reproduced it, found the root cause (a `git add` whose file list named the already-moved path, aborting the whole add, with stderr sent to /dev/null — the composed `cargo test --workspace` then went green against a WORKING tree that differed from the COMMITTED one), and fixed it on the branch at 99269b90 by resolving the fixture through `pij_testkit::fixtures::read` so a future move is a compile error rather than a runtime NotFound. That fix was NOT on main when this record was written. f2 is a composition-seam defect that survives the merge: the register handler now overwrites a caller-asserted process identity with a pane-derived one, and when the harness-child walk fails it silently substitutes the PANE SHELL, which for a stable pane yields `binding: same` for a genuinely new harness process — the exact announce-suppression bug this plan exists to remove — while `proc_source`, the field that would expose it, has ZERO consumers anywhere. WHAT I DID NOT TAKE ON TRUST: I re-derived AC5's RED independently by extracting the merge parent with `git archive` into /tmp/pij-base-135, copying only the NEW test files and the fixture onto it, and running them — 12 of the new witnesses fail there, including both announce-count assertions and the u3 same-pane guard. I re-ran the daemon, store and extension suites myself. I probed the frame grammar empirically rather than by reading the regex. And I am my own live witness for AC1 and AC8: this reviewer seat is a `pij-rs spawn --harness omp` seat whose FIRST injected turn was announceText, and whose inbound peer messages arrived as `[pij-rs from pij-verbal-silverfish]` … `[/pij]`. Seven KNOWN-OPEN items from the dispatch packet consumed zero findings. READ-ONLY on code throughout; the only file written is this record. ADDENDUM (written after main advanced under this review): f1 is CLOSED on main at c46e2495 — aa697235 merged the testkit-helper fix, and I re-derived the green myself (4/4 daemon binding tests) rather than accepting it. AC4 and AC6 were correctly downgraded to unchecked by the PM and re-earned from `git show HEAD` on the merge target rather than from disk, which is the exact discipline whose absence caused the defect. The four remaining open items are f2 (MAJOR), f3, f4, f5 (MINOR) and n1, n2 (NIT); none of them were introduced or affected by the fix."
+      }
+    },
+    {
+      "name": "findings",
+      "value": [
+        {
+          "id": "f1",
+          "kind": "defect",
+          "severity": "MAJOR",
+          "state": "checked",
+          "address": "crates/daemon/src/http/tests.rs:445",
+          "finding": "MAIN IS RED, and the failure is in the very seam AC4 exists to protect. Commit c5069fe0 moved the golden fixture from docs/plans/135-rs-boot-announce/assets/contracts/register-response.json to crates/testkit/fixtures/register-response.json (a good move — the builder flow archives plan folders at post-flight and two live suites read this file at test time). Its commit message asserts \"AC4's property is preserved exactly: one file, both suites citing the same path.\" That assertion is false. The TypeScript half was updated (adapters/rust-runtime.test.ts:32 → `new URL(\"../../../../crates/testkit/fixtures/register-response.json\", import.meta.url)`); the Rust half was not (crates/daemon/src/http/tests.rs:445 still joins CARGO_MANIFEST_DIR with `../../docs/plans/135-rs-boot-announce/assets/contracts/register-response.json`). That directory now contains only README.md, so `std::fs::read_to_string(...).expect(\"read shared register response fixture\")` panics. THREE consequences, all against the plan's own promises: (1) AC4 is FALSE as stated — the two suites do not cite the same path, and the Rust one cites a path with no file behind it; (2) AC6's `cargo test --workspace green on the composed branch` is FALSE on the merged tree, and this is not a timing artifact — it is a deterministic ENOENT; (3) the same aborted stage left docs/plans/135-rs-boot-announce/assets/contracts/README.md still declaring \"Path both sides cite: docs/plans/135-rs-boot-announce/assets/contracts/register-response.json\", so the contract document points at nothing. The one piece of good news is the shape of the failure: `.expect()` makes it a hard panic, so it can never pass silently. PM root cause, supplied on refutation and worth recording because it generalises: the commit's `git add` file list named the OLD path, which no longer existed, so the ENTIRE add aborted — and `2>/dev/null` swallowed the error. tests.rs and the README were never staged. The composed `cargo test --workspace` then ran green against a working tree that was not the committed tree. FIXED on branch 135-rs-boot-announce at 99269b90, taking the structural option rather than the one-token one: the daemon test now resolves the fixture through `pij_testkit::fixtures::read(\"register-response.json\")`, so a future relocation is a COMPILE error. Not yet on main at the time of this record. ADDENDUM, re-derived by me on main after the fix landed rather than accepted from the PM's report: main is now c46e2495, carrying aa697235 (merge of 99269b90). crates/daemon/src/http/tests.rs:450 now reads `serde_json::from_str(&pij_testkit::fixtures::read(\"register-response.json\"))` — no relative path string survives — and `CARGO_BUILD_JOBS=4 cargo test -p pij-daemon --lib registration_binding` run by me on that tree returns `test result: ok. 4 passed; 0 failed`. The contract README now reads \"Path both sides cite: crates/testkit/fixtures/register-response.json\". Both halves of this finding are closed on main. Worth recording that the helper is strictly stronger than a corrected path: `pij_testkit::fixtures::read` resolves through the MANIFEST corpus, which re-hashes entries, so a future relocation is a compile error and a future edit-in-place is a hash failure — the path-string form had already failed once in exactly the silent way.",
+          "receipt": "Run by me at main 5b40ed76: `CARGO_BUILD_JOBS=4 cargo test -p pij-daemon --lib registration_binding` → `test result: FAILED. 1 passed; 3 failed; 0 ignored; 171 filtered out`, each failure `panicked at crates/daemon/src/http/tests.rs:447:48: read shared register response fixture: Os { code: 2, kind: NotFound, message: \"No such file or directory\" }` for registration_binding_{created,rebound,same}_matches_shared_fixture. `ls docs/plans/135-rs-boot-announce/assets/contracts/` → README.md only. `git log --diff-filter=A -- crates/testkit/fixtures/register-response.json` → c5069fe0. AFTER FIX, run by me at c46e2495: `cargo test -p pij-daemon --lib registration_binding` → 4 passed, 0 failed; `grep -rn register-response.json crates/ --include=*.rs` → only tests.rs:450 via the testkit helper."
+        },
+        {
+          "id": "f2",
+          "kind": "defect",
+          "severity": "MAJOR",
+          "state": "checked",
+          "address": "crates/daemon/src/http/mod.rs:452-470 + crates/tmux/src/lib.rs harness_process_from_snapshot",
+          "finding": "COMPOSITION SEAM u3→u1: a silent pane-shell fallback can re-create the exact bug this plan exists to remove, and the field that would expose it is read by nobody. Three facts compose into one defect. (1) `register` now OVERWRITES the caller's asserted identity: whenever `claim.pane` is present and `claim.harness` parses, it sets `request.claim.pid` and `request.claim.proc_start` from `pane_harness_identity(...)`, discarding what the caller asserted. For an adopt that is exactly right — pane evidence must beat an assertion, that is AC7. For a SELF-REGISTERING harness (omp/pi, whose extension knows its own pid exactly, and sends it) it is a strict downgrade of evidence quality. (2) When the descendant walk finds no harness child, `harness_process_from_snapshot` returns `Some(root)` — the PANE PROCESS — and `pane_harness_identity` labels it `ProcSource::Pane`. (3) `proc_source` has ZERO consumers: it appears only in crates/daemon/src/http/{mod.rs,identity.rs} and their tests. It is not in the TypeScript `RustSeatDescriptor`, not in `pij-rs state`, not in `pij list`. So a seat bound to a pane shell is INDISTINGUISHABLE from a correctly bound one at every operator surface. Compose them: for a pane whose root process is stable (an ordinary login shell) and whose harness child is not recognised, every registration writes the SAME shell identity, so `previous_proc == descriptor.proc`, so `binding: same`, so `fresh = false`, so NO ANNOUNCE for a genuinely new harness process. That is plan 135's own defect, reintroduced through the u3 seam and invisible while it happens. REACHABILITY, which is the part I chased rather than asserted: `harness_command` accepts an interpreter only when the executable basename is exactly `node` or `bun`. On THIS machine the real basename executing the omp package is `bun.exe` — eight live processes of the form `/Users/jordanknight/.npm-global/lib/node_modules/bun/bin/bun.exe /Users/jordanknight/.npm-global/lib/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js …`. So the `script.contains(package) && name in {cli,index}` branch CANNOT fire against the launcher this machine actually uses; recognition survives today only by the other branch, because the npm shim `~/.npm-global/bin/omp` gives `file_stem == \"omp\"`. The package-path branch is exercised only by synthetic strings in the unit test (`node /opt/node_modules/@earendil-works/pi-coding-agent/dist/cli.js`) — a fixture authored by its own consumer, which is precisely the trap crates/testkit/fixtures/uds/README.md warns about in this repo's own words. SMALLEST FIX, in the order I would take them: (a) when `pane_harness_identity` returns `ProcSource::Pane` AND the caller asserted its own pid/proc_start, KEEP THE CLAIM rather than overwriting it with the pane shell — adopt carries no claim, so AC7 is untouched, and a self-registering harness stops being demoted to its shell; (b) give `proc_source` a consumer — surface it in `pij-rs state`/`pij list` so a pane-bound seat is visible instead of silent; (c) widen the interpreter allowlist beyond exact `node`/`bun`, or match the package path without requiring a recognised interpreter at all.",
+          "receipt": "grep for `proc_source|procSource` across all .rs/.ts excluding node_modules → only crates/daemon/src/http/{mod.rs:442,452,466,507, identity.rs:395,559} and identity_tests.rs:{262,314,376}; no TS occurrence. `harness_command` interpreter test is `executable != \"node\" && executable != \"bun\" → false` (crates/tmux/src/lib.rs). Live: `ps -Awwo pid=,ppid=,command= | grep -F \"@oh-my-pi/pi-coding-agent\"` → 8 rows whose argv[0] basename is `bun.exe`. `file ~/.npm-global/bin/omp` → `a /usr/bin/env bun script text executable`, which is why the shim path matches today. My own seat: `pij-rs state pij-wild-xoxarle` → pid 92715, and `ps` shows 92715 = `bun /Users/jordanknight/.npm-global/bin/omp …` with pane root 92699 = `pij-rs __spawn-child` — so the harness-child branch does work for the current launcher, which is exactly why the fallback is easy to miss."
+        },
+        {
+          "id": "f3",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "checked",
+          "address": "crates/transport/src/uds.rs discover(), the pane-fallback loop",
+          "finding": "A one-token regression turned 'skip a bad directory entry' into 'abandon discovery'. The pre-fix scan was `fs::read_dir(...).ok()?.filter_map(std::result::Result::ok).map(|e| e.path())` — an errored DirEntry was SKIPPED and the scan continued. The new loop opens with `let path = entry.ok()?.path();`, and that `?` is inside `discover`, which returns `Option<Endpoint>` — so a single errored DirEntry now returns None from the WHOLE function, discarding every candidate that had not yet been examined, including ones already known to be live. The consequence is the failure mode this plan is trying to eliminate: discovery reports 'no endpoint', delivery falls back to pointer-drain, and nothing says why. This is a genuinely rare input (readdir on a directory whose entries are churning), but the cost of the correct form is one line and the current form is strictly worse than what it replaced. SMALLEST FIX: `let Ok(entry) = entry else { continue; };`. Worth stating that everything ELSE about this function's rewrite is an improvement, and I checked the parts I expected to break: the local-vs-UTC timebase split is correct and deliberate (descriptor `proc_start` is LOCAL because `ProcLiveness` runs `ps` without TZ; Claude's recorded `procStart` is UTC; the code observes each in its own timebase and `parse_process_start` explicitly refuses to convert), and the ambiguity rule — two live records matching one pane returns None rather than picking one — is the right call and is tested three ways.",
+          "receipt": "git diff 4b000ffb^1 4b000ffb -- crates/transport/src/uds.rs: removed line `.filter_map(std::result::Result::ok)`, added `let path = entry.ok()?.path();`. `cargo test -p pij-store --test store_registry` and the daemon suite exercise no readdir-error path; there is no witness for this branch."
+        },
+        {
+          "id": "f4",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "checked",
+          "address": "crates/daemon/src/http/identity.rs adopt (scope note for prime)",
+          "finding": "AC7's promise is TRUE and the reported problem is STILL LIVE — because the fix is not retroactive and nothing sweeps. The plan says so explicitly ('Existing rows are not rewritten — a re-adopt fixes a seat'), so this is not a broken promise; it is the gap between 'the unit is done' and 'the incident is closed', and it is worth a row because the live-proof reads as if the fleet were remediated ('18 of 19 live Claude seats bound to their pane's shell … fixed and measured end to end' — what was measured was one NEW adopt). I audited the actual fleet on this machine at main tip: of 52 registered Claude seats, 31 have a dead pid, 3 are bound to a real `claude` process, and 18 ARE STILL BOUND TO A SHELL. All 18 have a live `claude` descendant under the recorded pid right now, so all 18 would bind correctly on a re-adopt — and nothing performs one. Compounding it, and this is the same root as f2: there is no way for an operator to ASK which seats are shell-bound, because `proc_source` has no consumer and the descriptor exposes only a pid. The observable today is indirect (a delivery that lands via pointer-drain instead of claude-uds). Naming this for prime rather than expanding the review: the missing piece is a re-adopt sweep, or a liveness/adopt path that notices the recorded pid is not the harness process and rebinds.",
+          "receipt": "Computed by me from `pij-rs list --json` joined against `ps -Awwo pid=,ppid=,command=` at main 5b40ed76: 52 claude seats; pid runs claude = 3; pid is a shell = 18; pid dead = 31. Descendant walk over the same ps snapshot: 18 of 18 shell-bound seats have a live `claude` descendant (e.g. pij-anxious-toucan pid 92181 `-zsh` → child 97554 `claude --dangerously-skip-permissions`; pij-capitalist-boa 86295 → 90167; pij-equal-sparrow 73088 → 93161)."
+        },
+        {
+          "id": "f5",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "checked",
+          "address": ".pi/extensions/pij/core/message.ts:17 parseFrame",
+          "finding": "AC8's second half is a property of code nothing calls. The claim is that omp/pi seats 'render the rs frame AND still PARSE the legacy `[pij from <id>] …` head'. The rendering half is true and load-bearing — `frame()` has two production callers (core/session.ts:593 on inbound inject, core/daemon/router.ts:41 in injectionText). The parsing half is not: `parseFrame` has ZERO production callers anywhere in the repository. Its only non-definition occurrences are in core/message.test.ts. That is structurally unsurprising — the extension receives peer messages as `message.pushed` daemon events carrying `from` and `body` as separate fields, and frames on INJECT, so it never has a framed string to parse — but it means the legacy-parse compatibility AC8 promises is unreachable at runtime and its regression surface is a test asserting against an unused function. Not false, but its operational value is nil, and it will rot. Either wire it to a real inbound path or say plainly in the plan that it is a library affordance retained for the migration reader, so a later reader does not infer that live legacy frames are being handled.",
+          "receipt": "grep -rn 'parseFrame' over all .ts/.js excluding node_modules and *.test.ts → exactly one hit: `.pi/extensions/pij/core/message.ts:17` (the definition). grep for `frame(` → production callers core/session.ts:593, core/daemon/router.ts:41."
+        },
+        {
+          "id": "n1",
+          "kind": "question",
+          "severity": "NIT",
+          "state": "checked",
+          "address": "crates/tmux/src/lib.rs harness_process_from_snapshot",
+          "finding": "Two halves of this plan disagree about what to do with ambiguity, and the inconsistency is worth naming even though the reachable risk is small. In crates/transport/src/uds.rs the authors wrote the rule down explicitly — 'Multiple live owners are ambiguous, never decided by directory or lexical order' — and made two live candidates return None, with three tests pinning it including one that renames a file to prove sort order cannot resolve it. In crates/tmux/src/lib.rs the same class of ambiguity IS resolved by enumeration order: two harness descendants at the SAME breadth-first depth are decided by whichever `ps -A` printed first, silently. Breadth-first ordering does most of the work (a nested harness is deeper, so the direct child wins, and that IS tested), so I could not construct a realistic same-depth case for the harnesses in play — which is why this is a NIT and not a defect. But if the uds rule is doctrine, the tmux walk should either refuse a same-depth tie or state in a comment why order is acceptable here.",
+          "receipt": "uds.rs comment + `if candidate.is_some() { return None; }` and test `two_live_pane_records_require_exact_identity_not_sort_order`; tmux/lib.rs `for (proc, ppid, command) in processes { … return Some(*proc) }` with no tie check, test `descendant_walk_is_breadth_first_and_falls_back_only_to_the_pane` covering depth but not a same-depth tie."
+        },
+        {
+          "id": "n2",
+          "kind": "question",
+          "severity": "NIT",
+          "state": "checked",
+          "address": "crates/core/src/ports.rs PutBinding + crates/daemon/src/http/mod.rs binding derivation",
+          "finding": "`PutBinding.previous_proc: None` carries two different facts and the handler collapses them. ports.rs documents the overload honestly ('`None` can also mean an unbound row'), and `inserted` disambiguates the created case. What is left undisambiguated: a row that EXISTED with no process identity, re-registered by a claim that also carries no process identity, yields `previous_proc (None) == descriptor.proc (None)` → `binding: same` → announce suppressed for what may well be a new process. Unreachable through the extension, which always sends pid and proc_start, and unreachable through the pane path, which now always resolves an identity or refuses; reachable in principle through a paneless `pij register` with no pid. Recorded rather than raised because the correct behaviour is arguable — a registration that declines to identify its process has arguably forfeited the right to be called fresh — but the code should say which reading it intends.",
+          "receipt": "crates/store/src/registry.rs put_reporting builds `PutBinding { inserted: previous.is_none(), previous_proc: … }`; crates/daemon/src/http/mod.rs derives `if report.inserted { Created } else if report.previous_proc != descriptor.proc { Rebound } else { Same }`. Store test `put_reporting_distinguishes_created_placeholder_rebound_and_same` covers unbound→bound (rebound) but not unbound→unbound."
+        },
+        {
+          "id": "i3a",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "crates/transport/src/uds.rs discover / live_endpoint",
+          "finding": "LEAST-CONFIDENT AREA (a) — uds discovery. VERDICT: one MINOR defect (f3), otherwise sound, and the part the authors were most worried about is the part they got right. The question was whether the live-record preference can now pick NOTHING although a usable record exists, or still pick a stale one. Stale: no — both paths gate on `live_endpoint`, which re-observes the process and refuses on mismatch, and the exact-identity path additionally requires `record.pid == proc.pid` and a LOCAL-timebase match against the descriptor. Nothing: yes, in exactly one input class, and that is f3 (an errored DirEntry aborts the scan). Everything else I probed came back clean. Specifically the timebase split, which is the subtlest thing in this diff and is CORRECT: the descriptor's `proc_start` is local wall time because `ProcLiveness` runs `ps -o lstart=` without TZ, while Claude's recorded `procStart` is UTC; the code observes each in its own timebase (`observe_start(pid, false)` vs `observe_start(record.pid, true)` with `TZ=UTC`), and `parse_process_start` is documented and tested to encode the supplied fields WITHOUT conversion. On a UTC-offset machine like this one a naive single-timebase comparison would have failed silently, and there is a dedicated test (`supplied_wall_time_is_encoded_without_timezone_conversion`) pinning the non-conversion. Also checked and clean: exact-identity failure falls through to the pane scan rather than terminating; the ambiguity rule returns None rather than guessing.",
+          "receipt": "Read of uds.rs at 4b000ffb plus crates/core/src/model.rs parse_process_start and crates/harnesses/src/proc.rs (which now re-exports it). Tests `discovery_prefers_live_identity_over_first_dead_pane_record`, `recycled_records_and_stale_exact_bindings_are_rejected`, `two_live_pane_records_require_exact_identity_not_sort_order`."
+        },
+        {
+          "id": "i3b",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "crates/tmux/src/lib.rs harness_process",
+          "finding": "LEAST-CONFIDENT AREA (b) — the harness tree walk. VERDICT: the three sub-questions asked all answer well; the defect is elsewhere in the same function and is f2. Two candidate descendants: breadth-first, so the direct child beats a nested one, and that is tested — a same-DEPTH tie falls to enumeration order, which is n1. A re-parented child: the walk is by ppid over a single snapshot with a `parents.contains` guard, so a cycle cannot hang it and a child re-parented to init simply is not found (fallback). A harness that died between registration and the walk: handled explicitly and well — `harness_process` re-observes the SELECTED pid with a second `ps` and returns None unless the start time still matches, which closes the TOCTOU that would otherwise let a recycled pid through. And the question I was asked to check specifically — is `proc_start` captured from the child or accidentally from the shell — is captured from the CHILD: `selected` is the child's own `ProcIdentity`, parsed from the child's own `ps` row by `process_row`, and re-verified against the child's pid. I verified that live on myself: my seat's registered identity is pid 92715 / 20260905112934, which is `bun …/bin/omp`, not the pane root 92699 (`pij-rs __spawn-child`). The residual risk is not in the walk but in the RECOGNISER and in what happens when it fails silently — f2.",
+          "receipt": "`pij-rs state pij-wild-xoxarle` → `\"pid\":92715,\"procStart\":20260905112934`; `ps` shows 92715 = `bun /Users/jordanknight/.npm-global/bin/omp --auto-approve …`, ppid 92699 = `…/pij-rs __spawn-child … omp …`. Tests `pane_shell_fixture_selects_claude_child`, `descendant_walk_is_breadth_first_and_falls_back_only_to_the_pane`, `process_snapshot_uses_canonical_local_start_encoding`."
+        },
+        {
+          "id": "i3c",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": ".pi/extensions/pij/core/session.ts:213 + adapters/rust-runtime.ts:108-112",
+          "finding": "LEAST-CONFIDENT AREA (c) — the `same` derivation. VERDICT: checked, no defect found, and the specific sub-question has a defensible answer. `fresh = input.fresh ?? (liveDescriptor === null || wasDissolved)` means a PRESENT binding fully overrides the local inference, including when the local registry row is MISSING. Suppressing the announce in that case is correct, and for a sharper reason than 'the daemon is authoritative': `same` means the daemon's stored row already carries THIS EXACT pid AND proc_start, which can only be true if this same process incarnation already registered — i.e. a reload, whose announce has already fired. A missing local row in that situation means the extension's roster view is incomplete, not that the process is new. The ordering also holds: the roster is seeded from `seats` BEFORE `session.boot` and the accepted descriptor is seeded after, so `liveDescriptor` is a genuine pre-boot view and the override is not shadowing a value it just wrote. Is `same` ever wrong for a genuinely NEW process? Not through this derivation — a new process has a new (pid, proc_start) pair, so `previous_proc != descriptor.proc` and the answer is `rebound`. It can be wrong only if the identity WRITTEN is not the harness's, which is f2's failure mode, not this one's. `undefined` correctly preserves the old-daemon inference (risk r2) and is tested.",
+          "receipt": "Re-ran `npx vitest run adapters/rust-runtime.test.ts core/message.test.ts core/session.test.ts` at main → 3 files, 100 tests passed. Base-tree run (merge parent + new tests only) shows `binding=same, pre-existing row=false injects announceText 0 times` FAILING with an announce present, i.e. the witness is load-bearing on exactly this branch."
+        },
+        {
+          "id": "i3d",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": ".pi/extensions/pij/adapters/rust-runtime.ts:289-294",
+          "finding": "LEAST-CONFIDENT AREA (d) — the cross-harness samePane guard. VERDICT: checked, no defect found; both halves of the question answer cleanly. Does harness equality use a value that is reliably present? Yes — `input.runtimeBin` is typed `\"pi\" | \"omp\"` and is NON-optional on `RustBootInput` (rust-runtime.ts:32), so it can never be undefined; and it is the SAME value the seat registers as its harness (`registrationFor` sets `harness: input.runtimeBin`, line 348). The comparison is therefore within one domain rather than across two vocabularies, which is the usual way this kind of guard rots. Can a legitimate same-harness reuse be refused? No — an omp seat's stored `harness` is always `\"omp\"` because the extension itself wrote it, and a `pij-rs spawn --harness omp` row is likewise `\"omp\"`; the predicate matches. The guard only excludes rows whose harness genuinely differs, which is the intent. One thing I checked and want on the record because it looks like a hole and is not: the `sameProcess` fallback immediately below has NO harness guard, but it keys on `(process.pid, procStart)` of the CURRENT process, which no other seat can hold, so it is not a second hijack path.",
+          "receipt": "rust-runtime.ts:32 `readonly runtimeBin: \"pi\" | \"omp\";`, :294 `seat.pane === input.paneId && seat.harness === input.runtimeBin`, :348 `harness: input.runtimeBin`. Witness `does not overwrite a claude seat when omp boots in the same pane` FAILS on the merge-parent tree (`expected 'pij-claude-incumbent' not to be 'pij-claude-incumbent'`), so the guard is genuinely load-bearing."
+        },
+        {
+          "id": "i3e",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": ".pi/extensions/pij/core/message.ts FRAME_RE / LEGACY_FRAME_RE",
+          "finding": "LEAST-CONFIDENT AREA (e) — the frame parser. VERDICT: checked, no defect found, and I probed it by execution rather than by reading the regex. Body round-trip is CLEAN for every hostile class asked about and several more: a body containing a literal `[/pij]`, a body ENDING in `[/pij]`, a body that is nothing but `[/pij]`, embedded CRLF, trailing space, trailing newline, empty body, and a body that contains a complete forged frame. The greedy `([\\s\\S]*)` is what saves the embedded-tail cases — it binds to the LAST `\\n[/pij]` before end-of-input, so the outer frame always wins and an inner forged head never captures `from`. The second half of the question — can a MALFORMED frame be parsed as a valid one — answers in the safe direction: mutating a complete frame (append `\\n`, append a space, normalise to CRLF) yields NULL, not a misparse, because JavaScript's `$` without the `m` flag anchors strictly at end-of-input. So the failure mode is refusal, never silent corruption. Two observations that are not defects: `([^\\]]+)` permits a newline inside the sender id, which is inherited from the legacy pattern and unreachable for real ids; and the Rust framer can emit a machine-qualified head (`[pij-rs from <id>@<machine>]`) that the TS framer never produces, an asymmetry that also predates this plan and that `parseFrame` handles by capturing the whole `id@machine` string (pinned by a test).",
+          "receipt": "Executed the two regexes and `frame()` verbatim against 9 body classes and 5 whole-frame mutations. Round-trip true for all 9 bodies; `frame+\\n`, `frame+space`, CRLF-normalised frame, and head-without-tail all → null; legacy `[pij from pij-x] hello` still parses; forged inner frame yields from='real'."
+        },
+        {
+          "id": "i3f",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "crates/store/src/registry.rs put_reporting",
+          "finding": "LEAST-CONFIDENT AREA (f) — atomicity of the reported binding. VERDICT: checked, no defect found; this is the best-defended part of the diff. The pre-read (`SELECT pid, proc_start FROM seats WHERE id = ?1`) is issued INSIDE the transaction opened by `begin_write`, which is `pool.begin_with(\"BEGIN IMMEDIATE\")` — so the write lock is held from before the read until commit, and no other writer can interleave between the observation and the write it describes. There is therefore no path where the reported binding and the committed row disagree: they are decided under one lock and committed together, and a rollback loses both. The half-identity guard was factored out into `row_proc` and reused rather than reimplemented, so the pre-read refuses a pid-without-proc_start row exactly as `row_to_descriptor` always did — a detail that matters, because a silently-`None` half identity would have read as 'unbound' and produced a wrong `rebound`. And the property is tested against a real SQLite file with two independent pools racing, asserting that the second writer observes the first writer's COMMITTED proc, not a pre-race snapshot.",
+          "receipt": "crates/store/src/migrate.rs:181-188 `begin_write` = `BEGIN IMMEDIATE`. `CARGO_BUILD_JOBS=4 cargo test -p pij-store --test store_registry` → 5 passed, including `concurrent_put_reporting_observes_the_previous_committed_writer` (multi_thread, 2 workers) and `put_reporting_distinguishes_created_placeholder_rebound_and_same`."
+        },
+        {
+          "id": "s1",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "SEAM u1 binding → u2 fresh derivation",
+          "finding": "SEAM 1: CLEAN. The daemon's three-valued `binding` crosses into the extension without loss or widening. The wire type is additive and optional on both sides (`#[serde(default, skip_serializing_if = \"Option::is_none\")]` in Rust, `binding?: \"created\" | \"rebound\" | \"same\"` in daemon-wire.ts), and the derivation is the one the contract froze — `accepted.binding === undefined ? undefined : accepted.binding !== \"same\"` — so `created` and `rebound` both announce, `same` never does, and absent preserves the old inference. I checked the one thing that could have broken quietly at this seam: the response is a `#[serde(flatten)]` wrapper that adds `binding` AND `proc_source` to the descriptor, and `proc_source` is NOT declared on the TypeScript `RustSeatDescriptor`. The TS client does no runtime validation (`this.post<RustSeatDescriptor>` is a cast), so the extra field is ignored rather than rejected — no break, but the TS type is now an incomplete description of the wire, and the golden-fixture test cannot catch it because the fixture entries carry `pane: null`, which is exactly the case where `proc_source` is skipped.",
+          "receipt": "crates/daemon/src/http/mod.rs RegistrationResponse; .pi/extensions/pij/core/daemon-wire.ts:60; adapters/daemon-http.ts:140-141 `register(claim) { return this.post<RustSeatDescriptor>(\"/v1/register\", claim); }`. Fixture entries have `\"pane\": null`, so `assert_registration_binding_fixture` never exercises the pane override."
+        },
+        {
+          "id": "s2",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "SEAM u3 proc identity → u1 write path (put_reporting)",
+          "finding": "SEAM 2: the one seam that carries a real defect, and it is f2. The question asked was whether `put_reporting` still reports the TRUTH now that the recorded proc is the harness child rather than the pane shell. Mechanically, yes: the register handler mutates `request.claim` BEFORE `RegistrationService` builds the descriptor, and `put_reporting` compares the stored proc against that same descriptor, so both sides of the comparison live in one vocabulary and the report describes what was written. I also checked the MIGRATION direction, which nobody named: rows written before u3 hold PANE SHELL identities, so the first registration after the upgrade compares shell-against-harness-child and returns `rebound` — one extra announce per seat across the cutover. That is benign and arguably correct (it IS a new binding). The dangerous direction is the reverse — stored shell identity plus a walk that falls back to the shell again, yielding `same` for a new process — and that is f2. So: the report is truthful about what it wrote; the defect is in WHAT gets written when discovery fails, and in nothing observing that it failed.",
+          "receipt": "crates/daemon/src/http/mod.rs:452-470 (claim mutation) → crates/daemon/src/registration.rs:252-255 (`put_reporting(descriptor.clone())`) → crates/store/src/registry.rs (pre-read under BEGIN IMMEDIATE). Store test `put_reporting_distinguishes_created_placeholder_rebound_and_same` covers unbound→bound→same→recycled-pid."
+        },
+        {
+          "id": "s3",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "SEAM u3 samePane guard → u2 announce path (both in adapters/rust-runtime.ts)",
+          "finding": "SEAM 3: CLEAN — the one the PM flagged as riskiest because two units edited the SAME FILE sequentially, and it is the one that composed best. The two edits are in different methods with no shared state: u2 added the `fresh` argument inside `boot` (line 108-112), u3 added the harness predicate inside `chooseIdentity` (line 289-294). Their interaction is a single ordering fact, and it is the right one: `chooseIdentity` runs FIRST and decides WHICH id is claimed; `register` then reports the binding for THAT id; `boot` derives freshness from it. So when the guard correctly refuses to reuse a claude seat's row, a NEW id is minted, the daemon answers `created`, and the announce fires — the two units reinforce rather than fight. I checked the failure direction too: if the guard were ever wrong and DID reuse a foreign row, the binding would be `rebound` (the proc differs) and the seat would still announce, so a guard bug degrades to a spurious announce, never to silence. Both witnesses are red on the pre-fix tree, in the same run, which is the strongest available evidence that the composed behaviour is what is under test rather than one unit's.",
+          "receipt": "Base-tree run at merge parent 59748c17 fails BOTH `does not overwrite a claude seat when omp boots in the same pane` (u3) and `binding=rebound, pre-existing row=true injects announceText 1 times` (u2) in one invocation; both pass at main."
+        },
+        {
+          "id": "s4",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "SEAM u4 frame() → every consumer of frame()/parseFrame()",
+          "finding": "SEAM 4: CLEAN on the rendering side, with a dead-code observation on the parsing side (f5). I enumerated the consumers rather than assuming them. `frame()` has exactly two production callers — core/session.ts:593 (in-session inbound inject) and core/daemon/router.ts:41 (`injectionText`, the legacy TS daemon router) — and every test expectation that pinned the old rendered string moved with them: session.test.ts (1 assertion), router.test.ts (2), typing-guard-contract.test.ts (1), daemon.test.ts (all 90 changed lines are rendered-frame expectations, reformatted). That is the AC6 exception, and it is genuinely ENUMERABLE rather than approximate: no behavioural assertion changed in any of the four files. Byte-identity with the daemon is real and pinned to its source: `frame(from, body)` produces `[pij-rs from <id>]\\n<body>\\n[/pij]`, which is exactly `crates/core/src/framing.rs::frame_message` with `from_machine = None` (RUST_HEAD + id + \"]\\n\" + payload + '\\n' + TAIL), and message.test.ts:18-19 cites that function by name in a comment. `parseFrame` has no production consumer at all — f5.",
+          "receipt": "grep for `frame(` and `parseFrame` across .pi/extensions/pij excluding tests; git diff of the four test files at 4b000ffb^1..4b000ffb showing only rendered-frame strings changed; crates/core/src/framing.rs:5-30 read directly. framing.rs itself is NOT in this plan's diff — u4 moved the TS side to meet an existing Rust constant."
+        },
+        {
+          "id": "ac1",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "plan.dd.md#acceptance_criteria/AC1",
+          "finding": "AC1 — spawned omp seat announces on first boot. VERDICT: TRUE, and I am my own independent witness rather than a reader of the receipt. This reviewer seat, `pij-wild-xoxarle`, was created by `pij-rs spawn --harness omp` against the current daemon, and its FIRST injected user turn was announceText: 'You are pij session pij-wild-xoxarle (PEER). This is context only — no action is required. …'. That is the plan's headline gesture, observed from inside, on the merged tree, by a process that had no stake in the result. The PM's recorded proof (pij-used-tarsier, exactly one announce in its own jsonl, against a control four hours earlier with no announce and no jsonl at all) is consistent with it.",
+          "receipt": "First user turn of this session's own transcript. Corroborated by assets/live-proof.md § AC1."
+        },
+        {
+          "id": "ac2",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "plan.dd.md#acceptance_criteria/AC2",
+          "finding": "AC2 — hand-started seat with a reused id announces on a new process. VERDICT: TRUE. I did not re-run the live gesture (it would require spawning, which my fence forbids), so I judged the MECHANISM it depends on and re-derived that instead: the pre-minted/reused row must report `rebound`, not `created` and not `same`. The store test proves exactly that transition against a real SQLite file — an unbound pre-minted row followed by a real process reports `inserted: false, previous_proc: None`, which the handler maps to `rebound` because `None != Some(identity)` — and the extension test proves `rebound` announces exactly once. That is impl-guide risk r3, which is the specific way this AC could have been green-but-broken, and it is closed on both sides. The live receipt (pij-troubled-wildebeest, dead pid 66036 → 62414, one announce in the new jsonl) is consistent.",
+          "receipt": "`cargo test -p pij-store --test store_registry` → `put_reporting_distinguishes_created_placeholder_rebound_and_same` passes; rust-runtime.test.ts `binding=rebound … injects announceText 1 times` passes at main and FAILS at the merge parent."
+        },
+        {
+          "id": "ac3",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "plan.dd.md#acceptance_criteria/AC3",
+          "finding": "AC3 — no double announce on /new, /fork or reload. VERDICT: TRUE as amended, and the amendment is the honest kind. The original wording predicted a mechanism ('register returns binding=same for the reload') that the live run falsified: /new and /reload cause NO re-registration at all in the omp flow, so no second `binding` is ever requested. The PROPERTY the AC exists to protect — exactly one announce per new session id — is what was proven live, and the `same` path is proven separately at the wire and in unit witnesses. Amending a claim to match an observation, and recording the falsified prediction next to it, is the correct move; I would have flagged the reverse. I verified the unit half rather than taking it: rust-runtime.test.ts asserts announce counts per reason, including 'announces a rebound seat once and never again on same-binding reload' and 'announces the new session id once on new/fork, not again on reload', and all four of those assertions FAIL on the merge-parent tree.",
+          "receipt": "assets/live-proof.md § AC3 (spine shows one `seat.put`, seq 7811, across both gestures). Base-tree run: the reload/new/fork announce-count witnesses all fail at 59748c17; all pass at main."
+        },
+        {
+          "id": "ac4",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "checked",
+          "address": "plan.dd.md#acceptance_criteria/AC4",
+          "finding": "AC4 — register contract is additive and shared. VERDICT: FALSE ON MAIN as stated; the additive half is true, the shared half is not. Additive: verified — `binding` is `#[serde(default, skip_serializing_if = \"Option::is_none\")]`, nothing is renamed or removed, and there is a dedicated round-trip test (`registration_binding_absent_preserves_descriptor_shape`) proving an old-shaped body deserialises and re-serialises byte-identically. Shared: the AC requires that both suites 'cite the same file path in their source', and on main they cite DIFFERENT paths, one of which has no file behind it — see f1. The AC text also still names the pre-relocation path, so it will need rewording even after the code fix lands. What IS true and worth recording: neither suite RESTATES the fixture. The Rust side reads it from disk and compares parsed `serde_json::Value` (per the README's key-order rule); the TS side reads it with `readFileSync` and `JSON.parse` and feeds the entries to its fake client. So the anti-pattern the AC was written to prevent — two contracts wearing one name — was genuinely avoided; what broke was the path, not the discipline. Fixed on branch at 99269b90 via `pij_testkit::fixtures::read`, which is strictly better than the path string because it fails at COMPILE time. ADDENDUM: CLOSED on main at c46e2495. The Rust suite now resolves the fixture through `pij_testkit::fixtures::read(\"register-response.json\")` and the TS suite reads the same file by relative URL, so both halves cite one artifact again; I re-ran the daemon witnesses myself (4 passed) rather than taking the report. The AC's own TEXT still names the pre-relocation plan-folder path and should be re-worded to crates/testkit/fixtures/register-response.json, otherwise the next reader re-discovers a path that has not existed since c5069fe0.",
+          "receipt": "crates/daemon/src/http/tests.rs:443-452 (reads + `serde_json::from_str` + `assert_eq!(accepted.data.as_ref(), Some(expected))`); adapters/rust-runtime.test.ts:30-35 (`readFileSync` + `JSON.parse`). Failing run quoted in f1. `shasum -a 256 crates/testkit/fixtures/register-response.json` = 52a9f41c5e76432bf67430c1b3b274219967b9966589868ce36c2e2a93f4f139, matching MANIFEST.toml."
+        },
+        {
+          "id": "ac5",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "plan.dd.md#acceptance_criteria/AC5",
+          "finding": "AC5 — the witness was red before it was green. VERDICT: TRUE, and this is the receipt I re-derived most aggressively because the packet told me to disbelieve it. I did not read the pasted RED excerpts. I extracted the merge parent with `git archive 59748c17 | tar -x -C /tmp/pij-base-135`, symlinked node_modules, copied ONLY the new test files and the fixture onto that pre-fix source, and ran them. Twelve witnesses fail there, and they fail for the RIGHT reasons rather than by exploding on a missing import: `binding=rebound, pre-existing row=true injects announceText 1 times` gets `[]` (no announce — the plan's bug, reproduced); `binding=same, pre-existing row=false injects announceText 0 times` gets an announce it should not have; `does not overwrite a claude seat when omp boots in the same pane` gets `expected 'pij-claude-incumbent' not to be 'pij-claude-incumbent'`; and the whole frame family fails with `expected '[pij from pij-a] hello' to be '[pij-rs from pij-a]\\nhello\\n[/pij]'`, including the announceText witness `describes the frame peers actually arrive in, not the legacy one`. Every unit's witness is genuinely load-bearing on its own change.",
+          "receipt": "`git archive 4b000ffb^1 | tar -x -C /tmp/pij-base-135`; base commit 59748c17. `cd /tmp/pij-base-135 && VITEST_MAX_WORKERS=4 npx vitest run .pi/extensions/pij/adapters/rust-runtime.test.ts .pi/extensions/pij/core/message.test.ts` → 12 failures listed above. Same two files at main → 48 tests, 0 failures."
+        },
+        {
+          "id": "ac6",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "checked",
+          "address": "plan.dd.md#acceptance_criteria/AC6",
+          "finding": "AC6 — legacy path untouched and full gates green. VERDICT: the FENCE half is TRUE and well executed; the GATES half is FALSE on the merged tree. Fence: the amended intent was that session.test.ts and router.test.ts change ONLY where AC8 forces a rendered-frame expectation, enumerably. I verified that by reading every changed line in all four affected test files: session.test.ts changes exactly one assertion (an inject text), router.test.ts two, typing-guard-contract.test.ts one, daemon.test.ts entirely rendered-frame expectations reformatted into multi-line blocks. Not one behavioural assertion moved. That is a genuinely enumerable exception and it is honoured. Gates: `cargo test --workspace` cannot have been green on the tree that was merged, because three pij-daemon tests fail deterministically on it (f1). This is NOT one of the enumerated load artifacts — it is an ENOENT, identical on every run. The honest statement of AC6 today is: fence held, gate claim was made against a working tree that was not the committed tree. ADDENDUM: the gate half is now re-earnable on main. c46e2495 also removed an UNRELATED red signal the PM flagged — an untracked machine-local .claude/settings.local.json that biome was linting and that was invisible in every worktree. I re-ran the specific witnesses this plan touches on the fixed tree (daemon binding 4/4, store registry 5/5, extension rust-runtime + message + session 100/100) rather than re-running the whole workspace, which the packet reserves to the PM. The finding stands as a record of what the merged tree was, not of what main is now.",
+          "receipt": "`git diff 4b000ffb^1 4b000ffb -- <the four test files>` read in full; the only changed strings are frame renderings. Failing daemon run quoted in f1. Per the packet, the three known timing-sensitive tests (core/cli.test.ts, core/cli.integration.test.ts, pij-sidecars direct_child_failure…) were treated as known-open and consumed no findings."
+        },
+        {
+          "id": "ac7",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "plan.dd.md#acceptance_criteria/AC7",
+          "finding": "AC7 — a Claude seat adopted by pane binds to its claude process. VERDICT: TRUE for new adopts; see f4 for what it does not do. The mechanism is real and I traced it end to end: `adopt` now resolves `pane_harness_identity` instead of pairing the pane pid with a liveness-observed start, `harness_process` walks to the claude child and re-verifies its start time, and the resulting identity is what `/tmp/cc-socks/<pid>.sock` is keyed on — which is precisely why discovery used to miss. The PM's live evidence is unusually credible because of what it admits: the first attempt was thrown out as an INVALID EXPERIMENT (claude was launched as the pane command, so the pane pid was already the claude pid and the test could not have failed), and it was redone with a real shell layer. That self-correction is worth more than the pass. I confirmed the same binding behaviour live for the omp harness on myself (i3b). What AC7 does not claim, and correctly so, is retroactivity — and the fleet is still full of pre-fix rows (f4).",
+          "receipt": "crates/daemon/src/http/identity.rs:392-427; assets/live-proof.md § AC7 (pane %3568, shell 90801, claude child 93017, adopt returned pid 93017, `/tmp/cc-socks/93017.sock` present, delivery `injected-to-transport` via `claude-uds`, no pointer-drain). Note plan.dd.json still records AC7 and AC8 as `state: unchecked` although both are proven in live-proof.md — a bookkeeping lag, not a defect."
+        },
+        {
+          "id": "ac8",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "plan.dd.md#acceptance_criteria/AC8",
+          "finding": "AC8 — omp/pi seats render the rs frame and still parse the legacy one. VERDICT: TRUE, with the parsing half qualified by f5. Rendering: `frame()` emits `[pij-rs from <id>]\\n<body>\\n[/pij]`, byte-identical to `crates/core/src/framing.rs::frame_message` with `from_machine = None`, and the test that pins it names that function in a comment rather than restating a literal from memory. RED-first is satisfied — the old-head witness fails on the pre-fix tree (ac5). LIVE: I am the witness again. Every peer message I have received in this session arrived as `[pij-rs from pij-verbal-silverfish]` on its own line, the body, then `[/pij]` — head and tail, in an omp seat, on the merged tree. And the announce sentence that describes the frame now describes the frame I actually receive, which was the open finding the PM raised to prime at the end of live-proof.md and which has since landed: my own boot text reads 'their messages arrive inline as \"[pij-rs from <id>]\" on its own line, then the body, then \"[/pij]\"'. Parsing: `parseFrame` does accept the legacy head, but nothing in production calls it (f5).",
+          "receipt": "This session's own injected turns: boot announce sentence, and two inbound peer frames from pij-verbal-silverfish rendered with `[pij-rs from …]` head and `[/pij]` tail. crates/core/src/framing.rs:5-30 vs .pi/extensions/pij/core/message.ts:12-14."
+        },
+        {
+          "id": "d1",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": ".pi/extensions/pij/core/session.ts",
+          "finding": "RECEIPT RE-DERIVATION (packet i4, third item): the claim that core/session.ts changed by exactly one line plus an optional field. VERDICT: TRUE, verified against the diff rather than the report. The whole change is `+ readonly fresh?: boolean;` added to `BootInput` and `const fresh = liveDescriptor === null || wasDissolved;` becoming `const fresh = input.fresh ?? (liveDescriptor === null || wasDissolved);`. Three lines of diff, one of which is the added field and one of which is the removed original — so one changed line plus one optional field, exactly as claimed, and the legacy inference is preserved verbatim inside the `??` fallback rather than reimplemented.",
+          "receipt": "`git diff --stat 4b000ffb^1 4b000ffb -- .pi/extensions/pij/core/session.ts` → `3 +-`; full hunk read at session.ts:132 and :213."
+        },
+        {
+          "id": "d2",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "docs/plans/135-rs-boot-announce/impl-guide.dd.json",
+          "finding": "INTERFACE DRIFT CHECK against the impl-guide's frozen interfaces (packet i7 priority 3). VERDICT: no material drift; two deviations, both benign and both improvements. (1) The guide froze `put_reporting(&self, d: SeatDescriptor) -> Result<(Seq, PutBinding)>` with `PutBinding { inserted, previous_proc }` and `put` delegating — implemented exactly, including the delegation, in SqliteRegistry and in every fake. (2) The guide named `crates/core/src/wire.rs (additive field only)` as u1's path for the wire type; the field actually landed as a `#[serde(flatten)]`-based `RegistrationResponse` local to crates/daemon/src/http/mod.rs, and crates/core/src/model.rs took `parse_process_start` instead (moved from crates/harnesses, which now re-exports it). Keeping a registration-only field OUT of the durable core type is better than the guide's plan, and the test `binding is response-only, not durable state` asserts precisely that. (3) The guide describes only u0/u1/u2; u3 and u4 were added later by ruling and are not in it. Recorded so a later reader does not mistake the guide for the full decomposition.",
+          "receipt": "crates/core/src/ports.rs:48-77; crates/store/src/registry.rs:188-266; crates/daemon/src/http/mod.rs:379-441; crates/daemon/src/http/tests.rs:496-504 (`\"binding is response-only, not durable state\"`); crates/harnesses/src/proc.rs `pub use pij_core::model::parse_process_start;`."
+        }
+      ]
+    },
+    {
+      "name": "verdict",
+      "value": [
+        {
+          "id": "v1",
+          "finding": "phase-1-review-r1.dd.json#findings/f1",
+          "resolution": "fixed",
+          "rationale": "CLOSED and verified by me on main at c46e2495, not accepted from the report: tests.rs:450 resolves through pij_testkit::fixtures::read, `cargo test -p pij-daemon --lib registration_binding` → 4 passed 0 failed, README path corrected. Root cause was an aborted `git add` with stderr suppressed, so the composed workspace gate ran against a working tree that was not the committed tree. The structural fix (corpus helper, compile-time failure on relocation, sha-checked bytes) is the right one.",
+          "state": "checked"
+        },
+        {
+          "id": "v2",
+          "finding": "phase-1-review-r1.dd.json#findings/f2",
+          "resolution": "confirmed",
+          "rationale": "Open. Not hypothetical: the fallback exists, is unlabelled at every operator surface, and produces `binding: same` for a new process in a stable pane. Recognition works today only because the npm shim gives file_stem == 'omp'; the package-path branch cannot fire against `bun.exe`, which is the basename this machine actually uses for that package. Smallest fix is (a) do not let a pane-sourced fallback override a caller-asserted identity.",
+          "state": "unchecked"
+        },
+        {
+          "id": "v3",
+          "finding": "phase-1-review-r1.dd.json#findings/f3",
+          "resolution": "confirmed",
+          "rationale": "Open. One-line regression from `filter_map(Result::ok)` to `entry.ok()?`; converts 'skip a bad entry' into 'abandon discovery and fall back to pointer-drain'. Fix is `let Ok(entry) = entry else { continue; };`.",
+          "state": "unchecked"
+        },
+        {
+          "id": "v4",
+          "finding": "phase-1-review-r1.dd.json#findings/f4",
+          "resolution": "deferred",
+          "rationale": "Open, and OUT OF THIS PLAN'S SCOPE by AC7's own wording — raised as a note for prime rather than as a defect against the units. The plan is done; the incident is not. 18 of 52 registered Claude seats are still shell-bound, all 18 re-adoptable right now, and no surface reports which ones. Needs a re-adopt sweep or a rebind-on-drift path, as a separate piece of work.",
+          "state": "unchecked"
+        },
+        {
+          "id": "v5",
+          "finding": "phase-1-review-r1.dd.json#findings/f5",
+          "resolution": "confirmed",
+          "rationale": "Open but cheap. AC8's parse half is true of an uncalled function. Either wire parseFrame into a real inbound path or state in the plan that it is a retained library affordance, so the claim is not read as live legacy handling.",
+          "state": "unchecked"
+        },
+        {
+          "id": "v6",
+          "finding": "phase-1-review-r1.dd.json#findings/n1",
+          "resolution": "confirmed",
+          "rationale": "Open, NIT. Same-depth sibling ties in the harness walk are decided by ps enumeration order, while the same plan's uds discovery explicitly refuses order-based tiebreaks. Either refuse the tie or write down why order is acceptable here.",
+          "state": "unchecked"
+        },
+        {
+          "id": "v7",
+          "finding": "phase-1-review-r1.dd.json#findings/n2",
+          "resolution": "confirmed",
+          "rationale": "Open, NIT. `previous_proc: None` means both 'no row' and 'unbound row'; `inserted` separates the first, nothing separates unbound→unbound, which yields `same`. Unreachable through the extension. Say which reading is intended.",
+          "state": "unchecked"
+        },
+        {
+          "id": "v8",
+          "finding": "phase-1-review-r1.dd.json#findings/ac4",
+          "resolution": "confirmed",
+          "rationale": "False on main as merged; CLOSED at c46e2495 and re-verified by me. Substance (read-not-restated, additive, nothing renamed) was true throughout. Residual: re-word the AC text, which still names the pre-relocation path.",
+          "state": "checked"
+        },
+        {
+          "id": "v9",
+          "finding": "phase-1-review-r1.dd.json#findings/ac6",
+          "resolution": "confirmed",
+          "rationale": "Fence half true and enumerably honoured throughout. Workspace-green half was false on the merged tree, deterministically and not as a load artifact; re-earnable at c46e2495, which also cleared an unrelated biome red from an untracked machine-local file. Recorded as history of the merged tree.",
+          "state": "checked"
+        },
+        {
+          "id": "v10",
+          "finding": "phase-1-review-r1.dd.json#findings/ac5",
+          "resolution": "confirmed",
+          "rationale": "Independently re-derived on an extracted merge-parent tree rather than read from the pasted excerpts. Twelve witnesses red there for the right reasons; the same two files are green at main.",
+          "state": "checked"
+        },
+        {
+          "id": "v11",
+          "finding": "phase-1-review-r1.dd.json#findings/ac1",
+          "resolution": "confirmed",
+          "rationale": "True, witnessed from inside a freshly spawned omp seat on the merged tree — this reviewer's own first injected turn.",
+          "state": "checked"
+        },
+        {
+          "id": "v12",
+          "finding": "phase-1-review-r1.dd.json#findings/ac8",
+          "resolution": "confirmed",
+          "rationale": "True. Rendering byte-identical to framing.rs with from_machine = None, witnessed live in this session's own inbound frames; parse half qualified by f5.",
+          "state": "checked"
+        },
+        {
+          "id": "v13",
+          "finding": "phase-1-review-r1.dd.json#findings/ac7",
+          "resolution": "confirmed",
+          "rationale": "True for new adopts, with the discarded invalid experiment counting in its favour. Retroactivity gap tracked as f4.",
+          "state": "checked"
+        },
+        {
+          "id": "v14",
+          "finding": "phase-1-review-r1.dd.json#findings/s2",
+          "resolution": "confirmed",
+          "rationale": "Seam reports truthfully about what it wrote; the defect is in what gets written when harness discovery fails, tracked as f2. Migration direction (pre-u3 shell rows rebinding once) is benign.",
+          "state": "checked"
+        }
+      ]
+    }
+  ]
+}
