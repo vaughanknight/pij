@@ -148,6 +148,9 @@ It rechecks the dialog and requires `1. Yes` to be selected; session-wide approv
 is never chosen. Complete unknown/mismatching active dialogs fail without confirmation.
 Welcome/transcript boxes above later UI are not active dialogs; an incomplete
 repaint waits boundedly, never authorizes, and cannot prove post-key dismissal.
+The complete known Copilot welcome layout is also waiting when its closing border
+is bottom-most before the composer paints; altered or unknown complete boxes
+still fail. This narrow exception never authorizes or proves dismissal.
 The same discrimination keeps the normal composer usable beneath welcome panels. Receipts
 retain before/rechecked/after terminal evidence and the exact decision, alongside
 the existing final-pane captures. This is test-human consent, not a permission

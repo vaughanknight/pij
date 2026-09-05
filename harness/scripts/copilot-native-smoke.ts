@@ -368,6 +368,16 @@ export function captureSmokePanes(tmux: (args: string[], preserveOutput?: boolea
 	return { panes, captures };
 }
 
+// Known Copilot welcome layout may finish painting before the composer below it.
+const COPILOT_WELCOME_ROWS = [
+	/^│\s*│$/,
+	/^│\s*╭─╮╭─╮\s*│\s*Getting started\s*│$/,
+	/^│\s*╰─╯╰─╯\s+Copilot v\d+\.\d+\.\d+(?:-\d+)? uses AI\.\s*│\s*Use the tabs above to explore your sessions and pull requests\s*│$/,
+	/^│\s*█ ▘▝ █\s+\/experimental\s*│\s*\/init — Initialize Copilot instructions for this repository\s*│$/,
+	/^│\s*▔▔▔▔\s*│\s*\/model — Switch models across providers, or use Auto\s*│$/,
+	/^│\s*│$/,
+];
+
 /** False: no active box. Undefined: incomplete repaint. Array: complete bottom box body. */
 function activeBottomModal(lines: string[]): string[] | false | undefined {
 	let top = -1;
@@ -383,7 +393,13 @@ function activeBottomModal(lines: string[]): string[] | false | undefined {
 	if (bottom < 0) return undefined;
 	// Welcome/transcript boxes above later UI are not the active control surface.
 	if (bottom !== lines.length - 1) return /^[│╭╰]/.test(last) ? undefined : false;
-	return lines.slice(top + 1, bottom);
+	const body = lines.slice(top + 1, bottom);
+	if (
+		body.length === COPILOT_WELCOME_ROWS.length &&
+		COPILOT_WELCOME_ROWS.every((row, index) => row.test(body[index] ?? ""))
+	)
+		return undefined;
+	return body;
 }
 
 /** Match only the active bottom modal, never arguments echoed in earlier conversation. */
