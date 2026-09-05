@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EventFrame, Registration, RustSeatDescriptor } from "../core/daemon-wire.js";
-import { announceText } from "../core/message.js";
+import { announceText, frame, parseFrame } from "../core/message.js";
 import { type DaemonHttpDeps, PijDaemonClient } from "./daemon-http.js";
 import { FakePiRuntime, FakeTmux } from "./fakes.js";
 import { PiRuntimeAdapter } from "./pi-runtime.js";
@@ -63,7 +63,7 @@ class FailingPiRuntime extends FakePiRuntime {
 	inboundAttempts = 0;
 
 	override inject(text: string, mode: "immediate" | "steer"): void {
-		if (text === "[pij-rs from pij-from]\nbefore bind\n[/pij]") {
+		if (text === frame("pij-from", "before bind")) {
 			this.inboundAttempts += 1;
 			throw new Error("test injection failed");
 		}
@@ -159,6 +159,7 @@ function announceRuntime(
 	const registrations: Registration[] = [];
 	const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 		const path = new URL(String(url)).pathname;
+		if (isRecoveryPeek(url)) return envelope("pij inbox", []);
 		if (path === "/v1/seats") return envelope("pij seats", { seats, unavailable: [] });
 		if (path === "/v1/register") {
 			const response = responses[registrations.length];
@@ -208,6 +209,7 @@ describe("RustRuntimeSession", () => {
 		const seats = new Map([[incumbent.id, incumbent]]);
 		const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 			const path = new URL(String(url)).pathname;
+			if (isRecoveryPeek(url)) return envelope("pij inbox", []);
 			if (path === "/v1/seats") {
 				return envelope("pij seats", { seats: [...seats.values()], unavailable: [] });
 			}
@@ -392,17 +394,17 @@ describe("RustRuntimeSession", () => {
 				);
 			}
 			if (path === "/v1/inbox") {
-				expect(
-					pi.injects.some((item) => item.text === "[pij-rs from pij-from]\nbefore bind\n[/pij]"),
-				).toBe(false);
+				expect(pi.injects.some((item) => item.text === frame("pij-from", "before bind"))).toBe(
+					false,
+				);
 				claimRequests.push(String(url));
 				return envelope("pij inbox", inboxClaimFixture());
 			}
 			if (path === "/v1/release") return releaseEnvelope(init);
 			if (path === "/v1/inbox/ack") {
-				expect(
-					pi.injects.some((item) => item.text === "[pij-rs from pij-from]\nbefore bind\n[/pij]"),
-				).toBe(true);
+				expect(pi.injects.some((item) => item.text === frame("pij-from", "before bind"))).toBe(
+					true,
+				);
 				const acknowledgement = JSON.parse(String(init?.body)) as Record<string, unknown>;
 				acknowledgements.push(acknowledgement);
 				return envelope("pij inbox", acknowledgement.job_id);
@@ -458,9 +460,7 @@ describe("RustRuntimeSession", () => {
 			relay: false,
 		});
 		await vi.waitFor(() => {
-			expect(
-				pi.injects.some((item) => item.text === "[pij-rs from pij-from]\nbefore bind\n[/pij]"),
-			).toBe(true);
+			expect(pi.injects.some((item) => item.text === frame("pij-from", "before bind"))).toBe(true);
 			expect(acknowledgements).toEqual([{ seat: registeredId, job_id: 1 }]);
 			expect(claimRequests).toEqual([expect.stringContaining(`/v1/inbox?seat=${registeredId}`)]);
 		});
@@ -591,9 +591,7 @@ describe("RustRuntimeSession", () => {
 			expect(runtime.eventCount("daemon_event_claim_unavailable")).toBe(1);
 		});
 		expect(claimRequests).toHaveLength(1);
-		expect(
-			pi.injects.some((item) => item.text === "[pij-rs from pij-from]\nbefore bind\n[/pij]"),
-		).toBe(false);
+		expect(pi.injects.some((item) => item.text === frame("pij-from", "before bind"))).toBe(false);
 		expect(acknowledgements).toEqual([]);
 	});
 
@@ -632,9 +630,7 @@ describe("RustRuntimeSession", () => {
 		await vi.waitFor(() => {
 			expect(runtime.eventCount("daemon_event_claim_stale")).toBe(1);
 		});
-		expect(
-			pi.injects.some((item) => item.text === "[pij-rs from pij-from]\nbefore bind\n[/pij]"),
-		).toBe(false);
+		expect(pi.injects.some((item) => item.text === frame("pij-from", "before bind"))).toBe(false);
 		expect(acknowledgements).toEqual([]);
 	});
 
@@ -648,9 +644,7 @@ describe("RustRuntimeSession", () => {
 		const { acknowledgements, runtime } = await bootPushedEvent(announced, pi);
 
 		await vi.waitFor(() => {
-			expect(
-				pi.injects.some((item) => item.text === "[pij-rs from pij-from]\nbefore bind\n[/pij]"),
-			).toBe(true);
+			expect(pi.injects.some((item) => item.text === frame("pij-from", "before bind"))).toBe(true);
 			expect(runtime.eventCount("daemon_event_claim_mismatch")).toBe(1);
 			expect(acknowledgements).toHaveLength(1);
 		});
@@ -789,7 +783,7 @@ describe("RustRuntimeSession", () => {
 			"pij: re-attached at cursor 1",
 		]);
 		expect(
-			pi.injects.filter((item) => item.text === "[pij-rs from pij-from]\nbefore bind\n[/pij]"),
+			pi.injects.filter((item) => item.text === frame("pij-from", "before bind")),
 		).toHaveLength(1);
 		runtime.shutdown("quit");
 	});
@@ -1014,7 +1008,7 @@ describe("typing grace delivery", () => {
 			reason: "startup",
 		});
 		// Drop only the boot announcement, not peer deliveries recovered by boot.
-		const recovered = pi.injects.filter((row) => row.text.startsWith("[pij from "));
+		const recovered = pi.injects.filter((row) => parseFrame(row.text) !== null);
 		pi.injects.splice(0, pi.injects.length, ...recovered);
 		return { runtime, pi, client };
 	}
@@ -1045,7 +1039,7 @@ describe("typing grace delivery", () => {
 		]);
 		expect(pi.statuses.at(-1)).toBe("⏸ 1 held · typing");
 		await vi.advanceTimersByTimeAsync(1_000);
-		expect(pi.injects.map((row) => row.text)).toEqual(["[pij from pij-sender] boundary"]);
+		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "boundary")]);
 		const releaseBody = {
 			seat: "pij-grace-test",
 			job_id: 1,
@@ -1072,8 +1066,8 @@ describe("typing grace delivery", () => {
 		expect(pi.statuses.at(-1)).toBe("⏸ 2 held · typing");
 		await vi.advanceTimersByTimeAsync(59_000);
 		expect(pi.injects.map((row) => row.text)).toEqual([
-			"[pij from pij-sender] first",
-			"[pij from pij-sender] second",
+			frame("pij-sender", "first"),
+			frame("pij-sender", "second"),
 		]);
 		expect(client.acks).toEqual([1, 2]);
 	});
@@ -1085,7 +1079,7 @@ describe("typing grace delivery", () => {
 		for (const command of ["compact", "new", "reload"])
 			await client.push(message(command, { command }));
 		await client.push(message("urgent", { urgent: true }));
-		expect(pi.injects.map((row) => row.text)).toEqual(["[pij from pij-sender] urgent"]);
+		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "urgent")]);
 		expect(pi.compactCount).toBe(1);
 		expect(pi.controlCalls).toEqual(["new", "reload"]);
 		expect(client.acks).toEqual([2, 3, 4, 5]);
@@ -1113,8 +1107,8 @@ describe("typing grace delivery", () => {
 		const restarted = await start(client);
 		await client.replay();
 		expect(restarted.pi.injects.map((row) => row.text)).toEqual([
-			"[pij from pij-sender] first",
-			"[pij from pij-sender] second",
+			frame("pij-sender", "first"),
+			frame("pij-sender", "second"),
 		]);
 		expect(client.acks).toEqual([1, 2]);
 		expect(
@@ -1140,7 +1134,7 @@ describe("typing grace delivery", () => {
 		await client.push(message("wire-grace"));
 		expect(pi.injects).toEqual([]);
 		await vi.advanceTimersByTimeAsync(10_000);
-		expect(pi.injects.map((row) => row.text)).toEqual(["[pij from pij-sender] wire-grace"]);
+		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "wire-grace")]);
 	});
 
 	it("programmatic injection does not postpone a terminal-input grace", async () => {
@@ -1152,8 +1146,8 @@ describe("typing grace delivery", () => {
 		await client.push(message("urgent", { urgent: true }));
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(pi.injects.map((row) => row.text)).toEqual([
-			"[pij from pij-sender] urgent",
-			"[pij from pij-sender] ordinary",
+			frame("pij-sender", "urgent"),
+			frame("pij-sender", "ordinary"),
 		]);
 		expect(client.acks).toEqual([2, 1]);
 	});
@@ -1195,8 +1189,8 @@ describe("typing grace delivery", () => {
 		expect(editorText).toBe("programmatic draft");
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(pi.injects.map((row) => row.text)).toEqual([
-			"[pij from pij-sender] urgent",
-			"[pij from pij-sender] terminal-held",
+			frame("pij-sender", "urgent"),
+			frame("pij-sender", "terminal-held"),
 		]);
 		expect(client.acks).toEqual([2, 1]);
 		runtime.shutdown("quit");
@@ -1220,7 +1214,7 @@ describe("typing grace delivery", () => {
 		expect(pi.injects).toEqual([]);
 		await vi.advanceTimersByTimeAsync(HOLD_CONTRACT.grace.default_ms);
 		expect(client.acks).toEqual([1]);
-		expect(pi.injects.map((row) => row.text)).toEqual(["[pij from pij-sender] repeat"]);
+		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "repeat")]);
 	});
 
 	it("polls eligible claims while held and bypasses a deferred head without a pushed frame", async () => {
@@ -1241,7 +1235,7 @@ describe("typing grace delivery", () => {
 		const { pi, client, runtime } = await start();
 		vi.spyOn(client, "release").mockRejectedValueOnce(new Error("release unavailable"));
 		await client.push(message("declare-first"));
-		expect(pi.injects.map((row) => row.text)).toEqual(["[pij from pij-sender] declare-first"]);
+		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "declare-first")]);
 		expect(client.acks).toEqual([]);
 		expect(runtime.eventCount("daemon_event_ack_error")).toBe(1);
 	});
@@ -1269,8 +1263,8 @@ describe("typing grace delivery", () => {
 		await client.replay();
 		expect(restarted.pi.injects).toHaveLength(2);
 		expect(restarted.pi.injects.map((row) => row.text)).toEqual([
-			"[pij from pij-sender] older",
-			"[pij from pij-sender] newer",
+			frame("pij-sender", "older"),
+			frame("pij-sender", "newer"),
 		]);
 		expect(client.acks).toEqual([1, 2]);
 	});
@@ -1301,7 +1295,7 @@ describe("typing grace delivery", () => {
 		expect(client.jobs[0]?.not_before).toBe(Date.now() + HOLD_CONTRACT.grace.default_ms);
 		expect(client.holdRequests).toHaveLength(2);
 		expect(recoveryPeeks).toBe(1);
-		expect(pi.injects.filter((row) => row.text.startsWith("[pij from "))).toEqual([]);
+		expect(pi.injects.filter((row) => parseFrame(row.text) !== null)).toEqual([]);
 		await vi.advanceTimersByTimeAsync(58_000);
 		expect(client.acks).toEqual([]);
 		await vi.advanceTimersByTimeAsync(1_000);
