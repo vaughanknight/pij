@@ -8,9 +8,12 @@
 
 import { randomUUID } from "node:crypto";
 import {
+	closeSync,
 	existsSync,
+	fsyncSync,
 	lstatSync,
 	mkdirSync,
+	openSync,
 	readdirSync,
 	readFileSync,
 	readlinkSync,
@@ -29,6 +32,7 @@ export interface RunLinkGlobalOptions {
 	readonly pijRoot: string;
 	readonly home: string;
 	readonly copilotHome?: string;
+	readonly fsync?: (fd: number) => void;
 	readonly args: readonly string[];
 	readonly stdout: (line: string) => void;
 	readonly stderr: (line: string) => void;
@@ -284,7 +288,10 @@ function doctorOmp(options: RunLinkGlobalOptions, sourceRoot: string): number {
 /** Filesystem operations shared by canonical setup and isolated smoke fixtures.
  * The executable entry point still enforces the canonical-checkout guard.
  */
-export function manageCopilotExtension(options: RunLinkGlobalOptions): number {
+export function manageCopilotExtension(options: RunLinkGlobalOptions): {
+	changed: number;
+	skipped: number;
+} {
 	const home = resolve(options.copilotHome || join(options.home, ".copilot"));
 	const extensions = join(home, "extensions");
 	const sourceRoot = join(options.pijRoot, ".copilot", "extensions");
@@ -293,26 +300,28 @@ export function manageCopilotExtension(options: RunLinkGlobalOptions): number {
 	const settingsPath = join(home, "settings.json");
 	const remove = options.args.includes("--remove");
 	const doctor = options.args.includes("--doctor-copilot");
+	const sync = options.fsync ?? fsyncSync;
+	let changed = 0;
 	try {
 		// These are preservation brakes: removing them can only broaden writes.
 		for (const directory of [home, extensions]) {
 			const stat = lstatSync(directory, { throwIfNoEntry: false });
 			if (stat && (!stat.isDirectory() || stat.isSymbolicLink())) {
 				options.stderr(`Copilot: refusing non-directory or symlinked path ${directory}`);
-				return 1;
+				return { changed, skipped: 1 };
 			}
 		}
 		if (remove) {
 			const verdict = removeExtension(extensions, "pij", options.stderr, ".copilot");
 			options.stdout(`Copilot extension: ${verdict}; settings preserved`);
-			return verdict === "skipped" ? 1 : 0;
+			return { changed: verdict === "removed" ? 1 : 0, skipped: verdict === "skipped" ? 1 : 0 };
 		}
 		for (const name of ["extension.mjs", "store.mjs"]) {
 			if (!lstatSync(join(source, name), { throwIfNoEntry: false })?.isFile()) {
 				options.stderr(
 					`Copilot source missing: ${join(source, name)}; use the complete reviewed checkout`,
 				);
-				return 1;
+				return { changed, skipped: 1 };
 			}
 		}
 		const targetStat = lstatSync(target, { throwIfNoEntry: false });
@@ -322,21 +331,21 @@ export function manageCopilotExtension(options: RunLinkGlobalOptions): number {
 				!isPijOwnedExtensionTarget(target, readlinkSync(target), "pij", ".copilot"))
 		) {
 			options.stderr(`Copilot: refusing foreign symlink or real file/directory ${target}`);
-			return 1;
+			return { changed, skipped: 1 };
 		}
 		const settingsStat = lstatSync(settingsPath, { throwIfNoEntry: false });
 		if (settingsStat && (!settingsStat.isFile() || settingsStat.nlink !== 1)) {
 			options.stderr(
 				`Copilot: refusing non-regular, symlinked or multiply-linked settings ${settingsPath}`,
 			);
-			return 1;
+			return { changed, skipped: 1 };
 		}
 		const settings: unknown = settingsStat ? JSON.parse(readFileSync(settingsPath, "utf8")) : {};
 		if (settings === null || typeof settings !== "object" || Array.isArray(settings)) {
 			options.stderr(
 				`Copilot settings must be a JSON object: ${settingsPath}; refusing to overwrite`,
 			);
-			return 1;
+			return { changed, skipped: 1 };
 		}
 		const enabled = "experimental" in settings && settings.experimental === true;
 		if (doctor) {
@@ -344,44 +353,58 @@ export function manageCopilotExtension(options: RunLinkGlobalOptions): number {
 				options.stderr(
 					`Copilot extension link mismatch: expected ${source}; run just link from the canonical checkout`,
 				);
-				return 1;
+				return { changed, skipped: 1 };
 			}
 			if (!enabled) {
 				options.stderr(
 					`Copilot experimental is disabled/missing in ${settingsPath}; run just link to opt in. --no-experimental remains an explicit per-session opt-out.`,
 				);
-				return 1;
+				return { changed, skipped: 1 };
 			}
 			options.stdout(
 				`Copilot native extension ready: ${target}; experimental enabled (new CLI sessions only)`,
 			);
-			return 0;
+			return { changed, skipped: 0 };
 		}
 		ensureDirectory(extensions);
 		if (!enabled) {
 			const temporary = join(home, `.settings-${randomUUID()}.tmp`);
 			try {
-				writeFileSync(
-					temporary,
-					`${JSON.stringify({ ...settings, experimental: true }, null, "\t")}\n`,
-					{
-						flag: "wx",
-						mode: settingsStat ? settingsStat.mode & 0o777 : 0o600,
-					},
-				);
+				const fd = openSync(temporary, "wx", settingsStat ? settingsStat.mode & 0o777 : 0o600);
+				try {
+					writeFileSync(fd, `${JSON.stringify({ ...settings, experimental: true }, null, "\t")}\n`);
+					sync(fd);
+				} finally {
+					closeSync(fd);
+				}
 				renameSync(temporary, settingsPath);
+				changed++;
+				let directory: number | undefined;
+				try {
+					directory = openSync(home, "r");
+					sync(directory);
+				} catch (error) {
+					// Some platforms/filesystems do not support syncing directory descriptors.
+					if (
+						!["EINVAL", "ENOTSUP", "EISDIR"].includes((error as NodeJS.ErrnoException).code ?? "")
+					)
+						throw error;
+				} finally {
+					if (directory !== undefined) closeSync(directory);
+				}
 			} finally {
 				if (lstatSync(temporary, { throwIfNoEntry: false })) unlinkSync(temporary);
 			}
 		}
 		const verdict = linkExtension(sourceRoot, extensions, "pij", options.stderr);
+		if (verdict === "linked") changed++;
 		options.stdout(`Copilot extension: ${verdict}; experimental enabled`);
-		return verdict === "skipped" ? 1 : 0;
+		return { changed, skipped: verdict === "skipped" ? 1 : 0 };
 	} catch (error) {
 		options.stderr(
-			`Copilot setup failed without replacing foreign settings: ${error instanceof Error ? error.message : String(error)}`,
+			`Copilot setup failed${changed ? " after applying changes" : ""}: ${error instanceof Error ? error.message : String(error)}`,
 		);
-		return 1;
+		return { changed, skipped: 1 };
 	}
 }
 
@@ -396,7 +419,7 @@ export function runLinkGlobal(options: RunLinkGlobalOptions): number {
 	if (options.args.includes("--check-only")) return 0;
 	const sourceRoot = join(options.pijRoot, ".pi", "extensions");
 	if (options.args.includes("--doctor-omp")) return doctorOmp(options, sourceRoot);
-	if (options.args.includes("--doctor-copilot")) return manageCopilotExtension(options);
+	if (options.args.includes("--doctor-copilot")) return manageCopilotExtension(options).skipped;
 	const removeMode = options.args.includes("--remove");
 	const filter = options.args.find((arg) => !arg.startsWith("--"));
 	const names = sourceExtensions(sourceRoot, filter);
@@ -450,7 +473,9 @@ export function runLinkGlobal(options: RunLinkGlobalOptions): number {
 			changed += shared.changed;
 			skipped += shared.skipped;
 		}
-		skipped += manageCopilotExtension(options);
+		const copilot = manageCopilotExtension(options);
+		changed += copilot.changed;
+		skipped += copilot.skipped;
 	}
 	if (changed === 0 && skipped === 0) {
 		options.stdout(removeMode ? "nothing to remove" : "everything already linked");

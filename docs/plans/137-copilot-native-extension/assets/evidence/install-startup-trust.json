@@ -1,5 +1,8 @@
 {
   "source_fix_commit": "a08c03a2552ea8449f7aa02cd920a0abc308f70c",
+  "trust_seed_claim": "RETRACTED: the seeded sessions reused a HOME already approved through native UI. Its persisted config.json contained trustedFolders, so these observations do not prove settings.json enables folder trust.",
+  "superseded_by": "install-trust-discriminator-01.json",
+  "still_valid": "The actual UI prompt, post-approval ordinary interaction, and final-pane capture evidence remain observations; only the settings.json seed attribution is withdrawn.",
   "original_failure_receipt": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/evidence/pm-native-local-01.json",
   "cause": "Interactive Confirm folder trust held the initial prompt before user/provider activity. Logs alone did not expose the prompt. Approving only the empty temporary workspace released the original prompt without a daemon.",
   "change": "Seed only realpath(workspace) in new private settings.json trustedFolders before installer experimental merge; capture every surviving pane with scrollback before cleanup, preserving per-pane/listing errors.",

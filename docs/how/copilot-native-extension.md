@@ -14,7 +14,9 @@ just link
 just copilot-native-doctor
 ```
 
-`just install` includes the same link policy and doctor. Production linking
+`just install` includes the same link policy, but reports and skips the optional
+Copilot doctor when the CLI is absent. An installed but broken CLI still fails;
+standalone `just copilot-native-doctor` always requires it. Production linking
 refuses linked worktrees before changing any home. The destination is
 `${COPILOT_HOME:-$HOME/.copilot}/extensions/pij`, linked to the reviewed
 `.copilot/extensions/pij/` source, including `extension.mjs` and `store.mjs`.
@@ -24,8 +26,10 @@ Setup merges only `experimental: true` into a valid settings object. Unknown
 keys survive; an already-enabled file is not rewritten. Foreign symlinks
 (including dangling links), real destination files/directories, symlinked
 configuration roots/settings, and malformed settings are refused rather than
-replaced. Settings updates use an atomic sibling-file rename. These preservation
-checks are **brakes**: removing them permits the same or more writes.
+replaced. Settings updates sync the complete temporary file before atomic rename,
+then sync the parent directory where supported. Real sync errors fail setup;
+an error after rename explicitly reports that changes were applied. These
+preservation checks are **brakes**: removing them permits the same or more writes.
 
 `just unlink` removes only Pij-owned extension links; it leaves experimental and
 all other settings alone. The doctor is read-only and verifies the exact source
@@ -103,8 +107,16 @@ upstream binary update, or live-fleet call occurs. An isolated executable wrappe
 adds safe Copilot launch flags for the spawned case; it execs the actual CLI and
 preserves the host process identity.
 Only the canonical path of that empty temporary workspace is seeded in the private
-`settings.json`'s `trustedFolders`, avoiding an interactive startup trust prompt.
+native `config.json`'s `trustedFolders`, not `settings.json`.
 Global trust and tool permissions are unchanged; this is not `--yolo` or allow-all.
+`--workspace-trust prompt` omits that seed: this negative control should time out
+at `Confirm folder trust` before any provider request. Compare it with the default
+`--workspace-trust seeded` using separate full-driver invocations, which create
+distinct fresh HOMEs. A new session in a previously approved HOME is not a valid
+control: native remembered trust survives there. `verifyWorkspaceTrustDiscriminator`
+checks the two receipts, the pre-launch config, exact prompt path, absent provider
+activity in the negative control, and correlated ordinary native interaction in
+the seeded run. Passing this startup discriminator is not full transport acceptance.
 
 Witnesses retain exact source and executable hashes, versions, processes/panes,
 Pij msg/job IDs, public native events, bidirectional tool-originated replies,

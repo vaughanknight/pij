@@ -1,5 +1,8 @@
+import { execFileSync, spawnSync } from "node:child_process";
 import {
 	existsSync,
+	fstatSync,
+	fsyncSync,
 	lstatSync,
 	mkdirSync,
 	mkdtempSync,
@@ -8,6 +11,7 @@ import {
 	readlinkSync,
 	rmSync,
 	symlinkSync,
+	unlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -41,6 +45,7 @@ function run(
 	root: string,
 	home: string,
 	args: readonly string[] = [],
+	fsync?: (fd: number) => void,
 ): {
 	code: number;
 	stdout: string[];
@@ -51,6 +56,7 @@ function run(
 	const code = runLinkGlobal({
 		pijRoot: root,
 		home,
+		fsync,
 		args,
 		stdout: (line) => stdout.push(line),
 		stderr: (line) => stderr.push(line),
@@ -191,6 +197,89 @@ describe("link-global", () => {
 });
 
 describe("Copilot managed installation", () => {
+	it("syncs complete settings before replacement and the directory afterward", () => {
+		const root = checkout();
+		const home = tempDir("pij-copilot-sync-");
+		const config = join(home, ".copilot");
+		mkdirSync(config);
+		const settings = join(config, "settings.json");
+		const raw = '{"experimental":false,"theme":"light"}';
+		writeFileSync(settings, raw);
+		const stages: string[] = [];
+		const descriptors: number[] = [];
+		const result = run(root, home, [], (fd) => {
+			const directory = fstatSync(fd).isDirectory();
+			stages.push(directory ? "directory" : "file");
+			descriptors.push(fd);
+			if (directory) expect(JSON.parse(readFileSync(settings, "utf8")).experimental).toBe(true);
+			else expect(readFileSync(settings, "utf8")).toBe(raw);
+			fsyncSync(fd);
+		});
+		expect(result.code).toBe(0);
+		expect(stages).toEqual(["file", "directory"]);
+		for (const fd of descriptors) expect(() => fstatSync(fd)).toThrow();
+		expect(JSON.parse(readFileSync(settings, "utf8")).theme).toBe("light");
+		expect(readdirSync(config).some((name) => name.endsWith(".tmp"))).toBe(false);
+		expect(
+			run(root, home, [], () => {
+				throw new Error("already enabled must not rewrite");
+			}).code,
+		).toBe(0);
+	});
+
+	it.each([
+		{ stage: "file", code: "EIO", status: 1, enabled: false },
+		{ stage: "file", code: "EINVAL", status: 1, enabled: false },
+		{ stage: "directory", code: "EIO", status: 1, enabled: true },
+		{ stage: "directory", code: "EPERM", status: 1, enabled: true },
+		{ stage: "directory", code: "EINVAL", status: 0, enabled: true },
+		{ stage: "directory", code: "ENOTSUP", status: 0, enabled: true },
+	])("handles $stage fsync $code without hiding real errors", ({
+		stage,
+		code,
+		status,
+		enabled,
+	}) => {
+		const root = checkout();
+		const home = tempDir("pij-copilot-sync-error-");
+		const config = join(home, ".copilot");
+		mkdirSync(config);
+		const settings = join(config, "settings.json");
+		writeFileSync(settings, '{"experimental":false,"keep":1}');
+		let failedFd: number | undefined;
+		const result = run(root, home, [], (fd) => {
+			if ((fstatSync(fd).isDirectory() ? "directory" : "file") === stage) {
+				failedFd = fd;
+				throw Object.assign(new Error(`injected fsync ${code}`), { code });
+			}
+			fsyncSync(fd);
+		});
+		expect(result.code).toBe(status);
+		expect(failedFd).toBeDefined();
+		expect(() => fstatSync(failedFd as number)).toThrow();
+		expect(JSON.parse(readFileSync(settings, "utf8"))).toEqual({ experimental: enabled, keep: 1 });
+		expect(readdirSync(config).some((name) => name.endsWith(".tmp"))).toBe(false);
+		if (status) expect(result.stderr.join("\n")).toContain(`injected fsync ${code}`);
+		else expect(result.stderr).toEqual([]);
+	});
+
+	it("does not report everything linked when only Copilot link or settings change", () => {
+		const root = checkout();
+		const home = tempDir("pij-copilot-report-");
+		expect(run(root, home).code).toBe(0);
+		expect(run(root, home).stdout).toContain("everything already linked");
+		const config = join(home, ".copilot");
+		unlinkSync(join(config, "extensions", "pij"));
+		const relinked = run(root, home);
+		expect(relinked.code).toBe(0);
+		expect(relinked.stdout).not.toContain("everything already linked");
+		writeFileSync(join(config, "settings.json"), '{"experimental":false}');
+		const enabled = run(root, home);
+		expect(enabled.code).toBe(0);
+		expect(enabled.stdout).not.toContain("everything already linked");
+		expect(run(root, home).stdout).toContain("everything already linked");
+	});
+
 	it("links reviewed modules and enables experimental without replacing unknown settings", () => {
 		const root = checkout();
 		const home = tempDir("pij-copilot-home-");
@@ -348,5 +437,58 @@ describe("Copilot managed installation", () => {
 		writeFileSync(join(home, ".copilot", "settings.json"), '{"experimental":true}');
 		rmSync(join(root, ".copilot", "extensions", "pij", "store.mjs"));
 		expect(run(root, home, ["--doctor-copilot"]).code).toBe(1);
+	});
+});
+
+describe("Copilot optional bootstrap check", () => {
+	it.each([
+		"absent",
+		"present",
+		"broken",
+	] as const)("keeps the %s CLI outcome distinct from strict doctor", (kind) => {
+		const root = tempDir("pij-copilot-recipe-");
+		const home = join(root, "home");
+		const bin = join(root, "bin");
+		mkdirSync(home);
+		mkdirSync(bin);
+		const just = execFileSync("which", ["just"], { encoding: "utf8" }).trim();
+		symlinkSync(just, join(bin, "just"));
+		symlinkSync("/bin/sh", join(bin, "sh"));
+		writeFileSync(
+			join(root, "justfile"),
+			readFileSync(join(import.meta.dirname, "../../justfile")),
+		);
+		writeFileSync(join(bin, "npm"), '#!/bin/sh\nprintf "%s\\n" "$@" > "$HOME/npm-args"\n', {
+			mode: 0o700,
+		});
+		if (kind !== "absent")
+			writeFileSync(
+				join(bin, "copilot"),
+				`#!/bin/sh\necho fixture-copilot\nexit ${kind === "broken" ? 9 : 0}\n`,
+				{ mode: 0o700 },
+			);
+		const invoke = (recipe: string) =>
+			spawnSync(just, ["--no-dotenv", recipe], {
+				cwd: root,
+				env: { HOME: home, PATH: bin },
+				encoding: "utf8",
+				timeout: 10_000,
+			});
+		const optional = invoke("_copilot-native-install-check");
+		expect(optional.error).toBeUndefined();
+		expect(optional.status).toBe(kind === "broken" ? 9 : 0);
+		if (kind === "absent") expect(optional.stdout).toContain("skipping optional native doctor");
+		else expect(optional.stdout).not.toContain("skipping");
+		const strict = invoke("copilot-native-doctor");
+		expect(strict.error).toBeUndefined();
+		if (kind === "present") {
+			expect(strict.status).toBe(0);
+			expect(readFileSync(join(home, "npm-args"), "utf8")).toBe(
+				"run\nlink\n--\n--doctor-copilot\n",
+			);
+		} else {
+			expect(strict.status).not.toBe(0);
+			expect(existsSync(join(home, "npm-args"))).toBe(false);
+		}
 	});
 });
