@@ -298,5 +298,78 @@ test dirty_source_tree_does_not_block_stream_creation ... ok
 
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
 
+     Running tests/report_http.rs (target/debug/deps/report_http-c7c6c46ddc5dfa96)
 
-[Showing lines 1-300 of 375. Use :301 to continue]
+running 25 tests
+test a_keyless_probe_is_401_and_therefore_proves_nothing_about_the_route ... ok
+test an_empty_card_field_is_refused_by_name_as_ts_refuses_it ... ok
+test a_seat_that_never_reported_reads_back_a_null_card_not_an_empty_one ... ok
+test flags_backed_by_objects_rs_lacks_refuse_by_name ... ok
+test a_report_with_no_seat_is_refused_by_name_never_attributed_by_guess ... ok
+test a_seat_rs_does_not_hold_is_refused_and_no_card_is_written ... ok
+test did_and_next_are_capped_at_the_limit_core_defines ... ok
+test a_card_written_via_rs_is_read_back_by_state ... ok
+test an_embedded_newline_is_refused_rather_than_silently_collapsed ... ok
+test clear_removes_the_declared_state ... ok
+test refusals_are_never_classifiable_as_route_absence ... ok
+test blocked_and_question_set_the_state_and_retain_the_note ... ok
+test a_pane_only_caller_is_named_by_report_exactly_as_it_is_by_whoami ... ok
+test a_card_written_via_rs_is_readable_via_rs ... ok
+test report_refuses_when_the_asserted_seat_and_the_pane_disagree ... ok
+test report_state_accepts_every_word_the_two_generations_share ... ok
+test the_note_limit_is_200_and_is_not_the_card_limit ... ok
+test state_reads_back_the_declared_state_and_its_note ... ok
+test the_durable_payload_is_cores_card_record ... ok
+test the_receipt_carries_the_line_the_typescript_cli_prints ... ok
+test verify_refuses_by_name_because_rs_has_no_assignment_to_verify ... ok
+test staleness_is_judged_by_the_threshold_core_specifies ... ok
+test states_rs_does_not_have_refuse_by_name_instead_of_mapping_to_a_near_fit ... ok
+test whitespace_collapses_before_the_limit_is_applied ... ok
+test the_seat_may_arrive_as_forwarded_caller_context ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+     Running tests/review_regressions.rs (target/debug/deps/review_regressions-d103fb9186909f13)
+
+running 14 tests
+test staged_key_must_not_be_clone_or_two_owners_share_one_drop ... ok
+test selecting_the_real_transport_ships_closed_until_a_seat_opts_in ... ok
+test the_composition_root_wires_every_port_it_claims ... ok
+test an_unpublished_staged_key_removes_itself ... ok
+test selecting_the_real_liveness_adapter_reaches_the_process_table ... ok
+test two_staged_keys_in_one_process_never_share_a_file ... ok
+test a_staged_key_survives_other_attempts_coming_and_going ... ok
+test a_pre_existing_lax_key_file_is_replaced_not_reused ... ok
+test a_failed_boot_cannot_brick_the_running_daemon ... ok
+test a_refused_tombstone_leaves_no_trace_in_the_spine ... ok
+test a_schema_that_changes_under_a_live_pool_stops_the_next_operation ... ok
+test a_successful_put_writes_its_event_and_its_row_together ... ok
+test every_public_store_operation_rejects_a_stale_schema ... ok
+test emitted_spawn_argv_is_the_stamp_that_opens_the_real_transport ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+
+     Running tests/shim_http.rs (target/debug/deps/shim_http-806c4f9de6542a70)
+
+running 10 tests
+test inbox_register_is_refused_by_name_with_its_reason ... ok
+test the_shim_paths_the_route_table_names_are_served ... ok
+test a_field_this_daemon_does_not_understand_is_refused_rather_than_ignored ... ok
+test shapes_rs_cannot_serve_refuse_by_name ... ok
+test an_asserted_sender_that_contradicts_the_pane_is_refused ... ok
+test a_body_file_body_is_never_lexed_as_a_flag ... ok
+test a_pane_only_caller_can_send_with_no_session_id_anywhere ... ok
+test an_unresolvable_caller_cannot_acknowledge ... ok
+test a_routed_read_acknowledges_and_the_next_read_is_empty ... ok
+test shim_sessions_emits_the_frozen_legacy_names_and_resolves_git_common_dir ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+   Doc-tests pij_daemon
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: 1 target failed:
+    `-p pij-daemon --lib`

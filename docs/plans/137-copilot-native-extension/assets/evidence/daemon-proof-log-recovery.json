@@ -1,0 +1,86 @@
+{
+  "status": "recovered_original_raw_bytes",
+  "reason": "Reader-mode exports stopped at 300 lines and persisted the truncation footer; raw/full-range selectors recover the original command output.",
+  "tests_rerun": false,
+  "verification": "SHA256 source artifact file and recovered destination matched for every entry via shasum -a 256. No result manufactured or rerun.",
+  "export_contract": "Use artifact://ID:raw:1-10000, reject reader footer markers, and record line count plus SHA256 before commit.",
+  "entries": [
+    {
+      "file": "daemon-cold-resume-tests-final.log",
+      "artifact": "artifact://157",
+      "lines": 360,
+      "bytes": 26715,
+      "sha256": "9ef5f2594cef2a31ca29f47f31de12eb053388850df8402a91edcab449f1be59"
+    },
+    {
+      "file": "daemon-cold-resume-lint-before.log",
+      "artifact": "artifact://154",
+      "lines": 380,
+      "bytes": 27747,
+      "sha256": "babdfbaaeb35de150e288e53276905f96554e102980578a7f1daabc98656f1a2"
+    },
+    {
+      "file": "daemon-cold-resume-tests-before.log",
+      "artifact": "artifact://137",
+      "lines": 371,
+      "bytes": 27003,
+      "sha256": "96254d28d71ed2aab708f23f21a72a8ffd64ba5cdc53648a59ffddcd72861737"
+    },
+    {
+      "file": "daemon-footer-green.log",
+      "artifact": "artifact://164",
+      "lines": 486,
+      "bytes": 35833,
+      "sha256": "5c278d4dbfcd4b2051dc60b7113bc33426aeeda7a0b696cf1a2ef342f4834c75"
+    },
+    {
+      "file": "daemon-js-broad-after.log",
+      "artifact": "artifact://69",
+      "lines": 311,
+      "bytes": 24190,
+      "sha256": "72fcc1091d769b50539e7c0282cb7335a23299d9b017f257885a5cef088b2147"
+    },
+    {
+      "file": "daemon-js-broad-before.log",
+      "artifact": "artifact://38",
+      "lines": 381,
+      "bytes": 28854,
+      "sha256": "44e3fd6fc4429e37525a1618b2f6e1139252132095fe9d8511eaf523bbe15bf3"
+    },
+    {
+      "file": "daemon-review-tests-final.log",
+      "artifact": "artifact://124",
+      "lines": 349,
+      "bytes": 25514,
+      "sha256": "499f1355a741e4dceae1c016247be1d23e7ebee4f0aca395f67c3c019f06deca"
+    },
+    {
+      "file": "daemon-review-tests-intermediate.log",
+      "artifact": "artifact://110",
+      "lines": 375,
+      "bytes": 26462,
+      "sha256": "d2ea534e0368abd854bca35fa96cbc3c241b4ebb9f9b0882ddb83b0f6c129133"
+    },
+    {
+      "file": "daemon-review-tests-pre-absolute-path.log",
+      "artifact": "artifact://115",
+      "lines": 358,
+      "bytes": 25820,
+      "sha256": "f11e8f097362f7b18f9ea5d9450fcf86b0dd460207b6b50fadd477804e7b6875"
+    },
+    {
+      "file": "daemon-rust-tests-final.log",
+      "artifact": "artifact://78",
+      "lines": 795,
+      "bytes": 51288,
+      "sha256": "8ae56bebe4f2c6a2134150297967fbc3e238b4b0b936a62673ab779c99e53a29"
+    },
+    {
+      "file": "daemon-rust-tests.log",
+      "artifact": "artifact://46",
+      "lines": 826,
+      "bytes": 53008,
+      "sha256": "4773e9276e44d1e12c807d38a8314cc898f36e894b14e645f9c0cfac3133d409"
+    }
+  ]
+}

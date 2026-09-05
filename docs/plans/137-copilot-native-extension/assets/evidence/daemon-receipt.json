@@ -89,6 +89,8 @@
   "source_files_changed": 33,
   "deferred_project_validation": "harness checks and full independent Opus/integrated native client acceptance intentionally PM-owned; no project-wide gate executed by this unit",
   "cold_resume_receipt": "daemon-cold-resume-receipt.json",
+  "footer_observer_receipt": "daemon-footer-receipt.json",
+  "cross_language_receipt": "daemon-cross-language-receipt.json",
   "review_repairs": {
     "status": "unit_verified_integration_pending",
     "source_commit": "4bdadd92f29868827d74d7add82aac46eac6fd85",
