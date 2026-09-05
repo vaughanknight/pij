@@ -12,7 +12,7 @@
         "round": "1",
         "date": "2026-09-05",
         "plan": "../../plan.dd.json#meta",
-        "note": "VERDICT: material findings — 2 MAJOR, 3 MINOR, 2 NIT. Plan 135 is ALREADY MERGED (main 4b000ffb, no-ff merge of fef83b97; reviewed at main tip 5b40ed76, diffed against merge parent 59748c17). Both MAJOR findings are real and one of them means MAIN IS RED. f1: the golden fixture was relocated to crates/testkit/fixtures/ and the Rust half of AC4's shared-fixture citation was never updated, so three pij-daemon tests panic with NotFound on the merged tree — AC4 is false as stated and AC6's `cargo test --workspace green` is false on main. Reported early; the PM reproduced it, found the root cause (a `git add` whose file list named the already-moved path, aborting the whole add, with stderr sent to /dev/null — the composed `cargo test --workspace` then went green against a WORKING tree that differed from the COMMITTED one), and fixed it on the branch at 99269b90 by resolving the fixture through `pij_testkit::fixtures::read` so a future move is a compile error rather than a runtime NotFound. That fix was NOT on main when this record was written. f2 is a composition-seam defect that survives the merge: the register handler now overwrites a caller-asserted process identity with a pane-derived one, and when the harness-child walk fails it silently substitutes the PANE SHELL, which for a stable pane yields `binding: same` for a genuinely new harness process — the exact announce-suppression bug this plan exists to remove — while `proc_source`, the field that would expose it, has ZERO consumers anywhere. WHAT I DID NOT TAKE ON TRUST: I re-derived AC5's RED independently by extracting the merge parent with `git archive` into /tmp/pij-base-135, copying only the NEW test files and the fixture onto it, and running them — 12 of the new witnesses fail there, including both announce-count assertions and the u3 same-pane guard. I re-ran the daemon, store and extension suites myself. I probed the frame grammar empirically rather than by reading the regex. And I am my own live witness for AC1 and AC8: this reviewer seat is a `pij-rs spawn --harness omp` seat whose FIRST injected turn was announceText, and whose inbound peer messages arrived as `[pij-rs from pij-verbal-silverfish]` … `[/pij]`. Seven KNOWN-OPEN items from the dispatch packet consumed zero findings. READ-ONLY on code throughout; the only file written is this record. ADDENDUM (written after main advanced under this review): f1 is CLOSED on main at c46e2495 — aa697235 merged the testkit-helper fix, and I re-derived the green myself (4/4 daemon binding tests) rather than accepting it. AC4 and AC6 were correctly downgraded to unchecked by the PM and re-earned from `git show HEAD` on the merge target rather than from disk, which is the exact discipline whose absence caused the defect. Six items remain open — f2 (MAJOR), f3, f4, f5 (MINOR), n1 and n2 (NIT); none of them was introduced or affected by the fix. ROUND-1 POSTSCRIPT: my own remedy (a) for f2 was WITHDRAWN and replaced before any fix was built — see f2's correction. It would have re-admitted a wire-asserted pid at the exact moment daemon-derived evidence failed, re-opening one branch over the anti-impersonation control that identity.rs:436-450 had already carved out. The replacement demotes the claim from EVIDENCE to a SELECTOR among processes the daemon observed for itself (a live descendant of the pane root), which is the distinction the doctrine actually turns on. Recorded because a reviewer's proposed fix deserves the same scepticism as an author's, and mine did not survive it."
+        "note": "VERDICT: material findings — 2 MAJOR, 3 MINOR, 2 NIT. Plan 135 is ALREADY MERGED (main 4b000ffb, no-ff merge of fef83b97; reviewed at main tip 5b40ed76, diffed against merge parent 59748c17). Both MAJOR findings are real and one of them means MAIN IS RED. f1: the golden fixture was relocated to crates/testkit/fixtures/ and the Rust half of AC4's shared-fixture citation was never updated, so three pij-daemon tests panic with NotFound on the merged tree — AC4 is false as stated and AC6's `cargo test --workspace green` is false on main. Reported early; the PM reproduced it, found the root cause (a `git add` whose file list named the already-moved path, aborting the whole add, with stderr sent to /dev/null — the composed `cargo test --workspace` then went green against a WORKING tree that differed from the COMMITTED one), and fixed it on the branch at 99269b90 by resolving the fixture through `pij_testkit::fixtures::read` so a future move is a compile error rather than a runtime NotFound. That fix was NOT on main when this record was written. f2 is a composition-seam defect that survives the merge: the register handler now overwrites a caller-asserted process identity with a pane-derived one, and when the harness-child walk fails it silently substitutes the PANE SHELL, which for a stable pane yields `binding: same` for a genuinely new harness process — the exact announce-suppression bug this plan exists to remove — while `proc_source`, the field that would expose it, has ZERO consumers anywhere. WHAT I DID NOT TAKE ON TRUST: I re-derived AC5's RED independently by extracting the merge parent with `git archive` into /tmp/pij-base-135, copying only the NEW test files and the fixture onto it, and running them — 12 of the new witnesses fail there, including both announce-count assertions and the u3 same-pane guard. I re-ran the daemon, store and extension suites myself. I probed the frame grammar empirically rather than by reading the regex. And I am my own live witness for AC1 and AC8: this reviewer seat is a `pij-rs spawn --harness omp` seat whose FIRST injected turn was announceText, and whose inbound peer messages arrived as `[pij-rs from pij-verbal-silverfish]` … `[/pij]`. Seven KNOWN-OPEN items from the dispatch packet consumed zero findings. READ-ONLY on code throughout; the only file written is this record. ADDENDUM (written after main advanced under this review): f1 is CLOSED on main at c46e2495 — aa697235 merged the testkit-helper fix, and I re-derived the green myself (4/4 daemon binding tests) rather than accepting it. AC4 and AC6 were correctly downgraded to unchecked by the PM and re-earned from `git show HEAD` on the merge target rather than from disk, which is the exact discipline whose absence caused the defect. Six items remain open — f2 (MAJOR), f3, f4, f5 (MINOR), n1 and n2 (NIT); none of them was introduced or affected by the fix. ROUND-1 POSTSCRIPT: my own remedy (a) for f2 was WITHDRAWN and replaced before any fix was built — see f2's correction. It would have re-admitted a wire-asserted pid at the exact moment daemon-derived evidence failed, re-opening one branch over the anti-impersonation control that identity.rs:436-450 had already carved out. The replacement demotes the claim from EVIDENCE to a SELECTOR among processes the daemon observed for itself (a live descendant of the pane root), which is the distinction the doctrine actually turns on. Recorded because a reviewer's proposed fix deserves the same scepticism as an author's, and mine did not survive it. ROUND-2 CROSS-REFERENCE, added so this record is not read alone and mislead: f2, f3, f6, n1, n4, n5 and n6 were all CLOSED by the round-2 fix commits (u3 897b7cd7/0c93619f, u4 0979d331/6762d11d) and verified by me on trial-merge trees — their verdict rows here are updated to `fixed` with pointers into assets/reviews/phase-1-review-r2.dd.json. STILL OPEN from this round: f4 (the fleet of shell-bound Claude seats, deferred to prime as separate work), f5 (parseFrame has no production caller), n2 (previous_proc None overloads no-row and unbound-row), and the F1 half of n6 (the no-pre-frame rule has no production enforcement — a comment at cli.ts:3396 and one test line)."
       }
     },
     {
@@ -339,16 +339,16 @@
         {
           "id": "v2",
           "finding": "phase-1-review-r1.dd.json#findings/f2",
-          "resolution": "confirmed",
-          "rationale": "Open, CONFIRMED by the PM against source and dispatched to u3. My original remedy (a) is WITHDRAWN and replaced: 'keep the caller's claim on a Pane source' would re-admit a wire-asserted pid exactly when daemon-derived evidence failed, which identity.rs:436-450 already rules out in terms. Narrowed remedy: accept the claim only if the claimed pid is a live descendant of the pane root, using the subtree harness_process already walks; fallback remedy: refuse on ProcSource::Pane rather than binding to the shell. Placement is load-bearing — the preference must not live in the shared pane_harness_identity, or adopt inherits it and AC7 breaks silently. Remedy (c) also REPLACED after a live 1743-process sweep: widening the interpreter list admits 17 omp worker processes and still misses the real case; dropping the {cli,index} stem constraint adds exactly the 2 genuine pij-launched copilot loaders and admits zero workers. Keep node|bun, require only the package path.",
-          "state": "unchecked"
+          "resolution": "fixed",
+          "rationale": "CLOSED in round 2 by u3 897b7cd7/0c93619f and verified by me on the trial-merge tree: the claim is demoted to a selector over the daemon-observed pane subtree, refusal writes nothing, the shared helper makes no claim decision so adopt cannot inherit it, and the behavioural witness asserts rebound-not-same for a new process in a stable pane. See r2t1/r2t6/r2t7. Open, CONFIRMED by the PM against source and dispatched to u3. My original remedy (a) is WITHDRAWN and replaced: 'keep the caller's claim on a Pane source' would re-admit a wire-asserted pid exactly when daemon-derived evidence failed, which identity.rs:436-450 already rules out in terms. Narrowed remedy: accept the claim only if the claimed pid is a live descendant of the pane root, using the subtree harness_process already walks; fallback remedy: refuse on ProcSource::Pane rather than binding to the shell. Placement is load-bearing — the preference must not live in the shared pane_harness_identity, or adopt inherits it and AC7 breaks silently. Remedy (c) also REPLACED after a live 1743-process sweep: widening the interpreter list admits 17 omp worker processes and still misses the real case; dropping the {cli,index} stem constraint adds exactly the 2 genuine pij-launched copilot loaders and admits zero workers. Keep node|bun, require only the package path.",
+          "state": "checked"
         },
         {
           "id": "v3",
           "finding": "phase-1-review-r1.dd.json#findings/f3",
-          "resolution": "confirmed",
-          "rationale": "Open. One-line regression from `filter_map(Result::ok)` to `entry.ok()?`; converts 'skip a bad entry' into 'abandon discovery and fall back to pointer-drain'. Fix is `let Ok(entry) = entry else { continue; };`.",
-          "state": "unchecked"
+          "resolution": "fixed",
+          "rationale": "CLOSED in round 2 by u3: `let Ok(entry) = entry else { continue; }` plus an injectable entry stream and eleven rejection classes tested with the rejected entry forced to enumerate first. See r2t4. Open. One-line regression from `filter_map(Result::ok)` to `entry.ok()?`; converts 'skip a bad entry' into 'abandon discovery and fall back to pointer-drain'. Fix is `let Ok(entry) = entry else { continue; };`.",
+          "state": "checked"
         },
         {
           "id": "v4",
@@ -367,9 +367,9 @@
         {
           "id": "v6",
           "finding": "phase-1-review-r1.dd.json#findings/n1",
-          "resolution": "confirmed",
-          "rationale": "Open, NIT. Same-depth sibling ties in the harness walk are decided by ps enumeration order, while the same plan's uds discovery explicitly refuses order-based tiebreaks. Either refuse the tie or write down why order is acceptable here.",
-          "state": "unchecked"
+          "resolution": "fixed",
+          "rationale": "CLOSED in round 2 by u3, and more strongly than this row asked: equally-near matches fall back to the pane root rather than being ordered, and order-independence is proven by reversing the rows. See r2n1. Open, NIT. Same-depth sibling ties in the harness walk are decided by ps enumeration order, while the same plan's uds discovery explicitly refuses order-based tiebreaks. Either refuse the tie or write down why order is acceptable here.",
+          "state": "checked"
         },
         {
           "id": "v7",
@@ -430,9 +430,9 @@
         {
           "id": "v15",
           "finding": "phase-1-review-r1.dd.json#findings/f6",
-          "resolution": "confirmed",
-          "state": "unchecked",
-          "rationale": "Open. Outside 135's declared non_goals (which carved out exactly one announceText sentence), so it goes to prime as a note like f4 rather than back to the units. But it is the SAME defect AC8 exists to close, it is LLM-facing, and it is five strings. Confirmed from this reviewer's own injected tool metadata rather than by reading index.ts alone."
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "CLOSED in round 2 by u4 0979d331: all five LLM-facing strings and both stale comments corrected, and the vocabulary rule became a sensor rather than prose. NOTE the same defect recurred one altitude higher at .pi/APPEND_SYSTEM.md — see r2f4. Open. Outside 135's declared non_goals (which carved out exactly one announceText sentence), so it goes to prime as a note like f4 rather than back to the units. But it is the SAME defect AC8 exists to close, it is LLM-facing, and it is five strings. Confirmed from this reviewer's own injected tool metadata rather than by reading index.ts alone."
         },
         {
           "id": "v16",
@@ -444,9 +444,9 @@
         {
           "id": "v17",
           "finding": "phase-1-review-r1.dd.json#findings/n4",
-          "resolution": "confirmed",
-          "state": "unchecked",
-          "rationale": "Open, NIT. Implementation correct and verified against real ps behaviour on three timezones; the witness's discriminating power is host-dependent and vanishes on a UTC runner. Assert the two observations differ, or report the property as unexercised."
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "CLOSED in round 2 by u3: a UTC host now reports the property as unexercised on stderr, and a divergent host additionally proves the pane fallback cannot rescue a wrong timebase comparison. See r2n4. Open, NIT. Implementation correct and verified against real ps behaviour on three timezones; the witness's discriminating power is host-dependent and vanishes on a UTC runner. Assert the two observations differ, or report the property as unexercised."
         },
         {
           "id": "v18",
@@ -458,16 +458,16 @@
         {
           "id": "v19",
           "finding": "phase-1-review-r1.dd.json#findings/n5",
-          "resolution": "confirmed",
-          "state": "unchecked",
-          "rationale": "Open and TIME-SENSITIVE — u4 is editing this renderer now and has already touched three inbox.test.ts expectations. Do not migrate the listing to the wire frame; make it stop imitating a frame. Adopting the live shape would make a transport log byte-identical to live instruction, which is the D-040 failure mode, and would break the listing's line structure in three separate ways."
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "CLOSED in round 2 by u4: the listing took the third form `<id>: content` — neither head, no tail — so a transport log can no longer be mistaken for live instruction. See r2n5. Open and TIME-SENSITIVE — u4 is editing this renderer now and has already touched three inbox.test.ts expectations. Do not migrate the listing to the wire frame; make it stop imitating a frame. Adopting the live shape would make a transport log byte-identical to live instruction, which is the D-040 failure mode, and would break the listing's line structure in three separate ways."
         },
         {
           "id": "v20",
           "finding": "phase-1-review-r1.dd.json#findings/n6",
-          "resolution": "confirmed",
-          "state": "unchecked",
-          "rationale": "PM's ruling adopted and strengthened: widen to `not.toContain(\"[pij\")` so it survives the NEXT generation too. But record that the line is redundant next to the byte-exact toEqual above it, and that the real gap is F1 having no production enforcement at all — a comment at cli.ts:3396 and one test line. Same shape as INS-003."
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "CLOSED in round 2 by u4: widened to `not.toContain(\"[pij\")`, the substring form that survives a third generation. The F1 no-production-enforcement observation in this finding REMAINS OPEN. See r2n6. PM's ruling adopted and strengthened: widen to `not.toContain(\"[pij\")` so it survives the NEXT generation too. But record that the line is redundant next to the byte-exact toEqual above it, and that the real gap is F1 having no production enforcement at all — a comment at cli.ts:3396 and one test line. Same shape as INS-003."
         }
       ]
     }
