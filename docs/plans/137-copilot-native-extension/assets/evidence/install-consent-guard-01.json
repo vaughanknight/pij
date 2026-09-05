@@ -1,0 +1,55 @@
+{
+  "status": "scoped-consent-guard-verified-awaiting-PM-live-continuation",
+  "source": "Co-committed smoke driver, tests and focused how-to",
+  "basis": "pm-native-local-04.json: strict native CLI requested extension-tool approval despite --allow-tool=pij_send",
+  "contract": {
+    "title": "Run extension tool \"pij_send\"",
+    "arguments": "Parse only the active bottom modal's single JSON object; require exact expected {to,message}, rejecting extra keys and multiple objects. Prior transcript text never authorizes the dialog.",
+    "action": "Recheck immediately before one Enter with the exact one-time Yes choice selected; no repeat or session-wide approval.",
+    "failure": "Unknown/mismatching dialogs fail with PIJ_NATIVE_UNEXPECTED_APPROVAL; no-dialog/stalled-dismissal time out. Never press another key to recover.",
+    "evidence": "native-tool-human-approval witness records expected pane/recipient/nonce, before, before_confirm, decision, attempted keys, confirmation_sent when the command returns, after_input, after, status and any error. Existing final-pane captures remain unchanged."
+  },
+  "verification": {
+    "environment": {
+      "VITEST_MAX_WORKERS": "4",
+      "VITEST_MAX_THREADS": "4",
+      "CARGO_BUILD_JOBS": "4"
+    },
+    "tests": {
+      "command": "just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0,
+      "files": 2,
+      "passed": 59,
+      "installer": 33,
+      "smoke": 26,
+      "approval_cases_added": 18
+    },
+    "typecheck": {
+      "command": "node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0
+    },
+    "biome": {
+      "command": "node_modules/.bin/biome check harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0,
+      "result": "Checked 2 files; no fixes applied"
+    },
+    "retained_actual_dialog": {
+      "command": "node_modules/.bin/tsx /tmp/install137-approval-replay.mts",
+      "source": "pm-native-local-04.json, final_pane_captures pane %3",
+      "expected": {
+        "to": "pij-copilot-d0187a53064f92a06b297dd5",
+        "message": "PIJ_NATIVE_93d80a78-e9b9-4309-b706-13e5b35fe820"
+      },
+      "result": "verifyToolApproval returned true against the retained actual CLI screen",
+      "exit_code": 0,
+      "live_keys_sent": 0
+    }
+  },
+  "boundaries": [
+    "PM owns actual live continuation and full gates; neither was rerun here.",
+    "No application skipPermission, default grants, blanket permissions, product changes, or tmux message-body delivery.",
+    "No new Pi/OMP seats, global links/config/auth changes, machine-daemon changes or toolchain updates.",
+    "No full native or real-provider acceptance claimed; unit controls and retained-screen replay are not live successful tool execution."
+  ],
+  "retrospective": "DL-001 encoded: native extension permission UI must be driven as exact per-call simulated human consent, with its own argument block and decision evidence, rather than inferred from command-line allow flags."
+}

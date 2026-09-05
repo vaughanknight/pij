@@ -140,6 +140,16 @@ checks the two receipts, the pre-launch config, exact prompt path, absent provid
 activity in the negative control, and correlated ordinary native interaction in
 the seeded run. Passing this startup discriminator is not full transport acceptance.
 
+The reply step simulates a human approving **one** native extension-tool call.
+Before sending Enter, it requires the active bottom modal's exact
+`Run extension tool "pij_send"` title, parses that modal's own JSON arguments,
+and compares the complete object with the expected isolated recipient and nonce.
+It rechecks the dialog and requires `1. Yes` to be selected; session-wide approval
+is never chosen. Unknown/mismatching dialogs fail without confirmation. Receipts
+retain before/rechecked/after terminal evidence and the exact decision, alongside
+the existing final-pane captures. This is test-human consent, not a permission
+bypass or tmux message-body delivery; product policy/default grants are unchanged.
+
 Witnesses retain exact source and executable hashes, versions, processes/panes,
 Pij msg/job IDs, public native events, bidirectional tool-originated replies,
 initial spawned task/duplicate checks, held/admitted draft evidence, missing

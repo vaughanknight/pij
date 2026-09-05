@@ -11,11 +11,13 @@ import {
 } from "./copilot-native-fixture.js";
 import {
 	captureSmokePanes,
+	confirmSmokeToolInvocation,
 	nativeMessages,
 	parseSmokeArgs,
 	readNativeEvents,
 	runSmoke,
 	verifyOrdinaryUsability,
+	verifyToolApproval,
 	verifyWorkspaceTrustDiscriminator,
 } from "./copilot-native-smoke.js";
 
@@ -92,6 +94,192 @@ describe("native smoke fixture protocol", () => {
 		} finally {
 			await fixture.close();
 		}
+	});
+});
+
+describe("isolated native tool human approval", () => {
+	const expected = { pane: "%3", to: "pij-original-sender", message: "PIJ_NATIVE_exact-nonce" };
+	const args = { to: expected.to, message: expected.message };
+	// Observed CLI modal structure; the transcript intentionally repeats the correct arguments.
+	const dialog = (parameters: unknown = args) =>
+		[
+			`Previous user message ${JSON.stringify(args)}`,
+			"╭────────────────╮",
+			'│ Run extension tool "pij_send" │',
+			"│ Send a message to a Pij peer. │",
+			...JSON.stringify(parameters, null, 2)
+				.split("\n")
+				.map((line) => `│ ${line} │`),
+			"│ │",
+			"│ ❯ 1. Yes │",
+			'│ 2. Yes, and approve "pij_send" for the rest of the session │',
+			"│ 3. No │",
+			"│ 4. No, and tell Copilot why... (Esc to stop) │",
+			"│ │",
+			"│ ↑/↓ to navigate · enter to select · esc to cancel │",
+			"╰────────────────╯",
+		].join("\n");
+
+	it("approves once only after two exact matches and retains before/after screens", async () => {
+		const before = dialog({ message: expected.message, to: expected.to });
+		const after = "PIJ_NATIVE_DONE\n❯";
+		const frames = [before, before, before, after];
+		const commands: string[][] = [];
+		const witness: Record<string, unknown> = {};
+		await confirmSmokeToolInvocation(
+			(command) => {
+				commands.push(command);
+				if (command[0] === "capture-pane") return frames.shift() ?? after;
+				expect(witness.before).toBe(before);
+				expect(witness.before_confirm).toBe(before);
+				return "";
+			},
+			expected,
+			1,
+			witness,
+		);
+		expect(commands.filter((command) => command[0] === "send-keys")).toEqual([
+			["send-keys", "-t", expected.pane, "Enter"],
+		]);
+		expect(witness).toMatchObject({
+			kind: "native-tool-human-approval",
+			expected,
+			status: "dismissed",
+			decision: "approve-once",
+			keys: ["Enter"],
+			before,
+			before_confirm: before,
+			after_input: before,
+			after,
+		});
+	});
+
+	it.each([
+		["wrong peer despite correct transcript", dialog({ ...args, to: "pij-wrong-peer" })],
+		[
+			"wrong nonce despite correct transcript",
+			dialog({ ...args, message: `${args.message}-extra` }),
+		],
+		["extra arguments", dialog({ ...args, permission: "all" })],
+		[
+			"unknown tool",
+			dialog().replace('Run extension tool "pij_send"', 'Run extension tool "shell"'),
+		],
+		["unknown dialog", dialog().replace('Run extension tool "pij_send"', "Confirm folder trust")],
+		[
+			"session approval selected",
+			dialog().replace("❯ 1. Yes", "1. Yes").replace("│ 2. Yes", "│ ❯ 2. Yes"),
+		],
+		["missing selection", dialog().replace("❯ 1. Yes", "1. Yes")],
+		["malformed JSON", dialog().replace('│   "to":', '│   "to" INVALID:')],
+		["missing arguments", dialog().replace("│ { │", "│ missing │")],
+		[
+			"multiple argument objects",
+			dialog().replace("│ ❯ 1. Yes │", '│ { │\n│ "to": "wrong" │\n│ } │\n│ ❯ 1. Yes │'),
+		],
+		["incomplete modal", dialog().replace("╰────────────────╯", "")],
+		["history rather than active modal", `${dialog()}\n❯ ordinary composer`],
+		["ambiguous multiple modals", `${dialog()}\n${dialog()}`],
+	])("rejects %s without pressing any key", async (_label, terminal) => {
+		const commands: string[][] = [];
+		const witness: Record<string, unknown> = {};
+		await expect(
+			confirmSmokeToolInvocation(
+				(command) => {
+					commands.push(command);
+					return terminal;
+				},
+				expected,
+				1,
+				witness,
+			),
+		).rejects.toThrow("PIJ_NATIVE_UNEXPECTED_APPROVAL");
+		expect(commands.every((command) => command[0] === "capture-pane")).toBe(true);
+		expect(witness).toMatchObject({ status: "failed", before: terminal });
+		expect(witness.decision).toBe("withhold");
+	});
+
+	it("rejects changed arguments at the last pre-key capture", async () => {
+		const before = dialog();
+		const changed = dialog({ ...args, to: "pij-wrong-peer" });
+		const frames = [before, changed];
+		const commands: string[][] = [];
+		const witness: Record<string, unknown> = {};
+		await expect(
+			confirmSmokeToolInvocation(
+				(command) => {
+					commands.push(command);
+					return frames.shift() ?? changed;
+				},
+				expected,
+				1,
+				witness,
+			),
+		).rejects.toThrow("PIJ_NATIVE_UNEXPECTED_APPROVAL");
+		expect(commands.every((command) => command[0] === "capture-pane")).toBe(true);
+		expect(witness).toMatchObject({ status: "failed", before, before_confirm: changed });
+	});
+
+	it("fails an unknown dialog immediately after the one-time confirmation", async () => {
+		const unknown = dialog().replace('Run extension tool "pij_send"', "Confirm folder trust");
+		const frames = [dialog(), dialog(), unknown, "ordinary composer"];
+		const commands: string[][] = [];
+		const witness: Record<string, unknown> = {};
+		await expect(
+			confirmSmokeToolInvocation(
+				(command) => {
+					commands.push(command);
+					return command[0] === "capture-pane" ? (frames.shift() ?? "ordinary composer") : "";
+				},
+				expected,
+				1,
+				witness,
+			),
+		).rejects.toThrow("PIJ_NATIVE_UNEXPECTED_APPROVAL");
+		expect(commands.filter((command) => command[0] === "send-keys")).toHaveLength(1);
+		expect(witness).toMatchObject({ status: "failed", after_input: unknown });
+	});
+
+	it("times out without a modal and never resends approval if dismissal stalls", async () => {
+		expect(verifyToolApproval(`Previous user ${JSON.stringify(args)}\n❯`, args)).toBe(false);
+		for (const terminal of ["ordinary composer", dialog()]) {
+			const commands: string[][] = [];
+			const witness: Record<string, unknown> = {};
+			await expect(
+				confirmSmokeToolInvocation(
+					(command) => {
+						commands.push(command);
+						return terminal;
+					},
+					expected,
+					1,
+					witness,
+				),
+			).rejects.toThrow("PIJ_NATIVE_TIMEOUT");
+			expect(commands.filter((command) => command[0] === "send-keys")).toHaveLength(
+				terminal === "ordinary composer" ? 0 : 1,
+			);
+			expect(witness.status).toBe("failed");
+		}
+	});
+
+	it("retains capture failures after confirmation without pressing again", async () => {
+		const commands: string[][] = [];
+		const witness: Record<string, unknown> = {};
+		await expect(
+			confirmSmokeToolInvocation(
+				(command) => {
+					commands.push(command);
+					if (commands.length > 3) throw new Error("pane exited after consent");
+					return dialog();
+				},
+				expected,
+				1,
+				witness,
+			),
+		).rejects.toThrow("pane exited after consent");
+		expect(commands.filter((command) => command[0] === "send-keys")).toHaveLength(1);
+		expect(witness).toMatchObject({ decision: "approve-once", status: "failed", before: dialog() });
 	});
 });
 
