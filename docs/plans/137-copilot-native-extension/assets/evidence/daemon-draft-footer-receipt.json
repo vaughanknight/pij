@@ -1,0 +1,82 @@
+{
+  "status": "unit_verified_live_cursor_pending",
+  "source_commit": "2d2242c640754a7b9233448e852a4793662f9dd3",
+  "baseline": "c36b86ad",
+  "authority": "../inputs/pm-draft-footer-ruling.json",
+  "production_change": "Add only lower.starts_with(\"@ files · # issues\") inside the existing Copilot footer predicate; preserve prior variants and all geometry/cursor/interaction policy.",
+  "capture": {
+    "receipt": "docs/plans/137-copilot-native-extension/assets/evidence/pm-native-local-06.json",
+    "capture_pointer": "/final_pane_captures/2/terminal",
+    "matching_capture_pointer": "/witnesses/6/after",
+    "pane": "%3",
+    "copilot_version": "1.0.84-0",
+    "provider": "deterministic-local-fixture-not-real-inference",
+    "receipt_started": "2026-09-05T03:20:10.147Z",
+    "receipt_finished": "2026-09-05T03:20:19.889Z",
+    "receipt_sha256": "188bd547566949524d08b0934b59a7de294d9c0a8da83b0e9a4ecb4b15c0d442",
+    "original_terminal_sha256": "6d538f637d7204d1419467422fbd1e2a0a4651d1d9d5410d636ce215c8659189",
+    "sanitization": "Only the workspace path in terminal is replaced by <workspace>; all other capture bytes are unchanged."
+  },
+  "fixture": "crates/harnesses/tests/fixtures/2026-09-05-copilot-v1.0.84-live06-draft.json",
+  "red": {
+    "command": "cargo test --locked -p pij-harnesses --lib copilot_v1_0_84_captured_draft_footer_is_recognized -- --test-threads=4 --nocapture",
+    "exit_code": 101,
+    "passed": 0,
+    "failed": 1,
+    "failure": "Captured @ files · # issues footer rejected by unchanged production predicate"
+  },
+  "green": {
+    "command": "cargo test --locked -p pij-harnesses -- --test-threads=4",
+    "exit_code": 0,
+    "unit_passed": 104,
+    "proc_integration_passed": 2,
+    "total_passed": 106,
+    "existing_ignored_doctests": 3,
+    "negative_controls": "Six prose, partial, malformed or reversed draft hints remain rejected; prior footer tests pass"
+  },
+  "lint": {
+    "command": "cargo clippy --locked -p pij-harnesses --all-targets -- -D warnings",
+    "exit_code": 0
+  },
+  "format": {
+    "command": "rustfmt --check --edition 2024 --config skip_children=true crates/harnesses/src/composer.rs",
+    "exit_code": 0
+  },
+  "environment": {
+    "CARGO_BUILD_JOBS": "4",
+    "VITEST_MAX_WORKERS": "4",
+    "VITEST_MAX_THREADS": "4",
+    "CARGO_TARGET_DIR": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/target"
+  },
+  "review": {
+    "agent": "DraftFooterReview",
+    "verdict": "no_material_findings",
+    "read_only": true,
+    "validation_commands_run": false
+  },
+  "logs": [
+    {
+      "path": "daemon-draft-footer-red.log",
+      "artifact": "artifact://229",
+      "sha256": "fb48a1733a5b02b98d5024d2b182a62028aa36521b6158783e20b6f42ba6dfb1",
+      "lines": 21
+    },
+    {
+      "path": "daemon-draft-footer-green.log",
+      "artifact": "artifact://233",
+      "sha256": "e3a13680842ffa9be085cc1ecc020203396298b34abf6df3aedd300477a9ee2b",
+      "lines": 154
+    }
+  ],
+  "proof_limits": [
+    "Captured predicate proof only; snapshot has no measured paired cursor.",
+    "No live rerun or project-wide gate.",
+    "No claim of whole-composer recognition, current live consent timing, or native/model completion."
+  ],
+  "follow_up": {
+    "owner": "PM/prime",
+    "record": "DL-007 in .harness/temp/agent/session-buffer.md; pm-draft-footer-ruling.json",
+    "next_live": "Retain measured timestamp-paired cursor and add it to the fixture.",
+    "architecture": "Review geometry-based recognition instead of another mutable footer variant; no broader redesign in this patch."
+  }
+}
