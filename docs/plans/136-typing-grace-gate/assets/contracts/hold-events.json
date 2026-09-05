@@ -40,11 +40,12 @@
     }
   },
   "hold_request": {
-    "$comment": "Seam (b): POST /v1/hold, bearer-authed exactly like /v1/register. Additive route. u1 calls it, u2 serves it. AMENDED 2026-09-05 (prime ruling, assets/inputs/ruling-hold-inversion-2026-09-05.md): serving it appends the `held` event AND RETURNS THE JOB TO PENDING via the existing Queue::retry with not_before = now + typing_grace_ms, so held means PENDING-AND-UNCLAIMED — nothing stays running to block a bypass claim (queue.rs:258), the 300 s claim lease is irrelevant, and re-offers are bounded and observable. Idempotent per (seat, msg_id): a repeat is 200 and appends nothing, including after a daemon restart when the transient claim map is empty (200, no append, no retry — the row is durable and pending either way).",
+    "$comment": "Seam (b): POST /v1/hold, bearer-authed exactly like /v1/register. Additive route. u1 calls it, u2 serves it. AMENDED TWICE on 2026-09-05. (i) prime ruling (assets/inputs/ruling-hold-inversion-2026-09-05.md): serving it appends the `held` event AND RETURNS THE JOB TO PENDING with not_before = now + typing_grace_ms, so held means PENDING-AND-UNCLAIMED — nothing stays running to block a bypass claim (queue.rs:258), the 300 s claim lease is irrelevant, and re-offers are bounded and observable. (ii) PM ruling on u2's evidence: the row is carried by JOB_ID, not by a daemon-side (seat,msg_id) map. The extension already holds job_id from its InboxClaim, so passing it makes the daemon stateless here and removes a map whose failure mode was silent divergence across restarts. Idempotent per job_id: a repeat is 200 and appends nothing.",
     "method": "POST",
     "path": "/v1/hold",
     "body": {
       "seat": "pij-current-nigel",
+      "job_id": 1308,
       "msg_id": "97752745-7aef-40ad-860a-e1e68b99f6d3",
       "reason": "human-typing",
       "since_ms": 1788599997000
@@ -60,11 +61,12 @@
     }
   },
   "release_request": {
-    "$comment": "Seam (b): POST /v1/release. Appends the `released` event AND CLEARS THE DEFERRAL — not_before is set to at_ms (Queue::retry with Duration::ZERO) so the extension's next ordinary claim gets the row immediately. AMENDED 2026-09-05 (PM ruling on u1's evidence): without this the row stays deferred to hold_time + grace, i.e. last_key + ~2 graces, and AC1's 'injected at t0+60 s ±3 s' is unreachable through the normal claim path. Releasing an unheld (seat, msg_id) is 200 with `released: false` — the extension must be free to release optimistically after a restart without a 4xx. (The earlier `held:false` wording in this comment was wrong; the response field is `released`, as the sample below always showed.)",
+    "$comment": "Seam (b): POST /v1/release. Appends the `released` event AND CLEARS THE DEFERRAL (not_before = now) so the extension's next ordinary claim gets the row immediately. AMENDED 2026-09-05 on u1's evidence: without un-deferral the row stays parked at hold_time + grace — about last_key + two graces — and AC1's 'injected at t0+60 s +/- 3 s' is unreachable. Carries job_id for the same reason hold does. Releasing a job that is not deferred is 200 with `released: false` — the extension must be free to release optimistically after a restart without a 4xx.",
     "method": "POST",
     "path": "/v1/release",
     "body": {
       "seat": "pij-current-nigel",
+      "job_id": 1308,
       "msg_id": "97752745-7aef-40ad-860a-e1e68b99f6d3",
       "at_ms": 1788600060000
     },
@@ -76,33 +78,6 @@
         "msg_id": "97752745-7aef-40ad-860a-e1e68b99f6d3",
         "released": true
       }
-    }
-  },
-  "peek_request": {
-    "$comment": "ADDED 2026-09-05 (PM ruling on u1 evidence). The extension polls with peek while the human types, so it never claims a row it would only have to hold. GET /v1/inbox?seat=<seat>&peek=true is an EXISTING route (crates/daemon/src/http/mod.rs:1116 -> DeliveryService::peek_inbox, delivery/mod.rs:530) — u2 adds nothing; u1 adds an additive peekInbox call in adapters/daemon-http.ts. It returns AT MOST ONE claim, the oldest ELIGIBLE row (queue peek honours not_before), so a held row deferred to now+grace is INVISIBLE to peek until its deferral elapses, while a newly-arrived command is visible immediately. That is what makes the bypass observable without claiming: peek, and only claim when peek shows something.",
-    "method": "GET",
-    "path": "/v1/inbox?seat=<seat>&peek=true",
-    "response": {
-      "ok": true,
-      "command": "pij inbox",
-      "v": 2,
-      "data": [
-        {
-          "job_id": 1308,
-          "message": {
-            "from": "pij-fellow-whale",
-            "to": "pij-current-nigel",
-            "body": "hello",
-            "msg_id": "97752745-7aef-40ad-860a-e1e68b99f6d3"
-          }
-        }
-      ]
-    },
-    "empty_response": {
-      "ok": true,
-      "command": "pij inbox",
-      "v": 2,
-      "data": []
     }
   },
   "register_response_with_grace": {
@@ -131,7 +106,7 @@
   },
   "invariants": {
     "$comment": "The properties every unit's tests must defend. These are the review priorities (impl-guide review.inputs).",
-    "held_is_unacked": "A held row is CLAIMED but NEVER acked. Nothing may mark it delivered while held; killing the seat or the daemon must redeliver it in order on re-register (AC5).",
+    "held_is_unacked": "A held row is PENDING-AND-UNCLAIMED and NEVER acked (amended 2026-09-05 by the hold inversion — it was 'CLAIMED but never acked' in the original draft; u3 caught the stale wording). Nothing may mark it delivered while held; killing the seat or the daemon must leave both rows in the store, pending, and re-register must redeliver them in id order (AC5).",
     "order_preserved": "Release drains in claim order — a message held at t0 is injected before one held at t0+1s.",
     "bypass": "Msg.command (compact|new|reload) and urgent payloads skip the hold entirely: inject + ack immediately, even with holds outstanding, and the held rows stay held (AC4).",
     "one_grace": "Exactly one numeric literal for the grace exists in Rust (DEFAULT_TYPING_GRACE_MS) and exactly one in TS (the `??` fallback). A test on each side asserts the observed value; a TS test asserts the wire value WINS over the fallback (AC7, risk r4).",
@@ -149,5 +124,16 @@
       "outcome": "delivered",
       "origin": "reader-read"
     }
+  },
+  "claim_note": {
+    "$comment": "RETRACTS the peek_request block of commit b7fe533a — my premise there was wrong and u2 disproved it from the source. Queue::peek (crates/store/src/queue.rs:315-319) selects the oldest row in state IN ('pending','running') with NO not_before condition, and its port doc promises exactly that (oldest LIVE, including claimed), so a deferred hold stays at the head of every peek and hides the bypass behind it. THE ORDINARY CLAIM PATH IS ALREADY CORRECT and needs nothing new: Queue::claim (queue.rs:253-259) filters `state = 'pending' AND not_before <= unixepoch()`, so a held row deferred to now + grace is SKIPPED and a newly-arrived command is returned instead. The extension therefore keeps claiming as it does today; no peek call, no new route.",
+    "bypass_mechanism": "queue.rs:253-259 — deferred rows are not claimable; the next eligible row is."
+  },
+  "queue_seam": {
+    "$comment": "ADDED 2026-09-05 (PM ruling on u2's evidence, notified to prime). Queue::retry (queue.rs:345-374) updates only `WHERE id = ?1 AND state = 'running'` and deliberately ERRORS on a row nobody claimed, so it can serve /v1/hold (the row is running: the extension claimed it moments earlier) but CANNOT serve /v1/release, whose row is pending-and-deferred. That is a genuine API gap, not a held-state request. ONE additive port method closes it, with NO new stored state and NO schema change — which keeps prime's 'do not teach the store a held state' intact.",
+    "method": "Queue::defer(job: JobId, delay: Duration) -> Result<DeferOutcome>",
+    "semantics": "Set a LIVE delivery row (pending OR running) to state='pending', worker/claimed_at cleared, not_before = now + delay. ATTEMPT IS NOT INCREMENTED: a hold is not a failed attempt, and inflating attempt would corrupt the backoff and budget logic that reads it. Absent or terminal job -> DeferOutcome::NotLive, which the routes render as a 200 with held:false / released:false (the restart case: the row is durable and pending either way, so refusing would be worse than a no-op).",
+    "used_by": "/v1/hold with delay = typing_grace_ms; /v1/release with delay = 0.",
+    "fence": "u2 += crates/core/src/ports.rs, crates/store/src/queue.rs, the testkit queue fake, and those crates' own tests."
   }
 }
