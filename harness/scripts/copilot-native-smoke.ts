@@ -238,13 +238,19 @@ export function verifyWorkspaceTrustDiscriminator(
 	);
 }
 
-function command(bin: string, args: string[], env?: NodeJS.ProcessEnv): string {
-	return execFileSync(bin, args, {
+function command(
+	bin: string,
+	args: string[],
+	env?: NodeJS.ProcessEnv,
+	preserveOutput = false,
+): string {
+	const output = execFileSync(bin, args, {
 		encoding: "utf8",
 		env,
 		timeout: 15_000,
 		stdio: ["ignore", "pipe", "pipe"],
-	}).trim();
+	});
+	return preserveOutput ? output : output.trim();
 }
 function quote(value: string): string {
 	return `'${value.replaceAll("'", "'\\''")}'`;
@@ -288,18 +294,75 @@ async function stopOwned(child: ChildProcess): Promise<void> {
 	}
 }
 
+/** One tmux batch pairs real coordinates with an unjoined viewport, not joined scrollback. */
+function captureSmokePaneViewport(
+	tmux: (args: string[], preserveOutput?: boolean) => string,
+	pane: string,
+) {
+	const captured_at_ms = Date.now();
+	let terminal: string | undefined;
+	let metadata_raw: string | undefined;
+	try {
+		const output = tmux(
+			[
+				"display-message",
+				"-p",
+				"-t",
+				pane,
+				"#{cursor_x}\t#{cursor_y}\t#{pane_width}\t#{pane_height}",
+				";",
+				"capture-pane",
+				"-p",
+				"-t",
+				pane,
+			],
+			true,
+		);
+		const newline = output.indexOf("\n");
+		metadata_raw = newline < 0 ? output : output.slice(0, newline);
+		terminal = newline < 0 ? undefined : output.slice(newline + 1);
+		assert(
+			newline >= 0 && /^\d+\t\d+\t[1-9]\d*\t[1-9]\d*$/.test(metadata_raw),
+			"PIJ_NATIVE_CAPTURE_CURSOR: missing or malformed tmux coordinates",
+		);
+		const coordinates = metadata_raw.split("\t").map(Number);
+		assert(
+			coordinates.every(Number.isSafeInteger),
+			"PIJ_NATIVE_CAPTURE_CURSOR: unsafe tmux coordinates",
+		);
+		const [cursor_x, cursor_y, pane_width, pane_height] = coordinates;
+		return {
+			pane,
+			captured_at_ms,
+			terminal,
+			metadata_raw,
+			cursor_x,
+			cursor_y,
+			pane_width,
+			pane_height,
+		};
+	} catch (error) {
+		return { pane, captured_at_ms, terminal, metadata_raw, error: String(error) };
+	}
+}
+
 /** Snapshot every owned pane before teardown; an exited pane must not hide the others. */
-export function captureSmokePanes(tmux: (args: string[]) => string) {
+export function captureSmokePanes(tmux: (args: string[], preserveOutput?: boolean) => string) {
 	const panes = tmux(["list-panes", "-a", "-F", "#{pane_id} #{pane_pid} #{pane_current_command}"]);
 	const captures = panes
 		.split("\n")
 		.filter(Boolean)
 		.map((row) => {
 			const pane = row.split(" ")[0] as string;
+			const pane_capture = captureSmokePaneViewport(tmux, pane);
 			try {
-				return { pane, terminal: tmux(["capture-pane", "-p", "-J", "-S", "-2000", "-t", pane]) };
+				return {
+					pane,
+					terminal: tmux(["capture-pane", "-p", "-J", "-S", "-2000", "-t", pane]),
+					pane_capture,
+				};
 			} catch (error) {
-				return { pane, error: String(error) };
+				return { pane, pane_capture, error: String(error) };
 			}
 		});
 	return { panes, captures };
@@ -573,7 +636,7 @@ export function verifyNativeContextHeld(
 /** Observe product hold/release; never release a job or clear the draft to make it pass. */
 export async function driveSmokeTypingWitness(
 	io: {
-		tmux: (args: string[]) => string;
+		tmux: (args: string[], preserveOutput?: boolean) => string;
 		observe: () => Promise<TypingSample>;
 		send: () => Promise<unknown>;
 	},
@@ -591,7 +654,8 @@ export async function driveSmokeTypingWitness(
 	let lastObserved = 0;
 	const sample = async () => {
 		const value = await io.observe();
-		witness.last_observation = value;
+		const pane_capture = captureSmokePaneViewport(io.tmux, seat.pane);
+		witness.last_observation = { ...value, pane_capture };
 		const terminal = capture();
 		witness.after = terminal;
 		check(nativeComposer(terminal) === draft, "same nonempty composer must remain intact");
@@ -618,7 +682,7 @@ export async function driveSmokeTypingWitness(
 		check(observedAt >= lastObserved && observedAt > 0, "sensor observation clock moved backwards");
 		grace = currentGrace;
 		lastObserved = observedAt;
-		return { ...value, sensor, terminal, observedAt, retry, grace: currentGrace };
+		return { ...value, pane_capture, sensor, terminal, observedAt, retry, grace: currentGrace };
 	};
 	const receipts = (value: TypingSample, kind: string) =>
 		value.deliveryEvents
@@ -823,7 +887,8 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 	let socketCreated = false;
 	let code = 1;
 	const socket = join(run, "tmux.sock");
-	const tmux = (args: string[]) => command("tmux", ["-S", socket, ...args], env);
+	const tmux = (args: string[], preserveOutput = false) =>
+		command("tmux", ["-S", socket, ...args], env, preserveOutput);
 	let daemonLog = "";
 	try {
 		if (!existsSync(options.pijBin))
