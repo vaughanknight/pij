@@ -1,0 +1,16 @@
+{
+  "owner": "pij-intellectual-mosquito",
+  "task": "Fix proved full-sequence fixture contamination from disabled Copilot control",
+  "evidence": "pm-native-local-10.json passed earlier manual scenarios and real host death, then cold --resume never loaded extension. Resumed pane banner is nonexperimental. Retained primary COPILOT_HOME/settings.json contains experimental:false. The earlier disabled CLI shared that HOME and --no-experimental persisted the opt-out; scoped lifecycle03 skipped this negative control and passed.",
+  "change": [
+    "Give EACH disabled/missing-consumer CLI its own private HOME/COPILOT_HOME/XDG_CONFIG_HOME under the run; keep the same isolated daemon endpoint/state and workspace.",
+    "Reuse canonical managed extension setup and trusted-folder setup as applicable; explicit --no-experimental applies only to the negative home. Never copy real auth files or introduce grants.",
+    "Set per-window environment overrides rather than mutating the shared tmux server, primary env or positive home. Primary manual/spawned/resume clients retain their original enabled home.",
+    "Record primary settings before/after, negative home/settings and exact launch flags; assert primary experimental remains true after negative launch and before later resume.",
+    "Add a deterministic regression simulating CLI persistence of experimental:false in the negative home and prove positive config is unchanged; preserve existing disabled readiness/absence no-fallback checks.",
+    "Avoid shared negative-home reuse across manual and spawned modes; cleanup remains owned and isolated."
+  ],
+  "scope": ["harness/scripts/copilot-native-smoke.ts", "harness/scripts/copilot-native-smoke.test.ts", "installer evidence/docs"],
+  "constraints": ["No product/runtime/daemon/SDK change", "No live/full gate run", "No global config/link mutation", "No .the-flow-state.json/the-flow.json/the-flow.md/governance edits"],
+  "acceptance": "Separate negative control cannot disable positive/resumed sessions; scoped tests and source receipt. PM runs full canonical scenario after composition."
+}

@@ -8,7 +8,7 @@
       "value": {
         "title": "Copilot native extension — selected backpressure",
         "plan": "../plan.dd.json#meta",
-        "basis_sha": "73935fcc418e800dfd793c5e643c98ed206e6ac44b62b6c76d08bfc60dbe6522",
+        "basis_sha": "c9bebcf7435d258b71b9198f637571352eed49e52bc282da5de34c93e6777e26",
         "certainty": "Partial"
       }
     },
@@ -55,8 +55,9 @@
           "mode": "EXTEND",
           "tier": "computational",
           "proof": "Extend Rust delivery initial/drain/command tests with a tmux adapter that fails if called for Copilot; other harnesses retain original behavior. Pave just copilot-native-rust-test. Missing extension control gives positive queued/refused evidence, not silence.",
-          "state": "unchecked",
-          "note": "Selection, not completed proof. No numeric confidence score."
+          "state": "checked",
+          "note": "Selection, not completed proof. No numeric confidence score.",
+          "receipt": "Complete canonical pm-native-local-11.json passed both modes, including real disabled consumers queued without fallback. Native/shared routing and control refusal also source-reviewed and covered by existing Rust/JS checks; final harness checks9/9 pass."
         },
         {
           "id": "bp-0005",
@@ -65,8 +66,9 @@
           "mode": "BUILD",
           "tier": "computational",
           "proof": "BUILD just copilot-native-test: fake native/HTTP seam models claim -> send acceptance -> durable mapping -> ack, duplicate and ambiguous crash cases. Real SQLite acceptance duplicate plus actual native CLI events in smoke; prove acceptance distinct from model idle. Explicitly test two incoming messages: second native send waits for first observed idle, including idle-before-ack race and restarted accepted duplicate recovery.",
-          "state": "unchecked",
-          "note": "Selection, not completed proof. No numeric confidence score."
+          "state": "checked",
+          "note": "Selection, not completed proof. No numeric confidence score.",
+          "receipt": "pm-native-local-11.json: manual/spawned native acceptance and reader-read ACK, accepted duplicate suppression, durable held/released/reclaimed jobs. Existing native141 tests and explicit JS/HTTP/SQLite cold-resume test cover ordering/error boundaries; ambiguous acceptance remains a safe hold, not a universal exactly-once claim."
         },
         {
           "id": "bp-0006",
@@ -97,8 +99,9 @@
           "mode": "EXTEND",
           "tier": "computational",
           "proof": "Extend forward migration, spawn/revive and caller-control tests: no RPC port/args, old migration checksums intact; Copilot programmatic controls explicitly refused, no legacy/tmux fallback; other harnesses unchanged. just copilot-native-rust-test plus focused CLI tests.",
-          "state": "unchecked",
-          "note": "Selection, not completed proof. No numeric confidence score."
+          "state": "checked",
+          "note": "Selection, not completed proof. No numeric confidence score.",
+          "receipt": "Opus source reviews and existing Rust workspace/migration/control tests passed. Copilot UI-server/port-intent runtime removed via forward migration; historical migrations unchanged; unsupported Copilot controls refuse without typed fallback."
         },
         {
           "id": "bp-0009",
@@ -107,8 +110,9 @@
           "mode": "BUILD",
           "tier": "computational",
           "proof": "BUILD paved JS/Rust/native terminal proofs above; real-provider canary separate from local deterministic provider, capture native IDs/nonce/tool reply and daemon ack against exact composed commit. RUN harness checks; existing file-watch-notify baseline red explicitly reported, never hidden.",
-          "state": "unchecked",
-          "note": "Selection, not completed proof. No numeric confidence score."
+          "state": "checked",
+          "note": "Selection, not completed proof. No numeric confidence score.",
+          "receipt": "pm-native-local-11.json full manual+spawned realCLI scenario passed at f9b55c26490feba4b332106e42d8bf3a130f9702. Real-provider coverage: pm-native-real-canary-04.json, MANUAL mode only, gpt-5.6-luna; spawned mode uses realCLI/SDK with deterministic provider. Final harness checks at2026-09-05T05:04:35.076Z: all9 sensors passed, none skipped."
         },
         {
           "id": "bp-000a",
@@ -117,9 +121,10 @@
           "mode": "ABSENT",
           "tier": "human-judgement",
           "proof": "PM judgment and independent OMP Opus5 high review: source/evidence re-derived, resolved findings and no unauthorized rollout. Schema and linkage are deterministic via harness plan validate and ddocs validate/build --check; final product acceptance also belongs to Jordan.",
-          "state": "unchecked",
+          "state": "checked",
           "note": "Selection, not completed proof. No numeric confidence score.",
-          "probe": "Intentional judgment tier, not missing tooling: inspected root package/Cargo/justfile, vitest config, all crate test entrypoints and checks sensors; these cannot independently judge product acceptance."
+          "probe": "Intentional judgment tier, not missing tooling: inspected root package/Cargo/justfile, vitest config, all crate test entrypoints and checks sensors; these cannot independently judge product acceptance.",
+          "receipt": "PM plan/guide/contracts, unit receipts, and independent Opus source reviews preserved. All material findings resolved or explicitly retained as nonblocking limits; Jordan stopped further test/review expansion. Final complete smoke and gate passed. No global rollout/public push/main merge."
         },
         {
           "id": "bp-0012",
@@ -139,7 +144,8 @@
           "mode": "BUILD",
           "tier": "computational",
           "proof": "Extend native JS startup/reconnect tests and dedicated CLI smoke: no daemon endpoint/key, real Copilot answers local-provider nonce normally with bounded extension diagnostic and no busy retry. just copilot-native-test and native smoke.",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "pm-native-local-11.json initial daemon-key-absent ordinary-use witness passed; native session remained usable with one actionable diagnostic. Existing real-HTTP/startup tests cover readable-key network failure, capped abortable retry and no fallback; final native sensor gate passed."
         }
       ]
     },

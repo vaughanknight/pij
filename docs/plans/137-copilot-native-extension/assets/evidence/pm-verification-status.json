@@ -1,8 +1,37 @@
 {
-  "state": "not-release-ready",
-  "source_integration": "Current main throughde9c8bb5 plus native v4, completion metadata, startup sensor readiness and approved draft footer are composed. Runtime module2cc04cb1 is frozen. Disabled CLI readiness and measured composer fixture follow-up are now composed; full native09 is running.",
-  "engineering_gate": {
-    "ok": true,
+  "state": "verified-not-deployed",
+  "source_commit": "f9b55c26490feba4b332106e42d8bf3a130f9702",
+  "source_modules": {
+    "extension.mjs": "567fccce84c2c8c5f173123ec46492bb6a79e72af1c1d656a1270ebd334b30a3",
+    "store.mjs": "2cc04cb1ea7ae7fac481711dad1a088c8fbe072e27a1707c9ea37564b57d7b4c"
+  },
+  "source_digests_checked_against_worktree": true,
+  "native_full_smoke": {
+    "command": "just copilot-native-smoke --mode both --provider local --timeout-seconds 120",
+    "status": "passed",
+    "receipt": "pm-native-local-11.json",
+    "coverage": [
+      "manual and Pij-spawned native registration/message roundtrip",
+      "initial task and duplicate suppression",
+      "default60000 typing hold and aged unchanged-draft admission",
+      "isolated disabled-consumer no-fallback control",
+      "daemon restart/key rotation",
+      "native rollover and old-context exclusion",
+      "actual owned whole-host death and same-identity cold resume"
+    ]
+  },
+  "real_provider": {
+    "status": "passed",
+    "receipt": "pm-native-real-canary-04.json",
+    "mode": "manual only",
+    "model": "gpt-5.6-luna",
+    "coverage": "native roundtrip and subsequent receive",
+    "limit": "Spawned mode used the real Copilot CLI/SDK with a deterministic provider, not real-model inference."
+  },
+  "final_gate": {
+    "command": "harness checks --json",
+    "status": "ok",
+    "timestamp": "2026-09-05T05:04:35.076Z",
     "ran": [
       "local-paths",
       "typecheck",
@@ -15,128 +44,22 @@
       "snapshots"
     ],
     "skipped": [],
-    "results": [
-      {
-        "name": "local-paths",
-        "status": "pass",
-        "code": 0,
-        "proves": "operational files contain no user-specific absolute home paths"
-      },
-      {
-        "name": "typecheck",
-        "status": "pass",
-        "code": 0,
-        "proves": "the TypeScript surface compiles"
-      },
-      {
-        "name": "lint",
-        "status": "pass",
-        "code": 0,
-        "proves": "Biome (errors + warnings) is clean"
-      },
-      {
-        "name": "test",
-        "status": "pass",
-        "code": 0,
-        "proves": "the vitest suite passes"
-      },
-      {
-        "name": "copilot-native",
-        "status": "pass",
-        "code": 0,
-        "proves": "native Copilot extension node:test contracts pass"
-      },
-      {
-        "name": "windows-compat",
-        "status": "pass",
-        "code": 0,
-        "proves": "portable typecheck, lint, registry replacement, inbox, fake, and no-tmux CLI checks pass"
-      },
-      {
-        "name": "smoke",
-        "status": "pass",
-        "code": 0,
-        "proves": "the tmux-driven end-to-end driver scenarios pass"
-      },
-      {
-        "name": "pkg-audit",
-        "status": "pass",
-        "code": 0,
-        "proves": "third-party package vetting surfaces no new findings"
-      },
-      {
-        "name": "snapshots",
-        "status": "pass",
-        "code": 0,
-        "proves": "agent-pack snapshots have not drifted"
-      }
-    ],
-    "command": "harness checks --json",
-    "timestamp": "2026-09-05T03:55:29.744Z",
-    "source_commit": "da727fcd19a315b136ef4c387c769396f1ff6072",
-    "receipt": "pm-current-harness-checks.json",
-    "currency": "All9 passed with no skips; later driver/test-only correction requires final gate rerun"
+    "evidence": "Observed final tool verdict; all nine sensors reported pass."
   },
-  "rust_workspace": {
-    "command": "cargo test --locked --workspace --no-fail-fast -- --test-threads=4",
-    "passed": 742,
-    "suites": 64,
-    "ignored": 8,
-    "filtered": 93,
+  "rust_evidence": {
+    "workspace_passed": 742,
+    "workspace_ignored": 8,
     "receipt": "pm-current-harness-and-rust.log",
-    "currency": "Passed before measured follow-up test addition; production Rust behavior unchanged by that addition"
+    "scope": "Earlier full workspace proof; subsequent measured composer fixture was separately verified with107 harness tests. No claim of a new full Rust run at closeout."
   },
-  "targeted_convergence": {
-    "upstream_merge": "aa1602564cd4c1f5e9f12747dc609232a4c97849",
-    "daemon_tests": "292 passed; testkit corpus6 passed; strict daemon clippy passed",
-    "composed_source": "0de7932273d1f3577cc64177bd1a8abe6442daba",
-    "harnesses": "98 passed,2 ignored as reported by command runner",
-    "native_cross_language": "just copilot-native-contract-test: explicitly ran ignored test,1 passed,0 ignored; real HTTP/SQLite and JS chooser/client/bridge/journal, simulated native.send",
-    "raw_output": "pm-composed-contract-0de79322.log",
-    "raw_sha256": "154fb2809ed098a01dfef4ce9fc1d5c68dccc5d3c897222efbc7c86464d82fa8",
-    "adjacent136": "Owner reports103 unit+2 integration passed with footer8f56be95 temporarily applied on136 composed1969511e plusmain; reverted after measurement, not adopted",
-    "currency": "Historical checkpoint; not final source gate"
-  },
-  "live_native": {
-    "receipts": [
-      "pm-native-local-01.json",
-      "pm-native-local-02.json",
-      "pm-native-local-03.json",
-      "pm-native-local-04.json",
-      "pm-native-local-04-ack.json",
-      "pm-native-local-05.json",
-      "pm-native-callback-probe-01.json",
-      "pm-native-product-callback-02.json",
-      "pm-native-local-06.json",
-      "pm-native-local-07.json",
-      "pm-native-local-08.json",
-      "pm-native-real-canary-04.json"
-    ],
-    "passed_boundaries": [
-      "real Copilot ordinary use with daemon/key absent",
-      "one outage diagnostic",
-      "real daemon health offline=false",
-      "two manual native host/session/pane registrations after ucomm fix",
-      "actual CLI native user message under then-current strict policy",
-      "manual bidirectional native roundtrip, exact simulated one-time tool consent, duplicate suppression and separate deterministic-provider completion in live05",
-      "real-provider gpt-5.6-luna native roundtrip and subsequent receive on module2cc04cb1",
-      "actual default60000 observed-typing hold then aged nonempty draft admission, one native acceptance/ACK, unchanged composer and measured cursor50,45"
-    ],
-    "blocked_boundary": "Local08 completed manual roundtrip and AC6, then old disabled-ready glyph check timed out. That fixture check is now corrected to existing nativeComposer; local09 continues remaining modes/lifecycle.",
-    "not_proven": [
-      "Pij-spawned native full path",
-      "complete real host-resume/rollover proof",
-      "full native driver successful completion"
-    ]
-  },
-  "decisions_pending": [],
+  "review": "Independent Opus source approval through opus-final-source-7eabbb3d.md; no further review/test expansion after Jordan direction. Final small fixture isolation and existing gate failures were corrected and confirmed by the complete smoke/gate.",
+  "remaining_required_work": [],
+  "limits": [
+    "No universal exactly-once guarantee across an unprovable native-acceptance crash boundary",
+    "Unavailable post-claim typing observations fail closed; broader geometry-based recognition remains deferred",
+    "Existing Copilot sessions are not retrofitted"
+  ],
   "no_global_rollout": true,
-  "later_targeted_proofs": {
-    "136_convergence": "7ee44f77:479 Rust tests passed,4 ignored; strict daemon clippy passed; pm-136-convergence-green.log",
-    "renewal_and_contract": "2a36a799:87 native JS tests passed; explicit cross-language1 passed with moduleDigest872f0f30e13f50c17c85e7b2d1fd9cf0e7b2ab3ddaf7e536b19080742feacce5; pm-native-05-validation.log",
-    "C1_and_lifecycle": "PM passed85 installer/smoke tests,27 registration tests and just typecheck; artifact://427. F2 refinement later composed; final rerun pending.",
-    "completion": "PM141 native tests and current explicit cross-language pass; real-model canary and local08 validate current module. All earlier traces/failures retained.",
-    "review": "Opus0de79322 and2a36a799 approve source correctness only. C1/F2 fixes composed; source after pins needs delta review."
-  },
-  "consent_ruling": "Jordan yes: ../inputs/jordan-ruling-consent-2026-09-05.md. Actual SDK lacks pre-submit input hooks; prime authorizes136 pane-side edit-recency SENSOR. ../inputs/pm-typing-sensor-contract-v4.json. No ungated send, permanent draft veto or sendkeys transport."
+  "no_public_push": true,
+  "no_main_merge": true
 }
