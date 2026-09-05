@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-// Real client witness, never a replacement transport. Only human draft controls use tmux keys.
+// Real client witness, never a replacement transport. Tmux keys simulate draft/one-shot consent only.
 import { strict as assert } from "node:assert";
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -52,7 +52,7 @@ interface NativeEvent {
 }
 
 const ROOT = resolve(import.meta.dirname, "../..");
-const HUMAN_KEYS = { clearDraft: "C-u" } as const;
+const HUMAN_KEYS = { clearDraft: "C-u", approveOnce: "Enter" } as const;
 
 export function parseSmokeArgs(args: string[]): Options {
 	const options: Options = {
@@ -289,6 +289,97 @@ export function captureSmokePanes(tmux: (args: string[]) => string) {
 			}
 		});
 	return { panes, captures };
+}
+
+/** Match only the active bottom modal, never arguments echoed in earlier conversation. */
+export function verifyToolApproval(
+	terminal: string,
+	expected: { to: string; message: string },
+): boolean {
+	const lines = terminal
+		.trim()
+		.split("\n")
+		.map((line) => line.trim());
+	const top = lines.findIndex((line) => /^╭─+╮$/.test(line));
+	if (top < 0) return false;
+	const fail = "PIJ_NATIVE_UNEXPECTED_APPROVAL";
+	assert(/^╰─+╯$/.test(lines.at(-1) ?? ""), `${fail}: incomplete or non-active modal`);
+	const modal = lines.slice(top + 1, -1).map((line) => {
+		assert(/^│.*│$/.test(line), `${fail}: ambiguous modal boundary`);
+		return line.slice(1, -1).trim();
+	});
+	assert.equal(modal[0], 'Run extension tool "pij_send"', `${fail}: unknown dialog title`);
+	const start = modal.indexOf("{");
+	const end = modal.indexOf("}", start + 1);
+	assert(start > 0 && end > start, `${fail}: missing complete dialog arguments`);
+	assert.equal(modal.lastIndexOf("{"), start, `${fail}: ambiguous dialog arguments`);
+	assert.equal(modal.lastIndexOf("}"), end, `${fail}: ambiguous dialog arguments`);
+	let args: unknown;
+	try {
+		args = JSON.parse(modal.slice(start, end + 1).join("\n"));
+	} catch {
+		throw new Error(`${fail}: malformed dialog arguments`);
+	}
+	assert.deepEqual(args, expected, `${fail}: dialog recipient/body mismatch`);
+	assert.deepEqual(
+		modal.filter((line) => /^(?:❯ )?\d+\. /.test(line)),
+		[
+			"❯ 1. Yes",
+			'2. Yes, and approve "pij_send" for the rest of the session',
+			"3. No",
+			"4. No, and tell Copilot why... (Esc to stop)",
+		],
+		`${fail}: one-time Yes must be the sole selected choice`,
+	);
+	assert.equal(
+		modal.at(-1),
+		"↑/↓ to navigate · enter to select · esc to cancel",
+		`${fail}: unknown controls`,
+	);
+	return true;
+}
+
+/** One test-human confirmation; every screen is retained before a key can be sent. */
+export async function confirmSmokeToolInvocation(
+	tmux: (args: string[]) => string,
+	expected: { pane: string; to: string; message: string },
+	timeout: number,
+	witness: Record<string, unknown>,
+): Promise<void> {
+	const capture = () => tmux(["capture-pane", "-p", "-J", "-t", expected.pane]);
+	const args = { to: expected.to, message: expected.message };
+	Object.assign(witness, { kind: "native-tool-human-approval", expected, status: "waiting" });
+	try {
+		await until("exact native pij_send approval dialog", timeout, () => {
+			const terminal = capture();
+			witness.before = terminal;
+			return verifyToolApproval(terminal, args) ? true : undefined;
+		});
+		const rechecked = capture();
+		witness.before_confirm = rechecked;
+		assert(
+			verifyToolApproval(rechecked, args),
+			"PIJ_NATIVE_UNEXPECTED_APPROVAL: dialog changed before confirmation",
+		);
+		Object.assign(witness, { decision: "approve-once", keys: [HUMAN_KEYS.approveOnce] });
+		tmux(["send-keys", "-t", expected.pane, HUMAN_KEYS.approveOnce]);
+		witness.status = "confirmation-sent";
+		witness.confirmation_sent = true;
+		const afterInput = capture();
+		witness.after_input = afterInput;
+		verifyToolApproval(afterInput, args);
+		await until("one-time native tool approval dismissed", timeout, () => {
+			const terminal = capture();
+			witness.after = terminal;
+			return verifyToolApproval(terminal, args) ? undefined : true;
+		});
+		witness.status = "dismissed";
+	} catch (error) {
+		if (!witness.decision) witness.decision = "withhold";
+		witness.status = "failed";
+		witness.error = String(error);
+		throw error;
+	}
 }
 
 export async function runSmoke(options: Options): Promise<{ code: number; output: string }> {
@@ -767,6 +858,14 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 			const initial =
 				mode === "spawned" ? prebindSends.get(target.id) : await send(sender, target, body, msgId);
 			const accepted = await waitDelivery(target, nonce, msgId);
+			const approval: Record<string, unknown> = { mode };
+			witnesses.push(approval);
+			await confirmSmokeToolInvocation(
+				tmux,
+				{ pane: target.pane, to: sender.id, message: nonce },
+				options.timeoutMs,
+				approval,
+			);
 			const reply = await until(
 				"native pij_send reply arrives at original sender",
 				options.timeoutMs,
