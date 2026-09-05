@@ -81,6 +81,28 @@ Rust recipe runs `pij-core`, `pij-store`, `pij-harnesses`, `pij-daemon`, and `pi
 with a checkout-local Cargo target. During parallel implementation use only the
 assigned scoped checks; the composed native recipes and full gate run afterward.
 
+### Opt-in cross-language contract
+
+```sh
+just copilot-native-contract-test
+```
+
+This explicitly runs the daemon's ignored `native_runtime_cold_resume` integration
+target against the actual JavaScript store module, HTTP, and SQLite. It requires
+Node, Cargo, the composed daemon test target, and `.copilot/extensions/pij/store.mjs`.
+Missing prerequisites fail the named invocation; nothing is skipped or stubbed.
+Node checks the module's syntax before Cargo runs. The recipe sets
+`PIJ_NATIVE_RUNTIME_MODULE` to that checkout's absolute store path,
+`CARGO_TARGET_DIR` to its local `target/`, and all three worker/build caps to `4`.
+Cargo runs with `--locked` and `--ignored --nocapture --test-threads=1`.
+`--locked` protects the dependency lockfile, not the Rust toolchain version;
+retain actual compiler/Cargo versions with proof receipts.
+
+This is opt-in: default Rust-only tests do not require Node, and neither
+`harness checks` nor `just self-check` adds this invocation. A passing contract
+does not establish actual Copilot CLI attachment or real-provider inference;
+those still require the live witnesses below.
+
 ## Real CLI witnesses
 
 Build the composed Rust binary, then run the actual client driver:
