@@ -74,7 +74,7 @@ describe("local-path-check", () => {
 					.sort(),
 			).toEqual(["harness/scripts/new-tool.ts", "justfile"]);
 		} finally {
-			rmSync(root, { recursive: true, force: true });
+			rmSync(root, { recursive: true, force: true, maxRetries: 3 });
 		}
 	});
 });

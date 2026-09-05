@@ -13,7 +13,7 @@ All probes are deterministic files/commands; remember nothing between calls.
 | C | Active the-flow mid-build | newest `docs/plans/*/the-flow.json` → `harness flow nav show --path <it>`; `data.nav.now`/`next` on a phase/review node | offer `pair` dispatch for that phase |
 | D | Daemon alive | `pij daemon status` | down + any spawn intent → `ops` boot first (spawn also auto-starts it) |
 | E | Delivery owner | Copilot's native `pij_send` callable → native Copilot; else in-process `pij_spawn` callable → pi/omp push; else exact non-empty `$TMUX_PANE` → tmux push; otherwise external pull where supported | detect before self-registration advice; native Copilot never falls back to CLI pull or sendkeys |
-| F | Self registration | after E: native extensions already own registration; remaining tmux peers may probe `pij whoami`; supported external peers register their inbox first | never re-adopt an extension-owned seat to repair delivery; follow its native diagnostics |
+| F | Self registration | after E: native extensions already own registration; remaining tmux peers may probe `pij whoami`; supported external peers register their inbox first | external registration repairs stale push attachment before any other identity/view action (C1); never re-adopt an extension-owned seat to repair delivery |
 
 **Precedence**: A > B > C > D/F (D/F are preconditions folded into whichever route wins, not destinations). Nothing matches → ask the job in one line, listing the registry.
 
@@ -25,9 +25,9 @@ Cited by route modules as "§ C*n*" — prose lives here only.
 
 ### C1 — Harness and delivery modes
 
-Delivery-owner detection happens before self-registration advice. A Copilot session exposing the native `pij_send` tool is **native-extension-owned**: registration and receipt injection are automatic, so do not adopt it or start a competing CLI inbox consumer. Missing native capability queues/refuses, never sendkeys. Copilot programmatic compact/new/reload are unsupported; use native human lifecycle controls, not typed-message fallbacks. Its consent sensor still requires a supported pane unless the operator explicitly disables typing grace.
+Delivery-owner detection happens before any self-registration advice. A Copilot session exposing the native `pij_send` tool is **native-extension-owned**: registration and receipt injection are automatic, so do not adopt it or start a competing CLI inbox consumer. Missing native capability queues/refuses, never sendkeys. Copilot programmatic compact/new/reload are unsupported; use native human lifecycle controls, not typed-message fallbacks. Its consent sensor still requires a supported pane unless the operator explicitly disables typing grace.
 
-For the remaining modes, detect once per run: callable in-process `pij_spawn` → **pi/omp push**; otherwise exact non-empty `$TMUX_PANE` → **tmux control-plane push**; otherwise **external pull** where supported. Pi/OMP inject in-process; other harnesses use daemon-selected transports. The table below covers these remaining modes, not native Copilot ownership.
+For the remaining modes, detect once per run: callable in-process `pij_spawn` → **pi/omp push**; otherwise exact non-empty `$TMUX_PANE` → **tmux control-plane push**; otherwise **external pull** where supported. Pi injects in-process. OMP also uses its in-process receiver; other harnesses use daemon-selected transports. The table below covers these remaining modes, not native Copilot ownership.
 
 | Intent | pi push | tmux control-plane push | external pull |
 |---|---|---|---|

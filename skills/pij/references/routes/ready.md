@@ -8,8 +8,10 @@ prime or operator will push the next turn.
 
 ## Procedure
 
-1. **Pi/OMP and Copilot with its native `pij_send` tool are extension-owned.
-   Reply `Ready.` and STOP — run NO competing identity/adopt/inbox command.**
+1. **You are a pi/omp seat: the extension registered you at boot. Reply `Ready.` and
+   STOP — run NO pij identity command (no adopt, no inbox register).**
+   Copilot with its native `pij_send` tool is also extension-owned: reply `Ready.`
+   and stop without a competing identity/adopt/inbox command.
    Copilot without the native tool must report native setup unavailable and stop;
    adopting or starting a CLI pull receiver is not a delivery fallback. Otherwise,
    detect only the delivery owner:
