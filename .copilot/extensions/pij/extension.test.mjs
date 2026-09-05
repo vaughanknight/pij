@@ -76,6 +76,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			joinFails = false,
 			messages = 1,
 			inboxPages = [],
+			typingSnapshots = [],
 			seats = [],
 			remoteSeats = [],
 			pane,
@@ -88,6 +89,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		const requests = [];
 		let registered;
 		let claimed = 0;
+		const heldJobs = new Set();
 		let server;
 		let port;
 		if (key) await writeFile(join(home, "daemon.key"), "fixture-secret", { mode: 0o600 });
@@ -96,7 +98,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				let raw = "";
 				for await (const chunk of request) raw += chunk;
 				const body = raw ? JSON.parse(raw) : undefined;
-				requests.push({ path: request.url, body });
+				requests.push({ path: request.url, method: request.method, body });
 				const url = new URL(request.url, "http://127.0.0.1");
 				assert.equal(request.headers.authorization, "Bearer fixture-secret");
 				let data;
@@ -122,6 +124,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 						pane: body.pane ?? null,
 						proc: { pid: body.pid, proc_start: body.proc_start },
 						native_extension_delivery: true,
+						typing_grace_ms: 60000,
 					};
 				} else if (request.url.startsWith("/v1/inbox?")) {
 					const query = new URLSearchParams(request.url.split("?")[1]);
@@ -153,6 +156,40 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 									];
 						claimed++;
 					}
+				} else if (url.pathname === "/v1/inbox/typing") {
+					assert.equal(request.method, "GET");
+					assert.equal(body, undefined);
+					assert.deepEqual(Object.fromEntries(url.searchParams), {
+						seat: registered.id,
+						native_session: registered.harness_session,
+						pid: String(registered.pid),
+						proc_start: String(registered.proc_start),
+					});
+					const snapshot = typingSnapshots.shift() ?? {};
+					data = {
+						state: "observed",
+						native_consumer: {
+							native_session: registered.harness_session,
+							pid: registered.pid,
+							proc_start: registered.proc_start,
+						},
+						typing_grace_ms: 60000,
+						observed_at_ms: 100000,
+						semantic_hold: false,
+						...(snapshot.state === "unavailable"
+							? { reason: "native-typing-sensor-unavailable" }
+							: { retry_after_ms: 0, source: "pane-observed-edit-recency" }),
+						...snapshot,
+					};
+				} else if (url.pathname === "/v1/hold") {
+					assert.equal(request.method, "POST");
+					heldJobs.add(body.job_id);
+					data = { msg_id: body.msg_id, held: true };
+				} else if (url.pathname === "/v1/release") {
+					assert.equal(request.method, "POST");
+					data = heldJobs.delete(body.job_id)
+						? { msg_id: body.msg_id, released: true }
+						: { msg_id: body.msg_id, released: false, noop: true, reason: "not-deferred" };
 				} else if (request.url === "/v1/inbox/ack") {
 					assert.deepEqual(body, {
 						seat: registered.id,
@@ -258,6 +295,14 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		const joined = await f.waitFor("joined");
 		assert.deepEqual(joined.tools, ["pij_send"]);
 		await f.waitFor("inbox-acknowledged");
+		assert.deepEqual(
+			f.requests
+				.map((request) => new URL(request.path, "http://fixture").pathname)
+				.filter((path) =>
+					["/v1/inbox", "/v1/inbox/typing", "/v1/release", "/v1/inbox/ack"].includes(path),
+				),
+			["/v1/inbox", "/v1/inbox/typing", "/v1/release", "/v1/inbox/ack"],
+		);
 		f.child.stdin.write(
 			`${JSON.stringify({ to: "pij-peer", message: "SHELL_REPLY_137", from: "forged" })}\n`,
 		);
@@ -342,6 +387,88 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		f.child.stdin.end();
 		assert.equal((await exited)[0], 0);
 		assert.equal(f.stdout(), "");
+	});
+
+	test("actual extension shell sensor holds then releases and reclaims before native delivery", async (t) => {
+		const before = Date.now();
+		const f = await launch(t, {
+			messages: 2,
+			typingSnapshots: [{ retry_after_ms: 1200 }, { observed_at_ms: 160000, retry_after_ms: 0 }],
+		});
+		await f.waitFor("completion-wait");
+		const registered = f.requests.find((request) => request.path === "/v1/register").body;
+		const holds = f.requests.filter((request) => request.path === "/v1/hold");
+		assert.equal(holds.length, 1);
+		assert.deepEqual(holds[0].body, {
+			job_id: 137,
+			seat: registered.id,
+			msg_id: "shell-137",
+			reason: "human-typing",
+			since_ms: 41200,
+		});
+		const releases = f.requests.filter((request) => request.path === "/v1/release");
+		assert.equal(releases.length, 2);
+		assert.deepEqual(releases[0].body, {
+			job_id: 137,
+			seat: registered.id,
+			msg_id: "shell-137",
+			at_ms: releases[0].body.at_ms,
+		});
+		assert.ok(releases[0].body.at_ms >= before && releases[0].body.at_ms <= Date.now());
+		assert.deepEqual(releases[1].body, {
+			job_id: 138,
+			seat: registered.id,
+			msg_id: "shell-138",
+			at_ms: releases[1].body.at_ms,
+		});
+		assert.ok(releases[1].body.at_ms >= before && releases[1].body.at_ms <= Date.now());
+		assert.deepEqual(
+			f.requests
+				.filter(
+					(request) =>
+						new URL(request.path, "http://fixture").pathname.startsWith("/v1/inbox") ||
+						["/v1/hold", "/v1/release"].includes(request.path),
+				)
+				.map((request) => new URL(request.path, "http://fixture").pathname),
+			[
+				"/v1/inbox",
+				"/v1/inbox/typing",
+				"/v1/hold",
+				"/v1/inbox/typing",
+				"/v1/release",
+				"/v1/inbox",
+				"/v1/inbox/typing",
+				"/v1/release",
+				"/v1/inbox/ack",
+			],
+		);
+		const sends = f.events.filter((event) => event.kind === "native-send");
+		assert.equal(sends.length, 1);
+		assert.match(sends[0].input.prompt, /msg_id="shell-138"/);
+		assert.equal(sends[0].input.prompt.includes("shell-137"), false);
+		assert.equal(f.requests.find((request) => request.path === "/v1/inbox/ack").body.job_id, 138);
+		const exited = once(f.child, "exit");
+		f.child.stdin.end();
+		assert.equal((await exited)[0], 0);
+		assert.equal(f.stdout(), "");
+	});
+
+	test("actual extension shell unavailable typing sensor emits fixed notice and keeps outgoing usable", async (t) => {
+		const f = await launch(t, { typingSnapshots: [{ state: "unavailable" }] });
+		const notice = await f.waitFor("native-log");
+		assert.match(notice.message, /typing[- ]sensor/i);
+		assert.equal(notice.message.includes("fixture-secret"), false);
+		f.child.stdin.write(
+			`${JSON.stringify({ to: "pij-peer", message: "OUTGOING_WHILE_SENSOR_UNAVAILABLE" })}\n`,
+		);
+		assert.equal((await f.waitFor("tool-result")).result.ok, true);
+		assert.equal(f.events.filter((event) => event.kind === "native-send").length, 0);
+		assert.equal(f.requests.filter((request) => request.path.startsWith("/v1/inbox?")).length, 1);
+		assert.equal(f.requests.filter((request) => request.path === "/v1/inbox/ack").length, 0);
+		assert.equal(f.events.filter((event) => event.kind === "native-log").length, 1);
+		const exited = once(f.child, "exit");
+		f.child.stdin.end();
+		assert.equal((await exited)[0], 0);
 	});
 
 	test("actual HTTP target-session hold stops claims and ack with actionable native diagnostic", async (t) => {

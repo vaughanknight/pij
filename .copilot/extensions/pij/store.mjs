@@ -9,6 +9,7 @@ const ERROR_BODY_LIMIT = 4096;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const nonempty = (value) => typeof value === "string" && value.trim().length > 0;
 const positiveInteger = (value) => Number.isSafeInteger(value) && value > 0;
+const nonnegativeInteger = (value) => Number.isSafeInteger(value) && value >= 0;
 const sameProcess = (seat, host) =>
 	seat.proc?.pid === host.pid && seat.proc?.proc_start === host.proc_start;
 const samePane = (seat, host) => (seat.pane ?? undefined) === (host.pane ?? undefined);
@@ -141,6 +142,14 @@ export function chooseRegistration({ sessionId, host, folder, seats, env }) {
 	});
 }
 
+class TypingSensorError extends NativeError {
+	constructor() {
+		super(
+			"Native typing-sensor observation unavailable or invalid; receiving stopped without injection",
+		);
+	}
+}
+
 class InboxWaitDeadline extends Error {}
 
 export class DaemonClient {
@@ -189,6 +198,43 @@ export class DaemonClient {
 		};
 	}
 
+	async typingSnapshot(tuple, signal) {
+		const query = new URLSearchParams(tuple);
+		let snapshot;
+		try {
+			snapshot = await this.request(`/v1/inbox/typing?${query}`, undefined, signal);
+		} catch (error) {
+			if (signal?.aborted || error.retryable) throw error;
+			throw new TypingSensorError();
+		}
+		const proof = snapshot?.native_consumer;
+		if (
+			!proof ||
+			proof.native_session !== tuple.native_session ||
+			proof.pid !== tuple.pid ||
+			proof.proc_start !== tuple.proc_start ||
+			!nonnegativeInteger(snapshot.typing_grace_ms) ||
+			!nonnegativeInteger(snapshot.observed_at_ms) ||
+			typeof snapshot.semantic_hold !== "boolean"
+		)
+			throw new TypingSensorError();
+		if (snapshot.state === "observed") {
+			if (
+				!nonnegativeInteger(snapshot.retry_after_ms) ||
+				snapshot.retry_after_ms > snapshot.typing_grace_ms ||
+				snapshot.source !== "pane-observed-edit-recency" ||
+				(snapshot.retry_after_ms > 0 &&
+					snapshot.observed_at_ms < snapshot.typing_grace_ms - snapshot.retry_after_ms)
+			)
+				throw new TypingSensorError();
+		} else if (
+			snapshot.state !== "unavailable" ||
+			snapshot.reason !== "native-typing-sensor-unavailable"
+		)
+			throw new TypingSensorError();
+		return snapshot;
+	}
+
 	async #requestEnvelope(path, body, signal, inboxWait = false) {
 		let key;
 		try {
@@ -234,7 +280,9 @@ export class DaemonClient {
 		if (!response.ok || envelope?.ok !== true || envelope.v !== 2 || !("data" in envelope)) {
 			const diagnostic = raw.replaceAll(key, "[redacted]").slice(0, ERROR_BODY_LIMIT);
 			const nativeUnavailable =
-				(path.startsWith("/v1/inbox?") || path === "/v1/inbox/ack") &&
+				(path.startsWith("/v1/inbox?") ||
+					path.startsWith("/v1/inbox/typing?") ||
+					path === "/v1/inbox/ack") &&
 				response.status === 400 &&
 				envelope?.ok === false &&
 				envelope.v === 2 &&
@@ -473,6 +521,7 @@ export class NativeBridge {
 		journal,
 		report,
 		delay = (ms, signal) => sleep(ms, undefined, { signal }),
+		now = Date.now,
 	}) {
 		this.registration = Object.freeze({ ...registration });
 		this.native = native;
@@ -480,11 +529,13 @@ export class NativeBridge {
 		this.journal = journal;
 		this.report = report;
 		this.delay = delay;
+		this.now = now;
 		this.controller = new AbortController();
 		this.registered = false;
 		this.running = undefined;
 		this.unsubscribe = undefined;
 		this.completion = undefined;
+		this.declaredReleases = new Map();
 	}
 	emit(kind, details = {}) {
 		this.report({
@@ -605,6 +656,7 @@ export class NativeBridge {
 			if (!signal.aborted)
 				this.emit("receive-held", {
 					diagnostic: error.message,
+					holdKind: error instanceof TypingSensorError ? "typing-sensor" : undefined,
 					action:
 						"Inspect native history and durable acceptance before recovery; do not blindly resend or acknowledge.",
 				});
@@ -612,6 +664,7 @@ export class NativeBridge {
 			this.unsubscribe?.();
 			this.unsubscribe = undefined;
 			this.completion = undefined;
+			this.declaredReleases.clear();
 		}
 	}
 	async waitForCompletion() {
@@ -632,6 +685,85 @@ export class NativeBridge {
 			grade: "observed-native-terminal-not-model-success",
 		});
 	}
+	async #declareRelease(claim) {
+		const signal = this.controller.signal;
+		throwIfStopped(signal);
+		const msgId = claim.message.msg_id;
+		if (this.declaredReleases.get(claim.job_id) === msgId) return;
+		const receipt = await abortable(
+			this.client.request(
+				"/v1/release",
+				{
+					job_id: claim.job_id,
+					seat: this.registration.id,
+					msg_id: msgId,
+					at_ms: this.now(),
+				},
+				signal,
+			),
+			signal,
+		);
+		throwIfStopped(signal);
+		if (
+			receipt?.msg_id !== msgId ||
+			(receipt.released !== true && !(receipt.released === false && receipt.noop === true))
+		)
+			throw new NativeError("Daemon typing release did not confirm this message; receiving held");
+		this.declaredReleases.set(claim.job_id, msgId);
+	}
+	async #prepareNewSend(claim) {
+		const signal = this.controller.signal;
+		const tuple = this.tuple();
+		const reference = { job_id: claim.job_id, seat: tuple.seat, msg_id: claim.message.msg_id };
+		let held = false;
+		let retry = INITIAL_RETRY_MS;
+		for (;;) {
+			throwIfStopped(signal);
+			const snapshot = await abortable(this.client.typingSnapshot(tuple, signal), signal);
+			throwIfStopped(signal);
+			if (snapshot.state !== "observed") throw new TypingSensorError();
+			if (snapshot.retry_after_ms === 0 && !snapshot.semantic_hold) {
+				if (!held) return true;
+				await this.#declareRelease(claim);
+				// Un-deferral invalidates this held claim, even when the queue names a no-op.
+				return false;
+			}
+			if (!held && snapshot.retry_after_ms > 0) {
+				// A new hold starts a new declaration cycle, including an uncertain HTTP outcome.
+				this.declaredReleases.delete(claim.job_id);
+				const receipt = await abortable(
+					this.client.request(
+						"/v1/hold",
+						{
+							...reference,
+							reason: "human-typing",
+							since_ms:
+								snapshot.observed_at_ms - (snapshot.typing_grace_ms - snapshot.retry_after_ms),
+						},
+						signal,
+					),
+					signal,
+				);
+				throwIfStopped(signal);
+				if (
+					receipt?.msg_id !== reference.msg_id ||
+					(receipt.held !== true && !(receipt.held === false && receipt.noop === true))
+				)
+					throw new NativeError("Daemon typing hold did not confirm this message; receiving held");
+				if (!receipt.held) return false;
+				held = true;
+			}
+			this.emit("consent-held", {
+				reason: snapshot.semantic_hold ? "semantic-hold" : "human-typing",
+				retryMs: retry,
+			});
+			await abortable(this.delay(retry, signal), signal);
+			throwIfStopped(signal);
+			// Operator Hold can race a claim. Do not clear it or reuse that delayed claim.
+			if (!held) return false;
+			retry = Math.min(retry * 2, MAX_RETRY_MS);
+		}
+	}
 	async deliver(claim) {
 		const signal = this.controller.signal;
 		const proof = claim?.native_consumer;
@@ -649,6 +781,8 @@ export class NativeBridge {
 		let record = await this.journal.load(message.msg_id);
 		throwIfStopped(signal);
 		if (!record) {
+			if (!(await this.#prepareNewSend(claim))) return;
+			throwIfStopped(signal);
 			if (await this.journal.begin(message)) {
 				throwIfStopped(signal);
 				const prompt = `[pij from ${JSON.stringify(message.from)}; msg_id=${JSON.stringify(message.msg_id)}]\n${message.body}`;
@@ -684,6 +818,9 @@ export class NativeBridge {
 			);
 		if (this.completion?.msgId !== message.msg_id || this.completion.nativeId !== record.nativeId)
 			this.completion = new NativeCompletion(message.msg_id, record.nativeId);
+		// ACK-stage declarations do not invalidate this current claim; recovered acceptance also declares.
+		await this.#declareRelease(claim);
+		throwIfStopped(signal);
 		const acknowledged = await this.client.request(
 			"/v1/inbox/ack",
 			{ ...this.tuple(), job_id: claim.job_id },
@@ -692,6 +829,7 @@ export class NativeBridge {
 		throwIfStopped(signal);
 		if (acknowledged !== claim.job_id)
 			throw new NativeError("Daemon ack did not confirm this job ID");
+		this.declaredReleases.delete(claim.job_id);
 		this.emit("inbox-acknowledged", {
 			jobId: claim.job_id,
 			msgId: message.msg_id,
@@ -774,7 +912,9 @@ export function createNativeReporter({ log, capture }) {
 				event.kind === "receive-held"
 					? event.holdKind === "native-target"
 						? "queued work targets another native session; resume that native session or use a new seat and intentionally reissue the message; receiving stopped without acknowledgement; outgoing pij_send remains available"
-						: "receiving held; inspect native history and acceptance before recovery, do not blindly resend or acknowledge"
+						: event.holdKind === "typing-sensor"
+							? "native typing-sensor unavailable or invalid; check the daemon sensor and pane ownership; receiving stopped without acknowledgement; outgoing pij_send remains available"
+							: "receiving held; inspect native history and acceptance before recovery, do not blindly resend or acknowledge"
 					: "check the Pij daemon and PIJ_RS_ADDR/PIJ_RS_STATE_DIR; retrying when available; ordinary Copilot remains usable";
 			// Never project a remote error body (or credential) into the native timeline.
 			return Promise.resolve()
