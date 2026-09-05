@@ -30,7 +30,7 @@ link validation, and current/old-prime projections without changing close owners
 | `.pi/extensions/pij/core/discovery.ts` | `deriveSelfId`/`deriveHarnessPijId`, exact-folder and repository selection, current-only `filterPrime`, `excludeSelf`, `resolveSelf` (PIJ_SESSION_ID → lone-local → `E-AMBIG`). |
 | `.pi/extensions/pij/core/tree.ts` | Effective-parent resolution, no-write link planning/cycle refusal, repository/global/subtree selection, filter algebra, and iterative cycle-safe forest projection. |
 | `.pi/extensions/pij/core/memorable-id.ts` | Exact-pinned adjective/animal candidate sequence: PoC-compatible first vector plus deterministic full-space linear probing. |
-| `.pi/extensions/pij/core/message.ts` | `frame`/`parseFrame` (`[pij from <id>] …`), `roleLabel`, boot `announceText`. |
+| `.pi/extensions/pij/core/message.ts` | `frame`/`parseFrame` (`[pij-rs from <id>] … [/pij]`), `roleLabel`, boot `announceText`. |
 | `.pi/extensions/pij/core/receipts.ts` | `MessageReceipt` model + `classifyOnInject`/`initialReceipt`/`markDelivered`/`correlateDeliveredAt`. |
 | `.pi/extensions/pij/core/cli.ts` | Send/tree/link grammar and rendering, broadcast/wait projection, watchdog surfaces, and journal-first `state set|clear|verify` command dispatch. |
 | `.pi/extensions/pij/core/session-join.ts` | Stable additive session projection and eval-safe environment exports for structural parent, repository, and prime history. |
@@ -60,7 +60,7 @@ link validation, and current/old-prime projections without changing close owners
 | Liveness verdict | Is a peer active/stale/dead? | `liveness(pidAlive, latestAgeMs)`; stall = working state + stale newest event. |
 | Remote command | A sender can drive a narrow allow-listed action on a peer. | `validateCommand` accepts `compact`, rejects others with `E-CMD`. |
 | Self-resolution | "Which session am I?" when parent+worker share a cwd. | `resolveSelf(envId, local)` — env wins, lone-local fallback, else `E-AMBIG`. |
-| Framed message | Sender id rides inline for zero-lookup replies. | `frame`/`parseFrame` → `[pij from <id>] <body>`. |
+| Framed message | Sender id rides inline for zero-lookup replies. | `frame`/`parseFrame` → `[pij-rs from <id>]\n<body>\n[/pij]`. |
 | Delivery receipt | Sender learns queued-vs-delivered. | `MessageReceipt` (`queued`/`delivered`); steered delivery = next `turn_start` after `input(steer)` (finding 08). |
 | Broadcast send | One raw text body is delivered once to each ordered target with independent outcomes. | Two or more unique repeatable `--to` targets; all-target preflight before the first delivery; per-target result/message id; later targets continue after a delivery-port failure. |
 | Multi-message wait | A broadcast sender can wait honestly for every successful recipient. | Ordered `{to,messageId}` tracking; `queued` retains a target, `delivered`/`unverified` removes only that target, and one global timeout names unresolved recipients. |

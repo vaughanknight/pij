@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -230,11 +230,20 @@ it("keeps legacy frame heads out of maintained surfaces with no unused allowance
 	const violations: string[] = [];
 	const fired = new Set<string>();
 	// Only maintained surfaces: docs/plans/** is historical record, never scanned.
-	for (const surface of [".pi/extensions/pij", "skills/pij"]) {
+	for (const surface of [
+		".pi/extensions/pij",
+		"skills/pij",
+		".pi/APPEND_SYSTEM.md",
+		"docs/how",
+		"docs/domains",
+	]) {
 		const root = join(repo, surface);
-		for (const entry of readdirSync(root, { recursive: true, withFileTypes: true })) {
-			if (!entry.isFile()) continue;
-			const absolute = join(entry.parentPath, entry.name);
+		const files = statSync(root).isFile()
+			? [root]
+			: readdirSync(root, { recursive: true, withFileTypes: true })
+					.filter((entry) => entry.isFile())
+					.map((entry) => join(entry.parentPath, entry.name));
+		for (const absolute of files) {
 			const path = relative(root, absolute).split(sep).join("/");
 			const allowance =
 				surface === ".pi/extensions/pij"
@@ -242,13 +251,18 @@ it("keeps legacy frame heads out of maintained surfaces with no unused allowance
 							rule.prefix ? path.startsWith(rule.path) : path === rule.path,
 						)
 					: undefined;
+			if (allowance)
+				expect(surface, "Surface-qualify fired keys before widening allowances").toBe(
+					".pi/extensions/pij",
+				);
 			const lines = readFileSync(absolute, "utf8").split("\n");
 			for (const [index, line] of lines.entries()) {
 				if (!line.includes("[pij from")) continue;
 				if (allowance && (!allowance.lines || allowance.lines.includes(line.trim()))) {
 					fired.add(allowance.lines ? `${allowance.path}:${line.trim()}` : allowance.path);
 				} else {
-					violations.push(`${surface}/${path}:${index + 1}: ${line.trim()}`);
+					const location = relative(repo, absolute).split(sep).join("/");
+					violations.push(`${location}:${index + 1}: ${line.trim()}`);
 				}
 			}
 		}
