@@ -8,7 +8,7 @@
       "value": {
         "title": "Copilot native extension — selected backpressure",
         "plan": "../plan.dd.json#meta",
-        "basis_sha": "a239b839bbcd170d18748cf4ab9008bb6cc47c08bbf3ae5b962202abee5da2c6",
+        "basis_sha": "1febfc94d19905ec1cfd8cbd11e0107f4b538204d1f63ce76372cf0699678a29",
         "certainty": "Partial"
       }
     },
@@ -72,8 +72,8 @@
           "mode": "BUILD",
           "tier": "computational",
           "proof": "Existing InteractionGate consumer contract tests plus real native smoke with nonempty human draft held then permitted delivery. Both worlds emit positive evidence, original text preserved. No changes to136 typing policy; just copilot-native-rust-test and copilot-native-smoke.",
-          "state": "blocked",
-          "note": "Real native smoke03 proves correct daemon/host registration but input gate remains unrecognized on actual Copilot1.0.84 boxed UI. Prime proposes native-owned claim bypass of composer gate like OMP/Pi; PM surfaced model-turn-during-draft consequence to Jordan and awaits explicit decision before changing this consent criterion. No fallback/permission weakening applied."
+          "state": "unchecked",
+          "note": "Existing strict draft/typing policy is retained; no approval to weaken it has been assumed. Prime approved an additive observer-footer accuracy fix, now composed after135/aa697235; actual live native smoke04 is running. Shared60s policy proposal remains a separate pending user choice, not a prerequisite to proving the current strict contract."
         },
         {
           "id": "bp-0007",
@@ -81,7 +81,7 @@
           "phase": "ph-66f1",
           "mode": "EXTEND",
           "tier": "computational",
-          "proof": "Extend Rust incarnation/supersedes tests and native JS reconnect/abort/new-session tests; real isolated daemon restart/key rotation and native rollover witness. just copilot-native-rust-test and just copilot-native-test, then native smoke.",
+          "proof": "Extend Rust incarnation/supersedes tests and native JS reconnect/abort/new-session tests; real isolated daemon restart/key rotation and native rollover witness. just copilot-native-rust-test and just copilot-native-test, then native smoke. Opt-in cross-language proof is paved as just copilot-native-contract-test: actual chooseRegistration/FileJournal with real Rust HTTP/SQLite; missing Node/module/platform fails the named invocation. Default Rust-only tests intentionally ignore this extra-language case.",
           "state": "unchecked",
           "note": "Selection, not completed proof. No numeric confidence score."
         },

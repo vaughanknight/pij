@@ -1,7 +1,8 @@
 {
   "state": "not-release-ready",
-  "source_integration": "native runtime70 tests and installer41 tests independently passed in PM tree; later cold-resume runtimef75826a8 and daemon authority fixes await paired composition",
+  "source_integration": "0de7932273d1f3577cc64177bd1a8abe6442daba includes135/aa697235, native host preservation with atomic binding reports, cold resume, local-only discovery, approved footer correction and explicit cross-language contract recipe. Subsequent idle-poll and consent-driver corrections pending.",
   "engineering_gate": {
+    "currency": "Historical pass; predates current convergence and must be rerun on final source",
     "command": "harness checks --json",
     "status": "ok",
     "ok": true,
@@ -21,6 +22,7 @@
     "wall_seconds": 287.24
   },
   "rust_workspace": {
+    "currency": "Historical pass; predates current convergence and must be rerun on final source",
     "command": "cargo test --locked --workspace --no-fail-fast",
     "exit_code": 0,
     "observed_summary": "655 passed;63 suites;6 ignored;93 filtered in nested fixture runs",
@@ -28,19 +30,33 @@
     "wall_seconds": 68.59,
     "toolchain": "observed rustc/cargo1.95.0 Homebrew; clippy0.1.98; declared1.98.0 pin not enforced (rustup absent)"
   },
+  "targeted_convergence": {
+    "upstream_merge": "aa1602564cd4c1f5e9f12747dc609232a4c97849",
+    "daemon_tests": "292 passed; testkit corpus6 passed; strict daemon clippy passed",
+    "composed_source": "0de7932273d1f3577cc64177bd1a8abe6442daba",
+    "harnesses": "98 passed,2 ignored as reported by command runner",
+    "native_cross_language": "just copilot-native-contract-test: explicitly ran ignored test,1 passed,0 ignored; real HTTP/SQLite and JS chooser/client/bridge/journal, simulated native.send",
+    "raw_output": "pm-composed-contract-0de79322.log",
+    "raw_sha256": "154fb2809ed098a01dfef4ce9fc1d5c68dccc5d3c897222efbc7c86464d82fa8",
+    "adjacent136": "Owner reports103 unit+2 integration passed with footer8f56be95 temporarily applied on136 composed1969511e plusmain; reverted after measurement, not adopted"
+  },
   "live_native": {
     "receipts": [
       "pm-native-local-01.json",
       "pm-native-local-02.json",
-      "pm-native-local-03.json"
+      "pm-native-local-03.json",
+      "pm-native-local-04.json",
+      "pm-native-local-04-ack.json"
     ],
     "passed_boundaries": [
       "real Copilot ordinary use with daemon/key absent",
       "one outage diagnostic",
       "real daemon health offline=false",
-      "two manual native host/session/pane registrations after ucomm fix"
+      "two manual native host/session/pane registrations after ucomm fix",
+      "actual CLI receives native user message under unchanged strict draft policy",
+      "SQLite job done and reader-read receipt prove native acceptance; model tool waits for user consent"
     ],
-    "blocked_boundary": "Pij body remains held as unrecognized by current input gate on actual Copilot1.0.84 idle footer",
+    "blocked_boundary": "Outgoing pij_send waits for native CLI per-tool approval; isolated driver is being corrected to approve only exact expected dialog arguments. Separate normal inbox65s renewal falsely reported outage; runtime correction pending.",
     "not_proven": [
       "pane-backed body round trip",
       "Pij-spawned native full path",
@@ -49,8 +65,7 @@
     ]
   },
   "decisions_pending": [
-    "Jordan: shared60s recent-typing grace versus strict draft gate; no sendkeys fallback either way",
-    "upstream135 main landing before approved footer observer correction composition"
+    "Jordan: optional shared60s recent-typing grace versus existing strict draft gate; neither permits sendkeys fallback. Existing strict contract can be verified without changing policy."
   ],
   "no_global_rollout": true
 }
