@@ -200,9 +200,21 @@ export class DaemonClient {
 		}
 		if (!response.ok || envelope?.ok !== true || envelope.v !== 2 || !("data" in envelope)) {
 			const diagnostic = raw.replaceAll(key, "[redacted]").slice(0, ERROR_BODY_LIMIT);
+			const nativeUnavailable =
+				(path.startsWith("/v1/inbox?") || path === "/v1/inbox/ack") &&
+				response.status === 400 &&
+				envelope?.ok === false &&
+				envelope.v === 2 &&
+				envelope.command === "pij inbox" &&
+				envelope.error === "refused" &&
+				envelope.meta ===
+					"daemon/native-inbox: native-extension-unavailable: Copilot requires current native registration";
 			throw new NativeError(
 				`Pij HTTP ${response.status}: ${diagnostic}`,
-				response.status === 401 || response.status === 429 || response.status >= 500,
+				nativeUnavailable ||
+					response.status === 401 ||
+					response.status === 429 ||
+					response.status >= 500,
 			);
 		}
 		return envelope;
@@ -247,16 +259,10 @@ export class FileJournal {
 	constructor(stateDir, registration) {
 		this.root = join(stateDir, "native-extensions");
 		this.base = join(this.root, "copilot");
+		// Acceptance belongs to the conversation, not the live process resuming it.
 		this.directory = join(
 			this.base,
-			hash(
-				JSON.stringify([
-					registration.id,
-					registration.harness_session,
-					registration.pid,
-					registration.proc_start,
-				]),
-			),
+			hash(JSON.stringify([registration.id, registration.harness_session])),
 		);
 	}
 	path(msgId) {
