@@ -106,6 +106,11 @@ copilot-native-test:
 copilot-native-rust-test:
     CARGO_TARGET_DIR="{{justfile_directory()}}/target" cargo test -p pij-core -p pij-store -p pij-harnesses -p pij-daemon -p pij-cli
 
+# Opt-in actual JS + daemon HTTP + SQLite contract, outside Rust-only/default gates.
+copilot-native-contract-test:
+    node --check "{{justfile_directory()}}/.copilot/extensions/pij/store.mjs"
+    VITEST_MAX_WORKERS=4 VITEST_MAX_THREADS=4 CARGO_BUILD_JOBS=4 PIJ_NATIVE_RUNTIME_MODULE="{{justfile_directory()}}/.copilot/extensions/pij/store.mjs" CARGO_TARGET_DIR="{{justfile_directory()}}/target" cargo test --locked -p pij-daemon --test native_runtime_cold_resume -- --ignored --nocapture --test-threads=1
+
 # Actual CLI smoke; local fixture and real-provider evidence remain distinct.
 copilot-native-smoke *ARGS:
     node_modules/.bin/tsx harness/scripts/copilot-native-smoke.ts "$@"
