@@ -1,5 +1,7 @@
 {
-	"dd": { "schema": "pij-team/packet" },
+	"dd": {
+		"schema": "pij-team/packet"
+	},
 	"sections": [
 		{
 			"name": "meta",
@@ -59,16 +61,25 @@
 		{
 			"name": "working_with",
 			"value": [
-				{ "id": "w1", "text": "The PM (pij-verbal-silverfish) is your counterpart: verdict and findings go there. The PM may refute a finding with evidence — re-judge refutations on the evidence, not on rank, and say plainly when a refutation fails to persuade you." },
-				{ "id": "w2", "text": "You do not fix code, commit, merge, or open PRs. Something outside this plan's scope: name it as a note for prime rather than expanding the review." },
-				{ "id": "w3", "text": "The four coder seats may still be alive and holding. If you need to ask an author what they intended, ask the PM to relay — do not message them directly." }
+				{
+					"id": "w1",
+					"text": "The PM (pij-verbal-silverfish) is your counterpart: verdict and findings go there. The PM may refute a finding with evidence — re-judge refutations on the evidence, not on rank, and say plainly when a refutation fails to persuade you."
+				},
+				{
+					"id": "w2",
+					"text": "You do not fix code, commit, merge, or open PRs. Something outside this plan's scope: name it as a note for prime rather than expanding the review."
+				},
+				{
+					"id": "w3",
+					"text": "The four coder seats may still be alive and holding. If you need to ask an author what they intended, ask the PM to relay — do not message them directly."
+				}
 			]
 		},
 		{
 			"name": "scope",
 			"value": {
-				"worktree": "/Users/jordanknight/pi-hacking/fs3-rs-boot-announce",
-				"branch": "135-rs-boot-announce",
+				"worktree": "/Users/jordanknight/pi-hacking/pij (MAIN checkout — 135 is MERGED)",
+				"branch": "main @ 4b000ffb (no-ff merge of fef83b97); base for the diff is the merge parent",
 				"fence": "READ-ONLY on all code. Write only docs/plans/135-rs-boot-announce/assets/reviews/**.",
 				"forbidden_note": "No code edits, no commits, no merges, no government files, no daemon operations, no seat spawning, no dependency installs. Do not modify the golden fixture or any test while reviewing — if a test is wrong, that is a finding, not a fix."
 			}
@@ -76,22 +87,62 @@
 		{
 			"name": "done_bar",
 			"value": [
-				{ "id": "d1", "text": "Every AC (AC1-AC8) judged true or false with evidence you generated, not evidence you were handed." },
-				{ "id": "d2", "text": "All four composition seams named in i6 explicitly examined and reported on, including the ones you found clean." },
-				{ "id": "d3", "text": "The six least-confident areas in i3 each addressed with a verdict, even if the verdict is 'checked, no defect found'." },
-				{ "id": "d4", "text": "Review record ddoc written, validated, built, and its path delivered to the PM with a one-line verdict." }
+				{
+					"id": "d1",
+					"text": "Every AC (AC1-AC8) judged true or false with evidence you generated, not evidence you were handed."
+				},
+				{
+					"id": "d2",
+					"text": "All four composition seams named in i6 explicitly examined and reported on, including the ones you found clean."
+				},
+				{
+					"id": "d3",
+					"text": "The six least-confident areas in i3 each addressed with a verdict, even if the verdict is 'checked, no defect found'."
+				},
+				{
+					"id": "d4",
+					"text": "Review record ddoc written, validated, built, and its path delivered to the PM with a one-line verdict."
+				}
 			]
 		},
 		{
 			"name": "refs",
 			"value": [
-				{ "id": "r0", "path": ".agents-skills-port/pij-team/TENETS.md", "note": "doctrine — tenet 5: judge diffs against contracts, not philosophy" },
-				{ "id": "r1", "path": "docs/plans/135-rs-boot-announce/impl-guide.dd.json", "note": "intended units + FROZEN interfaces — drift is a finding. Read the RAW json." },
-				{ "id": "r2", "path": "docs/plans/135-rs-boot-announce/plan.dd.md", "note": "the promises under judgment, AC1-AC8" },
-				{ "id": "r3", "path": "docs/plans/135-rs-boot-announce/assets/contracts/README.md", "note": "frozen vocabulary + the golden fixture both runtimes must READ, never restate" },
-				{ "id": "r4", "path": "docs/plans/135-rs-boot-announce/assets/live-proof.md", "note": "what was proven live, how, and where a claim was amended to match the observation" },
-				{ "id": "r5", "path": "docs/plans/135-rs-boot-announce/assets/inputs/diagnosis-2026-09-05.md", "note": "the original premise: why seats booted blind under rs" },
-				{ "id": "r6", "path": "docs/plans/135-rs-boot-announce/assets/inputs/claude-seat-pid-is-pane-shell.md", "note": "u3's premise: pane shell vs harness process, with file/line pointers" }
+				{
+					"id": "r0",
+					"path": ".agents-skills-port/pij-team/TENETS.md",
+					"note": "doctrine — tenet 5: judge diffs against contracts, not philosophy"
+				},
+				{
+					"id": "r1",
+					"path": "docs/plans/135-rs-boot-announce/impl-guide.dd.json",
+					"note": "intended units + FROZEN interfaces — drift is a finding. Read the RAW json."
+				},
+				{
+					"id": "r2",
+					"path": "docs/plans/135-rs-boot-announce/plan.dd.md",
+					"note": "the promises under judgment, AC1-AC8"
+				},
+				{
+					"id": "r3",
+					"path": "docs/plans/135-rs-boot-announce/assets/contracts/README.md",
+					"note": "frozen vocabulary + the golden fixture both runtimes must READ, never restate"
+				},
+				{
+					"id": "r4",
+					"path": "docs/plans/135-rs-boot-announce/assets/live-proof.md",
+					"note": "what was proven live, how, and where a claim was amended to match the observation"
+				},
+				{
+					"id": "r5",
+					"path": "docs/plans/135-rs-boot-announce/assets/inputs/diagnosis-2026-09-05.md",
+					"note": "the original premise: why seats booted blind under rs"
+				},
+				{
+					"id": "r6",
+					"path": "docs/plans/135-rs-boot-announce/assets/inputs/claude-seat-pid-is-pane-shell.md",
+					"note": "u3's premise: pane shell vs harness process, with file/line pointers"
+				}
 			]
 		}
 	]
