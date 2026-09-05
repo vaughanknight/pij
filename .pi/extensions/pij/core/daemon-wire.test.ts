@@ -10,6 +10,7 @@ import {
 	PijNoDaemonError,
 	PijWireSkewError,
 	parseProcessStart,
+	type RustSeatDescriptor,
 } from "./daemon-wire.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -29,6 +30,27 @@ describe("pij-rs envelope", () => {
 				}),
 			).v,
 		).toBe(2);
+	});
+
+	it.each([
+		"pane",
+		"harness",
+		undefined,
+	] as const)("preserves additive register provenance %s and absent-field compatibility", (procSource) => {
+		const seat: RustSeatDescriptor = {
+			id: "pij-wire",
+			harness: "omp",
+			folder: "/abs/tree",
+			state: "idle",
+			proc: { pid: 123, proc_start: 20260905092248 },
+			binding: "rebound",
+			...(procSource === undefined ? {} : { proc_source: procSource }),
+		};
+		const decoded = decodeEnvelope<RustSeatDescriptor>(
+			JSON.stringify({ ok: true, command: "pij register", v: 2, data: seat }),
+		);
+		expect(decoded.data).toEqual(seat);
+		expect(decoded.data.proc_source).toBe(procSource);
 	});
 	it("refuses the old envelope floor with structured versions", () => {
 		expect(() => decodeEnvelope(fixture("health-v1.json"))).toThrow(PijWireSkewError);

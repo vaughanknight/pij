@@ -355,7 +355,7 @@ export function renderInboxResult(result: InboxResult, json: boolean): string {
 	for (const message of result.messages) {
 		const command = message.command ? `(command: /${message.command})` : "";
 		const content = message.body ? `${message.body}${command ? ` ${command}` : ""}` : command;
-		lines.push(`[pij from ${message.from}] ${content}`);
+		lines.push(`${message.from}: ${content}`);
 		for (const attachment of message.attachments) {
 			lines.push(
 				`  attachment: ${attachment.path}${attachment.caption ? ` (${attachment.caption})` : ""}`,

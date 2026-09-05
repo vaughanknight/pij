@@ -524,6 +524,107 @@ we hand the pattern to pij and the harness. Also `harness observe` each one.
   `/reload` caused no re-registration at all, so `binding=same` was never
   requested live). An AC that is literally false at merge time teaches everyone
   that ACs are approximate.
+- 2026-09-05 (xoxarle reviewing 135 — **KEEP, prime-ruled into the reviewer
+  template**): **re-derive RED-first by archiving the merge parent, not by reading
+  the author's receipts.** `git archive` the merge parent into `/tmp/pij-base-<ord>`,
+  symlink `node_modules`, overlay ONLY the new test files and any new fixture, then
+  run. That is the strongest available form of the AC5 check and it proves something
+  a pasted receipt never can: that the witnesses fail **for the right reasons** —
+  twelve failed here on `rebound` getting `[]` where an announce belongs, `same`
+  getting an announce it should not have, and the frame family failing on the old
+  head, with **not one** exploding on a missing import. A read-only reviewer
+  otherwise has no supported path to do this (every obvious move mutates the repo),
+  so the recipe belongs in the harness rather than being reinvented under a fence.
+- 2026-09-05 (xoxarle, 135 — **KEEP**): **report the CLEAN verdicts with the same
+  evidence as the defects.** This review probed the frame parser by execution
+  (9 body classes round-tripped, including a body containing and a body *ending in*
+  a literal `[/pij]`) and established the failure direction is **refusal, never
+  corruption**; it verified the store's `BEGIN IMMEDIATE` pre-read is raced by two
+  pools in a real test; it confirmed the local-vs-UTC timebase split was deliberate.
+  Naming what was examined and found sound is what makes `no_material_findings` a
+  usable answer instead of a shrug, and it stops the NEXT reviewer re-doing six
+  checks that already came back clean.
+- 2026-09-05 (silverfish/xoxarle, 135 — the finding that justified the whole
+  review): **a field that is emitted and never read looks load-bearing in its own
+  unit's tests and is inert in composition.** `proc_source` was serialized by the
+  daemon with ZERO consumers (not in the TS descriptor, not in `pij-rs state`, not
+  in `pij list` — only daemon tests), and `parseFrame` had no production callers at
+  all. Both passed every unit gate. The inert `proc_source` is precisely what let a
+  MAJOR seam defect hide: nothing could observe that `register` had overwritten a
+  caller's asserted pid with a **pane-shell** identity, which yields
+  `binding: same` → no announce → the exact bug the plan removed. **Rule: a new
+  wire field ships with a consumer in the same plan, or it ships as a documented
+  known-inert surface — never silently.** Corollary the reviewer proved by ps
+  sweep: a branch tested only with synthetic strings is a fixture authored by its
+  own consumer (this repo's own `crates/testkit/fixtures/uds/README.md` warns about
+  it) — the interpreter allowlist accepted basenames `node`/`bun` while 17 live
+  processes on the machine ran as `bun.exe`.
+- 2026-09-05 (silverfish + xoxarle, 135 — **the symmetry is the lesson, not the
+  saves**): the PM and the reviewer made the SAME CLASS OF ERROR four hours
+  apart. The PM authorised a fix against a tree he had not verified (a `git add`
+  aborted on a deleted path with stderr suppressed; main shipped red while a local
+  green said otherwise). The reviewer then proposed a remedy that contradicted a
+  doctrine sitting in a comment it had not yet read (`identity.rs:436-450` — *a
+  control whose input the SUBJECT supplies is not a control*), which would have
+  re-admitted a caller-asserted pid exactly where the daemon's own evidence had
+  failed. **Neither gate would have caught either**, because neither has a sensor
+  for it: nothing compares what a gate BUILT with what was COMMITTED (INS-001),
+  and the anti-impersonation rule is prose on one branch rather than an invariant
+  across them (INS-003). Same hole, two substrates: *a rule that exists only as
+  text no sensor reads.*
+  Two rules follow, and the second is the one usually missed:
+  1. **Dispatch the reviewer with explicit authority to contradict the PM.** This
+     review changed what shipped twice — it stopped main being red on a false AC4,
+     and stopped a security control being switched off by a PM ruling.
+  2. **The reviewer's own proposals need a reviewer.** The PM verified the
+     reviewer's three citations in the source before relaying them, which is how
+     the withdrawn remedy was caught before any code was built. Authority to
+     contradict does not mean authority to be taken on trust — in either
+     direction. That is the loop working, rather than either party being right.
+  Also worth keeping: the reviewer corrected the PM's flattery. The three-list
+  brief *did* do the work — `i4` ("disbelieve the receipts, re-derive") is the
+  entire causal chain to f1, because it made the reviewer run the daemon tests as
+  its FIRST act instead of reading the AC and moving on; `i3` named six areas and
+  f2/f3 came out of the top two, in the order they were written. A brief does not
+  find defects; it aims the reviewer at the ground they are in. Without it, a
+  review is a diff read.
+- 2026-09-05 (xoxarle, 135 — **KEEP**): **a withdrawn finding belongs at the top of
+  the durable artifact, not only in the thread.** The reviewer amended its own
+  review record when it withdrew remedy (a), adding a postscript so that a reader
+  meeting f2 in six months encounters the withdrawal immediately rather than three
+  paragraphs in — and fixed a factual error in its own meta note (said "four
+  remaining open items", listed six) rather than leaving the artifact
+  self-contradicting.
+- 2026-09-05 (xoxarle, 135 — **KEEP, and it is the sharpest rule of the run**):
+  **a review target must name a METHOD, not a conclusion — "go get an input you do
+  not have yet" is the only kind of instruction that can overturn its own author.**
+  Both of this reviewer's own remedies died, and neither died to more thinking
+  about what it already had: remedy (a) died to a doctrine it had not read
+  (`identity.rs:436-450`), remedy (c) died to a `ps` sweep it had not run (1743
+  processes; all 17 `bun.exe` rejects turned out to be `__omp_worker_*` internals,
+  so the widening it recommended would have made worker processes eligible as a
+  pane's harness). Round-2 target (2) said *re-run against real basenames* rather
+  than *confirm the widening*, and that phrasing is the entire reason the reversal
+  happened before the code shipped. Write targets as inputs to acquire.
+- 2026-09-05 (xoxarle, 135 — **KEEP**): **audit your own instrument before letting
+  it drive a change; a reversal argued from an unverified tool is just a different
+  guess.** Before its counterfactual table was allowed to change code, the reviewer
+  validated its Python port of `harness_command` against all 11 cases pinned by the
+  Rust unit test (0 disagreements) and then re-confirmed the six load-bearing
+  verdicts individually rather than trusting the aggregate. Almost nobody applies
+  the disbelieve-the-receipts rule to their own tooling; this is what made the
+  table dispatchable as a decision rather than an opinion.
+- 2026-09-05 (silverfish/xoxarle, 135): **a read-only reviewer asking permission
+  before mutating shared state is the fence working, and the answer should usually
+  be no.** The strongest remaining evidence for the MAJOR finding was one `curl`
+  measuring the fallback end to end — and it was correctly refused: another plan
+  held a live freeze on the daemon (so the write would have been answered by a
+  *different* binary than the finding concerned), and an rs register writes a row
+  that nothing reaps, which is the very fact that caused this plan. The
+  end-to-end measurement belongs in the unit witness that runs forever, and the
+  live half belongs to the PM who owns the live-proof fence. **Rule: route a
+  reviewer's proposed measurement into the author's test, not into production
+  state.**
 - 2026-09-05 (fellow-whale, 136): **the impl-guide froze five things that did
   not exist.** Every one was caught by a coder at the ack gate or shortly after,
   never by me: `editor.onChange` is not a public hook in the installed pi/omp SDK

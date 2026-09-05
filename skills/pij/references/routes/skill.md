@@ -16,7 +16,7 @@ pij agent spawn --once --prompt "<task>" \
 
 - `--prompt` = **inline peer**: pij wraps your prompt in a packet and auto-appends the report contract (`pij agent report --json …`, `summary` field at minimum) — never restate the mechanism in your prompt.
 - `--once`: the daemon auto-closes the pane the moment its report lands. Omit to keep it resident for follow-ups (`pij send <id> "…"`).
-- The report arrives in YOUR pane as a `[pij from <id>]` turn — pushed, never polled (§ C7). Model ids per § C4; canary per § C2; placement per § C5.
+- The report arrives in YOUR pane as a `[pij-rs from <id>] … [/pij]` turn — pushed, never polled (§ C7). Model ids per § C4; canary per § C2; placement per § C5.
 
 ## Prompt recipe
 

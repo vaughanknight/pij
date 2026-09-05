@@ -168,6 +168,11 @@ export class RustRuntimeSession {
 			replacing ? previousSelf : undefined,
 		);
 		const accepted = await this.client.register(registration);
+		if (accepted.proc_source === "pane") {
+			input.notice?.(
+				`pij: harness discovery fell back to the pane; registered pid ${accepted.proc?.pid ?? "unbound"}.`,
+			);
+		}
 		const acceptedId = accepted.id;
 		this.holdQueue = new HoldQueue(this.clock, accepted.typing_grace_ms ?? 60000);
 		this.heldIds.clear();

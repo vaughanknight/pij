@@ -101,7 +101,7 @@ pij send <id> --command compact                      # control command (compact/
 pij tail <id> [--since N] [--follow]                 # peek its transcript without disturbing it
 ```
 
-Pi/tmux replies arrive as `[pij from <id>]` injected turns. For a non-tmux external peer, establish the durable address with `pij inbox register` (or let the first wait auto-register), send normally, then receive with:
+Pi/tmux replies arrive as `[pij-rs from <id>] … [/pij]` injected turns. For a non-tmux external peer, establish the durable address with `pij inbox register` (or let the first wait auto-register), send normally, then receive with:
 
 ```bash
 pij inbox --wait          # block indefinitely
@@ -128,7 +128,7 @@ pij whoami                                    # self resolves; E-NOID uses the t
 pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}   # only the exact non-empty current-process pane
 pij spawn --harness claude --model sonnet     # → pij-xxxxx
 pij tail pij-xxxxx                            # canary: footer shows expected model, no 400 (§ C2)
-pij send pij-xxxxx "reply with exactly: ok"   # round-trip lands back as [pij from pij-xxxxx]
+pij send pij-xxxxx "reply with exactly: ok"   # round-trip lands back as [pij-rs from pij-xxxxx] … [/pij]
 pij close pij-xxxxx                           # pane + descriptor gone
 ```
 
@@ -137,7 +137,7 @@ Non-tmux pull:
 ```bash
 pij inbox register                            # durable pull-owned self
 pij send pij-xxxxx "reply with exactly: ok"
-pij inbox --wait 30000                        # prints [pij from pij-xxxxx] ok
+pij inbox --wait 30000                        # prints listing entry pij-xxxxx: ok, then "1 message read"
 ```
 
 ## Failure modes
