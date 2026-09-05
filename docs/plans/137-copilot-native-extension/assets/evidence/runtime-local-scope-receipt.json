@@ -1,0 +1,37 @@
+{
+  "owner": "pij-worldwide-rat",
+  "status": "scoped_verified_integration_pending",
+  "base_commit": "a955dc1b2ed8895cebe9308cbbe3e410216b0c80",
+  "source_commit": "56c8ebc12cac33862d812542eb24db93737447c0",
+  "authority": "PM pij-grim-gurgeh: use existing /v1/seats?scope=local for native ownership discovery; remote pane/PID values are not local identity evidence",
+  "change": {
+    "source": ".copilot/extensions/pij/extension.mjs",
+    "request": "/v1/seats?scope=local",
+    "semantics": "Chooser, native cold-resume/retirement rules and frozen registration retries unchanged; no client-side remote-row heuristics or federation implementation"
+  },
+  "proof": {
+    "regression": "actual shell discovers local seats without remote pane collisions",
+    "surface": "Actual extension process, loopback HTTP, real temporary filesystem; explicit SDK/OS/tmux seams",
+    "observed": [
+      "Exactly one roster request with scope=local; fixture serves local rows for that query and includes colliding remote %2 row otherwise",
+      "Local native address retained across changed host PID; registration uses local process.pid and %2 without supersedes",
+      "One native send and one authenticated ACK, no unavailable log, EOF exits0 and stdout stays empty",
+      "Existing ambiguity refresh and retired-reopen retry assertions use the local-scope endpoint"
+    ],
+    "command": "node --test --test-reporter=tap --test-timeout=15000 .copilot/extensions/pij/store.test.mjs .copilot/extensions/pij/identity.test.mjs .copilot/extensions/pij/extension.test.mjs",
+    "caps": { "VITEST_MAX_THREADS": "4", "CARGO_BUILD_JOBS": "4" },
+    "result": { "exit": 0, "tests": 81, "passed": 81, "failed": 0, "cancelled": 0, "skipped": 0, "todo": 0, "stderr": "", "duration_ms": 6605.89675 },
+    "tap": "runtime-local-scope-tests.tap",
+    "biome": "check --write on the2 changed .mjs files: Checked2 files in160ms. Fixed2 files; exit0",
+    "lsp": "Diagnostics OK for extension.mjs and extension.test.mjs. Cross-worktree references/definition requests returned no results; exact endpoint search located the bootstrap and both affected retry assertions. No exported symbol changed."
+  },
+  "producer_evidence": {
+    "receipt": "runtime-transient-retirement-receipt.json",
+    "source_commit": "dba208cd682656694076336399e5e5df8f9cc55e",
+    "corrected_evidence_commit": "b77db17e68464413a77159f1a360a17b1e844a5e",
+    "raw_log": "Independently verified360 lines, sha2569ef5f2594cef2a31ca29f47f31de12eb053388850df8402a91edcab449f1be59,284 pass/0 fail across12 suites, no reader footer; execution belongs to counterpart, not runtime"
+  },
+  "harness_improvement": "Permanent actual-shell regression enforces local ownership discovery even when a federated row collides on the pane; proof output is saved directly from raw subprocess streams rather than reader-mode exports",
+  "cleanup": "Existing fixture teardown kills/reaps its owned subprocess, closes owned loopback HTTP connections/server and removes temporary storage. No installed SDK, daemon, worktree or global configuration was modified. Internal query correction needs no public API documentation change; plan/guide remain PM-owned.",
+  "unclaimed": "No real Copilot/model/federation execution, full gate or deployment claim. Other-harness runtimes untouched. Separately held observer8f56be95 is not reviewed/approved by this correction."
+}

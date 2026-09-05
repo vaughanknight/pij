@@ -119,7 +119,7 @@ async function startExtension() {
 		let failureEpisode = false;
 		while (!signal.aborted) {
 			try {
-				const roster = await client.request("/v1/seats", undefined, signal);
+				const roster = await client.request("/v1/seats?scope=local", undefined, signal);
 				const registration = chooseRegistration({
 					sessionId: session.sessionId,
 					host,

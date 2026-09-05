@@ -1,6 +1,6 @@
 {
   "owner": "pij-worldwide-rat",
-  "status": "Runtime and producer wire-contract proof complete; PM integration pending; full producer log recovery tracked separately",
+  "status": "Runtime and producer wire-contract proof complete; recovered producer log verified; PM integration pending",
   "base_commit": "8a101e3196d8c5999863e4fbeed803190ea29d95",
   "source_commit": "cd4e5b86e682f0cf2ea99eb89769f168cbfe4d8f",
   "rulings": [
@@ -52,9 +52,9 @@
   },
   "producer": {
     "owner": "pij-grotesque-armadillo",
-    "status": "Source-pinned receipt and exact producer tripwires consumed; named tests visibly pass; full producer log truncated and recovery requested",
+    "status": "Source-pinned receipt and exact producer tripwires consumed; recovered raw log count, digest and 284/12 totals verified",
     "source_commit": "dba208cd682656694076336399e5e5df8f9cc55e",
-    "evidence_commit": "3bdd2dbb22ef3b4cc7bde5357030ec51e37a8729",
+    "evidence_commit": "b77db17e68464413a77159f1a360a17b1e844a5e",
     "source_observation": {
       "owner": "pij-worldwide-rat",
       "root": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon",
@@ -69,14 +69,17 @@
     },
     "counterpart_validation": {
       "origin": "pij-grotesque-armadillo source-pinned receipt, independently read by runtime owner",
-      "daemon_tests_reported": 284,
-      "suites_reported": 12,
-      "strict_clippy": "receipt reports pass; terminal output missing from truncated log",
-      "rustfmt": "receipt reports pass; terminal output missing from truncated log",
+      "daemon_tests_observed_in_counterpart_log": 284,
+      "suites_observed_in_counterpart_log": 12,
+      "strict_clippy": "Counterpart receipt reports pass; recovered log includes final Checking pij-daemon and Finished dev profile output",
+      "rustfmt": "Counterpart source-pinned receipt reports pass; silent successful command, not separately executed by runtime",
       "receipt": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/docs/plans/137-copilot-native-extension/assets/evidence/daemon-cold-resume-receipt.json",
       "log": "daemon-cold-resume-tests-final.log",
+      "raw_log_lines": 360,
+      "raw_log_sha256": "9ef5f2594cef2a31ca29f47f31de12eb053388850df8402a91edcab449f1be59",
+      "raw_log_verification": "Runtime read complete bytes, independently computed line count/hash, summed all12 suite results to284 pass/0 fail, and confirmed no reader footer. Count/hash match corrected counterpart receipt.",
       "observed_named_passes": "Lines25,73,80 show observation revalidation, pane constructor, and missing/non-Copilot HTTP tests passing; line221 shows all214 library tests passed.",
-      "log_recovery": "Evidence3bdd2dbb log is302 actual lines; line302 is literal '[Showing lines 1-300 of 360. Use :301 to continue]'. Last60 original lines missing. Counterpart and PM notified to recover original raw output, not rerun tests. Full284/12 and lint totals not independently corroborated by this truncated artifact.",
+      "log_recovery": "Resolved by evidence-only b77db17e. Original3bdd2dbb export had302 lines including a literal reader footer; corrected export has360 original lines. Counterpart reports raw artifact157 recovery with no rerun. Runtime verified recovered bytes against the corrected receipt, not independently against the original counterpart tool artifact.",
       "independently_executed_by_runtime": false
     },
     "observed_missing": {
@@ -111,7 +114,7 @@
       "runtime_disposition": "non-retryable; no broadened recovery"
     },
     "envelope_comparison": "Bun parsed both receipts and compared source_commit plus all keys/types/values of the missing-registration, non-Copilot and pane-change envelopes: sourceMatches=true and all three equal=true. This checks fixture/producer agreement, not a new daemon execution.",
-    "conclusion": "Observed producer missing/non-Copilot/pane shapes match the passing runtime fixture contracts. Source-pinned counterpart receipt consumed and named producer tests visibly pass; no runtime parser change required. Whole real-native composition remains PM-owned; full producer log recovery remains counterpart-owned."
+    "conclusion": "Observed producer missing/non-Copilot/pane shapes match passing runtime fixtures; no parser change required. Corrected source-pinned receipt and full284/12 raw log consumed. Execution remains counterpart-owned; whole real-native composition remains PM-owned. Separately held observer source8f56be95 is not approved by this compatibility proof."
   },
   "constraints": {
     "full_gates": 0,
