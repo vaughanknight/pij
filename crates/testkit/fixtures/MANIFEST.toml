@@ -316,3 +316,10 @@ sha256 = "af215a661d581c1c7196c9e5ffd4ebde2bdf64e4d6243890b1573277876dfacc"
 bytes = 1030
 note = "Provenance note for the uds fixtures: which lines are recordings, which remain unrecorded, and why the distinction is load-bearing here."
 answer = "A fixture authored by its own consumer proves nothing about the wire; the previously invented status shapes kept the suite green over a decoder production could never satisfy."
+
+[[fixture]]
+path = "register-response.json"
+sha256 = "52a9f41c5e76432bf67430c1b3b274219967b9966589868ce36c2e2a93f4f139"
+bytes = 1416
+note = "Three REAL /v1/register response descriptors captured 2026-09-05 from the live rs daemon (127.0.0.1:7461, build pij-rs 0.1.0) with two genuinely live processes so the liveness guard accepted the claims: `created` (no row existed, proc 34915), `rebound` (same id, different process 41080), `same` (same id, same process). The `binding` key is the ONLY field added to the captured bodies. Plan 135; vocabulary note in docs/plans/135-rs-boot-announce/assets/contracts/README.md. It lives HERE rather than in the plan folder because post-flight archives plan folders and two live suites read this file at test time."
+answer = "The daemon must serialize `binding` as created|rebound|same on the register response, and the extension must derive fresh := binding !== 'same' (absent binding preserves the pre-daemon inference). BOTH suites READ this file — crates/daemon/src/http/tests.rs compares parsed serde_json::Value against it, .pi/extensions/pij/adapters/rust-runtime.test.ts parses it for its fake client — and NEITHER may restate its literals: a restated fixture is two contracts wearing one name. The material fact it records: `rebound` and `same` were INDISTINGUISHABLE on the pre-fix wire, which is why the extension could not know a boot was fresh."
