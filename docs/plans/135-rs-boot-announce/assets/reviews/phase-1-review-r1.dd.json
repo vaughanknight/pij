@@ -287,6 +287,24 @@
           "address": ".pi/extensions/pij (frame literal census)",
           "finding": "ANSWER TO THE PM'S QUESTION about following plan 136's literal-extraction. YES for the call sites, NO for two files, and the exception is the load-bearing part. 136 replaced 23 literals with a frame helper, removing the class rather than migrating instances, and that is the better answer — 135 moved 28 rendered-frame expectations by hand and will move them again at the next envelope change. The extractable set here is daemon.test.ts (24), router.test.ts (2), typing-guard-contract.test.ts (1) and session.test.ts (1) = 28 call-site literals, all of which assert 'this call site renders A frame' and none of which is asserting what the frame IS. EXCEPT: core/message.test.ts (11 canonical literals) and core/message.ts (5) MUST stay literal. message.test.ts is the frame's own contract test; expressing it through a helper would assert the implementation against itself, which is the fixture-authored-by-its-own-consumer trap this repo already warns about in crates/testkit/fixtures/uds/README.md — and it is the one place a helper would silently absorb a wrong envelope instead of failing. Likewise most of the 38 legacy literals must stay: the pane-signal fixtures are captured real bytes, and typing-guard's `markSelfInjection` payloads are arbitrary strings standing in for 'some injected text' rather than frame renderings, so converting them would imply a contract they do not have.",
           "receipt": "Counts from the same census: rs literals by file — daemon.test.ts 24, message.test.ts 11, message.ts 5, router.test.ts 2, typing-guard-contract.test.ts 1, session.test.ts 1 (total 44)."
+        },
+        {
+          "id": "n4",
+          "kind": "question",
+          "severity": "NIT",
+          "state": "checked",
+          "address": "crates/daemon/tests/review_regressions.rs write_uds_record + crates/transport/src/uds.rs live_endpoint",
+          "finding": "The timebase split is correctly implemented and its WITNESS loses all discriminating power on a UTC host. The design is right: `process_start(pid, utc)` runs `ps -o lstart=` with `TZ=UTC` only when comparing against Claude's UTC-recorded `procStart`, and without it when comparing against a descriptor's locally-observed `proc_start`. I verified `ps` genuinely honours TZ on this platform rather than assuming it — default `Sat Sep  5 11:29:34 2026`, `TZ=UTC` `Sat Sep  5 01:29:34 2026`, `TZ=Asia/Tokyo` `10:29:34` — so the two observations really are different numbers here (20260905112934 vs 20260905012934) and an implementation that swapped or dropped the flag would fail. The NIT: that is a property of THIS HOST, not of the test. The updated fixture writes `procStart` under `TZ=UTC` and the seat's `proc_start` from local `ProcLiveness`, so on a host where local == UTC the two values coincide and the witness cannot distinguish a correct implementation from one that ignores the split entirely. CI runners are conventionally UTC, which is precisely where this would go quietly green. Cheapest hardening is to make the discriminator explicit rather than ambient — assert in the test that the local and UTC observations DIFFER (skipping or xfailing when they do not), so a UTC host reports 'this property was not exercised here' instead of 'this property holds'. Recorded as a NIT because the implementation is correct and the test is not wrong; it is a witness whose strength depends on where it runs, which is the same class as a fixture whose answer depends on who wrote it.",
+          "receipt": "Measured on this host (date +%z = +1000): `env LC_ALL=C ps -p <pid> -o lstart=` → 11:29:34; `env LC_ALL=C TZ=UTC …` → 01:29:34; `TZ=America/New_York` → Fri 21:29:34; `TZ=Asia/Tokyo` → 10:29:34. NOTE ON METHOD: my first attempt at this measurement used a different shell quoting form and reported local and UTC as IDENTICAL, which would have made `observe_start`'s utc flag look inert and Claude discovery look broken on every non-UTC host — a MAJOR finding. I re-measured with `env` before reporting anything, and the second measurement contradicted the first. The claim was never sent. Recorded because the near-miss is the point: a one-command measurement is an instrument too."
+        },
+        {
+          "id": "d3",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "crates/daemon/tests/review_regressions.rs, crates/testkit/src/fakes.rs, harness/scripts/tmux-claude-topic-scan.py",
+          "finding": "TARGET-8 CLASS CHECK on the three files I had not yet read, since I made a point of 'a suite quietly moved to accommodate a change'. VERDICT: all three changed, none weakened, and one is a clear strengthening. review_regressions.rs HAD to change — its uds fixture used a synthetic `pid: 4242` with `procStart: \"observed-start\"`, which cannot satisfy the new liveness gate by construction — and the way it changed is the right way: the synthetic pid is replaced by `std::process::id()` and the synthetic stamp by a REAL `ps -o lstart=` observation, and `seat.proc` now takes a real `ProcLiveness` reading. The test went from bypassing the liveness path to exercising it, which is stronger than what it replaced, not an accommodation. fakes.rs FakeRegistry::put_reporting matches the SQLite semantics exactly — `inserted: previous.is_none()` and `previous_proc: previous.and_then(|seat| seat.proc)` — so the fake and the real store collapse 'no row' and 'unbound row' the same way, and a test that passes against the fake means the same thing against SQLite. tmux-claude-topic-scan.py widens `RELAY_RE` from `\\[pij (from|watchdog)` to `\\[pij(?:-rs)? (from|watchdog)`, which accepts BOTH generations rather than swapping one for the other — the correct migration shape for a scanner that must read historical transcripts as well as current ones.",
+          "receipt": "git diff 4b000ffb^1 4b000ffb over the three files, read in full."
         }
       ]
     },
@@ -404,6 +422,20 @@
           "resolution": "confirmed",
           "state": "checked",
           "rationale": "Answered as asked: extract the 28 call-site literals behind a helper as plan 136 did, and DO NOT extract core/message.test.ts (11) or core/message.ts (5) — a contract test expressed through the helper it tests asserts the implementation against itself and is the one place a wrong envelope would pass silently. Most legacy literals are captured fixture bytes or arbitrary payloads and must also stay."
+        },
+        {
+          "id": "v17",
+          "finding": "phase-1-review-r1.dd.json#findings/n4",
+          "resolution": "confirmed",
+          "state": "unchecked",
+          "rationale": "Open, NIT. Implementation correct and verified against real ps behaviour on three timezones; the witness's discriminating power is host-dependent and vanishes on a UTC runner. Assert the two observations differ, or report the property as unexercised."
+        },
+        {
+          "id": "v18",
+          "finding": "phase-1-review-r1.dd.json#findings/d3",
+          "resolution": "confirmed",
+          "state": "checked",
+          "rationale": "Clean. No suite was moved to accommodate the change; review_regressions.rs was strengthened from a synthetic fixture to a live one, the fake matches the real store's semantics, and the scanner regex accepts both generations rather than swapping."
         }
       ]
     }
