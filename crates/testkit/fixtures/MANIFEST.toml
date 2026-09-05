@@ -259,7 +259,21 @@ path = "uds/4242.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 sha256 = "c732738d3aa98c5bccb94e3c6bc55de6df463d3dd953311073774b419cbb794c"
 bytes = 97
 note = "Sanitized companion peer key from the same isolated Claude Code 2.1.251 probe; the real token and key hash were replaced."
-answer = "Authentication capability exists only when procStart and pidDomain equal the resolved session record and peerToken is non-empty; absent, malformed, mismatched or ambiguous keys mean no capability."
+answer = "Authentication capability requires a unique existing peer key with matching procStart and a non-empty peerToken. pidDomain is optional: absence on BOTH key and session is equal and yields capability when the other requirements hold; one-sided absence or differing present domains refuses. No valid matching key, malformed-only keys, or multiple matching keys means no capability."
+
+[[fixture]]
+path = "../../transport/tests/fixtures/claude-2.1.241/session-record.json"
+sha256 = "7525d76ea36899af522b2bbd9ceed0089a492984edb252536d486af513bb3fe4"
+bytes = 527
+note = "Captured by prime on 2026-09-05 from live seat pij-lonely-antelope, Claude 2.1.241, pid 75005; tokens and session ids redacted while field presence was preserved. Exact bytes from commit 5b0d6243, docs/plans/135-rs-boot-announce/assets/inputs/claude-2.1.241-shapes/session-record.json. Transport owns the fixture; this corpus-relative address indexes it without copying or moving it."
+answer = "Decode pid 75005 and human C-locale UTC procStart Mon Aug 24 00:27:19 2026 (packed 20260824002719); absent pidDomain is valid, not malformed. With the companion peer-key.json also lacking pidDomain, a non-empty token, a matching live pid/start and a non-empty messagingSocketPath, discovery must yield capability without probing the socket. One-sided domain absence, mismatched identity, a dead process or ambiguous matching keys must refuse."
+
+[[fixture]]
+path = "../../transport/tests/fixtures/claude-2.1.241/peer-key.json"
+sha256 = "ddc5c0a74b06572908d67e3d59af0f9f68326bafecc70c52a74c71fceeda8948"
+bytes = 74
+note = "Captured by prime on 2026-09-05 from live seat pij-lonely-antelope, Claude 2.1.241, pid 75005; peerToken redacted and pidDomain genuinely absent. Exact bytes from commit 5b0d6243, docs/plans/135-rs-boot-announce/assets/inputs/claude-2.1.241-shapes/peer-key.json. Transport owns the fixture; this corpus-relative address indexes it without copying or moving it."
+answer = "Decode the non-empty redacted peerToken and human-string procStart without requiring pidDomain. Paired with the live identity-matching session-record.json, absent pidDomain on BOTH sides is equal and yields capability; one-sided absence still refuses. Differing present domains, differing procStart, an empty token or more than one valid matching peer key must not yield capability. Missing pidDomain is not a missing key file."
 
 [[fixture]]
 path = "uds/user-frame.ndjson"
