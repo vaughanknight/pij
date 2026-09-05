@@ -4,13 +4,28 @@ Coder seats write `harness observe` entries into their own worktree buffer. On
 close-out those buffers must survive the seat — the drain is o-prime-owned, so an
 observation that dies with its author is a lesson the fleet never gets.
 
-**Snag worth recording**: neither `fs3-rs-boot-announce-u1/.harness/temp/agent/session-buffer.md`
-nor its u2 equivalent existed at rescue time, and a `find` across both worktrees
-returned nothing — despite both seats reporting retained observations. Every seat
-was SPAWNED from the main checkout and `cd`-ed into its worktree afterwards, so the
-buffers are plausibly pooled under the spawn directory and attributed to the wrong
-tree. Rescued below from each seat's own `harness observe --list --json` output
-instead. Nothing was cleared.
+**Why they needed rescuing — cause established, and my first explanation was
+wrong.** At rescue time neither buffer existed and a `find` across both worktrees
+returned nothing, so I hypothesised the writes were pooled under the spawn
+directory. That was incorrect. Prime established the real cause and disclosed it:
+during tidy it ran `git worktree remove` on both trees, and because
+`.harness/temp` is **gitignored**, each worktree read as *clean* — so the removal
+was correct by every check available to it and took the buffers with it. Main's
+buffer belongs to another seat; every other worktree still holds its own.
+
+The observations below exist for exactly one reason: they were rescued **before**
+the windows were closed, by asking each seat to reproduce its own
+`harness observe --list --json` output. Nothing was cleared.
+
+Two rules follow, both now adopted:
+1. **No worktree removal until `.harness/temp` is harvested** — `harness team tidy`
+   must copy the buffer out first. Gitignored state is invisible to every
+   cleanliness check, so a destructive tidy can be simultaneously correct-by-the-check
+   and lossy.
+2. **Key the buffer by seat id, not by tree.** That mode already exists
+   (`.harness/temp/<seat-id>/session-buffer.md` is in use for at least one seat), so
+   it is a default change rather than a new mechanism — and it would have made this
+   loss impossible, because the buffer would not have lived inside the removed tree.
 
 ---
 
