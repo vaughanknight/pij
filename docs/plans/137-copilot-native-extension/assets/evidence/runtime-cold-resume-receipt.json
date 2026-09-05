@@ -1,0 +1,61 @@
+{
+  "owner": "pij-worldwide-rat",
+  "status": "Runtime-only correction proven and committed; tombstoned provenance ruling pending",
+  "baseline": "14c626c175e8142eeed3fc0ccd7a73bc10380232",
+  "source_commit": "bae47067642020c42a3105346137340af7d6dbd8",
+  "ruling": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/inputs/pm-cold-resume-ruling.md",
+  "changes": {
+    "selection": "Unique native-attested same-session roster candidate keeps address across changed PID/start. Exact-host/valid spawn prebind precedence retained; ambiguity refused. Manual fallback hashes native session only, never process identity.",
+    "authority": "Native-attested pane conflicts reach daemon for actual old-incarnation-dead authorization, new host/pane proof and locked revalidation. Runtime nomination is not authorization; state text does not prove death. Unverified native claims do not qualify as resume candidates.",
+    "rollover": "Same-host new-native uses checked supersedes. Cross-process new-native receives a new address, no supersedes; daemon owns stale native pane retirement. Old messages never retargeted by runtime.",
+    "wire": "No new fields/endpoints; register harness_session; claim/ACK native_session,pid,proc_start remain exact."
+  },
+  "verification": {
+    "command": [
+      "node",
+      "--test",
+      "--test-reporter=tap",
+      "--test-timeout=15000",
+      ".copilot/extensions/pij/store.test.mjs",
+      ".copilot/extensions/pij/identity.test.mjs",
+      ".copilot/extensions/pij/extension.test.mjs"
+    ],
+    "cwd": "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime",
+    "env": {
+      "VITEST_MAX_THREADS": "4",
+      "CARGO_BUILD_JOBS": "4"
+    },
+    "exit": 0,
+    "tests": 76,
+    "pass": 76,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "stderr": "",
+    "tap": "runtime-cold-resume-tests.tap",
+    "tap_sha256": "cae74209aac31931d5b7452cc76447996258731d0b1b4e40094e59dc5601e7a6",
+    "formatter": "biome check --write on store.mjs/store.test.mjs/extension.test.mjs: Checked 3 files in 236ms. Fixed 2 files. Exit0.",
+    "lsp": "All five runtime .mjs files no issues. chooseRegistration references returned none despite known callers; scoped exact search recovered extension.mjs/store.test.mjs.",
+    "filesystem": "Existing restart regression now starts chooseRegistration(empty roster), persists one acceptance in real FileJournal before failed ACK, then calls real chooseRegistration(previous selected roster,new PID/start) and reopens filesystem. Same selected address, no reinjection, one exact current-tuple ACK, explicit missing-completion receive hold, outgoing usable. New native selection isolates old record.",
+    "shell": "Two added actual Node extension-shell/loopbackHTTP cases nominate old same-native address with changed host PID/start. Accepted registration enables one claim/send/ACK; registration refusal enables none. SDK/process observations are explicit fixtures, not real Copilot.",
+    "identity": "Additional tests cover candidate state not liveness proof, duplicate candidates, missing/native-false/wrong-harness candidate refusal, fresh-native pane address, valid prebind precedence and cold spawned successor correlation.",
+    "review": {
+      "agent": "HoldBoundaryReview",
+      "verdict": "no_material_findings",
+      "scope": "runtime-only; no reviewer tests/builds/edits; daemon authority and pending provenance excluded"
+    }
+  },
+  "coordination": {
+    "daemon_owner": "pij-grotesque-armadillo",
+    "daemon_root": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon",
+    "daemon_proof": "Counterpart owns public HTTP/realSQLite dead-owner rebind/live-owner refusal/new-native preserved-job proof; PM explicitly confirmed separate ownership.",
+    "contract": "Counterpart confirms unchanged wire and stale-native retirement inferred from pane, not cross-process supersedes.",
+    "pending_decision": "Schema13 tombstone clears native_extension_delivery; runtime does NOT assume old attestation survives or infer from state/session. PM notified via queued0a4b0bd2-aa58-4723-b2fe-5a728aa01bf9. Automatic tombstoned-address cold recovery is NOT claimed; waiting for provenance ruling."
+  },
+  "limits": [
+    "No real Pi/OMP/Copilot launches, full gates, toolchain changes, installs, daemon restarts or new worktrees. Only isolated Node/HTTP/filesystem proof.",
+    "No automatic old-format journal migration.",
+    "Runtime fixture registration authority is not SQLite or OS liveness proof; counterpart and PM own those acceptance receipts."
+  ],
+  "harness_improvement": "Removed artificial constant-id assumption from restart regression by composing actual selection into both incarnations."
+}
