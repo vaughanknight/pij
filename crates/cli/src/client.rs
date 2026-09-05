@@ -251,6 +251,7 @@ impl DaemonClient {
         let acknowledgement = InboxAckRequest {
             seat: seat.clone(),
             job_id: claim.job_id,
+            native: Default::default(),
         };
         let acked: Envelope<pij_core::model::JobId> = self
             .post("pij inbox", "/v1/inbox/ack", &acknowledgement)

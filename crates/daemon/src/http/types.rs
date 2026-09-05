@@ -182,6 +182,9 @@ pub struct InboxAckRequest {
     pub seat: SeatId,
     /// Queue claim returned by `GET /v1/inbox`.
     pub job_id: JobId,
+    /// Copilot runtime incarnation; absent for existing non-Copilot readers.
+    #[serde(flatten)]
+    pub native: crate::delivery::NativeInboxIdentity,
 }
 
 /// Typed roster payload. `unavailable` distinguishes a down peer from an empty

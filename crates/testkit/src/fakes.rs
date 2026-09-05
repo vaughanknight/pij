@@ -550,6 +550,17 @@ impl Queue for FakeQueue {
         Ok(pending.chain(claimed).min_by_key(|(id, _)| id.0))
     }
 
+    async fn claimed_delivery(&self, job: JobId) -> Result<Option<Job>> {
+        let state = self.state.lock().expect("fake queue mutex");
+        Ok(state
+            .claimed
+            .get(&job.0)
+            .filter(|(claimed, _)| {
+                claimed.kind.strip_prefix("delivery:") == Some(claimed.serial_key.as_str())
+            })
+            .map(|(claimed, _)| claimed.clone()))
+    }
+
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {
         let mut state = self.state.lock().expect("fake queue mutex");
         // REFUSE an unclaimed or double ack, as SqliteQueue does. This was the

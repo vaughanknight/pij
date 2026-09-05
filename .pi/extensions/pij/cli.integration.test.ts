@@ -32,7 +32,7 @@ import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
-import { verifyPersistedAdoptDescriptor } from "./cli.js";
+import { copilotControlRefusalForInvocation, verifyPersistedAdoptDescriptor } from "./cli.js";
 import { reattachIdentity } from "./core/binding.js";
 import { transcriptDir } from "./core/harness/claude.js";
 import { PA_VERB_CLASSIFICATION } from "./core/orchestration/pa-capability.js";
@@ -2744,6 +2744,174 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		// the receiver runs the allow-listed command through its runtime (real coordinator).
 		const res = B.onInbound(cmd as PijMessage, "m-cmd-1");
 		expect(res).toMatchObject({ kind: "command-executed", command: "compact" });
+	});
+
+	it.each([
+		"compact",
+		"new",
+		"reload",
+	])("refuses Copilot %s before either generation can deliver it", (command) => {
+		const id = "pij-copilot-control";
+		const registry = new FsRegistry(HOME);
+		registry.write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-09-05T00:00:00.000Z",
+			harness: "copilot",
+			paneId: "%137",
+		});
+		writeFileSync(TMUX_LOG, "");
+		try {
+			for (const generation of ["legacy", "rs"]) {
+				for (const args of [["--command", command], [`/${command}`]]) {
+					const result = pij(["send", id, ...args], {
+						PIJ_SESSION_ID: "pij-A",
+						PIJ_DAEMON_GENERATION: generation,
+					});
+					expect(result.code).toBe(2);
+					expect(result.out).toContain(`Copilot programmatic ${command} is unsupported`);
+					expect(result.out).toContain("No legacy or tmux fallback");
+				}
+			}
+			expect(existsSync(join(HOME, id, "inbox"))).toBe(false);
+			expect(readFileSync(TMUX_LOG, "utf8")).toBe("");
+		} finally {
+			registry.remove(id);
+		}
+	});
+
+	it("keeps compact-self's tmux control for a known non-Copilot target", () => {
+		const id = "pij-claude-compact-control";
+		const registry = new FsRegistry(HOME);
+		registry.write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-09-05T00:00:00.000Z",
+			harness: "claude",
+			paneId: "%9139",
+		});
+		writeFileSync(TMUX_LOG, "");
+		try {
+			const result = pij(["compact-self", "--pane", "%9139"], { PIJ_SESSION_ID: id });
+			expect(result.code).toBe(0);
+			expect(result.out).toContain("fired /compact into %9139");
+			const calls = readFileSync(TMUX_LOG, "utf8");
+			expect(calls).toContain("/compact");
+			expect(calls).toContain("Enter");
+		} finally {
+			registry.remove(id);
+		}
+	});
+
+	it("refuses ambient Copilot and unknown compact-self panes without typing or follow-up", () => {
+		writeFileSync(TMUX_LOG, "");
+		const copilot = pij(["compact-self", "follow-up must not run"], {
+			TMUX_PANE: "%9137",
+			COPILOT_AGENT_SESSION_ID: "native-control-session",
+		});
+		expect(copilot.code).toBe(2);
+		expect(copilot.out).toContain("Copilot programmatic compact is unsupported");
+		const unknown = pij(["compact-self", "--pane", "%9138"], {
+			PIJ_RS_STATE_DIR: join(HOME, "absent-native-control-state"),
+		});
+		expect(unknown.code).toBe(2);
+		expect(unknown.out).toContain("Cannot verify the harness for %9138");
+		expect(unknown.out).toContain("No legacy or tmux fallback");
+		expect(readFileSync(TMUX_LOG, "utf8")).toBe("");
+	});
+
+	it.each([
+		"compact",
+		"new",
+		"reload",
+	])("refuses rs-only Copilot %s even under forced legacy", async (command) => {
+		for (const generation of ["legacy", "rs"]) {
+			for (const args of [["--command", command], [`/${command}`]]) {
+				const refusal = await copilotControlRefusalForInvocation(
+					["send", "pij-native-only", ...args],
+					{
+						env: { PIJ_DAEMON_GENERATION: generation },
+						legacySeats: () => [],
+						nativeSeats: async () => [{ id: "pij-native-only", harness: "copilot", pane: "%137" }],
+					},
+				);
+				expect(refusal).toContain(`Copilot programmatic ${command} is unsupported`);
+			}
+		}
+	});
+
+	it("refuses native Copilot compact-self by the target pane, not the caller", async () => {
+		const refusal = await copilotControlRefusalForInvocation(["compact-self", "--pane", "%137"], {
+			env: { TMUX_PANE: "%138", PIJ_SESSION_ID: "pij-other" },
+			legacySeats: () => [{ id: "pij-other", harness: "claude", paneId: "%138" }],
+			nativeSeats: async () => [{ id: "pij-native-only", harness: "copilot", pane: "%137" }],
+		});
+		expect(refusal).toContain("Copilot programmatic compact is unsupported");
+	});
+
+	it("refuses an unreadable native roster rather than falling through to tmux", async () => {
+		const refusal = await copilotControlRefusalForInvocation(["compact-self", "--pane", "%137"], {
+			env: {},
+			legacySeats: () => [],
+			nativeSeats: async () => {
+				throw new Error("unreadable roster");
+			},
+		});
+		expect(refusal).toContain("Cannot verify the harness for %137");
+		expect(refusal).toContain("No legacy or tmux fallback");
+	});
+
+	it("preserves known non-Copilot controls without consulting another daemon", async () => {
+		for (const harness of ["pi", "claude", "codex", undefined] as const) {
+			for (const argv of [
+				["send", "pij-other", "--command", "new"],
+				["compact-self", "--pane", "%138"],
+			]) {
+				let queriedNative = false;
+				expect(
+					await copilotControlRefusalForInvocation(argv, {
+						env: {},
+						legacySeats: () => [
+							{ id: "pij-other", ...(harness === undefined ? {} : { harness }), paneId: "%138" },
+						],
+						nativeSeats: async () => {
+							queriedNative = true;
+							throw new Error("unavailable");
+						},
+					}),
+				).toBeUndefined();
+				expect(queriedNative).toBe(false);
+			}
+		}
+	});
+
+	it("does not classify message bodies as native controls", async () => {
+		for (const argv of [
+			["send", "pij-native-only", "hello"],
+			["send", "pij-native-only", "--body-file", "literal-body"],
+		]) {
+			let lookedUp = false;
+			expect(
+				await copilotControlRefusalForInvocation(argv, {
+					env: {},
+					legacySeats: () => {
+						lookedUp = true;
+						return [];
+					},
+					nativeSeats: async () => {
+						lookedUp = true;
+						return [];
+					},
+				}),
+			).toBeUndefined();
+			expect(lookedUp).toBe(false);
+		}
 	});
 
 	it("AC-13 receipt loop: B records inbound + emits a receipt; A records it; tail shows it", () => {

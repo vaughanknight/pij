@@ -7,11 +7,12 @@
 use std::sync::Arc;
 
 use pij_core::config::Config;
-use pij_core::model::{DeliveryOrigin, Job, Outcome, SeatId};
+use pij_core::model::{DeliveryOrigin, Job, JobId, Outcome, SeatId};
 use pij_core::ports::{DeliveryEnqueue, Queue};
 use pij_store::SqliteQueue;
 use pij_testkit::FreshStore;
 use pij_testkit::contract::queue_contract;
+use pij_testkit::fakes::FakeQueue;
 use tokio::sync::Barrier;
 
 fn job(kind: &str, serial: &str, dedupe: &str) -> Job {
@@ -37,6 +38,227 @@ async fn crate_queue(fresh: &FreshStore) -> SqliteQueue {
 async fn the_sqlite_queue_honours_the_same_contract_the_fake_does() {
     let fresh = FreshStore::new();
     queue_contract(&crate_queue(&fresh).await).await;
+}
+
+async fn claimed_delivery_lookup_contract(queue: &dyn Queue) {
+    for missing in [JobId(0), JobId(u64::MAX)] {
+        assert_eq!(
+            queue.claimed_delivery(missing).await.expect("unknown id"),
+            None
+        );
+    }
+    let mut first = job("delivery:seat-a", "seat-a", "shared-message");
+    first.payload = "{\"body\":\"first destination\",\"from\":\"sender\"}".to_string();
+    let first_id = queue
+        .enqueue(first.clone())
+        .await
+        .expect("enqueue first destination");
+    let mut second = job("delivery:seat-b", "seat-b", "shared-message");
+    second.payload = "{\"body\":\"second destination\",\"from\":\"sender\"}".to_string();
+    let second_id = queue
+        .enqueue(second.clone())
+        .await
+        .expect("enqueue second destination");
+    assert_ne!(first_id, second_id);
+    assert_eq!(
+        queue
+            .claimed_delivery(first_id)
+            .await
+            .expect("pending lookup"),
+        None
+    );
+
+    let first_kinds = [first.kind.clone()];
+    let first_claim = queue
+        .claim(&first_kinds, "reader-a")
+        .await
+        .expect("claim first")
+        .expect("first job");
+    assert_eq!(first_claim, (first_id, first.clone()));
+    for _ in 0..2 {
+        assert_eq!(
+            queue
+                .claimed_delivery(first_id)
+                .await
+                .expect("running lookup"),
+            Some(first.clone())
+        );
+        assert_eq!(
+            queue
+                .claimed_delivery(second_id)
+                .await
+                .expect("other pending lookup"),
+            None
+        );
+        assert_eq!(
+            queue
+                .peek(&first_kinds)
+                .await
+                .expect("lookup preserves claim"),
+            Some(first_claim.clone())
+        );
+    }
+    assert!(
+        queue
+            .claim(&first_kinds, "other-reader")
+            .await
+            .expect("claim remains held")
+            .is_none()
+    );
+
+    let second_claim = queue
+        .claim(&[second.kind.clone()], "reader-b")
+        .await
+        .expect("claim second")
+        .expect("second job");
+    assert_eq!(second_claim, (second_id, second.clone()));
+    assert_eq!(
+        queue
+            .claimed_delivery(first_id)
+            .await
+            .expect("first id stays exact"),
+        Some(first.clone())
+    );
+    assert_eq!(
+        queue
+            .claimed_delivery(second_id)
+            .await
+            .expect("second id stays exact"),
+        Some(second)
+    );
+
+    queue
+        .retry(first_id, std::time::Duration::ZERO)
+        .await
+        .expect("retry first");
+    assert_eq!(
+        queue
+            .claimed_delivery(first_id)
+            .await
+            .expect("retried pending lookup"),
+        None
+    );
+    let (retried_id, retried) = queue
+        .claim(&first_kinds, "reader-a")
+        .await
+        .expect("claim retry")
+        .expect("retry job");
+    assert_eq!(retried_id, first_id);
+    first.attempt = 1;
+    assert_eq!(retried, first);
+    assert_eq!(
+        queue
+            .claimed_delivery(first_id)
+            .await
+            .expect("lookup retains attempt and payload"),
+        Some(first)
+    );
+    queue
+        .ack_delivery(first_id, DeliveryOrigin::ReaderRead)
+        .await
+        .expect("complete delivery");
+    assert_eq!(
+        queue.claimed_delivery(first_id).await.expect("done lookup"),
+        None
+    );
+    queue
+        .ack(
+            second_id,
+            Outcome::Failed {
+                reason: "reader refused".to_string(),
+            },
+        )
+        .await
+        .expect("fail second");
+    assert_eq!(
+        queue
+            .claimed_delivery(second_id)
+            .await
+            .expect("failed lookup"),
+        None
+    );
+
+    for non_delivery in [
+        job("chore:seat-c", "seat-c", "chore"),
+        job("Delivery:seat-d", "seat-d", "wrong-case"),
+        job("delivery:another-seat", "seat-e", "wrong-destination"),
+    ] {
+        let kind = non_delivery.kind.clone();
+        let id = queue
+            .enqueue(non_delivery)
+            .await
+            .expect("enqueue non-delivery");
+        let (claimed_id, _) = queue
+            .claim(&[kind], "worker")
+            .await
+            .expect("claim non-delivery")
+            .expect("job");
+        assert_eq!(claimed_id, id);
+        assert_eq!(
+            queue
+                .claimed_delivery(id)
+                .await
+                .expect("non-delivery lookup"),
+            None
+        );
+        queue
+            .ack(id, Outcome::Done)
+            .await
+            .expect("lookup did not consume non-delivery claim");
+    }
+}
+
+#[tokio::test]
+async fn sqlite_claimed_delivery_lookup_is_exact_read_only_and_state_scoped() {
+    let fresh = FreshStore::new();
+    claimed_delivery_lookup_contract(&crate_queue(&fresh).await).await;
+}
+
+#[tokio::test]
+async fn fake_claimed_delivery_lookup_matches_sqlite_contract() {
+    let queue = FakeQueue::new(Config::default().delivered_id_capacity).expect("queue policy");
+    claimed_delivery_lookup_contract(&queue).await;
+}
+
+#[tokio::test]
+async fn claimed_delivery_lookup_does_not_refresh_or_expire_a_running_lease() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let config = Config::default();
+    let queue = SqliteQueue::new(
+        pool.clone(),
+        config.claim_lease_secs,
+        config.delivered_id_capacity,
+    )
+    .expect("queue policy");
+    let expected = job("delivery:seat-a", "seat-a", "message");
+    let id = queue.enqueue(expected.clone()).await.expect("enqueue");
+    queue
+        .claim(&[expected.kind.clone()], "reader")
+        .await
+        .expect("claim")
+        .expect("job");
+    sqlx::query("UPDATE jobs SET claimed_at=1 WHERE id=?1")
+        .bind(id.0 as i64)
+        .execute(&pool)
+        .await
+        .expect("age the claim without sleeping");
+    for _ in 0..2 {
+        assert_eq!(
+            queue
+                .claimed_delivery(id)
+                .await
+                .expect("inspect expired running claim"),
+            Some(expected.clone())
+        );
+    }
+    let state: (String, String, i64, i64) =
+        sqlx::query_as("SELECT state, worker, claimed_at, attempt FROM jobs WHERE id=?1")
+            .bind(id.0 as i64)
+            .fetch_one(&pool)
+            .await
+            .expect("read untouched claim");
+    assert_eq!(state, ("running".to_string(), "reader".to_string(), 1, 0));
 }
 
 #[tokio::test]

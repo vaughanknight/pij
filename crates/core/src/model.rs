@@ -230,15 +230,10 @@ pub struct SeatDescriptor {
     /// stamped at spawn, or Claude-side changes we do not control.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cross_session_inbound_accept: Option<bool>,
-    /// Port passed to Copilot with `--ui-server --port N` by the spawn path.
-    ///
-    /// This records launch INTENT only. It does not assert that Copilot bound the
-    /// port, that a listener still exists, or that the current process owns it.
-    /// Consumers must corroborate the seat's live process identity at read time.
-    /// `None` means the launch did not emit the RPC endpoint flags and remains
-    /// closed; legacy descriptors deserialize to that conservative state.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rpc_port_intent: Option<u16>,
+    /// The current Copilot process/native session attested extension-owned inbox delivery.
+    /// False for legacy rows, pre-bind spawns, and retired or replaced incarnations.
+    #[serde(default)]
+    pub native_extension_delivery: bool,
 
     // --- bind evidence (R5 items 13-15) ------------------------------------
     //
@@ -327,7 +322,7 @@ impl SeatDescriptor {
             tombstoned_at: None,
             tombstone_reason: None,
             cross_session_inbound_accept: None,
-            rpc_port_intent: None,
+            native_extension_delivery: false,
             spawn_id: None,
             model: None,
             provider: None,
