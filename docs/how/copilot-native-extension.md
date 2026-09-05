@@ -70,6 +70,10 @@ pre-join SDK/import failure can instead emit extension stderr or a native loader
 error; that is not proof of timeline visibility. No private acceptance-file or
 undocumented log-directory layout is required by the smoke.
 
+Normal startup typing-sensor readiness waits are recorded in extension diagnostics,
+not shown as timeline outages. Inbox acquisition still waits for an available
+sensor; actual daemon errors and stopped receiving remain visible.
+
 ## Deterministic checks
 
 ```sh

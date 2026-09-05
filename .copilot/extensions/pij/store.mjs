@@ -959,22 +959,14 @@ export function createNativeReporter({ log, capture }) {
 		if (event.kind === "registered" || event.kind === "connection-ready") unavailable = false;
 		if (event.kind === "connection-ready") return;
 		if (
-			[
-				"registration-wait",
-				"reconnecting",
-				"receive-held",
-				"extension-unavailable",
-				"typing-sensor-wait",
-			].includes(event.kind)
+			["registration-wait", "reconnecting", "receive-held", "extension-unavailable"].includes(
+				event.kind,
+			)
 		) {
-			const waiting = event.kind === "typing-sensor-wait";
-			if (!waiting) {
-				if (unavailable && event.kind !== "receive-held") return;
-				unavailable = true;
-			}
-			const advice = waiting
-				? "waiting for native typing-sensor availability; retrying before claiming inbox work; outgoing pij_send remains available"
-				: event.kind === "receive-held"
+			if (unavailable && event.kind !== "receive-held") return;
+			unavailable = true;
+			const advice =
+				event.kind === "receive-held"
 					? event.holdKind === "native-target"
 						? "queued work targets another native session; resume that native session or use a new seat and intentionally reissue the message; receiving stopped without acknowledgement; outgoing pij_send remains available"
 						: event.holdKind === "typing-sensor"
@@ -986,6 +978,7 @@ export function createNativeReporter({ log, capture }) {
 				.then(() => log(`[pij native] unavailable: ${event.kind}; ${advice}`, { level: "info" }))
 				.catch(() => capture({ kind: "native-diagnostic-unavailable", failureKind: event.kind }));
 		}
+		// Pending readiness is diagnostic progress, not a native timeline outage.
 		capture(event);
 	};
 }

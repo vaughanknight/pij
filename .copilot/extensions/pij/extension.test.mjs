@@ -297,9 +297,10 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 	}
 
 	test("actual extension shell joins, registers, receives and exposes immutable outgoing tool", async (t) => {
-		const f = await launch(t);
+		const f = await launch(t, { typingSnapshots: [{ state: "unavailable" }] });
 		const joined = await f.waitFor("joined");
 		assert.deepEqual(joined.tools, ["pij_send"]);
+		await f.waitFor("typing-sensor-wait");
 		await f.waitFor("inbox-acknowledged");
 		assert.deepEqual(
 			f.requests
@@ -307,7 +308,14 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				.filter((path) =>
 					["/v1/inbox", "/v1/inbox/typing", "/v1/release", "/v1/inbox/ack"].includes(path),
 				),
-			["/v1/inbox/typing", "/v1/inbox", "/v1/inbox/typing", "/v1/release", "/v1/inbox/ack"],
+			[
+				"/v1/inbox/typing",
+				"/v1/inbox/typing",
+				"/v1/inbox",
+				"/v1/inbox/typing",
+				"/v1/release",
+				"/v1/inbox/ack",
+			],
 		);
 		f.child.stdin.write(
 			`${JSON.stringify({ to: "pij-peer", message: "SHELL_REPLY_137", from: "forged" })}\n`,
@@ -322,6 +330,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.equal(f.requests.find((r) => r.path === "/v1/send").body.from, registration.id);
 		assert.equal(f.events.filter((e) => e.kind === "native-send").length, 1);
 		assert.match(f.events.find((e) => e.kind === "native-send").input.prompt, /SHELL_NONCE_137/);
+		assert.equal(f.events.filter((event) => event.kind === "native-log").length, 0);
 		assert.equal(f.stdout(), "");
 	});
 
