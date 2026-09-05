@@ -76,6 +76,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			messages = 1,
 			inboxPages = [],
 			seats = [],
+			registerRefusal,
 		} = {},
 	) {
 		const home = await mkdtemp(join(tmpdir(), "pij-native-shell-"));
@@ -97,6 +98,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				let refusal;
 				if (request.url === "/v1/seats") data = { seats };
 				else if (request.url === "/v1/register") {
+					refusal = registerRefusal;
 					registered = body;
 					data = {
 						id: body.id,
@@ -436,6 +438,49 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.equal((await exited)[0], 0);
 		assert.equal(f.stdout(), "");
 	});
+
+	for (const refused of [false, true]) {
+		test(`actual shell cold resume nomination ${refused ? "respects registration refusal" : "retains address through HTTP"}`, async (t) => {
+			const previous = {
+				id: "pij-existing-native-address",
+				harness: "copilot",
+				session: "native-shell-137",
+				folder: "/work",
+				pane: null,
+				proc: { pid: process.pid + 1, proc_start: 20260905115900 },
+				native_extension_delivery: true,
+			};
+			const f = await launch(t, {
+				seats: [previous],
+				registerRefusal: refused
+					? {
+							ok: false,
+							v: 2,
+							command: "pij register",
+							error: "refused",
+							meta: "fixture: previous native incarnation still alive",
+						}
+					: undefined,
+			});
+			await f.waitFor(refused ? "native-log" : "completion-wait");
+			const selected = f.requests.find((r) => r.path === "/v1/register").body;
+			assert.equal(selected.id, previous.id);
+			assert.equal(selected.harness_session, previous.session);
+			assert.notEqual(selected.pid, previous.proc.pid);
+			assert.notEqual(selected.proc_start, previous.proc.proc_start);
+			assert.equal(selected.supersedes, undefined);
+			assert.equal(f.events.filter((e) => e.kind === "native-send").length, refused ? 0 : 1);
+			assert.equal(
+				f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length,
+				refused ? 0 : 1,
+			);
+			assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, refused ? 0 : 1);
+			const exited = once(f.child, "exit");
+			f.child.stdin.end();
+			assert.equal((await exited)[0], 0);
+			assert.equal(f.stdout(), "");
+		});
+	}
 
 	test("absent key does not block joined native tools and emits one native timeline diagnostic", async (t) => {
 		const f = await launch(t, { daemon: false, key: false });

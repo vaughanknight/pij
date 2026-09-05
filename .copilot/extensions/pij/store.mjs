@@ -12,6 +12,12 @@ const positiveInteger = (value) => Number.isSafeInteger(value) && value > 0;
 const sameProcess = (seat, host) =>
 	seat.proc?.pid === host.pid && seat.proc?.proc_start === host.proc_start;
 const samePane = (seat, host) => (seat.pane ?? undefined) === (host.pane ?? undefined);
+const nativeAttested = (seat) =>
+	seat.harness === "copilot" &&
+	seat.native_extension_delivery === true &&
+	nonempty(seat.session) &&
+	positiveInteger(seat.proc?.pid) &&
+	positiveInteger(seat.proc?.proc_start);
 
 export class NativeError extends Error {
 	constructor(message, retryable = false) {
@@ -79,15 +85,28 @@ export function chooseRegistration({ sessionId, host, folder, seats, env }) {
 		throw new NativeError("Native process identity has conflicting seats or pane");
 	if (
 		host.pane &&
-		live.some((seat) => seat !== prebind && seat.pane === host.pane && !sameProcess(seat, host))
+		live.some(
+			(seat) =>
+				seat !== prebind &&
+				seat.pane === host.pane &&
+				!sameProcess(seat, host) &&
+				!nativeAttested(seat),
+		)
 	)
 		throw new NativeError("Pane belongs to a different process identity");
-	const prior = exact[0] ?? prebind;
+	// Roster rows only nominate identity; the daemon proves death and authorizes rebind/retirement.
+	let prior = exact[0] ?? prebind;
+	if (!prior) {
+		const candidates = seats.filter((seat) => nativeAttested(seat) && seat.session === sessionId);
+		if (candidates.length > 1)
+			throw new NativeError("Native session has multiple candidate Pij addresses; receiving held");
+		prior = candidates[0];
+	}
 	const correlatedSuccessor =
 		prior?.native_extension_delivery === true &&
 		requestedSpawn &&
 		prior.spawn_id === requestedSpawn &&
-		sameProcess(prior, host);
+		(sameProcess(prior, host) || prior.session === sessionId);
 	if (requestedId && (!prior || prior.id !== requestedId) && !correlatedSuccessor)
 		throw new NativeError("Spawn prebind identity is not corroborated by the host process", !prior);
 	if (requestedSpawn && (!prior || prior.spawn_id !== requestedSpawn))
@@ -96,8 +115,8 @@ export function chooseRegistration({ sessionId, host, folder, seats, env }) {
 	const id =
 		!replacing && prior
 			? prior.id
-			: `pij-copilot-${hash(JSON.stringify([sessionId, host.pid, host.proc_start])).slice(0, 24)}`;
-	if (live.some((seat) => seat !== prebind && seat.id === id && !sameProcess(seat, host)))
+			: `pij-copilot-${hash(JSON.stringify([sessionId])).slice(0, 24)}`;
+	if (seats.some((seat) => seat !== prior && seat.id === id && !sameProcess(seat, host)))
 		throw new NativeError("Native identity collides with another process");
 	return Object.freeze({
 		id,

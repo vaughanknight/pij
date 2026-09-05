@@ -377,6 +377,14 @@ test("manual identity stable; exact process native rollover supersedes predecess
 	};
 	const fresh = chooseRegistration({ ...input, seats: [] });
 	assert.equal(fresh.id, chooseRegistration({ ...input, seats: [] }).id);
+	assert.equal(
+		fresh.id,
+		chooseRegistration({
+			...input,
+			host: { ...input.host, pid: 999, proc_start: input.host.proc_start + 100 },
+			seats: [],
+		}).id,
+	);
 	assert.equal(chooseRegistration({ ...input, seats: [descriptor] }).id, registration.id);
 	const rolled = chooseRegistration({ ...input, sessionId: "native-next", seats: [descriptor] });
 	assert.equal(rolled.supersedes, registration.id);
@@ -385,7 +393,13 @@ test("manual identity stable; exact process native rollover supersedes predecess
 		() =>
 			chooseRegistration({
 				...input,
-				seats: [{ ...descriptor, proc: { ...descriptor.proc, pid: 999 } }],
+				seats: [
+					{
+						...descriptor,
+						native_extension_delivery: false,
+						proc: { ...descriptor.proc, pid: 999 },
+					},
+				],
 			}),
 		/identity|pane|process/i,
 	);
@@ -423,6 +437,119 @@ test("spawn binding requires exact process, pane and correlation", () => {
 	);
 });
 
+test("cold native resume nominates a unique attested address without trusting roster state", () => {
+	const host = {
+		...descriptor.proc,
+		pid: 999,
+		proc_start: descriptor.proc.proc_start + 100,
+		pane: "%999",
+	};
+	for (const state of ["working", "dead"]) {
+		const selected = chooseRegistration({
+			sessionId: descriptor.session,
+			host,
+			folder: "/resumed",
+			env: {},
+			seats: [{ ...descriptor, state }],
+		});
+		assert.equal(selected.id, descriptor.id);
+		assert.equal(selected.pid, host.pid);
+		assert.equal(selected.proc_start, host.proc_start);
+		assert.equal(selected.pane, host.pane);
+		assert.equal(selected.supersedes, undefined);
+	}
+});
+
+test("ambiguous native addresses and unverified native claims do not authorize resume", () => {
+	const input = {
+		sessionId: descriptor.session,
+		host: { ...descriptor.proc, pid: 999 },
+		folder: "/work",
+		env: {},
+	};
+	assert.throws(
+		() =>
+			chooseRegistration({ ...input, seats: [descriptor, { ...descriptor, id: "other-address" }] }),
+		/multiple candidate/,
+	);
+	for (const change of [{ native_extension_delivery: false }, { proc: null }, { harness: "pi" }]) {
+		assert.notEqual(
+			chooseRegistration({ ...input, seats: [{ ...descriptor, ...change }] }).id,
+			descriptor.id,
+		);
+		assert.throws(
+			() =>
+				chooseRegistration({
+					...input,
+					host: { ...input.host, pane: descriptor.pane },
+					seats: [{ ...descriptor, ...change }],
+				}),
+			/Pane belongs/,
+		);
+	}
+});
+
+test("fresh native conversation nominates new address without retiring old pane owner locally", () => {
+	const host = {
+		...descriptor.proc,
+		pid: 999,
+		proc_start: descriptor.proc.proc_start + 100,
+		pane: descriptor.pane,
+	};
+	for (const state of ["working", "dead", "tombstoned"]) {
+		const old = {
+			...descriptor,
+			state,
+			native_extension_delivery: state !== "tombstoned",
+			tombstoned_at: state === "tombstoned" ? 1 : null,
+		};
+		const selected = chooseRegistration({
+			sessionId: "fresh-native",
+			host,
+			folder: "/work",
+			env: {},
+			seats: [old],
+		});
+		assert.notEqual(selected.id, old.id);
+		assert.equal(selected.supersedes, undefined);
+		assert.equal(selected.harness_session, "fresh-native");
+		assert.equal(old.state, state);
+		assert.equal(old.session, descriptor.session);
+		assert.deepEqual(old.proc, descriptor.proc);
+	}
+});
+
+test("valid spawn preallocation precedes resume candidate; cold spawned successor retains correlation", () => {
+	const host = { ...descriptor.proc, pid: 999, pane: descriptor.pane };
+	const candidate = { ...descriptor, spawn_id: "spawn-137", parent: "pij-parent" };
+	const prebind = {
+		...candidate,
+		id: "pij-preallocated",
+		session: null,
+		proc: null,
+		native_extension_delivery: false,
+	};
+	const input = {
+		sessionId: descriptor.session,
+		host,
+		folder: "/work",
+		seats: [candidate, prebind],
+	};
+	const selected = chooseRegistration({
+		...input,
+		env: { PIJ_SESSION_ID: prebind.id, PIJ_SPAWN_ID: candidate.spawn_id },
+	});
+	assert.equal(selected.id, prebind.id);
+	const resumed = chooseRegistration({
+		...input,
+		seats: [candidate],
+		env: { PIJ_SESSION_ID: "old-spawn-address", PIJ_SPAWN_ID: candidate.spawn_id },
+	});
+	assert.equal(resumed.id, candidate.id);
+	assert.equal(resumed.spawn_id, candidate.spawn_id);
+	assert.equal(resumed.parent, candidate.parent);
+});
+
 test("process start uses daemon local C-locale packed stamp with calendar checks", () => {
 	assert.equal(parseProcessStart("Sat Sep  5 12:00:00 2026"), 20260905120000);
 	for (const invalid of ["bad", "Mon Feb 30 12:00:00 2026", "Sat Sep 5 25:00:00 2026"])
@@ -455,17 +582,34 @@ test("real filesystem journal survives restart and hashes opaque ids with privat
 	assert.match(await readFile(journal.path(message.msg_id), "utf8"), /native-durable/);
 });
 
-test("real filesystem accepted-before-ack restart uses new live tuple without reinjection", {
+test("real chooseRegistration and filesystem preserve accepted-before-ack across changed host", {
 	timeout: 2000,
 }, async (t) => {
 	const home = await mkdtemp(join(tmpdir(), "pij-native-restart-"));
 	t.after(() => rm(home, { recursive: true, force: true }));
-	const journal = new FileJournal(home, registration);
-	const first = fixture({ journal });
+	const input = {
+		sessionId: descriptor.session,
+		host: { ...descriptor.proc, pane: descriptor.pane },
+		folder: "/work",
+		env: {},
+	};
+	const selected = chooseRegistration({ ...input, seats: [] });
+	const registered = { ...descriptor, id: selected.id };
+	const queued = { ...claim, message: { ...claim.message, to: selected.id } };
+	const journal = new FileJournal(home, selected);
+	const first = fixture({ registration: selected, journal });
 	t.after(() => first.bridge.stop());
 	const request = first.client.request;
 	let failedAcks = 0;
+	first.client.claimInbox = async (consumer) => {
+		assert.deepEqual(consumer, { ...tuple, seat: selected.id });
+		return { claims: [queued], hold: null };
+	};
 	first.client.request = async (path, body, signal) => {
+		if (path === "/v1/register") {
+			assert.deepEqual(body, selected);
+			return registered;
+		}
 		if (path === "/v1/inbox/ack") {
 			failedAcks++;
 			assert.equal((await journal.load(claim.message.msg_id)).state, "accepted");
@@ -482,11 +626,14 @@ test("real filesystem accepted-before-ack restart uses new live tuple without re
 		false,
 	);
 
-	const resumed = {
-		...registration,
-		pid: registration.pid + 1,
-		proc_start: registration.proc_start + 100,
-	};
+	const resumed = chooseRegistration({
+		...input,
+		host: { ...input.host, pid: selected.pid + 1, proc_start: selected.proc_start + 100 },
+		seats: [registered],
+	});
+	assert.equal(resumed.id, selected.id);
+	assert.notEqual(resumed.pid, selected.pid);
+	assert.notEqual(resumed.proc_start, selected.proc_start);
 	const live = {
 		native_session: resumed.harness_session,
 		pid: resumed.pid,
@@ -500,13 +647,13 @@ test("real filesystem accepted-before-ack restart uses new live tuple without re
 	second.client.claimInbox = async (consumer) => {
 		claims++;
 		assert.deepEqual(consumer, { seat: resumed.id, ...live });
-		return { claims: [{ ...claim, native_consumer: live }], hold: null };
+		return { claims: [{ ...queued, native_consumer: live }], hold: null };
 	};
 	const resumedRequest = second.client.request;
 	second.client.request = async (path, body, signal) => {
 		if (path === "/v1/register") {
 			assert.deepEqual(body, resumed);
-			return { ...descriptor, proc: { pid: resumed.pid, proc_start: resumed.proc_start } };
+			return { ...registered, proc: { pid: resumed.pid, proc_start: resumed.proc_start } };
 		}
 		if (path === "/v1/inbox/ack") {
 			acks.push(body);
@@ -538,6 +685,14 @@ test("real filesystem accepted-before-ack restart uses new live tuple without re
 		(await second.bridge.send({ to: "pij-peer", message: "restart-held outgoing" })).ok,
 		true,
 	);
+	const fresh = chooseRegistration({
+		...input,
+		sessionId: "brand-new-native",
+		host: { ...input.host, pid: resumed.pid + 1 },
+		seats: [registered],
+	});
+	assert.notEqual(fresh.id, selected.id);
+	assert.equal(await new FileJournal(home, fresh).load(queued.message.msg_id), undefined);
 });
 
 test("HTTP client reloads key on every request, binds tuple, keeps bounded non-JSON diagnostic", async () => {
