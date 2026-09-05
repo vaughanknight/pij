@@ -21,6 +21,7 @@ import {
 	parseSmokeArgs,
 	readNativeEvents,
 	runSmoke,
+	stopSmokeNativeHost,
 	verifyNativeContextHeld,
 	verifyNativeLifecycleIdentity,
 	verifyOrdinaryUsability,
@@ -1152,6 +1153,189 @@ describe("native lifecycle assertion boundaries, not live CLI proof", () => {
 		proc: { pid: 137, proc_start: 1 },
 	};
 	const successor = { ...previous, id: "pij-new", session: "00000000-0000-4000-8000-000000000138" };
+	describe("owned native host teardown", () => {
+		function setup() {
+			const calls: string[][] = [];
+			const probes: number[][] = [];
+			const state: {
+				pane: boolean;
+				alive: boolean;
+				socket: string;
+				keepAlive?: boolean;
+				closeError?: Error;
+				recheckError?: Error;
+				probeError?: Error;
+				deathProbeError?: Error;
+				exitDuringClose?: boolean;
+			} = { pane: true, alive: true, socket: "/isolated-run/tmux.sock" };
+			const expected = { previous: successor, launch: previous, socket: state.socket };
+			const witness: Record<string, unknown> = {};
+			let closeAttempted = false;
+			const io: Parameters<typeof stopSmokeNativeHost>[0] = {
+				tmux(args) {
+					calls.push(args);
+					if (args[0] === "display-message") {
+						return args.includes("#{socket_path}") ? state.socket : measured(composer());
+					}
+					if (args[0] === "list-panes") {
+						if (closeAttempted && state.recheckError) throw state.recheckError;
+						return state.pane ? "%0\n%9\n%12" : "%0\n%12";
+					}
+					if (args[0] === "kill-pane") {
+						expect(args).toEqual(["kill-pane", "-t", "%9"]);
+						closeAttempted = true;
+						if (!state.closeError || state.exitDuringClose) {
+							state.pane = false;
+							if (!state.keepAlive) state.alive = false;
+						}
+						if (state.closeError) throw state.closeError;
+						return "";
+					}
+					throw new Error(`Unexpected tmux action ${args.join(" ")}`);
+				},
+				probe(pid, signal) {
+					probes.push([pid, signal]);
+					if (closeAttempted && state.deathProbeError) throw state.deathProbeError;
+					if (state.probeError) throw state.probeError;
+					if (state.alive) return true;
+					throw Object.assign(new Error("No such process"), { code: "ESRCH" });
+				},
+			};
+			return { calls, probes, state, expected, witness, io };
+		}
+		it("closes the owned pane after tab-only exit and proves original host death", async () => {
+			const { calls, probes, expected, witness, io } = setup();
+			const before = structuredClone(expected);
+			const death = await stopSmokeNativeHost(io, expected, 1, witness);
+			expect(death).toMatchObject({ ...successor.proc, evidence: "kill(pid, 0): ESRCH" });
+			expect(witness).toMatchObject({
+				ownership: { socket: expected.socket, launch: previous },
+				previous: successor,
+				after_native_exit: { ...successor.proc, state: "alive" },
+				before_teardown_pane_capture: { pane: "%9", terminal: composer() },
+				teardown_command: { socket: expected.socket, args: ["kill-pane", "-t", "%9"] },
+				decision: "closed-owned-pane",
+				status: "host-death-proven-not-resume-proven",
+				host_death: death,
+			});
+			expect(calls.map((args) => args[0])).toEqual([
+				"display-message",
+				"list-panes",
+				"display-message",
+				"kill-pane",
+			]);
+			expect(probes).toEqual([
+				[137, 0],
+				[137, 0],
+			]);
+			expect(expected).toEqual(before);
+		});
+		it("records an already-exited pane and process without attempting closure", async () => {
+			const { calls, state, expected, witness, io } = setup();
+			state.pane = false;
+			state.alive = false;
+			await stopSmokeNativeHost(io, expected, 1, witness);
+			expect(witness).toMatchObject({
+				decision: "owned-pane-already-absent",
+				after_native_exit: { code: "ESRCH" },
+				host_death: { ...successor.proc, evidence: "kill(pid, 0): ESRCH" },
+			});
+			expect(calls.some((args) => args[0] === "kill-pane")).toBe(false);
+		});
+		it("accepts a natural exit racing closure only with subsequent ESRCH", async () => {
+			const { state, expected, witness, io } = setup();
+			state.closeError = new Error("pane already gone");
+			state.exitDuringClose = true;
+			await stopSmokeNativeHost(io, expected, 1, witness);
+			expect(witness).toMatchObject({
+				decision: "pane-disappeared-during-teardown",
+				teardown_error: "Error: pane already gone",
+				panes_after_failed_teardown: "%0\n%12",
+				host_death: { evidence: "kill(pid, 0): ESRCH" },
+			});
+		});
+		it.each([
+			false,
+			true,
+		])("refuses a surviving process when pane initially absent=%s", async (absent) => {
+			const { state, expected, witness, io } = setup();
+			state.pane = !absent;
+			state.keepAlive = true;
+			await expect(stopSmokeNativeHost(io, expected, 1, witness)).rejects.toThrow(
+				"PIJ_NATIVE_TIMEOUT: actual native host exits before resume",
+			);
+			expect(witness.status).toBe("failed");
+			expect(witness.host_death).toBeUndefined();
+			expect(witness.last_liveness).toMatchObject({ ...successor.proc, state: "alive" });
+		});
+		it.each([
+			false,
+			true,
+		])("retains original teardown failure when recheck also fails=%s", async (recheckFails) => {
+			const { state, expected, witness, io } = setup();
+			const original = new Error("owned pane teardown refused");
+			state.closeError = original;
+			if (recheckFails) state.recheckError = new Error("diagnostic socket unavailable");
+			await expect(stopSmokeNativeHost(io, expected, 1, witness)).rejects.toBe(original);
+			expect(witness).toMatchObject({
+				status: "failed",
+				error: String(original),
+				teardown_error: String(original),
+				previous: successor,
+			});
+			expect(witness.host_death).toBeUndefined();
+		});
+		it.each([
+			"timeout",
+			"EPERM",
+		])("preserves teardown failure when raced death proof yields %s", async (failure) => {
+			const { state, expected, witness, io } = setup();
+			const original = new Error("original owned pane teardown error");
+			state.closeError = original;
+			state.exitDuringClose = true;
+			state.keepAlive = true;
+			if (failure === "EPERM")
+				state.deathProbeError = Object.assign(new Error("probe denied"), { code: "EPERM" });
+			await expect(stopSmokeNativeHost(io, expected, 1, witness)).rejects.toBe(original);
+			expect(witness).toMatchObject({
+				status: "failed",
+				error: String(original),
+				teardown_error: String(original),
+				death_proof_error:
+					failure === "EPERM"
+						? "Error: probe denied"
+						: "Error: PIJ_NATIVE_TIMEOUT: actual native host exits before resume",
+				panes_after_failed_teardown: "%0\n%12",
+			});
+			expect(witness.host_death).toBeUndefined();
+		});
+		it.each(["EPERM", "EACCES", undefined])("does not treat %s as process death", async (code) => {
+			const { calls, state, expected, witness, io } = setup();
+			const error = Object.assign(new Error("probe failed"), { code });
+			state.probeError = error;
+			await expect(stopSmokeNativeHost(io, expected, 1, witness)).rejects.toBe(error);
+			expect(witness.host_death).toBeUndefined();
+			expect(calls.some((args) => args[0] === "kill-pane")).toBe(false);
+		});
+		it.each([
+			["wrong socket", { socket: "/other/tmux.sock" }],
+			["unowned pane", { launch: { ...previous, pane: "%12" } }],
+			["other PID", { launch: { ...previous, proc: { ...previous.proc, pid: 138 } } }],
+			[
+				"other process start",
+				{ launch: { ...previous, proc: { ...previous.proc, proc_start: 2 } } },
+			],
+			["unattested launch", { launch: { ...previous, native_extension_delivery: false } }],
+		] as const)("refuses %s before probing or teardown", async (_label, mismatch) => {
+			const { calls, probes, expected, witness, io } = setup();
+			await expect(
+				stopSmokeNativeHost(io, { ...expected, ...mismatch }, 1, witness),
+			).rejects.toThrow("PIJ_NATIVE_HOST_OWNERSHIP");
+			expect(probes).toEqual([]);
+			expect(calls.some((args) => args[0] === "kill-pane")).toBe(false);
+			expect(witness.host_death).toBeUndefined();
+		});
+	});
 	it("requires a new address on /new but stable identity on fresh-host resume", () => {
 		expect(() => verifyNativeLifecycleIdentity(previous, successor, "new")).not.toThrow();
 		expect(() =>

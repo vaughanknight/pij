@@ -197,6 +197,19 @@ Enter; the driver rechecks after the staged hook and immediately before submissi
 This is lifecycle fixture validation, not a product recognizer change. Retained
 frame/unit tests do not establish a successful native rollover.
 
+Cold-host resume treats `/exit` submission separately from process death: in the
+observed multi-session CLI it closed the foreground conversation and restored an
+older one while the host survived. The fixture then records the original process
+tuple, verifies launch ownership and its dedicated tmux socket, captures the
+remaining owned pane, and closes only that pane. An already-absent pane requires
+no close; a disappeared pane alone never proves host death. Ownership checks are
+one-directional safety brakes, not lifecycle or retention policy. Only actual
+`kill(originalPid, 0)` returning `ESRCH` permits the existing fresh manual
+`--resume` path; permission errors, a surviving process, and failed teardown do
+not. Receipts retain native control, teardown, and host-death evidence separately.
+Same native/Pij identity, a new process tuple, and subsequent delivery still need
+the resumed live witness; scoped helper tests do not prove those outcomes.
+
 Witnesses retain exact source and executable hashes, versions, processes/panes,
 Pij msg/job IDs, public native events, bidirectional tool-originated replies,
 initial spawned task/duplicate checks, held/admitted draft evidence, missing

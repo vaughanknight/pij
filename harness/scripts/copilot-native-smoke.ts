@@ -861,6 +861,111 @@ export async function driveSmokeLifecycleCommand(
 	}
 }
 
+/** /exit can close only a conversation. Retire the owned pane, then prove real host death. */
+export async function stopSmokeNativeHost(
+	io: {
+		tmux: (args: string[], preserveOutput?: boolean) => string;
+		probe: (pid: number, signal: 0) => unknown;
+	},
+	expected: { previous: Seat; launch: Seat; socket: string },
+	timeout: number,
+	witness: Record<string, unknown>,
+) {
+	const { previous, launch, socket } = expected;
+	const proc = { ...previous.proc };
+	Object.assign(witness, {
+		kind: "fixture-owned-native-host-teardown",
+		ownership: { socket, launch },
+		previous,
+		status: "waiting",
+	});
+	const panes = (field: string) => {
+		const raw = io.tmux(["list-panes", "-a", "-F", "#{pane_id}"]);
+		witness[field] = raw;
+		const ids = raw.split("\n").filter(Boolean);
+		assert(
+			ids.every((id) => /^%\d+$/.test(id)),
+			"PIJ_NATIVE_HOST_OWNERSHIP: invalid pane list",
+		);
+		return ids;
+	};
+	const observe = () => {
+		const observation = { ...proc, observed_at: new Date().toISOString() };
+		try {
+			io.probe(proc.pid, 0);
+			witness.last_liveness = { ...observation, state: "alive" };
+			return undefined;
+		} catch (error) {
+			witness.last_liveness = { ...observation, error: String(error), code: object(error).code };
+			if (object(error).code !== "ESRCH") throw error;
+			return { ...observation, evidence: "kill(pid, 0): ESRCH" };
+		}
+	};
+	try {
+		// These checks are brakes: removing one could only broaden destructive teardown.
+		assert.equal(previous.harness, "copilot", "PIJ_NATIVE_HOST_OWNERSHIP: native host required");
+		assert.equal(
+			launch.native_extension_delivery,
+			true,
+			"PIJ_NATIVE_HOST_OWNERSHIP: launch required",
+		);
+		assert.equal(launch.harness, "copilot", "PIJ_NATIVE_HOST_OWNERSHIP: native launch required");
+		assert(/^%\d+$/.test(previous.pane), "PIJ_NATIVE_HOST_OWNERSHIP: exact pane required");
+		assert.equal(previous.pane, launch.pane, "PIJ_NATIVE_HOST_OWNERSHIP: pane differs from launch");
+		assert.deepEqual(proc, launch.proc, "PIJ_NATIVE_HOST_OWNERSHIP: process differs from launch");
+		assert(
+			Number.isSafeInteger(proc.pid) &&
+				proc.pid > 0 &&
+				Number.isSafeInteger(proc.proc_start) &&
+				proc.proc_start > 0,
+			"PIJ_NATIVE_HOST_OWNERSHIP: real process tuple required",
+		);
+		const observedSocket = io.tmux(["display-message", "-p", "#{socket_path}"]);
+		witness.observed_socket = observedSocket;
+		assert(socket.length > 0, "PIJ_NATIVE_HOST_OWNERSHIP: private socket required");
+		assert.equal(observedSocket, socket, "PIJ_NATIVE_HOST_OWNERSHIP: wrong socket");
+		observe();
+		witness.after_native_exit = witness.last_liveness;
+		let teardownFailure: { error: unknown } | undefined;
+		if (panes("panes_before").includes(previous.pane)) {
+			witness.before_teardown_pane_capture = captureSmokePaneViewport(io.tmux, previous.pane);
+			const args = ["kill-pane", "-t", previous.pane];
+			witness.teardown_command = { socket, args };
+			try {
+				io.tmux(args);
+				witness.decision = "closed-owned-pane";
+			} catch (error) {
+				witness.teardown_error = String(error);
+				let remaining: string[];
+				try {
+					remaining = panes("panes_after_failed_teardown");
+				} catch (captureError) {
+					witness.teardown_recheck_error = String(captureError);
+					throw error;
+				}
+				if (remaining.includes(previous.pane)) throw error;
+				teardownFailure = { error };
+				witness.decision = "pane-disappeared-during-teardown";
+			}
+		} else {
+			witness.decision = "owned-pane-already-absent";
+		}
+		const death = await until("actual native host exits before resume", timeout, observe).catch(
+			(error: unknown) => {
+				witness.death_proof_error = String(error);
+				throw teardownFailure ? teardownFailure.error : error;
+			},
+		);
+		witness.host_death = death;
+		witness.status = "host-death-proven-not-resume-proven";
+		return death;
+	} catch (error) {
+		witness.status = "failed";
+		witness.error = String(error);
+		throw error;
+	}
+}
+
 export function verifyNativeLifecycleIdentity(
 	previous: Seat,
 	current: Seat,
@@ -1985,22 +2090,15 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 					options.timeoutMs,
 					exitControl,
 				);
-				resume.host_death = await until(
-					"actual native host exits before resume",
+				const hostTeardown: Record<string, unknown> = {};
+				resume.host_teardown = hostTeardown;
+				const ownedLaunch = launchProofs.get(target.id);
+				assert(ownedLaunch, "actual launch ownership required before host teardown");
+				resume.host_death = await stopSmokeNativeHost(
+					{ tmux, probe: (pid, signal) => process.kill(pid, signal) },
+					{ previous: successor, launch: ownedLaunch.seat, socket },
 					options.timeoutMs,
-					() => {
-						try {
-							process.kill(successor.proc.pid, 0);
-							return undefined;
-						} catch (error) {
-							if (object(error).code !== "ESRCH") throw error;
-							return {
-								...successor.proc,
-								observed_at: new Date().toISOString(),
-								evidence: "kill(pid, 0): ESRCH",
-							};
-						}
-					},
+					hostTeardown,
 				);
 				const identityKeys: string[] = Object.keys(env).filter(
 					(name) => name.startsWith("PIJ_") && !["PIJ_RS_ADDR", "PIJ_RS_STATE_DIR"].includes(name),
