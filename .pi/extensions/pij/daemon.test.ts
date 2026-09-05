@@ -239,7 +239,10 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		};
 		const daemon = new Daemon(home, ports, registry, new FsChannel(home));
 		daemon.tick();
-		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] review the diff" });
+		expect(ports.sent).toContainEqual({
+			pane: "%4",
+			text: "[pij-rs from pij-boss]\nreview the diff\n[/pij]",
+		});
 		expect(markerDuringInjection).toBe(false);
 		expect(existsSync(messagePath("pij-c", delivered.value.messageId))).toBe(true);
 		expect(existsSync(markerPath("pij-c", delivered.value.messageId))).toBe(true);
@@ -392,7 +395,10 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 			new Daemon(home, ports, registry, new FsChannel(home), (line) => log.push(line)).tick(),
 		).not.toThrow();
 
-		expect(ports.sent).toContainEqual({ pane: "%live", text: "[pij from pij-boss] new" });
+		expect(ports.sent).toContainEqual({
+			pane: "%live",
+			text: "[pij-rs from pij-boss]\nnew\n[/pij]",
+		});
 		expect(unreadBodies("pij-a-stale")).toContain("old");
 		expect(unreadBodies("pij-z-live")).toHaveLength(0);
 		expect(log.join("\n")).toContain("pij-a-stale");
@@ -618,7 +624,10 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		const daemon = new Daemon(home, ports, registry, channel);
 		daemon.tick();
 		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: false });
-		expect(ports.sent).toContainEqual({ pane: "%4", text: `[pij from pij-boss] ${fixtureName}` });
+		expect(ports.sent).toContainEqual({
+			pane: "%4",
+			text: `[pij-rs from pij-boss]\n${fixtureName}\n[/pij]`,
+		});
 		expect(unreadBodies("pij-c")).toEqual([]);
 	});
 
@@ -655,7 +664,7 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		daemon.tick();
 		expect(ports.sent).toContainEqual({
 			pane: "%4",
-			text: "[pij from pij-boss] equal-length edit",
+			text: "[pij-rs from pij-boss]\nequal-length edit\n[/pij]",
 		});
 		expect(unreadBodies("pij-c")).toEqual([]);
 	});
@@ -685,14 +694,20 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 
 		channel.deliver({ from: "pij-boss", to: "pij-c", body: "first" });
 		daemon.tick();
-		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] first" });
+		expect(ports.sent).toContainEqual({
+			pane: "%4",
+			text: "[pij-rs from pij-boss]\nfirst\n[/pij]",
+		});
 
-		pane = copilotComposer("[pij from pij-boss] first");
+		pane = copilotComposer("[pij-rs from pij-boss]\nfirst\n[/pij]");
 		nowMs += 1;
 		channel.deliver({ from: "pij-boss", to: "pij-c", body: "second" });
 		daemon.tick();
 		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: false });
-		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] second" });
+		expect(ports.sent).toContainEqual({
+			pane: "%4",
+			text: "[pij-rs from pij-boss]\nsecond\n[/pij]",
+		});
 		expect(unreadBodies("pij-c")).toEqual([]);
 	});
 
@@ -726,12 +741,15 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		channel.deliver({ from: "pij-boss", to: "pij-c", body: "second" });
 		daemon.tick();
 		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: true });
-		expect(ports.sent).toEqual([{ pane: "%4", text: "[pij from pij-boss] first" }]);
+		expect(ports.sent).toEqual([{ pane: "%4", text: "[pij-rs from pij-boss]\nfirst\n[/pij]" }]);
 		expect(unreadBodies("pij-c")).toContain("second");
 
 		pane = paneSignalFixture("pane_%4.txt");
 		daemon.tick();
-		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] second" });
+		expect(ports.sent).toContainEqual({
+			pane: "%4",
+			text: "[pij-rs from pij-boss]\nsecond\n[/pij]",
+		});
 		expect(unreadBodies("pij-c")).toEqual([]);
 	});
 
@@ -762,15 +780,15 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		channel.deliver({ from: "pij-boss", to: "pij-c", body: "two" });
 		daemon.tick();
 		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: true });
-		expect(ports.sent.filter((entry) => entry.text.includes("[pij from"))).toEqual([]);
+		expect(ports.sent.filter((entry) => entry.text.includes("[pij-rs from"))).toEqual([]);
 		expect(unreadBodies("pij-c")).toEqual(["one", "two"]);
 
 		pane = CLAUDE_COMPOSER_EMPTY;
 		daemon.tick();
 		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: false });
-		expect(ports.sent.filter((entry) => entry.text.includes("[pij from"))).toEqual([
-			{ pane: "%4", text: "[pij from pij-boss] one" },
-			{ pane: "%4", text: "[pij from pij-boss] two" },
+		expect(ports.sent.filter((entry) => entry.text.includes("[pij-rs from"))).toEqual([
+			{ pane: "%4", text: "[pij-rs from pij-boss]\none\n[/pij]" },
+			{ pane: "%4", text: "[pij-rs from pij-boss]\ntwo\n[/pij]" },
 		]);
 		expect(unreadBodies("pij-c")).toEqual([]);
 	});
@@ -809,11 +827,17 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 
 		nowMs += 1;
 		daemon.tick();
-		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] after idle" });
+		expect(ports.sent).toContainEqual({
+			pane: "%4",
+			text: "[pij-rs from pij-boss]\nafter idle\n[/pij]",
+		});
 
 		channel.deliver({ from: "pij-boss", to: "pij-c", body: "no chaining" });
 		daemon.tick();
-		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] no chaining" });
+		expect(ports.sent).toContainEqual({
+			pane: "%4",
+			text: "[pij-rs from pij-boss]\nno chaining\n[/pij]",
+		});
 	});
 
 	it("flushes an unattended orchestrator hold after undefined-layout timeout", () => {
@@ -860,7 +884,7 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		daemon.tick();
 		expect(ports.sent).toContainEqual({
 			pane: "%4",
-			text: "[pij from pij-boss] resume pipeline",
+			text: "[pij-rs from pij-boss]\nresume pipeline\n[/pij]",
 		});
 		expect(unreadBodies("pij-orchestrator")).toEqual([]);
 	});
@@ -928,7 +952,10 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 
 		nowMs += USER_TYPING_IDLE_MS;
 		daemon.tick();
-		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] racing" });
+		expect(ports.sent).toContainEqual({
+			pane: "%4",
+			text: "[pij-rs from pij-boss]\nracing\n[/pij]",
+		});
 		expect(unreadBodies("pij-c")).toEqual([]);
 	});
 
@@ -1122,7 +1149,7 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
 			// A prefix of our echo — indistinguishable from echo-plus-a-human-key,
 			// so it must be treated as ambiguous and HELD.
-			tapChunks: [new Uint8Array(), Buffer.from("[pij from pij-boss] firs\x1b[46;4H")],
+			tapChunks: [new Uint8Array(), Buffer.from("[pij-rs from pij-boss]\nfirs\x1b[46;4H")],
 		});
 		const daemon = new Daemon(home, ports, registry, channel);
 		daemon.tick();
@@ -1201,19 +1228,19 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 			tapChunks: [
 				new Uint8Array(),
 				// our echo AND a human keystroke, in ONE frame
-				Buffer.from("[pij from pij-boss] firstk\x1b[46;4H"),
+				Buffer.from("[pij-rs from pij-boss]\nfirst\n[/pij]k\x1b[46;4H"),
 			],
 		});
 		const daemon = new Daemon(home, ports, registry, channel);
 		daemon.tick();
-		expect(ports.sent).toEqual([{ pane: "%4", text: "[pij from pij-boss] first" }]);
+		expect(ports.sent).toEqual([{ pane: "%4", text: "[pij-rs from pij-boss]\nfirst\n[/pij]" }]);
 
 		channel.deliver({ from: "pij-boss", to: "pij-c", body: "second" });
 		nowMs += 1;
 		daemon.tick();
 
 		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: true });
-		expect(ports.sent).toEqual([{ pane: "%4", text: "[pij from pij-boss] first" }]);
+		expect(ports.sent).toEqual([{ pane: "%4", text: "[pij-rs from pij-boss]\nfirst\n[/pij]" }]);
 		expect(unreadBodies("pij-c")).toContain("second");
 	});
 
@@ -1243,7 +1270,10 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		});
 
 		new Daemon(home, ports, registry, channel).tick();
-		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] racing" });
+		expect(ports.sent).toContainEqual({
+			pane: "%4",
+			text: "[pij-rs from pij-boss]\nracing\n[/pij]",
+		});
 	});
 
 	it("coalesces repeated watchdog intervals while the composer hold is active", () => {
@@ -1319,7 +1349,7 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(daemon.paneSignal("%4")).toMatchObject({ busy: true, userTyping: false });
 		expect(ports.sent).toContainEqual({
 			pane: "%4",
-			text: "[pij from pij-boss] busy is not a gate",
+			text: "[pij-rs from pij-boss]\nbusy is not a gate\n[/pij]",
 		});
 	});
 
@@ -1753,7 +1783,10 @@ describe("Daemon.tick — compact-window queue-not-drop (DL-004)", () => {
 		new Daemon(home, ports, registry, channel).tick();
 
 		expect(registry.read("pij-c")?.compactingAt).toBeUndefined();
-		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] queued task" });
+		expect(ports.sent).toContainEqual({
+			pane: "%4",
+			text: "[pij-rs from pij-boss]\nqueued task\n[/pij]",
+		});
 		expect(unreadBodies("pij-c")).toEqual([]);
 		expect(messageBodies("pij-boss")).toContain(
 			receiptBody(delivered.value.messageId, "delivered"),
@@ -1775,7 +1808,10 @@ describe("Daemon.tick — compact-window queue-not-drop (DL-004)", () => {
 		new Daemon(home, ports, registry, channel).tick();
 
 		expect(registry.read("pij-c")?.compactingAt).toBeUndefined();
-		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] queued task" });
+		expect(ports.sent).toContainEqual({
+			pane: "%4",
+			text: "[pij-rs from pij-boss]\nqueued task\n[/pij]",
+		});
 		expect(messageBodies("pij-boss")).toContain(
 			receiptBody(delivered.value.messageId, "delivered"),
 		);
@@ -1814,7 +1850,7 @@ describe("Daemon.tick — compact-window queue-not-drop (DL-004)", () => {
 		expect(registry.read("pij-c")?.compactingAt).toBeUndefined();
 		expect(laterPorts.sent).toContainEqual({
 			pane: "%4",
-			text: "[pij from pij-boss] after compact",
+			text: "[pij-rs from pij-boss]\nafter compact\n[/pij]",
 		});
 		expect(unreadBodies("pij-c")).toEqual([]);
 		expect(messageBodies("pij-boss")).toContain(receiptBody(task.value.messageId, "delivered"));

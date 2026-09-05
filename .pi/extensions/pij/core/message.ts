@@ -1,20 +1,21 @@
 // pij-messaging — message framing + boot self-announce text (pure).
 //
 // A message carries the sender id inline so the receiver can reply with zero
-// lookup (spec AC-5): `[pij from <id>] <body>`.
+// lookup (spec AC-5): `[pij-rs from <id>]\n<body>\n[/pij]`.
 
 import type { ReceiptState, Role, SessionId } from "./types.js";
 
-const FRAME_RE = /^\[pij from ([^\]]+)\] ([\s\S]*)$/;
+const FRAME_RE = /^\[pij-rs from ([^\]]+)\]\n([\s\S]*)\n\[\/pij\]$/;
+const LEGACY_FRAME_RE = /^\[pij from ([^\]]+)\] ([\s\S]*)$/;
 
 /** Frame a body with the sender id for injection into the peer. */
 export function frame(from: SessionId, body: string): string {
-	return `[pij from ${from}] ${body}`;
+	return `[pij-rs from ${from}]\n${body}\n[/pij]`;
 }
 
-/** Parse a framed message back into { from, body }, or null if unframed. */
+/** Parse a canonical or legacy message into { from, body }, or null if unframed. */
 export function parseFrame(text: string): { from: SessionId; body: string } | null {
-	const m = FRAME_RE.exec(text);
+	const m = FRAME_RE.exec(text) ?? LEGACY_FRAME_RE.exec(text);
 	if (!m) return null;
 	const from = m[1];
 	const body = m[2];

@@ -50,7 +50,7 @@ class FailingPiRuntime extends FakePiRuntime {
 	inboundAttempts = 0;
 
 	override inject(text: string, mode: "immediate" | "steer"): void {
-		if (text === "[pij from pij-from] before bind") {
+		if (text === "[pij-rs from pij-from]\nbefore bind\n[/pij]") {
 			this.inboundAttempts += 1;
 			throw new Error("test injection failed");
 		}
@@ -310,16 +310,16 @@ describe("RustRuntimeSession", () => {
 				);
 			}
 			if (path === "/v1/inbox") {
-				expect(pi.injects.some((item) => item.text === "[pij from pij-from] before bind")).toBe(
-					false,
-				);
+				expect(
+					pi.injects.some((item) => item.text === "[pij-rs from pij-from]\nbefore bind\n[/pij]"),
+				).toBe(false);
 				claimRequests.push(String(url));
 				return envelope("pij inbox", inboxClaimFixture());
 			}
 			if (path === "/v1/inbox/ack") {
-				expect(pi.injects.some((item) => item.text === "[pij from pij-from] before bind")).toBe(
-					true,
-				);
+				expect(
+					pi.injects.some((item) => item.text === "[pij-rs from pij-from]\nbefore bind\n[/pij]"),
+				).toBe(true);
 				const acknowledgement = JSON.parse(String(init?.body)) as Record<string, unknown>;
 				acknowledgements.push(acknowledgement);
 				return envelope("pij inbox", acknowledgement.job_id);
@@ -375,7 +375,9 @@ describe("RustRuntimeSession", () => {
 			relay: false,
 		});
 		await vi.waitFor(() => {
-			expect(pi.injects.some((item) => item.text === "[pij from pij-from] before bind")).toBe(true);
+			expect(
+				pi.injects.some((item) => item.text === "[pij-rs from pij-from]\nbefore bind\n[/pij]"),
+			).toBe(true);
 			expect(acknowledgements).toEqual([{ seat: registeredId, job_id: 1 }]);
 			expect(claimRequests).toEqual([expect.stringContaining(`/v1/inbox?seat=${registeredId}`)]);
 		});
@@ -505,7 +507,9 @@ describe("RustRuntimeSession", () => {
 			expect(runtime.eventCount("daemon_event_claim_unavailable")).toBe(1);
 		});
 		expect(claimRequests).toHaveLength(1);
-		expect(pi.injects.some((item) => item.text === "[pij from pij-from] before bind")).toBe(false);
+		expect(
+			pi.injects.some((item) => item.text === "[pij-rs from pij-from]\nbefore bind\n[/pij]"),
+		).toBe(false);
 		expect(acknowledgements).toEqual([]);
 	});
 
@@ -544,7 +548,9 @@ describe("RustRuntimeSession", () => {
 		await vi.waitFor(() => {
 			expect(runtime.eventCount("daemon_event_claim_stale")).toBe(1);
 		});
-		expect(pi.injects.some((item) => item.text === "[pij from pij-from] before bind")).toBe(false);
+		expect(
+			pi.injects.some((item) => item.text === "[pij-rs from pij-from]\nbefore bind\n[/pij]"),
+		).toBe(false);
 		expect(acknowledgements).toEqual([]);
 	});
 
@@ -558,7 +564,9 @@ describe("RustRuntimeSession", () => {
 		const { acknowledgements, runtime } = await bootPushedEvent(announced, pi);
 
 		await vi.waitFor(() => {
-			expect(pi.injects.some((item) => item.text === "[pij from pij-from] before bind")).toBe(true);
+			expect(
+				pi.injects.some((item) => item.text === "[pij-rs from pij-from]\nbefore bind\n[/pij]"),
+			).toBe(true);
 			expect(runtime.eventCount("daemon_event_claim_mismatch")).toBe(1);
 			expect(acknowledgements).toHaveLength(1);
 		});
@@ -695,7 +703,7 @@ describe("RustRuntimeSession", () => {
 			"pij: re-attached at cursor 1",
 		]);
 		expect(
-			pi.injects.filter((item) => item.text === "[pij from pij-from] before bind"),
+			pi.injects.filter((item) => item.text === "[pij-rs from pij-from]\nbefore bind\n[/pij]"),
 		).toHaveLength(1);
 		runtime.shutdown("quit");
 	});
