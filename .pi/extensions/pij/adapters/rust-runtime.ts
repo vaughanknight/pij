@@ -67,6 +67,9 @@ interface TypingRuntimePort extends PiRuntimePort {
  *   Release also declares cleared hold evidence even when its queue mutation is
  *   a typed no-op. Every ack is preceded by this declaration; RUNNING claims
  *   must remain owned when the daemon returns not-deferred (contract 2fe71151).
+ *   One declaration owner remembers successful declarations through ack, so
+ *   pre-claim un-deferral and pre-ack assurance share a single ledger fact.
+ *   A new hold invalidates that receipt and opens a new release cycle.
  * - Local notes are not ownership. Only a fresh normal claim permits inject
  *   and ack; all event and ticker work shares pushedChain.
  * - Boot discards local notes, then recovers the oldest LIVE row after
@@ -91,6 +94,7 @@ export class RustRuntimeSession {
 	private readonly lastInbound = new Map<string, string>();
 	private holdQueue: HoldQueue | undefined;
 	private readonly heldIds = new Map<string, number>();
+	private readonly declaredReleaseJobs = new Set<number>();
 	private lastEditAt: number | undefined;
 	private stopEdits: (() => void) | undefined;
 	private holdTicker: ReturnType<typeof setInterval> | undefined;
@@ -161,6 +165,7 @@ export class RustRuntimeSession {
 		const acceptedId = accepted.id;
 		this.holdQueue = new HoldQueue(this.clock, accepted.typing_grace_ms ?? 60000);
 		this.heldIds.clear();
+		this.declaredReleaseJobs.clear();
 		if (this.lastEditAt !== undefined) this.holdQueue.noteEdit(this.lastEditAt);
 		this.pi.setStatus(undefined);
 		const continuityRegistration = registrationFor(acceptedId, procStart, input);
@@ -315,12 +320,7 @@ export class RustRuntimeSession {
 		while (this.self === seat && this.lifecycle === lifecycle) {
 			const oldest = pushedInboxClaim(await client.peekInbox(seat), seat);
 			if (!oldest || this.self !== seat || this.lifecycle !== lifecycle) return;
-			await client.release({
-				seat,
-				job_id: oldest.jobId,
-				msg_id: oldest.message.messageId,
-				at_ms: this.clock(),
-			});
+			await this.declareRelease(oldest, seat, client, lifecycle);
 			if (this.self !== seat || this.lifecycle !== lifecycle) return;
 			const claim = pushedInboxClaim(await client.claimInbox(seat), seat);
 			if (!claim) return; // A running reader still owns the oldest live row.
@@ -358,6 +358,9 @@ export class RustRuntimeSession {
 				reason: "human-typing",
 				since_ms: this.lastEditAt,
 			});
+			if (this.self === seat && this.lifecycle === lifecycle) {
+				this.declaredReleaseJobs.delete(heldJobId);
+			}
 			return;
 		}
 		// Un-defer known holds before taking any new ordinary claim, so the
@@ -408,12 +411,36 @@ export class RustRuntimeSession {
 				since_ms: this.lastEditAt,
 			});
 			if (this.self !== seat || this.lifecycle !== lifecycle) return;
+			this.declaredReleaseJobs.delete(claim.jobId);
 			this.holdQueue.push(claim);
 			this.heldIds.set(claim.message.messageId, claim.jobId);
 			this.showHeld();
 			return;
 		}
 		await this.injectAndAck(claim, seat, client, lifecycle);
+	}
+
+	/** The only release declaration site. Acknowledgement must have a successful
+	 * declaration, but an earlier un-deferral already supplied it for this cycle. */
+	private async declareRelease(
+		row: HeldRow,
+		seat: string,
+		client: PijDaemonClient,
+		lifecycle: number,
+	): Promise<void> {
+		if (
+			this.self !== seat ||
+			this.lifecycle !== lifecycle ||
+			this.declaredReleaseJobs.has(row.jobId)
+		)
+			return;
+		await client.release({
+			seat,
+			job_id: row.jobId,
+			msg_id: row.message.messageId,
+			at_ms: this.clock(),
+		});
+		if (this.self === seat && this.lifecycle === lifecycle) this.declaredReleaseJobs.add(row.jobId);
 	}
 
 	private async injectAndAck(
@@ -436,17 +463,13 @@ export class RustRuntimeSession {
 			return;
 		}
 		try {
-			// A restarted reader has no local note for a formerly held job.
-			// Declare release regardless; the daemon clears evidence even when
-			// un-deferral is a no-op and preserves this running claim.
-			await client.release({
-				seat,
-				job_id: claim.jobId,
-				msg_id: claim.message.messageId,
-				at_ms: this.clock(),
-			});
+			// Lost local hold notes still require a declaration before ack. If
+			// recovery/release already declared it, share that successful receipt.
+			await this.declareRelease(claim, seat, client, lifecycle);
 			if (this.self !== seat || this.lifecycle !== lifecycle) return;
 			await client.ackInbox(seat, claim.jobId);
+			if (this.self === seat && this.lifecycle === lifecycle)
+				this.declaredReleaseJobs.delete(claim.jobId);
 		} catch (error) {
 			this.session.capture("daemon_event_ack_error", {
 				jobId: claim.jobId,
@@ -477,12 +500,7 @@ export class RustRuntimeSession {
 			for (const row of ready) {
 				if (this.self !== seat || this.lifecycle !== lifecycle) return;
 				if (!this.heldIds.has(row.message.messageId)) continue;
-				await client.release({
-					seat,
-					job_id: row.jobId,
-					msg_id: row.message.messageId,
-					at_ms: this.clock(),
-				});
+				await this.declareRelease(row, seat, client, lifecycle);
 			}
 			for (let remaining = ready.length; remaining > 0; remaining--) {
 				if (this.self !== seat || this.lifecycle !== lifecycle) return;

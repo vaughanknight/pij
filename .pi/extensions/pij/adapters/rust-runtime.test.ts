@@ -904,8 +904,10 @@ class GraceClient extends PijDaemonClient {
 		const job = this.jobs.find((candidate) => candidate.job_id === jobId);
 		if (!job) throw new Error("unknown fake inbox job");
 		expect(job.claimed, "ack must follow an authoritative reclaim").toBe(true);
-		expect(this.operations.at(-1), "release declaration must precede every ack").toBe(
-			`release:${job.message.msg_id}`,
+		const releaseIndex = this.operations.lastIndexOf(`release:${job.message.msg_id}`);
+		const holdIndex = this.operations.lastIndexOf(`hold:${job.message.msg_id}`);
+		expect(releaseIndex, "this hold cycle must declare release before ack").toBeGreaterThan(
+			holdIndex,
 		);
 		job.acked = true;
 		this.acks.push(jobId);
@@ -930,6 +932,8 @@ class GraceClient extends PijDaemonClient {
 		const released = job !== undefined && !job.claimed && !job.acked;
 		if (job) job.held = false; // Evidence clears even when the queue is already claimed.
 		if (job && released) job.not_before = body.at_ms;
+		// The daemon appends one delivery.released evidence row per declaration,
+		// including typed queue no-ops, so these records count ledger appends.
 		this.releases.push(body);
 		this.operations.push(`release:${body.msg_id}`);
 		return released
@@ -1046,13 +1050,12 @@ describe("typing grace delivery", () => {
 			msg_id: "boundary",
 			at_ms: since + HOLD_CONTRACT.grace.default_ms,
 		};
-		expect(client.releases).toEqual([releaseBody, releaseBody]);
-		expect(client.operations).toEqual([
-			"hold:boundary",
-			"release:boundary",
-			"release:boundary",
-			"ack:boundary",
-		]);
+		expect(
+			client.releases.filter((row) => row.msg_id === "boundary"),
+			"exactly one delivery.released row per hold/release/ack cycle",
+		).toHaveLength(1);
+		expect(client.releases).toEqual([releaseBody]);
+		expect(client.operations).toEqual(["hold:boundary", "release:boundary", "ack:boundary"]);
 		expect(pi.statuses.at(-1)).toBeUndefined();
 	});
 
@@ -1115,11 +1118,9 @@ describe("typing grace delivery", () => {
 			client.jobs.map((job) => job.held),
 			"sender held evidence must be cleared",
 		).toEqual([false, false]);
-		expect(client.operations.slice(-6)).toEqual([
-			"release:first",
+		expect(client.operations.slice(-4)).toEqual([
 			"release:first",
 			"ack:first",
-			"release:second",
 			"release:second",
 			"ack:second",
 		]);
@@ -1300,5 +1301,8 @@ describe("typing grace delivery", () => {
 		expect(client.acks).toEqual([]);
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(client.acks).toEqual([1]);
+		// Recovery closed the original hold, then active grace opened a new
+		// hold cycle; each cycle must declare exactly once, not once per site.
+		expect(client.releases.filter((row) => row.msg_id === "still-typing")).toHaveLength(2);
 	});
 });
