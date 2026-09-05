@@ -548,17 +548,149 @@ export function verifyToolApproval(
 	return true;
 }
 
-/** One test-human confirmation; every screen is retained before a key can be sent. */
+/** Observe existing preauthorization or confirm one exact dialog; never infer consent from absence. */
 export async function confirmSmokeToolInvocation(
 	tmux: (args: string[]) => string,
 	expected: { pane: string; to: string; message: string },
 	timeout: number,
 	witness: Record<string, unknown>,
+	preauthorized?: {
+		launch: { seat: Seat; process: string };
+		incomingEventId: string;
+		observe: () => { nativeEvents: NativeEvent[]; jobs: Record<string, unknown>[] };
+	},
 ): Promise<void> {
 	const capture = () => tmux(["capture-pane", "-p", "-J", "-t", expected.pane]);
 	const args = { to: expected.to, message: expected.message };
 	Object.assign(witness, { kind: "native-tool-human-approval", expected, status: "waiting" });
 	try {
+		if (preauthorized) {
+			const fail = "PIJ_NATIVE_PREAUTHORIZED_TOOL_PROOF";
+			const { launch, incomingEventId } = preauthorized;
+			Object.assign(witness, {
+				kind: "native-tool-preauthorized-execution",
+				launch_policy: launch,
+				incoming_event_id: incomingEventId,
+				decision: "observe-existing-preauthorization",
+				keys: [],
+			});
+			assert.equal(launch.seat.pane, expected.pane, `${fail}: launch pane mismatch`);
+			assert.equal(launch.seat.harness, "copilot", `${fail}: native Copilot launch required`);
+			assert.equal(launch.seat.native_extension_delivery, true, `${fail}: native launch required`);
+			assert.equal(
+				Number(launch.process.trim().split(/\s+/, 1)[0]),
+				launch.seat.proc.pid,
+				`${fail}: launch PID mismatch`,
+			);
+			assert(
+				/(?:^|\s)--yolo(?:\s|$)/.test(launch.process),
+				`${fail}: existing launch policy unavailable`,
+			);
+			const proof = await until("exact preauthorized native pij_send execution", timeout, () => {
+				const terminal = capture();
+				witness.before = terminal;
+				const approval = verifyToolApproval(terminal, args);
+				assert(approval !== true, `${fail}: unexpected approval dialog under preauthorization`);
+				if (approval !== false) return undefined;
+				const sample = preauthorized.observe();
+				witness.last_observation = sample;
+				const session = sample.nativeEvents.find((event) => event.type === "session.start");
+				assert.equal(
+					session?.data.sessionId,
+					launch.seat.session,
+					`${fail}: native session mismatch`,
+				);
+				const incoming = sample.nativeEvents.findIndex(
+					(event) => event.id === incomingEventId && event.type === "user.message",
+				);
+				if (incoming < 0) return undefined;
+				const subsequent = sample.nativeEvents.slice(incoming + 1);
+				const starts = subsequent.filter((event) => event.type === "tool.execution_start");
+				assert(starts.length <= 1, `${fail}: duplicate tool execution`);
+				const start = starts[0];
+				if (!start) return undefined;
+				let permission: NativeEvent | undefined;
+				for (const event of sample.nativeEvents) {
+					// A later grant cannot authorize an invocation that has already started.
+					if (event === start) break;
+					if (event.type === "session.permissions_changed") permission = event;
+				}
+				if (!permission) return undefined;
+				assert.equal(
+					permission.data.allowAllPermissions,
+					true,
+					`${fail}: native preauthorization disabled`,
+				);
+				assert.equal(
+					permission.data.allowAllPermissionMode,
+					"on",
+					`${fail}: native preauthorization mode`,
+				);
+				assert(
+					start.id && typeof start.data.toolCallId === "string" && start.data.toolCallId,
+					`${fail}: native invocation ID required`,
+				);
+				assert.equal(start.data.toolName, "pij_send", `${fail}: wrong tool`);
+				assert.deepEqual(start.data.arguments, args, `${fail}: tool recipient/body mismatch`);
+				const completions = subsequent.filter((event) => event.type === "tool.execution_complete");
+				assert(completions.length <= 1, `${fail}: duplicate tool completion`);
+				const completed = completions[0];
+				if (!completed) return undefined;
+				assert(
+					completed.id &&
+						completed.id !== start.id &&
+						subsequent.indexOf(completed) > subsequent.indexOf(start),
+					`${fail}: native completion order/ID`,
+				);
+				assert.equal(
+					completed.data.toolCallId,
+					start.data.toolCallId,
+					`${fail}: tool call mismatch`,
+				);
+				assert.equal(completed.data.success, true, `${fail}: native tool failed`);
+				const content = object(completed.data.result).content;
+				assert(typeof content === "string", `${fail}: missing tool result`);
+				let result: Record<string, unknown>;
+				try {
+					result = object(JSON.parse(content));
+				} catch {
+					throw new Error(`${fail}: malformed tool result`);
+				}
+				assert.equal(result.ok, true, `${fail}: outgoing tool result failed`);
+				const msgId = object(result.receipt).msg_id;
+				assert(typeof msgId === "string" && msgId, `${fail}: outgoing receipt ID required`);
+				const matches = sample.jobs.filter((row) => row.dedupe_key === msgId);
+				assert(matches.length <= 1, `${fail}: duplicate durable outgoing`);
+				const outbound = matches[0];
+				if (!outbound) return undefined;
+				assert(
+					Number.isSafeInteger(outbound.id) && Number(outbound.id) > 0,
+					`${fail}: durable job ID required`,
+				);
+				assert.equal(outbound.serial_key, expected.to, `${fail}: durable recipient mismatch`);
+				assert.equal(
+					outbound.kind,
+					`delivery:${expected.to}`,
+					`${fail}: durable job kind mismatch`,
+				);
+				const message = object(JSON.parse(String(outbound.payload)));
+				assert.equal(message.from, launch.seat.id, `${fail}: durable sender mismatch`);
+				assert.equal(message.to, expected.to, `${fail}: durable recipient mismatch`);
+				assert.equal(message.body, expected.message, `${fail}: durable body mismatch`);
+				assert.equal(message.msg_id, msgId, `${fail}: durable receipt mismatch`);
+				const rechecked = capture();
+				witness.before_complete = rechecked;
+				const currentApproval = verifyToolApproval(rechecked, args);
+				assert(currentApproval !== true, `${fail}: approval dialog appeared before completion`);
+				return currentApproval === false ? { start, completed, outbound, permission } : undefined;
+			});
+			Object.assign(witness, {
+				proof,
+				status: "preauthorized-executed",
+				grade: "native-tool-executed-not-human-approved-not-model-complete",
+			});
+			return;
+		}
 		await until("exact native pij_send approval dialog", timeout, () => {
 			const terminal = capture();
 			witness.before = terminal;
@@ -645,7 +777,8 @@ export async function driveSmokeLifecycleCommand(
 			"PIJ_NATIVE_LIFECYCLE_COMMAND_CHANGED: missing measured viewport",
 		);
 		const composer = nativeComposer(terminal);
-		const ghost = command === "/new" && composer === "/new [prompt]";
+		const ghostSuffix = command === "/new" ? " [prompt]" : " [print]";
+		const ghost = composer === command + ghostSuffix;
 		if (composer !== command && !ghost) return false;
 		// Bind the existing parser's command to its single physical row, not transcript text.
 		const lines = terminal.split("\n");
@@ -664,12 +797,13 @@ export async function driveSmokeLifecycleCommand(
 			cursor_x !== prefix.length ||
 			!/^╹▀+$/.test(lines[cursor_y + 1]?.trim() ?? "") ||
 			lines[cursor_y]?.slice(0, cursor_x) !== prefix ||
-			lines[cursor_y]?.slice(cursor_x).trimEnd() !== (ghost ? " [prompt]" : "")
+			lines[cursor_y]?.slice(cursor_x).trimEnd() !== (ghost ? ghostSuffix : "")
 		)
 			return false;
 		// Only the adjacent command menu can authorize a ghost; older transcript selections cannot.
 		let end = top - 1;
-		if (lines[end]?.trim() === "") end--;
+		// The captured five-slot menu leaves four blank rows for the two /exit choices.
+		while (end > top - 5 && lines[end]?.trim() === "") end--;
 		let start = end;
 		// A blank row (possibly with the transcript scrollbar) is a boundary; malformed text is not.
 		while (start >= 0 && !/^\s*┃?\s*$/.test(lines[start] ?? "")) start--;
@@ -677,9 +811,13 @@ export async function driveSmokeLifecycleCommand(
 		const selected = menu.filter((line) => line.trimStart().startsWith("❯"));
 		if (ghost || selected.length > 0 || menu.some((line) => /^ {2,}\//.test(line))) {
 			return (
-				menu.every((line) => /^ {2}(?:❯ | {2})\/[a-z][a-z-]* {2,}\S.*$/.test(line)) &&
+				menu.every(
+					(line) =>
+						/^ {2}(?:❯ | {2})\/[a-z][a-z-]* {2,}\S.*$/.test(line) ||
+						(command === "/exit" && /^ {2}(?:❯ | {2})\/exit(?: print {2,}\S.*)?$/.test(line)),
+				) &&
 				selected.length === 1 &&
-				/^ {2}❯ (\/[a-z][a-z-]*) {2,}/.exec(selected[0] ?? "")?.[1] === command
+				/^ {2}❯ (\/[a-z][a-z-]*)(?: {2,}\S.*)?$/.exec(selected[0] ?? "")?.[1] === command
 			);
 		}
 		return true;
@@ -1363,6 +1501,7 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 			{ mode: 0o700 },
 		);
 		const prebindSends = new Map<string, unknown>();
+		const launchProofs = new Map<string, { seat: Seat; process: string }>();
 		const launch = async (
 			mode: "manual" | "spawned",
 			disabled = false,
@@ -1474,6 +1613,7 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 				"pid=,ppid=,lstart=,command=",
 			]);
 			assert(!/--ui-server|--port(?:\s|=)/.test(processProof), "obsolete RPC args forbidden");
+			launchProofs.set(seat.id, { seat, process: processProof });
 			witnesses.push({
 				kind: disabled ? "missing-consumer-start" : `${mode}-registration`,
 				seat,
@@ -1532,11 +1672,26 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 			const accepted = await waitDelivery(target, nonce, msgId);
 			const approval: Record<string, unknown> = { mode };
 			witnesses.push(approval);
+			const launchProof = launchProofs.get(target.id);
+			assert(launchProof, "actual launch proof required");
 			await confirmSmokeToolInvocation(
 				tmux,
 				{ pane: target.pane, to: sender.id, message: nonce },
 				options.timeoutMs,
 				approval,
+				mode === "spawned"
+					? {
+							launch: launchProof,
+							incomingEventId: accepted.native.id,
+							observe: () => ({
+								nativeEvents: events(target),
+								jobs: rows(
+									"SELECT id, kind, state, serial_key, dedupe_key, payload FROM jobs WHERE serial_key = ?",
+									sender.id,
+								),
+							}),
+						}
+					: undefined,
 			);
 			const reply = await until(
 				"native pij_send reply arrives at original sender",

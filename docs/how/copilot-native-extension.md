@@ -140,7 +140,7 @@ checks the two receipts, the pre-launch config, exact prompt path, absent provid
 activity in the negative control, and correlated ordinary native interaction in
 the seeded run. Passing this startup discriminator is not full transport acceptance.
 
-The reply step simulates a human approving **one** native extension-tool call.
+The manual reply step simulates a human approving **one** native extension-tool call.
 Before sending Enter, it requires the active bottom modal's exact
 `Run extension tool "pij_send"` title, parses that modal's own JSON arguments,
 and compares the complete object with the expected isolated recipient and nonce.
@@ -155,6 +155,16 @@ The same discrimination keeps the normal composer usable beneath welcome panels.
 retain before/rechecked/after terminal evidence and the exact decision, alongside
 the existing final-pane captures. This is test-human consent, not a permission
 bypass or tmux message-body delivery; product policy/default grants are unchanged.
+
+The spawned reply step can instead observe execution under Pij's **existing**
+launch permissions; it adds no grants and sends no consent keys. It retains the
+actual process/seat and requires native permission state enabled **before** the
+exact `pij_send` invocation, a matching successful tool-call ID/result, and the
+result's message ID joined to the durable outgoing job with exact sender,
+recipient, and body. A later permission grant cannot authorize earlier execution.
+Missing dialogs or `PIJ_NATIVE_DONE` text alone prove nothing; active mismatched
+dialogs fail and incomplete frames wait without keys. The receipt labels this
+`native-tool-preauthorized-execution`, never human approval or model completion.
 
 AC6 types one fixture-human draft, then sends the message only through the daemon.
 The driver requires the exact native-owner echo from `/v1/inbox/typing`, a positive
@@ -179,9 +189,10 @@ typing. This evidence does not change composer recognition or hold/release polic
 
 Lifecycle controls retain `staged_pane_capture` and `before_submit_pane_capture`.
 The driver binds the typed command to the measured cursor in the actual composer
-row. Copilot's known `/new [prompt]` ghost is accepted only with the cursor directly
-after `/new` and exactly one adjacent selected `/new` suggestion. The placeholder
-is never typed. Changed cursor, suffix, selection, or capture failure prevents
+row. Copilot's known `/new [prompt]` and `/exit [print]` ghosts are accepted only
+with the cursor directly after the literal command and exactly one matching
+adjacent selection. `/exit print` is a distinct, refused alternative; neither
+placeholder is typed. Changed cursor, suffix, selection, or capture failure prevents
 Enter; the driver rechecks after the staged hook and immediately before submission.
 This is lifecycle fixture validation, not a product recognizer change. Retained
 frame/unit tests do not establish a successful native rollover.
