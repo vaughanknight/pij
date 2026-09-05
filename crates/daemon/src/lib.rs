@@ -325,9 +325,15 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
     };
     // One politeness gate, shared by direct delivery, queued retries, and the
     // pane observer that supplies its composer evidence.
-    let interaction = Arc::new(InteractionGate::with_idle_window(
+    //
+    // Plan 136: the gate and the register response answer with the SAME grace,
+    // resolved once by `http::resolve_typing_grace_ms`. The idle window stays a
+    // separate setting — an operator who chose `interaction_idle_ms` did not
+    // choose this, and collapsing them would silently replace their number.
+    let interaction = Arc::new(InteractionGate::with_typing_grace(
         Arc::clone(&tmux),
         Duration::from_millis(config.interaction_idle_ms),
+        crate::http::resolve_typing_grace_ms(),
     ));
     // WIRED, wave 2 (u-harness). The refusal this replaces is gone.
     let harnesses = Arc::new(match config.adapters.harness {

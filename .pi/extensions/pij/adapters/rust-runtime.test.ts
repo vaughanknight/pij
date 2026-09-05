@@ -576,10 +576,7 @@ describe("RustRuntimeSession", () => {
 
 const HOLD_CONTRACT = JSON.parse(
 	readFileSync(
-		new URL(
-			"../../../../docs/plans/136-typing-grace-gate/assets/contracts/hold-events.json",
-			import.meta.url,
-		),
+		new URL("../../../../crates/testkit/fixtures/delivery/hold-events.json", import.meta.url),
 		"utf8",
 	),
 ) as {

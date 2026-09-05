@@ -826,7 +826,7 @@ mod tests {
 
     fn contract_typing_grace_ms() -> u64 {
         let contract: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../docs/plans/136-typing-grace-gate/assets/contracts/hold-events.json"
+            "../../testkit/fixtures/delivery/hold-events.json"
         ))
         .expect("frozen typing-grace contract");
         let grace_ms = contract["grace"]["default_ms"]

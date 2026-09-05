@@ -702,7 +702,7 @@ async fn typing_state_projects_active_holds_only() {
 
 fn typing_contract() -> serde_json::Value {
     serde_json::from_str(include_str!(
-        "../../../../docs/plans/136-typing-grace-gate/assets/contracts/hold-events.json"
+        "../../../testkit/fixtures/delivery/hold-events.json"
     ))
     .expect("frozen typing contract")
 }

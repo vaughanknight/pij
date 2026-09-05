@@ -620,6 +620,21 @@ mod tests {
         )
     }
 
+    /// Compose-time addition (plan 136): a fixture whose TYPING GRACE the test
+    /// chooses. What vetoes a pane-bound delivery is now the grace, not the mere
+    /// presence of a draft — so a test that wants to observe the veto and one
+    /// that wants to observe its absence differ only in this number.
+    fn fixture_with_grace(transport: FakeTransport, tmux: FakeTmux, grace_ms: u64) -> Fixture {
+        fixture_inner_with_idle_and_grace(
+            transport,
+            tmux,
+            3,
+            false,
+            Duration::from_millis(60_000),
+            grace_ms,
+        )
+    }
+
     fn fixture_inner_with_idle(
         transport: FakeTransport,
         tmux: FakeTmux,
@@ -627,13 +642,32 @@ mod tests {
         arrange_composers: bool,
         idle: Duration,
     ) -> Fixture {
+        fixture_inner_with_idle_and_grace(
+            transport,
+            tmux,
+            pointer_limit,
+            arrange_composers,
+            idle,
+            pij_core::delivery::DEFAULT_TYPING_GRACE_MS,
+        )
+    }
+
+    fn fixture_inner_with_idle_and_grace(
+        transport: FakeTransport,
+        tmux: FakeTmux,
+        pointer_limit: u32,
+        arrange_composers: bool,
+        idle: Duration,
+        grace_ms: u64,
+    ) -> Fixture {
         let registry = Arc::new(FakeRegistry::new());
         let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
         let transport = Arc::new(transport);
         let tmux = Arc::new(tmux);
-        let interaction = Arc::new(InteractionGate::with_idle_window(
+        let interaction = Arc::new(InteractionGate::with_typing_grace(
             Arc::clone(&tmux) as Arc<dyn TmuxPort>,
             idle,
+            grace_ms,
         ));
         let spine = Arc::new(FakeSpine::new());
         let event_bus =
@@ -1197,39 +1231,78 @@ mod tests {
         }
     }
 
+    /// REWRITTEN AT COMPOSITION, plan 136 — this test asserted the behaviour the
+    /// plan deletes, and it went red on the composed tree, which is exactly what
+    /// a control is for.
+    ///
+    /// It used to say: a recognized draft defers once, and the NEXT capture
+    /// showing a blank composer delivers. That reads as "the draft was the
+    /// veto". It no longer is. The veto is now RECENCY, and clearing a composer
+    /// is itself an observed edit — the human is manifestly at the keyboard in
+    /// the instant they wipe their draft, which is the worst possible moment to
+    /// type at them. So the blank capture defers too, and delivery waits for the
+    /// grace to elapse.
+    ///
+    /// The pair below is the honest replacement: identical scripts, differing
+    /// only in the grace. With a real grace the clear still defers; with the
+    /// grace set to zero the same sequence delivers immediately — proving the
+    /// veto is the grace rather than the draft, which is the whole claim of the
+    /// unit.
     #[tokio::test]
-    async fn recognized_draft_retries_once_then_delivers_on_the_next_blank_capture() {
+    async fn a_cleared_draft_is_itself_an_edit_and_keeps_deferring_within_the_grace() {
         let pane = "%typing-clears";
-        let tmux = FakeTmux::new()
-            .with_pane(Pane {
-                id: pane.to_string(),
-                session: "s".to_string(),
-                window: "w".to_string(),
-                title: "t".to_string(),
-                cursor_x: Some(11),
-                cursor_y: Some(0),
-            })
-            .with_attached_tap(pane)
-            .script_capture("╰──── hello ─╯")
-            .script_capture("╰────       ─╯");
-        let fixture = fixture_unarranged(FakeTransport::reachable(), tmux);
+        let script = || {
+            FakeTmux::new()
+                .with_pane(Pane {
+                    id: pane.to_string(),
+                    session: "s".to_string(),
+                    window: "w".to_string(),
+                    title: "t".to_string(),
+                    cursor_x: Some(11),
+                    cursor_y: Some(0),
+                })
+                .with_attached_tap(pane)
+                .script_capture("╰──── hello ─╯")
+                .script_capture("╰────       ─╯")
+        };
+
+        // Within the grace: the draft defers, and so does the clear.
+        let fixture = fixture_with_grace(FakeTransport::reachable(), script(), 60_000);
         let mut recipient = seat("pij-typing-clears", Some(pane));
         recipient.harness = Harness::Claude;
         register(&fixture, recipient).await;
         let msg = message("pij-typing-clears", "deliver after clear", None);
         let id = enqueue(&fixture, &msg).await;
 
-        // This remains a behavioural retry assertion: only the evidence that
-        // creates the veto changed from tmux mode to real composer content.
         assert_eq!(fixture.worker.drain_once().await.expect("draft tick"), 1);
         assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)]);
         assert!(fixture.transport.delivered().is_empty());
 
-        assert_eq!(fixture.worker.drain_once().await.expect("blank tick"), 1);
-        assert_eq!(fixture.transport.delivered(), [msg]);
-        assert_eq!(fixture.queue.live_len(), 0);
-        assert_eq!(fixture.worker.drain_once().await.expect("deduped tick"), 0);
-        assert_eq!(fixture.transport.delivered().len(), 1);
+        assert_eq!(fixture.worker.drain_once().await.expect("clear tick"), 1);
+        assert!(
+            fixture.transport.delivered().is_empty(),
+            "clearing a draft is an edit: the human is at the keyboard right now"
+        );
+        assert_eq!(
+            fixture.queue.retried(),
+            [(id, Duration::ZERO), (id, Duration::ZERO)]
+        );
+
+        // Same script, no grace: the identical sequence delivers, so the veto was
+        // the recency window and never the presence of a draft.
+        let ungraced = fixture_with_grace(FakeTransport::reachable(), script(), 0);
+        let mut recipient = seat("pij-typing-clears", Some(pane));
+        recipient.harness = Harness::Claude;
+        register(&ungraced, recipient).await;
+        let msg = message("pij-typing-clears", "deliver after clear", None);
+        enqueue(&ungraced, &msg).await;
+
+        assert_eq!(
+            ungraced.worker.drain_once().await.expect("ungraced tick"),
+            1
+        );
+        assert_eq!(ungraced.transport.delivered(), [msg]);
+        assert_eq!(ungraced.queue.live_len(), 0);
     }
 
     #[tokio::test]

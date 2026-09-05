@@ -262,6 +262,21 @@ pub fn router_with_federation(
     router_with_optional_federation(services, config, Some(federation))
 }
 
+/// The typing grace this daemon serves, resolved ONCE per process.
+///
+/// Composition (plan 136): the register response and the interaction gate must
+/// answer with the same number, or the extension holds for one window while the
+/// send-keys gate defers for another and neither is wrong on its own. The
+/// constant lives in `pij_core::delivery`; this function is the single place the
+/// env override is read.
+#[must_use]
+pub fn resolve_typing_grace_ms() -> u64 {
+    std::env::var("PIJ_TYPING_GRACE_MS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(DEFAULT_TYPING_GRACE_MS)
+}
+
 fn router_with_optional_federation(
     services: Services,
     config: HttpConfig,
@@ -273,10 +288,7 @@ fn router_with_optional_federation(
         machine_alias: config.machine_alias,
         spawn_lock: Arc::new(tokio::sync::Mutex::new(())),
         typing_lock: Arc::new(tokio::sync::Mutex::new(())),
-        typing_grace_ms: std::env::var("PIJ_TYPING_GRACE_MS")
-            .ok()
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(DEFAULT_TYPING_GRACE_MS),
+        typing_grace_ms: resolve_typing_grace_ms(),
         federation,
     };
     let mut router = Router::new();
