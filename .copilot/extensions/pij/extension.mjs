@@ -15,6 +15,7 @@ import {
 	NativeError,
 	parseProcessStart,
 	resolveNativeHost,
+	resolveRegistration,
 } from "./store.mjs";
 
 const execute = promisify(execFile);
@@ -120,13 +121,17 @@ async function startExtension() {
 		while (!signal.aborted) {
 			try {
 				const roster = await client.request("/v1/seats?scope=local", undefined, signal);
-				const registration = chooseRegistration({
-					sessionId: session.sessionId,
-					host,
-					folder: process.cwd(),
-					seats: roster?.seats,
-					env: process.env,
-				});
+				const registration = await resolveRegistration(
+					client,
+					chooseRegistration({
+						sessionId: session.sessionId,
+						host,
+						folder: process.cwd(),
+						seats: roster?.seats,
+						env: process.env,
+					}),
+					signal,
+				);
 				signal.throwIfAborted();
 				bridge = new NativeBridge({
 					registration,

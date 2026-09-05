@@ -88,6 +88,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		const home = await mkdtemp(join(tmpdir(), "pij-native-shell-"));
 		const requests = [];
 		let registered;
+		let registeredView;
 		let claimed = 0;
 		const heldJobs = new Set();
 		let server;
@@ -105,19 +106,19 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				let meta;
 				let refusal;
 				if (url.pathname === "/v1/seats") {
-					const local = rosters.length ? rosters.shift() : seats;
+					const local = rosters.length
+						? rosters.shift()
+						: registeredView
+							? [...seats.filter((seat) => seat.id !== registeredView.id), registeredView]
+							: seats;
 					data = {
 						seats: url.searchParams.get("scope") === "local" ? local : [...local, ...remoteSeats],
 					};
 				} else if (request.url === "/v1/register") {
 					refusal = registerRefusal;
-					registered = body;
-					if (dropRegistrations-- > 0) {
-						response.destroy();
-						return;
-					}
+					registered = { ...body, id: body.id || registered?.id || "pij-bright-otter" };
 					data = {
-						id: body.id,
+						id: registered.id,
 						harness: "copilot",
 						session: body.harness_session,
 						folder: body.folder,
@@ -126,6 +127,11 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 						native_extension_delivery: true,
 						typing_grace_ms: 60000,
 					};
+					if (!refusal) registeredView = data;
+					if (dropRegistrations-- > 0) {
+						response.destroy();
+						return;
+					}
 				} else if (request.url.startsWith("/v1/inbox?")) {
 					const query = new URLSearchParams(request.url.split("?")[1]);
 					assert.equal(query.get("seat"), registered.id);
@@ -308,7 +314,9 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		);
 		const result = await f.waitFor("tool-result");
 		assert.equal(result.result.ok, true);
-		const registration = f.requests.find((r) => r.path === "/v1/register").body;
+		const registration = f.requests.findLast((r) => r.path === "/v1/register").body;
+		assert.equal(f.requests.find((r) => r.path === "/v1/register").body.id, "");
+		assert.equal(registration.id, "pij-bright-otter");
 		assert.equal(registration.harness, "copilot");
 		assert.equal(registration.harness_session, "native-shell-137");
 		assert.equal(f.requests.find((r) => r.path === "/v1/send").body.from, registration.id);
@@ -400,7 +408,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			],
 		});
 		await f.waitFor("completion-wait");
-		const registered = f.requests.find((request) => request.path === "/v1/register").body;
+		const registered = f.requests.findLast((request) => request.path === "/v1/register").body;
 		const holds = f.requests.filter((request) => request.path === "/v1/hold");
 		assert.equal(holds.length, 1);
 		assert.deepEqual(holds[0].body, {
@@ -573,7 +581,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			seats: [],
 		});
 		const retired = {
-			id: old.id,
+			id: "pij-copilot-0123456789abcdef01234567",
 			harness: "copilot",
 			session: old.harness_session,
 			proc: { pid: old.pid, proc_start: old.proc_start },
@@ -586,8 +594,9 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		const attempts = f.requests.filter((r) => r.path === "/v1/register");
 		assert.equal(attempts.length, 2);
 		assert.notEqual(attempts[0].body.id, retired.id);
-		assert.deepEqual(attempts[0].body, attempts[1].body);
-		assert.equal(f.requests.filter((r) => r.path === "/v1/seats?scope=local").length, 1);
+		assert.equal(attempts[0].body.id, "");
+		assert.equal(attempts[1].body.id, "pij-bright-otter");
+		assert.equal(f.requests.filter((r) => r.path === "/v1/seats?scope=local").length, 2);
 		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 1);
 		assert.equal(f.events.filter((e) => e.kind === "native-send").length, 1);
 		const exited = once(f.child, "exit");
@@ -616,8 +625,8 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.equal(f.events.filter((event) => event.kind === "native-send").length, 0);
 		await f.waitFor("completion-wait");
 		const registrations = f.requests.filter((r) => r.path === "/v1/register");
-		assert.equal(registrations.length, 2);
-		assert.deepEqual(registrations[0].body, registrations[1].body);
+		assert.equal(registrations.length, 3);
+		assert.deepEqual(registrations[1].body, registrations[2].body);
 		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 2);
 		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 1);
 		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox/typing?")).length, 3);
@@ -649,7 +658,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			/unavailable: receive-held;.*do not blindly resend or acknowledge/,
 		);
 		await sleep(350);
-		assert.equal(f.requests.filter((r) => r.path === "/v1/register").length, 1);
+		assert.equal(f.requests.filter((r) => r.path === "/v1/register").length, 2);
 		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 1);
 		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 0);
 		assert.equal(f.events.filter((event) => event.kind === "native-send").length, 0);
@@ -672,8 +681,10 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		};
 		const f = await launch(t, { seats: [predecessor] });
 		await f.waitFor("completion-wait");
-		const successor = f.requests.find((r) => r.path === "/v1/register").body;
-		assert.equal(successor.supersedes, predecessor.id);
+		const allocation = f.requests.find((r) => r.path === "/v1/register").body;
+		assert.equal(allocation.supersedes, predecessor.id);
+		assert.equal(allocation.id, "");
+		const successor = f.requests.findLast((r) => r.path === "/v1/register").body;
 		assert.notEqual(successor.id, predecessor.id);
 		assert.equal(successor.harness_session, "native-shell-137");
 		const requests = f.requests.filter((r) => r.path.startsWith("/v1/inbox?"));
