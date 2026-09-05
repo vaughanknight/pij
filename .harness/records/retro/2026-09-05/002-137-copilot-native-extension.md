@@ -60,3 +60,7 @@ entries:
 Actual callback metadata, measured cursor captures, native permission distinctions and isolated negative-control homes are now encoded in the existing runtime/driver. The next footer change should prompt a box-geometry redesign, not another accumulated string variant; that remains deferred by the prime.
 
 Jordan's course correction: stop expanding test contracts and review cycles; use the minimum decisive live proof. No additional feature or test work was opened at closeout.
+
+## Boot-reporting follow-up
+
+Jordan's boot screenshot exposed a reporting mistake: normal typing-sensor readiness was classified as an outage. Commit `d9f29b87` routes that progress through existing extension diagnostics while keeping real failures visible. The existing extension-process scenario now exercises unavailable-to-ready delivery with no native timeline notice; the native suite and all nine `harness checks` sensors passed. No consent policy, polling, daemon, or global installation changed.
