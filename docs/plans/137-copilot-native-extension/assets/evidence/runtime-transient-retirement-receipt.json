@@ -1,6 +1,6 @@
 {
   "owner": "pij-worldwide-rat",
-  "status": "Runtime implementation/proof complete; producer discriminator proof pending counterpart",
+  "status": "Runtime implementation/proof complete; producer source discriminator inspected; counterpart execution receipt pending",
   "base_commit": "8a101e3196d8c5999863e4fbeed803190ea29d95",
   "source_commit": "cd4e5b86e682f0cf2ea99eb89769f168cbfe4d8f",
   "rulings": [
@@ -43,7 +43,7 @@
     "reopen": "Real chooseRegistration A->B->A yields new address; existing FileJournal acceptance untouched and invisible in fresh attachment. New host later resumes attested fresh address. Cold reopen of retired A also gets fresh address; explicit retired launch intent refuses.",
     "registration_retry": "Actual extension child+loopback HTTP drops initial retired-reopen registration response; two identical register bodies/id, one roster read, one native send/ACK, EOF exit0/stdout empty.",
     "ambiguous_roster": "Actual extension child observes two ambiguous rosters then unique; zero registration/send at first notice, exactly3roster reads and1registration, one episode notice, clean exit.",
-    "pane_hold": "Typed-parser and actual shell HTTP fixture empty -> native-pane-changed hold -> release; retry500ms, no ACK/send before release, then one send/ACK. This is intended producer shape, not observed producer integration proof yet.",
+    "pane_hold": "Typed-parser and actual shell HTTP fixture empty -> native-pane-changed hold -> release; retry500ms, no ACK/send before release, then one send/ACK. Fixture matches independently inspected producer branches and HTTP constructor assertions; composed real-daemon/native execution is not claimed.",
     "review": {
       "agent": "HoldBoundaryReview",
       "verdict": "no_material_findings",
@@ -52,10 +52,29 @@
   },
   "producer": {
     "owner": "pij-grotesque-armadillo",
-    "status": "awaiting exact source/HTTP assertions and scoped receipt",
-    "last_reported_source": "4bdadd92",
-    "last_reported_shape": "Shared missing/nonCopilot refused400 diagnostic and pane-changed refused400 still present in that source; runtime does not retry those. Counterpart is implementing missing-only canonical unavailable and pane success hold.",
-    "intended_missing": {
+    "status": "Exact producer branches and HTTP assertions inspected; source-pinned execution receipt pending",
+    "source_commit": "dba208cd682656694076336399e5e5df8f9cc55e",
+    "source_observation": {
+      "owner": "pij-worldwide-rat",
+      "root": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon",
+      "branches": "crates/daemon/src/delivery/mod.rs:575-643: only missing native registration uses canonical unavailable; non-Copilot keeps permanent refusal; tuple validation precedes pane-change success hold.",
+      "http": "crates/daemon/src/http/mod.rs:1132-1163,1945-1950; native_tests.rs:180-199 asserts HTTP status, ok, refused category and absent data.",
+      "assertions": [
+        "native_sqlite_http_missing_registration_is_retryable_but_noncopilot_identity_is_refused",
+        "native_http_pane_change_hold_preserves_retryable_wire_discriminator"
+      ],
+      "assertion_lines": "crates/daemon/src/http/native_tests.rs:1042-1103",
+      "proof_boundary": "Independent source inspection, not independently executed daemon tests. Missing/non-Copilot test uses real HTTP/SQLite; pane test invokes the production response constructor, with observation-race behavior tested separately in delivery/mod.rs. Runtime parser widening is unnecessary."
+    },
+    "reported_validation": {
+      "origin": "pij-grotesque-armadillo via HoldBoundaryReview",
+      "daemon_tests": 284,
+      "strict_clippy": "reported pass",
+      "rustfmt": "reported pass",
+      "receipt": "daemon-cold-resume-receipt.json not yet present when requested",
+      "independently_executed_by_runtime": false
+    },
+    "observed_missing": {
       "http": 400,
       "body": {
         "ok": false,
@@ -65,7 +84,7 @@
         "meta": "daemon/native-inbox: native-extension-unavailable: Copilot requires current native registration"
       }
     },
-    "intended_pane": {
+    "observed_pane": {
       "http": 200,
       "body": {
         "ok": true,
@@ -75,7 +94,18 @@
         "meta": "native-consumer-held:native-pane-changed"
       }
     },
-    "completion_condition": "Read counterpart exact producer HTTP assertions and receipt; compare actual shape with runtime client before closing P2-G wire claim."
+    "observed_noncopilot": {
+      "http": 400,
+      "body": {
+        "ok": false,
+        "v": 2,
+        "command": "pij inbox",
+        "error": "refused",
+        "meta": "daemon/native-inbox: native incarnation no longer belongs to a current Copilot seat"
+      },
+      "runtime_disposition": "non-retryable; no broadened recovery"
+    },
+    "completion_condition": "Consume counterpart source-pinned execution receipt before closing P2-G wire proof; source shapes already match the passing runtime fixtures."
   },
   "constraints": {
     "full_gates": 0,
