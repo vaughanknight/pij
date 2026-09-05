@@ -472,6 +472,296 @@ describe("isolated native tool human approval", () => {
 		expect(commands.filter((command) => command[0] === "send-keys")).toHaveLength(1);
 		expect(witness).toMatchObject({ decision: "approve-once", status: "failed", before: dialog() });
 	});
+
+	describe("retained preauthorized execution, not human approval", () => {
+		type Preauthorization = NonNullable<Parameters<typeof confirmSmokeToolInvocation>[4]>;
+		type Sample = ReturnType<Preauthorization["observe"]>;
+		type Fixture = {
+			launch: Preauthorization["launch"];
+			incoming_event_id: string;
+			expected: Parameters<typeof confirmSmokeToolInvocation>[1];
+			native_events: Sample["nativeEvents"];
+			jobs: Sample["jobs"];
+			terminal: string;
+		};
+		const retained = JSON.parse(
+			readFileSync(
+				new URL("./fixtures/copilot-native-preauthorized.json", import.meta.url),
+				"utf8",
+			),
+		) as Fixture;
+		const context = (fixture: Fixture): Preauthorization => ({
+			launch: fixture.launch,
+			incomingEventId: fixture.incoming_event_id,
+			observe: () => ({ nativeEvents: fixture.native_events, jobs: fixture.jobs }),
+		});
+		const event = (fixture: Fixture, type: string) => {
+			const value = fixture.native_events.find((item) => item.type === type);
+			if (!value) throw new Error(`Retained fixture missing ${type}`);
+			return value;
+		};
+		const changePayload = (fixture: Fixture, key: string, value: string) => {
+			const row = fixture.jobs[0];
+			if (!row) throw new Error("Retained fixture missing durable outgoing");
+			row.payload = JSON.stringify({ ...object(JSON.parse(String(row.payload))), [key]: value });
+		};
+		it("proves actual native execution and durable outgoing without consent keys", async () => {
+			const keys: string[][] = [];
+			const witness: Record<string, unknown> = {};
+			await confirmSmokeToolInvocation(
+				(args) => {
+					if (args[0] === "send-keys") keys.push(args);
+					return retained.terminal;
+				},
+				retained.expected,
+				1,
+				witness,
+				context(retained),
+			);
+			expect(keys).toEqual([]);
+			expect(witness).toMatchObject({
+				kind: "native-tool-preauthorized-execution",
+				decision: "observe-existing-preauthorization",
+				status: "preauthorized-executed",
+				grade: "native-tool-executed-not-human-approved-not-model-complete",
+				launch_policy: retained.launch,
+				before: retained.terminal,
+				before_complete: retained.terminal,
+				proof: {
+					start: event(retained, "tool.execution_start"),
+					completed: event(retained, "tool.execution_complete"),
+					outbound: retained.jobs[0],
+				},
+			});
+			expect(witness.confirmation_sent).toBeUndefined();
+		});
+		it("waits keylessly for matching completion after invocation", async () => {
+			const witness: Record<string, unknown> = {};
+			const preauthorized = context(retained);
+			let observations = 0;
+			await confirmSmokeToolInvocation(
+				(args) => {
+					expect(args[0]).toBe("capture-pane");
+					return retained.terminal;
+				},
+				retained.expected,
+				1000,
+				witness,
+				{
+					...preauthorized,
+					observe: () =>
+						observations++ === 0
+							? {
+									nativeEvents: retained.native_events.filter(
+										(e) => e.type !== "tool.execution_complete",
+									),
+									jobs: [],
+								}
+							: preauthorized.observe(),
+				},
+			);
+			expect(observations).toBe(2);
+			expect(witness.status).toBe("preauthorized-executed");
+			expect(witness.confirmation_sent).toBeUndefined();
+		});
+		it.each<[string, (fixture: Fixture) => void]>([
+			[
+				"late permission grant after execution",
+				(f) => {
+					const permission = event(f, "session.permissions_changed");
+					const revoked = {
+						...structuredClone(permission),
+						id: "permissions-revoked",
+						data: { allowAllPermissions: false, allowAllPermissionMode: "off" },
+					};
+					f.native_events.splice(
+						f.native_events.indexOf(event(f, "tool.execution_start")),
+						0,
+						revoked,
+					);
+					f.native_events.splice(
+						f.native_events.indexOf(event(f, "tool.execution_complete")) + 1,
+						0,
+						{ ...structuredClone(permission), id: "permissions-granted-later" },
+					);
+				},
+			],
+			[
+				"dialog absence without execution",
+				(f) => {
+					f.native_events = f.native_events.filter((e) => !e.type.startsWith("tool.execution_"));
+				},
+			],
+			[
+				"missing tool completion",
+				(f) => {
+					f.native_events = f.native_events.filter((e) => e.type !== "tool.execution_complete");
+				},
+			],
+			[
+				"wrong tool",
+				(f) => {
+					event(f, "tool.execution_start").data.toolName = "other_tool";
+				},
+			],
+			[
+				"wrong tool recipient",
+				(f) => {
+					object(event(f, "tool.execution_start").data.arguments).to = "wrong-peer";
+				},
+			],
+			[
+				"wrong tool body",
+				(f) => {
+					object(event(f, "tool.execution_start").data.arguments).message = "wrong-body";
+				},
+			],
+			[
+				"extra tool arguments",
+				(f) => {
+					object(event(f, "tool.execution_start").data.arguments).extra = true;
+				},
+			],
+			[
+				"unrelated completion",
+				(f) => {
+					event(f, "tool.execution_complete").data.toolCallId = "other-call";
+				},
+			],
+			[
+				"native tool failure",
+				(f) => {
+					event(f, "tool.execution_complete").data.success = false;
+				},
+			],
+			[
+				"completion before invocation",
+				(f) => {
+					const start = event(f, "tool.execution_start");
+					const end = event(f, "tool.execution_complete");
+					const startIndex = f.native_events.indexOf(start);
+					const endIndex = f.native_events.indexOf(end);
+					[f.native_events[startIndex], f.native_events[endIndex]] = [end, start];
+				},
+			],
+			[
+				"duplicate invocation",
+				(f) => {
+					f.native_events.push(structuredClone(event(f, "tool.execution_start")));
+				},
+			],
+			[
+				"missing durable outgoing",
+				(f) => {
+					f.jobs = [];
+				},
+			],
+			["wrong durable sender", (f) => changePayload(f, "from", "wrong-peer")],
+			["wrong durable recipient", (f) => changePayload(f, "to", "wrong-peer")],
+			["wrong durable body", (f) => changePayload(f, "body", "wrong-body")],
+			["wrong durable message ID", (f) => changePayload(f, "msg_id", "other-message")],
+			[
+				"unrelated durable job",
+				(f) => {
+					f.jobs = f.jobs.map((row) => ({ ...row, dedupe_key: "other-message" }));
+				},
+			],
+			[
+				"failed outgoing receipt",
+				(f) => {
+					object(event(f, "tool.execution_complete").data.result).content = '{"ok":false}';
+				},
+			],
+			[
+				"malformed tool result",
+				(f) => {
+					object(event(f, "tool.execution_complete").data.result).content = "not-json";
+				},
+			],
+			[
+				"missing launch permission",
+				(f) => {
+					f.launch.process = f.launch.process.replace(" --yolo", "");
+				},
+			],
+			[
+				"permission substring only",
+				(f) => {
+					f.launch.process = f.launch.process.replace("--yolo", "--yolo-disabled");
+				},
+			],
+			[
+				"revoked native permissions",
+				(f) => {
+					event(f, "session.permissions_changed").data.allowAllPermissions = false;
+				},
+			],
+			[
+				"wrong native session",
+				(f) => {
+					event(f, "session.start").data.sessionId = "other-session";
+				},
+			],
+			[
+				"wrong launch PID",
+				(f) => {
+					f.launch.seat.proc.pid++;
+				},
+			],
+			[
+				"wrong launch pane",
+				(f) => {
+					f.launch.seat.pane = "%999";
+				},
+			],
+		])("refuses %s without pretending human consent", async (_label, change) => {
+			const fixture = structuredClone(retained);
+			change(fixture);
+			const keys: string[][] = [];
+			const witness: Record<string, unknown> = {};
+			await expect(
+				confirmSmokeToolInvocation(
+					(args) => {
+						if (args[0] === "send-keys") keys.push(args);
+						return fixture.terminal;
+					},
+					fixture.expected,
+					1,
+					witness,
+					context(fixture),
+				),
+			).rejects.toThrow(/PIJ_NATIVE_/);
+			expect(keys).toEqual([]);
+			expect(witness.status).toBe("failed");
+			expect(witness.confirmation_sent).toBeUndefined();
+		});
+		it.each([
+			dialog({ to: retained.expected.to, message: retained.expected.message }),
+			dialog({ to: "wrong-peer", message: retained.expected.message }),
+			dialog().replace('Run extension tool "pij_send"', "Confirm folder trust"),
+			dialog().replace("╰────────────────╯", ""),
+		])("never approves active or incomplete modal on preauthorized path", async (terminal) => {
+			for (const atRecheck of [false, true]) {
+				let captures = 0;
+				const keys: string[][] = [];
+				const witness: Record<string, unknown> = {};
+				await expect(
+					confirmSmokeToolInvocation(
+						(args) => {
+							if (args[0] === "send-keys") keys.push(args);
+							return atRecheck && captures++ === 0 ? retained.terminal : terminal;
+						},
+						retained.expected,
+						1,
+						witness,
+						context(retained),
+					),
+				).rejects.toThrow(/PIJ_NATIVE_/);
+				expect(keys).toEqual([]);
+				expect(witness.status).toBe("failed");
+			}
+		});
+	});
 });
 
 describe("native lifecycle assertion boundaries, not live CLI proof", () => {
@@ -602,11 +892,14 @@ describe("native lifecycle assertion boundaries, not live CLI proof", () => {
 		expect(nativeComposer(String(frame.terminal))).toBe("");
 	});
 
-	it("submits only /new from the retained measured ghost frame", async () => {
+	it.each([
+		["/new", "newSession", "new", 6],
+		["/exit", "exit", "exit", 7],
+	] as const)("submits only %s from the retained measured ghost frame", async (command, action, name, cursorX) => {
 		const fixture = object(
 			JSON.parse(
 				readFileSync(
-					new URL("./fixtures/copilot-native-new-command.json", import.meta.url),
+					new URL(`./fixtures/copilot-native-${name}-command.json`, import.meta.url),
 					"utf8",
 				),
 			),
@@ -640,7 +933,7 @@ describe("native lifecycle assertion boundaries, not live CLI proof", () => {
 				keys.push(args);
 				return "";
 			},
-			{ pane: "%3", action: "newSession" },
+			{ pane: "%3", action },
 			1,
 			witness,
 			async () => {
@@ -648,16 +941,101 @@ describe("native lifecycle assertion boundaries, not live CLI proof", () => {
 			},
 		);
 		expect(keys).toEqual([
-			["send-keys", "-t", "%3", "-l", "--", "/new"],
+			["send-keys", "-t", "%3", "-l", "--", command],
 			["send-keys", "-t", "%3", "Enter"],
 		]);
 		expect(witness).toMatchObject({
 			staged: frame.terminal,
-			staged_pane_capture: { cursor_x: 6, cursor_y: 45, terminal: frame.terminal },
-			before_submit_pane_capture: { cursor_x: 6, cursor_y: 45, terminal: frame.terminal },
+			staged_pane_capture: { cursor_x: cursorX, cursor_y: 45, terminal: frame.terminal },
+			before_submit_pane_capture: { cursor_x: cursorX, cursor_y: 45, terminal: frame.terminal },
 			command_submitted: true,
 			status: "submitted-not-yet-lifecycle-proven",
 		});
+	});
+
+	const exitFixture = object(
+		JSON.parse(
+			readFileSync(new URL("./fixtures/copilot-native-exit-command.json", import.meta.url), "utf8"),
+		),
+	);
+	const exitFrame = object(exitFixture.pane_capture);
+	it.each<[string, string, (screen: string) => string]>([
+		["typed placeholder", "15\t45\t160\t48", (screen) => screen],
+		["cursor inside ghost", "8\t45\t160\t48", (screen) => screen],
+		["cursor on suggestion", "7\t38\t160\t48", (screen) => screen],
+		[
+			"unknown ghost",
+			"7\t45\t160\t48",
+			(screen) => screen.replace("/exit [print]", "/exit [unknown]"),
+		],
+		[
+			"typed print argument",
+			"13\t45\t160\t48",
+			(screen) => screen.replace("/exit [print]", "/exit print"),
+		],
+		[
+			"selected print alternative",
+			"7\t45\t160\t48",
+			(screen) => screen.replace("  ❯ /exit\n    /exit print", "    /exit\n  ❯ /exit print"),
+		],
+		["wrong selection", "7\t45\t160\t48", (screen) => screen.replace("  ❯ /exit\n", "  ❯ /new\n")],
+		[
+			"missing selection",
+			"7\t45\t160\t48",
+			(screen) => screen.replace("  ❯ /exit\n", "    /exit\n"),
+		],
+		[
+			"duplicate selection",
+			"7\t45\t160\t48",
+			(screen) => screen.replace("    /exit print", "  ❯ /exit print"),
+		],
+		[
+			"malformed menu",
+			"7\t45\t160\t48",
+			(screen) => screen.replace("    /exit print", "   /exit print"),
+		],
+		["incomplete composer", "7\t45\t160\t48", (screen) => screen.replace(/^╹▀.*$/m, "")],
+		[
+			"historical selection",
+			"7\t45\t160\t48",
+			(screen) => {
+				const lines = screen.split("\n");
+				lines[30] = "  ❯ /exit";
+				lines[38] = "";
+				lines[39] = "";
+				return lines.join("\n");
+			},
+		],
+	])("never submits retained exit ghost with %s", async (_label, metadata, change) => {
+		for (const atRecheck of [false, true]) {
+			const keys: string[][] = [];
+			const witness: Record<string, unknown> = {};
+			let captures = 0;
+			const changed = change(String(exitFrame.terminal));
+			await expect(
+				driveSmokeLifecycleCommand(
+					(args) => {
+						if (args[0] === "display-message") {
+							if (atRecheck && captures++ === 0)
+								return `${exitFrame.metadata_raw}\n${exitFrame.terminal}`;
+							return `${metadata}\n${changed}`;
+						}
+						if (args[0] === "capture-pane") return String(exitFixture.before);
+						keys.push(args);
+						return "";
+					},
+					{ pane: "%3", action: "exit" },
+					1,
+					witness,
+				),
+			).rejects.toThrow(/PIJ_NATIVE_/);
+			expect(keys).toEqual([["send-keys", "-t", "%3", "-l", "--", "/exit"]]);
+			expect(witness.command_submitted).toBeUndefined();
+			expect(witness.status).toBe("failed");
+			expect(
+				witness[atRecheck ? "before_submit_pane_capture" : "staged_pane_capture"],
+			).toMatchObject({ terminal: changed, metadata_raw: metadata });
+		}
 	});
 
 	it.each([
