@@ -1,3 +1,13 @@
+//! Fake-queue behaviour pinned against the STORE's granularity.
+//!
+//! The deferral deadlines below are whole SECONDS, not milliseconds, and that is
+//! not cosmetic: SQLite eligibility compares `unixepoch()`, so the store can only
+//! express a second. These tests were written in 10 ms and 30 ms delays and passed
+//! only because the fake kept full `Duration` precision — i.e. the fake released
+//! EARLIER than production could, which makes a fake more permissive than the
+//! thing it stands in for and every green test built on it a false negative
+//! (reviewer f3, 2026-09-05). Operators inherit the same fact: PIJ_TYPING_GRACE_MS
+//! is parsed in milliseconds and the store rounds its deadline up to a second.
 //! The port-contract exemplar (tk-ddf1) — the tier-2 shape later units copy.
 //!
 //! One suite per seam, run here against the shipped fake. When the SQLite
@@ -84,11 +94,11 @@ fn fake_queue_defer_running_preserves_identity_body_attempt_and_delay() {
             queue.claim(kinds, "old-worker").await.expect("reclaim"),
             Some((job_id, expected.clone()))
         );
-        queue.advance(Duration::from_millis(50));
+        queue.advance(Duration::from_secs(50));
 
         assert_eq!(
             queue
-                .defer(job_id, Duration::from_millis(10))
+                .defer(job_id, Duration::from_secs(10))
                 .await
                 .expect("defer running delivery"),
             DeferOutcome::Deferred {
@@ -126,7 +136,7 @@ fn fake_queue_defer_running_preserves_identity_body_attempt_and_delay() {
                 .expect("dedupe deferred delivery without recording delivery"),
             DeliveryEnqueue::Queued {
                 job_id,
-                not_before_ms: 60,
+                not_before_ms: 60_000,
             }
         );
         assert_eq!(
@@ -139,9 +149,9 @@ fn fake_queue_defer_running_preserves_identity_body_attempt_and_delay() {
                 .expect("prior evidence survives live deferral"),
             DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::ReaderRead)
         );
-        queue.advance(Duration::from_millis(9));
+        queue.advance(Duration::from_secs(9));
         assert_eq!(queue.claim(kinds, "new-worker").await.expect("claim"), None);
-        queue.advance(Duration::from_millis(1));
+        queue.advance(Duration::from_secs(1));
         assert_eq!(
             queue
                 .claim(kinds, "new-worker")
@@ -170,15 +180,15 @@ fn fake_queue_defer_pending_replaces_the_schedule_from_the_current_clock() {
         };
         assert_eq!(
             queue
-                .defer(job_id, Duration::from_millis(30))
+                .defer(job_id, Duration::from_secs(30))
                 .await
                 .expect("defer pending row"),
             expected_outcome
         );
-        queue.advance(Duration::from_millis(5));
+        queue.advance(Duration::from_secs(5));
         assert_eq!(
             queue
-                .defer(job_id, Duration::from_millis(10))
+                .defer(job_id, Duration::from_secs(10))
                 .await
                 .expect("replace pending delay"),
             expected_outcome
@@ -190,7 +200,7 @@ fn fake_queue_defer_pending_replaces_the_schedule_from_the_current_clock() {
                 .expect("observe persisted deadline"),
             DeliveryEnqueue::Queued {
                 job_id,
-                not_before_ms: 15,
+                not_before_ms: 15_000,
             }
         );
         let kinds = std::slice::from_ref(&original.kind);
@@ -201,9 +211,9 @@ fn fake_queue_defer_pending_replaces_the_schedule_from_the_current_clock() {
         assert_eq!(queue.attempts(job_id), 0);
         assert!(queue.retried().is_empty());
         assert_eq!(queue.live_len(), 1);
-        queue.advance(Duration::from_millis(9));
+        queue.advance(Duration::from_secs(9));
         assert_eq!(queue.claim(kinds, "worker").await.expect("claim"), None);
-        queue.advance(Duration::from_millis(1));
+        queue.advance(Duration::from_secs(1));
         assert_eq!(
             queue
                 .claim(kinds, "worker")
@@ -240,12 +250,12 @@ fn fake_queue_defer_zero_releases_pending_and_running_without_reordering_fifo() 
                 );
             } else {
                 queue
-                    .defer(first_id, Duration::from_millis(30))
+                    .defer(first_id, Duration::from_secs(30))
                     .await
                     .expect("delay pending first row");
             }
             let second_id = queue.enqueue(second.clone()).await.expect("enqueue second");
-            queue.advance(Duration::from_millis(3));
+            queue.advance(Duration::from_secs(3));
             assert_eq!(
                 queue
                     .defer(first_id, Duration::ZERO)
@@ -263,7 +273,7 @@ fn fake_queue_defer_zero_releases_pending_and_running_without_reordering_fifo() 
                     .expect("observe immediate schedule"),
                 DeliveryEnqueue::Queued {
                     job_id: first_id,
-                    not_before_ms: 3,
+                    not_before_ms: 3_000,
                 }
             );
             assert_eq!(
@@ -486,7 +496,7 @@ fn fake_queue_release_deferred_preserves_body_attempt_ledger_and_active_reader()
             .defer(id, Duration::from_secs(30))
             .await
             .expect("hold pending");
-        queue.advance(Duration::from_millis(5));
+        queue.advance(Duration::from_secs(5));
         assert_eq!(
             queue.claim(kinds, "reader").await.expect("held claim"),
             None
@@ -507,7 +517,7 @@ fn fake_queue_release_deferred_preserves_body_attempt_ledger_and_active_reader()
                 .expect("same pending row"),
             DeliveryEnqueue::Queued {
                 job_id: id,
-                not_before_ms: 5
+                not_before_ms: 5_000
             }
         );
         assert_eq!(

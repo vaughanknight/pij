@@ -40,7 +40,11 @@ interface RustBootInput extends Omit<BootInput, "id"> {
 interface TypingRuntimePort extends PiRuntimePort {
 	onEditorChange?(cb: (at: number) => void): () => void;
 	setStatus?(text: string | undefined): void;
+	notify?(text: string, level?: "info" | "warning" | "error"): void;
 }
+
+/** How much of an arriving body the announcement shows. */
+const ANNOUNCE_BODY_CHARS = 80;
 
 /**
  * Snap-in recipe (composition owner: PM, index.ts unchanged):
@@ -67,6 +71,9 @@ interface TypingRuntimePort extends PiRuntimePort {
  *   Release also declares cleared hold evidence even when its queue mutation is
  *   a typed no-op. Every ack is preceded by this declaration; RUNNING claims
  *   must remain owned when the daemon returns not-deferred (contract 2fe71151).
+ *   One declaration owner remembers successful declarations through ack, so
+ *   pre-claim un-deferral and pre-ack assurance share a single ledger fact.
+ *   A new hold invalidates that receipt and opens a new release cycle.
  * - Local notes are not ownership. Only a fresh normal claim permits inject
  *   and ack; all event and ticker work shares pushedChain.
  * - Boot discards local notes, then recovers the oldest LIVE row after
@@ -91,6 +98,9 @@ export class RustRuntimeSession {
 	private readonly lastInbound = new Map<string, string>();
 	private holdQueue: HoldQueue | undefined;
 	private readonly heldIds = new Map<string, number>();
+	/** Delivered into a BUSY runtime and therefore not yet on screen. */
+	private readonly unseenIds = new Set<string>();
+	private readonly declaredReleaseJobs = new Set<number>();
 	private lastEditAt: number | undefined;
 	private stopEdits: (() => void) | undefined;
 	private holdTicker: ReturnType<typeof setInterval> | undefined;
@@ -166,6 +176,13 @@ export class RustRuntimeSession {
 		const acceptedId = accepted.id;
 		this.holdQueue = new HoldQueue(this.clock, accepted.typing_grace_ms ?? 60000);
 		this.heldIds.clear();
+		this.declaredReleaseJobs.clear();
+		// A fresh lifecycle counts none of the previous one's messages. Only the
+		// ticker clears this set, and shutdown cancels the ticker, so without this
+		// line a reload carries the dead lifecycle's count into the next status
+		// line — and boot's setStatus(undefined) HIDES it until the first showHeld,
+		// which makes the wrong number appear later and harder to place (reviewer).
+		this.unseenIds.clear();
 		if (this.lastEditAt !== undefined) this.holdQueue.noteEdit(this.lastEditAt);
 		this.pi.setStatus(undefined);
 		const continuityRegistration = registrationFor(acceptedId, procStart, input);
@@ -220,6 +237,7 @@ export class RustRuntimeSession {
 		this.holdTicker = setInterval(() => {
 			const client = this.client;
 			const seat = this.self;
+			this.clearSeenIfIdle();
 			this.pushedChain = this.pushedChain
 				.then(() => this.pollHeld(seat, client, lifecycle))
 				.catch((error: unknown) =>
@@ -320,12 +338,7 @@ export class RustRuntimeSession {
 		while (this.self === seat && this.lifecycle === lifecycle) {
 			const oldest = pushedInboxClaim(await client.peekInbox(seat), seat);
 			if (!oldest || this.self !== seat || this.lifecycle !== lifecycle) return;
-			await client.release({
-				seat,
-				job_id: oldest.jobId,
-				msg_id: oldest.message.messageId,
-				at_ms: this.clock(),
-			});
+			await this.declareRelease(oldest, seat, client, lifecycle);
 			if (this.self !== seat || this.lifecycle !== lifecycle) return;
 			const claim = pushedInboxClaim(await client.claimInbox(seat), seat);
 			if (!claim) return; // A running reader still owns the oldest live row.
@@ -363,6 +376,9 @@ export class RustRuntimeSession {
 				reason: "human-typing",
 				since_ms: this.lastEditAt,
 			});
+			if (this.self === seat && this.lifecycle === lifecycle) {
+				this.declaredReleaseJobs.delete(heldJobId);
+			}
 			return;
 		}
 		// Un-defer known holds before taking any new ordinary claim, so the
@@ -403,6 +419,12 @@ export class RustRuntimeSession {
 		lifecycle: number,
 	): Promise<void> {
 		if (this.self !== seat || this.lifecycle !== lifecycle) return;
+		// ANNOUNCE FIRST, decide second. Delivery to a busy seat is immediate on the
+		// wire and INVISIBLE in the pane until the step boundary, which on a slow
+		// model is minutes: the message is there and the human cannot see it. The
+		// notification is not delivery, it is the arrival becoming observable, so it
+		// happens before any hold or steer decision can defer the visible part.
+		this.announceArrival(claim);
 		const bypass = claim.message.command !== undefined || claim.message.urgent === true;
 		if (!bypass && this.holdQueue?.shouldHold(this.clock()) && this.lastEditAt !== undefined) {
 			await client.hold({
@@ -413,12 +435,36 @@ export class RustRuntimeSession {
 				since_ms: this.lastEditAt,
 			});
 			if (this.self !== seat || this.lifecycle !== lifecycle) return;
+			this.declaredReleaseJobs.delete(claim.jobId);
 			this.holdQueue.push(claim);
 			this.heldIds.set(claim.message.messageId, claim.jobId);
 			this.showHeld();
 			return;
 		}
 		await this.injectAndAck(claim, seat, client, lifecycle);
+	}
+
+	/** The only release declaration site. Acknowledgement must have a successful
+	 * declaration, but an earlier un-deferral already supplied it for this cycle. */
+	private async declareRelease(
+		row: HeldRow,
+		seat: string,
+		client: PijDaemonClient,
+		lifecycle: number,
+	): Promise<void> {
+		if (
+			this.self !== seat ||
+			this.lifecycle !== lifecycle ||
+			this.declaredReleaseJobs.has(row.jobId)
+		)
+			return;
+		await client.release({
+			seat,
+			job_id: row.jobId,
+			msg_id: row.message.messageId,
+			at_ms: this.clock(),
+		});
+		if (this.self === seat && this.lifecycle === lifecycle) this.declaredReleaseJobs.add(row.jobId);
 	}
 
 	private async injectAndAck(
@@ -429,8 +475,13 @@ export class RustRuntimeSession {
 	): Promise<void> {
 		if (this.self !== seat || this.lifecycle !== lifecycle) return;
 		this.lastInbound.set(claim.message.from, claim.message.messageId);
+		const busy = this.pi.isIdle?.() === false;
 		this.session.onInbound(claim.message, claim.message.messageId);
 		this.heldIds.delete(claim.message.messageId);
+		// A steered message was delivered and remains unseen; an immediate one is
+		// already on screen and is never counted.
+		if (busy) this.unseenIds.add(claim.message.messageId);
+		this.showHeld();
 		if (this.self !== seat || this.lifecycle !== lifecycle) {
 			this.session.capture("daemon_event_claim_stale", {
 				currentSeat: this.self,
@@ -441,17 +492,13 @@ export class RustRuntimeSession {
 			return;
 		}
 		try {
-			// A restarted reader has no local note for a formerly held job.
-			// Declare release regardless; the daemon clears evidence even when
-			// un-deferral is a no-op and preserves this running claim.
-			await client.release({
-				seat,
-				job_id: claim.jobId,
-				msg_id: claim.message.messageId,
-				at_ms: this.clock(),
-			});
+			// Lost local hold notes still require a declaration before ack. If
+			// recovery/release already declared it, share that successful receipt.
+			await this.declareRelease(claim, seat, client, lifecycle);
 			if (this.self !== seat || this.lifecycle !== lifecycle) return;
 			await client.ackInbox(seat, claim.jobId);
+			if (this.self === seat && this.lifecycle === lifecycle)
+				this.declaredReleaseJobs.delete(claim.jobId);
 		} catch (error) {
 			this.session.capture("daemon_event_ack_error", {
 				jobId: claim.jobId,
@@ -462,9 +509,38 @@ export class RustRuntimeSession {
 		if (this.self === seat) await this.flush();
 	}
 
+	private announceArrival(claim: HeldRow): void {
+		// ONCE PER MESSAGE, not once per routing pass. A held row comes through
+		// routeClaim twice — withheld, then released a grace later — and two
+		// identical toasts sixty seconds apart for one delivery is the same
+		// "counted twice reads as two" error the pending counter refuses to make,
+		// on the louder surface (reviewer).
+		if (this.heldIds.has(claim.message.messageId)) return;
+		const body = claim.message.body ?? "";
+		const shown =
+			body.length > ANNOUNCE_BODY_CHARS ? `${body.slice(0, ANNOUNCE_BODY_CHARS)}…` : body;
+		this.pi.notify?.(`📨 pij from ${claim.message.from}: ${shown}`, "info");
+	}
+
+	/** Messages the seat has been GIVEN but cannot yet SEE: steered into a busy
+	 * runtime, which renders them only at the next step boundary. Held rows are
+	 * deliberately excluded — they are counted by the ⏸ half, and a message
+	 * counted twice reads as two messages. */
 	private showHeld(): void {
-		const count = this.heldIds.size;
-		this.pi.setStatus(count === 0 ? undefined : `⏸ ${count} held · typing`);
+		const held = this.heldIds.size;
+		const parts: string[] = [];
+		if (this.unseenIds.size > 0) parts.push(`📨 ${this.unseenIds.size} pending`);
+		if (held > 0) parts.push(`⏸ ${held} held · typing`);
+		this.pi.setStatus(parts.length === 0 ? undefined : parts.join(" · "));
+	}
+
+	/** Cleared the moment the runtime is idle again: idle means the step boundary
+	 * passed, which is exactly when a steered message becomes visible. */
+	private clearSeenIfIdle(): void {
+		if (this.unseenIds.size === 0) return;
+		if (this.pi.isIdle?.() === false) return;
+		this.unseenIds.clear();
+		this.showHeld();
 	}
 
 	private async releaseHeld(
@@ -482,12 +558,7 @@ export class RustRuntimeSession {
 			for (const row of ready) {
 				if (this.self !== seat || this.lifecycle !== lifecycle) return;
 				if (!this.heldIds.has(row.message.messageId)) continue;
-				await client.release({
-					seat,
-					job_id: row.jobId,
-					msg_id: row.message.messageId,
-					at_ms: this.clock(),
-				});
+				await this.declareRelease(row, seat, client, lifecycle);
 			}
 			for (let remaining = ready.length; remaining > 0; remaining--) {
 				if (this.self !== seat || this.lifecycle !== lifecycle) return;
@@ -670,6 +741,12 @@ class MutablePiRuntime implements PiRuntimePort {
 	private current: TypingRuntimePort | undefined;
 	setStatus(text: string | undefined): void {
 		this.current?.setStatus?.(text);
+	}
+
+	/** Optional on the port: a runtime with no notification surface simply does
+	 * not announce, and the status count still reports what it cannot show. */
+	notify(text: string, level?: "info" | "warning" | "error"): void {
+		this.current?.notify?.(text, level);
 	}
 
 	set(pi: TypingRuntimePort): void {

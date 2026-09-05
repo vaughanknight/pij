@@ -625,4 +625,73 @@ we hand the pattern to pij and the harness. Also `harness observe` each one.
   live half belongs to the PM who owns the live-proof fence. **Rule: route a
   reviewer's proposed measurement into the author's test, not into production
   state.**
+- 2026-09-05 (fellow-whale, 136): **the impl-guide froze five things that did
+  not exist.** Every one was caught by a coder at the ack gate or shortly after,
+  never by me: `editor.onChange` is not a public hook in the installed pi/omp SDK
+  (u1 found `onTerminalInput`, which also made risk r1 impossible rather than
+  merely unlikely — the extension's own writes are structurally invisible to it);
+  `bun test` was prescribed for files that import vitest, so the baseline failed
+  8/8 on `vi.stubEnv` and would have been miscounted as RED; the plan's
+  claimed-and-unacked hold could not satisfy the bypass AC because
+  `queue.rs:258` refuses a second claim per serial key; `Queue::retry` is
+  RUNNING-only so it could not serve release; and I froze a peek-based poll on
+  the assumption `Queue::peek` honours `not_before`, which it does not.
+  **Rule: wave 0 must produce a FEASIBILITY RECEIPT beside every frozen seam —
+  the installed API's type signature, and a probe of the real store's behaviour
+  — not just the contract's field names. A contract that names fields nobody has
+  called is a wish list.** Corollary that cost u3 a stall: freezing a signature
+  is not enough; the SYMBOL it must compile against (`DEFAULT_TYPING_GRACE_MS`)
+  has to exist in wave 0 too, or "three independent units" is true for writes and
+  false for builds.
+- 2026-09-05 (fellow-whale, 136): **the packet's assumption-interrogation (i5)
+  paid for the whole pipeline in one run.** u2 found THREE defects at seams it
+  did not own — the 300 s claim lease double-read, the release race where an
+  unconditional `defer(job, 0)` would revoke a live reader's claim and deliver
+  twice, and the FIFO inversion where an older row re-held to a later deadline
+  loses its place — and every one of them would have passed both sides' unit
+  tests and failed only in front of Jordan. **Rule: ask each unit what it assumed
+  about the composition it does NOT own, and treat a coder's source citation as
+  outranking the impl-guide, the PM and prime. All three of my rulings that got
+  reversed today were reversed by a coder holding a line number.**
+- 2026-09-05 (fellow-whale, 136): **the live proof is where the honest failures
+  live.** AC1 passed and simultaneously revealed a duplicate `delivery.released`
+  row (two declaration sites), which unit tests could not see because each side
+  was individually correct. AC4 could not be proven AT ALL: the bypass guard is
+  correct code checking fields the daemon can never populate (rs refuses
+  `--command`, `Msg` has no `urgent`, `/v1/send` hardcodes `command: None`), so
+  it shipped UNCHECKED with three citations rather than ticked on unit evidence.
+  **Rule: a live proof's job is not to confirm the ACs; it is to find the ones
+  that are unprovable. Record an unreachable AC as unreachable — a checked box
+  resting on tests that exercise a path no live message can take is worse than an
+  empty one.**
+- 2026-09-05 (fellow-whale, 136): **two composition-only defects existed in no
+  unit's diff.** u2 and u3 each honestly resolved `PIJ_TYPING_GRACE_MS` on their
+  own side, which is two resolutions of one env var — the AC7 failure mode
+  wearing a different coat — and a `pointer::worker` control test encoding "the
+  draft is the veto" went red only when all three units met. **Rule: composition
+  is not merging; it is looking for the facts that are true in every unit and
+  false in their union. Budget a compose pass that expects to find something, and
+  retire obsolete controls WITH their reason in the test's own words rather than
+  deleting them.**
+- 2026-09-05 (fellow-whale, 136): **a wire-format change is a cross-plan event.**
+  135 changed the message frame while 136 was mid-flight; ten of u1's assertions
+  compared the injected string literally and all ten moved at once. u1's fix
+  replaced 23 literals with the frame helper — removing the class rather than
+  migrating the instances. silverfish's own retro says 135 had ALREADY enumerated
+  every literal it touched and it did not occur to either of us that the same
+  list was advance warning for a sibling plan. **Rule: when a plan changes a wire
+  format, the enumerated list of touched literals goes to every live sibling PM at
+  compose time, and assertions cite the producer's helper instead of retyping the
+  protocol.**
+- 2026-09-05 (fellow-whale, 136): **messages to a working seat can land in that
+  seat's tool-subagent instead of its main context** (u1 and u3 logged it
+  independently; MFB corroborated it as omp `session_switch` during a subagent).
+  The transport reports delivered, the spine agrees, and the intended reader never
+  sees it — a silent mis-delivery INSIDE the seat that no daemon-side evidence can
+  reveal. My workaround was to restate every ruling and cite an on-disk ruling
+  file, so a seat can recover authority from git rather than from its inbox.
+  **Rule: a consequential ruling gets written to the plan folder and committed,
+  and the message carries the path. Note the irony for this plan specifically:
+  136 governs WHEN to inject; this is WHO inside the seat receives it, and nothing
+  currently answers that.**
 - (add as they arise)

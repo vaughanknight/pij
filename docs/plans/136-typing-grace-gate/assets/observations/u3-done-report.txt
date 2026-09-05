@@ -1,0 +1,501 @@
+u3 DONE — commit 852f6d30ce4b888c79435b4d2d4883eb9a30059e
+Root: /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u3
+Changed product source: crates/harnesses/src/interaction.rs only.
+
+PM amendments:
+- Existing new(tmux) and with_idle_window(tmux, idle_window) preserved.
+- Add with_typing_grace(tmux, idle_window, grace_ms). PM approved three arguments to retain config.interaction_idle_ms.
+- Default imports pij_core::delivery::DEFAULT_TYPING_GRACE_MS; no local grace literal. Imported u2's 95d344e1 through plan branch b7fe533a before final proof.
+- InjectionVerdict.next_retry_at: Option<Duration>, time REMAINING until last observed edit+grace, not timestamp.
+- Physical composer_idle brake retained; stale draft owned submission returns ComposerBusy. Socket policy permits stale draft with draft_sha context and reason=None.
+- No receipt/pointer deadline wiring in this unit; PM ruled current queue-derived next_retry_at remains unchanged.
+- No full harness/workspace gates or boot. PM amended done bar to scoped cargo test -p pij-harnesses. Commands include VITEST_MAX_WORKERS=4 VITEST_MAX_THREADS=4 CARGO_BUILD_JOBS=4.
+
+COMPOSITION RECIPE
+The constructor doc comment contains the exact code. Resolve PIJ_TYPING_GRACE_MS with fallback DEFAULT_TYPING_GRACE_MS at the daemon, share that value with the register response, and replace lib.rs root call with:
+Arc::new(InteractionGate::with_typing_grace(Arc::clone(&tmux), Duration::from_millis(config.interaction_idle_ms), typing_grace_ms))
+No default callsite requires a change after the additive ruling.
+
+VERIFIED EXISTING CALLERS (original line numbers, absolute root above):
+crates/daemon/src/lib.rs:328 (production composition)
+crates/daemon/src/pane_observer.rs:495,543,686,725,791,846,886,954,1004,1059,1115,1164 (tests)
+crates/daemon/src/delivery/mod.rs:851,957 (tests)
+crates/daemon/src/pointer/worker.rs:628,1406,1539 (tests)
+crates/cli/tests/spawn.rs:522 (test)
+19 callsites total. LSP references/hover returned empty despite configured rust-analyzer; exact absolute-worktree search independently recovered these. Source unchanged outside fence.
+
+ASSUMPTIONS
+1. Composer content changes/known clear transitions are sampled interaction evidence, not direct keyboard events. Observer default interval is 600ms; activity between observations can be missed. First observed nonblank content conservatively starts one grace at observation time.
+2. Output taps and pane-in-mode never refresh last_edit_at. Legacy idle/latch state remains separate; repeated unchanged capture does not extend typing grace.
+3. Known self-injection matches must be marked before the pane renders the injected payload; the existing self-injection window is 2s. Recognized echoes and their clears do not create human-edit timestamps.
+4. Observer and send boundary share the same InteractionGate instance in daemon composition. Either may establish the first content observation. Unrecognized-layout recovery can only infer edits from newly recognized content, not recover missed keyboard timestamps.
+5. The caller is responsible for interpreting Duration as remaining time and adding it to its own clock if publishing a timestamp. This unit does not change queue scheduling or existing wire receipts; no claim of an end-to-end deadline change is made.
+6. AC6 stale-draft delivery is the Claude socket path. Physical send-keys never writes into a nonempty draft regardless of age.
+7. Tests include the frozen contract from docs/plans/136-typing-grace-gate/assets/contracts/hold-events.json. Any later plan archival must preserve/update that fixture path.
+
+VERIFICATION
+- cargo test -p pij-harnesses: 100 unit + 2 integration passed, 0 failed; 3 documentation examples ignored (one is the PM-only composition recipe).
+- cargo clippy -p pij-harnesses --all-targets -- -D warnings: exit 0.
+- cargo fmt -p pij-harnesses --check: exit 0.
+- One focused review found a self-echo baseline provenance defect. Reproduced RED, fixed, regression passed in final suite.
+- Tree-resident proof: interaction.rs under the absolute worktree root, mtime=1788566673 size=56926. Final compiler output names that worktree.
+- cargo 1.98.0 (797e8a9bc 2026-08-05); rustc 1.98.0 (88d9e12ae 2026-08-18); harness 0.14.0.
+- harness commit staged only crates/harnesses/src/interaction.rs; direct-verified attribution landed for 852f6d30ce4b888c79435b4d2d4883eb9a30059e.
+
+HARNESS NOTES
+- DL-001: Rust LSP references/hover empty on worktree; absolute-path fallback evidence used.
+- CONF-001: missing deadline transport and expanded caller inventory resolved through explicit PM additive/Duration rulings.
+- DL-002: PM messages landed in idle scout context; exact rulings forwarded back. One earlier send lost API names; literal-body transmission avoids shell substitution.
+- Commit succeeded with verified authorship, but conversation ingest warned that session identity was unresolvable; no conversation was ingested. No false claim of conversation sync.
+- Encoded improvement delivered: deterministic boundary, stale-draft, own-echo and baseline-clear regression witnesses in the engineering harness.
+- Recommended packet improvement: land the shared compileable default constant in wave zero before fan-out, alongside its frozen result types. No out-of-fence doctrine edits made.
+- Cleanup: no installs, toolchain changes, daemon operations or unrelated source edits. Preserve u3-evidence.txt, this report and the observation buffer for PM harvesting; do not clear them.
+
+PASTED PROOF RECEIPTS FOLLOW
+
+u3 typing-grace-gate proof receipts
+Worktree: /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u3
+Branch: 136-typing-grace-gate-u3
+Toolchain: cargo 1.98.0 (797e8a9bc 2026-08-05); rustc 1.98.0 (88d9e12ae 2026-08-18); harness 0.14.0
+All test commands: VITEST_MAX_THREADS=4 CARGO_BUILD_JOBS=4
+No harness boot or full gates run.
+
+PRE-FIX behavioral RED (production unchanged; only tests added):
+/Users/jordanknight/.cargo/bin/cargo test -p pij-harnesses typing_grace_ -- --nocapture
+exit 101, 10.47 seconds
+
+running 2 tests
+thread 'interaction::tests::typing_grace_recent_edit_to_blank_still_defers' (891244210) panicked at crates/harnesses/src/interaction.rs:769:9:
+a key five seconds ago is recent even after deleting the draft
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'interaction::tests::typing_grace_parked_draft_releases_without_another_key' (891244209) panicked at crates/harnesses/src/interaction.rs:800:13:
+parked draft at 61000 ms is not a human at the keyboard
+test interaction::tests::typing_grace_recent_edit_to_blank_still_defers ... FAILED
+test interaction::tests::typing_grace_parked_draft_releases_without_another_key ... FAILED
+
+failures:
+
+failures:
+    interaction::tests::typing_grace_parked_draft_releases_without_another_key
+    interaction::tests::typing_grace_recent_edit_to_blank_still_defers
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 94 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p pij-harnesses --lib`
+
+ADDITIONAL PRE-FIX RED (constructor injected; veto unchanged):
+/Users/jordanknight/.cargo/bin/cargo test -p pij-harnesses typing_grace_ -- --nocapture
+exit 101, 2.23 seconds
+   Compiling pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u3/crates/harnesses)
+warning: field `typing_grace` is never read
+   --> crates/harnesses/src/interaction.rs:114:5
+    |
+110 | pub struct InteractionGate {
+    |            --------------- field in this struct
+...
+114 |     typing_grace: Duration,
+    |     ^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `pij-harnesses` (lib test) generated 1 warning (1 duplicate)
+warning: `pij-harnesses` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.76s
+     Running unittests src/lib.rs (target/debug/deps/pij_harnesses-74dbab2c0e19c81f)
+
+running 5 tests
+
+thread 'interaction::tests::typing_grace_recent_edit_to_blank_still_defers' (891346715) panicked at crates/harnesses/src/interaction.rs:774:9:
+a key five seconds ago is recent even after deleting the draft
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'interaction::tests::typing_grace_uses_injected_boundary_independently_of_idle_window' (891346718) panicked at crates/harnesses/src/interaction.rs:834:21:
+assertion `left == right` failed: at=0, grace=0, idle=1
+  left: false
+ right: true
+
+thread 'interaction::tests::typing_grace_self_echo_does_not_start_human_grace' (891346717) panicked at crates/harnesses/src/interaction.rs:881:9:
+our own injection is not human typing
+
+thread 'interaction::tests::typing_grace_rendered_output_does_not_rearm_a_parked_draft' (891346716) panicked at crates/harnesses/src/interaction.rs:863:9:
+output bytes are not a fresh human edit
+
+thread 'interaction::tests::typing_grace_parked_draft_releases_without_another_key' (891346714) panicked at crates/harnesses/src/interaction.rs:801:13:
+parked draft at 61000 ms is not a human at the keyboard
+test interaction::tests::typing_grace_recent_edit_to_blank_still_defers ... FAILED
+test interaction::tests::typing_grace_uses_injected_boundary_independently_of_idle_window ... FAILED
+test interaction::tests::typing_grace_self_echo_does_not_start_human_grace ... FAILED
+test interaction::tests::typing_grace_rendered_output_does_not_rearm_a_parked_draft ... FAILED
+test interaction::tests::typing_grace_parked_draft_releases_without_another_key ... FAILED
+
+failures:
+
+failures:
+    interaction::tests::typing_grace_parked_draft_releases_without_another_key
+    interaction::tests::typing_grace_recent_edit_to_blank_still_defers
+    interaction::tests::typing_grace_rendered_output_does_not_rearm_a_parked_draft
+    interaction::tests::typing_grace_self_echo_does_not_start_human_grace
+    interaction::tests::typing_grace_uses_injected_boundary_independently_of_idle_window
+
+test result: FAILED. 0 passed; 5 failed; 0 ignored; 0 measured; 94 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p pij-harnesses --lib`
+
+POST-FIX OLD CONTROL RED (before rewriting obsolete expectation):
+/Users/jordanknight/.cargo/bin/cargo test -p pij-harnesses fresh_verdict_never_expires_a_recognized_draft -- --nocapture
+exit 101, 1.68 seconds
+   Compiling pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u3/crates/harnesses)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.19s
+     Running unittests src/lib.rs (target/debug/deps/pij_harnesses-74dbab2c0e19c81f)
+
+running 1 test
+
+thread 'interaction::tests::fresh_verdict_never_expires_a_recognized_draft' (891370956) panicked at crates/harnesses/src/interaction.rs:916:9:
+a recognized draft remains a human veto
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test interaction::tests::fresh_verdict_never_expires_a_recognized_draft ... FAILED
+
+failures:
+
+failures:
+    interaction::tests::fresh_verdict_never_expires_a_recognized_draft
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 98 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p pij-harnesses --lib`
+
+INITIAL RECENCY GREEN:
+/Users/jordanknight/.cargo/bin/cargo test -p pij-harnesses typing_grace_ -- --nocapture
+   Compiling pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u3/crates/harnesses)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.27s
+     Running unittests src/lib.rs (target/debug/deps/pij_harnesses-74dbab2c0e19c81f)
+
+running 5 tests
+test interaction::tests::typing_grace_recent_edit_to_blank_still_defers ... ok
+test interaction::tests::typing_grace_self_echo_does_not_start_human_grace ... ok
+test interaction::tests::typing_grace_rendered_output_does_not_rearm_a_parked_draft ... ok
+test interaction::tests::typing_grace_parked_draft_releases_without_another_key ... ok
+test interaction::tests::typing_grace_uses_injected_boundary_independently_of_idle_window ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 94 filtered out; finished in 0.00s
+
+     Running tests/proc_integration.rs (target/debug/deps/proc_integration-33d39fb53056291d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+
+FULL SCOPED SUITE BEFORE PHYSICAL BRAKE REASON CORRECTION:
+/Users/jordanknight/.cargo/bin/cargo test -p pij-harnesses
+   Compiling pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u3/crates/harnesses)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.38s
+     Running unittests src/lib.rs (target/debug/deps/pij_harnesses-74dbab2c0e19c81f)
+
+running 99 tests
+test adapter::tests::pi_status_footer_is_not_ready_while_the_spinner_is_active ... ok
+test adapter::tests::omp_status_footer_is_not_ready_while_the_spinner_is_active ... ok
+test adapter::tests::codex_rotating_placeholder_is_not_a_readiness_anchor ... ok
+test adapter::tests::registry_enumerates_exactly_the_five_frozen_variants ... ok
+test adapter::tests::bind_evidence_depends_on_observed_cwd_model_and_process ... ok
+test adapter::tests::busy_guard_wins_over_a_visible_ready_anchor ... ok
+test adapter::tests::concrete_observation_returns_native_id_model_cwd_and_pane ... ok
+test claude_settings::tests::duplicate_keys_update_the_effective_last_value ... ok
+test adapter::tests::bind_observation_uses_shared_admission_and_refuses_subagents ... ok
+test adapter::tests::every_harness_variant_classifies_its_recorded_fixture ... ok
+test claude_settings::tests::insertion_preserves_crlf_line_endings ... ok
+test claude_settings::tests::pure_plan_refuses_non_object_json ... ok
+test claude_settings::tests::home_discovery_prefers_config_dir_and_includes_existing_alt ... ok
+test claude_settings::tests::correct_statusline_command_is_a_no_op_without_backup ... ok
+test claude_settings::tests::already_accept_is_a_no_op_without_backup ... ok
+test claude_settings::tests::absent_file_is_created_with_accept ... ok
+test claude_settings::tests::existing_session_start_hook_is_a_no_op_without_backup ... ok
+test claude_settings::tests::malformed_json_is_untouched_and_reported ... ok
+test claude_settings::tests::foreign_empty_hook_entry_survives_reconciliation ... ok
+test claude_settings::tests::session_start_hook_refuses_malformed_settings_without_touching_them ... ok
+test claude_settings::tests::absent_key_is_added_without_rewriting_other_settings ... ok
+test claude_settings::tests::hold_is_replaced_and_original_is_backed_up ... ok
+test composer::tests::copilot_footer_is_excluded_from_composer_text ... ok
+test composer::tests::copilot_v1_box_clips_typed_text_at_the_cursor ... ok
+test composer::tests::current_codex_prompt_and_footer_identify_the_composer ... ok
+test composer::tests::cursor_clips_suggestion_text_to_the_right ... ok
+test composer::tests::cursor_outside_recognized_region_is_unrecognized ... ok
+test composer::tests::decorative_blank_rule_region_is_not_an_idle_composer ... ok
+test composer::tests::garbage_layout_is_unrecognized ... ok
+test composer::tests::live_copilot_v1_box_is_recognized_without_prompt_marker ... ok
+test composer::tests::live_recorded_layouts_recognize_the_cursor_composer ... ok
+test composer::tests::markdown_table_borders_are_not_composer_rules ... ok
+test composer::tests::omp_inline_composer_is_clipped_at_the_measured_cursor ... ok
+test composer::tests::rounded_border_above_cursor_does_not_hide_later_composer ... ok
+test interaction::tests::a_clear_observation_can_return_to_unknown_and_block ... ok
+test interaction::tests::active_tmux_mode_remains_the_fallback_veto ... ok
+test interaction::tests::expired_self_echo_exemption_does_not_hide_human_input ... ok
+test interaction::tests::fresh_boundary_recognized_blank_without_tap_permits ... ok
+test interaction::tests::fresh_boundary_replaces_a_stale_clear_composer_observation ... ok
+test interaction::tests::fresh_boundary_streamed_output_with_blank_composer_permits ... ok
+test interaction::tests::fresh_boundary_unrecognized_layout_defers ... ok
+test interaction::tests::fresh_verdict_expires_a_recognized_draft_after_typing_grace ... ok
+test interaction::tests::generation_transition_with_adjacent_human_text_acquires_a_hold ... ok
+test interaction::tests::initial_uncertainty_expires_to_tmux_mode_alone ... ok
+test interaction::tests::injection_requires_both_tmux_and_composer_gates_clear ... ok
+test interaction::tests::legacy_frame_observed_as_pij_rs_frame_remains_a_self_echo ... ok
+test interaction::tests::observed_composer_clear_does_not_override_tmux_mode ... ok
+test interaction::tests::owned_submit_vetoes_draft_and_ignores_streamed_output ... FAILED
+test interaction::tests::parked_draft_holds_at_most_the_idle_window_then_sends ... ok
+test interaction::tests::repeated_unknown_observations_do_not_refresh_interaction_age ... ok
+test interaction::tests::self_echo_exemption_is_one_shot ... ok
+test interaction::tests::self_echo_match_is_exact_not_a_substring ... ok
+test interaction::tests::self_echo_never_acquires_a_hold ... ok
+test interaction::tests::self_echo_never_destroys_an_active_human_hold ... ok
+test interaction::tests::tap_latch_expires_after_the_idle_window ... ok
+test interaction::tests::transaction_exit_table_clears_marker_input_and_exemption ... ok
+test interaction::tests::typing_grace_parked_draft_releases_without_another_key ... ok
+test interaction::tests::typing_grace_recent_edit_to_blank_still_defers ... ok
+test interaction::tests::typing_grace_rendered_output_does_not_rearm_a_parked_draft ... ok
+test interaction::tests::typing_grace_self_echo_does_not_start_human_grace ... ok
+test interaction::tests::typing_grace_uses_injected_boundary_independently_of_idle_window ... ok
+test interaction::tests::typing_through_restart_is_not_rebaselined_away ... ok
+test interaction::tests::unrecognized_veto_expires_to_the_tmux_mode_verdict ... ok
+test models::tests::absent_empty_and_raw_null_levels_fold_but_missing_request_id_fails_by_name ... ok
+test models::tests::corpus_preserves_runtime_provider_selector_and_request_id ... ok
+test claude_settings::tests::duplicate_stale_managed_hooks_collapse_to_one ... ok
+test models::tests::omp_parser_accepts_null_levels_and_preserves_alias_request_id ... ok
+test claude_settings::tests::session_start_hook_appends_without_reordering_existing_entries ... ok
+test models::tests::pi_and_copilot_parsers_keep_runtime_provider_and_selector_separate ... ok
+test models::tests::omp_parser_rejects_one_bad_row_without_returning_survivors ... ok
+test models::tests::runtime_filter_touches_only_its_adapter_but_provider_filter_requires_all ... ok
+test proc::tests::an_absent_exact_pid_is_none ... ok
+test proc::tests::exact_pid_command_and_macos_parser_are_fixture_backed ... ok
+test proc::tests::linux_spacing_is_fixture_backed ... ok
+test proc::tests::malformed_process_output_is_an_adapter_error ... ok
+test proc::tests::permission_denied_is_not_dead ... ok
+test proc::tests::utc_record_matches_the_same_local_start_and_rejects_recycled_pid_time ... ok
+test spawn::tests::accept_inbound_is_refused_for_every_non_claude_harness ... ok
+test spawn::tests::accept_stamp_is_true_only_when_exact_setting_is_emitted ... ok
+test spawn::tests::copilot_rpc_port_is_refused_for_other_harnesses_and_port_zero ... ok
+test spawn::tests::copilot_rpc_stamp_is_derived_only_from_the_exact_emitted_argv ... ok
+test spawn::tests::every_harness_builds_discrete_ruled_argv ... ok
+test spawn::tests::executable_override_and_absent_optional_facts_are_preserved ... ok
+test spawn::tests::observed_launch_keeps_discrete_argv_and_names_status_path ... ok
+test claude_settings::tests::session_start_hook_creates_missing_settings ... ok
+test models::tests::production_catalog_matches_the_committed_folded_golden ... ok
+test claude_settings::tests::correct_managed_hook_removes_stale_sibling ... ok
+test claude_settings::tests::statusline_refuses_malformed_settings_without_touching_them ... ok
+test claude_settings::tests::session_start_hook_shell_quotes_spaced_script_paths ... ok
+test claude_settings::tests::session_start_hook_preserves_existing_hooks_byte_for_byte ... ok
+test claude_settings::tests::stale_managed_hook_is_replaced_in_place ... ok
+test claude_settings::tests::empty_and_whitespace_files_are_backed_up_then_repaired ... ok
+test claude_settings::tests::statusline_command_is_replaced_without_touching_hooks ... ok
+test claude_settings::tests::installed_script_is_executable_and_silent_without_tmux ... ok
+test claude_settings::tests::refused_script_adopt_logs_one_line_and_stays_silent ... ok
+test claude_settings::tests::successful_script_adopt_emits_only_session_start_json ... ok
+test adapter::tests::every_harness_port_operation_runs_against_each_recorded_pane ... ok
+test models::tests::every_real_adapter_returns_non_empty_models_or_an_honest_unavailable_error ... ok
+test claude_settings::tests::statusline_script_prefers_rs_and_falls_back_to_legacy ... ok
+
+failures:
+
+---- interaction::tests::owned_submit_vetoes_draft_and_ignores_streamed_output stdout ----
+
+thread 'interaction::tests::owned_submit_vetoes_draft_and_ignores_streamed_output' (891422919) panicked at crates/harnesses/src/interaction.rs:1018:9:
+assertion `left == right` failed: a non-blank composer is never a pane-typing target, regardless of age
+  left: Deferred { reason: Unrecognized, draft_sha: Some("751a2cb0c9eb") }
+ right: Deferred { reason: HumanTyping, draft_sha: Some("751a2cb0c9eb") }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    interaction::tests::owned_submit_vetoes_draft_and_ignores_streamed_output
+
+test result: FAILED. 98 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.41s
+
+error: test failed, to rerun pass `-p pij-harnesses --lib`
+
+REVIEW REGRESSION RED (baseline-only self-echo provenance):
+/Users/jordanknight/.cargo/bin/cargo test -p pij-harnesses typing_grace_baseline_echo_clear_preserves_provenance -- --nocapture
+   Compiling pij-core v0.1.0 (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u3/crates/core)
+   Compiling pij-testkit v0.1.0 (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u3/crates/testkit)
+   Compiling pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u3/crates/harnesses)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.34s
+     Running unittests src/lib.rs (target/debug/deps/pij_harnesses-74dbab2c0e19c81f)
+
+running 1 test
+
+thread 'interaction::tests::typing_grace_baseline_echo_clear_preserves_provenance' (891819705) panicked at crates/harnesses/src/interaction.rs:1092:13:
+clearing a reflowed echo is not a new human edit
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test interaction::tests::typing_grace_baseline_echo_clear_preserves_provenance ... FAILED
+
+failures:
+
+failures:
+    interaction::tests::typing_grace_baseline_echo_clear_preserves_provenance
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 99 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p pij-harnesses --lib`
+
+FINAL GREEN (exit 0, 8.82 seconds combined):
+VITEST_MAX_WORKERS=4 VITEST_MAX_THREADS=4 CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4
+/Users/jordanknight/.cargo/bin/cargo fmt -p pij-harnesses && /Users/jordanknight/.cargo/bin/cargo test -p pij-harnesses && /Users/jordanknight/.cargo/bin/cargo clippy -p pij-harnesses --all-targets -- -D warnings && /Users/jordanknight/.cargo/bin/cargo fmt -p pij-harnesses --check
+   Compiling pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u3/crates/harnesses)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.22s
+     Running unittests src/lib.rs (target/debug/deps/pij_harnesses-74dbab2c0e19c81f)
+
+running 100 tests
+test adapter::tests::busy_guard_wins_over_a_visible_ready_anchor ... ok
+test adapter::tests::codex_rotating_placeholder_is_not_a_readiness_anchor ... ok
+test adapter::tests::bind_evidence_depends_on_observed_cwd_model_and_process ... ok
+test adapter::tests::bind_observation_uses_shared_admission_and_refuses_subagents ... ok
+test adapter::tests::concrete_observation_returns_native_id_model_cwd_and_pane ... ok
+test adapter::tests::omp_status_footer_is_not_ready_while_the_spinner_is_active ... ok
+test adapter::tests::pi_status_footer_is_not_ready_while_the_spinner_is_active ... ok
+test adapter::tests::every_harness_variant_classifies_its_recorded_fixture ... ok
+test adapter::tests::registry_enumerates_exactly_the_five_frozen_variants ... ok
+test claude_settings::tests::already_accept_is_a_no_op_without_backup ... ok
+test claude_settings::tests::absent_file_is_created_with_accept ... ok
+test claude_settings::tests::absent_key_is_added_without_rewriting_other_settings ... ok
+test claude_settings::tests::correct_statusline_command_is_a_no_op_without_backup ... ok
+test claude_settings::tests::duplicate_keys_update_the_effective_last_value ... ok
+test claude_settings::tests::correct_managed_hook_removes_stale_sibling ... ok
+test claude_settings::tests::existing_session_start_hook_is_a_no_op_without_backup ... ok
+test claude_settings::tests::duplicate_stale_managed_hooks_collapse_to_one ... ok
+test claude_settings::tests::foreign_empty_hook_entry_survives_reconciliation ... ok
+test claude_settings::tests::empty_and_whitespace_files_are_backed_up_then_repaired ... ok
+test claude_settings::tests::insertion_preserves_crlf_line_endings ... ok
+test claude_settings::tests::home_discovery_prefers_config_dir_and_includes_existing_alt ... ok
+test claude_settings::tests::hold_is_replaced_and_original_is_backed_up ... ok
+test claude_settings::tests::malformed_json_is_untouched_and_reported ... ok
+test claude_settings::tests::pure_plan_refuses_non_object_json ... ok
+test claude_settings::tests::session_start_hook_appends_without_reordering_existing_entries ... ok
+test claude_settings::tests::session_start_hook_creates_missing_settings ... ok
+test claude_settings::tests::session_start_hook_preserves_existing_hooks_byte_for_byte ... ok
+test claude_settings::tests::session_start_hook_refuses_malformed_settings_without_touching_them ... ok
+test claude_settings::tests::session_start_hook_shell_quotes_spaced_script_paths ... ok
+test claude_settings::tests::stale_managed_hook_is_replaced_in_place ... ok
+test claude_settings::tests::statusline_command_is_replaced_without_touching_hooks ... ok
+test claude_settings::tests::statusline_refuses_malformed_settings_without_touching_them ... ok
+test claude_settings::tests::installed_script_is_executable_and_silent_without_tmux ... ok
+test claude_settings::tests::refused_script_adopt_logs_one_line_and_stays_silent ... ok
+test composer::tests::copilot_footer_is_excluded_from_composer_text ... ok
+test composer::tests::copilot_v1_box_clips_typed_text_at_the_cursor ... ok
+test composer::tests::current_codex_prompt_and_footer_identify_the_composer ... ok
+test composer::tests::cursor_clips_suggestion_text_to_the_right ... ok
+test composer::tests::cursor_outside_recognized_region_is_unrecognized ... ok
+test composer::tests::decorative_blank_rule_region_is_not_an_idle_composer ... ok
+test composer::tests::garbage_layout_is_unrecognized ... ok
+test composer::tests::live_copilot_v1_box_is_recognized_without_prompt_marker ... ok
+test composer::tests::live_recorded_layouts_recognize_the_cursor_composer ... ok
+test composer::tests::markdown_table_borders_are_not_composer_rules ... ok
+test composer::tests::omp_inline_composer_is_clipped_at_the_measured_cursor ... ok
+test composer::tests::rounded_border_above_cursor_does_not_hide_later_composer ... ok
+test interaction::tests::a_clear_observation_can_return_to_unknown_and_block ... ok
+test interaction::tests::active_tmux_mode_remains_the_fallback_veto ... ok
+test interaction::tests::expired_self_echo_exemption_does_not_hide_human_input ... ok
+test interaction::tests::fresh_boundary_recognized_blank_without_tap_permits ... ok
+test interaction::tests::fresh_boundary_replaces_a_stale_clear_composer_observation ... ok
+test interaction::tests::fresh_boundary_streamed_output_with_blank_composer_permits ... ok
+test interaction::tests::fresh_boundary_unrecognized_layout_defers ... ok
+test interaction::tests::fresh_verdict_expires_a_recognized_draft_after_typing_grace ... ok
+test interaction::tests::generation_transition_with_adjacent_human_text_acquires_a_hold ... ok
+test interaction::tests::initial_uncertainty_expires_to_tmux_mode_alone ... ok
+test interaction::tests::injection_requires_both_tmux_and_composer_gates_clear ... ok
+test interaction::tests::legacy_frame_observed_as_pij_rs_frame_remains_a_self_echo ... ok
+test interaction::tests::observed_composer_clear_does_not_override_tmux_mode ... ok
+test interaction::tests::owned_submit_vetoes_draft_and_ignores_streamed_output ... ok
+test interaction::tests::parked_draft_holds_at_most_the_idle_window_then_sends ... ok
+test interaction::tests::repeated_unknown_observations_do_not_refresh_interaction_age ... ok
+test interaction::tests::self_echo_exemption_is_one_shot ... ok
+test interaction::tests::self_echo_match_is_exact_not_a_substring ... ok
+test interaction::tests::self_echo_never_acquires_a_hold ... ok
+test interaction::tests::self_echo_never_destroys_an_active_human_hold ... ok
+test interaction::tests::tap_latch_expires_after_the_idle_window ... ok
+test interaction::tests::transaction_exit_table_clears_marker_input_and_exemption ... ok
+test interaction::tests::typing_grace_baseline_echo_clear_preserves_provenance ... ok
+test interaction::tests::typing_grace_parked_draft_releases_without_another_key ... ok
+test interaction::tests::typing_grace_recent_edit_to_blank_still_defers ... ok
+test interaction::tests::typing_grace_rendered_output_does_not_rearm_a_parked_draft ... ok
+test interaction::tests::typing_grace_self_echo_does_not_start_human_grace ... ok
+test interaction::tests::typing_grace_uses_injected_boundary_independently_of_idle_window ... ok
+test interaction::tests::typing_through_restart_is_not_rebaselined_away ... ok
+test interaction::tests::unrecognized_veto_expires_to_the_tmux_mode_verdict ... ok
+test models::tests::absent_empty_and_raw_null_levels_fold_but_missing_request_id_fails_by_name ... ok
+test models::tests::corpus_preserves_runtime_provider_selector_and_request_id ... ok
+test claude_settings::tests::successful_script_adopt_emits_only_session_start_json ... ok
+test models::tests::omp_parser_accepts_null_levels_and_preserves_alias_request_id ... ok
+test models::tests::omp_parser_rejects_one_bad_row_without_returning_survivors ... ok
+test models::tests::pi_and_copilot_parsers_keep_runtime_provider_and_selector_separate ... ok
+test models::tests::production_catalog_matches_the_committed_folded_golden ... ok
+test models::tests::runtime_filter_touches_only_its_adapter_but_provider_filter_requires_all ... ok
+test proc::tests::an_absent_exact_pid_is_none ... ok
+test proc::tests::exact_pid_command_and_macos_parser_are_fixture_backed ... ok
+test proc::tests::linux_spacing_is_fixture_backed ... ok
+test proc::tests::malformed_process_output_is_an_adapter_error ... ok
+test proc::tests::permission_denied_is_not_dead ... ok
+test proc::tests::utc_record_matches_the_same_local_start_and_rejects_recycled_pid_time ... ok
+test spawn::tests::accept_inbound_is_refused_for_every_non_claude_harness ... ok
+test spawn::tests::accept_stamp_is_true_only_when_exact_setting_is_emitted ... ok
+test spawn::tests::copilot_rpc_port_is_refused_for_other_harnesses_and_port_zero ... ok
+test spawn::tests::copilot_rpc_stamp_is_derived_only_from_the_exact_emitted_argv ... ok
+test spawn::tests::every_harness_builds_discrete_ruled_argv ... ok
+test spawn::tests::executable_override_and_absent_optional_facts_are_preserved ... ok
+test spawn::tests::observed_launch_keeps_discrete_argv_and_names_status_path ... ok
+test claude_settings::tests::statusline_script_prefers_rs_and_falls_back_to_legacy ... ok
+test adapter::tests::every_harness_port_operation_runs_against_each_recorded_pane ... ok
+test models::tests::every_real_adapter_returns_non_empty_models_or_an_honest_unavailable_error ... ok
+
+test result: ok. 100 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.44s
+
+     Running tests/proc_integration.rs (target/debug/deps/proc_integration-33d39fb53056291d)
+
+running 2 tests
+test a_pid_the_platform_cannot_represent_is_absent ... ok
+test own_process_has_a_stable_start_identity ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests pij_harnesses
+
+running 2 tests
+test crates/harnesses/src/interaction.rs - interaction::InteractionGate::with_typing_grace (line 175) ... ignored
+test crates/harnesses/src/proc.rs - proc::ProcLiveness (line 28) ... ignored
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test crates/harnesses/src/adapter.rs - adapter::HarnessRegistry (line 404) ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.54s; merged doctests compilation took 0.17s
+    Checking serde_core v1.0.229
+    Checking typenum v1.20.1
+    Checking zmij v1.0.23
+    Checking itoa v1.0.18
+    Checking memchr v2.8.3
+    Checking thiserror v2.0.20
+    Checking libc v0.2.189
+    Checking generic-array v0.14.7
+    Checking winnow v1.0.4
+    Checking toml_parser v1.1.3+spec-1.1.0
+    Checking crypto-common v0.1.7
+    Checking block-buffer v0.10.4
+    Checking cpufeatures v0.2.17
+    Checking digest v0.10.7
+    Checking toml_writer v1.1.2+spec-1.1.0
+    Checking cfg-if v1.0.4
+    Checking winnow v0.7.15
+    Checking sha2 v0.10.9
+    Checking serde v1.0.229
+    Checking serde_json v1.0.151
+    Checking serde_spanned v1.1.1
+    Checking toml_datetime v0.7.5+spec-1.1.0
+    Checking pij-core v0.1.0 (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u3/crates/core)
+    Checking toml v0.9.12+spec-1.1.0
+    Checking pij-testkit v0.1.0 (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u3/crates/testkit)
+    Checking pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u3/crates/harnesses)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.12s
+TREE-RESIDENT PROOF: stat -f "%N mtime=%m size=%z" /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u3/crates/harnesses/src/interaction.rs
+/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u3/crates/harnesses/src/interaction.rs mtime=1788566673 size=56926
