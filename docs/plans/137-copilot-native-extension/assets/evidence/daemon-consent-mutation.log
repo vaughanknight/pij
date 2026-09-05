@@ -1,0 +1,31 @@
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/daemon)
+warning: unused import: `SemanticState`
+  --> crates/daemon/src/delivery/mod.rs:16:29
+   |
+16 |     SeatDescriptor, SeatId, SemanticState,
+   |                             ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `pij-daemon` (lib test) generated 1 warning (run `cargo fix --lib -p pij-daemon --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.07s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-18bad1c90de73721)
+
+running 1 test
+test delivery::tests::native_claim_consent_holds_then_admits_without_touching_composer ... FAILED
+
+failures:
+
+---- delivery::tests::native_claim_consent_holds_then_admits_without_touching_composer stdout ----
+
+thread 'delivery::tests::native_claim_consent_holds_then_admits_without_touching_composer' (891204369) panicked at crates/daemon/src/delivery/mod.rs:2328:9:
+assertion failed: held.claims.is_empty()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    delivery::tests::native_claim_consent_holds_then_admits_without_touching_composer
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 197 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

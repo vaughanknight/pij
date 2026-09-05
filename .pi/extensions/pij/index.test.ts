@@ -61,12 +61,19 @@ function makeFakePi(
 function makeFakeCtx(initialSessionId: string | undefined = "test-session-statusbar-018") {
 	const statuses: Array<{ key: string; value: string | undefined }> = [];
 	const notices: string[] = [];
+	const terminalInputHandlers = new Set<Parameters<ExtensionContext["ui"]["onTerminalInput"]>[0]>();
 	let sessionId = initialSessionId;
 	const ctx = {
 		sessionManager: { getSessionId: () => sessionId },
 		isIdle: () => true,
 		compact: () => {},
 		ui: {
+			onTerminalInput: (handler: Parameters<ExtensionContext["ui"]["onTerminalInput"]>[0]) => {
+				terminalInputHandlers.add(handler);
+				return () => {
+					terminalInputHandlers.delete(handler);
+				};
+			},
 			setStatus: (key: string, value: string | undefined) => statuses.push({ key, value }),
 			notify: (message: string) => notices.push(message),
 		},
@@ -96,6 +103,9 @@ function rustEnvelope(command: string, data: unknown): Response {
 function fakeRustGeneration(): daemonHttp.DaemonGeneration {
 	const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 		const path = new URL(String(url)).pathname;
+		if (path === "/v1/inbox" && new URL(String(url)).searchParams.get("peek") === "true") {
+			return rustEnvelope("pij inbox", []);
+		}
 		if (path === "/v1/seats") {
 			return rustEnvelope("pij seats", { seats: [], unavailable: [] });
 		}

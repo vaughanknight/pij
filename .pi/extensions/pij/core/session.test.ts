@@ -11,6 +11,7 @@ import {
 	FakeRegistry,
 	FakeTmux,
 } from "../adapters/fakes.js";
+import { frame } from "./message.js";
 import type { ModelEntry } from "./models/registry.js";
 import type { SpawnExpectationStore } from "./ports.js";
 import type { BootInput, PijPorts } from "./session.js";
@@ -388,7 +389,10 @@ describe("PijSession.onInbound — free text", () => {
 		h.pi.injects.length = 0; // drop the announce
 		const res = h.session.onInbound({ from: "bob", to: "alice", body: "hi" }, "m1");
 		expect(res).toMatchObject({ kind: "delivered", state: "delivered" });
-		expect(h.pi.injects[0]).toMatchObject({ text: "[pij from bob] hi", mode: "immediate" });
+		expect(h.pi.injects[0]).toMatchObject({
+			text: frame("bob", "hi"),
+			mode: "immediate",
+		});
 		// receipt goes back to the sender as a kind:receipt message...
 		expect(h.delivery.outbox).toHaveLength(1);
 		expect(h.delivery.outbox[0]?.message).toMatchObject({

@@ -1,0 +1,54 @@
+{
+  "plan": "137-copilot-native-extension",
+  "pm": "pij-grim-gurgeh",
+  "prime": "pij-minor-unicorn",
+  "base": "46c9314c4b97449c33da1c9de2590500b8815702",
+  "contract_commit": "36248c58638316c3bc3d4c90aad765eda39b3ba3",
+  "plan_worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension",
+  "coders": {
+    "daemon": {
+      "seat": "pij-grotesque-armadillo",
+      "pane": "%3475",
+      "harness": "omp",
+      "model": "github-copilot/gpt-6-astra-1m",
+      "effort": "high",
+      "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon",
+      "branch": "137-copilot-native-daemon",
+      "packet": "docs/plans/137-copilot-native-extension/assets/packets/coder-daemon.dd.json",
+      "state": "cold-resume/transient authority plus separate footer patch in progress; footer compose waits135main"
+    },
+    "runtime": {
+      "seat": "pij-worldwide-rat",
+      "pane": "%3476",
+      "harness": "omp",
+      "model": "github-copilot/gpt-6-astra-1m",
+      "effort": "high",
+      "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime",
+      "branch": "137-copilot-native-runtime",
+      "packet": "docs/plans/137-copilot-native-extension/assets/packets/coder-runtime.dd.json",
+      "state": "f75826a8 ready80 scoped; paired daemon producer proof pending"
+    },
+    "install": {
+      "seat": "pij-intellectual-mosquito",
+      "pane": "%3477",
+      "harness": "omp",
+      "model": "github-copilot/gpt-6-astra-1m",
+      "effort": "high",
+      "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-install",
+      "branch": "137-copilot-native-install",
+      "packet": "docs/plans/137-copilot-native-extension/assets/packets/coder-install.dd.json",
+      "state": "review fixes composed;41 PM tests; fresh-home driver exposed native gate blocker"
+    }
+  },
+  "reviewer": {
+    "seat": "pij-static-rhinoceros",
+    "pane": "%3472",
+    "harness": "omp",
+    "model": "github-copilot/claude-opus-5",
+    "effort": "high",
+    "packet": "docs/plans/137-copilot-native-extension/assets/packets/reviewer.dd.json",
+    "state": "targeted review: remaining cold-resume/transient producer checks and live policy decision"
+  },
+  "canary_evidence": "All peers completed actual nonce reply through native pij_send, model/high confirmed in pane/launch argv. Some incoming replies missing in busy PM conversation; bounded pane capture recovered real reply receipt. Legacy pij canary is TS-registry-only and refused rs seats. No global runtime upgrade.",
+  "blocked_on": "Jordan native typing policy decision and135 main prerequisite; no fallback allowed"
+}

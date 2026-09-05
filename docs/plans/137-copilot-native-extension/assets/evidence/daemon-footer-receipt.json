@@ -1,0 +1,32 @@
+{
+  "status": "ready_held_for_pm_composition_permission",
+  "source_commit": "8f56be9503c2ac02141b7c15740299bee6df6ca4",
+  "depends_on_daemon_source": "dba208cd682656694076336399e5e5df8f9cc55e",
+  "permission": "Prime approved this narrow observer predicate correction. Do not compose until PM signals135 on main; no merge or global action performed by this coder.",
+  "scope": ["crates/harnesses/src/composer.rs", "crates/harnesses/tests/fixtures/2026-09-05-copilot-v1.0.84-smoke03.json"],
+  "change": "Add only the captured idle footer prefix: ← open sidebar · / commands · ? help · tab next tab. Preserve / commands, esc interrupt and context variants. No interaction.rs, vocabulary, gate policy or transport fallback changes.",
+  "capture": {
+    "origin": "PM pm-native-local-03.json /final_pane_captures/1/terminal, identical /witnesses/2/pane",
+    "copilot": "1.0.84-0",
+    "original_sha256": "4dacc224357636d474ced1d2ee4b4d6bed17a011e87f2cf8c27a503a18f1623c",
+    "sanitization": "Exactly one workspace path replaced with <workspace>; reversing substitution reproduces all original bytes. Footer unchanged.",
+    "snapshot_cursor": null,
+    "retained_raw_output": "Copied byte-for-byte from smoke03 daemon/pane-signals/_2.raw. Its ESC[46;3H gives x2/y45 but is not timestamp-paired with the final capture.",
+    "proof_ceiling": "Direct footer predicate recognition only for this new capture. No synthesized cursor, whole-composer recognition, native delivery or model-completion claim."
+  },
+  "red": {
+    "command": "cargo test --locked -p pij-harnesses composer::tests::copilot_v1_0_84_captured_idle_footer_is_recognized -- --exact --test-threads=4",
+    "result": "Observed expected assertion failure on actual captured idle footer before production predicate edit",
+    "log": "daemon-footer-red.log"
+  },
+  "green": {
+    "command": "cargo test --locked -p pij-harnesses -p pij-daemon --no-fail-fast -- --test-threads=4 && cargo clippy --locked -p pij-harnesses -p pij-daemon --all-targets -- -D warnings && rustfmt --check --edition 2024 --config skip_children=true crates/harnesses/src/composer.rs",
+    "result": "382 passed across 16 suites, 2 existing ignored; strict scoped Clippy and rustfmt passed",
+    "log": "daemon-footer-green.log",
+    "raw_log_lines": 486,
+    "raw_log_sha256": "5c278d4dbfcd4b2051dc60b7113bc33426aeeda7a0b696cf1a2ef342f4834c75"
+  },
+  "caps": {"CARGO_BUILD_JOBS": "4", "VITEST_MAX_WORKERS": "4", "VITEST_MAX_THREADS": "4", "rust_test_threads": 4},
+  "harness_improvement": "Captured real terminal bytes and explicit absent/unpaired cursor metadata prevent fixture inference from masquerading as whole-composer proof. RED-GREEN predicate witness preserves the approved narrow boundary.",
+  "pending": "PM135-on-main composition permission and final real CLI/native-gate acceptance."
+}

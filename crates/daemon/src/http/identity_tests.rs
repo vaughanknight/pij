@@ -127,6 +127,433 @@ async fn refusal_envelope(response: reqwest::Response) -> Envelope<serde_json::V
     envelope
 }
 
+/// Only synthetic sleep processes: no tmux panes, harnesses, or live seats.
+struct HarnessChild {
+    shell: std::process::Child,
+    child_pid: u32,
+    dir: std::path::PathBuf,
+    output: std::io::BufReader<std::process::ChildStdout>,
+}
+
+impl HarnessChild {
+    fn new() -> Self {
+        use std::io::BufRead as _;
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let nonce = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("pij-child-{}-{nonce}", std::process::id()));
+        std::fs::create_dir(&dir).expect("fixture directory");
+        // Beyond ordinary terminal width: the process observer must request -ww.
+        let bin = dir.join("long-parent-".repeat(20));
+        std::fs::create_dir(&bin).expect("long executable directory");
+        let executable = bin.join("claude");
+        std::os::unix::fs::symlink("/bin/sleep", &executable)
+            .expect("synthetic harness executable");
+        let mut shell = std::process::Command::new("sh")
+            .args([
+                "-c",
+                "trap 'if [ -n \"$child\" ]; then kill $child 2>/dev/null; wait $child 2>/dev/null; fi' EXIT; \"$1\" 60 & child=$!; echo $child; while read action; do kill $child; wait $child; child=; if [ \"$action\" = restart ]; then \"$1\" 60 & child=$!; echo $child; else echo stopped; read ignored; exit; fi; done",
+                "fixture",
+            ])
+            .arg(&executable)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("fixture shell");
+        let mut line = String::new();
+        let mut output = std::io::BufReader::new(shell.stdout.take().expect("child PID pipe"));
+        output.read_line(&mut line).expect("fixture child started");
+        let fixture = Self {
+            shell,
+            child_pid: line.trim().parse().expect("child PID"),
+            dir,
+            output,
+        };
+        // A forked PID is not proof that exec has installed the harness argv.
+        // Observe readiness independently from the helper under test.
+        let expected = format!("{} ", executable.display());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            let observed = std::process::Command::new("ps")
+                .args([
+                    "-ww",
+                    "-p",
+                    &fixture.child_pid.to_string(),
+                    "-o",
+                    "command=",
+                ])
+                .output()
+                .expect("fixture command observation");
+            if observed.status.success()
+                && String::from_utf8_lossy(&observed.stdout)
+                    .trim_start()
+                    .starts_with(&expected)
+            {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "fixture child never completed exec"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        fixture
+    }
+
+    fn stop_child(&mut self) {
+        use std::io::{BufRead as _, Write as _};
+        self.shell
+            .stdin
+            .as_mut()
+            .expect("shell input")
+            .write_all(b"stop\n")
+            .expect("release child");
+        let mut line = String::new();
+        self.output.read_line(&mut line).expect("child reaped");
+        assert_eq!(line.trim(), "stopped");
+    }
+
+    fn restart_child(&mut self) {
+        use std::io::{BufRead as _, Write as _};
+        let previous = self.child_pid;
+        self.shell
+            .stdin
+            .as_mut()
+            .expect("shell input")
+            .write_all(b"restart\n")
+            .expect("replace child");
+        let mut line = String::new();
+        self.output.read_line(&mut line).expect("new child PID");
+        self.child_pid = line.trim().parse().expect("new child PID");
+        assert_ne!(self.child_pid, previous);
+    }
+}
+
+impl Drop for HarnessChild {
+    fn drop(&mut self) {
+        // EOF releases the shell, which terminates and reaps its own child.
+        drop(self.shell.stdin.take());
+        let _ = self.shell.wait();
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+#[tokio::test]
+async fn adopt_records_harness_child_not_pane_shell() {
+    let child = HarnessChild::new();
+    use pij_core::ports::LivenessPort as _;
+    assert!(
+        pij_harnesses::proc::ProcLiveness::new()
+            .proc_start(child.child_pid)
+            .await
+            .expect("fixture liveness")
+            .is_some()
+    );
+    let registry = Arc::new(FakeRegistry::new());
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("queue")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.tmux = Arc::new(FakeTmux::new().with_pane_process(
+        PANE,
+        PaneProcess {
+            pid: child.shell.id(),
+            cwd: FOLDER.to_string(),
+        },
+    ));
+    services.liveness = Arc::new(pij_harnesses::proc::ProcLiveness::new());
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let response = adopt(addr, &["adopt", PANE, "--harness", "claude"]).await;
+    let status = response.status();
+    let body = response.text().await.expect("response");
+    server.abort();
+    assert_eq!(status, reqwest::StatusCode::OK, "{body}");
+    let seats = live_seats(&registry).await;
+    assert_eq!(seats.len(), 1);
+    assert_eq!(seats[0].proc.expect("bound process").pid, child.child_pid);
+    let response: serde_json::Value = serde_json::from_str(&body).expect("envelope");
+    assert_eq!(response["data"]["proc_source"], "harness");
+}
+
+#[tokio::test]
+async fn register_walk_and_sqlite_roundtrip_preserve_identical_process_start() {
+    use pij_core::ports::LivenessPort as _;
+    let child = HarnessChild::new();
+    let walk = pij_tmux::harness_process(child.shell.id(), Harness::Claude).expect("walk identity");
+    assert_eq!(walk.pid, child.child_pid);
+    let liveness = pij_harnesses::proc::ProcLiveness::new();
+    let native = liveness
+        .proc_start(child.child_pid)
+        .await
+        .expect("native observer")
+        .expect("child alive");
+    assert_eq!(
+        walk.proc_start.to_be_bytes(),
+        native.to_be_bytes(),
+        "walk and registration observer use identical local wall fields"
+    );
+    let pool = pij_store::open("").await.expect("isolated SQLite");
+    let registry = Arc::new(pij_store::SqliteRegistry::new(pool.clone()));
+    let mut services = test_services(
+        Arc::new(FakeRegistry::new()),
+        Arc::new(FakeQueue::new(1_024).expect("queue")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.registry = registry.clone();
+    services.tmux = Arc::new(FakeTmux::new().with_pane_process(
+        PANE,
+        PaneProcess {
+            pid: child.shell.id(),
+            cwd: FOLDER.to_string(),
+        },
+    ));
+    services.liveness = Arc::new(liveness);
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let claim = serde_json::json!({"id": "pij-timebase", "harness": "claude", "folder": FOLDER,
+        "pane": PANE, "pid": child.shell.id(), "proc_start": 1});
+    for expected_binding in ["created", "same"] {
+        let response = reqwest::Client::new()
+            .post(format!("http://{addr}/v1/register"))
+            .bearer_auth("key")
+            .json(&claim)
+            .send()
+            .await
+            .expect("register");
+        let status = response.status();
+        let body: serde_json::Value = response.json().await.expect("registration envelope");
+        assert_eq!(status, reqwest::StatusCode::OK, "{body}");
+        assert_eq!(body["data"]["binding"], expected_binding);
+        assert_eq!(body["data"]["proc_source"], "harness");
+        let registered: ProcIdentity =
+            serde_json::from_value(body["data"]["proc"].clone()).expect("identity");
+        assert_eq!(registered, walk);
+        let stored = registry
+            .get(&SeatId::from("pij-timebase"))
+            .await
+            .expect("read SQLite")
+            .expect("row");
+        assert_eq!(
+            stored
+                .proc
+                .expect("stored identity")
+                .proc_start
+                .to_be_bytes(),
+            walk.proc_start.to_be_bytes()
+        );
+        assert_eq!(stored.proc, Some(walk));
+    }
+    server.abort();
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn adopt_reports_pane_source_when_harness_child_has_died() {
+    use pij_core::ports::LivenessPort as _;
+    let mut child = HarnessChild::new();
+    child.stop_child();
+    let liveness = pij_harnesses::proc::ProcLiveness::new();
+    assert!(
+        liveness
+            .proc_start(child.child_pid)
+            .await
+            .expect("child liveness")
+            .is_none()
+    );
+    let shell_start = liveness
+        .proc_start(child.shell.id())
+        .await
+        .expect("shell liveness")
+        .expect("shell remains alive");
+    let caller_start = liveness
+        .proc_start(std::process::id())
+        .await
+        .expect("caller liveness")
+        .expect("caller alive");
+    let registry = Arc::new(FakeRegistry::new());
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("queue")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.tmux = Arc::new(FakeTmux::new().with_pane_process(
+        PANE,
+        PaneProcess {
+            pid: child.shell.id(),
+            cwd: FOLDER.to_string(),
+        },
+    ));
+    services.liveness = Arc::new(liveness);
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/adopt"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({
+            "argv": ["adopt", PANE, "--harness", "claude"],
+            "caller": {"pid": std::process::id(), "proc_start": caller_start},
+        }))
+        .send()
+        .await
+        .expect("adopt ignores diagnostic caller identity");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("envelope");
+    server.abort();
+    assert_eq!(status, reqwest::StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["proc_source"], "pane");
+    let row = live_seats(&registry).await.remove(0);
+    assert_eq!(
+        row.proc,
+        Some(ProcIdentity {
+            pid: child.shell.id(),
+            proc_start: shell_start
+        })
+    );
+}
+
+#[tokio::test]
+async fn pane_fallback_preserves_claim_and_rebounds_for_new_unrecognized_process() {
+    use pij_core::ports::LivenessPort as _;
+    let mut child = HarnessChild::new();
+    let pane_pid = child.shell.id();
+    let pool = pij_store::open("").await.expect("isolated SQLite");
+    let registry = Arc::new(pij_store::SqliteRegistry::new(pool.clone()));
+    let mut services = test_services(
+        Arc::new(FakeRegistry::new()),
+        Arc::new(FakeQueue::new(1_024).expect("queue")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.registry = registry.clone();
+    services.tmux = Arc::new(FakeTmux::new().with_pane_process(
+        PANE,
+        PaneProcess {
+            pid: pane_pid,
+            cwd: FOLDER.to_string(),
+        },
+    ));
+    let liveness = Arc::new(pij_harnesses::proc::ProcLiveness::new());
+    services.liveness = liveness.clone();
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let mut bindings = Vec::new();
+    let mut identities = Vec::new();
+    for binding in ["created", "same", "rebound"] {
+        if binding == "rebound" {
+            child.restart_child();
+        }
+        assert_eq!(
+            child.shell.id(),
+            pane_pid,
+            "pane shell remains the same process"
+        );
+        // The synthetic claude command is deliberately unrecognized as OMP.
+        assert_eq!(
+            pij_tmux::harness_process(pane_pid, Harness::Omp)
+                .expect("pane fallback")
+                .pid,
+            pane_pid
+        );
+        let claim = ProcIdentity {
+            pid: child.child_pid,
+            proc_start: liveness
+                .proc_start(child.child_pid)
+                .await
+                .expect("observe caller")
+                .expect("caller alive"),
+        };
+        let response = reqwest::Client::new()
+            .post(format!("http://{addr}/v1/register"))
+            .bearer_auth("key")
+            .json(&serde_json::json!({
+                "id": "pij-fallback-claim", "harness": "omp", "pane": PANE, "folder": FOLDER,
+                "pid": claim.pid, "proc_start": claim.proc_start,
+            }))
+            .send()
+            .await
+            .expect("register caller");
+        let status = response.status();
+        let body: serde_json::Value = response.json().await.expect("response");
+        assert_eq!(status, reqwest::StatusCode::OK, "{body}");
+        let accepted: ProcIdentity =
+            serde_json::from_value(body["data"]["proc"].clone()).expect("accepted identity");
+        assert_eq!(body["data"]["proc_source"], "pane");
+        bindings.push(
+            body["data"]["binding"]
+                .as_str()
+                .expect("binding")
+                .to_string(),
+        );
+        let stored = registry
+            .get(&SeatId::from("pij-fallback-claim"))
+            .await
+            .expect("read row")
+            .expect("row")
+            .proc;
+        identities.push((accepted, claim, stored));
+    }
+    // The caller can select only a complete identity in this pane's subtree:
+    // a live ancestor outside it, a recycled stamp, and a half claim all refuse.
+    let seat_id = SeatId::from("pij-fallback-claim");
+    let before = registry
+        .get(&seat_id)
+        .await
+        .expect("before refusal")
+        .expect("row");
+    let outsider = std::process::id();
+    let outsider_start = liveness
+        .proc_start(outsider)
+        .await
+        .expect("outside process")
+        .expect("alive outsider");
+    let current_start = liveness
+        .proc_start(child.child_pid)
+        .await
+        .expect("child process")
+        .expect("alive child");
+    for (pid, start) in [
+        (outsider, Some(outsider_start)),
+        (child.child_pid, Some(current_start + 1)),
+        (child.child_pid, None),
+    ] {
+        let response = reqwest::Client::new()
+            .post(format!("http://{addr}/v1/register"))
+            .bearer_auth("key")
+            .json(&serde_json::json!({
+                "id": seat_id.as_str(), "harness": "omp", "pane": PANE, "folder": FOLDER,
+                "pid": pid, "proc_start": start,
+            }))
+            .send()
+            .await
+            .expect("untrusted registration");
+        let refused = refusal_envelope(response).await;
+        assert!(
+            serde_json::to_string(&refused)
+                .expect("refusal JSON")
+                .contains("subtree")
+        );
+        assert_eq!(
+            registry.get(&seat_id).await.expect("unchanged row"),
+            Some(before.clone())
+        );
+    }
+    server.abort();
+    pool.close().await;
+    assert_eq!(
+        bindings,
+        ["created", "same", "rebound"],
+        "a new process in the stable pane must rebound, not suppress its announce"
+    );
+    for (accepted, claim, stored) in identities {
+        assert_eq!(
+            accepted, claim,
+            "pane fallback must not downgrade the caller identity"
+        );
+        assert_eq!(stored, Some(claim));
+    }
+}
+
 /// THE RED-FIRST ARM, and the one u-route had to leave red: with the daemon up
 /// and `adopt` reaching rs, A SEAT LANDS IN THE RS STORE.
 #[tokio::test]

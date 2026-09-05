@@ -1,0 +1,64 @@
+{
+  "status": "real-welcome-guard-corrected-scoped-checks-passed-PM-live-rerun-outstanding",
+  "source_base": "ab0cf05e",
+  "separate_v4_checkpoint": "ab0cf05e",
+  "upstream_failure": {
+    "receipt": "assets/evidence/pm-native-real-canary-01.json",
+    "source_commit": "137cfb9ba7ee518035634fbf03dfe79f4b5340cf",
+    "error": "PIJ_NATIVE_UNEXPECTED_APPROVAL: incomplete or non-active modal",
+    "cause": "real CLI Getting started welcome panel above normal composer was mistaken for the active tool approval"
+  },
+  "correction": {
+    "activeBottomModal": "Only a complete bottom box is a modal candidate; closed earlier boxes are history. Incomplete borders/repaint are a distinct waiting state, not authorization or dismissal.",
+    "verifyToolApproval": "true only for complete exact own-JSON pij_send modal and selected one-time Yes; false for no active box; undefined for incomplete repaint; complete active malformed, unknown or mismatched dialogs still throw",
+    "confirmation": "Two exact captures in one bounded probe before one Enter; pre-key disappearance/repaint retries without keys; post-key repaint waits and never causes a second Enter",
+    "composer": "Shares active-bottom discrimination, so retained welcome above normal composer no longer blocks typing/lifecycle helpers",
+    "permissions": "No product grant or tool permission change"
+  },
+  "retained_fixture": {
+    "path": "harness/scripts/fixtures/copilot-native-welcome.json",
+    "source": "pm-native-real-canary-01 witnesses[kind=native-tool-human-approval].before and .expected",
+    "verification": "Decoded fixture terminal and expected invocation compared exactly with the original retained receipt after formatting; identical",
+    "live_keys_sent": 0
+  },
+  "verification": {
+    "environment": {"VITEST_MAX_WORKERS":"4", "VITEST_MAX_THREADS":"4", "CARGO_BUILD_JOBS":"4"},
+    "red": {
+      "command": "just test harness/scripts/copilot-native-smoke.test.ts -t 'welcome|repaint|transcript boxes'",
+      "exit_code": 1,
+      "failed": 8,
+      "passed": 2,
+      "skipped": 92
+    },
+    "final_tests": {
+      "command": "just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0,
+      "passed": 139,
+      "smoke": 106,
+      "installer": 33,
+      "result": "2 files passed; duration 4.78s",
+      "coverage": "retained real welcome; history then active dialog; incomplete/missing borders; pre-key disappearance/repaint; post-key repaint timeout and unknown dialog; existing exact consent,41 AC6 and26 lifecycle cases retained"
+    },
+    "typecheck": {
+      "command": "node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0
+    },
+    "biome": {
+      "command": "node_modules/.bin/biome check harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts harness/scripts/fixtures/copilot-native-welcome.json",
+      "exit_code": 0,
+      "result": "Checked 3 files. No fixes applied."
+    },
+    "review": {"agent":"ActiveModalReview", "verdict":"correct", "confidence":0.89, "findings":[], "scope":"read-only source review; no tests or live launches by reviewer"}
+  },
+  "harness_lesson": "Provider-dependent welcome UI can differ from fixture banners. Retain actual screens and distinguish absence, incomplete repaint and a complete active control before simulating consent.",
+  "boundaries": {
+    "live_launches": 0,
+    "live_keys_sent": 0,
+    "full_gates": "PM-owned; not run",
+    "global_or_product_changes": false,
+    "real_provider_rerun_proven": false,
+    "ac6_accepted": false,
+    "ac7_accepted": false,
+    "next_owner": "PM refreshes frozen scoped canary driver and performs actual live continuation/full gates"
+  }
+}

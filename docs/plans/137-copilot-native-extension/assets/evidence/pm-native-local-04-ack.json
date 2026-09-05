@@ -1,0 +1,23 @@
+{
+  "source_commit": "0de7932273d1f3577cc64177bd1a8abe6442daba",
+  "smoke_receipt": "pm-native-local-04.json",
+  "grade": "native acceptance / reader-read; NOT model completion or round trip",
+  "jobs": [
+    {
+      "id": 1,
+      "state": "done",
+      "worker": "pij-copilot-d2eaec42200d12ff7d376821",
+      "dedupe_key": "56e6aa22-be13-4f8b-9767-2dacb93b8ea8",
+      "acked_at": 1788573538
+    }
+  ],
+  "deliveries": [
+    {
+      "seq": 1,
+      "recipient": "pij-copilot-d2eaec42200d12ff7d376821",
+      "msg_id": "56e6aa22-be13-4f8b-9767-2dacb93b8ea8",
+      "origin": "reader-read",
+      "delivered_at": 1788573538
+    }
+  ]
+}

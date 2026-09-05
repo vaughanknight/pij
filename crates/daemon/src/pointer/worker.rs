@@ -5,7 +5,7 @@ use pij_core::delivery::{DeliveryRung, MAX_TYPED_FRAME_BYTES, delivery_kind, sel
 use pij_core::error::{PijError, Result};
 use pij_core::framing::frame_message;
 use pij_core::model::{
-    DeliveryOrigin, DeliveryOutcome, Event, Job, JobId, Msg, Outcome, SemanticState,
+    DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, SemanticState,
 };
 use pij_core::ports::{Queue, Registry, SeatFilter, TmuxPort, Transport};
 use pij_harnesses::{InteractionGate, StagedSubmission};
@@ -27,10 +27,10 @@ const WORKER_ID: &str = "pointer-drain";
 
 /// One delivery-queue drain pass below the socket transport.
 ///
-/// The worker claims only pane-bound recipients, so paneless pull consumers keep
-/// ownership of their own rows. A failed command uses durable exponential
-/// backoff. A socketless body is framed once, submitted to the pane, and then
-/// acknowledged with the distinct typed-to-pane evidence class.
+/// The worker claims only pane-bound, non-extension recipients. Omp/Pi own
+/// their queues even when they have a pane; draining those rows here races the
+/// extension reader and can inject or terminal-fail its messages. This latent
+/// double-delivery fix is independent of typing holds.
 ///
 /// # Composition recipe
 ///
@@ -101,6 +101,7 @@ impl DrainWorker {
         let seats = self.registry.list(SeatFilter::default()).await?;
         let mut kinds: Vec<String> = seats
             .iter()
+            .filter(|seat| !matches!(seat.harness, Harness::Copilot | Harness::Omp | Harness::Pi))
             .filter(|seat| seat.pane.is_some() || seat.tombstoned_at.is_some())
             .map(|seat| delivery_kind(&seat.id))
             .collect();
@@ -188,6 +189,11 @@ impl DrainWorker {
                     ),
                 )
                 .await;
+        }
+        // Re-read after claiming: registration may have changed the harness since
+        // the inventory. Native seats never enter any pane or socket rung.
+        if recipient.harness == Harness::Copilot {
+            return self.release_body(job_id).await;
         }
         if recipient.semantic_state == Some(SemanticState::Hold) {
             return self.release_or_backoff(job_id, job, &msg).await;
@@ -614,6 +620,21 @@ mod tests {
         )
     }
 
+    /// Compose-time addition (plan 136): a fixture whose TYPING GRACE the test
+    /// chooses. What vetoes a pane-bound delivery is now the grace, not the mere
+    /// presence of a draft — so a test that wants to observe the veto and one
+    /// that wants to observe its absence differ only in this number.
+    fn fixture_with_grace(transport: FakeTransport, tmux: FakeTmux, grace_ms: u64) -> Fixture {
+        fixture_inner_with_idle_and_grace(
+            transport,
+            tmux,
+            3,
+            false,
+            Duration::from_millis(60_000),
+            grace_ms,
+        )
+    }
+
     fn fixture_inner_with_idle(
         transport: FakeTransport,
         tmux: FakeTmux,
@@ -621,13 +642,32 @@ mod tests {
         arrange_composers: bool,
         idle: Duration,
     ) -> Fixture {
+        fixture_inner_with_idle_and_grace(
+            transport,
+            tmux,
+            pointer_limit,
+            arrange_composers,
+            idle,
+            pij_core::delivery::DEFAULT_TYPING_GRACE_MS,
+        )
+    }
+
+    fn fixture_inner_with_idle_and_grace(
+        transport: FakeTransport,
+        tmux: FakeTmux,
+        pointer_limit: u32,
+        arrange_composers: bool,
+        idle: Duration,
+        grace_ms: u64,
+    ) -> Fixture {
         let registry = Arc::new(FakeRegistry::new());
         let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
         let transport = Arc::new(transport);
         let tmux = Arc::new(tmux);
-        let interaction = Arc::new(InteractionGate::with_idle_window(
+        let interaction = Arc::new(InteractionGate::with_typing_grace(
             Arc::clone(&tmux) as Arc<dyn TmuxPort>,
             idle,
+            grace_ms,
         ));
         let spine = Arc::new(FakeSpine::new());
         let event_bus =
@@ -659,7 +699,7 @@ mod tests {
     }
 
     fn seat(id: &str, pane: Option<&str>) -> SeatDescriptor {
-        let mut seat = SeatDescriptor::new(id, Harness::Omp, "/abs/tree");
+        let mut seat = SeatDescriptor::new(id, Harness::Claude, "/abs/tree");
         seat.pane = pane.map(str::to_string);
         seat.proc = Some(ProcIdentity {
             pid: 7,
@@ -1191,39 +1231,78 @@ mod tests {
         }
     }
 
+    /// REWRITTEN AT COMPOSITION, plan 136 — this test asserted the behaviour the
+    /// plan deletes, and it went red on the composed tree, which is exactly what
+    /// a control is for.
+    ///
+    /// It used to say: a recognized draft defers once, and the NEXT capture
+    /// showing a blank composer delivers. That reads as "the draft was the
+    /// veto". It no longer is. The veto is now RECENCY, and clearing a composer
+    /// is itself an observed edit — the human is manifestly at the keyboard in
+    /// the instant they wipe their draft, which is the worst possible moment to
+    /// type at them. So the blank capture defers too, and delivery waits for the
+    /// grace to elapse.
+    ///
+    /// The pair below is the honest replacement: identical scripts, differing
+    /// only in the grace. With a real grace the clear still defers; with the
+    /// grace set to zero the same sequence delivers immediately — proving the
+    /// veto is the grace rather than the draft, which is the whole claim of the
+    /// unit.
     #[tokio::test]
-    async fn recognized_draft_retries_once_then_delivers_on_the_next_blank_capture() {
+    async fn a_cleared_draft_is_itself_an_edit_and_keeps_deferring_within_the_grace() {
         let pane = "%typing-clears";
-        let tmux = FakeTmux::new()
-            .with_pane(Pane {
-                id: pane.to_string(),
-                session: "s".to_string(),
-                window: "w".to_string(),
-                title: "t".to_string(),
-                cursor_x: Some(11),
-                cursor_y: Some(0),
-            })
-            .with_attached_tap(pane)
-            .script_capture("╰──── hello ─╯")
-            .script_capture("╰────       ─╯");
-        let fixture = fixture_unarranged(FakeTransport::reachable(), tmux);
+        let script = || {
+            FakeTmux::new()
+                .with_pane(Pane {
+                    id: pane.to_string(),
+                    session: "s".to_string(),
+                    window: "w".to_string(),
+                    title: "t".to_string(),
+                    cursor_x: Some(11),
+                    cursor_y: Some(0),
+                })
+                .with_attached_tap(pane)
+                .script_capture("╰──── hello ─╯")
+                .script_capture("╰────       ─╯")
+        };
+
+        // Within the grace: the draft defers, and so does the clear.
+        let fixture = fixture_with_grace(FakeTransport::reachable(), script(), 60_000);
         let mut recipient = seat("pij-typing-clears", Some(pane));
         recipient.harness = Harness::Claude;
         register(&fixture, recipient).await;
         let msg = message("pij-typing-clears", "deliver after clear", None);
         let id = enqueue(&fixture, &msg).await;
 
-        // This remains a behavioural retry assertion: only the evidence that
-        // creates the veto changed from tmux mode to real composer content.
         assert_eq!(fixture.worker.drain_once().await.expect("draft tick"), 1);
         assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)]);
         assert!(fixture.transport.delivered().is_empty());
 
-        assert_eq!(fixture.worker.drain_once().await.expect("blank tick"), 1);
-        assert_eq!(fixture.transport.delivered(), [msg]);
-        assert_eq!(fixture.queue.live_len(), 0);
-        assert_eq!(fixture.worker.drain_once().await.expect("deduped tick"), 0);
-        assert_eq!(fixture.transport.delivered().len(), 1);
+        assert_eq!(fixture.worker.drain_once().await.expect("clear tick"), 1);
+        assert!(
+            fixture.transport.delivered().is_empty(),
+            "clearing a draft is an edit: the human is at the keyboard right now"
+        );
+        assert_eq!(
+            fixture.queue.retried(),
+            [(id, Duration::ZERO), (id, Duration::ZERO)]
+        );
+
+        // Same script, no grace: the identical sequence delivers, so the veto was
+        // the recency window and never the presence of a draft.
+        let ungraced = fixture_with_grace(FakeTransport::reachable(), script(), 0);
+        let mut recipient = seat("pij-typing-clears", Some(pane));
+        recipient.harness = Harness::Claude;
+        register(&ungraced, recipient).await;
+        let msg = message("pij-typing-clears", "deliver after clear", None);
+        enqueue(&ungraced, &msg).await;
+
+        assert_eq!(
+            ungraced.worker.drain_once().await.expect("ungraced tick"),
+            1
+        );
+        assert_eq!(ungraced.transport.delivered(), [msg]);
+        assert_eq!(ungraced.queue.live_len(), 0);
     }
 
     #[tokio::test]
@@ -1303,6 +1382,87 @@ mod tests {
         assert!(fixture.queue.retried().is_empty());
         assert!(fixture.transport.calls().is_empty());
         assert!(fixture.tmux.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn omp_and_pi_rows_remain_unclaimed_while_claude_drains() {
+        let fixture = fixture(FakeTransport::unreachable(), FakeTmux::new());
+        let mut pull_rows = Vec::new();
+        for (id, harness, pane, tombstoned) in [
+            ("pij-omp", Harness::Omp, Some("%omp"), false),
+            ("pij-pi", Harness::Pi, Some("%pi"), false),
+            ("pij-omp-dead", Harness::Omp, None, true),
+            ("pij-pi-dead", Harness::Pi, None, true),
+        ] {
+            let mut recipient = seat(id, pane);
+            recipient.harness = harness;
+            if tombstoned {
+                recipient.tombstoned_at = Some(1_788_333_000_000);
+                recipient.tombstone_reason = Some("closed pull consumer".to_string());
+            }
+            register(&fixture, recipient).await;
+            if let Some(pane) = pane {
+                fixture.interaction.observe_composer(pane, "");
+            }
+            let msg = message(id, "owned by the pull consumer", None);
+            let job_id = enqueue(&fixture, &msg).await;
+            pull_rows.push((job_id, msg));
+        }
+        let mut recipient = seat("pij-claude", Some("%claude"));
+        recipient.harness = Harness::Claude;
+        register(&fixture, recipient).await;
+        fixture.interaction.observe_composer("%claude", "");
+        let claude_msg = message("pij-claude", "still drains in this pass", None);
+        let claude_id = enqueue(&fixture, &claude_msg).await;
+
+        assert_eq!(
+            fixture
+                .worker
+                .drain_once()
+                .await
+                .expect("mixed harness drain"),
+            1,
+            "only Claude is claimed, including when pull consumers are tombstoned"
+        );
+        assert_eq!(fixture.queue.acked(), [(claude_id, Outcome::Done)]);
+        assert!(
+            fixture.queue.retried().is_empty(),
+            "no pull row is released or backed off"
+        );
+        assert_eq!(fixture.queue.live_len(), pull_rows.len());
+        assert_eq!(
+            fixture.transport.calls(),
+            ["can_deliver:pij-claude:m-pij-claude"],
+            "pull consumers are not even probed"
+        );
+        let submissions: Vec<_> = fixture
+            .tmux
+            .calls()
+            .into_iter()
+            .filter(|call| call.starts_with("submit:"))
+            .collect();
+        assert_eq!(
+            submissions,
+            [format!(
+                "submit:%claude:{}",
+                frame_message(&claude_msg.from, None, &claude_msg.body)
+            )],
+            "only the eligible Claude pane receives an injection"
+        );
+        for (expected_id, msg) in pull_rows {
+            let (job_id, job) = fixture
+                .queue
+                .claim(&[delivery_kind(&msg.to)], "pull-consumer")
+                .await
+                .expect("claim untouched pull row")
+                .expect("pull row remains immediately claimable");
+            assert_eq!(job_id, expected_id);
+            assert_eq!(job.attempt, 0, "worker must not claim and retry pull rows");
+            assert_eq!(
+                serde_json::from_str::<Msg>(&job.payload).expect("queued pull message"),
+                msg
+            );
+        }
     }
 
     #[tokio::test]
@@ -1505,6 +1665,10 @@ mod tests {
             self.inner.peek(kinds).await
         }
 
+        async fn claimed_delivery(&self, job: JobId) -> pij_core::error::Result<Option<Job>> {
+            self.inner.claimed_delivery(job).await
+        }
+
         async fn ack(&self, job: JobId, outcome: Outcome) -> pij_core::error::Result<()> {
             self.inner.ack(job, outcome).await
         }
@@ -1527,6 +1691,21 @@ mod tests {
 
         async fn retry(&self, job: JobId, delay: Duration) -> pij_core::error::Result<()> {
             self.inner.retry(job, delay).await
+        }
+
+        async fn defer(
+            &self,
+            job: JobId,
+            delay: Duration,
+        ) -> pij_core::error::Result<pij_core::ports::DeferOutcome> {
+            self.inner.defer(job, delay).await
+        }
+
+        async fn release_deferred(
+            &self,
+            job: JobId,
+        ) -> pij_core::error::Result<pij_core::ports::ReleaseOutcome> {
+            self.inner.release_deferred(job).await
         }
     }
 
@@ -1996,5 +2175,35 @@ mod tests {
             [Duration::ZERO],
             "a release the worker CHOSE must stay immediately claimable"
         );
+    }
+
+    #[tokio::test]
+    async fn copilot_drain_never_claims_native_body_or_legacy_control() {
+        for attached in [false, true] {
+            for command in [None, Some("compact")] {
+                let fixture = fixture(FakeTransport::reachable(), FakeTmux::new());
+                let mut recipient = seat("pij-native-drain", Some("%137"));
+                recipient.harness = Harness::Copilot;
+                recipient.harness_session = Some("native-137".into());
+                recipient.native_extension_delivery = attached;
+                register(&fixture, recipient).await;
+                enqueue(
+                    &fixture,
+                    &message("pij-native-drain", "native only", command),
+                )
+                .await;
+                assert_eq!(
+                    fixture.worker.drain_once().await.expect("native exclusion"),
+                    0
+                );
+                assert_eq!(fixture.queue.live_len(), 1);
+                assert!(fixture.queue.retried().is_empty());
+                assert!(fixture.transport.delivered().is_empty());
+                assert!(
+                    fixture.tmux.calls().is_empty(),
+                    "drain must not even consult tmux for native work"
+                );
+            }
+        }
     }
 }

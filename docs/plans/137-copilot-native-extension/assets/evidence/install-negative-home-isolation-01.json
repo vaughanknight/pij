@@ -1,0 +1,35 @@
+{
+  "status": "scoped-checks-passed-no-live-run",
+  "source_base": "001b9b94",
+  "request": "assets/inputs/pm-disabled-home-isolation.json",
+  "reported_evidence": {
+    "receipt": "assets/evidence/pm-native-local-10.json",
+    "source": "PM assignment and message, not re-run here",
+    "failure": "Disabled --no-experimental control shared primary HOME and persisted experimental:false. Later cold resume showed nonexperimental banner and no extension. Scoped lifecycle03 skipped this negative control and passed."
+  },
+  "change": {
+    "negative_home": "Every negative launch allocates a new negative-home-* directory under the private run, including separate controls within manual/spawned modes.",
+    "setup": "Primary and negative homes reuse prepareSmokeHome: canonical manageCopilotExtension setup/doctor and existing config.json trustedFolders behavior. No auth files copied or new grants added.",
+    "launch": "launchSmokeNegativeControl passes HOME, COPILOT_HOME and XDG_CONFIG_HOME using per-window tmux new-window -e overrides. Shared server/primary env is unchanged; private daemon endpoint/state, provider and workspace are retained. Existing common flags plus --no-experimental only.",
+    "evidence": "Separate missing-consumer-home-isolation witness retains homes, three overrides, install log, trusted folders, exact command/flags, primary and negative settings before/after, pane and errors.",
+    "guards": "Primary experimental must be boolean true before/after negative launch and immediately before existing manual --resume. Config is read, never repaired to satisfy the guard.",
+    "unchanged": "Disabled readiness still uses nativeComposer === empty. Manual adoption, absence/no-fallback/no-tmux-body assertions, lifecycle identity and delivery checks, private cleanup and retained run directories remain unchanged."
+  },
+  "verification": {
+    "focused_command": "just test harness/scripts/copilot-native-smoke.test.ts -t 'negative CLI home isolation'",
+    "passed": 8,
+    "skipped": 211,
+    "duration_seconds": 0.674,
+    "exit": 0,
+    "grade": "Existing-in-progress injected tmux/filesystem cases, not actual CLI or full-sequence proof. Simulated CLI persistence writes experimental:false through the window's supplied COPILOT_HOME; positive settings remain byte-identical and two successive negative homes differ.",
+    "static": "Strict scoped TypeScript exited 0; Biome checked both changed TypeScript files, no fixes or warnings in final check.",
+    "typescript_command": "node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+    "biome_command": "node_modules/.bin/biome check harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+    "caps": { "VITEST_MAX_WORKERS": "4", "VITEST_MAX_THREADS": "4", "CARGO_BUILD_JOBS": "4" },
+    "initial_attempt": "The first new focused test failed on an invalid synthetic unboxed composer, not on isolation. Replaced it with the retained disabled CLI frame. This is not claimed as a valid contamination RED witness. A test-only ProcessEnv annotation fixed the initial TypeScript diagnostic.",
+    "prior_baseline": "244 tests passed before this task at 001b9b94; not rerun or claimed for this checkpoint."
+  },
+  "scope_ruling": "Jordan requested no further test additions/review cycles or hardening. Finished only the isolation wiring and corrected/checked already-written cases. No review cycle, live/full run, product/daemon/SDK, global, auth, flow-state or governance changes.",
+  "lesson": "DL-001: negative CLI flags can persist into shared home state; isolation must be per launch, not merely per overall run. Encoded in fresh negative homes and primary settings guards.",
+  "pm_next": "Compose checkpoint and refresh driver, then run the one final complete smoke. Scoped lifecycle success alone does not prove full-sequence isolation."
+}

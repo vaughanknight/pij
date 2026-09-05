@@ -1,0 +1,126 @@
+
+> pij@0.1.0 test
+> vitest run /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts --maxWorkers=4 -t recovers oldest-first
+
+(node:19540) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts (20 tests | 1 failed | 19 skipped) 13ms
+     ↓ registers structural identity, forwards unknown events, injects a push, and correlates reply
+     ↓ binds startup to the daemon row for the spawned pane
+     ↓ suppresses injection when another worker already owns the queued row
+     ↓ leaves an in-flight claim unacked when a new session replaces its seat
+     ↓ delivers the authority-owned claim when the pushed event names a different message
+     ↓ does not acknowledge when the runtime injection fails
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true)
+     ↓ holds at 59 seconds and releases at 60 with exact hold/release payloads
+     ↓ preserves claim order across two holds
+     ↓ bypasses compact, new, reload and urgent while ordinary rows stay held
+     ↓ returns held claims to pending without acknowledging them
+     ↓ redelivers after restart and clears sender held evidence despite losing local notes
+     ↓ uses the daemon grace rather than the fallback
+     ↓ programmatic injection does not postpone a terminal-input grace
+     ↓ the real adapter observes terminal keys, not programmatic editor writes
+     ↓ re-holds a repeated push without another held event or duplicate delivery
+     ↓ polls eligible claims while held and bypasses a deferred head without a pushed frame
+     ↓ does not ack when the release declaration fails
+     × recovers oldest-first when the older held job is deferred later than the newer job 12ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > recovers oldest-first when the older held job is deferred later than the newer job
+AssertionError: expected [ '[pij from pij-sender] newer', …(1) ] to deeply equal [ '[pij from pij-sender] older', …(1) ]
+
+- Expected
++ Received
+
+  [
+-   "[pij from pij-sender] older",
+    "[pij from pij-sender] newer",
++   "[pij from pij-sender] older",
+  ]
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1042:55
+    1040|   await client.replay();
+    1041|   expect(restarted.pi.injects).toHaveLength(2);
+    1042|   expect(restarted.pi.injects.map((row) => row.text)).toEqual([
+       |                                                       ^
+    1043|    "[pij from pij-sender] older", "[pij from pij-sender] newer",
+    1044|   ]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 19 skipped (20)
+   Start at  10:43:30
+   Duration  346ms (transform 210ms, setup 0ms, import 242ms, tests 13ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > recovers oldest-first when the older held job is deferred later than the newer job,line=1042,column=55::AssertionError: expected [ '[pij from pij-sender] newer', …(1) ] to deeply equal [ '[pij from pij-sender] older', …(1) ]%0A%0A- Expected%0A+ Received%0A%0A  [%0A-   "[pij from pij-sender] older",%0A    "[pij from pij-sender] newer",%0A+   "[pij from pij-sender] older",%0A  ]%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1042:55%0A%0A
+
+ACTIVE-GRACE RECOVERY RED
+
+> pij@0.1.0 test
+> vitest run /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts --maxWorkers=4 -t oldest recovery row
+
+(node:67540) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts (21 tests | 1 failed | 20 skipped) 9ms
+     ↓ registers structural identity, forwards unknown events, injects a push, and correlates reply
+     ↓ binds startup to the daemon row for the spawned pane
+     ↓ suppresses injection when another worker already owns the queued row
+     ↓ leaves an in-flight claim unacked when a new session replaces its seat
+     ↓ delivers the authority-owned claim when the pushed event names a different message
+     ↓ does not acknowledge when the runtime injection fails
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true)
+     ↓ holds at 59 seconds and releases at 60 with exact hold/release payloads
+     ↓ preserves claim order across two holds
+     ↓ bypasses compact, new, reload and urgent while ordinary rows stay held
+     ↓ returns held claims to pending without acknowledging them
+     ↓ redelivers after restart and clears sender held evidence despite losing local notes
+     ↓ uses the daemon grace rather than the fallback
+     ↓ programmatic injection does not postpone a terminal-input grace
+     ↓ the real adapter observes terminal keys, not programmatic editor writes
+     ↓ re-holds a repeated push without another held event or duplicate delivery
+     ↓ polls eligible claims while held and bypasses a deferred head without a pushed frame
+     ↓ does not ack when the release declaration fails
+     ↓ recovers oldest-first when the older held job is deferred later than the newer job
+     × re-holds the oldest recovery row during active grace and stops instead of spinning 8ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > re-holds the oldest recovery row during active grace and stops instead of spinning
+AssertionError: expected 1788600057000 to be 1788600058000 // Object.is equality
+
+- Expected
++ Received
+
+- 1788600058000
++ 1788600057000
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1073:38
+    1071|    paneId: "%42", resetRuntimeState: false, reason: "reload",
+    1072|   });
+    1073|   expect(client.jobs[0]?.not_before).toBe(Date.now() + HOLD_CONTRACT.g…
+       |                                      ^
+    1074|   expect(client.holdRequests).toHaveLength(2);
+    1075|   expect(recoveryPeeks).toBe(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 20 skipped (21)
+   Start at  10:48:01
+   Duration  333ms (transform 198ms, setup 0ms, import 235ms, tests 9ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/fs3-typing-grace-gate-u1/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > typing grace delivery > re-holds the oldest recovery row during active grace and stops instead of spinning,line=1073,column=38::AssertionError: expected 1788600057000 to be 1788600058000 // Object.is equality%0A%0A- Expected%0A+ Received%0A%0A- 1788600058000%0A+ 1788600057000%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1073:38%0A%0A

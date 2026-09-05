@@ -1,0 +1,49 @@
+{
+  "status": "recipe-prerequisite-failures-verified-positive-contract-awaits-composition",
+  "source": "Co-committed justfile and docs/how/copilot-native-extension.md changes",
+  "recipe": "just copilot-native-contract-test",
+  "preflight": "node --check <repo>/.copilot/extensions/pij/store.mjs",
+  "cargo_command": "cargo test --locked -p pij-daemon --test native_runtime_cold_resume -- --ignored --nocapture --test-threads=1",
+  "environment": {
+    "PIJ_NATIVE_RUNTIME_MODULE": "<repo>/.copilot/extensions/pij/store.mjs",
+    "CARGO_TARGET_DIR": "<repo>/target",
+    "VITEST_MAX_WORKERS": "4",
+    "VITEST_MAX_THREADS": "4",
+    "CARGO_BUILD_JOBS": "4"
+  },
+  "path_binding": "Both repo paths use justfile_directory(), not ambient working-directory or inherited Cargo target settings.",
+  "observations": [
+    {
+      "case": "actual named invocation in installer worktree",
+      "cwd": "/Users/jordanknight/pi-hacking/fs3-copilot-native-install",
+      "node_preflight": "passed against actual shipping store.mjs",
+      "cargo_exit_code": 101,
+      "diagnostic": "no test target named `native_runtime_cold_resume` in `pij-daemon` package",
+      "result": "Missing forthcoming daemon target fails rather than skipping; no positive JS/HTTP/SQLite execution claimed."
+    },
+    {
+      "case": "actual named invocation with PATH=/usr/bin:/bin and absolute /opt/homebrew/bin/just",
+      "exit_code": 127,
+      "diagnostic": "copilot-native-contract-test: node: command not found",
+      "result": "Missing Node fails before Cargo."
+    },
+    {
+      "case": "actual named invocation with verbatim copied justfile and no module in a new temporary directory",
+      "cwd": "/tmp/pij-native-contract-e6d10e36-8dcf-4643-98fc-a45b4fd84658",
+      "node": "v24.7.0",
+      "exit_code": 1,
+      "diagnostic": "MODULE_NOT_FOUND",
+      "result": "Missing store module fails before Cargo; no replacement module/test/cargo implementation."
+    }
+  ],
+  "boundaries": [
+    "Opt-in only; no default Rust-only, self-check, or harness checks policy changes.",
+    "No Rust or shipping JavaScript edits, stubs, dependency installation, global mutation, or toolchain updates.",
+    "--locked concerns Cargo dependency resolution, not compiler pin enforcement.",
+    "Positive actual JavaScript/HTTP/SQLite contract validation remains for the composed forthcoming daemon target; it would not replace actual CLI or real-provider witnesses."
+  ],
+  "retrospective": {
+    "observation": "DL-001: the new named recipe exposes the missing composed daemon target as an explicit Cargo failure rather than a silent skipped contract.",
+    "encoded_improvement": "One opt-in, checkout-bound command with mandatory Node/module preflight and an explicit Cargo test target."
+  }
+}

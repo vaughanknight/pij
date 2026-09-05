@@ -1,0 +1,40 @@
+=== AC1 + AC3: hold, visible from both ends, released within one grace ===
+since=1788574111193 seat=pij-glorious-bobolink pane=%3613
+t0_last_keystroke=1788574111341
+send_at=1788574115478
+sent (rs) — msg 804532273e40de32-000000000000000a — receipt queued
+--- AC3 sender-visible state while held ---
+pij-glorious-bobolink: idle · active
+  cwd: /Users/jordanknight/pi-hacking/pij  ·  harness: omp  ·  parent: pij-fellow-whale
+  (14 field(s) the rs store does not carry — re-run with --json to see which and why)
+--- AC3 recipient status line (pane tail) ---
+⏸ 1 held · typing
+--- spine while held ---
+[{"seq":9413,"at":1788574116139,"kind":"message.pushed","payload":"{\"msg_id\":\"804532273e40de32-000000000000000a\",\"from\":\"pij-fellow-whale\",\"body\":\"AC1B-136: held on main's binary\"}"},
+{"seq":9414,"at":1788574116139,"kind":"delivery.outcome","payload":"{\"msg_id\":\"804532273e40de32-000000000000000a\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"},
+{"seq":9415,"at":1788574116145,"kind":"delivery.held","payload":"{\"msg_id\":\"804532273e40de32-000000000000000a\",\"reason\":\"human-typing\",\"seat\":\"pij-glorious-bobolink\",\"since_ms\":1788574111216}"}]
+
+=== AC5: kill the seat while TWO rows are held; both must come back in order ===
+since5=1788574125273
+t5_last_keystroke=1788574125342
+sent (rs) — msg 804532273e40de32-000000000000000d — receipt queued
+sent (rs) — msg 804532273e40de32-000000000000000e — receipt queued
+--- both held? ---
+[{"seq":9421,"at":1788574128075,"kind":"message.pushed","payload":"{\"msg_id\":\"804532273e40de32-000000000000000d\",\"from\":\"pij-fellow-whale\",\"body\":\"AC5-136-FIRST\"}"},
+{"seq":9422,"at":1788574128075,"kind":"delivery.outcome","payload":"{\"msg_id\":\"804532273e40de32-000000000000000d\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"},
+{"seq":9423,"at":1788574128082,"kind":"delivery.held","payload":"{\"msg_id\":\"804532273e40de32-000000000000000d\",\"reason\":\"human-typing\",\"seat\":\"pij-glorious-bobolink\",\"since_ms\":1788574125285}"},
+{"seq":9424,"at":1788574130743,"kind":"message.pushed","payload":"{\"msg_id\":\"804532273e40de32-000000000000000e\",\"from\":\"pij-fellow-whale\",\"body\":\"AC5-136-SECOND\"}"},
+{"seq":9425,"at":1788574130743,"kind":"delivery.outcome","payload":"{\"msg_id\":\"804532273e40de32-000000000000000e\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"},
+{"seq":9426,"at":1788574130752,"kind":"delivery.held","payload":"{\"msg_id\":\"804532273e40de32-000000000000000e\",\"reason\":\"human-typing\",\"seat\":\"pij-glorious-bobolink\",\"since_ms\":1788574125285}"}]
+Error: stepping, malformed JSON
+seat_pid=
+--- killing the omp process while held ---
+/Users/jordanknight/pi-hacking/fs3-typing-grace-gate/docs/plans/136-typing-grace-gate/assets/ac-proofs-2.sh: line 39: kill: `': not a pid or valid job spec
+kill failed
+--- spine after the kill (rows must still be unacked) ---
+[{"seq":9421,"at":1788574128075,"kind":"message.pushed","payload":"{\"msg_id\":\"804532273e40de32-000000000000000d\",\"from\":\"pij-fellow-whale\",\"body\":\"AC5-136-FIRST\"}"},
+{"seq":9422,"at":1788574128075,"kind":"delivery.outcome","payload":"{\"msg_id\":\"804532273e40de32-000000000000000d\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"},
+{"seq":9423,"at":1788574128082,"kind":"delivery.held","payload":"{\"msg_id\":\"804532273e40de32-000000000000000d\",\"reason\":\"human-typing\",\"seat\":\"pij-glorious-bobolink\",\"since_ms\":1788574125285}"},
+{"seq":9424,"at":1788574130743,"kind":"message.pushed","payload":"{\"msg_id\":\"804532273e40de32-000000000000000e\",\"from\":\"pij-fellow-whale\",\"body\":\"AC5-136-SECOND\"}"},
+{"seq":9425,"at":1788574130743,"kind":"delivery.outcome","payload":"{\"msg_id\":\"804532273e40de32-000000000000000e\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"},
+{"seq":9426,"at":1788574130752,"kind":"delivery.held","payload":"{\"msg_id\":\"804532273e40de32-000000000000000e\",\"reason\":\"human-typing\",\"seat\":\"pij-glorious-bobolink\",\"since_ms\":1788574125285}"}]

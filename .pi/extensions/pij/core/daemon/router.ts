@@ -32,7 +32,7 @@ export type RouteDecision =
 
 /** The literal keystrokes for a message. A remote command becomes its slash
  *  form (`/compact` triggers compaction in the pane, AC-07) and is injected RAW
- *  so it executes. Free text is framed as `[pij from <sender>] <body>` — the
+ *  so it executes. Free text is framed as `[pij-rs from <sender>]\n<body>\n[/pij]` — the
  *  same envelope the pi in-process receiver uses — so the receiving agent (incl.
  *  an adopted orchestrator) can tell a peer message from real human input and
  *  knows who to reply to. Enter is pressed at the send-keys layer (the daemon).

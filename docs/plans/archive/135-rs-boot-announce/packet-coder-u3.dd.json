@@ -1,0 +1,106 @@
+{
+	"dd": { "schema": "pij-team/packet" },
+	"sections": [
+		{
+			"name": "meta",
+			"value": {
+				"title": "Coder packet — u3 seat pid is the harness process (135-rs-boot-announce)",
+				"role": "coder",
+				"plan": "docs/plans/135-rs-boot-announce/plan.dd.json",
+				"seat": "<filled at spawn>",
+				"updated": "2026-09-05"
+			}
+		},
+		{
+			"name": "mission",
+			"value": "You build ONE unit of plan 135-rs-boot-announce: u3 seat pid is the harness process. When a seat registers or is adopted by tmux pane, the daemon must record the HARNESS process (claude / omp / pi / copilot / codex), NOT the pane's shell; and uds discovery must prefer a LIVE matching record instead of taking whatever sorts first. You report to the PM (seat pij-verbal-silverfish), not to prime. THE FACT THIS MOVES, and it is live damage right now: `pij adopt` binds a seat to tmux #{pane_pid}, which is the pane's -zsh, not the claude child (measured: pane pid 64616, claude pid 49862). uds discover() then looks for ~/.claude/sessions/<that shell pid>.json, misses, falls back to scanning ALL session records sorted by name for one whose tmux field ends with the pane id, and takes the FIRST — which can be a stale record for a dead session that once held a recycled pane. Delivery then drops to the pointer-drain worker, which types a pointer into the pane with tmux send-keys. That is the 'seats are coming in via tmux, not the direct socket' symptom Jordan reported: 18 of 19 live Claude seats affected. STANDING RULES: NEVER run `flowspace3 daemon` in any form (client verbs only; doctor down means tell the PM and stop). NEVER start, restart, rebuild or kill the pij-rs daemon — it is the machine's only daemon, it currently runs the PM's worktree binary, and the PM bounces it once under a window granted by prime. NEVER run npm or just install in the MAIN checkout — worktrees only, and a worktree whose node_modules is a SYMLINK to main counts as main (readlink before you write)."
+		},
+		{
+			"name": "instructions",
+			"value": [
+				{
+					"id": "i0",
+					"text": "IDENTITY AND PLACE first. Run `pij whoami` and quote it — that is your registry-minted id and the only correct spelling of it. Your worktree is /Users/jordanknight/pi-hacking/fs3-rs-boot-announce-u3 on branch 135-rs-boot-announce-u3 (created for you off the composed plan branch, which already contains u1 and u2). You were spawned from the MAIN checkout because omp refuses worktree spawns, so `cd` there and use ABSOLUTE paths for every file read and edit, always. State your worktree root once at ack. Dependencies are already provisioned in your worktree; verify by EXECUTION not by counting (node node_modules/vitest/vitest.mjs --version), and if anything is missing tell the PM rather than installing."
+				},
+				{
+					"id": "i1",
+					"text": "Orient: read /Users/jordanknight/pi-hacking/fs3-rs-boot-announce-u3/docs/plans/135-rs-boot-announce/assets/inputs/claude-seat-pid-is-pane-shell.md (the measured mechanism, with file and line pointers), the plan, and this packet. Run harness boot in your worktree ONLY if you can do it without the smoke stage — bare `harness boot` DEFAULTS to running just smoke, which spawns real tmux seats, and you are forbidden from spawning seats; `harness boot --full` is advertised but rejected as an unknown option. Skip the verb and go straight to scoped cargo runs if in doubt. DOGFOOD FLOWSPACE for meaning-shaped questions (client verbs only). Repo search trap: rg skips hidden paths and the extension lives under .pi/, so always pass --hidden when sweeping."
+				},
+				{
+					"id": "i2",
+					"text": "Ack FIRST: reply to the PM with your read of the unit plus a NUMBERED implementation plan, one question max, BEFORE writing code. Reply via `pij send pij-verbal-silverfish` — the only transport that reaches me. Corrections to this packet are welcome and expected; bring evidence. No code until I rule your ack by number."
+				},
+				{
+					"id": "i3",
+					"text": "INTERFACE, frozen by prime — fill it, never widen it: `pub fn harness_process(pane_pid: u32, harness: Harness) -> Option<ProcIdentity>` in crates/tmux/src/lib.rs, additive. It walks the process tree from pane_pid and returns the FIRST descendant whose command matches the harness (claude, omp/pi, copilot, codex), with its proc_start. It falls back to pane_pid, and that fallback is reported as `proc_source: \"pane\"`. The adopt/register handlers in crates/daemon/src/http/mod.rs use the helper and serialize an additive `proc_source: \"harness\"|\"pane\"` on the response so old rows stay distinguishable from new ones. In crates/transport/src/uds.rs, discover() must, among records matching the pane, prefer one whose pid is ALIVE and whose pid+proc_start match — NEVER sort order. Sort order is the current bug, not a tiebreak."
+				},
+				{
+					"id": "i4",
+					"text": "CROSS-HARNESS HIJACK GUARD — prime ruled this CORE to your unit, not an extra, because it is live data corruption: a one-shot `omp -p ...` run inside a pane that holds another harness's seat HIJACKS that seat. rust-runtime.ts chooseIdentity samePane returns the existing row's id regardless of harness, and register then upserts harness=omp plus the omp pid over it. It happened to prime's own seat today: the row flipped claude to omp and its deliveries went pointer-drain until a re-adopt fixed it. RULE: samePane reuse only when the existing row's harness EQUALS this process's harness; otherwise mint a new id. RED test: a row {harness: claude, pane %X}; an omp process boots in %X; assert a NEW id is minted and the claude row is untouched."
+				},
+				{
+					"id": "i5",
+					"text": "RED FIRST, and it is an acceptance criterion of this plan (AC5 pattern). Three witnesses must fail before they pass: (a) a fixture where a pane pid is a zsh whose child is `claude` must yield the CHILD, not the shell; (b) an adopt test asserting the recorded proc.pid equals the child pid; (c) a uds test with TWO records for one pane, one whose pid is dead and one live, picking the LIVE one. Paste the failing output in your done report, then the green."
+				},
+				{
+					"id": "i6",
+					"text": "MIGRATION, stated by prime: existing rows are NOT rewritten. A re-adopt fixes a seat. Do not write a migration, do not backfill, do not touch existing rows — note the behaviour in your done report so the PM can put it in the plan."
+				},
+				{
+					"id": "i7",
+					"text": "Stay inside your fence (scope below). If the work forces you outside it, STOP and ask the PM — that is a composition concern. Do not touch the toolchain (rustc 1.95.0 and bun 1.3.14 are pinned for this plan; cite what you observed). Do not touch .pi/extensions/pij/adapters/rust-runtime.ts internals beyond the samePane harness guard, and coordinate through the PM if that file fights you — a sibling unit shipped there today."
+				},
+				{
+					"id": "i8",
+					"text": "Gates: `cargo test -p pij-tmux -p pij-daemon -p pij-transport` for your unit, then ONE `harness checks --quick` with `VITEST_MAX_WORKERS=4 VITEST_MAX_THREADS=4 CARGO_BUILD_JOBS=4`. NOTE: VITEST_MAX_THREADS is INERT on the installed Vitest 4.1.10 (its dist reads VITEST_MAX_WORKERS only) — set both, and never trust a cap you have not verified. Do NOT run the full tmux smoke: it spawns real seats. Do not run cargo test --workspace; the PM serializes that one. If a timing-sensitive test fails inside a full gate, re-run it ONCE in isolation before reporting red — three such failures today were load artifacts in untouched code."
+				},
+				{
+					"id": "i9",
+					"text": "Commit with `harness commit` (conventional commits binding). Status card at each edge: `pij report now \"<did>\" \"<next>\"`. Capture friction with `harness observe` the moment it bites; list, never clear."
+				},
+				{
+					"id": "i10",
+					"text": "OMP seats: use your LSP deliberately for symbol work. WARNING, measured today: rust-analyzer in a spawned seat loads the SPAWN directory's workspace (the main checkout), not your worktree, so definitions and references can silently answer about the wrong tree. Check analyzerStatus before trusting an empty result, and report it as friction rather than concluding a symbol does not exist."
+				}
+			]
+		},
+		{
+			"name": "working_with",
+			"value": [
+				{ "id": "w1", "text": "The PM (pij-verbal-silverfish) is your interface: acks, questions, done reports, via `pij send pij-verbal-silverfish`. Never message prime or Jordan directly unless the PM's seat is dead." },
+				{ "id": "w2", "text": "DEFER to the PM: interface changes, dependency additions, anything outside your paths, any restart of anything, and any live-daemon proof (AC7 is PM-owned and runs under a prime-granted window)." },
+				{ "id": "w3", "text": "Your evidence outranks the packet: if the brief is wrong, say so at ack or stop-and-ask with the measurement. One question per message, one sentence context plus one sentence ask." },
+				{ "id": "w4", "text": "A sibling unit (u4) is working on message framing in .pi/extensions/pij/core/message.ts. You share no file with it except possibly rust-runtime.ts — if you need to edit that file, tell the PM FIRST so the edit order is sequenced." }
+			]
+		},
+		{
+			"name": "scope",
+			"value": {
+				"worktree": "/Users/jordanknight/pi-hacking/fs3-rs-boot-announce-u3",
+				"branch": "135-rs-boot-announce-u3",
+				"fence": "crates/tmux/src/lib.rs (additive helper) · crates/daemon/src/http/mod.rs (adopt/register: use the helper, additive proc_source field) · crates/transport/src/uds.rs (discover preference) · tests in those crates · .pi/extensions/pij/adapters/rust-runtime.ts (samePane harness guard ONLY) + its test file. Read anything; WRITE only these.",
+				"forbidden_note": "Never touch .harness/government/**, the plan's flow state, docs/plans/135-rs-boot-announce/assets/contracts/** (frozen), another seat's worktree, or the toolchain. Never merge, never open a PR, never rebase — the PM composes. NEVER start/restart/rebuild the pij-rs daemon or any flowspace3 daemon; never spawn or kill seats; never adopt a live seat as a test. NEVER run npm/just install in the main checkout, and readlink any node_modules before writing to it — a symlink into main IS main, and writing through one broke every seat on this box today. ABSOLUTE PATHS FOR EVERY FILE READ AND EDIT: a spawned seat's file tools may resolve relative paths against the SPAWN directory while your shell resolves against your worktree; the tool reports success either way and your build goes green against a tree missing your change."
+			}
+		},
+		{
+			"name": "done_bar",
+			"value": [
+				{ "id": "d1", "text": "harness_process implemented as specified, additive, with the pane fallback reported as proc_source=pane." },
+				{ "id": "d2", "text": "adopt/register record the harness process and serialize proc_source; old rows remain distinguishable and are NOT rewritten." },
+				{ "id": "d3", "text": "uds discover prefers a live pid+proc_start match among records for a pane; sort order is never the decider." },
+				{ "id": "d4", "text": "Cross-harness samePane guard shipped with its RED test: claude row on a pane, omp boots there, new id minted, claude row untouched." },
+				{ "id": "d5", "text": "RED-first evidence pasted for all three core witnesses, then green; scoped cargo gates and one harness checks --quick verdict, with the toolchain versions you observed." },
+				{ "id": "d6", "text": "Done report to the PM with an explicit ASSUMPTIONS section — everything you assumed about the composition you do not own (who calls adopt vs register, what the extension does with proc_source, what state existing rows are in). Plus the snap-in recipe for anything the composer must wire." }
+			]
+		},
+		{
+			"name": "refs",
+			"value": [
+				{ "id": "r0", "path": ".agents-skills-port/pij-team/TENETS.md", "note": "doctrine — fill contracts never widen them, mechanical done" },
+				{ "id": "r1", "path": "docs/plans/135-rs-boot-announce/assets/inputs/claude-seat-pid-is-pane-shell.md", "note": "the measured mechanism with file/line pointers — your premise, falsifiable in one read" },
+				{ "id": "r2", "path": "docs/plans/135-rs-boot-announce/assets/live-proof.md", "note": "how live proof is recorded on this plan; AC7 will be added the same way" },
+				{ "id": "r3", "path": "CLAUDE.md", "note": "dogfooding + harness commit rules" }
+			]
+		}
+	]
+}

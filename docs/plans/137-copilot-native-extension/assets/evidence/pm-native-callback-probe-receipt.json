@@ -1,0 +1,10 @@
+{
+  "kind": "diagnostic-only-not-acceptance",
+  "receipt": "pm-native-callback-probe-01.json",
+  "source_changes": "No product modification; copied smoke driver adds a second read-only joinSession user extension in its isolated HOME",
+  "trace": "pm-native-callback-recipient.jsonl",
+  "trace_sha256": "bc528aab0faf3670fa5d0adb7167bf7a76b07337f483e73fd680a547b7ab12ee",
+  "observed": "Callbacks omit permission.requested and external_tool.requested while later callbacks reference their IDs as parents; user.message, tool.execution_complete and assistant events carry matching interactionId; session.idle arrives.",
+  "limits": "Second extension callback view, not direct inspection of private NativeBridge fields. Existing live05 product log independently shows idle but no native-completed. No model text or credentials recorded in trace.",
+  "cleanup": "Diagnostic driver returned through owned tmux/daemon cleanup; no global modifications."
+}

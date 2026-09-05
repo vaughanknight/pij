@@ -7,15 +7,16 @@ import type { DeliveryMode, HarnessKind } from "../types.js";
 
 export type { DeliveryMode, HarnessKind } from "../types.js";
 
-/** How a message reaches a session.
- *  - `inbox`   — write the peer's ~/.pij inbox; the peer self-injects (pi).
- *  - `sendkeys`— the daemon types into the peer's tmux pane (claude/copilot/codex). */
+/** Legacy TypeScript transport classification, not current native routing.
+ *  - `inbox`   — legacy inbox ownership, including explicit pull mode.
+ *  - `sendkeys`— historical pane-transport classification. Copilot native routing
+ *    bypasses this helper; callers must never use it as a Copilot fallback. */
 export type Transport = "inbox" | "sendkeys";
 
 /**
- * Select the message transport for a harness (Plan 019). The one immovable
- * seam — `pi.sendUserMessage` — keeps pi on the in-process `inbox` path; every
- * other harness (claude/copilot/codex) is driven over tmux `send-keys`.
+ * Select the legacy TypeScript transport class (Plan 019).
+ * Current native Copilot delivery is owned by its user extension and Rust inbox
+ * authority; this historical classification does not grant permission to type.
  */
 export function selectTransport(harness: HarnessKind, deliveryMode?: DeliveryMode): Transport {
 	if (deliveryMode === "pull") return "inbox";

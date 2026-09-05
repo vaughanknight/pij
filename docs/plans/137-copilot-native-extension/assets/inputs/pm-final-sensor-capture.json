@@ -1,0 +1,9 @@
+{
+  "task": "New bounded diagnostic harness assignment after7084/346c: retain final native typing API snapshots before teardown",
+  "owner": "pij-intellectual-mosquito",
+  "why": "local07 and real02 show first sensor unavailable then permanent receive stop. Final measured cursor/frame now exists, but no later daemon observation was retained, so transient readiness cannot be distinguished from persistent unrecognition.",
+  "change": ["In runSmoke retain a bounded read-only final-capture callback once daemon/API/roster exist", "Before killing owned panes/daemon, request /v1/inbox/typing with exact current tuple for each native-attested local seat and retain result or named error beside seat and timestamp", "Retain nearby measured pane_capture; label measurements nearby, not atomic with server observation", "Do not mutate queue, inject input, restart anything, or replace the original failure with a diagnostics error", "Daemon-absent/key-unavailable startup still cleans up and reports its original outcome; final observations are optional diagnostics, not a success gate", "Add fake API/teardown-order tests proving diagnostic capture happens before cleanup, errors retained and no new keys/sends"],
+  "scope": ["harness/scripts/copilot-native-smoke.ts", "harness/scripts/copilot-native-smoke.test.ts", "installer evidence"],
+  "constraints": ["No product/permission/policy change", "No live/full gate", "No fake cursor or assumed sensor state", "No .the-flow-state.json/the-flow.json/the-flow.md/governance edits"],
+  "acceptance": "Source and scoped tests, distinct checkpoint; new failed/successful runs contain actual final daemon observation when reachable, not merely terminal appearance."
+}

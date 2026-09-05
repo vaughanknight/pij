@@ -1,0 +1,66 @@
+=== AC1: hold while typing, deliver within one grace of the last edit ===
+since=1788573861098 seat=pij-selective-blackbird pane=%3612
+t0_last_keystroke=1788573861190
+--- composer at t0+1s (draft must be present) ---
+
+
+
+
+
+
+send_at=1788573866284 (t0+5094ms)
+sent (rs) — msg cb2bdaa7f270335f-0000000000000004 — receipt queued
+--- t0+11s: expect NO injection, status shows a hold ---
+
+
+
+
+
+
+
+
+--- spine so far (expect delivery.held, no inbox-ack) ---
+[{"seq":9306,"at":1788573866919,"kind":"message.pushed","seat":"pij-selective-blackbird","payload":"{\"msg_id\":\"cb2bdaa7f270335f-0000000000000004\",\"from\":\"pij-fellow-whale\",\"body\":\"AC1-136: this must be HELD, not injected\"}"},
+{"seq":9307,"at":1788573866919,"kind":"delivery.outcome","seat":"pij-selective-blackbird","payload":"{\"msg_id\":\"cb2bdaa7f270335f-0000000000000004\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"},
+{"seq":9308,"at":1788573866924,"kind":"delivery.held","seat":"pij-selective-blackbird","payload":"{\"msg_id\":\"cb2bdaa7f270335f-0000000000000004\",\"reason\":\"human-typing\",\"seat\":\"pij-selective-blackbird\",\"since_ms\":1788573861113}"}]
+--- pij state (sender-visible hold) ---
+{"ok":true,"command":"pij state","v":2,"data":{"id":"pij-selective-blackbird","state":"idle","liveness":"active","pid":7805,"procStart":20260905120342,"cwd":"/Users/jordanknight/pi-hacking/pij","harness":"omp","role":null,"parent":"pij-fellow-whale","boundModel":"github-copilot/gpt-6-astra-1m","effort":"low","pane":"%3612","provider":"github-copilot","semanticState":null,"machine":"JordansacStudio.localdomain","tombstonedAt":null,"tombstoneReason":null,"statusPrev":null,"statusNext":null,"statusAt":null,"statusSeq":null,"statusStale":null,"stateNote":null,"unsupported":[{"field":"lifecycle","why":"rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"},{"field":"activity","why":"the done-vs-idle split needs `lastEventAt`, which the rs descriptor does not carry; `state` reports the working/idle half"},{"field":"lastEventAt","why":"not on the rs descriptor — deriving it needs a full spine scan per read"},{"field":"ageMs","why":"derived from `lastEventAt`, which rs does not carry"},{"field":"liveness:stale","why":"TS reports `stale` for a seat that claims to be working and has gone quiet; that needs event age. A
+--- waiting past the grace with NO further typing ---
+checked_at=1788573931357 (t0+70167ms)
+
+
+
+
+
+
+
+
+
+
+--- spine after release (expect delivery.released then delivery.inbox-ack) ---
+[{"seq":9306,"at":1788573866919,"kind":"message.pushed","seat":"pij-selective-blackbird","payload":"{\"msg_id\":\"cb2bdaa7f270335f-0000000000000004\",\"from\":\"pij-fellow-whale\",\"body\":\"AC1-136: this must be HELD, not injected\"}"},
+{"seq":9307,"at":1788573866919,"kind":"delivery.outcome","seat":"pij-selective-blackbird","payload":"{\"msg_id\":\"cb2bdaa7f270335f-0000000000000004\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"},
+{"seq":9308,"at":1788573866924,"kind":"delivery.held","seat":"pij-selective-blackbird","payload":"{\"msg_id\":\"cb2bdaa7f270335f-0000000000000004\",\"reason\":\"human-typing\",\"seat\":\"pij-selective-blackbird\",\"since_ms\":1788573861113}"},
+{"seq":9326,"at":1788573921906,"kind":"delivery.released","seat":"pij-selective-blackbird","payload":"{\"at_ms\":1788573921905,\"msg_id\":\"cb2bdaa7f270335f-0000000000000004\",\"seat\":\"pij-selective-blackbird\"}"},
+{"seq":9327,"at":1788573921911,"kind":"delivery.released","seat":"pij-selective-blackbird","payload":"{\"at_ms\":1788573921910,\"msg_id\":\"cb2bdaa7f270335f-0000000000000004\",\"seat\":\"pij-selective-blackbird\"}"},
+{"seq":9328,"at":1788573921915,"kind":"delivery.inbox-ack","seat":"pij-selective-blackbird","payload":"{\"job_id\":1995,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"}]
+
+=== AC4: a control command bypasses an active hold ===
+since=1788573931556
+t4_last_keystroke=1788573931695
+sent (rs) — msg cb2bdaa7f270335f-0000000000000005 — receipt queued
+E-RS: send: rs at 127.0.0.1:7461 FAILED — not falling back to legacy (rs cannot serve `pij send <id> --command <name>`: a control command is a different act from a message — it carries no body and is submitted to the pane as a slash command. It is deliberately left on legacy.)
+--- expect the command through, the ordinary message still held ---
+
+
+
+
+
+
+
+
+
+
+[{"seq":9332,"at":1788573936509,"kind":"message.pushed","seat":"pij-selective-blackbird","payload":"{\"msg_id\":\"cb2bdaa7f270335f-0000000000000005\",\"from\":\"pij-fellow-whale\",\"body\":\"AC4-136-ORDINARY: must stay held behind the command\"}"},
+{"seq":9333,"at":1788573936509,"kind":"delivery.outcome","seat":"pij-selective-blackbird","payload":"{\"msg_id\":\"cb2bdaa7f270335f-0000000000000005\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"},
+{"seq":9334,"at":1788573939331,"kind":"delivery.held","seat":"pij-selective-blackbird","payload":"{\"msg_id\":\"cb2bdaa7f270335f-0000000000000005\",\"reason\":\"human-typing\",\"seat\":\"pij-selective-blackbird\",\"since_ms\":1788573931579}"}]

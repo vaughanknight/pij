@@ -1,0 +1,26 @@
+=== AC2 (omp): a PARKED draft no longer blocks after one grace ===
+pane=%3615
+t_last_edit=1788574460497
+--- composer with the parked draft ---
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ AC2-DRAFT-136 parked and never submitted
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ◫ 3.2%/1M ⟲ · rs·pij-glorious-bobolink · ⬢ GPT-6 Astra (1M) · ◔ low · ⑂ main ?6 · S0.26 ★ 3
+rs pij-glorious-bobolink
+--- waiting 65s with NO typing ---
+send_at=1788574528604 (t+68107ms)
+sent (rs) — msg 804532273e40de32-000000000000001a — receipt queued
+--- spine ---
+{"seq":9517,"at":1788574529194,"kind":"message.pushed","payload":"{\"msg_id\":\"804532273e40de32-000000000000001a\",\"from\":\"pij-fellow-whale\",\"body\":\"AC2-136: parked draft must not block delivery\"}"}
+{"seq":9518,"at":1788574529194,"kind":"delivery.outcome","payload":"{\"msg_id\":\"804532273e40de32-000000000000001a\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"}
+{"seq":9519,"at":1788574529199,"kind":"delivery.released","payload":"{\"at_ms\":1788574529198,\"msg_id\":\"804532273e40de32-000000000000001a\",\"seat\":\"pij-glorious-bobolink\"}"}
+{"seq":9520,"at":1788574529203,"kind":"delivery.inbox-ack","payload":"{\"job_id\":2050,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"}
+--- composer after (draft must survive) ---
+
+  ⎋ Acknowledging delivery test marker
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ◫ 3.2%/1M ⟲ · rs·pij-glorious-bobolink · ⬢ GPT-6 Astra (1M) · ◔ low · ⑂ main ?6 · S0.33 ★ 4
+rs pij-glorious-bobolink

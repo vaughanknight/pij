@@ -1,0 +1,154 @@
+   Compiling pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/harnesses)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.29s
+     Running unittests src/lib.rs (target/debug/deps/pij_harnesses-fb9de7e516947f48)
+
+running 104 tests
+test adapter::tests::busy_guard_wins_over_a_visible_ready_anchor ... ok
+test adapter::tests::codex_rotating_placeholder_is_not_a_readiness_anchor ... ok
+test adapter::tests::bind_observation_uses_shared_admission_and_refuses_subagents ... ok
+test adapter::tests::bind_evidence_depends_on_observed_cwd_model_and_process ... ok
+test adapter::tests::concrete_observation_returns_native_id_model_cwd_and_pane ... ok
+test adapter::tests::omp_status_footer_is_not_ready_while_the_spinner_is_active ... ok
+test adapter::tests::pi_status_footer_is_not_ready_while_the_spinner_is_active ... ok
+test adapter::tests::registry_enumerates_exactly_the_five_frozen_variants ... ok
+test adapter::tests::every_harness_variant_classifies_its_recorded_fixture ... ok
+test claude_settings::tests::already_accept_is_a_no_op_without_backup ... ok
+test claude_settings::tests::absent_file_is_created_with_accept ... ok
+test claude_settings::tests::absent_key_is_added_without_rewriting_other_settings ... ok
+test claude_settings::tests::duplicate_keys_update_the_effective_last_value ... ok
+test claude_settings::tests::correct_statusline_command_is_a_no_op_without_backup ... ok
+test claude_settings::tests::correct_managed_hook_removes_stale_sibling ... ok
+test claude_settings::tests::duplicate_stale_managed_hooks_collapse_to_one ... ok
+test claude_settings::tests::existing_session_start_hook_is_a_no_op_without_backup ... ok
+test claude_settings::tests::foreign_empty_hook_entry_survives_reconciliation ... ok
+test claude_settings::tests::empty_and_whitespace_files_are_backed_up_then_repaired ... ok
+test claude_settings::tests::insertion_preserves_crlf_line_endings ... ok
+test claude_settings::tests::hold_is_replaced_and_original_is_backed_up ... ok
+test claude_settings::tests::home_discovery_prefers_config_dir_and_includes_existing_alt ... ok
+test claude_settings::tests::pure_plan_refuses_non_object_json ... ok
+test claude_settings::tests::malformed_json_is_untouched_and_reported ... ok
+test claude_settings::tests::session_start_hook_appends_without_reordering_existing_entries ... ok
+test claude_settings::tests::session_start_hook_creates_missing_settings ... ok
+test claude_settings::tests::session_start_hook_preserves_existing_hooks_byte_for_byte ... ok
+test claude_settings::tests::session_start_hook_refuses_malformed_settings_without_touching_them ... ok
+test claude_settings::tests::session_start_hook_shell_quotes_spaced_script_paths ... ok
+test claude_settings::tests::stale_managed_hook_is_replaced_in_place ... ok
+test claude_settings::tests::statusline_command_is_replaced_without_touching_hooks ... ok
+test claude_settings::tests::statusline_refuses_malformed_settings_without_touching_them ... ok
+test claude_settings::tests::installed_script_is_executable_and_silent_without_tmux ... ok
+test claude_settings::tests::refused_script_adopt_logs_one_line_and_stays_silent ... ok
+test composer::tests::copilot_footer_is_excluded_from_composer_text ... ok
+test composer::tests::copilot_footer_preserves_existing_variants ... ok
+test composer::tests::copilot_footer_rejects_command_help_in_prose ... ok
+test composer::tests::copilot_footer_rejects_draft_help_in_prose_or_partial_hints ... ok
+test composer::tests::copilot_v1_0_84_captured_draft_footer_is_recognized ... ok
+test composer::tests::copilot_v1_0_84_captured_idle_footer_is_recognized ... ok
+test composer::tests::copilot_v1_box_clips_typed_text_at_the_cursor ... ok
+test composer::tests::current_codex_prompt_and_footer_identify_the_composer ... ok
+test composer::tests::cursor_clips_suggestion_text_to_the_right ... ok
+test composer::tests::cursor_outside_recognized_region_is_unrecognized ... ok
+test composer::tests::decorative_blank_rule_region_is_not_an_idle_composer ... ok
+test composer::tests::garbage_layout_is_unrecognized ... ok
+test composer::tests::live_copilot_v1_box_is_recognized_without_prompt_marker ... ok
+test composer::tests::live_recorded_layouts_recognize_the_cursor_composer ... ok
+test composer::tests::markdown_table_borders_are_not_composer_rules ... ok
+test composer::tests::omp_inline_composer_is_clipped_at_the_measured_cursor ... ok
+test composer::tests::rounded_border_above_cursor_does_not_hide_later_composer ... ok
+test interaction::tests::a_clear_observation_can_return_to_unknown_and_block ... ok
+test interaction::tests::active_tmux_mode_remains_the_fallback_veto ... ok
+test interaction::tests::expired_self_echo_exemption_does_not_hide_human_input ... ok
+test interaction::tests::fresh_boundary_recognized_blank_without_tap_permits ... ok
+test interaction::tests::fresh_boundary_replaces_a_stale_clear_composer_observation ... ok
+test interaction::tests::fresh_boundary_streamed_output_with_blank_composer_permits ... ok
+test interaction::tests::fresh_boundary_unrecognized_layout_defers ... ok
+test interaction::tests::fresh_verdict_expires_a_recognized_draft_after_typing_grace ... ok
+test interaction::tests::generation_transition_with_adjacent_human_text_acquires_a_hold ... ok
+test interaction::tests::initial_uncertainty_expires_to_tmux_mode_alone ... ok
+test interaction::tests::injection_requires_both_tmux_and_composer_gates_clear ... ok
+test interaction::tests::legacy_frame_observed_as_pij_rs_frame_remains_a_self_echo ... ok
+test interaction::tests::observed_composer_clear_does_not_override_tmux_mode ... ok
+test interaction::tests::owned_submit_vetoes_draft_and_ignores_streamed_output ... ok
+test interaction::tests::parked_draft_holds_at_most_the_idle_window_then_sends ... ok
+test interaction::tests::repeated_unknown_observations_do_not_refresh_interaction_age ... ok
+test interaction::tests::self_echo_exemption_is_one_shot ... ok
+test interaction::tests::self_echo_match_is_exact_not_a_substring ... ok
+test interaction::tests::self_echo_never_acquires_a_hold ... ok
+test interaction::tests::self_echo_never_destroys_an_active_human_hold ... ok
+test interaction::tests::tap_latch_expires_after_the_idle_window ... ok
+test interaction::tests::transaction_exit_table_clears_marker_input_and_exemption ... ok
+test interaction::tests::typing_grace_baseline_echo_clear_preserves_provenance ... ok
+test interaction::tests::typing_grace_parked_draft_releases_without_another_key ... ok
+test interaction::tests::typing_grace_recent_edit_to_blank_still_defers ... ok
+test interaction::tests::typing_grace_rendered_output_does_not_rearm_a_parked_draft ... ok
+test interaction::tests::typing_grace_self_echo_does_not_start_human_grace ... ok
+test interaction::tests::typing_grace_uses_injected_boundary_independently_of_idle_window ... ok
+test interaction::tests::typing_through_restart_is_not_rebaselined_away ... ok
+test interaction::tests::unrecognized_veto_expires_to_the_tmux_mode_verdict ... ok
+test models::tests::absent_empty_and_raw_null_levels_fold_but_missing_request_id_fails_by_name ... ok
+test models::tests::corpus_preserves_runtime_provider_selector_and_request_id ... ok
+test claude_settings::tests::successful_script_adopt_emits_only_session_start_json ... ok
+test models::tests::omp_parser_accepts_null_levels_and_preserves_alias_request_id ... ok
+test models::tests::omp_parser_rejects_one_bad_row_without_returning_survivors ... ok
+test models::tests::pi_and_copilot_parsers_keep_runtime_provider_and_selector_separate ... ok
+test models::tests::production_catalog_matches_the_committed_folded_golden ... ok
+test models::tests::runtime_filter_touches_only_its_adapter_but_provider_filter_requires_all ... ok
+test proc::tests::an_absent_exact_pid_is_none ... ok
+test proc::tests::exact_pid_command_and_macos_parser_are_fixture_backed ... ok
+test proc::tests::linux_spacing_is_fixture_backed ... ok
+test proc::tests::malformed_process_output_is_an_adapter_error ... ok
+test proc::tests::permission_denied_is_not_dead ... ok
+test proc::tests::utc_record_matches_the_same_local_start_and_rejects_recycled_pid_time ... ok
+test spawn::tests::accept_inbound_is_refused_for_every_non_claude_harness ... ok
+test spawn::tests::accept_stamp_is_true_only_when_exact_setting_is_emitted ... ok
+test spawn::tests::copilot_launch_never_requests_an_rpc_listener ... ok
+test spawn::tests::every_harness_builds_discrete_ruled_argv ... ok
+test spawn::tests::executable_override_and_absent_optional_facts_are_preserved ... ok
+test spawn::tests::observed_launch_keeps_discrete_argv_and_names_status_path ... ok
+test adapter::tests::every_harness_port_operation_runs_against_each_recorded_pane ... ok
+test claude_settings::tests::statusline_script_prefers_rs_and_falls_back_to_legacy ... ok
+test models::tests::every_real_adapter_returns_non_empty_models_or_an_honest_unavailable_error ... ok
+
+test result: ok. 104 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.02s
+
+     Running tests/proc_integration.rs (target/debug/deps/proc_integration-c06c2177fc360ed1)
+
+running 2 tests
+test a_pid_the_platform_cannot_represent_is_absent ... ok
+test own_process_has_a_stable_start_identity ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests pij_harnesses
+
+running 2 tests
+test crates/harnesses/src/interaction.rs - interaction::InteractionGate::with_typing_grace (line 175) ... ignored
+test crates/harnesses/src/proc.rs - proc::ProcLiveness (line 31) ... ignored
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test crates/harnesses/src/adapter.rs - adapter::HarnessRegistry (line 404) ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.64s; merged doctests compilation took 0.28s
+   Compiling serde_core v1.0.229
+   Compiling syn v3.0.4
+   Compiling libc v0.2.189
+   Compiling serde v1.0.229
+   Compiling serde_json v1.0.151
+    Checking memchr v2.8.3
+    Checking serde_spanned v1.1.1
+    Checking toml_datetime v0.7.5+spec-1.1.0
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.20
+   Compiling async-trait v0.1.92
+    Checking cpufeatures v0.2.17
+    Checking sha2 v0.10.9
+    Checking toml v0.9.12+spec-1.1.0
+    Checking thiserror v2.0.20
+    Checking pij-core v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/core)
+    Checking pij-testkit v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/testkit)
+    Checking pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/harnesses)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.82s

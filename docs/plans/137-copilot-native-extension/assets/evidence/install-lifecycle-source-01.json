@@ -1,0 +1,66 @@
+{
+  "status": "lifecycle-driver-implemented-scoped-checks-passed-PM-live-proof-outstanding",
+  "ac7_accepted": false,
+  "source": "Co-committed harness/scripts/copilot-native-smoke.ts and copilot-native-smoke.test.ts",
+  "composition": "ca8093cbc21e4b5f4887564da8627df5384985a1, merging authorized PM checkpoint 0de7932273d1f3577cc64177bd1a8abe6442daba after separate consent checkpoint 5efd0ccc",
+  "implemented_scenarios": {
+    "manual_and_spawned_new": [
+      "Wait for the preceding native assistant.turn_end and empty actual composer; acceptance remains a separate receipt grade.",
+      "Stage only documented /new through fixture-human controls, creating typing hold before sending an old-context nonce through /v1/send.",
+      "Require a durable pending/running job with original recipient, body, msg_id and native_target_session; no acknowledgement or native user message.",
+      "Recheck exact staged composer before Enter; preserve before/staged/before_submit/after captures and fail unknown dialogs without further keys.",
+      "Require new native session and Pij address in the same real pane/host; spawned rollover preserves verified spawn_id.",
+      "Require predecessor tombstone and revoked native flag; old native tuple GET /v1/inbox must return HTTP400 refused with native-extension-unavailable metadata.",
+      "Require a fresh-context nonce accepted exactly once with one reader-read acknowledgement and separately recorded turn end.",
+      "Recheck old queued work remains unchanged, unacknowledged, absent from both native conversations and absent from the successor queue."
+    ],
+    "manual_dead_host_resume": [
+      "Use documented native /exit with the same guarded human controls; retain actual pre-exit process command/tuple.",
+      "Observe real process absence through kill(pid,0) returning ESRCH before launching anything; other errors are not death proof.",
+      "Launch actual Copilot --resume=<native-session> manually in a new owned pane, with no Pij preallocation variables.",
+      "Require same native session/Pij address with a different host incarnation, then a fresh single native delivery and reader-read acknowledgement.",
+      "Retain native events, registry rows, process tuples, launch arguments, terminal captures, and continued old-context exclusion."
+    ]
+  },
+  "verification": {
+    "environment": { "VITEST_MAX_WORKERS": "4", "VITEST_MAX_THREADS": "4", "CARGO_BUILD_JOBS": "4" },
+    "tests": {
+      "command": "just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0,
+      "passed": 85,
+      "smoke": 52,
+      "installer": 33,
+      "lifecycle_cases_added": 26,
+      "grade": "Unit assertion/control boundaries, not actual CLI lifecycle proof"
+    },
+    "typecheck": {
+      "command": "node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0
+    },
+    "biome": {
+      "command": "node_modules/.bin/biome check harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0,
+      "result": "Checked 2 files; no fixes applied"
+    },
+    "retained_native_ui": {
+      "command": "node_modules/.bin/tsx /tmp/install137-lifecycle-replay.mts",
+      "source": "PM pm-native-local-04.json final_pane_captures",
+      "result": "Actual pane %2 parses as empty native composer; actual pane %3 permission dialog is rejected for lifecycle keys",
+      "exit_code": 0,
+      "live_lifecycle_commands_sent": 0
+    },
+    "independent_read_only_review": {
+      "agent": "LifecycleReview",
+      "findings": [],
+      "result": "No actionable source defects; native autocomplete/submission and real exit/resume remain PM-owned live experiments"
+    }
+  },
+  "proof_boundaries": [
+    "PM owns actual full driver execution and full gates; neither was run in this lifecycle unit.",
+    "No AC7 acceptance, real native rollover, real dead-host resume, or real-provider inference is claimed from unit fixtures or retained-screen replay.",
+    "Consumer cancellation witness is external binding revocation/refused stale claims plus old-context exclusion. Private abort-signal telemetry is explicitly not observed.",
+    "No product runtime/daemon edits, SDK monkeypatch, artificial PID death, tmux message-body delivery, grant-all permission, global daemon/link/config/auth mutation, or toolchain update.",
+    "Existing final-pane captures remain intact, including failure paths."
+  ],
+  "retrospective": "DL-002 encoded: key rotation is not native lifecycle proof. New driver paths name native session, Pij identity, real host lifetime, old-context queue isolation and consent control evidence separately; actual execution remains an explicit acceptance prerequisite."
+}

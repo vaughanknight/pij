@@ -1,0 +1,84 @@
+{
+  "target": "52fe40d3",
+  "status": "targeted runtime correction implemented; scoped proof passing",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime",
+  "branch": "137-copilot-native-runtime",
+  "base_commit": "0adc3665d34d9471120ad3d9572c953aaf93f11a",
+  "source_commit": "e4c8d445f72b81e9c8c40e917dc974b850ef4370",
+  "source_sha256": {
+    ".copilot/extensions/pij/store.mjs": "130d19b5135a760e4e52801678a1e010da8297586b2a7f9b233ec162db5f5dcc",
+    ".copilot/extensions/pij/store.test.mjs": "efb1ac1952ffe63025f4f1c0f665c6436e219a05e7408fa0dbe60da25e6f1196",
+    ".copilot/extensions/pij/extension.test.mjs": "398143a9f68d2a1b238bcec93b0bff93e46726199dfa1fc1adcca3d1e0378fde"
+  },
+  "acceptance_boundary": "native send acceptance -> durable acceptance persist -> daemon ack, unchanged; ack does not wait for model completion",
+  "next_claim_boundary": "Before the next inbox request, await observed current-send native terminal. Preserve this barrier through failed-ack reconnect so a lost ack response cannot permit a different send.",
+  "correlation": "Subscribe before sending. Capture early event metadata until native messageId resolves. Match root user.message.data.messageId; accept root session.idle/session.error only on that root event ancestry. Unrelated prior-generation and subagent terminals do not release the barrier.",
+  "lifecycle": "Abort pending completion wait on stop/shutdown, detach subscription on stop or held receive, never forward native events as replies. Explicit outgoing pij_send stays callable while completion is pending or receive held.",
+  "duplicate_recovery": "Same live barrier retains completion evidence across reclaim. Accepted duplicate without that live evidence is acknowledged at acceptance grade, then explicitly receive-held with diagnostic; no blind reinjection, no claimed ephemeral idle replay, no silently pending promise.",
+  "runtime_evidence": {
+    "source": "/Users/jordanknight/pi-hacking/pij/scratch/copilot-pij-daemon-poc/target-events.jsonl:36-54",
+    "supplied_by": "pij-grim-gurgeh",
+    "selected_lines": [
+      36,
+      37,
+      39,
+      48,
+      51,
+      53,
+      54
+    ],
+    "fixture": "store.test.mjs: post-ack barrier follows real native PoC ancestry with sibling ephemeral idles",
+    "sanitation": "Opaque event/message IDs consistently remapped; only types, ancestry, ephemeral flags and correlation fields retained. No prompts, system messages, bodies, credentials, or whole logs vendored.",
+    "observation": "user.message carries data.messageId distinct from event.id; assistant.idle and session.idle are ephemeral siblings with shared assistant.turn_end parent, not a simple last-event chain"
+  },
+  "official_schema": "https://raw.githubusercontent.com/github/copilot-sdk/main/nodejs/src/generated/session-events.ts",
+  "proof": {
+    "before_fix": {
+      "command": "node --test --test-reporter=tap --test-name-pattern=post-ack --test-timeout=2000 .copilot/extensions/pij/store.test.mjs",
+      "exit": 1,
+      "tests": 8,
+      "pass": 1,
+      "fail": 6,
+      "cancelled": 1,
+      "observations": [
+        "next claim count2 instead of1 after ack",
+        "next generation claim count3 instead of2",
+        "accepted duplicate without completion failed to return explicit hold",
+        "failed ack advanced claim count3 instead of1"
+      ]
+    },
+    "final": {
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "--test-timeout=15000",
+        ".copilot/extensions/pij/store.test.mjs",
+        ".copilot/extensions/pij/identity.test.mjs",
+        ".copilot/extensions/pij/extension.test.mjs"
+      ],
+      "exit": 0,
+      "tests": 59,
+      "pass": 59,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "artifact": "runtime-ordering-tests.tap",
+      "sha256": "38b0b6d9a87100e47625937b25b8096079c2a08be67f66e110d77bc59cd5c89f"
+    },
+    "scoped_formatter": "Biome check --write on3 changed mjs files passed; subsequent new PoC fixture formatted in store.test.mjs before final59-test run",
+    "lsp": "Scoped diagnostics on all5 runtime mjs files reported no issues; subsequent fixture addition covered by final tests",
+    "shell": "Actual extension child/HTTP/disk with explicit SDK/OS seams: ACK first delivery while next claim blocked; native event release allows second fresh delivery+ACK; stdin EOF cleanly stops pending second completion wait. stdout empty.",
+    "grade": "Unit and actual-extension-shell fixture proof, plus replay of pre-existing PM native event metadata. Not a new real-Copilot/real-daemon/model acceptance run."
+  },
+  "execution_constraints": {
+    "VITEST_MAX_THREADS": "4",
+    "CARGO_BUILD_JOBS": "4",
+    "new_worktrees": false,
+    "full_gates": "not run; PM serializes",
+    "dependencies": "no install or repair",
+    "scope": "3 existing runtime source/test files and runtime evidence only"
+  },
+  "remaining_acceptance": "PM composes correction, then owns real native manual/spawned/consent/new-resume-reload/model proof, final gates and independent review.",
+  "harness_lesson": "An acceptance assertion stopping immediately at ACK hid the missing next-claim barrier. Permanent two-delivery tests now fail if polling or native enqueue advances before observed completion, and preserve real sibling-ephemeral event shape."
+}

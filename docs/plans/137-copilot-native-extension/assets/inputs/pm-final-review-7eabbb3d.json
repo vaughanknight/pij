@@ -1,0 +1,17 @@
+{
+  "root": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension",
+  "source_pin": "7eabbb3d9b2a92c7c974b7c5ac1a215497762647",
+  "task": "Final independent source/evidence review for plan137; grade current remaining harness deltas and committed actual native proofs",
+  "source_focus": [
+    "Measured lifecycle ghost handling stays outside nativeComposer, uses untrimmed cursor-row geometry and exact selected /new or /exit, rejects placeholders typed as input/wrong selection/malformed frames.",
+    "Preauthorized spawned tool path observes preexisting --yolo/allow flags, permission before actual invocation, exact successful native tool and durable outgoing; no absent-dialog assumption, new grant, human approval claim or keys.",
+    "Native /exit is submission-only; whole-host teardown verifies fixture-owned launch/private socket, closes only owned pane, requires actual ESRCH, then manual --resume retains native/Pij identity with new tuple. Error handling cannot conceal failed teardown.",
+    "Active docs now describe native Copilot registration/receive ownership; legacy selectTransport remains truthfully documented as legacy/bypassed and attachment-only refusal remains unchanged. /pij ready must not create a competing Copilot inbox consumer.",
+    "All previously accepted product invariants remain: no sendkeys body/control fallback, tuple/target/attempt authority, native acceptance journal, release-before-ACK, correlation and ruled typing policy."
+  ],
+  "committed_evidence": ["pm-native-real-canary-04.json: real gpt-5.6-luna manual roundtrip and second receive", "pm-native-local-08.json[6]: real60000 held→aged unchanged draft admission", "pm-native-local-09.json: missing consumer and key rotation passed before fixture lifecycle stop", "pm-native-spawned-probe-02.json: passed actual daemon spawn/prebind/initial task/roundtrip and second receive, preauthorized execution", "pm-native-lifecycle-probe-03.json: passed manual/new + old-context exclusion + owned whole-host death/ESRCH + same native/Pij cold resume and delivery", "pm-native-spawned-lifecycle-01.json: passed spawned/new with retained spawn correlation and old-context exclusion"],
+  "current_runs": "Canonical full both-mode native driver pm-native-local-10.json and final harness checks + Rust workspace are running on this pin. They postdate the pin by definition; PM will deliver and commit exact results. Do not claim passed before output exists.",
+  "residuals": "G2 postclaim unavailable remains an explicit safe terminal hold; no silent retry introduced. Prime-approved future box-geometry recognizer redesign remains separate; no third footer variant. No global rollout/public push/main merge authorized.",
+  "constraints": ["Read committed source pin and committed evidence; final newly produced receipts may be read only when present and must be digest-checked and committed before acceptance", "No code edits, builds/tests/lint/formatters/live launches/new peers", "Write assets/reviews/opus-final-source-7eabbb3d.md only; append final evidence adjudication there after PM result delivery", "No .the-flow-state.json/the-flow.json/the-flow.md/governance edits"],
+  "acceptance": "Material findings or source approval with exact proof grades. Release-ready recommendation only after complete canonical live proof and final gates; no claim of real-provider spawned mode unless actually exercised."
+}

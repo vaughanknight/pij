@@ -1,0 +1,394 @@
+TAP version 13
+# Subtest: actual extension shell joins, registers, receives and exposes immutable outgoing tool
+ok 1 - actual extension shell joins, registers, receives and exposes immutable outgoing tool
+  ---
+  duration_ms: 101.21475
+  type: 'test'
+  ...
+# Subtest: actual extension shell acknowledges then waits for native completion before second delivery
+ok 2 - actual extension shell acknowledges then waits for native completion before second delivery
+  ---
+  duration_ms: 117.491917
+  type: 'test'
+  ...
+# Subtest: actual HTTP target-session hold stops claims and ack with actionable native diagnostic
+ok 3 - actual HTTP target-session hold stops claims and ack with actionable native diagnostic
+  ---
+  duration_ms: 416.918
+  type: 'test'
+  ...
+# Subtest: actual HTTP empty page differs from consent hold and release delivers without another send
+ok 4 - actual HTTP empty page differs from consent hold and release delivers without another send
+  ---
+  duration_ms: 850.967625
+  type: 'test'
+  ...
+# Subtest: absent key does not block joined native tools and emits one native timeline diagnostic
+ok 5 - absent key does not block joined native tools and emits one native timeline diagnostic
+  ---
+  duration_ms: 906.510416
+  type: 'test'
+  ...
+# Subtest: absent daemon with readable key stays callable and quiet across network retries
+ok 6 - absent daemon with readable key stays callable and quiet across network retries
+  ---
+  duration_ms: 907.2135
+  type: 'test'
+  ...
+# Subtest: prejoin rejection emits once to stderr without claiming native timeline visibility
+ok 7 - prejoin rejection emits once to stderr without claiming native timeline visibility
+  ---
+  duration_ms: 58.8835
+  type: 'test'
+  ...
+# Subtest: native diagnostic sink counts one call per failure episode and never logs raw remote secrets
+ok 8 - native diagnostic sink counts one call per failure episode and never logs raw remote secrets
+  ---
+  duration_ms: 0.336083
+  type: 'test'
+  ...
+# Subtest: host is verified Copilot ancestor, not extension loader or pane shell
+ok 9 - host is verified Copilot ancestor, not extension loader or pane shell
+  ---
+  duration_ms: 0.766833
+  type: 'test'
+  ...
+# Subtest: paneless native host remains truthful without inventing a pane
+ok 10 - paneless native host remains truthful without inventing a pane
+  ---
+  duration_ms: 0.086417
+  type: 'test'
+  ...
+# Subtest: a pane not in actual ancestry refuses instead of hiding pane metadata
+ok 11 - a pane not in actual ancestry refuses instead of hiding pane metadata
+  ---
+  duration_ms: 0.271791
+  type: 'test'
+  ...
+# Subtest: absence of native ancestor is explicit unsupported identity
+ok 12 - absence of native ancestor is explicit unsupported identity
+  ---
+  duration_ms: 0.078166
+  type: 'test'
+  ...
+# Subtest: PID reuse during observation refuses stale host incarnation
+ok 13 - PID reuse during observation refuses stale host incarnation
+  ---
+  duration_ms: 0.117291
+  type: 'test'
+  ...
+# Subtest: acceptance is persisted before tuple-bound acknowledgement, not model completion
+ok 14 - acceptance is persisted before tuple-bound acknowledgement, not model completion
+  ---
+  duration_ms: 1.445292
+  type: 'test'
+  ...
+# Subtest: accepted duplicate after restart only acknowledges, never reinjects
+ok 15 - accepted duplicate after restart only acknowledges, never reinjects
+  ---
+  duration_ms: 0.171083
+  type: 'test'
+  ...
+# Subtest: ambiguous prior send holds without native send or ack; outgoing remains available
+ok 16 - ambiguous prior send holds without native send or ack; outgoing remains available
+  ---
+  duration_ms: 0.335583
+  type: 'test'
+  ...
+# Subtest: recipient mismatch holds without native send or ack; outgoing remains available
+ok 17 - recipient mismatch holds without native send or ack; outgoing remains available
+  ---
+  duration_ms: 0.139166
+  type: 'test'
+  ...
+# Subtest: unsupported command holds without native send or ack; outgoing remains available
+ok 18 - unsupported command holds without native send or ack; outgoing remains available
+  ---
+  duration_ms: 0.152458
+  type: 'test'
+  ...
+# Subtest: multiple claims holds without native send or ack; outgoing remains available
+ok 19 - multiple claims holds without native send or ack; outgoing remains available
+  ---
+  duration_ms: 0.088917
+  type: 'test'
+  ...
+# Subtest: storage failure holds without native send or ack; outgoing remains available
+ok 20 - storage failure holds without native send or ack; outgoing remains available
+  ---
+  duration_ms: 0.120375
+  type: 'test'
+  ...
+# Subtest: duplicate id with changed body holds without native send or ack; outgoing remains available
+ok 21 - duplicate id with changed body holds without native send or ack; outgoing remains available
+  ---
+  duration_ms: 0.102834
+  type: 'test'
+  ...
+# Subtest: send rejection is ambiguous and never acknowledged or retried
+ok 22 - send rejection is ambiguous and never acknowledged or retried
+  ---
+  duration_ms: 0.168625
+  type: 'test'
+  ...
+# Subtest: native acceptance followed by failed persistence stays unacknowledged
+ok 23 - native acceptance followed by failed persistence stays unacknowledged
+  ---
+  duration_ms: 0.146375
+  type: 'test'
+  ...
+# Subtest: late native completion after stop cannot acknowledge another generation
+ok 24 - late native completion after stop cannot acknowledge another generation
+  ---
+  duration_ms: 0.134334
+  type: 'test'
+  ...
+# Subtest: two run calls share a single consumer; buffered events never forward replies
+ok 25 - two run calls share a single consumer; buffered events never forward replies
+  ---
+  duration_ms: 0.167083
+  type: 'test'
+  ...
+# Subtest: outgoing tool ignores spoofed from, mints unique ids and returns queue grade
+ok 26 - outgoing tool ignores spoofed from, mints unique ids and returns queue grade
+  ---
+  duration_ms: 0.18675
+  type: 'test'
+  ...
+# Subtest: registration readback refuses {"native_extension_delivery":false}
+ok 27 - registration readback refuses {"native_extension_delivery":false}
+  ---
+  duration_ms: 0.080916
+  type: 'test'
+  ...
+# Subtest: registration readback refuses {"harness":"omp"}
+ok 28 - registration readback refuses {"harness":"omp"}
+  ---
+  duration_ms: 0.049625
+  type: 'test'
+  ...
+# Subtest: registration readback refuses {"id":"another"}
+ok 29 - registration readback refuses {"id":"another"}
+  ---
+  duration_ms: 0.049667
+  type: 'test'
+  ...
+# Subtest: registration readback refuses {"session":"another-native"}
+ok 30 - registration readback refuses {"session":"another-native"}
+  ---
+  duration_ms: 0.043917
+  type: 'test'
+  ...
+# Subtest: registration readback refuses {"proc":{"pid":138,"proc_start":20260905120000}}
+ok 31 - registration readback refuses {"proc":{"pid":138,"proc_start":20260905120000}}
+  ---
+  duration_ms: 0.034666
+  type: 'test'
+  ...
+# Subtest: registration readback refuses {"pane":"%138"}
+ok 32 - registration readback refuses {"pane":"%138"}
+  ---
+  duration_ms: 0.038416
+  type: 'test'
+  ...
+# Subtest: registration tolerates additive plan135 binding metadata
+ok 33 - registration tolerates additive plan135 binding metadata
+  ---
+  duration_ms: 0.180625
+  type: 'test'
+  ...
+# Subtest: manual identity stable; exact process native rollover supersedes predecessor
+ok 34 - manual identity stable; exact process native rollover supersedes predecessor
+  ---
+  duration_ms: 0.690292
+  type: 'test'
+  ...
+# Subtest: spawn binding requires exact process, pane and correlation
+ok 35 - spawn binding requires exact process, pane and correlation
+  ---
+  duration_ms: 0.12825
+  type: 'test'
+  ...
+# Subtest: process start uses daemon local C-locale packed stamp with calendar checks
+ok 36 - process start uses daemon local C-locale packed stamp with calendar checks
+  ---
+  duration_ms: 0.226541
+  type: 'test'
+  ...
+# Subtest: real filesystem journal survives restart and hashes opaque ids with private modes
+ok 37 - real filesystem journal survives restart and hashes opaque ids with private modes
+  ---
+  duration_ms: 35.422208
+  type: 'test'
+  ...
+# Subtest: HTTP client reloads key on every request, binds tuple, keeps bounded non-JSON diagnostic
+ok 38 - HTTP client reloads key on every request, binds tuple, keeps bounded non-JSON diagnostic
+  ---
+  duration_ms: 10.476792
+  type: 'test'
+  ...
+# Subtest: accepted-but-unacked reconnect reclaims and acknowledges without second native send
+ok 39 - accepted-but-unacked reconnect reclaims and acknowledges without second native send
+  ---
+  duration_ms: 0.33525
+  type: 'test'
+  ...
+# Subtest: empty inbox waits back off with a ceiling rather than busy-loop
+ok 40 - empty inbox waits back off with a ceiling rather than busy-loop
+  ---
+  duration_ms: 0.119375
+  type: 'test'
+  ...
+# Subtest: consent inbox holds back off with a ceiling rather than busy-loop
+ok 41 - consent inbox holds back off with a ceiling rather than busy-loop
+  ---
+  duration_ms: 0.070375
+  type: 'test'
+  ...
+# Subtest: user-driven native shutdown cancels the blocked inbox consumer
+ok 42 - user-driven native shutdown cancels the blocked inbox consumer
+  ---
+  duration_ms: 0.105792
+  type: 'test'
+  ...
+# Subtest: late stale claim after stop cannot reach native send
+ok 43 - late stale claim after stop cannot reach native send
+  ---
+  duration_ms: 0.068375
+  type: 'test'
+  ...
+# Subtest: native success without native message ID is not accepted
+ok 44 - native success without native message ID is not accepted
+  ---
+  duration_ms: 0.083958
+  type: 'test'
+  ...
+# Subtest: daemon stale-incarnation refusal holds without transport fallback
+ok 45 - daemon stale-incarnation refusal holds without transport fallback
+  ---
+  duration_ms: 0.084917
+  type: 'test'
+  ...
+# Subtest: HTTP skew and refused envelopes are never treated as successful claims
+ok 46 - HTTP skew and refused envelopes are never treated as successful claims
+  ---
+  duration_ms: 0.390709
+  type: 'test'
+  ...
+# Subtest: native consumer proof rejects undefined before injection and ack
+ok 47 - native consumer proof rejects undefined before injection and ack
+  ---
+  duration_ms: 0.09275
+  type: 'test'
+  ...
+# Subtest: native consumer proof rejects {"native_session":"stale-session","pid":137,"proc_start":20260905120000} before injection and ack
+ok 48 - native consumer proof rejects {"native_session":"stale-session","pid":137,"proc_start":20260905120000} before injection and ack
+  ---
+  duration_ms: 0.045083
+  type: 'test'
+  ...
+# Subtest: native consumer proof rejects {"native_session":"native-137","pid":999,"proc_start":20260905120000} before injection and ack
+ok 49 - native consumer proof rejects {"native_session":"native-137","pid":999,"proc_start":20260905120000} before injection and ack
+  ---
+  duration_ms: 0.043375
+  type: 'test'
+  ...
+# Subtest: native consumer proof rejects {"native_session":"native-137","pid":137,"proc_start":1} before injection and ack
+ok 50 - native consumer proof rejects {"native_session":"native-137","pid":137,"proc_start":1} before injection and ack
+  ---
+  duration_ms: 0.0425
+  type: 'test'
+  ...
+# Subtest: spawned native rollover preserves correlation across extension reload
+ok 51 - spawned native rollover preserves correlation across extension reload
+  ---
+  duration_ms: 0.08275
+  type: 'test'
+  ...
+# Subtest: outage emits one actionable reconnect diagnostic per failure episode
+ok 52 - outage emits one actionable reconnect diagnostic per failure episode
+  ---
+  duration_ms: 0.114583
+  type: 'test'
+  ...
+# Subtest: consent hold release delivers the queued claim without a second message
+ok 53 - consent hold release delivers the queued claim without a second message
+  ---
+  duration_ms: 0.1115
+  type: 'test'
+  ...
+# Subtest: post-ack barrier blocks next claim until current native completion, not outgoing
+ok 54 - post-ack barrier blocks next claim until current native completion, not outgoing
+  ---
+  duration_ms: 2.332916
+  type: 'test'
+  ...
+# Subtest: post-ack barrier retains session.idle before native send resolves
+ok 55 - post-ack barrier retains session.idle before native send resolves
+  ---
+  duration_ms: 0.372375
+  type: 'test'
+  ...
+# Subtest: post-ack barrier retains session.error before native send resolves
+ok 56 - post-ack barrier retains session.error before native send resolves
+  ---
+  duration_ms: 0.324042
+  type: 'test'
+  ...
+# Subtest: post-ack barrier captures idle during acknowledgement but cannot overtake ack
+ok 57 - post-ack barrier captures idle during acknowledgement but cannot overtake ack
+  ---
+  duration_ms: 0.510625
+  type: 'test'
+  ...
+# Subtest: post-ack barrier cannot release a later send from earlier generation events
+ok 58 - post-ack barrier cannot release a later send from earlier generation events
+  ---
+  duration_ms: 0.582458
+  type: 'test'
+  ...
+# Subtest: post-ack barrier explicitly holds accepted duplicate without completion evidence
+ok 59 - post-ack barrier explicitly holds accepted duplicate without completion evidence
+  ---
+  duration_ms: 0.228916
+  type: 'test'
+  ...
+# Subtest: post-ack barrier survives failed ack before reclaiming accepted duplicate
+ok 60 - post-ack barrier survives failed ack before reclaiming accepted duplicate
+  ---
+  duration_ms: 1.048375
+  type: 'test'
+  ...
+# Subtest: post-ack barrier shutdown disposes subscription and ignores late completion
+ok 61 - post-ack barrier shutdown disposes subscription and ignores late completion
+  ---
+  duration_ms: 0.378583
+  type: 'test'
+  ...
+# Subtest: post-ack barrier follows real native PoC ancestry with sibling ephemeral idles
+ok 62 - post-ack barrier follows real native PoC ancestry with sibling ephemeral idles
+  ---
+  duration_ms: 0.517375
+  type: 'test'
+  ...
+# Subtest: claim page preserves typed target and transient hold metadata without changing request data
+ok 63 - claim page preserves typed target and transient hold metadata without changing request data
+  ---
+  duration_ms: 1.567167
+  type: 'test'
+  ...
+# Subtest: malformed claim hold metadata is not silently downgraded to an empty inbox
+ok 64 - malformed claim hold metadata is not silently downgraded to an empty inbox
+  ---
+  duration_ms: 0.192208
+  type: 'test'
+  ...
+1..64
+# tests 64
+# suites 0
+# pass 64
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3415.411958

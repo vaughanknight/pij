@@ -29,8 +29,9 @@ use pij_core::model::{
     Outcome, Pane, PaneProcess, ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
 };
 use pij_core::ports::{
-    DeliveryAck, DeliveryEnqueue, HarnessPort, LaunchCommand, LivenessPort, Queue, Registry,
-    STAGED_SUBMIT_RECOVERY, SeatFilter, Spine, StagedSubmit, TmuxPort, Transport,
+    DeferNoopReason, DeferOutcome, DeliveryAck, DeliveryEnqueue, HarnessPort, LaunchCommand,
+    LivenessPort, Queue, Registry, ReleaseOutcome, STAGED_SUBMIT_RECOVERY, SeatFilter, Spine,
+    StagedSubmit, TmuxPort, Transport,
 };
 
 /// One recorded interaction, rendered as a stable string so assertions read as
@@ -97,12 +98,25 @@ impl Registry for FakeRegistry {
     }
 
     async fn put(&self, descriptor: SeatDescriptor) -> Result<Seq> {
+        self.put_reporting(descriptor).await.map(|(seq, _)| seq)
+    }
+
+    async fn put_reporting(
+        &self,
+        descriptor: SeatDescriptor,
+    ) -> Result<(Seq, pij_core::ports::PutBinding)> {
         let mut state = self.state.lock().expect("fake registry mutex");
         state.recorder.record(format!("put:{}", descriptor.id));
         state.seq += 1;
         let seq = Seq(state.seq);
-        state.seats.insert(descriptor.id.0.clone(), descriptor);
-        Ok(seq)
+        let previous = state.seats.insert(descriptor.id.0.clone(), descriptor);
+        Ok((
+            seq,
+            pij_core::ports::PutBinding {
+                inserted: previous.is_none(),
+                previous_proc: previous.and_then(|seat| seat.proc),
+            },
+        ))
     }
 
     async fn list(&self, filter: SeatFilter) -> Result<Vec<SeatDescriptor>> {
@@ -550,6 +564,17 @@ impl Queue for FakeQueue {
         Ok(pending.chain(claimed).min_by_key(|(id, _)| id.0))
     }
 
+    async fn claimed_delivery(&self, job: JobId) -> Result<Option<Job>> {
+        let state = self.state.lock().expect("fake queue mutex");
+        Ok(state
+            .claimed
+            .get(&job.0)
+            .filter(|(claimed, _)| {
+                claimed.kind.strip_prefix("delivery:") == Some(claimed.serial_key.as_str())
+            })
+            .map(|(claimed, _)| claimed.clone()))
+    }
+
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {
         let mut state = self.state.lock().expect("fake queue mutex");
         // REFUSE an unclaimed or double ack, as SqliteQueue does. This was the
@@ -684,6 +709,94 @@ impl Queue for FakeQueue {
         state.not_before.insert(job.0, not_before);
         state.retried.push((job, delay));
         Ok(())
+    }
+
+    async fn defer(&self, job: JobId, delay: Duration) -> Result<DeferOutcome> {
+        let mut state = self.state.lock().expect("fake queue mutex");
+        let live = state.claimed.get(&job.0).map(|(row, _)| row).or_else(|| {
+            state
+                .live
+                .iter()
+                .find(|(id, _)| *id == job)
+                .map(|(_, row)| row)
+        });
+        let Some(live) = live else {
+            let reason = if state.acked.iter().any(|(id, _)| *id == job) {
+                DeferNoopReason::Terminal
+            } else {
+                DeferNoopReason::Absent
+            };
+            return Ok(DeferOutcome::NotLive { reason });
+        };
+        require_delivery_job(live)?;
+        let outcome = DeferOutcome::Deferred {
+            recipient: SeatId(live.serial_key.clone()),
+            msg_id: live.dedupe_key.clone(),
+        };
+        // WHOLE SECONDS, exactly as the store computes them (store/queue.rs:421-435):
+        // SQLite eligibility compares `unixepoch()`, so the real deadline is the
+        // absolute one rounded UP to a whole second, and zero stays immediately
+        // eligible. Keeping full Duration precision here made the fake PERMISSIVE
+        // in the release-early direction — `defer(job, 10ms)` was claimable 10 ms
+        // later against the fake and up to a second later against the store — and
+        // a fake that releases earlier than production turns every green test
+        // built on sub-second delays into a false negative (reviewer f3).
+        let not_before = state
+            .now
+            .checked_add(delay)
+            .and_then(|deadline| {
+                // checked_add, exactly as the store does it (queue.rs:429). Bare
+                // addition panics at the fake's own clock origin: state.now == 0
+                // plus Duration::MAX gives as_secs() == u64::MAX with a non-zero
+                // subsec, and the round-up overflows. The overflow test only
+                // misses it because it advances the clock by a nanosecond first,
+                // and that test's own words are "overflow is an error, never a
+                // panic" (reviewer f3.2).
+                deadline
+                    .as_secs()
+                    .checked_add(u64::from(!delay.is_zero() && deadline.subsec_nanos() != 0))
+                    .map(Duration::from_secs)
+            })
+            .filter(|deadline| i64::try_from(deadline.as_secs()).is_ok())
+            .ok_or_else(|| PijError::Adapter {
+                adapter: "testkit/fake-queue".to_string(),
+                message: "deferral deadline exceeds the supported timestamp range".to_string(),
+            })?;
+        if let Some((row, _worker)) = state.claimed.remove(&job.0) {
+            // Restoring a claim keeps its original FIFO position, unlike retry.
+            let index = state
+                .live
+                .iter()
+                .position(|(id, _)| id.0 > job.0)
+                .unwrap_or(state.live.len());
+            state.live.insert(index, (job, row));
+        }
+        state.not_before.insert(job.0, not_before);
+        Ok(outcome)
+    }
+
+    async fn release_deferred(&self, job: JobId) -> Result<ReleaseOutcome> {
+        let mut state = self.state.lock().expect("fake queue mutex");
+        if let Some((running, _worker)) = state.claimed.get(&job.0) {
+            require_delivery_job(running)?;
+            return Ok(ReleaseOutcome::NotDeferred);
+        }
+        let Some((_, pending)) = state.live.iter().find(|(id, _)| *id == job) else {
+            let reason = if state.acked.iter().any(|(id, _)| *id == job) {
+                DeferNoopReason::Terminal
+            } else {
+                DeferNoopReason::Absent
+            };
+            return Ok(ReleaseOutcome::NotLive { reason });
+        };
+        require_delivery_job(pending)?;
+        let outcome = ReleaseOutcome::Released {
+            recipient: SeatId(pending.serial_key.clone()),
+            msg_id: pending.dedupe_key.clone(),
+        };
+        let now = state.now;
+        state.not_before.insert(job.0, now);
+        Ok(outcome)
     }
 }
 

@@ -79,6 +79,10 @@ impl Queue for CountingQueue {
         Ok(None)
     }
 
+    async fn claimed_delivery(&self, _job: JobId) -> Result<Option<Job>> {
+        Ok(None)
+    }
+
     async fn ack(&self, _job: JobId, _outcome: Outcome) -> Result<()> {
         Ok(())
     }
@@ -98,6 +102,20 @@ impl Queue for CountingQueue {
         Err(pij_core::error::PijError::Adapter {
             adapter: "test/counting-queue".to_string(),
             message: "the request path must not retry: it never claims".to_string(),
+        })
+    }
+
+    async fn defer(&self, _job: JobId, _delay: Duration) -> Result<pij_core::ports::DeferOutcome> {
+        Err(pij_core::error::PijError::Adapter {
+            adapter: "test/counting-queue".to_string(),
+            message: "the enqueue-only fixture must not defer".to_string(),
+        })
+    }
+
+    async fn release_deferred(&self, _job: JobId) -> Result<pij_core::ports::ReleaseOutcome> {
+        Err(pij_core::error::PijError::Adapter {
+            adapter: "test/counting-queue".to_string(),
+            message: "the enqueue-only fixture must not release deferrals".to_string(),
         })
     }
 }
@@ -169,6 +187,831 @@ fn expect_event(frame: StreamFrame) -> (String, u64, Event) {
             event,
         } => (machine, cursor, event),
         StreamFrame::PeerState { .. } => panic!("expected event frame"),
+    }
+}
+
+#[tokio::test]
+async fn typing_release_wakes_an_already_waiting_inbox_reader() {
+    let registry = Arc::new(FakeRegistry::new());
+    let seat = SeatId::from("pij-waiting");
+    registry
+        .put(SeatDescriptor::new(seat.clone(), Harness::Omp, "/abs/tree"))
+        .await
+        .expect("seat");
+    let services = test_services(
+        registry,
+        Arc::new(FakeQueue::new(1_024).expect("queue")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services
+        .delivery
+        .accept(Msg {
+            from: "pij-sender".into(),
+            from_machine: None,
+            to: seat.clone(),
+            body: "waiting".to_string(),
+            msg_id: "waiting".to_string(),
+            in_reply_to: None,
+            command: None,
+        })
+        .await
+        .expect("send");
+    let claim = services
+        .delivery
+        .claim_inbox(&seat, false)
+        .await
+        .expect("claim")
+        .remove(0);
+    let state = AppState {
+        registration: RegistrationService::new(
+            Arc::clone(&services.registry),
+            Arc::clone(&services.liveness),
+            Arc::clone(&services.event_bus),
+            Vec::new(),
+        )
+        .with_native_lock(services.delivery.native_lock()),
+        services,
+        auth: AuthRing::new("key".to_string(), Vec::new()),
+        machine_alias: "local".to_string(),
+        spawn_lock: Arc::new(tokio::sync::Mutex::new(())),
+        typing_lock: Arc::new(tokio::sync::Mutex::new(())),
+        typing_grace_ms: DEFAULT_TYPING_GRACE_MS,
+        federation: None,
+    };
+    let held = hold_inbox(
+        State(state.clone()),
+        Json(HoldRequest {
+            job_id: claim.job_id,
+            event: HeldEvent {
+                seat: seat.clone(),
+                msg_id: "waiting".to_string(),
+                reason: "human-typing".to_string(),
+                since_ms: 7,
+            },
+        }),
+    )
+    .await;
+    assert_eq!(held.status(), StatusCode::OK);
+    let waiting = inbox(
+        State(state.clone()),
+        Query(InboxQuery {
+            seat: seat.clone(),
+            wait: true,
+            peek: false,
+            native_session: None,
+            pid: None,
+            proc_start: None,
+        }),
+    );
+    tokio::pin!(waiting);
+    // Poll through the empty claim to establish subscription before releasing.
+    assert!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(std::future::Future::poll(
+            waiting.as_mut(),
+            cx
+        )))
+        .await
+        .is_pending()
+    );
+    let released = release_inbox(
+        State(state),
+        Json(ReleaseRequest {
+            job_id: claim.job_id,
+            event: ReleasedEvent {
+                seat,
+                msg_id: "waiting".to_string(),
+                at_ms: 8,
+            },
+        }),
+    )
+    .await;
+    assert_eq!(released.status(), StatusCode::OK);
+    let response = tokio::time::timeout(Duration::from_millis(250), waiting)
+        .await
+        .expect("release wakes the existing reader without another send");
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    let response: Envelope<Vec<crate::delivery::InboxClaim>> =
+        serde_json::from_slice(&body).expect("inbox response");
+    assert_eq!(response.data.expect("claims")[0].job_id, claim.job_id);
+}
+
+#[tokio::test]
+async fn typing_release_declaration_clears_running_and_terminal_holds_after_restart() {
+    for terminal in [false, true] {
+        let registry = Arc::new(FakeRegistry::new());
+        let seat = SeatId::from("pij-release-declaration");
+        registry
+            .put(SeatDescriptor::new(seat.clone(), Harness::Omp, "/abs/tree"))
+            .await
+            .expect("seat");
+        let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+        let services = test_services(registry, queue.clone(), Arc::new(FakeSpine::new())).await;
+        services
+            .delivery
+            .accept(Msg {
+                from: "pij-sender".into(),
+                from_machine: None,
+                to: seat.clone(),
+                body: "survives restart".to_string(),
+                msg_id: "declaration".to_string(),
+                in_reply_to: None,
+                command: None,
+            })
+            .await
+            .expect("send");
+        let (addr, server) = spawn(router_with_config(services.clone(), config("key", &[]))).await;
+        let client = reqwest::Client::new();
+        let claim = typing_claim(&client, addr, &seat).await.remove(0);
+        typing_post(&client, addr, "/v1/hold", &serde_json::json!({
+            "seat": seat, "job_id": claim.job_id, "msg_id": "declaration", "reason": "human-typing", "since_ms": 7,
+        })).await;
+        server.abort();
+        let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+        queue.advance(Duration::from_millis(DEFAULT_TYPING_GRACE_MS));
+        let claim = typing_claim(&client, addr, &seat).await.remove(0);
+        if terminal {
+            typing_post(
+                &client,
+                addr,
+                "/v1/inbox/ack",
+                &serde_json::json!({"seat": seat, "job_id": claim.job_id}),
+            )
+            .await;
+        }
+        let response = typing_post(
+            &client,
+            addr,
+            "/v1/release",
+            &serde_json::json!({
+                "seat": seat, "job_id": claim.job_id, "msg_id": "declaration", "at_ms": 8,
+            }),
+        )
+        .await;
+        assert_eq!(response["data"]["released"], false);
+        assert_eq!(
+            response["data"]["reason"],
+            if terminal { "terminal" } else { "not-deferred" }
+        );
+        let state = typing_post(&client, addr, "/v1/state", &serde_json::json!({"id": seat})).await;
+        assert_eq!(
+            state["data"]["held"],
+            serde_json::json!([]),
+            "queue no-op must not leave stale held evidence"
+        );
+        if !terminal {
+            typing_post(
+                &client,
+                addr,
+                "/v1/inbox/ack",
+                &serde_json::json!({"seat": seat, "job_id": claim.job_id}),
+            )
+            .await;
+        }
+        assert_eq!(queue.acked(), [(claim.job_id, Outcome::Done)]);
+        server.abort();
+    }
+}
+
+async fn typing_post(
+    client: &reqwest::Client,
+    addr: SocketAddr,
+    path: &str,
+    body: &serde_json::Value,
+) -> serde_json::Value {
+    let response = client
+        .post(format!("http://{addr}{path}"))
+        .bearer_auth("key")
+        .json(body)
+        .send()
+        .await
+        .expect("typing request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    response.json().await.expect("typing response")
+}
+
+async fn typing_claim(
+    client: &reqwest::Client,
+    addr: SocketAddr,
+    seat: &SeatId,
+) -> Vec<crate::delivery::InboxClaim> {
+    let response: Envelope<Vec<crate::delivery::InboxClaim>> = client
+        .get(format!("http://{addr}/v1/inbox"))
+        .bearer_auth("key")
+        .query(&[("seat", seat.as_str())])
+        .send()
+        .await
+        .expect("inbox")
+        .json()
+        .await
+        .expect("inbox envelope");
+    response.data.expect("claims")
+}
+
+#[tokio::test]
+async fn typing_not_live_names_absent_and_terminal_noops_on_both_routes() {
+    let registry = Arc::new(FakeRegistry::new());
+    let seat = SeatId::from("pij-noop");
+    registry
+        .put(SeatDescriptor::new(seat.clone(), Harness::Omp, "/abs/tree"))
+        .await
+        .expect("seat");
+    let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+    let spine = Arc::new(FakeSpine::new());
+    let services = test_services(registry, queue.clone(), spine.clone()).await;
+    services
+        .delivery
+        .accept(Msg {
+            from: "pij-sender".into(),
+            from_machine: None,
+            to: seat.clone(),
+            body: "already read".to_string(),
+            msg_id: "terminal".to_string(),
+            in_reply_to: None,
+            command: None,
+        })
+        .await
+        .expect("send");
+    let claimed = services
+        .delivery
+        .claim_inbox(&seat, false)
+        .await
+        .expect("claim")
+        .remove(0);
+    services
+        .delivery
+        .acknowledge_inbox(
+            &seat,
+            claimed.job_id,
+            &crate::delivery::NativeInboxIdentity {
+                native_session: None,
+                pid: None,
+                proc_start: None,
+            },
+        )
+        .await
+        .expect("terminal");
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    for (job_id, reason) in [(JobId(999_999), "absent"), (claimed.job_id, "terminal")] {
+        for (path, outcome) in [("/v1/hold", "held"), ("/v1/release", "released")] {
+            let response = typing_post(&client, addr, path, &serde_json::json!({
+                "seat": seat, "job_id": job_id, "msg_id": "terminal", "reason": "human-typing", "since_ms": 7, "at_ms": 8,
+            })).await;
+            assert_eq!(response["data"][outcome], false);
+            assert_eq!(
+                response["data"]["noop"], true,
+                "{path} {reason}: {response}"
+            );
+            assert_eq!(response["data"]["reason"], reason);
+        }
+    }
+    assert_eq!(queue.acked().len(), 1);
+    let events = spine.tail(Some(&seat), Seq(0)).await.expect("events");
+    assert!(events.iter().all(|event| event.kind != "delivery.held"));
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.kind == "delivery.released")
+            .count(),
+        2,
+        "release declarations remain facts even when queue mutation is a no-op"
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn typing_unknown_claim_after_restart_is_harmless_and_keeps_pending_body() {
+    let registry = Arc::new(FakeRegistry::new());
+    let seat = SeatId::from("pij-restart");
+    registry
+        .put(SeatDescriptor::new(seat.clone(), Harness::Omp, "/abs/tree"))
+        .await
+        .expect("seat");
+    let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+    let spine = Arc::new(FakeSpine::new());
+    let services = test_services(registry, queue.clone(), spine.clone()).await;
+    services
+        .delivery
+        .accept(Msg {
+            from: "pij-sender".into(),
+            from_machine: None,
+            to: seat.clone(),
+            body: "pending body".to_string(),
+            msg_id: "restart-body".to_string(),
+            in_reply_to: None,
+            command: None,
+        })
+        .await
+        .expect("send");
+    let claim = services
+        .delivery
+        .claim_inbox(&seat, false)
+        .await
+        .expect("old client claim")
+        .remove(0);
+    queue
+        .defer(claim.job_id, Duration::ZERO)
+        .await
+        .expect("previous hold returned row");
+    // An obsolete job id after restart cannot mutate a different pending body.
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    typing_post(&client, addr, "/v1/hold", &serde_json::json!({
+        "seat": seat, "job_id": 999_999, "msg_id": "restart-body", "reason": "human-typing", "since_ms": 10,
+    })).await;
+    assert!(
+        spine
+            .tail(Some(&seat), Seq(0))
+            .await
+            .expect("events")
+            .iter()
+            .all(|event| event.kind != "delivery.held")
+    );
+    assert!(queue.acked().is_empty());
+    let claims = typing_claim(&client, addr, &seat).await;
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].job_id, claim.job_id);
+    assert_eq!(claims[0].message.body, "pending body");
+    server.abort();
+}
+
+#[tokio::test]
+async fn typing_pending_holds_allow_bypass_rehold_and_restart_in_order() {
+    let registry = Arc::new(FakeRegistry::new());
+    let seat = SeatId::from("pij-typist");
+    registry
+        .put(SeatDescriptor::new(seat.clone(), Harness::Omp, "/abs/tree"))
+        .await
+        .expect("seat");
+    let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+    let spine = Arc::new(FakeSpine::new());
+    let services = test_services(registry, queue.clone(), spine.clone()).await;
+    for msg_id in ["first", "second"] {
+        services
+            .delivery
+            .accept(Msg {
+                from: "pij-sender".into(),
+                from_machine: None,
+                to: seat.clone(),
+                body: msg_id.to_string(),
+                msg_id: msg_id.to_string(),
+                in_reply_to: None,
+                command: None,
+            })
+            .await
+            .expect("send");
+    }
+    let (addr, server) = spawn(router_with_config(services.clone(), config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    let hold = |msg_id, job_id| serde_json::json!({"seat": seat, "job_id": job_id, "msg_id": msg_id, "reason": "human-typing", "since_ms": 10});
+    let mut held_ids = BTreeMap::new();
+    for msg_id in ["first", "second"] {
+        let claims = typing_claim(&client, addr, &seat).await;
+        assert_eq!(
+            claims.len(),
+            1,
+            "a pending hold frees the serial key for the next message"
+        );
+        assert_eq!(claims[0].message.msg_id, msg_id);
+        held_ids.insert(msg_id, claims[0].job_id);
+        typing_post(&client, addr, "/v1/hold", &hold(msg_id, claims[0].job_id)).await;
+    }
+    assert_eq!(
+        queue.live_len(),
+        2,
+        "holds are pending, not owned by dead clients"
+    );
+    assert!(queue.acked().is_empty());
+    let grace = Duration::from_millis(
+        typing_contract()["grace"]["default_ms"]
+            .as_u64()
+            .expect("grace"),
+    );
+    assert!(
+        queue.retried().is_empty(),
+        "typing holds are not failed attempts"
+    );
+    assert!(typing_claim(&client, addr, &seat).await.is_empty());
+    services
+        .delivery
+        .accept(Msg {
+            from: "pij-sender".into(),
+            from_machine: None,
+            to: seat.clone(),
+            body: String::new(),
+            msg_id: "bypass".to_string(),
+            in_reply_to: None,
+            command: Some("compact".to_string()),
+        })
+        .await
+        .expect("control command");
+    let bypass = typing_claim(&client, addr, &seat).await.remove(0);
+    assert_eq!(bypass.message.msg_id, "bypass");
+    typing_post(
+        &client,
+        addr,
+        "/v1/inbox/ack",
+        &serde_json::json!({"seat": seat, "job_id": bypass.job_id}),
+    )
+    .await;
+    queue.advance(grace - Duration::from_millis(1));
+    assert!(
+        typing_claim(&client, addr, &seat).await.is_empty(),
+        "not reoffered before grace"
+    );
+    queue.advance(Duration::from_millis(1));
+    for msg_id in ["first", "second"] {
+        let claims = typing_claim(&client, addr, &seat).await;
+        assert_eq!(claims[0].message.msg_id, msg_id);
+        typing_post(&client, addr, "/v1/hold", &hold(msg_id, claims[0].job_id)).await;
+    }
+    assert!(
+        held_ids.values().all(|job_id| queue.attempts(*job_id) == 0),
+        "re-holds preserve attempt budgets"
+    );
+    assert_eq!(
+        spine
+            .tail(Some(&seat), Seq(0))
+            .await
+            .expect("events")
+            .iter()
+            .filter(|event| event.kind == "delivery.held")
+            .count(),
+        2,
+        "re-holds never duplicate active events"
+    );
+    server.abort();
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    for msg_id in ["first", "second"] {
+        typing_post(&client, addr, "/v1/release", &serde_json::json!({"seat": seat, "job_id": held_ids[msg_id], "msg_id": msg_id, "at_ms": 20})).await;
+        let claims = typing_claim(&client, addr, &seat).await;
+        assert_eq!(
+            claims.len(),
+            1,
+            "release clears the pending deferral, even after router restart"
+        );
+        assert_eq!(
+            claims[0].message.msg_id, msg_id,
+            "restart preserves queue order"
+        );
+        typing_post(
+            &client,
+            addr,
+            "/v1/inbox/ack",
+            &serde_json::json!({"seat": seat, "job_id": claims[0].job_id}),
+        )
+        .await;
+    }
+    assert_eq!(queue.live_len(), 0);
+    assert_eq!(queue.acked().len(), 3);
+    server.abort();
+}
+
+#[tokio::test]
+async fn typing_state_projects_active_holds_only() {
+    let registry = Arc::new(FakeRegistry::new());
+    let seat = SeatId::from("pij-state");
+    registry
+        .put(SeatDescriptor::new(seat.clone(), Harness::Omp, "/abs/tree"))
+        .await
+        .expect("seat");
+    let services = test_services(
+        registry,
+        Arc::new(FakeQueue::new(1_024).expect("queue")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    for (kind, msg_id) in [
+        ("delivery.held", "released"),
+        ("delivery.released", "released"),
+        ("delivery.held", "active"),
+    ] {
+        let payload = if kind == "delivery.held" {
+            serde_json::json!({"seat": seat, "msg_id": msg_id, "reason": "human-typing", "since_ms": 7})
+        } else {
+            serde_json::json!({"seat": seat, "msg_id": msg_id, "at_ms": 8})
+        };
+        services
+            .event_bus
+            .publish(Event {
+                seq: None,
+                v: 1,
+                at: 10,
+                kind: kind.to_string(),
+                seat: Some(seat.clone()),
+                payload: payload.to_string(),
+            })
+            .await
+            .expect("event");
+    }
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let response = typing_post(
+        &reqwest::Client::new(),
+        addr,
+        "/v1/state",
+        &serde_json::json!({"id": seat}),
+    )
+    .await;
+    assert_eq!(
+        response["data"]["held"],
+        serde_json::json!([{"seat": seat, "msg_id": "active", "reason": "human-typing", "since_ms": 7}])
+    );
+    server.abort();
+}
+
+fn typing_contract() -> serde_json::Value {
+    serde_json::from_str(include_str!(
+        "../../../testkit/fixtures/delivery/hold-events.json"
+    ))
+    .expect("frozen typing contract")
+}
+
+#[tokio::test]
+async fn typing_registration_flattens_grace_without_persisting_it_on_the_seat() {
+    // Separate processes exercise the real environment read without racing other tests.
+    let expected = match std::env::var("PIJ_TEST_GRACE_EXPECTED") {
+        Ok(value) => value.parse::<u64>().expect("expected grace"),
+        Err(_) => {
+            let default = typing_contract()["grace"]["default_ms"]
+                .as_u64()
+                .expect("default");
+            for (value, expected) in [
+                (None, default),
+                (Some("4321"), 4_321),
+                (Some("invalid"), default),
+            ] {
+                let mut child =
+                    std::process::Command::new(std::env::current_exe().expect("test binary"));
+                child.args(["--exact", "http::tests::typing_registration_flattens_grace_without_persisting_it_on_the_seat", "--nocapture"])
+                    .env("PIJ_TEST_GRACE_EXPECTED", expected.to_string())
+                    .env_remove("PIJ_TYPING_GRACE_MS");
+                if let Some(value) = value {
+                    child.env("PIJ_TYPING_GRACE_MS", value);
+                }
+                let output = child.output().expect("isolated registration witness");
+                assert!(
+                    output.status.success(),
+                    "grace {value:?}: {}{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            return;
+        }
+    };
+    let identity = ProcIdentity {
+        pid: 43,
+        proc_start: 20260902152500,
+    };
+    let registry = Arc::new(FakeRegistry::new());
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("queue")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(identity));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let response: serde_json::Value = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({
+            "id": "pij-grace", "harness": "omp", "folder": "/abs/tree",
+            "pid": identity.pid, "proc_start": identity.proc_start
+        }))
+        .send()
+        .await
+        .expect("registration")
+        .json()
+        .await
+        .expect("envelope");
+    assert_eq!(response["data"]["typing_grace_ms"], expected);
+    assert_eq!(response["data"]["id"], "pij-grace");
+    assert!(response["data"].get("descriptor").is_none());
+    let seat = registry
+        .get(&SeatId::from("pij-grace"))
+        .await
+        .expect("read seat")
+        .expect("registered");
+    assert!(
+        serde_json::to_value(seat)
+            .expect("seat json")
+            .get("typing_grace_ms")
+            .is_none()
+    );
+    server.abort();
+}
+
+#[test]
+fn typing_hold_and_release_are_known_wire_events() {
+    let contract = typing_contract();
+    for key in ["held", "released"] {
+        let event = Event {
+            seq: None,
+            v: wire::EVENT_VERSION,
+            at: contract[key]["at"].as_u64().expect("timestamp"),
+            kind: contract[key]["kind"].as_str().expect("kind").to_string(),
+            seat: Some(contract[key]["seat"].as_str().expect("seat").into()),
+            payload: serde_json::to_string(&contract[key]["payload"]).expect("payload"),
+        };
+        let line = wire::encode_event(&event).expect("encode event");
+        assert!(matches!(
+            wire::decode_event_line(1, &line).expect("decode event"),
+            WireEvent::Known(_)
+        ));
+    }
+}
+
+#[tokio::test]
+async fn typing_hold_release_match_contract_and_are_idempotent() {
+    let contract = typing_contract();
+    let registry = Arc::new(FakeRegistry::new());
+    let seat: SeatId = contract["held"]["seat"].as_str().expect("seat").into();
+    registry
+        .put(SeatDescriptor::new(seat.clone(), Harness::Omp, "/abs/tree"))
+        .await
+        .expect("recipient");
+    let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+    let spine = Arc::new(FakeSpine::new());
+    let services = test_services(registry, queue.clone(), spine.clone()).await;
+    services
+        .delivery
+        .accept(Msg {
+            from: "pij-sender".into(),
+            from_machine: None,
+            to: seat.clone(),
+            body: "held body".to_string(),
+            msg_id: contract["held"]["payload"]["msg_id"]
+                .as_str()
+                .expect("id")
+                .to_string(),
+            in_reply_to: None,
+            command: None,
+        })
+        .await
+        .expect("send");
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    let claims: Envelope<Vec<crate::delivery::InboxClaim>> = client
+        .get(format!("http://{addr}/v1/inbox"))
+        .bearer_auth("key")
+        .query(&[("seat", seat.as_str())])
+        .send()
+        .await
+        .expect("claim")
+        .json()
+        .await
+        .expect("claim envelope");
+    let claims = claims.data.expect("claims");
+    assert_eq!(claims.len(), 1);
+    for (key, repeats) in [("hold_request", 2), ("release_request", 1)] {
+        let mut request = contract[key]["body"].clone();
+        request["job_id"] = serde_json::json!(claims[0].job_id);
+        for _ in 0..repeats {
+            let response = client
+                .post(format!(
+                    "http://{addr}{}",
+                    contract[key]["path"].as_str().expect("path")
+                ))
+                .bearer_auth("key")
+                .json(&request)
+                .send()
+                .await
+                .expect("request");
+            assert_eq!(response.status(), reqwest::StatusCode::OK);
+            let body: serde_json::Value = response.json().await.expect("envelope");
+            assert_eq!(body, contract[key]["response"]);
+        }
+    }
+    let events = spine.tail(Some(&seat), Seq(0)).await.expect("events");
+    for key in ["held", "released"] {
+        let rows: Vec<_> = events
+            .iter()
+            .filter(|event| event.kind == contract[key]["kind"].as_str().expect("kind"))
+            .collect();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].seat.as_ref(), Some(&seat));
+        // Compare the actual spine payload bytes, not a re-serialized producer type.
+        assert_eq!(
+            rows[0].payload.as_bytes(),
+            serde_json::to_vec(&contract[key]["payload"]).expect("golden payload")
+        );
+    }
+    assert!(
+        queue.acked().is_empty(),
+        "hold and release never acknowledge"
+    );
+    let next = typing_claim(&client, addr, &seat).await;
+    assert_eq!(next.len(), 1);
+    let mut release = contract["release_request"]["body"].clone();
+    release["job_id"] = serde_json::json!(next[0].job_id);
+    let repeat: serde_json::Value = client
+        .post(format!("http://{addr}/v1/release"))
+        .bearer_auth("key")
+        .json(&release)
+        .send()
+        .await
+        .expect("optimistic release")
+        .json()
+        .await
+        .expect("release envelope");
+    assert_eq!(repeat["data"]["released"], false);
+    typing_post(
+        &client,
+        addr,
+        "/v1/inbox/ack",
+        &serde_json::json!({
+            "seat": seat, "job_id": next[0].job_id,
+        }),
+    )
+    .await;
+    assert_eq!(
+        queue.acked(),
+        [(next[0].job_id, Outcome::Done)],
+        "duplicate release preserves current claim ownership"
+    );
+    for path in ["/v1/hold", "/v1/release"] {
+        let denied = client
+            .post(format!("http://{addr}{path}"))
+            .json(&serde_json::json!({}))
+            .send()
+            .await
+            .expect("unauthorized");
+        assert_eq!(denied.status(), reqwest::StatusCode::UNAUTHORIZED);
+    }
+    server.abort();
+}
+
+#[tokio::test]
+async fn typing_receipt_is_queued_until_ack_then_reader_read_for_omp_and_pi() {
+    let contract = typing_contract();
+    for harness in [Harness::Omp, Harness::Pi] {
+        let registry = Arc::new(FakeRegistry::new());
+        let mut seat = SeatDescriptor::new("pij-reader", harness, "/abs/tree");
+        seat.proc = Some(ProcIdentity {
+            pid: 42,
+            proc_start: 7,
+        });
+        seat.pane = Some("%42".to_string());
+        registry.put(seat).await.expect("bound recipient");
+        let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+        let services = test_services(registry, queue.clone(), Arc::new(FakeSpine::new())).await;
+        let message = Msg {
+            from: "pij-sender".into(),
+            from_machine: None,
+            to: "pij-reader".into(),
+            body: "ordinary push".to_string(),
+            msg_id: "receipt-guard".to_string(),
+            in_reply_to: None,
+            command: None,
+        };
+        let before = services
+            .delivery
+            .accept(message.clone())
+            .await
+            .expect("push");
+        assert_eq!(
+            serde_json::to_value(before.outcome).expect("receipt"),
+            contract["receipt_note"]["current_outcome_before_ack"]
+        );
+        let claims = services
+            .delivery
+            .claim_inbox(&message.to, false)
+            .await
+            .expect("claim");
+        assert_eq!(claims.len(), 1);
+        assert!(queue.acked().is_empty());
+        let (addr, server) = spawn(router_with_config(services.clone(), config("key", &[]))).await;
+        let response = reqwest::Client::new()
+            .post(format!("http://{addr}/v1/inbox/ack"))
+            .bearer_auth("key")
+            .json(&InboxAckRequest {
+                seat: message.to.clone(),
+                job_id: claims[0].job_id,
+                native: crate::delivery::NativeInboxIdentity {
+                    native_session: None,
+                    pid: None,
+                    proc_start: None,
+                },
+            })
+            .send()
+            .await
+            .expect("ack");
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let after = services
+            .delivery
+            .accept(message)
+            .await
+            .expect("same-message receipt");
+        assert_eq!(
+            serde_json::to_value(after.outcome).expect("receipt"),
+            contract["receipt_note"]["current_outcome_after_ack"]
+        );
+        assert_eq!(queue.acked(), [(claims[0].job_id, Outcome::Done)]);
+        server.abort();
     }
 }
 
@@ -427,6 +1270,124 @@ async fn paneless_registration_returns_the_identity_export_it_requires() {
     server.abort();
 }
 
+#[test]
+fn registration_binding_absent_preserves_descriptor_shape() {
+    let descriptor = SeatDescriptor::new("pij-old-response", Harness::Omp, "/tmp/binding");
+    let old_wire = serde_json::to_value(descriptor).expect("old descriptor response");
+    let response: RegistrationResponse =
+        serde_json::from_value(old_wire.clone()).expect("binding defaults absent");
+    assert!(response.binding.is_none());
+    assert_eq!(
+        serde_json::to_value(response).expect("serialize response"),
+        old_wire
+    );
+}
+
+async fn assert_registration_binding_fixture(expected_key: &str, previous_key: Option<&str>) {
+    // Resolved through the testkit corpus helper, NOT a relative path string:
+    // this fixture already moved once (out of the plan folder, which post-flight
+    // archives), and the path-string version of this line silently pointed at a
+    // deleted file while the working tree still had the fix. A helper makes the
+    // next move a COMPILE error instead of a NotFound panic at test time.
+    let fixture: serde_json::Value =
+        serde_json::from_str(&pij_testkit::fixtures::read("register-response.json"))
+            .expect("parse shared register response fixture");
+    let expected = &fixture[expected_key];
+    let descriptor: SeatDescriptor =
+        serde_json::from_value(expected.clone()).expect("fixture descriptor");
+    let identity = descriptor.proc.expect("fixture process identity");
+    let registry = Arc::new(FakeRegistry::new());
+    if let Some(previous_key) = previous_key {
+        registry
+            .put(
+                serde_json::from_value(fixture[previous_key].clone()).expect("previous descriptor"),
+            )
+            .await
+            .expect("seed previous binding");
+    }
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(identity));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({
+            "id": descriptor.id,
+            "harness": descriptor.harness,
+            "folder": descriptor.folder,
+            "pane": descriptor.pane,
+            "pid": identity.pid,
+            "proc_start": identity.proc_start,
+            "model": descriptor.model,
+            "provider": descriptor.provider,
+            "effort": descriptor.effort,
+        }))
+        .send()
+        .await
+        .expect("register fixture claim");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let accepted: Envelope<serde_json::Value> = response.json().await.expect("register envelope");
+    server.abort();
+    // Captured135 fields stay exact;136 and137 add these documented wire fields.
+    let observed = accepted.data.as_ref().expect("register response body");
+    let expected_object = expected.as_object().expect("fixture object");
+    let observed_object = observed.as_object().expect("response object");
+    for (key, value) in expected_object {
+        assert_eq!(
+            observed_object.get(key),
+            Some(value),
+            "{expected_key} fixture: key `{key}`"
+        );
+    }
+    let unexpected: Vec<&String> = observed_object
+        .keys()
+        .filter(|key| {
+            !expected_object.contains_key(*key)
+                && !matches!(
+                    key.as_str(),
+                    "typing_grace_ms" | "native_extension_delivery"
+                )
+        })
+        .collect();
+    assert!(
+        unexpected.is_empty(),
+        "{expected_key} fixture: response grew undocumented keys {unexpected:?}"
+    );
+    assert_eq!(
+        observed.get("native_extension_delivery"),
+        Some(&serde_json::json!(false))
+    );
+    let stored = registry
+        .get(&descriptor.id)
+        .await
+        .expect("read committed descriptor");
+    assert_eq!(
+        stored,
+        Some(descriptor),
+        "binding is response-only, not durable state"
+    );
+}
+
+#[tokio::test]
+async fn registration_binding_created_matches_shared_fixture() {
+    assert_registration_binding_fixture("created", None).await;
+}
+
+#[tokio::test]
+async fn registration_binding_rebound_matches_shared_fixture() {
+    assert_registration_binding_fixture("rebound", Some("created")).await;
+}
+
+#[tokio::test]
+async fn registration_binding_same_matches_shared_fixture() {
+    assert_registration_binding_fixture("same", Some("rebound")).await;
+}
+
 #[tokio::test]
 async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
     let registry = Arc::new(FakeRegistry::new());
@@ -508,9 +1469,11 @@ async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
         .into_iter()
         .find(|seat| seat.id.as_str() == launched_seat_id)
         .expect("pre-bind row");
-    let allocated_port = prebind
-        .rpc_port_intent
-        .expect("Copilot launch allocates a port intent");
+    assert!(
+        !prebind.native_extension_delivery,
+        "spawn is not runtime attestation"
+    );
+    assert!(!launch.contains("--ui-server") && !launch.contains("--port"));
     assert_eq!(
         prebind.spawn_id.as_deref(),
         Some(launched_spawn_id.as_str())
@@ -541,6 +1504,15 @@ async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
         .await
         .expect("registration");
     assert_eq!(registered.status(), reqwest::StatusCode::OK);
+    let accepted: Envelope<serde_json::Value> = registered
+        .json()
+        .await
+        .expect("spawned registration envelope");
+    assert_eq!(
+        accepted.data.expect("bound descriptor")["binding"],
+        "rebound",
+        "a spawned placeholder row is rebound, not created"
+    );
 
     let seats = registry
         .list(SeatFilter::default())
@@ -551,10 +1523,10 @@ async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
         (
             seats.len(),
             bound.map(|seat| seat.id.as_str()),
-            bound.and_then(|seat| seat.rpc_port_intent),
+            bound.map(|seat| seat.native_extension_delivery),
         ),
-        (1, Some(launched_seat_id.as_str()), Some(allocated_port)),
-        "the launched identity is adopted as one row with its allocated port"
+        (1, Some(launched_seat_id.as_str()), Some(false)),
+        "the launched identity is adopted once without inventing native attestation"
     );
     let bound = bound.expect("bound launched row");
     assert_eq!(bound.spawn_id.as_deref(), Some(launched_spawn_id.as_str()));
@@ -894,7 +1866,6 @@ async fn reregistration_prefers_exact_id_over_spawn_match_without_fresh_allocati
     let mut unrelated = SeatDescriptor::new("pij-a-prebind", Harness::Copilot, "/abs/tree");
     unrelated.pane = Some("%44".to_string());
     unrelated.spawn_id = Some("spawn-shared".to_string());
-    unrelated.rpc_port_intent = Some(47_781);
     let mut existing = SeatDescriptor::new("pij-z-existing", Harness::Copilot, "/abs/tree");
     existing.pane = Some("%44".to_string());
     existing.proc = Some(identity);
@@ -936,9 +1907,9 @@ async fn reregistration_prefers_exact_id_over_spawn_match_without_fresh_allocati
     let accepted: Envelope<SeatDescriptor> = response.json().await.expect("descriptor envelope");
     let accepted = accepted.data.expect("descriptor");
     assert_eq!(accepted.id.as_str(), "pij-z-existing");
-    assert_eq!(
-        accepted.rpc_port_intent, None,
-        "an ordinary re-registration has no fresh port allocation to inherit"
+    assert!(
+        !accepted.native_extension_delivery,
+        "ordinary registration is not attestation"
     );
 
     let seats = registry
@@ -950,23 +1921,14 @@ async fn reregistration_prefers_exact_id_over_spawn_match_without_fresh_allocati
         .find(|seat| seat.id.as_str() == "pij-a-prebind")
         .expect("unrelated pre-bind row");
     assert_eq!(unrelated.proc, None, "repeat registration cannot adopt it");
-    assert_eq!(unrelated.rpc_port_intent, Some(47_781));
+    assert!(!unrelated.native_extension_delivery);
 
     server.abort();
 }
 
-/// THE PORT-INHERITANCE ARM. Found missing by the reviewer: mutating
-/// `binds_spawned_incarnation` to always-true left the ENTIRE daemon http suite
-/// green, because the only re-registration arm used a row whose
-/// `rpc_port_intent` was already `None` — the refusal was exercised vacuously.
-///
-/// This is the case where the gate actually decides: an exact-id match onto a row
-/// that CARRIES a port stamped for incarnation S1, claimed by a registration whose
-/// spawn_id is S2. The port was reserved for a different incarnation and must not
-/// travel to this one — the allocator treats live rows' intents as the reserved
-/// set, so inheriting one hands out a port another process may be listening on.
+/// Ordinary registration must not copy an old incarnation's native attestation.
 #[tokio::test]
-async fn registration_does_not_inherit_a_port_stamped_for_another_incarnation() {
+async fn registration_does_not_inherit_native_capability_from_another_incarnation() {
     let identity = ProcIdentity {
         pid: 47,
         proc_start: 20260831090005,
@@ -974,9 +1936,13 @@ async fn registration_does_not_inherit_a_port_stamped_for_another_incarnation() 
     let mut stamped = SeatDescriptor::new("pij-ported", Harness::Copilot, "/abs/tree");
     stamped.pane = Some("%47".to_string());
     stamped.spawn_id = Some("spawn-old".to_string());
-    // A port reserved for the OLD incarnation.
-    stamped.rpc_port_intent = Some(47_790);
-    let registry = Arc::new(FakeRegistry::new().with_seat(stamped));
+    stamped.proc = Some(ProcIdentity {
+        pid: 46,
+        proc_start: 46,
+    });
+    stamped.harness_session = Some("native-old".into());
+    stamped.native_extension_delivery = true;
+    let registry = Arc::new(FakeRegistry::new().with_seat(stamped.clone()));
     let mut services = test_services(
         registry.clone(),
         Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
@@ -998,7 +1964,7 @@ async fn registration_does_not_inherit_a_port_stamped_for_another_incarnation() 
             pane: Some("%47".to_string()),
             pid: Some(identity.pid),
             proc_start: Some(identity.proc_start),
-            // A DIFFERENT incarnation than the one the port was stamped for.
+            // A different incarnation must not inherit native ownership.
             spawn_id: Some("spawn-new".to_string()),
             model: None,
             actual_model: None,
@@ -1011,13 +1977,10 @@ async fn registration_does_not_inherit_a_port_stamped_for_another_incarnation() 
         .send()
         .await
         .expect("registration with a mismatched spawn id");
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
-    let accepted: Envelope<SeatDescriptor> = response.json().await.expect("descriptor envelope");
-    let accepted = accepted.data.expect("descriptor");
-    assert_eq!(
-        accepted.rpc_port_intent, None,
-        "a port reserved for incarnation spawn-old must not travel to spawn-new"
-    );
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let refused: Envelope<SeatDescriptor> = response.json().await.expect("refusal envelope");
+    assert!(!refused.ok);
+    assert_eq!(registry.get(&stamped.id).await.unwrap(), Some(stamped));
 
     server.abort();
 }
@@ -1043,7 +2006,8 @@ async fn registration_cannot_adopt_a_spawn_match_that_is_already_bound() {
     let mut live = SeatDescriptor::new("pij-already-bound", Harness::Copilot, "/abs/tree");
     live.pane = Some("%46".to_string());
     live.spawn_id = Some("spawn-bound".to_string());
-    live.rpc_port_intent = Some(47_782);
+    live.native_extension_delivery = true;
+    live.harness_session = Some("native-incumbent".into());
     // The row is BOUND: its process is alive and it is nobody's pre-bind row.
     live.proc = Some(incumbent);
     let registry = Arc::new(FakeRegistry::new().with_seat(live));
@@ -1087,9 +2051,9 @@ async fn registration_cannot_adopt_a_spawn_match_that_is_already_bound() {
         "pij-runtime-squatter",
         "a bound row must never be adopted — the registration gets its own row"
     );
-    assert_eq!(
-        accepted.rpc_port_intent, None,
-        "and it must not inherit a port stamped for somebody else's incarnation"
+    assert!(
+        !accepted.native_extension_delivery,
+        "no capability inherited from another seat"
     );
 
     let seats = registry.list(SeatFilter::default()).await.expect("roster");
@@ -1102,7 +2066,7 @@ async fn registration_cannot_adopt_a_spawn_match_that_is_already_bound() {
         Some(incumbent),
         "the live seat must still own its own process"
     );
-    assert_eq!(incumbent_row.rpc_port_intent, Some(47_782));
+    assert!(incumbent_row.native_extension_delivery);
 
     server.abort();
 }
@@ -1117,7 +2081,6 @@ async fn registration_cannot_adopt_a_spawn_match_from_another_pane() {
         SeatDescriptor::new("pij-prebind-other-pane", Harness::Copilot, "/abs/tree");
     unrelated.pane = Some("%44".to_string());
     unrelated.spawn_id = Some("spawn-shared".to_string());
-    unrelated.rpc_port_intent = Some(47_781);
     let registry = Arc::new(FakeRegistry::new().with_seat(unrelated));
     let mut services = test_services(
         registry.clone(),
@@ -1155,9 +2118,9 @@ async fn registration_cannot_adopt_a_spawn_match_from_another_pane() {
     let accepted: Envelope<SeatDescriptor> = response.json().await.expect("descriptor envelope");
     let accepted = accepted.data.expect("descriptor");
     assert_eq!(accepted.id.as_str(), "pij-runtime-other-pane");
-    assert_eq!(
-        accepted.rpc_port_intent, None,
-        "a matching spawn id on another pane owns no port for this registration"
+    assert!(
+        !accepted.native_extension_delivery,
+        "another pane does not confer attestation"
     );
 
     let unrelated = registry
@@ -1168,13 +2131,13 @@ async fn registration_cannot_adopt_a_spawn_match_from_another_pane() {
         .find(|seat| seat.id.as_str() == "pij-prebind-other-pane")
         .expect("unrelated pre-bind row remains");
     assert_eq!(unrelated.proc, None);
-    assert_eq!(unrelated.rpc_port_intent, Some(47_781));
+    assert!(!unrelated.native_extension_delivery);
 
     server.abort();
 }
 
 #[tokio::test]
-async fn re_registration_preserves_live_resource_and_consent_stamps() {
+async fn ordinary_registration_preserves_native_attestation_and_claude_consent() {
     let copilot_proc = ProcIdentity {
         pid: 43,
         proc_start: 20260831103043,
@@ -1188,7 +2151,8 @@ async fn re_registration_preserves_live_resource_and_consent_stamps() {
     copilot.pane = Some("%43".to_string());
     copilot.proc = Some(copilot_proc);
     copilot.spawn_id = Some("spawn-copilot".to_string());
-    copilot.rpc_port_intent = Some(47_781);
+    copilot.native_extension_delivery = true;
+    copilot.harness_session = Some("native-copilot".into());
     registry.put(copilot).await.unwrap();
     let mut claude = SeatDescriptor::new("pij-claude", Harness::Claude, "/abs/tree");
     claude.pane = Some("%44".to_string());
@@ -1247,14 +2211,13 @@ async fn re_registration_preserves_live_resource_and_consent_stamps() {
         assert_eq!(response.status(), reqwest::StatusCode::OK);
     }
 
-    assert_eq!(
+    assert!(
         registry
             .get(&"pij-copilot".into())
             .await
             .unwrap()
             .unwrap()
-            .rpc_port_intent,
-        Some(47_781)
+            .native_extension_delivery
     );
     assert_eq!(
         registry
@@ -1699,6 +2662,7 @@ async fn inbox_claims_without_evidence_then_ack_records_machine_graded_reader_re
         // seat. Attribution must come from the queue authority's claimed job.
         seat: "pij-forged-reader".into(),
         job_id: claims[0].job_id,
+        native: Default::default(),
     };
     let ack = client
         .post(format!("http://{addr}/v1/inbox/ack"))
@@ -1739,6 +2703,7 @@ async fn inbox_claims_without_evidence_then_ack_records_machine_graded_reader_re
         .json(&InboxAckRequest {
             seat: "pij-forged-reader".into(),
             job_id: pij_core::model::JobId(999_999),
+            native: Default::default(),
         })
         .send()
         .await

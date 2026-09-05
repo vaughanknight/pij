@@ -34,6 +34,7 @@ research.md
 # Logs
 logs
 *.log
+!/docs/plans/137-copilot-native-extension/assets/evidence/*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -210,3 +211,6 @@ pocs/*/out/
 
 # Per-worktree cargo target dirs (impl-guide mandates CARGO_TARGET_DIR per coder)
 .cargo-target/
+
+# machine-local Claude Code permissions (never versioned; lints red in the canonical checkout otherwise)
+.claude/settings.local.json

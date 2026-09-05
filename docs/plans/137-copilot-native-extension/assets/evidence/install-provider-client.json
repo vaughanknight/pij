@@ -1,0 +1,85 @@
+{
+  "scope": "actual Copilot CLI against deterministic local provider; no native extension or daemon acceptance claimed",
+  "version_reported_by_pm": "1.0.84-0",
+  "command": [
+    "copilot",
+    "-p",
+    "Say PIJ_NATIVE_OBSERVED. Do not call tools.",
+    "--allow-all-tools",
+    "--no-experimental",
+    "--no-custom-instructions",
+    "--disable-builtin-mcps",
+    "--no-remote",
+    "--no-auto-update",
+    "--output-format",
+    "json"
+  ],
+  "exit_code": 0,
+  "home": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij137-provider-client-gn8gd0te",
+  "provider": "deterministic-local-fixture-not-real-inference",
+  "events": [
+    {
+      "type": "user.message",
+      "data": {
+        "content": "Say PIJ_NATIVE_OBSERVED. Do not call tools.",
+        "transformedContent": "<current_datetime>2026-09-05T09:36:20.927+10:00</current_datetime>\n\nSay PIJ_NATIVE_OBSERVED. Do not call tools.",
+        "messageId": "67e8cb1a-62f4-414b-87aa-14fd081ceded",
+        "supportedNativeDocumentMimeTypes": [],
+        "delivery": "idle",
+        "interactionId": "61ffa7c4-4757-46c8-8149-b75588be737e",
+        "turnId": "0",
+        "parentAgentTaskId": "7b006dfb-4f26-4f65-a5fb-5eff13053a33"
+      },
+      "id": "2726fadc-8a5f-4d3e-b51e-9a53d887eb73",
+      "timestamp": "2026-09-04T23:36:20.927Z",
+      "parentId": "27c8ca25-3767-4da2-a6d4-be13156ea406"
+    },
+    {
+      "type": "assistant.message",
+      "data": {
+        "messageId": "12692a01-6821-4bd4-b637-6932065e7dd0",
+        "model": "pij-native-fixture",
+        "content": "PIJ_NATIVE_OBSERVED",
+        "toolRequests": [],
+        "interactionId": "61ffa7c4-4757-46c8-8149-b75588be737e",
+        "turnId": "0",
+        "rte": false,
+        "apiCallId": "chatcmpl-e756745d-4b53-43e5-aee3-0cdfd9d3cf5e"
+      },
+      "id": "421be8d1-f592-49ba-a12d-fec81360abd4",
+      "timestamp": "2026-09-04T23:36:20.944Z",
+      "parentId": "9ca44986-afc6-4167-a358-ce61917319be"
+    },
+    {
+      "type": "result",
+      "timestamp": "2026-09-04T23:36:20.949Z",
+      "sessionId": "dcb97d4c-46a0-44a4-ac6c-b91236c8f80d",
+      "exitCode": 0,
+      "usage": {
+        "premiumRequests": 0,
+        "totalApiDurationMs": 6,
+        "sessionDurationMs": 77,
+        "codeChanges": {
+          "linesAdded": 0,
+          "linesRemoved": 0,
+          "filesModified": []
+        }
+      }
+    }
+  ],
+  "types": [
+    "assistant.idle",
+    "assistant.message",
+    "assistant.message_delta",
+    "assistant.message_start",
+    "assistant.turn_end",
+    "assistant.turn_start",
+    "model.call_finished",
+    "model.call_start",
+    "result",
+    "session.mcp_servers_loaded",
+    "session.skills_loaded",
+    "session.tools_updated",
+    "user.message"
+  ]
+}

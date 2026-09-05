@@ -1,0 +1,21 @@
+   Compiling pij-core v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/core)
+   Compiling pij-testkit v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/testkit)
+   Compiling pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/harnesses)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.59s
+     Running unittests src/lib.rs (target/debug/deps/pij_harnesses-fb9de7e516947f48)
+
+running 1 test
+
+thread 'composer::tests::copilot_v1_0_84_captured_draft_footer_is_recognized' (904925982) panicked at crates/harnesses/src/composer.rs:277:9:
+Copilot v1.0.84-0 live06 captured draft footer: " @ files · # issues                                                                                                                          pij-native-fixture"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test composer::tests::copilot_v1_0_84_captured_draft_footer_is_recognized ... FAILED
+
+failures:
+
+failures:
+    composer::tests::copilot_v1_0_84_captured_draft_footer_is_recognized
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 103 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p pij-harnesses --lib`

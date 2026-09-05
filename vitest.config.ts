@@ -77,6 +77,13 @@ export default defineConfig({
 		// undecidable for anyone proving a guard by injection. 30s still catches
 		// a genuine hang.
 		testTimeout: 30000,
+		// Bounded BY CONSTRUCTION (DL-018, 2026-09-05). On Vitest 4 neither
+		// VITEST_MAX_THREADS nor VITEST_MAX_WORKERS caps anything (dist reads the
+		// CLI flag/config only), so every "capped" env-var run today fanned out to
+		// CPU count on a box that also runs the fleet — load 200-380 on 16 cores and
+		// a varying red set of real-binary timing tests. The gate runs through
+		// `npm run test` with no way to pass --maxWorkers, so the cap lives here.
+		maxWorkers: 4,
 		// Skip physical fsync barriers in tests (adapters/atomic-file.ts
 		// maybeFsyncSync): 18 fsync sites x 16 parallel workers on one disk
 		// starved boot-path tests into 20s+ timeouts. Ordering/content

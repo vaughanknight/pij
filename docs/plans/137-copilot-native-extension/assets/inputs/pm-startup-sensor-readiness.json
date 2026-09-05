@@ -1,0 +1,18 @@
+{
+  "task": "Fix valid temporary sensor unavailability at native consumer startup without weakening consent",
+  "owner": "pij-worldwide-rat",
+  "evidence": ["pm-native-local-07.json: no first native body, receiver permanently stopped on sensor-unavailable; final measured cursor2,45 and recognized idle box", "real-canary-02 has same pre-first-body stop", "local07 first message.pushed at1788579070761; pane tap file birth1788579070833.6167, registration at1788579070703. Initial tap readiness race is an inference consistent with ordering, not a fabricated observed response."],
+  "decision": "After initial/reconnect registration and BEFORE acquiring an inbox claim, wait abortably for a well-formed available typing observation. A valid unavailable snapshot is a readiness condition, not authorization and not a reason to permanently abandon startup. Native CLAIM server remains ungated; native send still requires its fresh sensor check.",
+  "requirements": [
+    "Use existing typingSnapshot validation and250..5000 retry cadence; no alternate grace default, sleeps as permission, provider/footer special case or fabricated quiet.",
+    "No claim/send/intent/ACK while startup observation is unavailable. This avoids parking a leased body just because the600ms pane sampler has not attached yet.",
+    "Availability is not typing permission: an observed recent edit may proceed to ordinary claim+hold workflow; fresh before-send sensor check stays mandatory.",
+    "Malformed/forged snapshots remain explicit failures, not blindly retried; transport/auth errors retain existing reconnect handling. Check abort at every wait and isolate native generations.",
+    "Diagnostic must accurately say waiting/retrying, not receiving permanently stopped; bounded once-per-readiness episode, outgoing stays usable. No quiet fallback or timeout-driven delivery.",
+    "Apply only to bootstrap/reconnect readiness; do not weaken existing post-claim checks, release/reclaim ordering, recovered-record acceptance-before-release-before-ACK or completion correlation. Report any recovery-semantic conflict rather than inventing persistence or queue APIs.",
+    "RED first: actual HTTP returns valid unavailable until explicitly made observed; assert zero claim/send before readiness, exactly one later receive/ACK, no native re-registration churn, bounded wait and cancellation, outgoing usable. Retain forged/malformed rejection tests."
+  ],
+  "scope": [".copilot/extensions/pij/store.mjs", ".copilot/extensions/pij/store.test.mjs", ".copilot/extensions/pij/extension.test.mjs only if actual shell coverage needs migration", "runtime evidence"],
+  "constraints": ["No new queue API or body-copy persistence", "No .pi/daemon/recognizer/global changes", "No live launch/full gates; PM owns actual proof", "Never modify .the-flow-state.json,the-flow.json,the-flow.md or governance ledgers"],
+  "acceptance": "Scoped source/RED-GREEN receipts; startup temporary unavailable recovers only after validated observation, all other safety boundaries remain. Do not claim actual live07 root proven until measured re-observation exists."
+}

@@ -1,0 +1,19 @@
+{
+  "base": "46c9314c4b97449c33da1c9de2590500b8815702",
+  "before_product_edits": true,
+  "boot": {
+    "command": "harness boot --json",
+    "exit_code": 1,
+    "typecheck": { "command": "just typecheck", "ok": true, "code": 0, "elapsed_ms": 2220 },
+    "smoke": { "command": "just smoke", "ok": false, "code": 1, "elapsed_ms": 76949, "observed_failing_scenario": "file-watch-notify" },
+    "output_limit": "Original command result was truncated; this record preserves only observed fields, not an invented complete smoke inventory"
+  },
+  "lint": { "command": "just lint", "exit_code": 0, "checked_files": 511, "fixes_applied": false, "informational_notice": "Biome config schema 2.0.0 versus CLI 2.4.14" },
+  "dependencies": {
+    "attempt": "npm ci --ignore-scripts",
+    "exit_code": 1,
+    "error": "git dep preparation failed: --min-release-age cannot be provided when using --before",
+    "workaround": "Worktree-local node_modules symlink to existing main checkout installation; no dependency or global toolchain changes"
+  },
+  "meaning": "Preparation baseline only; no feature correctness or final gate success implied"
+}

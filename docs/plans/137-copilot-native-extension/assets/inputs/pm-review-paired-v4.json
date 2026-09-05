@@ -1,0 +1,19 @@
+{
+  "root": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension",
+  "pin": "5222f518e2f00c69b320d5ff9e388f0ba2c81a3a",
+  "task": "Independent review of the atomically composed v4 native receiver and current real-client proof driver; source verdict only",
+  "contract": "assets/inputs/pm-typing-sensor-contract-v4.json, including canonical1142 current-release-before-ACK clarification",
+  "targets": [".copilot/extensions/pij/store.mjs", ".copilot/extensions/pij/extension.mjs", "harness/scripts/copilot-native-smoke.ts", "their changed tests", "daemon snapshot/claim interfaces as consumed"],
+  "checks": [
+    "Native send requires validated tuple-bound available sensor state, correct daemon grace and no recent typing/semantic Hold before new intent; no competing grace default or quiet fallback.",
+    "Typing hold owns no body copy: defer, observe expiry/new edits, release, discard old claim and normal reclaim before injection. Long waits/cancellation/lease changes cannot cause a stale unvalidated send.",
+    "After durable native acceptance, current release declaration precedes ACK, including recovered accepted records; successful prior un-deferral is reused within cycle and re-hold resets it. Errors must not cause native reinjection or fabricated historical pairing.",
+    "Malformed/unavailable snapshots and semantic Hold remain visible and preserve outgoing usability; stop/reload/native rollover isolates old consumers.",
+    "Driver proves actual nonempty draft remains unchanged through recent hold then expired admission; validates snapshot, durable pending state, delivery.held/released and exactly-one native acceptance independently.",
+    "Driver active-modal guard ignores normal welcome/history, waits through incomplete repaint without keys, but rejects complete unexpected or mismatched active dialogs. Lifecycle controls require the exact intended composer/context; no message body via tmux.",
+    "Confirm octopus pin contains receiver051f7666 and daemonc36b86ad atomically; F-D ordering addressed. F-A test correction is independently landed in50a90140; F-B comment there too. F-C metadata-only refinement pending in separate packet, not claimed done."
+  ],
+  "execution": "PM independently124 native tests,139 installer/smoke tests,486 Rust tests and explicit current-module cross-language1 passed; pm-v4-paired-validation.log moduleDigest matches currentd0b2c2ff. Full actual v4/default60/lifecycle and real-provider acceptance pending; no release verdict.",
+  "constraints": ["Pin committed content; source may later gain metadata-only refinement", "Read-only product; no builds/tests/lint/formatters/live launches/new peers", "Write assets/reviews/opus-paired-v4-5222f518.md only", "Never modify .the-flow-state.json, the-flow.json, the-flow.md or governance ledgers"],
+  "output": "Material findings, source correctness verdict, remaining proof limits and concrete fix ownership if needed"
+}

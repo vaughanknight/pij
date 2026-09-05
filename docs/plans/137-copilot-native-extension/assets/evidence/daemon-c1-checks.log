@@ -1,0 +1,60 @@
+    Blocking waiting for file lock on package cache
+   Compiling pij-core v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/core)
+   Compiling pij-tmux v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/tmux)
+   Compiling pij-testkit v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/testkit)
+   Compiling pij-sidecars v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/sidecars)
+   Compiling pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/harnesses)
+   Compiling pij-store v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/store)
+   Compiling pij-transport v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/transport)
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.18s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-18bad1c90de73721)
+
+running 27 tests
+test registration::tests::absent_actual_model_is_unknown_while_explicit_no_model_is_a_mismatch ... ok
+test registration::tests::actual_host_matches_executable_and_entrypoint_not_shell_command_text ... ok
+test registration::tests::cold_resume_never_treats_previous_process_sensor_failure_as_death ... ok
+test registration::tests::cold_resume_requires_dead_attested_incarnation_and_preserves_hold ... ok
+test registration::tests::blocked_native_host_observation_does_not_block_unrelated_inbox_ack ... ok
+test registration::tests::native_ancestry_observation_is_bounded_to_32_processes ... ok
+test registration::tests::cold_resume_revalidates_owner_after_unlocked_death_observation ... ok
+test registration::tests::explicit_prebind_revalidates_both_rows_before_retiring_dead_same_native_owner ... ok
+test registration::tests::native_attests_actual_host_below_shell_but_refuses_shell_pane_pid ... ok
+test registration::tests::native_host_observation_has_a_wall_clock_bound ... ok
+test registration::tests::native_observation_revalidates_cross_seat_process_takeover_before_commit ... ok
+test registration::tests::native_rechecks_process_start_after_actual_host_observation ... ok
+test registration::tests::native_reconnect_retains_address_and_explicit_new_session_retires_old_capability ... ok
+test registration::tests::native_prebind_requires_exact_spawn_id_pane_and_harness ... ok
+test registration::tests::native_requires_exact_observed_pane_ancestry_but_supports_paneless_hosts ... ok
+test registration::tests::native_refuses_active_identity_process_session_harness_and_pane_collisions ... ok
+test registration::tests::native_requires_truthful_harness_session_and_complete_observed_tuple ... ok
+test registration::tests::ordinary_other_harness_registration_retains_existing_rebind_behavior ... ok
+test registration::tests::ordinary_registration_cannot_relabel_or_supersede_active_copilot_seat ... ok
+test registration::tests::ordinary_registration_preserves_unchanged_attested_native_owner_and_binding ... ok
+test registration::tests::native_supersedes_refuses_same_id_same_session_wrong_process_or_existing_target ... ok
+test registration::tests::ordinary_registration_never_inherits_native_capability ... ok
+test registration::tests::ordinary_registration_refuses_changed_native_owner_after_readoption ... ok
+test registration::tests::ordinary_withdrawal_preserves_session_and_does_not_enable_later_takeover ... ok
+test registration::tests::shared_native_lock_prevents_concurrent_process_takeover ... ok
+test registration::tests::real_shell_process_is_not_an_actual_copilot_host ... ok
+test registration::tests::claude_inbound_registration_changes_once_and_publishes_once ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 197 filtered out; finished in 0.14s
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.68s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-18bad1c90de73721)
+
+running 1 test
+test http::native_tests::native_registration_preserves_claimed_host_and_reports_atomic_binding_transitions ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 223 filtered out; finished in 0.57s
+
+    Checking pij-core v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/core)
+    Checking pij-sidecars v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/sidecars)
+    Checking pij-store v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/store)
+    Checking pij-tmux v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/tmux)
+    Checking pij-transport v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/transport)
+    Checking pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/harnesses)
+    Checking pij-testkit v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/testkit)
+    Checking pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/daemon)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.04s

@@ -80,6 +80,9 @@ impl Queue for FailFirstClaim {
     async fn peek(&self, kinds: &[String]) -> Result<Option<(JobId, Job)>> {
         self.inner.peek(kinds).await
     }
+    async fn claimed_delivery(&self, job: JobId) -> Result<Option<Job>> {
+        self.inner.claimed_delivery(job).await
+    }
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {
         self.inner.ack(job, outcome).await
     }
@@ -99,6 +102,12 @@ impl Queue for FailFirstClaim {
     }
     async fn retry(&self, job: JobId, delay: Duration) -> Result<()> {
         self.inner.retry(job, delay).await
+    }
+    async fn defer(&self, job: JobId, delay: Duration) -> Result<pij_core::ports::DeferOutcome> {
+        self.inner.defer(job, delay).await
+    }
+    async fn release_deferred(&self, job: JobId) -> Result<pij_core::ports::ReleaseOutcome> {
+        self.inner.release_deferred(job).await
     }
 }
 
@@ -544,6 +553,9 @@ impl Queue for RefuseFirstDelivery {
     async fn peek(&self, kinds: &[String]) -> Result<Option<(JobId, Job)>> {
         self.inner.peek(kinds).await
     }
+    async fn claimed_delivery(&self, job: JobId) -> Result<Option<Job>> {
+        self.inner.claimed_delivery(job).await
+    }
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {
         self.inner.ack(job, outcome).await
     }
@@ -563,6 +575,12 @@ impl Queue for RefuseFirstDelivery {
     }
     async fn retry(&self, job: JobId, delay: Duration) -> Result<()> {
         self.inner.retry(job, delay).await
+    }
+    async fn defer(&self, job: JobId, delay: Duration) -> Result<pij_core::ports::DeferOutcome> {
+        self.inner.defer(job, delay).await
+    }
+    async fn release_deferred(&self, job: JobId) -> Result<pij_core::ports::ReleaseOutcome> {
+        self.inner.release_deferred(job).await
     }
 }
 

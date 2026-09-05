@@ -1,0 +1,152 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Phase 1 — contract, units, compose, live",
+        "slug": "phase-1",
+        "status": "draft",
+        "summary": "u0 · u1 ∥ u2 ∥ u3 · compose · live proofs"
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Wave 0 freezes the wire; wave 1 runs three coders in parallel; PM composes and runs the live proofs (omp and Claude)."
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "tk-1360",
+          "title": "u0 — freeze hold/release wire + grace source",
+          "domain": "contract",
+          "phase": "p1",
+          "state": "checked",
+          "receipt": "commit 68f6b3aa — docs/plans/136-typing-grace-gate/assets/contracts/hold-events.json (jq-valid): delivery.held / delivery.released event samples, /v1/hold and /v1/release request+response bodies, register_response_with_grace carrying typing_grace_ms, a grace block naming DEFAULT_TYPING_GRACE_MS in crates/core/src/delivery.rs as the single definition, and an invariants block (held_is_unacked, order_preserved, bypass, one_grace, no_false_typing, no_double_delivery). Field spellings derived from crates/core/src/model.rs (Event, Envelope, SeatDescriptor, DeliveryOutcome, DeliveryOrigin) and crates/daemon/src/http/mod.rs:399 — none invented. Cited as ref r2 in all three coder packets.",
+          "done": "tasks.dd.json#done_when/tk-1360",
+          "success": "assets/contracts/hold-events.json holds canonical `delivery.held` / `delivery.released` payloads and the grace exposure sample; impl-guide unit rows cite it.",
+          "notes": "PM-owned wave 0; both runtimes READ this file in tests.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC7"
+          ]
+        },
+        {
+          "id": "tk-1361",
+          "title": "u1 — extension: typing sensor + hold queue + status",
+          "domain": ".pi/extensions/pij",
+          "phase": "p1",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1361",
+          "success": "lastEditAt from editor.onChange; HoldQueue in consumePushed (claim→hold→inject→ack) with fake-clock tests; status line; bypass for commands; reports held/released to the daemon.",
+          "notes": "Held = unacked. No timers that survive /new without re-arming.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC4",
+            "../../../plan.dd.json#acceptance_criteria/AC5"
+          ],
+          "receipt": "commit c1f17eb4 + 7cc63ba3 + 7ba1d395 + 4778b84c + 3669fcd0 (u1, pij-energetic-mouse). Terminal-input sensor bound to the REAL public hook (OMP 18.0.10 ExtensionUIContext.onTerminalInput, types.d.ts:164-165) after the packet's editor.onChange was proven non-public — which retires risk r1 STRUCTURALLY: a real Escape incremented the key count while a real ctx.ui.setEditorText did not, proven on the installed host with no daemon and no model turn (assets/observations/u1-sensor/evidence.jsonl). Pure clock-injected HoldQueue; hold/release carry job_id; release declared before every ack via ONE owner; session_start peek->release->claim restores FIFO. Full harness checks 8/8 in the coder's worktree; 42 scoped tests; every behavioural witness RED-first with output in assets/observations/."
+        },
+        {
+          "id": "tk-1362",
+          "title": "u2 — daemon: held/released rows, grace exposure, honest push receipt",
+          "domain": "pij-rs daemon/core",
+          "phase": "p1",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1362",
+          "success": "POST /v1/hold + /v1/release (additive) write spine rows; `pij state` renders held; PIJ_TYPING_GRACE_MS exposed additively; push receipt for extension-stream reads queued until ack.",
+          "notes": "Vocabulary lives in crates/core/src/delivery.rs; no changes to delivery/mod.rs match arm (plan 137 baton).",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC5",
+            "../../../plan.dd.json#acceptance_criteria/AC7"
+          ],
+          "receipt": "commit b1d22042 + 0037a441 (u2, pij-immense-hawk), plus ae427e2d. DEFAULT_TYPING_GRACE_MS in crates/core/src/delivery.rs as the single definition; typing_grace_ms additive on the register response; /v1/hold and /v1/release serving Queue::defer and Queue::release_deferred (two additive port verbs, no schema and no new stored state, defer never charging an attempt); pointer worker skips Omp|Pi recipients as a latent double-delivery fix in its own right; held rows rendered in state --json. The 'honest receipt' item was WITHDRAWN as a behaviour change on u2's evidence and shipped as a regression guard proven non-vacuous by a mutation control. 489 Rust tests, clippy and fmt clean, full checks 8/8. delivery/mod.rs never opened — git log 46c9314c..main on that path is empty."
+        },
+        {
+          "id": "tk-1363",
+          "title": "u3 — interaction gate: recency not draft-present",
+          "domain": "crates/harnesses",
+          "phase": "p1",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1363",
+          "success": "human-typing derives from last keystroke < grace (pane-signals/tmux evidence); draft parked ≥ grace no longer vetoes; next_retry_at ≤ grace; RED control for the old behaviour.",
+          "notes": "Keep the `human-typing` word; change its derivation. draft_sha stays on the receipt when present.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC6",
+            "../../../plan.dd.json#acceptance_criteria/AC8"
+          ],
+          "receipt": "commit 852f6d30 (u3, pij-silent-salmon). InteractionGate keyed on observed-edit recency, not draft presence; the constructor is ADDITIVE (with_typing_grace(tmux, idle_window, grace_ms)) so all 19 existing call sites compile untouched and only the composition root takes the real grace. A stale draft reports ComposerBusy and no longer vetoes socket delivery — the pane-typing interlock stays, because removing it would make the operation do MORE (splice into a human's draft). The old forever-veto test went RED and was rewritten with its rationale; the reviewer re-ran the crate itself (30 interaction tests, including the parked-draft release and the self-echo guard). 100+2 tests verified independently by the PM in the coder's own worktree."
+        },
+        {
+          "id": "tk-1364",
+          "title": "compose + live proofs",
+          "domain": "pm",
+          "phase": "p1",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1364",
+          "success": "Composed branch green on all gates; daemon rebuilt+restarted (with PIJ_TELEGRAM_ENV); AC1–AC6 live transcripts in assets/live-proof.md.",
+          "notes": "Restart the daemon or Rust changes are not live.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC4",
+            "../../../plan.dd.json#acceptance_criteria/AC5",
+            "../../../plan.dd.json#acceptance_criteria/AC6",
+            "../../../plan.dd.json#acceptance_criteria/AC8"
+          ],
+          "receipt": "commits 1969511e (compose), 73f21039/9231b38f/a8757bb4 (main convergence), 4778b84c (frame convergence), ae427e2d (review remediation). Composition found three things no unit's diff contained: two honest env resolutions of one grace (now ONE resolver, http::resolve_typing_grace_ms, shared by the register response and the gate), an obsolete pointer-worker control encoding 'the draft is the veto' (rewritten as a pair differing only in the grace), and 135's frame change moving ten literal assertions at once. Live proofs in assets/live-proof.md: AC1 held at t0+5.7s and delivered at t0+60.7s; AC2 parked draft 68s delivered with a non-empty composer; AC3 both ends; AC5 kill -9 with three rows held, all three pending/attempt=0, redelivered in order after re-register; AC6 a hours-old Claude draft delivered with the draft untouched where world B refused for 200+s. Contract fixture relocated to crates/testkit/fixtures/delivery/ because post-flight archives plan folders. harness checks 8/8 at 03:00:42Z."
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {
+        "tk-1360": [
+          {
+            "id": "dw-1360",
+            "assertion": "Contract file present; cited by path from u1/u2/u3 test sources.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1361": [
+          {
+            "id": "dw-1361",
+            "assertion": "bun test green incl. fake-clock hold/inject, bypass, and unacked-while-held tests; RED pasted on pre-fix tree.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1362": [
+          {
+            "id": "dw-1362",
+            "assertion": "cargo test -p pij-core -p pij-daemon green; spine rows byte-compare to the contract; receipt test proves queued-until-ack.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1363": [
+          {
+            "id": "dw-1363",
+            "assertion": "cargo test -p pij-harnesses green with the recency tests and the RED control on the old draft-present behaviour.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1364": [
+          {
+            "id": "dw-1364",
+            "assertion": "Live transcripts for AC1–AC6 + full gate outputs recorded.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ]
+      }
+    }
+  ]
+}

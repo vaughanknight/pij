@@ -1,0 +1,76 @@
+{
+  "target": "PM composed-boundary correction: native inbox hold metadata",
+  "status": "implemented; scoped HTTP/native-shell proof and targeted review passing",
+  "owner": "pij-worldwide-rat",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime",
+  "branch": "137-copilot-native-runtime",
+  "base_commit": "dd8444fdaeb5e20972196ea1318b6d8fc3c7343d",
+  "source_commit": "40ded909f4e8499d19e24d463fc3897e3a3e6556",
+  "source_sha256": {
+    ".copilot/extensions/pij/store.mjs": "820d298af7f55eb2b9d38064ed3e0deafbb42aeef9bb2274d9596edb4b0a6921",
+    ".copilot/extensions/pij/store.test.mjs": "044972f39f836dd3e3a9467b56606d5938f5e7f6913fb9a8ce33fdfc03528c20",
+    ".copilot/extensions/pij/extension.test.mjs": "3681ec0cd9050488facf09e1d1153b512e8b3022fce836f99a865bdcbc797225"
+  },
+  "producer_sources": [
+    "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/crates/daemon/src/http/mod.rs:1132-1158",
+    "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/crates/daemon/src/delivery/mod.rs:931-934"
+  ],
+  "change": {
+    "transport": "Private #requestEnvelope retains v2 envelope. Public request(path,body,signal) still returns data; register/send/ack and seat discovery callers unchanged.",
+    "inbox": "Inbox-specific claimInbox(tuple,signal) returns {claims,hold}; hold is null or {kind:consent|native-target,reason:string}. Preserve stable native-consumer-held meta reason; reject non-string non-null hold metadata instead of silently treating it as empty.",
+    "empty": "No hold metadata: ordinary empty-page bounded retry; no consent-held event.",
+    "consent": "human-typing, semantic-hold, sensor-unavailable, human-consent, tap-unowned, composer-busy and unrecognized retain bounded retry. Emit consent-held with reason and retryMs; no local consent-policy replacement.",
+    "native_target": "native-target-session prefix emits receive-held with exact reason and recovery action, then exits consumer and unsubscribes; no next claim/native send/ACK. Outgoing pij_send remains registered and usable.",
+    "native_diagnostic": "One fixed actionable native timeline notice directs resume of targeted conversation or intentional reissue through a new seat. Does not interpolate remote error text into native timeline.",
+    "preserved": "acceptance -> durable persist -> ACK -> observed completion barrier before next claim unchanged; no daemon protocol or installer changes"
+  },
+  "proof": {
+    "command": [
+      "node",
+      "--test",
+      "--test-reporter=tap",
+      "--test-timeout=15000",
+      ".copilot/extensions/pij/store.test.mjs",
+      ".copilot/extensions/pij/identity.test.mjs",
+      ".copilot/extensions/pij/extension.test.mjs"
+    ],
+    "env": {
+      "VITEST_MAX_THREADS": "4",
+      "CARGO_BUILD_JOBS": "4"
+    },
+    "exit": 0,
+    "tests": 64,
+    "pass": 64,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "stderr": "",
+    "artifact": "runtime-hold-meta-tests.tap",
+    "sha256": "e6646c897c9095e7684f6b2a85140588f961db162e455f4ab631042870a909d9",
+    "formatter": {
+      "command": "node_modules/.bin/biome check --write .copilot/extensions/pij/store.mjs .copilot/extensions/pij/store.test.mjs .copilot/extensions/pij/extension.test.mjs",
+      "exit": 0,
+      "result": "Checked3 files in129ms. Fixed3 files."
+    },
+    "lsp": "All5 runtime .mjs files reported no diagnostics. JS references queries returned none despite known local callers; scoped exact callsite search plus tests covered those consumers.",
+    "target_shell": "Actual extension child + real loopback HTTP + temporary private state: one target-held GET, zero ACK/native sends, one actionable native-log, successful explicit outgoing send, no subsequent claim after350ms, EOF exits0 with empty stdout.",
+    "consent_shell": "Actual HTTP empty page then consent metadata then admitted claim: consent event retryMs500 after empty250; before release2 claims/0ACK/0native-send; after release3claims/1ACK/1native-send; no second outgoing message; EOF exits0 and stdout empty.",
+    "retry_ceiling": "Injected delay records250,500,1000,2000,4000,5000,5000,5000 for both empty and consent holds; neither sends nor acknowledges.",
+    "review": {
+      "reviewer": "HoldBoundaryReview",
+      "verdict": "no_material_findings",
+      "scope": "read-only targeted diff and lifecycle/producer boundary; no reviewer test commands"
+    },
+    "grade": "Deterministic unit plus actual extension-shell/HTTP fixtures. No new real-Copilot/model/Rust-daemon acceptance claim."
+  },
+  "constraints": {
+    "full_gates": "PM serialized; not run in worker",
+    "daemon_restarts": 0,
+    "installs": 0,
+    "new_worktrees": 0,
+    "source_fence": "3 existing runtime source/test files only",
+    "docs": "PM owns plan/guide; protocol and installer contracts unchanged"
+  },
+  "harness_improvement": "Extended existing shell launch fixture to accept complete inbox response pages, retaining real HTTP metadata. New regression fails when envelope.data-only mocks hide native target holds; consent and empty paths are proven separately.",
+  "remaining": "PM composition, real native acceptance and serialized full gates remain PM-owned; runtime returns to integration hold."
+}

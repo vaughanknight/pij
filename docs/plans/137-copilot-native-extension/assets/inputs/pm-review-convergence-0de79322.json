@@ -1,0 +1,18 @@
+{
+  "task": "Targeted independent re-review of composed native extension at 0de7932273d1f3577cc64177bd1a8abe6442daba",
+  "root": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension",
+  "baseline_review": "docs/plans/137-copilot-native-extension/assets/reviews/opus-code-review-6ff2f981.md",
+  "contract": "docs/plans/137-copilot-native-extension/assets/contracts/native-extension.json",
+  "targets": ["crates/daemon/src/registration.rs", "crates/daemon/src/http/mod.rs", "crates/daemon/src/http/identity.rs", "crates/store/src/registry.rs", "crates/daemon/src/http/native_tests.rs", "crates/daemon/tests/native_runtime_cold_resume.rs", ".copilot/extensions/pij/store.mjs", ".copilot/extensions/pij/extension.mjs"],
+  "checks": [
+    "135 atomic PutBinding reports and pane normalization coexist with137 claimed native host authority; reject malformed tuples without mutating registration.",
+    "Cold resume selects only one native-attested dead owner; live/unproven ownership refuses, retired identities are not recycled, valid new prebind outranks old native context.",
+    "Ack attempt/recipient/native identity checks cannot be bypassed through shim/shared services; accepted journal survives process incarnation changes without blind reinjection.",
+    "Completion correlation and transient retries preserve send/receive sequencing, visible holds and bounded retries.",
+    "Testkit fixture helper and designed native contract fixture are durable; captured135 fixture bytes remain original. Distinguish actual HTTP/SQLite/runtime simulation from actual SDK/model proof."
+  ],
+  "evidence": ["artifact://375", "docs/plans/137-copilot-native-extension/assets/evidence/pm-native-local-04.json", "docs/plans/137-copilot-native-extension/assets/evidence/daemon-cross-language-receipt.json"],
+  "known_open_work": ["Runtime owner correcting false outage on own65s inbox long-poll renewal; not yet composed.", "Installer owner adding exact per-invocation simulated human consent to isolated smoke. Native incoming body reached actualCLI; outgoingtool awaiting approval, so no round-trip claim.", "Final full gates and real-provider acceptance pending; strict draft policy unchanged."],
+  "constraints": ["Read-only product code. Write only a new targeted review artifact under assets/reviews, with sourceSHA, findings, evidence limits and verdict.", "Do not rerun known failures, formatters, linters, builds or test suites; PM owns validation.", "Use existing seat;136 freeze prohibits new Pi/OMP seats, daemon changes and global link changes.", "Never modify .the-flow-state.json, the-flow.json, the-flow.md or governance ledgers.", "Do not treat pending live acceptance as concealed: report source correctness separately from release readiness."],
+  "output": "docs/plans/137-copilot-native-extension/assets/reviews/opus-convergence-0de79322.md"
+}

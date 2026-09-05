@@ -183,9 +183,14 @@ impl SqliteOrchestration {
                 .map_err(json_error)?;
 
         let mut tx = begin_write(&self.pool).await?;
+        // Reconciliation does not attest a new incarnation. Its candidate may
+        // only supply capability for the process/session/pane still stored here.
         let survivor_updated = sqlx::query(
             "UPDATE seats SET harness=?2, pane=?3, folder=?4, model=?5, provider=?6, effort=?7, \
-             rpc_port_intent=?8 WHERE id=?1",
+             native_extension_delivery=CASE WHEN harness=?2 AND pid=?9 AND proc_start=?10 \
+                 AND harness_session=?11 AND pane IS ?3 AND tombstoned_at IS NULL \
+                 THEN ?8 ELSE 0 END \
+             WHERE id=?1",
         )
         .bind(plan.survivor.id.as_str())
         .bind(plan.survivor.harness.as_str())
@@ -194,13 +199,18 @@ impl SqliteOrchestration {
         .bind(plan.survivor.model.as_deref())
         .bind(plan.survivor.provider.as_deref())
         .bind(plan.survivor.effort.as_deref())
-        .bind(plan.survivor.rpc_port_intent.map(i64::from))
+        .bind(i64::from(
+            plan.survivor.native_extension_delivery && plan.survivor.tombstoned_at.is_none(),
+        ))
+        .bind(plan.survivor.proc.map(|process| i64::from(process.pid)))
+        .bind(plan.survivor.proc.map(|process| process.proc_start as i64))
+        .bind(plan.survivor.harness_session.as_deref())
         .execute(&mut *tx)
         .await
         .map_err(adapter_error)?
         .rows_affected();
         let alias_updated = sqlx::query(
-            "UPDATE seats SET tombstoned_at=?2, tombstone_reason=?3, rpc_port_intent=NULL \
+            "UPDATE seats SET tombstoned_at=?2, tombstone_reason=?3, native_extension_delivery=0 \
              WHERE id=?1",
         )
         .bind(plan.alias.id.as_str())

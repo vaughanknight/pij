@@ -1,0 +1,39 @@
+{
+  "status": "disabled-ready-predicate-corrected-scoped-checks-passed-no-live-run",
+  "source_base": "362b4785",
+  "change": "Replace only the disabled launch's obsolete prompt-glyph test with nativeComposer(capture) === empty string. Existing parser, bounded wait, captures, adopt and registration remain unchanged.",
+  "fixture": {
+    "path": "harness/scripts/fixtures/copilot-native-disabled.json",
+    "receipt": "docs/plans/137-copilot-native-extension/assets/evidence/pm-native-local-08.json",
+    "receipt_source_commit": "da727fcd19a315b136ef4c387c769396f1ff6072",
+    "capture": "final_pane_captures[pane=%4].pane_capture",
+    "copilot": "1.0.84-0",
+    "mode": "--no-experimental",
+    "legacy_glyph_predicate_on_retained_frame": false,
+    "new_test": "recognizes the retained disabled CLI frame as an empty ready composer",
+    "grade": "Retained-screen parser regression, not a new live CLI execution or an end-to-end launch test"
+  },
+  "verification": {
+    "environment": { "VITEST_MAX_WORKERS": "4", "VITEST_MAX_THREADS": "4", "CARGO_BUILD_JOBS": "4" },
+    "tests": {
+      "command": "just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts",
+      "passed": 165,
+      "installer": 33,
+      "smoke": 132,
+      "duration_seconds": 5.52,
+      "exit": 0
+    },
+    "typescript": {
+      "command": "node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit": 0
+    },
+    "biome": {
+      "command": "node_modules/.bin/biome check harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts harness/scripts/fixtures/copilot-native-disabled.json",
+      "files": 3,
+      "fixes_applied": false,
+      "exit": 0
+    }
+  },
+  "scope": "Own installation tree only. No new recognizer, nativeComposer modification, Rust/product edit, keys, live/full run, composition-tree or governance edit. PM owns live continuation and gates.",
+  "cleanup": "No API or usage documentation change needed; retained fixture and parser regression encode the readiness lesson."
+}

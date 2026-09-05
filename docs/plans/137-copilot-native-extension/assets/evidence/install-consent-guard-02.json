@@ -1,0 +1,57 @@
+{
+  "status": "F2-source-correction-verified-not-live-acceptance",
+  "source_base": "d5850041",
+  "review": {
+    "path": "assets/reviews/opus-delta-2a36a799.md",
+    "pin": "2a36a799ca63593a4f252177db3219b838a683ad",
+    "finding": "F2: discarded post-input approval predicate obscures intended dismissal semantics"
+  },
+  "correction": {
+    "symbol": "confirmSmokeToolInvocation",
+    "absent_modal": "Retain after_input and after; mark dismissed without a redundant capture.",
+    "matching_visible_modal": "Poll for dismissal without sending another approval key.",
+    "malformed_or_unknown_modal": "Existing exact parser throws; retain capture and fail closed."
+  },
+  "verification": {
+    "environment": {
+      "VITEST_MAX_WORKERS": "4",
+      "VITEST_MAX_THREADS": "4",
+      "CARGO_BUILD_JOBS": "4"
+    },
+    "tests": {
+      "command": "just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0,
+      "passed": 87,
+      "smoke": 54,
+      "installer": 33,
+      "added_cases": [
+        "accepts immediate dismissal without another capture or approval key",
+        "fails malformed dialog immediately after the one-time confirmation"
+      ],
+      "retained_cases": [
+        "delayed dismissal retains all before/recheck/after screens",
+        "unknown post-input dialog fails before later dismissal",
+        "stalled dismissal never resends approval"
+      ]
+    },
+    "typecheck": {
+      "command": "node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0
+    },
+    "biome": {
+      "command": "node_modules/.bin/biome check harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0,
+      "result": "Checked 2 files. No fixes applied."
+    }
+  },
+  "harness_lesson": "Consume the post-control state predicate explicitly: dismissal is success, the same visible modal needs waiting, and malformed or unknown state is failure. Immediate and delayed dismissal now have separate regression cases.",
+  "boundaries": {
+    "live_launches": 0,
+    "live_keys_sent": 0,
+    "full_gates": "PM-owned; not run in this scoped correction",
+    "ac7_accepted": false,
+    "real_provider_inference_proven": false,
+    "ac6_or_native_typing_policy_changed": false,
+    "global_resources_changed": false
+  }
+}

@@ -583,7 +583,7 @@ export function drainTmuxInbox(
 ): DrainedTmuxMessage[] {
 	const consumed: DrainedTmuxMessage[] = [];
 	for (const m of messages) {
-		// Preserve the REAL sender so the injected text is framed `[pij from <from>]`
+		// Preserve the REAL sender in `[pij-rs from <from>]\n<body>\n[/pij]`
 		// and the receiving agent knows who messaged it (parity with the pi receiver).
 		const msg: PijMessage = { from: m.from, to: target.id, body: m.body, command: m.command };
 		const decision = route(target, msg);

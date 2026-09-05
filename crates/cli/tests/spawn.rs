@@ -1,18 +1,13 @@
-use std::collections::{BTreeSet, VecDeque};
-use std::future::Future;
 use std::io::Write;
-use std::pin::Pin;
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use pij_core::config::{AdapterChoice, Adapters, Config};
-use pij_core::error::{PijError, Result};
 use pij_core::model::{
     DeliveryOrigin, DeliveryOutcome, Envelope, Harness, Msg, ProcIdentity, Receipt, SeatDescriptor,
     SeatId, SemanticState, Seq,
 };
 use pij_core::ports::{Registry, Spine};
-use pij_daemon::RpcPortAllocator;
 use pij_daemon::events::EventBus;
 use pij_daemon::http::{HttpConfig, router_with_config};
 use pij_store::{SqliteRegistry, SqliteSpine};
@@ -87,52 +82,8 @@ fn launch_env(call: &str, key: &str) -> Option<String> {
     let value = call.split_once(&marker)?.1.split('"').next()?;
     (!value.is_empty()).then(|| value.to_string())
 }
-struct ScriptedRpcPorts {
-    candidates: Mutex<VecDeque<u16>>,
-    seen_unavailable: Mutex<Vec<BTreeSet<u16>>>,
-}
-
-impl ScriptedRpcPorts {
-    fn new(candidates: impl IntoIterator<Item = u16>) -> Self {
-        Self {
-            candidates: Mutex::new(candidates.into_iter().collect()),
-            seen_unavailable: Mutex::new(Vec::new()),
-        }
-    }
-
-    fn seen_unavailable(&self) -> Vec<BTreeSet<u16>> {
-        self.seen_unavailable
-            .lock()
-            .expect("port witness mutex")
-            .clone()
-    }
-}
-
-impl RpcPortAllocator for ScriptedRpcPorts {
-    fn allocate<'a>(
-        &'a self,
-        unavailable: &'a BTreeSet<u16>,
-    ) -> Pin<Box<dyn Future<Output = Result<u16>> + Send + 'a>> {
-        Box::pin(async move {
-            self.seen_unavailable
-                .lock()
-                .expect("port witness mutex")
-                .push(unavailable.clone());
-            let mut candidates = self.candidates.lock().expect("port candidate mutex");
-            while let Some(candidate) = candidates.pop_front() {
-                if !unavailable.contains(&candidate) {
-                    return Ok(candidate);
-                }
-            }
-            Err(PijError::Adapter {
-                adapter: "test/rpc-port".to_string(),
-                message: "scripted RPC ports exhausted".to_string(),
-            })
-        })
-    }
-}
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_intent() {
+async fn shipped_spawn_revive_and_registration_do_not_attest_native_delivery() {
     let dir = fresh_dir("pij-spawn-e2e");
     std::fs::write(dir.join("daemon.key"), "spawn-test-key").expect("write client key");
     let pool = pij_store::open(
@@ -145,21 +96,6 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
     let registry = Arc::new(SqliteRegistry::new(pool.clone()));
     let tmux = Arc::new(FakeTmux::new());
     let spine = Arc::new(SqliteSpine::new(pool));
-    let rpc_ports = Arc::new(ScriptedRpcPorts::new([61_001, 61_003, 61_004]));
-    let mut live_port = SeatDescriptor::new("pij-live-port", Harness::Copilot, "/abs/tree");
-    live_port.rpc_port_intent = Some(61_001);
-    registry
-        .put(live_port)
-        .await
-        .expect("seed live port intent");
-    let mut dead_port = SeatDescriptor::new("pij-dead-port", Harness::Copilot, "/abs/tree");
-    dead_port.tombstoned_at = Some(1);
-    dead_port.tombstone_reason = Some("old incarnation".to_string());
-    dead_port.rpc_port_intent = Some(61_003);
-    registry
-        .put(dead_port)
-        .await
-        .expect("seed tombstoned port intent");
     let first_identity = ProcIdentity {
         pid: 4242,
         proc_start: 20260830112233,
@@ -178,7 +114,6 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
     services.tmux = tmux.clone();
     services.spine = spine.clone();
     services.event_bus = Arc::new(EventBus::new(spine.clone(), 16).expect("event bus"));
-    services.rpc_ports = rpc_ports.clone();
     services.liveness = Arc::new(
         FakeLiveness::new()
             .with_proc(first_identity)
@@ -256,25 +191,16 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
         Some(true),
         "Claude seats accept inbound by default (Jordan's ruling, plan 116)"
     );
-    assert_eq!(closed.rpc_port_intent, None);
-    assert_eq!(accepted.rpc_port_intent, None);
+    assert!(!closed.native_extension_delivery);
+    assert!(!accepted.native_extension_delivery);
 
-    let first = spawn("pij-e2e-rpc", "copilot", None);
+    let first = spawn("pij-e2e-native", "copilot", None);
     assert_eq!(first.proc, None, "spawn writes a pre-bind row");
-    let old_port = first
-        .rpc_port_intent
-        .expect("Copilot spawn stamps argv intent");
-    let calls = tmux.calls();
-    assert_eq!(
-        old_port, 61_003,
-        "allocator must skip another live seat's stamped port"
-    );
-    let allocation_view = rpc_ports.seen_unavailable();
-    assert!(allocation_view[0].contains(&61_001));
     assert!(
-        !allocation_view[0].contains(&61_003),
-        "a tombstoned seat no longer reserves its old port"
+        !first.native_extension_delivery,
+        "launch intent is not native registration"
     );
+    let calls = tmux.calls();
     assert_eq!(calls.len(), 4);
     assert!(!calls[0].contains("--ui-server"));
     assert!(calls[1].contains(r#"{\"crossSessionInbound\":\"accept\"}"#));
@@ -282,10 +208,14 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
         calls[2].contains(r#"{\"crossSessionInbound\":\"accept\"}"#),
         "default-path claude spawn must emit the setting in argv, not just the descriptor stamp"
     );
-    assert!(calls[3].contains(&format!("\"--ui-server\", \"--port\", \"{old_port}\"")));
+    assert!(!calls[3].contains("--ui-server"));
+    assert!(!calls[3].contains("--port"));
     let mut postmortem = first.clone();
     postmortem.role = Some("reviewer".to_string());
     postmortem.semantic_state = Some(SemanticState::Done);
+    postmortem.proc = Some(first_identity);
+    postmortem.harness_session = Some("00000000-0000-4000-8000-000000000137".to_string());
+    postmortem.native_extension_delivery = true;
     registry
         .put(postmortem)
         .await
@@ -297,7 +227,7 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
         &[
             "spawn",
             "--id",
-            "pij-e2e-rpc",
+            "pij-e2e-native",
             "--harness",
             "copilot",
             "--cwd",
@@ -316,31 +246,33 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
         .tombstone(&first.id, "test transition")
         .await
         .expect("tombstone first incarnation");
-    assert_eq!(
-        registry
+    assert!(
+        !registry
             .get(&first.id)
             .await
             .expect("read tombstone")
             .expect("post-mortem row")
-            .rpc_port_intent,
-        None,
+            .native_extension_delivery,
         "tombstone clearing is an observed act"
     );
-    let recycled = std::net::TcpListener::bind(("127.0.0.1", old_port))
-        .expect("old intent port is free for the recycled-owner witness");
-    let revived = spawn("pij-e2e-rpc", "copilot", None);
-    let fresh_port = revived.rpc_port_intent.expect("revive stamps fresh intent");
-    assert_ne!(fresh_port, old_port, "revive must replace the old value");
-    drop(recycled);
-    assert_eq!(
-        registry
+    let revived = spawn("pij-e2e-native", "copilot", None);
+    assert!(
+        !revived.native_extension_delivery,
+        "revive requires a fresh native attestation"
+    );
+    assert_ne!(
+        revived.spawn_id, first.spawn_id,
+        "revive must mint a fresh correlator"
+    );
+    assert_eq!(revived.proc, None, "revive writes a pre-bind row");
+    assert!(
+        !registry
             .get(&revived.id)
             .await
             .expect("later registry pass")
             .expect("revived row")
-            .rpc_port_intent,
-        Some(fresh_port),
-        "nothing re-stamps the old value on a later pass"
+            .native_extension_delivery,
+        "nothing restores the previous incarnation's capability on a later pass"
     );
     let revive_event = spine
         .tail(Some(&first.id), Seq(0))
@@ -358,7 +290,7 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
     let register_same = |spawn_id: Option<&str>| {
         let mut args = vec![
             "register",
-            "pij-e2e-rpc",
+            "pij-e2e-native",
             "--harness",
             "copilot",
             "--folder",
@@ -386,13 +318,11 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
     );
     let first_bind: Envelope<SeatDescriptor> =
         serde_json::from_slice(&first_bind.stdout).expect("first-bind envelope");
-    assert_eq!(
-        first_bind
-            .data
-            .expect("first-bind descriptor")
-            .rpc_port_intent,
-        Some(fresh_port),
-        "the revived seat's matching first bind must preserve its fresh port intent"
+    let first_bound = first_bind.data.expect("first-bind descriptor");
+    assert_eq!(first_bound.proc, Some(first_identity));
+    assert!(
+        !first_bound.native_extension_delivery,
+        "ordinary CLI registration binds the process but cannot attest a native extension"
     );
     assert!(
         launched_spawn_id.is_some(),
@@ -408,29 +338,28 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
         );
         let envelope: Envelope<SeatDescriptor> =
             serde_json::from_slice(&registered.stdout).expect("registration envelope");
-        assert_eq!(
-            envelope
+        assert!(
+            !envelope
                 .data
                 .expect("registered descriptor")
-                .rpc_port_intent,
-            Some(fresh_port),
-            "the same live process must keep its listener intent on re-registration"
+                .native_extension_delivery,
+            "re-registering through the CLI must not invent a native extension capability"
         );
     }
-    assert_eq!(
-        registry
+    assert!(
+        !registry
             .get(&revived.id)
             .await
             .expect("read after repeated registration")
             .expect("registered row")
-            .rpc_port_intent,
-        Some(fresh_port),
-        "re-registering the same live process must not free its active port"
+            .native_extension_delivery,
+        "repeated ordinary registration keeps native delivery closed"
     );
 
     let mut predecessor = SeatDescriptor::new("pij-e2e-predecessor", Harness::Copilot, "/abs/tree");
     predecessor.proc = Some(successor_identity);
-    predecessor.rpc_port_intent = Some(60_001);
+    predecessor.harness_session = Some("00000000-0000-4000-8000-000000000138".to_string());
+    predecessor.native_extension_delivery = true;
     registry
         .put(predecessor.clone())
         .await
@@ -456,25 +385,25 @@ async fn shipped_spawn_revive_and_registration_transitions_replace_rpc_port_inte
         ],
     );
     assert!(
-        superseded.status.success(),
-        "supersedes registration: {}",
-        String::from_utf8_lossy(&superseded.stderr)
+        !superseded.status.success(),
+        "ordinary register cannot supersede a native Copilot session: {}",
+        String::from_utf8_lossy(&superseded.stdout)
     );
     let retired = registry
         .get(&predecessor.id)
         .await
         .expect("read predecessor")
         .expect("predecessor post-mortem");
-    assert!(retired.tombstoned_at.is_some());
-    assert_eq!(retired.rpc_port_intent, None);
     assert_eq!(
+        retired, predecessor,
+        "unattested supersedes preserves native ownership"
+    );
+    assert!(
         registry
             .get(&SeatId::from("pij-e2e-successor"))
             .await
-            .expect("read successor")
-            .expect("successor row")
-            .rpc_port_intent,
-        None
+            .expect("read refused successor")
+            .is_none()
     );
 
     server.abort();

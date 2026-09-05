@@ -13,7 +13,7 @@ so the pane->seat join is an identity, not a heuristic. Panes with no pij seat f
 back to the project-dir slug and are reported SEPARATELY, never silently merged.
 
 Only turns Jordan actually typed are counted: isMeta/isSidechain turns, tool results,
-local-command echo, and `[pij from ...]` peer relay traffic are all excluded. Use
+local-command echo, and peer relay traffic (both legacy and pij-rs frames) are excluded. Use
 --all-turns to count everything a session saw instead.
 
 Every section prints its denominator. An empty result always says what was searched.
@@ -32,7 +32,7 @@ STRIP_RE = re.compile(
     r"<(system-reminder|local-command-stdout|local-command-caveat|command-message|command-name)>.*?</\1>",
     re.S,
 )
-RELAY_RE = re.compile(r"^\s*\[pij (from|watchdog)\b")
+RELAY_RE = re.compile(r"^\s*\[pij(?:-rs)? (from|watchdog)\b")
 
 
 def sh(cmd):

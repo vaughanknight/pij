@@ -3,8 +3,9 @@
 `pij` lets two (or more) running agent sessions in the same project talk to each
 other and observe each other's work in near-real-time. It is a thin file-backed
 registry, durable message bus, and activity stream. Pi sessions consume their
-inbox in-process; tmux-bound Claude, Copilot, and Codex peers are pushed by the
-pij daemon; external sessions without tmux pull through `pij inbox`.
+inbox in-process; new Copilot sessions use the [native user extension](copilot-native-extension.md),
+while other tmux-bound peers use daemon-selected transports. External non-Copilot
+sessions without an extension may pull through `pij inbox`.
 
 ## Related workflow guides
 
@@ -63,11 +64,13 @@ pij list --here               # bare `pij` on PATH from any cwd
 Delivery ownership is explicit:
 
 - **Pi** is push-first through its in-process receiver.
-- **Tmux-bound Claude/Copilot/Codex** are push-first through the daemon.
-- **External sessions without tmux** are pull-owned. Run `pij inbox --wait`;
-  the first inbox command auto-registers the current Claude, Copilot, or Codex
-  session as `deliveryMode:"pull"`. Use `--wait <ms>` for a finite wait or omit
-  the value to block indefinitely.
+- **Copilot** uses its native user extension for registration and inbox delivery.
+  Missing or disabled native delivery queues/refuses; it never falls back to sendkeys
+  or an unverified CLI inbox consumer. See [setup and consent](copilot-native-extension.md).
+- **Tmux-bound Claude/Codex** are push-first through the daemon.
+- **Other external sessions without tmux** may be pull-owned. Run `pij inbox --wait`;
+  the first inbox command registers the current supported session as
+  `deliveryMode:"pull"`. Use `--wait <ms>` for a finite wait or omit it to block.
 
 The daemon never drains, buffers, heartbeats, or injects a pull-owned inbox.
 For an explicit setup step before sending, run `pij inbox register`; subsequent
@@ -240,7 +243,7 @@ neither current nor old prime. See [pij prime](./pij-prime.md#registry-designati
   after their injection/`onInbound` outcome. Pull consumers claim the same marker
   contract, so all delivery modes skip marked history after restart or reload.
 - **Raw body, framed once on receipt.** `pij send w3 "hi"` writes the raw text; the
-  *receiver* frames it as `[pij from <senderId>] hi` when it injects — so a reply
+  *receiver* frames it as `[pij-rs from <senderId>]\nhi\n[/pij]` when it injects — so a reply
   needs no lookup (the sender id is right there).
 - **The safe body channel — use it for anything you did not author.**
   `pij send <id> "<text>"` is a double-quoted **shell** argument. When the body is

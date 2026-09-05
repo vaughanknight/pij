@@ -1,0 +1,18 @@
+{
+  "root": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension",
+  "task": "Independent read-only review of finished slices while v4 receiver/driver are still being implemented; source verdict only",
+  "pins": {"C1":"d59ef9a6", "completion":"2b180f4f3a625d8182fb2c214c7688cd15d1a8e7", "daemon_sensor":"c36b86ad", "baseline":"379e54b9cd373cfec4f071a063d34d9328b062b6"},
+  "checks": [
+    "C1 flag preservation only for unchanged current native owner; no unverified grant/transfer/revival, PutBinding unchanged.",
+    "Completion: only matched user.message native messageId establishes interactionId; only matching foreground assistant/tool events re-anchor missing ancestry; idle still requires descendant parent and current live generation. No model-text, uncorrelated-idle or recovered-record completion fallback.",
+    "Compare completion code to direct product callback trace and real scoped successive-receive proof; do not reopen the already observed missing-parent cause as mere hypothesis.",
+    "Daemon sensor /v1/inbox/typing conforms pm-typing-sensor-contract-v4.json: bearer/native tuple proof, no queue writes, remaining recency from shared sensor/resolver, explicit unavailable, positive sub-ms rounded conservatively, owner/pane revalidation after unlocked observation.",
+    "Native CLAIM drops composer/tap admission only, preserving semantic Hold, tuple, target-session, exact attempt and no-tmux delivery. Coupled v4 receiver is REQUIRED before any deployment; PM has not merged daemon slice alone.",
+    "Review narrow HTTP stale C1 expectation update; preserve Claude consent assertions."
+  ],
+  "evidence": ["assets/evidence/pm-native-product-recipient.log", "assets/evidence/pm-native-product-recipient.jsonl", "assets/evidence/pm-native-completion-live-01.json", "assets/evidence/runtime-completion-anchor-receipt.json", "assets/evidence/daemon-c1-checks.log", "assets/evidence/daemon-v4-207.log", "assets/evidence/daemon-v4-215.log", "assets/evidence/daemon-v4-218.log"],
+  "ruling": "assets/inputs/jordan-ruling-consent-2026-09-05.md and pm-typing-sensor-contract-v4.json supersede strict draft blocking; old F1 composer-busy finding becomes obsolete when claim gate is removed. No ungated send authorized.",
+  "limits": "V4 receiver and new AC6/real welcome guard not included yet. Full final gates, spawned/lifecycle and real-provider acceptance still owed. No release verdict.",
+  "constraints": ["Pin committed content, not moving worktree", "Read-only product; no tests/builds/lint/formatters/live launches/new peers", "Write only assets/reviews/opus-correlation-sensor.md", "Never modify .the-flow-state.json, the-flow.json, the-flow.md or governance ledgers"],
+  "output": "Material findings with exact source references, source verdict, proof ceiling and pending paired receiver review"
+}

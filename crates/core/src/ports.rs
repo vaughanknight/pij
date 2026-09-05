@@ -45,6 +45,15 @@ pub struct SeatFilter {
     pub parent: Option<SeatId>,
 }
 
+/// The binding replaced by one committed registry write.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PutBinding {
+    /// No row existed for this id before the write.
+    pub inserted: bool,
+    /// The old process, not the incoming claim. `None` can also mean an unbound row.
+    pub previous_proc: Option<ProcIdentity>,
+}
+
 /// The seat roster: who exists, what they are, who governs them.
 ///
 /// Single-writer at the store level. `get` returning `None` means the seat is
@@ -58,6 +67,13 @@ pub trait Registry: Send + Sync {
     /// Write a descriptor, returning the sequence number of the write.
     /// Persist-before-mutate: the row exists before anything acts on it.
     async fn put(&self, descriptor: SeatDescriptor) -> Result<Seq>;
+
+    /// Write and report the previous binding in the same atomic operation.
+    ///
+    /// `put` implementations delegate with
+    /// `self.put_reporting(descriptor).await.map(|(seq, _)| seq)`.
+    /// A separate `get` before or after `put` cannot satisfy this contract.
+    async fn put_reporting(&self, d: SeatDescriptor) -> Result<(Seq, PutBinding)>;
 
     /// Every seat matching `filter`, ordered by id so callers can diff listings.
     async fn list(&self, filter: SeatFilter) -> Result<Vec<SeatDescriptor>>;
@@ -121,6 +137,52 @@ pub enum DeliveryEnqueue {
     AlreadyDelivered(DeliveryOrigin),
 }
 
+/// Why a deferral is a no-op: a bad job id is not an already-finished delivery.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeferNoopReason {
+    /// This authority has no such job.
+    Absent,
+    /// The job has already been acknowledged or failed.
+    Terminal,
+}
+
+/// Result of changing a live delivery's eligibility without recording failure.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DeferOutcome {
+    /// The authority returned this delivery to pending; identity comes from the row.
+    Deferred {
+        /// Recipient recorded by the queue, not asserted by an HTTP caller.
+        recipient: SeatId,
+        /// Message id recorded by the queue.
+        msg_id: String,
+    },
+    /// The row is absent or terminal; deferral cannot resurrect it.
+    NotLive {
+        /// Distinguishes caller identity mistakes from benign completion races.
+        reason: DeferNoopReason,
+    },
+}
+
+/// Result of releasing a pending delivery without revoking an active reader.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ReleaseOutcome {
+    /// This pending row is eligible now; identity is authority-owned.
+    Released {
+        /// Recipient recorded by the queue.
+        recipient: SeatId,
+        /// Message id recorded by the queue.
+        msg_id: String,
+    },
+    /// A reader already owns the row; its claim and deadline were not changed.
+    NotDeferred,
+    /// No live delivery remains, with a diagnostic reason.
+    NotLive {
+        /// Absent ids are caller mistakes; terminal rows are benign races.
+        reason: DeferNoopReason,
+    },
+}
+
 /// The job queue every delivery and sidecar rides on (R4).
 #[async_trait]
 pub trait Queue: Send + Sync {
@@ -144,6 +206,12 @@ pub trait Queue: Send + Sync {
     /// otherwise mutating it. Pending and already-claimed rows remain visible;
     /// repeated peeks return the same row until another actor completes it.
     async fn peek(&self, kinds: &[String]) -> Result<Option<(JobId, Job)>>;
+
+    /// Inspect one running destination-delivery job by its authoritative id.
+    /// Unknown, pending, terminal, and non-delivery jobs return `None`.
+    /// This read does not claim, acknowledge, or extend the job's lease;
+    /// acknowledgement must still validate the running claim.
+    async fn claimed_delivery(&self, job: JobId) -> Result<Option<Job>>;
 
     /// Record how a claimed job ended, freeing its serial key.
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()>;
@@ -207,6 +275,17 @@ pub trait Queue: Send + Sync {
     /// `delay` is a not-before time, so a caller expresses backoff by passing it
     /// rather than by sleeping and hoping nothing else claims the row meanwhile.
     async fn retry(&self, job: JobId, delay: Duration) -> Result<()>;
+
+    /// Return a live delivery (pending or running) to pending until `delay` elapses.
+    /// Clears worker/claim ownership and preserves attempt, body, and delivery evidence.
+    /// Zero delay makes a deferred row immediately eligible. Non-delivery jobs are
+    /// refused; absent or terminal jobs return [`DeferOutcome::NotLive`].
+    async fn defer(&self, job: JobId, delay: Duration) -> Result<DeferOutcome>;
+
+    /// Clear a pending delivery's deadline atomically, preserving its attempts and body.
+    /// Running rows return [`ReleaseOutcome::NotDeferred`] without losing ownership;
+    /// absent/terminal rows are named no-ops and non-delivery rows are refused.
+    async fn release_deferred(&self, job: JobId) -> Result<ReleaseOutcome>;
 }
 
 /// A way to get a message to a seat.

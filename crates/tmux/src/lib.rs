@@ -16,7 +16,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use pij_core::delivery::MAX_TYPED_FRAME_BYTES;
 use pij_core::error::{PijError, Result};
-use pij_core::model::{Pane, PaneProcess};
+use pij_core::model::{Harness, Pane, PaneProcess, ProcIdentity};
 use pij_core::ports::{LaunchCommand, STAGED_SUBMIT_RECOVERY, StagedSubmit, TmuxPort};
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::{Instant, sleep};
@@ -1173,9 +1173,338 @@ fn new_window_args(
     args
 }
 
+/// Harness selection and the process identities observed in its pane subtree.
+#[derive(Debug, PartialEq, Eq)]
+pub struct HarnessProcess {
+    /// Unique nearest matching descendant, or the pane root on absence/ambiguity.
+    pub identity: ProcIdentity,
+    /// Complete observed subtree, including the pane root. A caller may select
+    /// an identity from this evidence, but must corroborate its current liveness.
+    pub subtree: Vec<ProcIdentity>,
+}
+
+/// Observe the selected harness identity, retaining the original identity-only API.
+#[must_use]
+pub fn harness_process(pane_pid: u32, harness: Harness) -> Option<ProcIdentity> {
+    harness_process_tree(pane_pid, harness).map(|observed| observed.identity)
+}
+
+/// Observe a unique nearest matching descendant and the complete pane subtree.
+///
+/// `proc_start` uses the same LOCAL C-locale wall time as `ProcLiveness`.
+/// A missing/dead pane yields `None`; callers label a pane fallback explicitly.
+#[must_use]
+pub fn harness_process_tree(pane_pid: u32, harness: Harness) -> Option<HarnessProcess> {
+    let output = Command::new("ps")
+        .args(["-Awwo", "pid=,ppid=,lstart=,command="])
+        .env("LC_ALL", "C")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = std::str::from_utf8(&output.stdout).ok()?;
+    let processes: Vec<_> = text.lines().filter_map(process_row).collect();
+    let selected = harness_process_from_snapshot(pane_pid, harness, &processes)?;
+    let output = Command::new("ps")
+        .args(["-p", &selected.identity.pid.to_string(), "-o", "lstart="])
+        .env("LC_ALL", "C")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let start =
+        pij_core::model::parse_process_start(std::str::from_utf8(&output.stdout).ok()?).ok()?;
+    (start == selected.identity.proc_start).then_some(selected)
+}
+
+fn process_field<'a>(rest: &mut &'a str) -> Option<&'a str> {
+    *rest = rest.trim_start();
+    let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+    if end == 0 {
+        return None;
+    }
+    let (field, remaining) = rest.split_at(end);
+    *rest = remaining;
+    Some(field)
+}
+
+fn process_row(line: &str) -> Option<(ProcIdentity, u32, &str)> {
+    let mut rest = line;
+    let pid = process_field(&mut rest)?.parse().ok()?;
+    let parent = process_field(&mut rest)?.parse().ok()?;
+    let start = rest;
+    for _ in 0..5 {
+        process_field(&mut rest)?;
+    }
+    let proc_start =
+        pij_core::model::parse_process_start(&start[..start.len() - rest.len()]).ok()?;
+    Some((ProcIdentity { pid, proc_start }, parent, rest.trim_start()))
+}
+
+fn harness_process_from_snapshot(
+    pane_pid: u32,
+    harness: Harness,
+    processes: &[(ProcIdentity, u32, &str)],
+) -> Option<HarnessProcess> {
+    let root = processes
+        .iter()
+        .find(|(proc, _, _)| proc.pid == pane_pid)?
+        .0;
+    let mut subtree = vec![root];
+    let mut next = 0;
+    let mut selected = None;
+    while next < subtree.len() {
+        let level_end = subtree.len();
+        let mut matching = 0;
+        let mut candidate = root;
+        while next < level_end {
+            let parent = subtree[next].pid;
+            next += 1;
+            for (proc, ppid, command) in processes {
+                if *ppid != parent || subtree.iter().any(|seen| seen.pid == proc.pid) {
+                    continue;
+                }
+                subtree.push(*proc);
+                if selected.is_none() && harness_command(command, harness) {
+                    matching += 1;
+                    candidate = *proc;
+                }
+            }
+        }
+        if selected.is_none() && matching > 0 {
+            // Like UDS discovery, equally near matches are ambiguous. Process
+            // enumeration order must never choose a seat's identity.
+            selected = Some(if matching == 1 { candidate } else { root });
+        }
+    }
+    Some(HarnessProcess {
+        identity: selected.unwrap_or(root),
+        subtree,
+    })
+}
+
+fn harness_command(command: &str, harness: Harness) -> bool {
+    let mut args = command.split_whitespace();
+    let Some(executable) = args
+        .next()
+        .and_then(|arg| Path::new(arg).file_name())
+        .and_then(|name| name.to_str())
+    else {
+        return false;
+    };
+    if executable == harness.as_str() {
+        return true;
+    }
+    if executable != "node" && executable != "bun" {
+        return false;
+    }
+    let Some(script) = args.next() else {
+        return false;
+    };
+    let name = Path::new(script).file_stem().and_then(|name| name.to_str());
+    if name == Some(harness.as_str()) {
+        return true;
+    }
+    let package = match harness {
+        Harness::Claude => "/@anthropic-ai/claude-code/",
+        Harness::Copilot => "/@github/copilot/",
+        Harness::Codex => "/@openai/codex/",
+        Harness::Pi => "/@earendil-works/pi-coding-agent/",
+        Harness::Omp => "/@oh-my-pi/pi-coding-agent/",
+    };
+    script.contains(package)
+}
+
 #[cfg(test)]
 mod tests {
+    use super::harness_process_from_snapshot;
     use super::new_window_args;
+    use pij_core::model::{Harness, ProcIdentity};
+
+    #[test]
+    fn pane_shell_fixture_selects_claude_child() {
+        let shell = ProcIdentity {
+            pid: 64616,
+            proc_start: 20260905080000,
+        };
+        let child = ProcIdentity {
+            pid: 49862,
+            proc_start: 20260905080100,
+        };
+        let processes = [(shell, 1, "-zsh"), (child, shell.pid, "/opt/bin/claude")];
+        assert_eq!(
+            harness_process_from_snapshot(shell.pid, Harness::Claude, &processes)
+                .map(|observed| observed.identity),
+            Some(child)
+        );
+    }
+
+    #[test]
+    fn descendant_walk_is_breadth_first_and_falls_back_only_to_the_pane() {
+        let root = ProcIdentity {
+            pid: 1,
+            proc_start: 10,
+        };
+        let wrapper = ProcIdentity {
+            pid: 2,
+            proc_start: 11,
+        };
+        let grandchild = ProcIdentity {
+            pid: 3,
+            proc_start: 12,
+        };
+        let direct = ProcIdentity {
+            pid: 4,
+            proc_start: 13,
+        };
+        let processes = [
+            (root, 0, "-zsh"),
+            (wrapper, 1, "sh"),
+            (grandchild, 2, "claude"),
+            (direct, 1, "claude"),
+        ];
+        assert_eq!(
+            harness_process_from_snapshot(1, Harness::Claude, &processes)
+                .map(|observed| observed.identity),
+            Some(direct)
+        );
+        assert_eq!(
+            harness_process_from_snapshot(1, Harness::Omp, &processes)
+                .map(|observed| observed.identity),
+            Some(root)
+        );
+        assert_eq!(
+            harness_process_from_snapshot(99, Harness::Claude, &processes),
+            None
+        );
+        assert_eq!(
+            harness_process_from_snapshot(2, Harness::Claude, &processes)
+                .map(|observed| observed.identity),
+            Some(grandchild)
+        );
+    }
+
+    #[test]
+    fn equally_near_harnesses_are_ambiguous_but_the_complete_subtree_is_retained() {
+        let root = ProcIdentity {
+            pid: 1,
+            proc_start: 10,
+        };
+        let first = ProcIdentity {
+            pid: 2,
+            proc_start: 11,
+        };
+        let second = ProcIdentity {
+            pid: 3,
+            proc_start: 12,
+        };
+        let deep = ProcIdentity {
+            pid: 4,
+            proc_start: 13,
+        };
+        let outsider = ProcIdentity {
+            pid: 5,
+            proc_start: 14,
+        };
+        let mut rows = vec![
+            (root, 0, "sh"),
+            (first, 1, "claude"),
+            (second, 1, "claude"),
+            (deep, 2, "other"),
+            (outsider, 99, "claude"),
+        ];
+        for _ in 0..2 {
+            let observed = harness_process_from_snapshot(1, Harness::Claude, &rows).expect("root");
+            assert_eq!(observed.identity, root);
+            assert_eq!(observed.subtree.len(), 4);
+            for member in [root, first, second, deep] {
+                assert!(observed.subtree.contains(&member));
+            }
+            assert!(!observed.subtree.contains(&outsider));
+            assert!(!observed.subtree.contains(&ProcIdentity {
+                pid: first.pid,
+                proc_start: 999
+            }));
+            rows.reverse();
+        }
+    }
+
+    #[test]
+    fn harness_commands_match_entrypoints_not_prompt_arguments() {
+        for harness in [
+            Harness::Claude,
+            Harness::Copilot,
+            Harness::Codex,
+            Harness::Pi,
+            Harness::Omp,
+        ] {
+            assert!(super::harness_command(
+                &format!("/opt/bin/{} --model anything", harness.as_str()),
+                harness
+            ));
+        }
+        assert!(super::harness_command(
+            "node /opt/node_modules/@earendil-works/pi-coding-agent/dist/cli.js",
+            Harness::Pi
+        ));
+        assert!(super::harness_command(
+            "bun /opt/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js",
+            Harness::Omp
+        ));
+        assert!(!super::harness_command(
+            "bun /opt/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js",
+            Harness::Pi
+        ));
+        assert!(!super::harness_command("sh -c claude", Harness::Claude));
+        assert!(!super::harness_command(
+            "node unrelated.js --prompt claude",
+            Harness::Claude
+        ));
+        assert!(!super::harness_command("claude-helper", Harness::Claude));
+    }
+
+    #[test]
+    fn captured_live_interpreters_and_review_loader_define_the_matcher_boundary() {
+        // Captured 2026-09-05 with ps -Awwo pid=,ppid=,command=; only the
+        // user-home prefix is normalized. Main sweep: 31 bun/omp shims and
+        // 17 bun.exe internal workers. Copilot npm-loader was captured live
+        // DURING the cross-model review sweep, not claimed live at test time.
+        assert!(super::harness_command(
+            "bun /home/fixture/.npm-global/bin/omp",
+            Harness::Omp
+        ));
+        assert!(!super::harness_command(
+            "/home/fixture/.npm-global/lib/node_modules/bun/bin/bun.exe /home/fixture/.npm-global/lib/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js",
+            Harness::Omp,
+        ));
+        assert!(super::harness_command(
+            "node /home/fixture/.npm-global/lib/node_modules/@github/copilot/npm-loader.js --no-custom-instructions --disable-builtin-mcps --no-remote --no-auto-update --allow-tool=pij_send",
+            Harness::Copilot,
+        ));
+        assert!(!super::harness_command(
+            "node unrelated.js /home/fixture/.npm-global/lib/node_modules/@github/copilot/npm-loader.js",
+            Harness::Copilot
+        ));
+    }
+
+    #[test]
+    fn process_snapshot_uses_canonical_local_start_encoding() {
+        assert_eq!(
+            super::process_row(" 49862 64616 Sat Sep  5 08:01:00 2026 /opt/bin/claude --model x"),
+            Some((
+                ProcIdentity {
+                    pid: 49862,
+                    proc_start: 20260905080100
+                },
+                64616,
+                "/opt/bin/claude --model x"
+            ))
+        );
+        assert!(super::process_row("49862 broken").is_none());
+    }
+
     use pij_core::ports::LaunchCommand;
 
     #[test]

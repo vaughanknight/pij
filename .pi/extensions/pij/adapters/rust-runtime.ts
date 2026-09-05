@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Registration, RustSeatDescriptor } from "../core/daemon-wire.js";
 import { memorableIdentitySeed } from "../core/discovery.js";
+import { type HeldRow, HOLD_TICK_MS, HoldQueue } from "../core/hold-queue.js";
 import { memorablePijIdCandidates } from "../core/memorable-id.js";
 import type { ModelEntry } from "../core/models/registry.js";
 import type {
@@ -36,11 +37,58 @@ interface RustBootInput extends Omit<BootInput, "id"> {
 	readonly notice?: (text: string) => void;
 }
 
+interface TypingRuntimePort extends PiRuntimePort {
+	onEditorChange?(cb: (at: number) => void): () => void;
+	setStatus?(text: string | undefined): void;
+	notify?(text: string, level?: "info" | "warning" | "error"): void;
+}
+
+/** How much of an arriving body the announcement shows. */
+const ANNOUNCE_BODY_CHARS = 80;
+
+/**
+ * Snap-in recipe (composition owner: PM, index.ts unchanged):
+ *
+ * In the ONE session_start handler, for startup/reload/new/resume/fork:
+ *   rustRuntime ??= new RustRuntimeSession(generation.client, new TmuxAdapter(), loadModels());
+ *   rustRuntime.setClient(generation.client);
+ *   rustRuntime.setPi(new PiRuntimeAdapter(pi, ctx, () => commandControl));
+ *   const boot = await rustRuntime.boot({ ...existingBootInput, reason: event.reason });
+ *   session = rustRuntime;
+ *
+ * boot arms the 1s held-message ticker; no external timer is needed. setPi binds
+ * onTerminalInput through PiRuntimeAdapter.onEditorChange. Its status method
+ * calls ctx.ui.setStatus("pij-held", text), separate from the seat-name status.
+ * Existing session_shutdown wiring is exactly: session?.shutdown(event.reason).
+ * That cancels the ticker, event stream, and input subscription; setPi rebinds
+ * the fresh context on the next session_start, before boot can consume pushes.
+ *
+ * ASSUMPTIONS at the composition seam:
+ * - The daemon persists a job before message.pushed and serializes ordinary
+ *   claims per seat in job-id order, skipping pending rows whose not_before is future.
+ * - hold returns a claim to pending and defers it; release makes it eligible
+ *   immediately. Both requests carry job_id; repeated holds are idempotent per job.
+ *   Release also declares cleared hold evidence even when its queue mutation is
+ *   a typed no-op. Every ack is preceded by this declaration; RUNNING claims
+ *   must remain owned when the daemon returns not-deferred (contract 2fe71151).
+ *   One declaration owner remembers successful declarations through ack, so
+ *   pre-claim un-deferral and pre-ack assurance share a single ledger fact.
+ *   A new hold invalidates that receipt and opens a new release cycle.
+ * - Local notes are not ownership. Only a fresh normal claim permits inject
+ *   and ack; all event and ticker work shares pushedChain.
+ * - Boot discards local notes, then recovers the oldest LIVE row after
+ *   registration and before the stream/ticker can claim ordinarily. This loop
+ *   restores ORDER, not forced delivery: current grace may re-hold the head,
+ *   ending recovery rather than spinning or injecting into active typing.
+ *   The daemon still owns migration to successor seats on new/fork.
+ * - The caller supplies current pi/OMP UI context before each boot. Raw input
+ *   includes cursor/menu keys; direct inject/setEditorText is not terminal input.
+ */
 export class RustRuntimeSession {
 	private readonly registry = new MemoryRegistry();
 	private readonly eventLog = new MemoryEventLog();
 	private readonly delivery = new BufferedDelivery();
-	private readonly pi = new MutablePiRuntime();
+	private readonly pi: MutablePiRuntime;
 	private readonly session: PijSession;
 	private client: PijDaemonClient;
 	private self = "";
@@ -48,9 +96,24 @@ export class RustRuntimeSession {
 	private flushChain: Promise<void> = Promise.resolve();
 	private pushedChain: Promise<void> = Promise.resolve();
 	private readonly lastInbound = new Map<string, string>();
+	private holdQueue: HoldQueue | undefined;
+	private readonly heldIds = new Map<string, number>();
+	/** Delivered into a BUSY runtime and therefore not yet on screen. */
+	private readonly unseenIds = new Set<string>();
+	private readonly declaredReleaseJobs = new Set<number>();
+	private lastEditAt: number | undefined;
+	private stopEdits: (() => void) | undefined;
+	private holdTicker: ReturnType<typeof setInterval> | undefined;
+	private lifecycle = 0;
 
-	constructor(client: PijDaemonClient, tmux: TmuxPort, models: readonly ModelEntry[]) {
+	constructor(
+		client: PijDaemonClient,
+		tmux: TmuxPort,
+		models: readonly ModelEntry[],
+		private readonly clock: () => number = () => Date.now(),
+	) {
 		this.client = client;
+		this.pi = new MutablePiRuntime();
 		this.session = new PijSession({
 			registry: this.registry,
 			eventLog: this.eventLog,
@@ -66,7 +129,7 @@ export class RustRuntimeSession {
 						return false;
 					}
 				},
-				now: () => Date.now(),
+				now: clock,
 				env: (key) => process.env[key],
 			},
 			tmux,
@@ -78,11 +141,20 @@ export class RustRuntimeSession {
 		this.client = client;
 	}
 
-	setPi(pi: PiRuntimePort): void {
+	setPi(pi: TypingRuntimePort): void {
+		this.stopEdits?.();
 		this.pi.set(pi);
+		this.stopEdits = pi.onEditorChange?.((at) => {
+			this.lastEditAt = at;
+			this.holdQueue?.noteEdit(at);
+		});
 	}
 
 	async boot(input: RustBootInput): Promise<{ readonly id: string; readonly role?: string }> {
+		const lifecycle = ++this.lifecycle;
+		clearInterval(this.holdTicker);
+		this.holdTicker = undefined;
+		this.stopEvents?.();
 		const previousSelf = this.self || undefined;
 		const replacing =
 			previousSelf !== undefined && (input.reason === "new" || input.reason === "fork");
@@ -96,15 +168,41 @@ export class RustRuntimeSession {
 			replacing ? previousSelf : undefined,
 		);
 		const accepted = await this.client.register(registration);
+		if (accepted.proc_source === "pane") {
+			input.notice?.(
+				`pij: harness discovery fell back to the pane; registered pid ${accepted.proc?.pid ?? "unbound"}.`,
+			);
+		}
 		const acceptedId = accepted.id;
+		this.holdQueue = new HoldQueue(this.clock, accepted.typing_grace_ms ?? 60000);
+		this.heldIds.clear();
+		this.declaredReleaseJobs.clear();
+		// A fresh lifecycle counts none of the previous one's messages. Only the
+		// ticker clears this set, and shutdown cancels the ticker, so without this
+		// line a reload carries the dead lifecycle's count into the next status
+		// line — and boot's setStatus(undefined) HIDES it until the first showHeld,
+		// which makes the wrong number appear later and harder to place (reviewer).
+		this.unseenIds.clear();
+		if (this.lastEditAt !== undefined) this.holdQueue.noteEdit(this.lastEditAt);
+		this.pi.setStatus(undefined);
 		const continuityRegistration = registrationFor(acceptedId, procStart, input);
 		for (const seat of seats) this.registry.seed(fromRustDescriptor(seat));
 		if (replacing && previousSelf) this.registry.dissolve(previousSelf);
-		const boot = this.session.boot({ ...input, id: acceptedId });
+		/** Snap-in: keep roster seeding before boot; the daemon owns freshness.
+		 * Missing binding passes undefined so PijSession retains
+		 * `input.fresh ?? (liveDescriptor === null || wasDissolved)`.
+		 * Both created and rebound announce; same never does.
+		 */
+		const boot = this.session.boot({
+			...input,
+			id: acceptedId,
+			fresh: accepted.binding === undefined ? undefined : accepted.binding !== "same",
+		});
 		this.registry.seed(fromRustDescriptor(accepted));
 		this.self = acceptedId;
 		process.env.PIJ_SESSION_ID = acceptedId;
 		await this.flush();
+		await this.recoverInbox(acceptedId, this.client, lifecycle);
 		this.stopEvents?.();
 		this.stopEvents = await this.client.watchEvents(
 			(frame) => {
@@ -115,7 +213,7 @@ export class RustRuntimeSession {
 					return;
 				}
 				const consumed = this.pushedChain.then(() =>
-					this.consumePushed(frame.event.payload, seat, client),
+					this.consumePushed(frame.event.payload, seat, client, lifecycle),
 				);
 				this.pushedChain = consumed.catch(() => undefined);
 				return consumed;
@@ -136,6 +234,19 @@ export class RustRuntimeSession {
 					});
 			},
 		);
+		this.holdTicker = setInterval(() => {
+			const client = this.client;
+			const seat = this.self;
+			this.clearSeenIfIdle();
+			this.pushedChain = this.pushedChain
+				.then(() => this.pollHeld(seat, client, lifecycle))
+				.catch((error: unknown) =>
+					this.session.capture("daemon_event_release_error", {
+						message: error instanceof Error ? error.message : String(error),
+					}),
+				);
+		}, HOLD_TICK_MS);
+		this.holdTicker.unref?.();
 		return { id: boot.id, role: boot.role };
 	}
 
@@ -177,6 +288,12 @@ export class RustRuntimeSession {
 	}
 
 	shutdown(reason: SessionShutdownReason): void {
+		++this.lifecycle;
+		clearInterval(this.holdTicker);
+		this.holdTicker = undefined;
+		this.stopEdits?.();
+		this.stopEdits = undefined;
+		this.pi.setStatus(undefined);
 		this.stopEvents?.();
 		this.stopEvents = undefined;
 		this.session.shutdown(reason);
@@ -210,13 +327,34 @@ export class RustRuntimeSession {
 		if (this.self === seat) this.registry.writeExact(fromRustDescriptor(accepted));
 	}
 
+	/** Startup only. Oldest LIVE order includes deferred rows; ordinary claims
+	 * alone would allow a newer eligible row to overtake a re-held older one.
+	 * Recovery restores ORDER, not immediacy: routeClaim retains active grace. */
+	private async recoverInbox(
+		seat: string,
+		client: PijDaemonClient,
+		lifecycle: number,
+	): Promise<void> {
+		while (this.self === seat && this.lifecycle === lifecycle) {
+			const oldest = pushedInboxClaim(await client.peekInbox(seat), seat);
+			if (!oldest || this.self !== seat || this.lifecycle !== lifecycle) return;
+			await this.declareRelease(oldest, seat, client, lifecycle);
+			if (this.self !== seat || this.lifecycle !== lifecycle) return;
+			const claim = pushedInboxClaim(await client.claimInbox(seat), seat);
+			if (!claim) return; // A running reader still owns the oldest live row.
+			await this.routeClaim(claim, seat, client, lifecycle);
+			if (this.heldIds.has(claim.message.messageId)) return;
+		}
+	}
+
 	private async consumePushed(
 		payload: string,
 		seat: string,
 		client: PijDaemonClient,
+		lifecycle: number,
 	): Promise<void> {
 		const announced = pushedMessage(payload, seat);
-		if (this.self !== seat) {
+		if (this.self !== seat || this.lifecycle !== lifecycle) {
 			this.session.capture("daemon_event_claim_stale", {
 				currentSeat: this.self,
 				messageId: announced.messageId,
@@ -225,8 +363,31 @@ export class RustRuntimeSession {
 			});
 			return;
 		}
+		const heldJobId = this.heldIds.get(announced.messageId);
+		if (
+			heldJobId !== undefined &&
+			this.holdQueue?.shouldHold(this.clock()) &&
+			this.lastEditAt !== undefined
+		) {
+			await client.hold({
+				seat,
+				job_id: heldJobId,
+				msg_id: announced.messageId,
+				reason: "human-typing",
+				since_ms: this.lastEditAt,
+			});
+			if (this.self === seat && this.lifecycle === lifecycle) {
+				this.declaredReleaseJobs.delete(heldJobId);
+			}
+			return;
+		}
+		// Un-defer known holds before taking any new ordinary claim, so the
+		// daemon's id-ordered queue, not local notes, determines delivery order.
+		if (announced.command === undefined && announced.urgent !== true) {
+			await this.releaseHeld(seat, client, lifecycle);
+		}
 		const response = await client.claimInbox(seat);
-		if (this.self !== seat) {
+		if (this.self !== seat || this.lifecycle !== lifecycle) {
 			this.session.capture("daemon_event_claim_stale", {
 				currentSeat: this.self,
 				messageId: announced.messageId,
@@ -248,9 +409,80 @@ export class RustRuntimeSession {
 				claimedMessageId: claim.message.messageId,
 			});
 		}
+		await this.routeClaim(claim, seat, client, lifecycle);
+	}
+
+	private async routeClaim(
+		claim: HeldRow,
+		seat: string,
+		client: PijDaemonClient,
+		lifecycle: number,
+	): Promise<void> {
+		if (this.self !== seat || this.lifecycle !== lifecycle) return;
+		// ANNOUNCE FIRST, decide second. Delivery to a busy seat is immediate on the
+		// wire and INVISIBLE in the pane until the step boundary, which on a slow
+		// model is minutes: the message is there and the human cannot see it. The
+		// notification is not delivery, it is the arrival becoming observable, so it
+		// happens before any hold or steer decision can defer the visible part.
+		this.announceArrival(claim);
+		const bypass = claim.message.command !== undefined || claim.message.urgent === true;
+		if (!bypass && this.holdQueue?.shouldHold(this.clock()) && this.lastEditAt !== undefined) {
+			await client.hold({
+				seat,
+				job_id: claim.jobId,
+				msg_id: claim.message.messageId,
+				reason: "human-typing",
+				since_ms: this.lastEditAt,
+			});
+			if (this.self !== seat || this.lifecycle !== lifecycle) return;
+			this.declaredReleaseJobs.delete(claim.jobId);
+			this.holdQueue.push(claim);
+			this.heldIds.set(claim.message.messageId, claim.jobId);
+			this.showHeld();
+			return;
+		}
+		await this.injectAndAck(claim, seat, client, lifecycle);
+	}
+
+	/** The only release declaration site. Acknowledgement must have a successful
+	 * declaration, but an earlier un-deferral already supplied it for this cycle. */
+	private async declareRelease(
+		row: HeldRow,
+		seat: string,
+		client: PijDaemonClient,
+		lifecycle: number,
+	): Promise<void> {
+		if (
+			this.self !== seat ||
+			this.lifecycle !== lifecycle ||
+			this.declaredReleaseJobs.has(row.jobId)
+		)
+			return;
+		await client.release({
+			seat,
+			job_id: row.jobId,
+			msg_id: row.message.messageId,
+			at_ms: this.clock(),
+		});
+		if (this.self === seat && this.lifecycle === lifecycle) this.declaredReleaseJobs.add(row.jobId);
+	}
+
+	private async injectAndAck(
+		claim: HeldRow,
+		seat: string,
+		client: PijDaemonClient,
+		lifecycle: number,
+	): Promise<void> {
+		if (this.self !== seat || this.lifecycle !== lifecycle) return;
 		this.lastInbound.set(claim.message.from, claim.message.messageId);
+		const busy = this.pi.isIdle?.() === false;
 		this.session.onInbound(claim.message, claim.message.messageId);
-		if (this.self !== seat) {
+		this.heldIds.delete(claim.message.messageId);
+		// A steered message was delivered and remains unseen; an immediate one is
+		// already on screen and is never counted.
+		if (busy) this.unseenIds.add(claim.message.messageId);
+		this.showHeld();
+		if (this.self !== seat || this.lifecycle !== lifecycle) {
 			this.session.capture("daemon_event_claim_stale", {
 				currentSeat: this.self,
 				messageId: claim.message.messageId,
@@ -260,7 +492,13 @@ export class RustRuntimeSession {
 			return;
 		}
 		try {
+			// Lost local hold notes still require a declaration before ack. If
+			// recovery/release already declared it, share that successful receipt.
+			await this.declareRelease(claim, seat, client, lifecycle);
+			if (this.self !== seat || this.lifecycle !== lifecycle) return;
 			await client.ackInbox(seat, claim.jobId);
+			if (this.self === seat && this.lifecycle === lifecycle)
+				this.declaredReleaseJobs.delete(claim.jobId);
 		} catch (error) {
 			this.session.capture("daemon_event_ack_error", {
 				jobId: claim.jobId,
@@ -269,6 +507,79 @@ export class RustRuntimeSession {
 			});
 		}
 		if (this.self === seat) await this.flush();
+	}
+
+	private announceArrival(claim: HeldRow): void {
+		// ONCE PER MESSAGE, not once per routing pass. A held row comes through
+		// routeClaim twice — withheld, then released a grace later — and two
+		// identical toasts sixty seconds apart for one delivery is the same
+		// "counted twice reads as two" error the pending counter refuses to make,
+		// on the louder surface (reviewer).
+		if (this.heldIds.has(claim.message.messageId)) return;
+		const body = claim.message.body ?? "";
+		const shown =
+			body.length > ANNOUNCE_BODY_CHARS ? `${body.slice(0, ANNOUNCE_BODY_CHARS)}…` : body;
+		this.pi.notify?.(`📨 pij from ${claim.message.from}: ${shown}`, "info");
+	}
+
+	/** Messages the seat has been GIVEN but cannot yet SEE: steered into a busy
+	 * runtime, which renders them only at the next step boundary. Held rows are
+	 * deliberately excluded — they are counted by the ⏸ half, and a message
+	 * counted twice reads as two messages. */
+	private showHeld(): void {
+		const held = this.heldIds.size;
+		const parts: string[] = [];
+		if (this.unseenIds.size > 0) parts.push(`📨 ${this.unseenIds.size} pending`);
+		if (held > 0) parts.push(`⏸ ${held} held · typing`);
+		this.pi.setStatus(parts.length === 0 ? undefined : parts.join(" · "));
+	}
+
+	/** Cleared the moment the runtime is idle again: idle means the step boundary
+	 * passed, which is exactly when a steered message becomes visible. */
+	private clearSeenIfIdle(): void {
+		if (this.unseenIds.size === 0) return;
+		if (this.pi.isIdle?.() === false) return;
+		this.unseenIds.clear();
+		this.showHeld();
+	}
+
+	private async releaseHeld(
+		seat: string,
+		client: PijDaemonClient,
+		lifecycle: number,
+	): Promise<void> {
+		if (this.self !== seat || this.lifecycle !== lifecycle) return;
+		const queue = this.holdQueue;
+		if (!queue || this.heldIds.size === 0) return;
+		const ready = queue.drain(this.clock());
+		try {
+			// Clear every eligible note's deferral first; claiming one-by-one
+			// while releasing would accidentally impose the note's order.
+			for (const row of ready) {
+				if (this.self !== seat || this.lifecycle !== lifecycle) return;
+				if (!this.heldIds.has(row.message.messageId)) continue;
+				await this.declareRelease(row, seat, client, lifecycle);
+			}
+			for (let remaining = ready.length; remaining > 0; remaining--) {
+				if (this.self !== seat || this.lifecycle !== lifecycle) return;
+				const claim = pushedInboxClaim(await client.claimInbox(seat), seat);
+				if (!claim) break; // Another claimant won; notes are not ownership.
+				await this.routeClaim(claim, seat, client, lifecycle);
+			}
+		} finally {
+			if (this.self === seat && this.lifecycle === lifecycle) {
+				for (const row of ready) if (this.heldIds.has(row.message.messageId)) queue.push(row);
+				this.showHeld();
+			}
+		}
+	}
+
+	private async pollHeld(seat: string, client: PijDaemonClient, lifecycle: number): Promise<void> {
+		if (this.self !== seat || this.lifecycle !== lifecycle || this.heldIds.size === 0) return;
+		await this.releaseHeld(seat, client, lifecycle);
+		if (this.self !== seat || this.lifecycle !== lifecycle || this.heldIds.size === 0) return;
+		const claim = pushedInboxClaim(await client.claimInbox(seat), seat);
+		if (claim) await this.routeClaim(claim, seat, client, lifecycle);
 	}
 
 	private chooseIdentity(
@@ -280,7 +591,9 @@ export class RustRuntimeSession {
 		if (this.self !== "" && !replacing) return this.self;
 		if (!replacing) {
 			const samePane =
-				input.paneId === undefined ? undefined : seats.find((seat) => seat.pane === input.paneId);
+				input.paneId === undefined
+					? undefined
+					: seats.find((seat) => seat.pane === input.paneId && seat.harness === input.runtimeBin);
 			if (samePane) return samePane.id;
 			const sameProcess = seats.find(
 				(seat) => seat.proc?.pid === process.pid && seat.proc.proc_start === procStart,
@@ -375,16 +688,11 @@ function fromRustDescriptor(seat: RustSeatDescriptor): SessionDescriptor {
 	};
 }
 
-function pushedMessage(payload: string, to: string): PijMessage & { readonly messageId: string } {
+function pushedMessage(payload: string, to: string): HeldRow["message"] {
 	return pushedMessageValue(JSON.parse(payload) as unknown, to, "message.pushed payload");
 }
 
-function pushedInboxClaim(
-	value: unknown,
-	to: string,
-):
-	| { readonly jobId: number; readonly message: PijMessage & { readonly messageId: string } }
-	| undefined {
+function pushedInboxClaim(value: unknown, to: string): HeldRow | undefined {
 	if (!Array.isArray(value) || value.length > 1) {
 		throw new Error("pij inbox response must be an array with at most one claim");
 	}
@@ -407,11 +715,7 @@ function pushedInboxClaim(
 	};
 }
 
-function pushedMessageValue(
-	value: unknown,
-	to: string,
-	label: string,
-): PijMessage & { readonly messageId: string } {
+function pushedMessageValue(value: unknown, to: string, label: string): HeldRow["message"] {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
 		throw new Error(`${label} must be an object`);
 	}
@@ -429,13 +733,23 @@ function pushedMessageValue(
 		to,
 		body: record.body,
 		...(typeof record.command === "string" ? { command: record.command } : {}),
+		...(record.urgent === true ? { urgent: true } : {}),
 	};
 }
 
 class MutablePiRuntime implements PiRuntimePort {
-	private current: PiRuntimePort | undefined;
+	private current: TypingRuntimePort | undefined;
+	setStatus(text: string | undefined): void {
+		this.current?.setStatus?.(text);
+	}
 
-	set(pi: PiRuntimePort): void {
+	/** Optional on the port: a runtime with no notification surface simply does
+	 * not announce, and the status count still reports what it cannot show. */
+	notify(text: string, level?: "info" | "warning" | "error"): void {
+		this.current?.notify?.(text, level);
+	}
+
+	set(pi: TypingRuntimePort): void {
 		this.current = pi;
 	}
 

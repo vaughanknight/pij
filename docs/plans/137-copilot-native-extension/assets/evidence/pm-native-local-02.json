@@ -1,0 +1,55 @@
+{
+  "status": "failed",
+  "provider": "deterministic-local-fixture-not-real-inference",
+  "mode": "both",
+  "run": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-8ZQYwE",
+  "started": "2026-09-05T00:16:02.163Z",
+  "witnesses": [],
+  "identity": {
+    "source_commit": "2799ca13563337fc3842c63eedd6df87a36598e2",
+    "node": "v24.7.0",
+    "copilot": "GitHub Copilot CLI 1.0.84-0.\nRun 'copilot update' to check for updates.",
+    "copilot_binary": "/Users/jordanknight/.npm-global/lib/node_modules/@github/copilot/npm-loader.js",
+    "copilot_sha256": "8ba289084c305e25ea9ae09da860c31614c7eb32f6e7ec099aa71f74f2d4f130",
+    "pij_binary": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/target/debug/pij-rs",
+    "pij_sha256": "acb177ef88cf2f109fec88f385c431b8fb43dc55b145f9c23ff6af8bc136bc2f",
+    "pij_version": "pij-rs 0.1.0",
+    "tmux": "tmux 3.6a",
+    "source_modules": {
+      "extension.mjs": "374a4a8d4bc261a68b41b0ca806726345f351da625cb43e2e9fb2579c3bc1dcc",
+      "store.mjs": "130d19b5135a760e4e52801678a1e010da8297586b2a7f9b233ec162db5f5dcc"
+    },
+    "model": "pij-native-fixture"
+  },
+  "install": [
+    "Copilot extension: linked; experimental enabled",
+    "Copilot native extension ready: /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-8ZQYwE/home/.copilot/extensions/pij; experimental enabled (new CLI sessions only)"
+  ],
+  "isolation": {
+    "home": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-8ZQYwE/home",
+    "copilotHome": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-8ZQYwE/home/.copilot",
+    "state": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-8ZQYwE/daemon",
+    "addr": "127.0.0.1:49390",
+    "socket": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-8ZQYwE/tmux.sock",
+    "trusted_folders": [
+      "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-8ZQYwE/workspace"
+    ],
+    "manual_identity_env_keys": [],
+    "auth": "none"
+  },
+  "error": "PIJ_NATIVE_TIMEOUT: ordinary native user/assistant while daemon absent",
+  "final_panes": "%0 59446 sleep\n%1 59464 node",
+  "final_pane_captures": [
+    {
+      "pane": "%0",
+      "terminal": ""
+    },
+    {
+      "pane": "%1",
+      "terminal": "Current   Sessions   Issues   Pull requests   Gists \n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-0 uses AI.\n  █ ▘▝ █  /experimental\n   ▔▔▔▔ \n\n ● Tip: /app\n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app\n      https://github.com/features/ai/github-app \n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens \n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│ Confirm folder trust                                                                                                                                         │\n│ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── │\n│ ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ │\n│ │ /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-8ZQYwE/workspace                                                             │ │\n│ ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ │\n│                                                                                                                                                              │\n│ Copilot can read files in this folder and, with your permission, edit them or run code and shell commands. It will remember your permissions for the rest of │\n│  this session.                                                                                                                                               │\n│                                                                                                                                                              │\n│ Do you trust the files in this folder?                                                                                                                       │\n│                                                                                                                                                              │\n│ ❯ 1. Yes                                                                                                                                                     │\n│   2. Yes, and remember this folder for future sessions                                                                                                       │\n│   3. No (Esc)                                                                                                                                                │\n│                                                                                                                                                              │\n│ ↑/↓ to navigate · enter to select · esc to cancel                                                                                                            │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯"
+    }
+  ],
+  "fixture_requests": [],
+  "daemon_log": "",
+  "finished": "2026-09-05T00:17:34.909Z"
+}

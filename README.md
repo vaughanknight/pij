@@ -56,6 +56,16 @@ The machine-wide platform records (projects, assignments, the spine event
 log) are a documented public on-disk contract — a UI can be built from the
 files alone: [`docs/how/pij-platform.md`](./docs/how/pij-platform.md).
 
+### Native Copilot CLI messaging
+
+From the canonical checkout, `just link` installs the repo-owned Copilot user
+extension and merges `experimental: true` without replacing unrelated settings.
+`COPILOT_HOME` is honored; foreign paths and malformed settings are refused.
+`just copilot-native-doctor` is read-only. New manual and Pij-spawned sessions
+share the native extension; existing sessions are not retroactively attached.
+See [native Copilot installation and proof](docs/how/copilot-native-extension.md)
+for receipt grades, opt-out behavior, and isolated local/real-provider witnesses.
+
 ### Focus agents
 
 Freeze a bound pi or claude peer's native session, list saved focuses, then
