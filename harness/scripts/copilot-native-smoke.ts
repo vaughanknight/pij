@@ -1267,6 +1267,126 @@ export async function driveSmokeTypingWitness(
 	}
 }
 
+/** Canonical opt-in and remembered workspace trust for one fixture-owned home. */
+function prepareSmokeHome(home: string, trustedFolders: string[]) {
+	const copilotHome = join(home, ".copilot");
+	mkdirSync(copilotHome, { recursive: true, mode: 0o700 });
+	if (trustedFolders.length) {
+		writeFileSync(join(copilotHome, "config.json"), `${JSON.stringify({ trustedFolders })}\n`, {
+			flag: "wx",
+			mode: 0o600,
+		});
+	}
+	const installLog: string[] = [];
+	for (const args of [[], ["--doctor-copilot"]]) {
+		assert.equal(
+			manageCopilotExtension({
+				pijRoot: ROOT,
+				home,
+				copilotHome,
+				args,
+				stdout: (line) => installLog.push(line),
+				stderr: (line) => installLog.push(line),
+			}).skipped,
+			0,
+			installLog.join("\n"),
+		);
+	}
+	return { home, copilotHome, installLog };
+}
+
+/** Read and retain, never repair a primary config changed by another scenario. */
+export function verifySmokePrimarySettings(
+	copilotHome: string,
+	witness: Record<string, unknown>,
+	field: string,
+) {
+	const raw = readFileSync(join(copilotHome, "settings.json"), "utf8");
+	witness[field] = raw;
+	assert.equal(
+		object(JSON.parse(raw)).experimental,
+		true,
+		"PIJ_NATIVE_PRIMARY_SETTINGS: experimental must remain true",
+	);
+}
+
+/** Only negative CLI configuration varies; transport and workspace remain the same. */
+export async function launchSmokeNegativeControl(
+	tmux: (args: string[]) => string,
+	options: {
+		run: string;
+		primaryCopilotHome: string;
+		cwd: string;
+		trustedFolders: string[];
+		copilotBin: string;
+		common: string[];
+	},
+	timeout: number,
+	witness: Record<string, unknown>,
+): Promise<string> {
+	witness.status = "starting";
+	witness.primary_copilot_home = options.primaryCopilotHome;
+	try {
+		verifySmokePrimarySettings(options.primaryCopilotHome, witness, "primary_settings_before");
+		const home = mkdtempSync(join(options.run, "negative-home-"));
+		const { copilotHome, installLog } = prepareSmokeHome(home, options.trustedFolders);
+		const environment = {
+			HOME: home,
+			COPILOT_HOME: copilotHome,
+			XDG_CONFIG_HOME: join(home, ".config"),
+		};
+		witness.environment_overrides = environment;
+		witness.install = installLog;
+		witness.trusted_folders = options.trustedFolders;
+		witness.home = home;
+		witness.copilot_home = copilotHome;
+		witness.negative_settings_before = readFileSync(join(copilotHome, "settings.json"), "utf8");
+		const args = [
+			"new-window",
+			"-d",
+			"-P",
+			"-F",
+			"#{pane_id}",
+			"-t",
+			"native-smoke",
+			"-c",
+			options.cwd,
+			...Object.entries(environment).flatMap(([name, value]) => ["-e", `${name}=${value}`]),
+			options.copilotBin,
+			...options.common,
+			"--no-experimental",
+		];
+		witness.launch_command = args;
+		witness.launch_args = [...options.common, "--no-experimental"];
+		let pane = "";
+		let failure: { error: unknown } | undefined;
+		try {
+			pane = tmux(args);
+			witness.pane = pane;
+			assert(/^%\d+$/.test(pane), "actual tmux pane id required");
+			await until("disabled CLI composer ready", timeout, () =>
+				nativeComposer(tmux(["capture-pane", "-p", "-t", pane])) === "" ? true : undefined,
+			);
+		} catch (error) {
+			failure = { error };
+		}
+		try {
+			witness.negative_settings_after = readFileSync(join(copilotHome, "settings.json"), "utf8");
+			verifySmokePrimarySettings(options.primaryCopilotHome, witness, "primary_settings_after");
+		} catch (error) {
+			witness.settings_error = String(error);
+			failure ??= { error };
+		}
+		if (failure) throw failure.error;
+		witness.status = "ready-not-absence-proven";
+		return pane;
+	} catch (error) {
+		witness.status = "failed";
+		witness.error = String(error);
+		throw error;
+	}
+}
+
 export async function runSmoke(options: Options): Promise<{ code: number; output: string }> {
 	if (options.output)
 		assert(!existsSync(options.output), `refusing to overwrite receipt ${options.output}`);
@@ -1336,37 +1456,7 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 		} else env.COPILOT_MODEL = options.model;
 		// Native remembered trust lives in config.json, not user settings.json.
 		const trustedFolders = options.workspaceTrust === "seeded" ? [realpathSync(cwd)] : [];
-		mkdirSync(copilotHome, { recursive: true, mode: 0o700 });
-		if (trustedFolders.length) {
-			writeFileSync(join(copilotHome, "config.json"), `${JSON.stringify({ trustedFolders })}\n`, {
-				flag: "wx",
-				mode: 0o600,
-			});
-		}
-		const installLog: string[] = [];
-		assert.equal(
-			manageCopilotExtension({
-				pijRoot: ROOT,
-				home,
-				copilotHome,
-				args: [],
-				stdout: (line) => installLog.push(line),
-				stderr: (line) => installLog.push(line),
-			}).skipped,
-			0,
-			installLog.join("\n"),
-		);
-		assert.equal(
-			manageCopilotExtension({
-				pijRoot: ROOT,
-				home,
-				copilotHome,
-				args: ["--doctor-copilot"],
-				stdout: (line) => installLog.push(line),
-				stderr: (line) => installLog.push(line),
-			}).skipped,
-			0,
-		);
+		const { installLog } = prepareSmokeHome(home, trustedFolders);
 		receipt.identity = {
 			source_commit: command("git", ["-C", ROOT, "rev-parse", "HEAD"]),
 			node: process.version,
@@ -1617,7 +1707,17 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 				assert(mode === "manual" && !disabled, "resume proof must be a native manual launch");
 			let pane: string;
 			let spawnReceipt: Record<string, unknown> | undefined;
-			if (mode === "manual") {
+			if (disabled) {
+				assert.equal(mode, "manual", "negative control is a direct native launch");
+				const negative: Record<string, unknown> = { kind: "missing-consumer-home-isolation" };
+				witnesses.push(negative);
+				pane = await launchSmokeNegativeControl(
+					tmux,
+					{ run, primaryCopilotHome: copilotHome, cwd, trustedFolders, copilotBin, common },
+					options.timeoutMs,
+					negative,
+				);
+			} else if (mode === "manual") {
 				pane = tmux([
 					"new-window",
 					"-d",
@@ -1630,7 +1730,6 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 					cwd,
 					copilotBin,
 					...common,
-					...(disabled ? ["--no-experimental"] : []),
 					...(resume ? [`--resume=${resume.session}`] : []),
 				]);
 			} else {
@@ -1680,9 +1779,6 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 			}
 			assert(/^%\d+$/.test(pane), "actual tmux pane id required");
 			if (disabled) {
-				await until("disabled CLI composer ready", options.timeoutMs, () =>
-					nativeComposer(tmux(["capture-pane", "-p", "-t", pane])) === "" ? true : undefined,
-				);
 				command(
 					options.pijBin,
 					["--json", "--addr", addr, "--state-dir", state, "adopt", pane, "--harness", "copilot"],
@@ -2106,6 +2202,7 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 				resume.identity_environment_keys = identityKeys;
 				assert.deepEqual(identityKeys, [], "manual resume must not inherit Pij preallocation");
 				resume.launch_args = [...common, `--resume=${successor.session}`];
+				verifySmokePrimarySettings(copilotHome, resume, "primary_settings_before_resume");
 				activeTarget = await launch("manual", false, undefined, successor);
 				resume.after = activeTarget;
 				verifyNativeLifecycleIdentity(successor, activeTarget, "resume");

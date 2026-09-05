@@ -197,6 +197,17 @@ Enter; the driver rechecks after the staged hook and immediately before submissi
 This is lifecycle fixture validation, not a product recognizer change. Retained
 frame/unit tests do not establish a successful native rollover.
 
+Each missing-consumer control gets a fresh private `HOME`, `COPILOT_HOME`, and
+`XDG_CONFIG_HOME`, including the controls within manual and spawned modes. The
+fixture reuses managed extension installation and the run's workspace-trust setup,
+then passes only those three home overrides to the negative tmux window. The
+private daemon, workspace and provider stay shared; primary settings and tmux
+server environment are not modified. This isolates the observed persistence of
+`experimental:false` by `--no-experimental`. Receipts retain negative launch flags
+and settings plus primary settings before/after; primary `experimental` must still
+be exactly `true` after the negative launch and immediately before cold resume.
+The driver fails on contamination rather than repairing it to make the proof pass.
+
 Cold-host resume treats `/exit` submission separately from process death: in the
 observed multi-session CLI it closed the foreground conversation and restored an
 older one while the host survived. The fixture then records the original process

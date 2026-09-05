@@ -1,4 +1,12 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -16,6 +24,7 @@ import {
 	driveSmokeLifecycleCommand,
 	driveSmokeTypingWitness,
 	finishSmokePanes,
+	launchSmokeNegativeControl,
 	nativeComposer,
 	nativeMessages,
 	parseSmokeArgs,
@@ -25,9 +34,11 @@ import {
 	verifyNativeContextHeld,
 	verifyNativeLifecycleIdentity,
 	verifyOrdinaryUsability,
+	verifySmokePrimarySettings,
 	verifyToolApproval,
 	verifyWorkspaceTrustDiscriminator,
 } from "./copilot-native-smoke.js";
+import { manageCopilotExtension } from "./link-global.js";
 
 const roots: string[] = [];
 function temporary(): string {
@@ -102,6 +113,199 @@ describe("native smoke fixture protocol", () => {
 		} finally {
 			await fixture.close();
 		}
+	});
+});
+
+describe("negative CLI home isolation, not live CLI proof", () => {
+	function setup() {
+		const run = join(temporary(), "run with spaces");
+		const home = join(run, "home");
+		const copilotHome = join(home, ".copilot");
+		const cwd = join(run, "workspace");
+		mkdirSync(cwd, { recursive: true });
+		expect(
+			manageCopilotExtension({
+				pijRoot: new URL("../..", import.meta.url).pathname,
+				home,
+				copilotHome,
+				args: [],
+				stdout: () => {},
+				stderr: () => {},
+			}).skipped,
+		).toBe(0);
+		const env: Readonly<NodeJS.ProcessEnv> = Object.freeze({
+			...smokeEnvironment({}, home, copilotHome, join(run, "daemon"), "127.0.0.1:1234", "local"),
+			COPILOT_PROVIDER_BASE_URL: "http://127.0.0.1:5678",
+			COPILOT_MODEL: "pij-native-fixture",
+		});
+		const options = {
+			run,
+			primaryCopilotHome: copilotHome,
+			cwd,
+			trustedFolders: [realpathSync(cwd)],
+			copilotBin: "/fixture/copilot",
+			common: ["--no-auto-update", "--allow-tool=pij_send"],
+		};
+		const launches: NodeJS.ProcessEnv[] = [];
+		const commands: string[][] = [];
+		const terminal = String(
+			object(
+				JSON.parse(
+					readFileSync(new URL("./fixtures/copilot-native-disabled.json", import.meta.url), "utf8"),
+				),
+			).terminal,
+		);
+		const state: { corruptPrimary?: boolean; launchError?: Error; terminal: string } = { terminal };
+		const tmux = (args: string[]) => {
+			commands.push(args);
+			if (args[0] === "capture-pane") return state.terminal;
+			expect(args[0]).toBe("new-window");
+			const child: NodeJS.ProcessEnv = { ...env };
+			const overrideKeys: string[] = [];
+			for (let i = 0; i < args.length; i++) {
+				if (args[i] !== "-e") continue;
+				const assignment = args[++i];
+				if (!assignment) throw new Error("missing window environment");
+				const equals = assignment.indexOf("=");
+				const name = assignment.slice(0, equals);
+				overrideKeys.push(name);
+				child[name] = assignment.slice(equals + 1);
+			}
+			launches.push(child);
+			// Simulate the observed CLI persistence in the home actually passed to this window.
+			writeFileSync(join(String(child.COPILOT_HOME), "settings.json"), '{"experimental":false}\n');
+			if (state.corruptPrimary)
+				writeFileSync(join(copilotHome, "settings.json"), '{"experimental":false}\n');
+			if (state.launchError) throw state.launchError;
+			if (overrideKeys.length)
+				expect(overrideKeys.sort()).toEqual(["COPILOT_HOME", "HOME", "XDG_CONFIG_HOME"]);
+			return `%${launches.length}`;
+		};
+		return { options, env, launches, commands, tmux, state };
+	}
+
+	it("keeps persisted opt-out private for each manual and spawned negative window", async () => {
+		const f = setup();
+		const originalEnv = { ...f.env };
+		const originalSettings = readFileSync(
+			join(f.options.primaryCopilotHome, "settings.json"),
+			"utf8",
+		);
+		const homes = new Set<string>();
+		for (const mode of ["manual", "spawned"]) {
+			const witness: Record<string, unknown> = { mode };
+			await expect(launchSmokeNegativeControl(f.tmux, f.options, 1, witness)).resolves.toMatch(
+				/^%\d+$/,
+			);
+			const child = f.launches.at(-1);
+			if (!child) throw new Error("missing negative launch");
+			expect(child.HOME).not.toBe(f.env.HOME);
+			expect(child.COPILOT_HOME).toBe(join(String(child.HOME), ".copilot"));
+			expect(child.XDG_CONFIG_HOME).toBe(join(String(child.HOME), ".config"));
+			expect(String(child.HOME).startsWith(`${f.options.run}/`)).toBe(true);
+			homes.add(String(child.HOME));
+			expect(child).toMatchObject({
+				PIJ_RS_ADDR: f.env.PIJ_RS_ADDR,
+				PIJ_RS_STATE_DIR: f.env.PIJ_RS_STATE_DIR,
+				COPILOT_PROVIDER_BASE_URL: f.env.COPILOT_PROVIDER_BASE_URL,
+				COPILOT_MODEL: f.env.COPILOT_MODEL,
+			});
+			const negativeHome = String(child.COPILOT_HOME);
+			expect(realpathSync(join(negativeHome, "extensions/pij"))).toBe(
+				realpathSync(new URL("../../.copilot/extensions/pij", import.meta.url)),
+			);
+			expect(JSON.parse(readFileSync(join(negativeHome, "config.json"), "utf8"))).toEqual({
+				trustedFolders: f.options.trustedFolders,
+			});
+			expect(existsSync(join(negativeHome, "auth.json"))).toBe(false);
+			expect(witness).toMatchObject({
+				primary_settings_before: originalSettings,
+				primary_settings_after: originalSettings,
+				negative_settings_after: '{"experimental":false}\n',
+				launch_args: [...f.options.common, "--no-experimental"],
+				status: "ready-not-absence-proven",
+			});
+			expect(JSON.parse(String(witness.negative_settings_before)).experimental).toBe(true);
+			expect(f.env).toEqual(originalEnv);
+			const resume: Record<string, unknown> = {};
+			verifySmokePrimarySettings(
+				f.options.primaryCopilotHome,
+				resume,
+				"primary_settings_before_resume",
+			);
+			expect(resume.primary_settings_before_resume).toBe(originalSettings);
+		}
+		expect(homes.size).toBe(2);
+		expect(f.commands.filter((args) => args[0] === "new-window")).toHaveLength(2);
+	});
+
+	it("does not seed remembered trust in prompt mode", async () => {
+		const f = setup();
+		f.options.trustedFolders = [];
+		const witness: Record<string, unknown> = {};
+		await launchSmokeNegativeControl(f.tmux, f.options, 1, witness);
+		expect(existsSync(join(String(witness.copilot_home), "config.json"))).toBe(false);
+	});
+
+	it.each([
+		false,
+		"true",
+		undefined,
+	])("rejects primary experimental %s before negative or resume launch", async (experimental) => {
+		const f = setup();
+		const raw = JSON.stringify({ experimental });
+		writeFileSync(join(f.options.primaryCopilotHome, "settings.json"), raw);
+		const witness: Record<string, unknown> = {};
+		await expect(launchSmokeNegativeControl(f.tmux, f.options, 1, witness)).rejects.toThrow(
+			"PIJ_NATIVE_PRIMARY_SETTINGS",
+		);
+		expect(f.commands).toEqual([]);
+		expect(witness.primary_settings_before).toBe(raw);
+		expect(() =>
+			verifySmokePrimarySettings(
+				f.options.primaryCopilotHome,
+				witness,
+				"primary_settings_before_resume",
+			),
+		).toThrow("PIJ_NATIVE_PRIMARY_SETTINGS");
+		expect(witness.primary_settings_before_resume).toBe(raw);
+		expect(readFileSync(join(f.options.primaryCopilotHome, "settings.json"), "utf8")).toBe(raw);
+	});
+
+	it("fails and retains primary contamination instead of repairing it", async () => {
+		const f = setup();
+		f.state.corruptPrimary = true;
+		const witness: Record<string, unknown> = {};
+		await expect(launchSmokeNegativeControl(f.tmux, f.options, 1, witness)).rejects.toThrow(
+			"PIJ_NATIVE_PRIMARY_SETTINGS",
+		);
+		expect(witness).toMatchObject({
+			status: "failed",
+			primary_settings_after: '{"experimental":false}\n',
+		});
+	});
+
+	it("preserves launch failure if settings proof also fails", async () => {
+		const f = setup();
+		f.state.corruptPrimary = true;
+		const original = new Error("original negative launch failure");
+		f.state.launchError = original;
+		const witness: Record<string, unknown> = {};
+		await expect(launchSmokeNegativeControl(f.tmux, f.options, 1, witness)).rejects.toBe(original);
+		expect(witness.settings_error).toContain("PIJ_NATIVE_PRIMARY_SETTINGS");
+		expect(witness.error).toBe(String(original));
+	});
+
+	it("still requires an empty ready composer and retains settings on timeout", async () => {
+		const f = setup();
+		f.state.terminal = "╻▄▄▄▄▄▄\n┃ unfinished draft\n╹▀▀▀▀▀▀";
+		const witness: Record<string, unknown> = {};
+		await expect(launchSmokeNegativeControl(f.tmux, f.options, 1, witness)).rejects.toThrow(
+			"PIJ_NATIVE_TIMEOUT: disabled CLI composer ready",
+		);
+		expect(JSON.parse(String(witness.primary_settings_after)).experimental).toBe(true);
+		expect(JSON.parse(String(witness.negative_settings_after)).experimental).toBe(false);
+		expect(witness.status).toBe("failed");
 	});
 });
 
