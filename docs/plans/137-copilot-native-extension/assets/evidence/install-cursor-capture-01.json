@@ -1,0 +1,71 @@
+{
+  "status": "paired-cursor-evidence-implemented-scoped-checks-passed-no-live-rerun",
+  "source_base": "373ffe3c",
+  "request_source": "PM assets/evidence/pm-native-local-06.json",
+  "reported_boundary": "PM live06 native roundtrip passed; staged draft changed footer to '@ files · # issues' and typing sensor returned unavailable. Historical receipt has no cursor coordinates, so none are inferred or backfilled.",
+  "capture_contract": {
+    "typing_paths": ["typing_observed.pane_capture", "held.pane_capture", "expired.pane_capture", "accepted.pane_capture", "last_observation.pane_capture", "expiry_boundary_before.pane_capture", "expiry_boundary_after.pane_capture"],
+    "final_path": "final_pane_captures[].pane_capture",
+    "fields": ["pane", "captured_at_ms", "terminal", "metadata_raw", "cursor_x", "cursor_y", "pane_width", "pane_height"],
+    "command_batch": ["display-message", "-p", "-t", "<pane>", "#{cursor_x}\t#{cursor_y}\t#{pane_width}\t#{pane_height}", ";", "capture-pane", "-p", "-t", "<pane>"],
+    "coordinates": "Actual zero-based tmux viewport coordinates; never inferred from draft length, border position or transcript",
+    "viewport": "Unjoined physical rows, no -J or scrollback; raw-output opt-in preserves blank rows through the real command adapter. Existing joined terminal/scrollback captures retain their previous behavior.",
+    "failure": "Captured before typing assertions, including unavailable sensor failures. Malformed/unavailable metadata retains explicit error and any available screen/raw metadata, with no invented coordinates.",
+    "timing": "One tmux command batch after the sensor/file/DB observation. Nearby harness evidence, not an atomic snapshot of the daemon's earlier sensor read.",
+    "replay_consumer": "composer_region(capture: &str, cursor_x: u32, cursor_y: u32), crates/harnesses/src/composer.rs; no Rust changes or recognizer replay executed here"
+  },
+  "verification": {
+    "environment": {"VITEST_MAX_WORKERS":"4", "VITEST_MAX_THREADS":"4", "CARGO_BUILD_JOBS":"4"},
+    "initial_red": {
+      "command": "just test harness/scripts/copilot-native-smoke.test.ts -t 'cursor|unjoined'",
+      "failed": 6, "skipped": 106, "exit_code": 1,
+      "reason": "Missing pane_capture in typing observations and final panes"
+    },
+    "whitespace_red": {
+      "command": "just test harness/scripts/copilot-native-smoke.test.ts -t 'unjoined final viewport'",
+      "failed": 1, "skipped": 111, "exit_code": 1,
+      "reason": "Existing command stdout trim removed actual trailing viewport rows; fixed via explicit raw-output opt-in, not synthetic padding"
+    },
+    "failure_path_red": {
+      "command": "just test harness/scripts/copilot-native-smoke.test.ts -t 'captures all final|scrollback fails'",
+      "failed": 2, "skipped": 111, "exit_code": 1,
+      "reason": "Source review identified missing viewport receipt after scrollback failure; independent viewport capture now survives scrollback-only failure and records nested error/timestamp when the pane exits"
+    },
+    "review": {
+      "agent": "CursorEvidenceReview", "initial_verdict": "incorrect",
+      "final_verdict": "correct", "confidence": 0.97, "findings": [],
+      "scope": "Source-only follow-up confirmed independent viewport receipt on both scrollback branches; no commands or tests run by reviewer"
+    },
+    "final_tests": {
+      "command": "just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts",
+      "passed": 146, "smoke": 113, "installer": 33,
+      "duration_seconds": 4.80, "exit_code": 0,
+      "scope": "Injected tmux boundary tests, not actual tmux/Copilot execution; prior consent, typing, lifecycle and installer assertions retained"
+    },
+    "typecheck": {
+      "command": "node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0
+    },
+    "biome": {
+      "command": "node_modules/.bin/biome check harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0, "result": "Checked 2 files. No fixes applied."
+    }
+  },
+  "boundaries": {
+    "recognizer_or_source_policy_changed": false,
+    "unavailable_is_quiet": false,
+    "hold_release_policy_changed": false,
+    "rust_or_shipping_extension_edits": false,
+    "global_changes": false,
+    "live_launches": 0,
+    "live_keys_sent": 0,
+    "full_gates": "PM-owned, not run",
+    "ac6_live_acceptance_claimed": false,
+    "ac7_live_acceptance_claimed": false
+  },
+  "harness_lesson": {
+    "observation": "DL-001",
+    "fingerprint": "6970aee63858",
+    "encoded": "Capture actual viewport coordinates with physical rows, preserve raw whitespace, and retain evidence before assertions; text-only screenshots cannot reconstruct cursor geometry."
+  }
+}

@@ -728,6 +728,8 @@ describe("AC6 unchanged-draft witness boundaries, not live CLI proof", () => {
 		const result = driveSmokeTypingWitness(
 			{
 				tmux(args: string[]) {
+					if (args[0] === "display-message")
+						return `7\t2\t80\t24\n${composer(draft)}\n@ files · # issues\n`;
 					if (args[0] === "capture-pane") return composer(draft);
 					keys.push(args);
 					draft = args.at(-1) === "C-u" ? "" : String(args.at(-1));
@@ -760,6 +762,35 @@ describe("AC6 unchanged-draft witness boundaries, not live CLI proof", () => {
 			draft: expected.draft,
 			grade: "native-accepted-not-model-complete",
 			after: composer(expected.draft),
+		});
+	});
+	it("retains paired cursor evidence on every successful typing observation", async () => {
+		const proof = await run();
+		await proof.result;
+		for (const field of ["typing_observed", "held", "expired", "accepted", "last_observation"]) {
+			expect(object(proof.witness[field]).pane_capture).toMatchObject({
+				pane: seat.pane,
+				cursor_x: 7,
+				cursor_y: 2,
+				pane_width: 80,
+				pane_height: 24,
+				terminal: `${composer(expected.draft)}\n@ files · # issues\n`,
+			});
+		}
+	});
+	it("retains failed unavailable typing frame and real cursor without sending", async () => {
+		const observations = [sample({ sensor: { ...sensor(59000), state: "unavailable" } })];
+		const proof = await run(observations);
+		await expect(proof.result).rejects.toThrow("typing observation unavailable or unknown");
+		expect(proof.sends()).toBe(0);
+		expect(object(proof.witness.last_observation)).toMatchObject({
+			sensor: { state: "unavailable" },
+			pane_capture: {
+				pane: seat.pane,
+				cursor_x: 7,
+				cursor_y: 2,
+				terminal: `${composer(expected.draft)}\n@ files · # issues\n`,
+			},
 		});
 	});
 	it.each([
@@ -917,15 +948,96 @@ describe("native witness boundaries", () => {
 			commands.push(args);
 			if (args[0] === "list-panes") return "%1 101 node\n%2 102 node\n%3 103 node";
 			if (args.at(-1) === "%2") throw new Error("pane exited");
+			if (args[0] === "display-message") return "7\t2\t80\t24\nactual viewport\n";
 			return args.at(-1) === "%1" ? "Confirm folder trust" : "[pij native] unavailable: offline";
 		});
 		expect(result.panes).toBe("%1 101 node\n%2 102 node\n%3 103 node");
-		expect(result.captures).toEqual([
+		expect(result.captures).toMatchObject([
 			{ pane: "%1", terminal: "Confirm folder trust" },
-			{ pane: "%2", error: "Error: pane exited" },
+			{
+				pane: "%2",
+				error: "Error: pane exited",
+				pane_capture: {
+					pane: "%2",
+					error: "Error: pane exited",
+					captured_at_ms: expect.any(Number),
+				},
+			},
 			{ pane: "%3", terminal: "[pij native] unavailable: offline" },
 		]);
-		expect(commands.slice(1).every((args) => args.includes("-2000"))).toBe(true);
+		expect(
+			commands.filter((args) => args[0] === "capture-pane").every((args) => args.includes("-2000")),
+		).toBe(true);
+	});
+	it("retains paired viewport when joined scrollback fails", () => {
+		const result = captureSmokePanes((args) => {
+			if (args[0] === "list-panes") return "%1 101 node";
+			if (args[0] === "capture-pane") throw new Error("scrollback failed");
+			return "7\t2\t80\t24\nsurviving viewport\n";
+		});
+		expect(result.captures[0]).toMatchObject({
+			pane: "%1",
+			error: "Error: scrollback failed",
+			pane_capture: { pane: "%1", cursor_x: 7, cursor_y: 2, terminal: "surviving viewport\n" },
+		});
+	});
+	it("pairs actual cursor coordinates with unjoined final viewport, preserving scrollback", () => {
+		const commands: string[][] = [];
+		const viewport = "\nwrapped row one\nwrapped row two\n@ files · # issues\n\n\n";
+		const result = captureSmokePanes((args, preserveOutput) => {
+			commands.push(args);
+			if (args[0] === "list-panes") return "%1 101 node";
+			if (args[0] === "display-message") {
+				const output = `0\t2\t80\t24\n${viewport}`;
+				return preserveOutput ? output : output.trim();
+			}
+			return "full joined scrollback";
+		});
+		expect(result.captures[0]).toMatchObject({
+			pane: "%1",
+			terminal: "full joined scrollback",
+			pane_capture: {
+				pane: "%1",
+				cursor_x: 0,
+				cursor_y: 2,
+				pane_width: 80,
+				pane_height: 24,
+				terminal: viewport,
+			},
+		});
+		expect(commands.find((args) => args[0] === "display-message")).toEqual([
+			"display-message",
+			"-p",
+			"-t",
+			"%1",
+			"#{cursor_x}\t#{cursor_y}\t#{pane_width}\t#{pane_height}",
+			";",
+			"capture-pane",
+			"-p",
+			"-t",
+			"%1",
+		]);
+	});
+	it.each([
+		"",
+		"-1\t2\t80\t24",
+		"unknown\t2\t80\t24",
+	])("retains capture failure instead of inventing cursor geometry: %j", (metadata) => {
+		const result = captureSmokePanes((args) => {
+			if (args[0] === "list-panes") return "%1 101 node";
+			return args[0] === "display-message"
+				? `${metadata}\nactual viewport\n`
+				: "existing scrollback";
+		});
+		expect(result.captures[0]).toMatchObject({
+			terminal: "existing scrollback",
+			pane_capture: {
+				terminal: "actual viewport\n",
+				metadata_raw: metadata,
+				error: expect.any(String),
+			},
+		});
+		expect(object(object(result.captures[0]).pane_capture).cursor_x).toBeUndefined();
 	});
 
 	it("requires ordinary native usability and exactly one actionable outage diagnostic", () => {

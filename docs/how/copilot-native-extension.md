@@ -165,6 +165,15 @@ does a separately recorded human-control cleanup clear the fixture draft so the
 existing lifecycle scenarios can continue. Allow enough timeout for the observed
 grace; scoped assertion tests are not live AC6 or lifecycle acceptance.
 
+Each typing sample (including failed `last_observation`) and final pane capture
+also retains `pane_capture`: actual tmux `cursor_x`/`cursor_y`, `pane_width`/
+`pane_height`, timestamp, raw metadata, and the paired **unjoined viewport** in
+`terminal`. Coordinates are zero-based viewport positions, not offsets into the
+existing joined scrollback. Metadata and screen come from one tmux command batch;
+this nearby harness capture is not an atomic snapshot of the daemon's earlier
+sensor read. Capture errors remain explicit, never inferred coordinates or quiet
+typing. This evidence does not change composer recognition or hold/release policy.
+
 Witnesses retain exact source and executable hashes, versions, processes/panes,
 Pij msg/job IDs, public native events, bidirectional tool-originated replies,
 initial spawned task/duplicate checks, held/admitted draft evidence, missing
