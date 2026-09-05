@@ -1,0 +1,422 @@
+{
+  "owner": "pij-worldwide-rat",
+  "status": "investigation_complete_callback_counterexample_verified",
+  "source_commit": "9f6e63424961226d16dbafafd72513a0dce61c00",
+  "store_sha256": "872f0f30e13f50c17c85e7b2d1fd9cf0e7b2ab3ddaf7e536b19080742feacce5",
+  "pm_receipt": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/evidence/pm-native-local-05.json",
+  "sdk_contract": {
+    "pins": [
+      {
+        "path": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-b0XpHm/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-0/copilot-sdk/extension.js",
+        "sha256": "7c6498e44e5e6d7718bdfb14ffa3b03b0eb07f51e2fc178c9a1771a6482b945d"
+      },
+      {
+        "path": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-b0XpHm/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-0/schemas/session-events.schema.json",
+        "sha256": "06ea4da8264e7ee329cc74395f5a9222d599e27606ba855aad4a7fec1580edb2"
+      }
+    ],
+    "verified_source": [
+      "extension.js:7533-7545 sends session.send and returns response.messageId",
+      "extension.js:7626-7671 registers listeners and dispatches received events to them; _handleBroadcastEvent runs first but does not suppress subsequent wildcard dispatch",
+      "extension.js:11253-11262 routes valid session.event notifications to that session",
+      "schema:9175-9246 defines ephemeral session.idle, required UUID id and parentId chronological link, optional subagent agentId absent on root; data has only aborted/mode, no messageId/interactionId"
+    ],
+    "limits": "Native host emitter is compiled/uninspected. No source-proven guarantee that every chronological parent is forwarded to every child extension; no source-proven specific host suppression rule."
+  },
+  "callback_probe": {
+    "receipt": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/evidence/pm-native-callback-probe-receipt.json",
+    "trace": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/evidence/pm-native-callback-recipient.jsonl",
+    "sha256": "bc528aab0faf3670fa5d0adb7167bf7a76b07337f483e73fd680a547b7ab12ee",
+    "events": 48,
+    "missing_parent_ids": [
+      "71dc3848-4e08-4d82-ab06-f03c9bfd45ae",
+      "f63faeef-fcb8-4451-bfd6-5003e4366db5"
+    ],
+    "observed": "Second observer callback has permission.completed/external_tool.completed referencing absent IDs. Same interactionId appears on matched user, tool completion and later assistant events; session.idle is present. Independent raw hash and 48-row parse checked.",
+    "boundary": "Second extension callback view, not direct inspection of private NativeBridge fields. Existing live05 product log independently shows idle but no native-completed. No model text or credentials recorded in trace."
+  },
+  "offline_replay": {
+    "command": "node --input-type=module (script supplied on stdin)",
+    "environment": {
+      "VITEST_MAX_THREADS": "4",
+      "CARGO_BUILD_JOBS": "4",
+      "PIJ_TRACE": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/evidence/pm-native-callback-recipient.jsonl"
+    },
+    "script": "import assert from 'node:assert/strict';\nimport { readFile } from 'node:fs/promises';\nimport { setImmediate as flush } from 'node:timers/promises';\nimport { NativeBridge } from '/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/.copilot/extensions/pij/store.mjs';\nconst rows = (await readFile(process.env.PIJ_TRACE, 'utf8')).trim().split('\\n').map(JSON.parse);\nconst root = rows.find(e => e.type === 'user.message');\nconst idle = rows.find(e => e.type === 'session.idle');\nconst reports = [];\nconst registration = {id:'pij-replay',harness_session:'replay-session',pid:1,proc_start:1};\nconst bridge = new NativeBridge({registration, native:{send:async()=>root.messageId}, client:{request:async()=>1}, journal:{load:async()=>undefined,begin:async()=>true,accept:async()=>{}}, report:e=>reports.push(e)});\nawait bridge.deliver({job_id:1,message:{msg_id:'replay-message',from:'pij-sender',to:'pij-replay',body:'metadata-only replay'},native_consumer:{native_session:'replay-session',pid:1,proc_start:1}});\nconst waiting = bridge.waitForCompletion().then(()=>true,error=>{if(!bridge.controller.signal.aborted)throw error;return false;});\nfor(const e of rows) bridge.completion.observe({...e,data:{messageId:e.messageId,interactionId:e.interactionId,turnId:e.turnId}});\nawait flush();\nconst result = {events:rows.length,root_seen:bridge.completion.descendants.has(root.id),idle_received:true,idle_parent_seen_in_input:rows.some(e=>e.id===idle.parentId),idle_parent_in_descendants:bridge.completion.descendants.has(idle.parentId),terminal:bridge.completion.terminal??null,completion_reported:reports.some(e=>e.kind==='native-completed'),acknowledgements:reports.filter(e=>e.kind==='inbox-acknowledged').length};\nassert.equal(result.root_seen,true); assert.equal(result.idle_parent_seen_in_input,true); assert.equal(result.idle_parent_in_descendants,false); assert.equal(result.terminal,null); assert.equal(result.completion_reported,false); assert.equal(result.acknowledgements,1);\nbridge.stop(); assert.equal(await waiting,false);\nconsole.log(JSON.stringify({...result,stopped_cleanly:true}));",
+    "exit": 0,
+    "stderr": "",
+    "result": {
+      "events": 48,
+      "root_seen": true,
+      "idle_received": true,
+      "idle_parent_seen_in_input": true,
+      "idle_parent_in_descendants": false,
+      "terminal": null,
+      "completion_reported": false,
+      "acknowledgements": 1,
+      "stopped_cleanly": true
+    },
+    "limits": "Actual unchanged NativeBridge.deliver/NativeCompletion.observe/waitForCompletion with simulated native/client/journal. Callback projection fields restored into data; uncaptured agentId treated absent. This is a deterministic barrier counterexample for the recorded observer view, not a direct observation of the product extension private state."
+  },
+  "conclusion": "The strict all-parents-visible assumption fails on the recorded real SDK observer callback stream. Replaying it leaves the actual completion barrier unresolved despite a matched root and real idle. This explains a possible mechanism for live05, but the separate observer may have a different event view from the tool-owning product extension.",
+  "next_observation": "For exact live05 cause, capture the same ordered metadata at the PRODUCT NativeBridge subscription through one tool/approve-once turn, not a second joinSession observer. At idle record active nativeId/live, matching user root membership, parent membership, terminal before/after; preserve agentId and idle data.mode/aborted. No draft90s/full gate needed. Ordering remains unchanged until evidence-backed correction.",
+  "observations": [
+    "Recipient received matching user.message and native acceptance, ACKed job1, entered completion-wait, and received session.idle. No native-completed appears before normal shutdown.",
+    "Sender received its reply, ACKed job2, entered completion-wait, and received session.idle followed by native-completed.",
+    "Recipient durable events form a complete parentId chain from the matching user.message through permission/external_tool events and both assistant turns. Durable history contains no session.idle; it is not a callback trace.",
+    "Current store SHA256 matches the live05 receipt source_modules.store.mjs pin."
+  ],
+  "source_reasoning": [
+    "store.mjs:429-453 rejects events without id, nonmatching/subagent user roots, unknown parents, and subagent terminals. Each non-root event requires a previously observed parent; unknown-parent events are discarded, not re-evaluated.",
+    "store.mjs:537-552 observes every SDK callback before diagnostic projection; only four event types are captured, without parentId/agentId/ephemeral.",
+    "store.mjs:553-557 and606-623 wait on completion.done before the next claim. completion-wait is an unbounded cancellable wait, not receive-held; no UI hold diagnostic is expected from that wait.",
+    "Therefore an idle callback can be logged yet rejected as completion. The available projection cannot distinguish missing ancestry, reordered callbacks, subagent filtering, or missing root correlation."
+  ],
+  "hypotheses_not_proven": [
+    "Specific host routing/filtering cause and exact tool-owning product callback view remain unobserved",
+    "Recipient idle parentId or agentId differs from the barrier requirements"
+  ],
+  "logs": [
+    {
+      "path": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-b0XpHm/home/.copilot/logs/extensions/user-pij-1788574633273-20341.log",
+      "sha256": "2ccb79afd2bc98db5e02beca325a9bac0b9f6c95451ae621a5420126289f3488",
+      "events": [
+        {
+          "at": "2026-09-05T02:17:13.727Z",
+          "kind": "registered",
+          "seat": "pij-copilot-bf80c8cb3443a67829455576",
+          "nativeSession": "eebf7935-22b8-4f90-bb9b-cd15b84a7d14",
+          "pid": 19873,
+          "procStart": 20260905121712,
+          "pane": "%3"
+        },
+        {
+          "at": "2026-09-05T02:17:13.753Z",
+          "kind": "consent-held",
+          "seat": "pij-copilot-bf80c8cb3443a67829455576",
+          "nativeSession": "eebf7935-22b8-4f90-bb9b-cd15b84a7d14",
+          "reason": "tap-unowned",
+          "retryMs": 250
+        },
+        {
+          "at": "2026-09-05T02:17:14.036Z",
+          "kind": "consent-held",
+          "seat": "pij-copilot-bf80c8cb3443a67829455576",
+          "nativeSession": "eebf7935-22b8-4f90-bb9b-cd15b84a7d14",
+          "reason": "tap-unowned",
+          "retryMs": 500
+        },
+        {
+          "at": "2026-09-05T02:17:14.674Z",
+          "kind": "native-event",
+          "seat": "pij-copilot-bf80c8cb3443a67829455576",
+          "nativeSession": "eebf7935-22b8-4f90-bb9b-cd15b84a7d14",
+          "type": "user.message",
+          "eventId": "0450500d-0d71-4659-b9eb-50de66ae5e87",
+          "nativeMessageId": "32ed54d7-156a-4d78-a5a2-b9d32d2115d9",
+          "grade": "native-event-not-pij-ack"
+        },
+        {
+          "at": "2026-09-05T02:17:14.678Z",
+          "kind": "native-accepted",
+          "seat": "pij-copilot-bf80c8cb3443a67829455576",
+          "nativeSession": "eebf7935-22b8-4f90-bb9b-cd15b84a7d14",
+          "msgId": "2c4b7858-007a-4b8f-8484-74a0e6613bf0",
+          "nativeMessageId": "32ed54d7-156a-4d78-a5a2-b9d32d2115d9",
+          "grade": "native-accepted-not-model-complete"
+        },
+        {
+          "at": "2026-09-05T02:17:14.687Z",
+          "kind": "inbox-acknowledged",
+          "seat": "pij-copilot-bf80c8cb3443a67829455576",
+          "nativeSession": "eebf7935-22b8-4f90-bb9b-cd15b84a7d14",
+          "jobId": 1,
+          "msgId": "2c4b7858-007a-4b8f-8484-74a0e6613bf0",
+          "nativeMessageId": "32ed54d7-156a-4d78-a5a2-b9d32d2115d9",
+          "grade": "native-accepted-not-model-complete"
+        },
+        {
+          "at": "2026-09-05T02:17:14.687Z",
+          "kind": "completion-wait",
+          "seat": "pij-copilot-bf80c8cb3443a67829455576",
+          "nativeSession": "eebf7935-22b8-4f90-bb9b-cd15b84a7d14",
+          "msgId": "2c4b7858-007a-4b8f-8484-74a0e6613bf0",
+          "nativeMessageId": "32ed54d7-156a-4d78-a5a2-b9d32d2115d9"
+        },
+        {
+          "at": "2026-09-05T02:17:14.752Z",
+          "kind": "native-event",
+          "seat": "pij-copilot-bf80c8cb3443a67829455576",
+          "nativeSession": "eebf7935-22b8-4f90-bb9b-cd15b84a7d14",
+          "type": "assistant.message",
+          "eventId": "3dbf8562-3070-454c-b875-704a06c7149a",
+          "nativeMessageId": "aeacb949-239b-4a72-980f-b97dab94cfa1",
+          "grade": "native-event-not-pij-ack"
+        },
+        {
+          "at": "2026-09-05T02:17:15.526Z",
+          "kind": "native-event",
+          "seat": "pij-copilot-bf80c8cb3443a67829455576",
+          "nativeSession": "eebf7935-22b8-4f90-bb9b-cd15b84a7d14",
+          "type": "assistant.message",
+          "eventId": "e7ece061-f50d-473a-a659-352d31049403",
+          "nativeMessageId": "4dd0ada0-3ce1-42f1-ae86-dfafa0f8b029",
+          "grade": "native-event-not-pij-ack"
+        },
+        {
+          "at": "2026-09-05T02:17:15.560Z",
+          "kind": "native-event",
+          "seat": "pij-copilot-bf80c8cb3443a67829455576",
+          "nativeSession": "eebf7935-22b8-4f90-bb9b-cd15b84a7d14",
+          "type": "session.idle",
+          "eventId": "1d2a2172-a66c-41cf-874e-edef01e9442e",
+          "nativeMessageId": null,
+          "grade": "native-event-not-pij-ack"
+        }
+      ]
+    },
+    {
+      "path": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-b0XpHm/home/.copilot/logs/extensions/user-pij-1788574632069-19414.log",
+      "sha256": "922e47607d92b76c522fb87b5ae1000bea8f4f4bd8aa5e66ed825f8e0bcf6a43",
+      "events": [
+        {
+          "at": "2026-09-05T02:17:12.313Z",
+          "kind": "registered",
+          "seat": "pij-copilot-1a5b066152be1a20e4ea664d",
+          "nativeSession": "3bd50ad2-ec1b-4cd0-966b-6ddb15390bc7",
+          "pid": 18877,
+          "procStart": 20260905121711,
+          "pane": "%2"
+        },
+        {
+          "at": "2026-09-05T02:17:12.323Z",
+          "kind": "consent-held",
+          "seat": "pij-copilot-1a5b066152be1a20e4ea664d",
+          "nativeSession": "3bd50ad2-ec1b-4cd0-966b-6ddb15390bc7",
+          "reason": "tap-unowned",
+          "retryMs": 250
+        },
+        {
+          "at": "2026-09-05T02:17:16.205Z",
+          "kind": "native-accepted",
+          "seat": "pij-copilot-1a5b066152be1a20e4ea664d",
+          "nativeSession": "3bd50ad2-ec1b-4cd0-966b-6ddb15390bc7",
+          "msgId": "58642d29-505c-4441-929f-9b89d7caab92",
+          "nativeMessageId": "731f8f13-8fe5-41f6-ba80-3c4e77128abc",
+          "grade": "native-accepted-not-model-complete"
+        },
+        {
+          "at": "2026-09-05T02:17:16.207Z",
+          "kind": "native-event",
+          "seat": "pij-copilot-1a5b066152be1a20e4ea664d",
+          "nativeSession": "3bd50ad2-ec1b-4cd0-966b-6ddb15390bc7",
+          "type": "user.message",
+          "eventId": "2c7d9c4d-23d5-4e2a-8673-2aa60f92373c",
+          "nativeMessageId": "731f8f13-8fe5-41f6-ba80-3c4e77128abc",
+          "grade": "native-event-not-pij-ack"
+        },
+        {
+          "at": "2026-09-05T02:17:16.219Z",
+          "kind": "inbox-acknowledged",
+          "seat": "pij-copilot-1a5b066152be1a20e4ea664d",
+          "nativeSession": "3bd50ad2-ec1b-4cd0-966b-6ddb15390bc7",
+          "jobId": 2,
+          "msgId": "58642d29-505c-4441-929f-9b89d7caab92",
+          "nativeMessageId": "731f8f13-8fe5-41f6-ba80-3c4e77128abc",
+          "grade": "native-accepted-not-model-complete"
+        },
+        {
+          "at": "2026-09-05T02:17:16.219Z",
+          "kind": "completion-wait",
+          "seat": "pij-copilot-1a5b066152be1a20e4ea664d",
+          "nativeSession": "3bd50ad2-ec1b-4cd0-966b-6ddb15390bc7",
+          "msgId": "58642d29-505c-4441-929f-9b89d7caab92",
+          "nativeMessageId": "731f8f13-8fe5-41f6-ba80-3c4e77128abc"
+        },
+        {
+          "at": "2026-09-05T02:17:16.238Z",
+          "kind": "native-event",
+          "seat": "pij-copilot-1a5b066152be1a20e4ea664d",
+          "nativeSession": "3bd50ad2-ec1b-4cd0-966b-6ddb15390bc7",
+          "type": "assistant.message",
+          "eventId": "3e7090de-fe9c-46ae-bba7-5019d8b2b14d",
+          "nativeMessageId": "9ecebc8a-6e8e-4553-aaf6-ba8cdb41abe8",
+          "grade": "native-event-not-pij-ack"
+        },
+        {
+          "at": "2026-09-05T02:17:16.264Z",
+          "kind": "native-event",
+          "seat": "pij-copilot-1a5b066152be1a20e4ea664d",
+          "nativeSession": "3bd50ad2-ec1b-4cd0-966b-6ddb15390bc7",
+          "type": "session.idle",
+          "eventId": "56cd593e-c7c5-4832-ae0b-25491091ce6d",
+          "nativeMessageId": null,
+          "grade": "native-event-not-pij-ack"
+        },
+        {
+          "at": "2026-09-05T02:17:16.264Z",
+          "kind": "native-completed",
+          "seat": "pij-copilot-1a5b066152be1a20e4ea664d",
+          "nativeSession": "3bd50ad2-ec1b-4cd0-966b-6ddb15390bc7",
+          "msgId": "58642d29-505c-4441-929f-9b89d7caab92",
+          "nativeMessageId": "731f8f13-8fe5-41f6-ba80-3c4e77128abc",
+          "type": "session.idle",
+          "eventId": "56cd593e-c7c5-4832-ae0b-25491091ce6d",
+          "grade": "observed-native-terminal-not-model-success"
+        }
+      ]
+    }
+  ],
+  "durable_event_metadata": {
+    "path": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-copilot-native-b0XpHm/home/.copilot/session-state/eebf7935-22b8-4f90-bb9b-cd15b84a7d14/events.jsonl",
+    "sha256": "076f4e3a7d88cfe8221fc5bf772d699aa3cf0d7ab8b56e5e764e3fa3f3383f2c",
+    "events": [
+      {
+        "line": 1,
+        "type": "session.start",
+        "id": "721cc180-fa73-46ab-9d54-d0f12673d7cb",
+        "parentId": null
+      },
+      {
+        "line": 2,
+        "type": "session.model_change",
+        "id": "8629f1c8-155e-4f87-842f-62fd194b0ce0",
+        "parentId": "721cc180-fa73-46ab-9d54-d0f12673d7cb"
+      },
+      {
+        "line": 3,
+        "type": "user.message",
+        "id": "0450500d-0d71-4659-b9eb-50de66ae5e87",
+        "parentId": "8629f1c8-155e-4f87-842f-62fd194b0ce0",
+        "messageId": "32ed54d7-156a-4d78-a5a2-b9d32d2115d9",
+        "turnId": "0",
+        "interactionId": "7cbd255d-23c5-443c-be1b-bdd007de6c1e"
+      },
+      {
+        "line": 4,
+        "type": "system.message",
+        "id": "2a5a401c-66e5-49af-9a72-b641499e5b61",
+        "parentId": "0450500d-0d71-4659-b9eb-50de66ae5e87",
+        "interactionId": "7cbd255d-23c5-443c-be1b-bdd007de6c1e"
+      },
+      {
+        "line": 5,
+        "type": "assistant.turn_start",
+        "id": "a0c7b21a-20bb-40d1-8740-97b886469ddb",
+        "parentId": "2a5a401c-66e5-49af-9a72-b641499e5b61",
+        "turnId": "0",
+        "interactionId": "7cbd255d-23c5-443c-be1b-bdd007de6c1e"
+      },
+      {
+        "line": 6,
+        "type": "assistant.message",
+        "id": "3dbf8562-3070-454c-b875-704a06c7149a",
+        "parentId": "a0c7b21a-20bb-40d1-8740-97b886469ddb",
+        "messageId": "aeacb949-239b-4a72-980f-b97dab94cfa1",
+        "turnId": "0",
+        "interactionId": "7cbd255d-23c5-443c-be1b-bdd007de6c1e"
+      },
+      {
+        "line": 7,
+        "type": "tool.execution_start",
+        "id": "e05c829d-f6b4-49db-9f52-7e662fb20486",
+        "parentId": "3dbf8562-3070-454c-b875-704a06c7149a",
+        "turnId": "0"
+      },
+      {
+        "line": 8,
+        "type": "permission.requested",
+        "id": "fd046512-6417-484a-8bb5-d955078a0268",
+        "parentId": "e05c829d-f6b4-49db-9f52-7e662fb20486"
+      },
+      {
+        "line": 9,
+        "type": "permission.completed",
+        "id": "ca7950e1-0904-4eba-b0d3-8beb65a225cf",
+        "parentId": "fd046512-6417-484a-8bb5-d955078a0268"
+      },
+      {
+        "line": 10,
+        "type": "external_tool.requested",
+        "id": "982613de-c08c-423c-825e-274ebd880189",
+        "parentId": "ca7950e1-0904-4eba-b0d3-8beb65a225cf"
+      },
+      {
+        "line": 11,
+        "type": "external_tool.completed",
+        "id": "a5382cce-1ddf-483f-9295-f3cefad0e618",
+        "parentId": "982613de-c08c-423c-825e-274ebd880189"
+      },
+      {
+        "line": 12,
+        "type": "tool.execution_complete",
+        "id": "cc211297-f7e7-4655-aff7-287925c9c7b5",
+        "parentId": "a5382cce-1ddf-483f-9295-f3cefad0e618",
+        "turnId": "0",
+        "interactionId": "7cbd255d-23c5-443c-be1b-bdd007de6c1e"
+      },
+      {
+        "line": 13,
+        "type": "assistant.turn_end",
+        "id": "619058c6-0255-43b1-983a-620b71511d6d",
+        "parentId": "cc211297-f7e7-4655-aff7-287925c9c7b5",
+        "turnId": "0"
+      },
+      {
+        "line": 14,
+        "type": "assistant.turn_start",
+        "id": "6a5ac94a-2225-4740-a64c-8ca11c7ad7e2",
+        "parentId": "619058c6-0255-43b1-983a-620b71511d6d",
+        "turnId": "1",
+        "interactionId": "7cbd255d-23c5-443c-be1b-bdd007de6c1e"
+      },
+      {
+        "line": 15,
+        "type": "assistant.message",
+        "id": "e7ece061-f50d-473a-a659-352d31049403",
+        "parentId": "6a5ac94a-2225-4740-a64c-8ca11c7ad7e2",
+        "messageId": "4dd0ada0-3ce1-42f1-ae86-dfafa0f8b029",
+        "turnId": "1",
+        "interactionId": "7cbd255d-23c5-443c-be1b-bdd007de6c1e"
+      },
+      {
+        "line": 16,
+        "type": "assistant.turn_end",
+        "id": "fedf360f-5c0c-475d-b15c-c41b02d0f787",
+        "parentId": "e7ece061-f50d-473a-a659-352d31049403",
+        "turnId": "1"
+      },
+      {
+        "line": 17,
+        "type": "session.shutdown",
+        "id": "346a008c-1b32-458a-927e-9184366ec6cc",
+        "parentId": "fedf360f-5c0c-475d-b15c-c41b02d0f787"
+      }
+    ]
+  },
+  "original_trace_request": {
+    "scenario": "One isolated recipient tool+approve-once turn, native.send through first session.idle; no90s draft/whole smoke required",
+    "callback_fields": [
+      "sequence",
+      "type",
+      "id",
+      "parentId",
+      "agentId",
+      "ephemeral",
+      "data.messageId",
+      "data.turnId",
+      "data.interactionId"
+    ],
+    "additional": [
+      "native.send returned nativeId",
+      "at idle: active completion.nativeId/live and descendants.has(parentId), terminal before/after observe"
+    ],
+    "privacy": "No prompts, model content, tool arguments/results or keys"
+  },
+  "tooling": {
+    "lsp": "TypeScript server ready; references for private NativeCompletion returned none. Exact bounded source read used.",
+    "execution": "Parsed full private logs, durable JSONL and new callback trace; verified hashes and linkage; executed actual NativeBridge metadata replay with exit0/empty stderr. No project tests, live client, daemon restart or full gate run."
+  },
+  "change": "No runtime or test source changed. Ordering and acceptance/ACK grade unchanged.",
+  "harness_improvement": "Capture ordered correlation metadata at the isolated native callback boundary; current smoke projections erase parentId and durable session logs omit ephemeral idle."
+}
