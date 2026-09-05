@@ -177,7 +177,7 @@ describe("announceText", () => {
 	});
 });
 
-// AC8: one authored allowlist, consumed by the extension-wide vocabulary guard.
+// AC8: one authored allowlist, consumed by the maintained-surface vocabulary guard.
 const LEGACY_FRAME_ALLOWLIST: ReadonlyArray<{
 	path: string;
 	prefix?: boolean;
@@ -225,23 +225,37 @@ const LEGACY_FRAME_ALLOWLIST: ReadonlyArray<{
 	},
 ];
 
-it("keeps legacy frame heads out of the extension outside the explicit allowlist", () => {
-	const root = fileURLToPath(new URL("../", import.meta.url));
+it("keeps legacy frame heads out of maintained surfaces with no unused allowances", () => {
+	const repo = fileURLToPath(new URL("../../../../", import.meta.url));
 	const violations: string[] = [];
-	for (const entry of readdirSync(root, { recursive: true, withFileTypes: true })) {
-		if (!entry.isFile()) continue;
-		const absolute = join(entry.parentPath, entry.name);
-		const path = relative(root, absolute).split(sep).join("/");
-		const allowance = LEGACY_FRAME_ALLOWLIST.find((rule) =>
-			rule.prefix ? path.startsWith(rule.path) : path === rule.path,
-		);
-		if (allowance && !allowance.lines) continue;
-		const lines = readFileSync(absolute, "utf8").split("\n");
-		for (const [index, line] of lines.entries()) {
-			if (line.includes("[pij from") && !allowance?.lines?.includes(line.trim())) {
-				violations.push(`${path}:${index + 1}: ${line.trim()}`);
+	const fired = new Set<string>();
+	// Only maintained surfaces: docs/plans/** is historical record, never scanned.
+	for (const surface of [".pi/extensions/pij", "skills/pij"]) {
+		const root = join(repo, surface);
+		for (const entry of readdirSync(root, { recursive: true, withFileTypes: true })) {
+			if (!entry.isFile()) continue;
+			const absolute = join(entry.parentPath, entry.name);
+			const path = relative(root, absolute).split(sep).join("/");
+			const allowance =
+				surface === ".pi/extensions/pij"
+					? LEGACY_FRAME_ALLOWLIST.find((rule) =>
+							rule.prefix ? path.startsWith(rule.path) : path === rule.path,
+						)
+					: undefined;
+			const lines = readFileSync(absolute, "utf8").split("\n");
+			for (const [index, line] of lines.entries()) {
+				if (!line.includes("[pij from")) continue;
+				if (allowance && (!allowance.lines || allowance.lines.includes(line.trim()))) {
+					fired.add(allowance.lines ? `${allowance.path}:${line.trim()}` : allowance.path);
+				} else {
+					violations.push(`${surface}/${path}:${index + 1}: ${line.trim()}`);
+				}
 			}
 		}
 	}
+	const unused = LEGACY_FRAME_ALLOWLIST.flatMap((rule) =>
+		rule.lines ? rule.lines.map((line) => `${rule.path}:${line}`) : [rule.path],
+	).filter((key) => !fired.has(key));
+	expect(unused.sort(), "unused legacy-frame allowances").toEqual([]);
 	expect(violations.sort()).toEqual([]);
 });
