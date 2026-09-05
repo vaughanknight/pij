@@ -64,6 +64,7 @@ undocumented log-directory layout is required by the smoke.
 ## Deterministic checks
 
 ```sh
+export VITEST_MAX_WORKERS=4 VITEST_MAX_THREADS=4 CARGO_BUILD_JOBS=4
 just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts
 just copilot-native-test
 just copilot-native-rust-test
@@ -101,6 +102,9 @@ endpoint/state overrides are present. No machine daemon restart, global install,
 upstream binary update, or live-fleet call occurs. An isolated executable wrapper
 adds safe Copilot launch flags for the spawned case; it execs the actual CLI and
 preserves the host process identity.
+Only the canonical path of that empty temporary workspace is seeded in the private
+`settings.json`'s `trustedFolders`, avoiding an interactive startup trust prompt.
+Global trust and tool permissions are unchanged; this is not `--yolo` or allow-all.
 
 Witnesses retain exact source and executable hashes, versions, processes/panes,
 Pij msg/job IDs, public native events, bidirectional tool-originated replies,
@@ -108,6 +112,9 @@ initial spawned task/duplicate checks, held/admitted draft evidence, missing
 consumer refusal/queue evidence, and daemon restart/key rotation. Local-provider
 protocol proof alone is not composed product acceptance. A passing full inventory
 also does not replace actual manual/spawned and real-model witnesses.
+Before teardown, the receipt captures each remaining pane's terminal text and
+scrollback, including on failure. An individual pane's capture error is retained
+without discarding the other panes; a listing error is also explicit.
 
 Use `--pij-bin`, `--copilot-bin`, `--timeout-seconds`, or `--output` to select a
 composed build and bound a run. Existing receipts are never overwritten. Exit

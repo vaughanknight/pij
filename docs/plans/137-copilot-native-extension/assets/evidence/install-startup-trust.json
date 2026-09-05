@@ -1,0 +1,146 @@
+{
+  "source_fix_commit": "a08c03a2552ea8449f7aa02cd920a0abc308f70c",
+  "original_failure_receipt": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/evidence/pm-native-local-01.json",
+  "cause": "Interactive Confirm folder trust held the initial prompt before user/provider activity. Logs alone did not expose the prompt. Approving only the empty temporary workspace released the original prompt without a daemon.",
+  "change": "Seed only realpath(workspace) in new private settings.json trustedFolders before installer experimental merge; capture every surviving pane with scrollback before cleanup, preserving per-pane/listing errors.",
+  "verification": {
+    "environment": {
+      "VITEST_MAX_WORKERS": "4",
+      "VITEST_MAX_THREADS": "4",
+      "CARGO_BUILD_JOBS": "4"
+    },
+    "caps_credit": "135",
+    "scoped_tests": {
+      "command": "just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0,
+      "result": "30 passed (22 installer, 8 fixture/witness)"
+    },
+    "typecheck": {
+      "command": "node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0
+    },
+    "biome": {
+      "command": "node_modules/.bin/biome check harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code": 0,
+      "result": "2 files clean"
+    },
+    "live": "One bounded isolated probe; original untrusted startup, native UI approval, seeded fresh session, then fresh headless seeded session with no terminal client attached. Two retained interactions passed the real verifyOrdinaryUsability predicate (distinct native user/assistant IDs, same interaction, exactly one terminal diagnostic). Daemon/key absent throughout; actual deterministic-local provider received 3 requests.",
+    "fixture_requests": [
+      "POST /v1/chat/completions",
+      "POST /v1/chat/completions",
+      "POST /v1/chat/completions"
+    ]
+  },
+  "safety": [
+    "No global config or machine daemon changes",
+    "No sibling shipping source edits",
+    "No yolo, allow-all, or consent weakening",
+    "Only explicit temporary workspace trusted; no parent/global folder",
+    "Local provider only; no credentials",
+    "No full gates or dependency/toolchain changes"
+  ],
+  "cleanup": "Supervised bounded provider/probe exited0 after killing only its private tmux server; inspection terminal client stopped before headless witness.",
+  "integration_boundary": "This is startup/ordinary usability proof against shipping modules borrowed from the PM working tree, not an immutable composed-build or full daemon/native-transport acceptance. PM reruns the composed driver. The post-cleanup capture error below is expected because the bounded probe had already stopped; per-pane failure preservation is covered by the scoped regression.",
+  "harness_learning": "DL-001: startup logs and pane IDs are insufficient diagnostic evidence; final terminal snapshots are now automatic before driver teardown.",
+  "witness": {
+    "grade": "actual CLI/native-extension/local-fixture startup only, not real inference or daemon transport",
+    "root": "/tmp/pij-native-startup-bSmfbg",
+    "daemon_started": false,
+    "key_present": false,
+    "before_trust": "  Current   Sessions   Issues   Pull requests   Gists \n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-0 uses AI.\n  █ ▘▝ █  /experimental\n   ▔▔▔▔ \n\n ● Tip: /app\n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app\n      https://github.com/features/ai/github-app \n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens \n   (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help \n   providers  for configuration details.                                                        \n\n\n\n\n\n\n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│ Confirm folder trust                                                                                                 │\n│ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────── │\n│ ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ │\n│ │ /private/tmp/pij-native-startup-bSmfbg/workspace                                                                 │ │\n│ ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ │\n│                                                                                                                      │\n│ Copilot can read files in this folder and, with your permission, edit them or run code and shell commands. It will   │\n│ remember your permissions for the rest of this session.                                                              │\n│                                                                                                                      │\n│ Do you trust the files in this folder?                                                                               │\n│                                                                                                                      │\n│ ❯ 1. Yes                                                                                                             │\n│   2. Yes, and remember this folder for future sessions                                                               │\n│   3. No (Esc)                                                                                                        │\n│                                                                                                                      │\n│ ↑/↓ to navigate · enter to select · esc to cancel                                                                    │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n",
+    "settings": {
+      "experimental": true
+    },
+    "witnesses": [
+      {
+        "nonce": "PIJ_STARTUP_TRUST_PROBE",
+        "session": "6fc1c7b5-a225-4ad3-9b32-c1947048a1b9",
+        "events": [
+          {
+            "id": "7d72eedc-089b-4acb-876e-818e65cad8d8",
+            "type": "session.info",
+            "data": {
+              "infoType": "notification",
+              "message": "[pij native] unavailable: registration-wait; check the Pij daemon and PIJ_RS_ADDR/PIJ_RS_STATE_DIR; retrying when available; ordinary Copilot remains usable"
+            }
+          },
+          {
+            "id": "a22afc94-5733-42fc-a6c7-8b728be61c91",
+            "type": "user.message",
+            "data": {
+              "content": "Ordinary Copilot smoke PIJ_STARTUP_TRUST_PROBE. Reply exactly PIJ_NATIVE_OBSERVED. Do not call tools.",
+              "transformedContent": "<current_datetime>2026-09-05T10:11:00.892+10:00</current_datetime>\n\nOrdinary Copilot smoke PIJ_STARTUP_TRUST_PROBE. Reply exactly PIJ_NATIVE_OBSERVED. Do not call tools.",
+              "messageId": "29f4f577-1a8d-40e4-88c1-a6dc03ab9af9",
+              "supportedNativeDocumentMimeTypes": [],
+              "delivery": "idle",
+              "interactionId": "c76ff931-c658-4714-a21e-9138cfdc9992",
+              "turnId": "0",
+              "parentAgentTaskId": "893e28d1-4363-40e4-8da2-b1f212f2028c"
+            }
+          },
+          {
+            "id": "3928ee1e-d566-42d8-bbd7-1291d5d6afe3",
+            "type": "assistant.message",
+            "data": {
+              "messageId": "ea578892-e28d-47b6-bb46-081112cdc035",
+              "model": "pij-native-fixture",
+              "content": "PIJ_NATIVE_OBSERVED",
+              "toolRequests": [],
+              "interactionId": "c76ff931-c658-4714-a21e-9138cfdc9992",
+              "turnId": "0",
+              "rte": false,
+              "apiCallId": "chatcmpl-e82c1929-7b61-4757-9090-15cc7a84f8cb"
+            }
+          }
+        ],
+        "terminal": "  Current   Sessions   Issues   Pull requests   Gists \n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-0 uses AI.\n  █ ▘▝ █  /experimental\n   ▔▔▔▔ \n\n ● Tip: /app\n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app\n      https://github.com/features/ai/github-app \n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens \n   (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help \n   providers  for configuration details.                                                        \n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ Ordinary Copilot smoke PIJ_STARTUP_TRUST_PROBE. Reply exactly PIJ_NATIVE_OBSERVED. Do not call tools.      10:11  \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● [pij native] unavailable: registration-wait; check the Pij daemon and PIJ_RS_ADDR/PIJ_RS_STATE_DIR; retrying when \n   available; ordinary Copilot remains usable\n\n ● PIJ_NATIVE_OBSERVED\n\n\n\n\n\n\n\n\n\n\n\n\n\n /private/tmp/pij-native-startup-bSmfbg/workspace                                                                       \n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃                                                                                                                       \n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ← open sidebar · / commands · ? help · tab next tab                                                 pij-native-fixture \n"
+      },
+      {
+        "nonce": "PIJ_STARTUP_SEEDED_HEADLESS",
+        "session": "7f1d29cc-7151-4c5b-9800-4218a830b179",
+        "events": [
+          {
+            "id": "c854349e-4594-4cb1-a746-6fcf7171d0f8",
+            "type": "session.info",
+            "data": {
+              "infoType": "notification",
+              "message": "[pij native] unavailable: registration-wait; check the Pij daemon and PIJ_RS_ADDR/PIJ_RS_STATE_DIR; retrying when available; ordinary Copilot remains usable"
+            }
+          },
+          {
+            "id": "e465f0c1-927e-4cc6-8504-a44c8797a82c",
+            "type": "user.message",
+            "data": {
+              "content": "Ordinary Copilot smoke PIJ_STARTUP_SEEDED_HEADLESS. Reply exactly PIJ_NATIVE_OBSERVED. Do not call tools.",
+              "transformedContent": "<current_datetime>2026-09-05T10:12:51.921+10:00</current_datetime>\n\nOrdinary Copilot smoke PIJ_STARTUP_SEEDED_HEADLESS. Reply exactly PIJ_NATIVE_OBSERVED. Do not call tools.",
+              "messageId": "49df8a6f-859e-4b6a-97f2-68dee613e0a3",
+              "supportedNativeDocumentMimeTypes": [],
+              "delivery": "idle",
+              "interactionId": "9a9542c7-c8ab-41f7-9a6d-fc59e5e24a8d",
+              "turnId": "0",
+              "parentAgentTaskId": "48389c64-61a2-4d63-a7d3-616e16f4e31e"
+            }
+          },
+          {
+            "id": "3ec651d8-60be-475c-a86d-344c99513b75",
+            "type": "assistant.message",
+            "data": {
+              "messageId": "8a014472-8663-47d7-b099-a4c254b71450",
+              "model": "pij-native-fixture",
+              "content": "PIJ_NATIVE_OBSERVED",
+              "toolRequests": [],
+              "interactionId": "9a9542c7-c8ab-41f7-9a6d-fc59e5e24a8d",
+              "turnId": "0",
+              "rte": false,
+              "apiCallId": "chatcmpl-b6dbd21c-7614-4791-893f-441a7acb9372"
+            }
+          }
+        ],
+        "terminal": "  Current   Sessions   Issues   Pull requests   Gists \n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-0 uses AI.\n  █ ▘▝ █  /experimental\n   ▔▔▔▔ \n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens \n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n\n ● Tip: /skills\n   └ Manage skills for enhanced capabilities\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ Ordinary Copilot smoke PIJ_STARTUP_SEEDED_HEADLESS. Reply exactly PIJ_NATIVE_OBSERVED. Do not call tools.                                          10:12  \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● [pij native] unavailable: registration-wait; check the Pij daemon and PIJ_RS_ADDR/PIJ_RS_STATE_DIR; retrying when available; ordinary Copilot remains \n   usable\n\n ● PIJ_NATIVE_OBSERVED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n /private/tmp/pij-native-startup-bSmfbg/workspace\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃  \n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ← open sidebar · / commands · ? help · tab next tab                                                                                         pij-native-fixture\n"
+      }
+    ],
+    "final": {
+      "error": "Error: Command failed: tmux -S /tmp/pij-native-startup-bSmfbg/tmux.sock list-panes -a -F #{pane_id} #{pane_pid} #{pane_current_command}\nno server running on /tmp/pij-native-startup-bSmfbg/tmux.sock\n"
+    }
+  }
+}
