@@ -435,16 +435,27 @@ class NativeCompletion {
 				id: event.id,
 				parentId: event.parentId,
 				agentId: event.agentId,
-				data: { messageId: event.data?.messageId },
+				data: { messageId: event.data?.messageId, interactionId: event.data?.interactionId },
 			});
 			return;
 		}
 		if (!nonempty(event.id)) return;
 		if (event.type === "user.message") {
-			if (!event.agentId && event.data?.messageId === this.nativeId) this.descendants.add(event.id);
+			if (!event.agentId && event.data?.messageId === this.nativeId) {
+				this.descendants.add(event.id);
+				if (nonempty(event.data.interactionId)) this.interactionId ??= event.data.interactionId;
+			}
 			return;
 		}
-		if (!this.descendants.has(event.parentId)) return;
+		// Native callbacks can omit permission ancestors; only the matched user's foreground turn can re-anchor.
+		const sameInteraction =
+			!event.agentId &&
+			this.interactionId !== undefined &&
+			event.data?.interactionId === this.interactionId &&
+			(event.type === "assistant.turn_start" ||
+				event.type === "assistant.message" ||
+				event.type === "tool.execution_complete");
+		if (!sameInteraction && !this.descendants.has(event.parentId)) return;
 		this.descendants.add(event.id);
 		if (!event.agentId && ["session.idle", "session.error"].includes(event.type)) {
 			this.terminal = { type: event.type, eventId: event.id };
