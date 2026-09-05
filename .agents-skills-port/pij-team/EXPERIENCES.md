@@ -559,4 +559,40 @@ we hand the pattern to pij and the harness. Also `harness observe` each one.
   own consumer (this repo's own `crates/testkit/fixtures/uds/README.md` warns about
   it) — the interpreter allowlist accepted basenames `node`/`bun` while 17 live
   processes on the machine ran as `bun.exe`.
+- 2026-09-05 (silverfish + xoxarle, 135 — **the symmetry is the lesson, not the
+  saves**): the PM and the reviewer made the SAME CLASS OF ERROR four hours
+  apart. The PM authorised a fix against a tree he had not verified (a `git add`
+  aborted on a deleted path with stderr suppressed; main shipped red while a local
+  green said otherwise). The reviewer then proposed a remedy that contradicted a
+  doctrine sitting in a comment it had not yet read (`identity.rs:436-450` — *a
+  control whose input the SUBJECT supplies is not a control*), which would have
+  re-admitted a caller-asserted pid exactly where the daemon's own evidence had
+  failed. **Neither gate would have caught either**, because neither has a sensor
+  for it: nothing compares what a gate BUILT with what was COMMITTED (INS-001),
+  and the anti-impersonation rule is prose on one branch rather than an invariant
+  across them (INS-003). Same hole, two substrates: *a rule that exists only as
+  text no sensor reads.*
+  Two rules follow, and the second is the one usually missed:
+  1. **Dispatch the reviewer with explicit authority to contradict the PM.** This
+     review changed what shipped twice — it stopped main being red on a false AC4,
+     and stopped a security control being switched off by a PM ruling.
+  2. **The reviewer's own proposals need a reviewer.** The PM verified the
+     reviewer's three citations in the source before relaying them, which is how
+     the withdrawn remedy was caught before any code was built. Authority to
+     contradict does not mean authority to be taken on trust — in either
+     direction. That is the loop working, rather than either party being right.
+  Also worth keeping: the reviewer corrected the PM's flattery. The three-list
+  brief *did* do the work — `i4` ("disbelieve the receipts, re-derive") is the
+  entire causal chain to f1, because it made the reviewer run the daemon tests as
+  its FIRST act instead of reading the AC and moving on; `i3` named six areas and
+  f2/f3 came out of the top two, in the order they were written. A brief does not
+  find defects; it aims the reviewer at the ground they are in. Without it, a
+  review is a diff read.
+- 2026-09-05 (xoxarle, 135 — **KEEP**): **a withdrawn finding belongs at the top of
+  the durable artifact, not only in the thread.** The reviewer amended its own
+  review record when it withdrew remedy (a), adding a postscript so that a reader
+  meeting f2 in six months encounters the withdrawal immediately rather than three
+  paragraphs in — and fixed a factual error in its own meta note (said "four
+  remaining open items", listed six) rather than leaving the artifact
+  self-contradicting.
 - (add as they arise)
