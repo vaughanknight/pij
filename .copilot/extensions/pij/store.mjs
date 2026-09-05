@@ -134,6 +134,32 @@ export class DaemonClient {
 	}
 
 	async request(path, body, signal) {
+		return (await this.#requestEnvelope(path, body, signal)).data;
+	}
+
+	/** @returns {Promise<{claims: unknown[], hold: {kind: "consent" | "native-target", reason: string} | null}>} */
+	async claimInbox(tuple, signal) {
+		const query = new URLSearchParams({ ...tuple, wait: "true" });
+		const envelope = await this.#requestEnvelope(`/v1/inbox?${query}`, undefined, signal);
+		if (envelope.meta != null && typeof envelope.meta !== "string")
+			throw new NativeError(
+				"Malformed native inbox hold metadata; receiving held without acknowledgement",
+			);
+		const prefix = "native-consumer-held:";
+		const reason = envelope.meta?.startsWith(prefix) ? envelope.meta.slice(prefix.length) : null;
+		return {
+			claims: envelope.data,
+			hold:
+				reason === null
+					? null
+					: {
+							kind: reason.startsWith("native-target-session:") ? "native-target" : "consent",
+							reason,
+						},
+		};
+	}
+
+	async #requestEnvelope(path, body, signal) {
 		let key;
 		try {
 			key = (await this.readKey()).trim();
@@ -179,7 +205,7 @@ export class DaemonClient {
 				response.status === 401 || response.status === 429 || response.status >= 500,
 			);
 		}
-		return envelope.data;
+		return envelope;
 	}
 }
 
@@ -489,14 +515,23 @@ export class NativeBridge {
 				try {
 					if (!this.registered) await this.register();
 					if (this.completion) await this.waitForCompletion();
-					const query = new URLSearchParams({ ...this.tuple(), wait: "true" });
-					const claims = await this.client.request(`/v1/inbox?${query}`, undefined, signal);
+					const { claims, hold } = await this.client.claimInbox(this.tuple(), signal);
 					throwIfStopped(signal);
 					if (!Array.isArray(claims) || claims.length > 1)
 						throw new NativeError("Expected zero or one native claim; receiving held");
 					if (failureEpisode) this.emit("connection-ready");
 					failureEpisode = false;
-					if (claims.length === 0) {
+					if (hold?.kind === "native-target") {
+						this.emit("receive-held", {
+							holdKind: hold.kind,
+							diagnostic: hold.reason,
+							action:
+								"Resume the targeted native session or use a new seat and intentionally reissue the message; no acknowledgement was sent.",
+						});
+						return;
+					}
+					if (hold || claims.length === 0) {
+						if (hold) this.emit("consent-held", { reason: hold.reason, retryMs: retry });
 						await this.delay(retry, signal);
 						retry = Math.min(retry * 2, MAX_RETRY_MS);
 						continue;
@@ -685,7 +720,9 @@ export function createNativeReporter({ log, capture }) {
 			unavailable = true;
 			const advice =
 				event.kind === "receive-held"
-					? "receiving held; inspect native history and acceptance before recovery, do not blindly resend or acknowledge"
+					? event.holdKind === "native-target"
+						? "queued work targets another native session; resume that native session or use a new seat and intentionally reissue the message; receiving stopped without acknowledgement; outgoing pij_send remains available"
+						: "receiving held; inspect native history and acceptance before recovery, do not blindly resend or acknowledge"
 					: "check the Pij daemon and PIJ_RS_ADDR/PIJ_RS_STATE_DIR; retrying when available; ordinary Copilot remains usable";
 			// Never project a remote error body (or credential) into the native timeline.
 			return Promise.resolve()

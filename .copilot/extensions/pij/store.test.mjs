@@ -93,6 +93,10 @@ function fixture(overrides = {}) {
 		},
 	};
 	const client = {
+		async claimInbox(consumer, signal) {
+			const query = new URLSearchParams({ ...consumer, wait: "true" });
+			return { claims: await this.request(`/v1/inbox?${query}`, undefined, signal), hold: null };
+		},
 		async request(path, body, signal) {
 			if (path === "/v1/register") {
 				trace.push("register");
@@ -448,9 +452,9 @@ test("HTTP client reloads key on every request, binds tuple, keeps bounded non-J
 			return new Response(JSON.stringify({ ok: true, v: 2, data: [] }));
 		},
 	});
-	await client.request("/v1/inbox?seat=a");
+	await client.claimInbox(tuple);
 	key = "rotated-secret";
-	await client.request("/v1/inbox?seat=a");
+	await client.claimInbox(tuple);
 	assert.deepEqual(headers, ["Bearer first-secret", "Bearer rotated-secret"]);
 	const broken = new DaemonClient({
 		addr: "127.0.0.1:13700",
@@ -459,7 +463,7 @@ test("HTTP client reloads key on every request, binds tuple, keeps bounded non-J
 		fetch: async () => new Response(`not-json ${"x".repeat(10000)}`, { status: 503 }),
 	});
 	await assert.rejects(
-		broken.request("/v1/inbox?seat=a"),
+		broken.claimInbox(tuple),
 		(error) =>
 			error.message.includes("503") &&
 			error.message.includes("not-json") &&
@@ -494,20 +498,28 @@ test("accepted-but-unacked reconnect reclaims and acknowledges without second na
 	assert.ok(f.reports.some((e) => e.kind === "reconnecting"));
 });
 
-test("empty inbox waits back off with a ceiling rather than busy-loop", async () => {
-	const waits = [];
-	const f = fixture({
-		delay: async (ms) => {
-			waits.push(ms);
-			if (waits.length === 8) f.bridge.stop();
+for (const hold of [null, { kind: "consent", reason: "human-typing" }]) {
+	test(
+		hold
+			? "consent inbox holds back off with a ceiling rather than busy-loop"
+			: "empty inbox waits back off with a ceiling rather than busy-loop",
+		async () => {
+			const waits = [];
+			const f = fixture({
+				delay: async (ms) => {
+					waits.push(ms);
+					if (waits.length === 8) f.bridge.stop();
+				},
+			});
+			f.client.claimInbox = async () => ({ claims: [], hold });
+			await f.bridge.run();
+			assert.deepEqual(waits, [250, 500, 1000, 2000, 4000, 5000, 5000, 5000]);
+			assert.equal(f.reports.filter((event) => event.kind === "consent-held").length, hold ? 8 : 0);
+			assert.equal(f.trace.includes("send"), false);
+			assert.equal(f.trace.includes("ack"), false);
 		},
-	});
-	const request = f.client.request;
-	f.client.request = (p, b, s) => (p.startsWith("/v1/inbox?") ? [] : request(p, b, s));
-	await f.bridge.run();
-	assert.deepEqual(waits, [250, 500, 1000, 2000, 4000, 5000, 5000, 5000]);
-	assert.equal(f.trace.includes("send"), false);
-});
+	);
+}
 
 test("user-driven native shutdown cancels the blocked inbox consumer", async () => {
 	const f = fixture();
@@ -575,7 +587,7 @@ test("HTTP skew and refused envelopes are never treated as successful claims", a
 			readKey: async () => "key",
 			fetch: async () => new Response(JSON.stringify(response)),
 		});
-		await assert.rejects(client.request("/v1/inbox"));
+		await assert.rejects(client.claimInbox(tuple));
 	}
 });
 
@@ -661,13 +673,19 @@ test("consent hold release delivers the queued claim without a second message", 
 			held = false;
 		},
 	});
-	const request = f.client.request;
-	f.client.request = (p, b, s) => (p.startsWith("/v1/inbox?") && held ? [] : request(p, b, s));
+	const claimInbox = f.client.claimInbox.bind(f.client);
+	f.client.claimInbox = (consumer, signal) =>
+		held
+			? { claims: [], hold: { kind: "consent", reason: "human-typing" } }
+			: claimInbox(consumer, signal);
 	const run = f.bridge.run();
 	await f.accepted.promise;
 	f.bridge.stop();
 	await run;
 	assert.equal(waits, 1);
+	assert.ok(
+		f.reports.some((event) => event.kind === "consent-held" && event.reason === "human-typing"),
+	);
 	assert.equal(f.trace.filter((x) => x === "send").length, 1);
 });
 
@@ -905,4 +923,52 @@ test("post-ack barrier follows real native PoC ancestry with sibling ephemeral i
 	assert.ok(f.reports.some((e) => e.kind === "native-completed" && e.eventId === "poc-54"));
 	f.bridge.stop();
 	await run;
+});
+
+test("claim page preserves typed target and transient hold metadata without changing request data", async () => {
+	const target =
+		"native-target-session:original-native; resume that native session or use a new seat and intentionally reissue the message";
+	for (const [meta, hold] of [
+		[undefined, null],
+		[null, null],
+		["observation-only note", null],
+		...[
+			"human-typing",
+			"semantic-hold",
+			"sensor-unavailable:tap missing",
+			"human-consent",
+			"tap-unowned",
+			"composer-busy",
+			"unrecognized",
+		].map((reason) => [`native-consumer-held:${reason}`, { kind: "consent", reason }]),
+		[`native-consumer-held:${target}`, { kind: "native-target", reason: target }],
+	]) {
+		const client = new DaemonClient({
+			addr: "127.0.0.1:13700",
+			stateDir: "/isolated",
+			readKey: async () => "key",
+			fetch: async () =>
+				new Response(JSON.stringify({ ok: true, command: "pij inbox", v: 2, data: [], meta })),
+		});
+		assert.deepEqual(await client.claimInbox(tuple), { claims: [], hold });
+		assert.deepEqual(await client.request("/v1/seats"), []);
+	}
+});
+
+test("malformed claim hold metadata is not silently downgraded to an empty inbox", async () => {
+	const client = new DaemonClient({
+		addr: "127.0.0.1:13700",
+		stateDir: "/isolated",
+		readKey: async () => "key",
+		fetch: async () =>
+			new Response(
+				JSON.stringify({
+					ok: true,
+					v: 2,
+					data: [],
+					meta: { reason: "native-target-session:original-native" },
+				}),
+			),
+	});
+	await assert.rejects(client.claimInbox(tuple), /Malformed native inbox hold metadata/);
 });
