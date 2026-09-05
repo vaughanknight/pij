@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Registration, RustSeatDescriptor } from "../core/daemon-wire.js";
+import { announceText } from "../core/message.js";
 import { type DaemonHttpDeps, PijDaemonClient } from "./daemon-http.js";
 import { FakePiRuntime, FakeTmux } from "./fakes.js";
 import { RustRuntimeSession } from "./rust-runtime.js";
@@ -25,6 +27,15 @@ const INBOX_CLAIM_WIRE = readFileSync(
 	new URL("../../../../crates/daemon/tests/fixtures/inbox-claim.wire.json", import.meta.url),
 	"utf8",
 ).trim();
+const REGISTER_RESPONSES = JSON.parse(
+	readFileSync(
+		new URL(
+			"../../../../docs/plans/135-rs-boot-announce/assets/contracts/register-response.json",
+			import.meta.url,
+		),
+		"utf8",
+	),
+) as Record<"created" | "rebound" | "same", RustSeatDescriptor>;
 const PUSHED_EVENT_WIRE = JSON.stringify({
 	msg_id: "000000000000feed-0000000000000000",
 	from: "pij-from",
@@ -123,7 +134,147 @@ async function bootPushedEvent(
 	return { acknowledgements, claimRequests, runtime };
 }
 
+function announceRuntime(
+	seats: readonly RustSeatDescriptor[],
+	responses: readonly RustSeatDescriptor[],
+) {
+	vi.stubEnv("PIJ_ANNOUNCE_TO", "");
+	vi.stubEnv("PIJ_SESSION_ID", responses[0]?.id);
+	vi.stubEnv("PIJ_SPAWN_TASK", undefined);
+	const registrations: Registration[] = [];
+	const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+		const path = new URL(String(url)).pathname;
+		if (path === "/v1/seats") return envelope("pij seats", { seats, unavailable: [] });
+		if (path === "/v1/register") {
+			const response = responses[registrations.length];
+			if (!response) throw new Error("unexpected registration");
+			registrations.push(JSON.parse(String(init?.body)) as Registration);
+			return envelope("pij register", response);
+		}
+		if (path === "/v1/events") {
+			return eventResponse(`${JSON.stringify({ hello: true, v: 1, build: "pij-rs test" })}\n`);
+		}
+		throw new Error(`unexpected path ${path}`);
+	});
+	const client = new PijDaemonClient({ addr: "127.0.0.1:7461", stateDir: "/tmp/state" }, "secret", {
+		fetch: fetchMock as typeof fetch,
+		readFile: async () => "secret",
+		processStart: () => 20260905092248,
+	});
+	const runtime = new RustRuntimeSession(client, new FakeTmux(), []);
+	const pi = new FakePiRuntime();
+	runtime.setPi(pi);
+	const input = {
+		folder: "/abs/tree",
+		dataDir: "",
+		eventsPath: "",
+		harness: "pi" as const,
+		harnessSessionId: "native-session",
+		piSessionId: "native-session",
+		runtimeBin: "omp" as const,
+		resetRuntimeState: true,
+		reason: "startup" as const,
+	};
+	return { runtime, pi, input, registrations };
+}
+
 describe("RustRuntimeSession", () => {
+	describe("register binding announce contract", () => {
+		it.each([
+			["created", false, 1],
+			["rebound", true, 1],
+			["same", true, 0],
+			["same", false, 0],
+		] as const)("binding=%s, pre-existing row=%s injects announceText %s times", async (binding, known, count) => {
+			const response = REGISTER_RESPONSES[binding];
+			const { runtime, pi, input } = announceRuntime(known ? [REGISTER_RESPONSES.created] : [], [
+				response,
+			]);
+			try {
+				const boot = await runtime.boot(input);
+				expect(boot.id).toBe(response.id);
+				expect(pi.injects).toEqual(
+					count === 0 ? [] : [{ text: announceText(boot.id), mode: "immediate" }],
+				);
+			} finally {
+				runtime.shutdown("quit");
+			}
+		});
+
+		it("announces a rebound seat once and never again on same-binding reload", async () => {
+			const { runtime, pi, input } = announceRuntime(
+				[REGISTER_RESPONSES.created],
+				[REGISTER_RESPONSES.rebound, REGISTER_RESPONSES.same],
+			);
+			try {
+				const boot = await runtime.boot(input);
+				expect(pi.injects).toEqual([{ text: announceText(boot.id), mode: "immediate" }]);
+				runtime.shutdown("reload");
+				const reloaded = await runtime.boot({
+					...input,
+					reason: "reload",
+					resetRuntimeState: false,
+				});
+				expect(reloaded.id).toBe(boot.id);
+				expect(pi.injects).toEqual([{ text: announceText(boot.id), mode: "immediate" }]);
+			} finally {
+				runtime.shutdown("quit");
+			}
+		});
+
+		it.each([
+			"new",
+			"fork",
+		] as const)("announces the new session id once on %s, not again on reload", async (reason) => {
+			const predecessor = { ...REGISTER_RESPONSES.rebound, id: "pij-predecessor" };
+			const { runtime, pi, input, registrations } = announceRuntime(
+				[predecessor],
+				[predecessor, REGISTER_RESPONSES.created, REGISTER_RESPONSES.same],
+			);
+			try {
+				await runtime.boot(input);
+				expect(pi.injects).toEqual([{ text: announceText(predecessor.id), mode: "immediate" }]);
+				runtime.shutdown(reason);
+				const nextInput = {
+					...input,
+					harnessSessionId: `${reason}-session`,
+					piSessionId: `${reason}-session`,
+				};
+				const successor = await runtime.boot({ ...nextInput, reason });
+				expect(successor.id).not.toBe(predecessor.id);
+				expect(registrations[1]?.id).not.toBe(predecessor.id);
+				expect(registrations[1]?.supersedes).toBe(predecessor.id);
+				const expected = [
+					{ text: announceText(predecessor.id), mode: "immediate" },
+					{ text: announceText(successor.id), mode: "immediate" },
+				];
+				expect(pi.injects).toEqual(expected);
+				runtime.shutdown("reload");
+				await runtime.boot({ ...nextInput, reason: "reload", resetRuntimeState: false });
+				expect(pi.injects).toEqual(expected);
+			} finally {
+				runtime.shutdown("quit");
+			}
+		});
+
+		it.each([
+			false,
+			true,
+		])("preserves old-daemon inference with no binding (pre-existing row=%s)", async (known) => {
+			const response = { ...REGISTER_RESPONSES.rebound };
+			Reflect.deleteProperty(response, "binding");
+			const { runtime, pi, input } = announceRuntime(known ? [response] : [], [response]);
+			try {
+				const boot = await runtime.boot(input);
+				expect(pi.injects).toEqual(
+					known ? [] : [{ text: announceText(boot.id), mode: "immediate" }],
+				);
+			} finally {
+				runtime.shutdown("quit");
+			}
+		});
+	});
+
 	it("registers structural identity, forwards unknown events, injects a push, and correlates reply", async () => {
 		vi.stubEnv("PIJ_ANNOUNCE_TO", "");
 		vi.stubEnv("PIJ_SPAWN_ID", "");

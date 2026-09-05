@@ -132,6 +132,7 @@ export interface BootInput {
 	readonly durableDescriptor?: SessionDescriptor;
 	/** Startup/resume/new/fork replace a prior process incarnation; reload does not. */
 	readonly resetRuntimeState?: boolean;
+	readonly fresh?: boolean;
 }
 
 /** Boot outcome — the (id, role) the wiring exports to PIJ_SESSION_ID/PIJ_ROLE,
@@ -209,7 +210,7 @@ export class PijSession {
 		const liveDescriptor = this.ports.registry.read(input.id);
 		const existing = liveDescriptor ?? input.durableDescriptor ?? null;
 		const wasDissolved = liveDescriptor?.lifecycle === "dissolved";
-		const fresh = liveDescriptor === null || wasDissolved;
+		const fresh = input.fresh ?? (liveDescriptor === null || wasDissolved);
 		const persisted =
 			input.resetRuntimeState || wasDissolved ? stripPriorRuntimeTermination(existing) : existing;
 		const descriptor: SessionDescriptor = {
