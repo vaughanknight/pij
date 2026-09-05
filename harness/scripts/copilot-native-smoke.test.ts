@@ -10,10 +10,12 @@ import {
 	startFixtureProvider,
 } from "./copilot-native-fixture.js";
 import {
+	captureSmokeFinalTyping,
 	captureSmokePanes,
 	confirmSmokeToolInvocation,
 	driveSmokeLifecycleCommand,
 	driveSmokeTypingWitness,
+	finishSmokePanes,
 	nativeComposer,
 	nativeMessages,
 	parseSmokeArgs,
@@ -968,6 +970,253 @@ describe("AC6 unchanged-draft witness boundaries, not live CLI proof", () => {
 		if ("nativeEvents" in changed) observations.splice(3, 0, sample(changed));
 		const proof = await run(observations);
 		await expect(proof.result).rejects.toThrow(/PIJ_NATIVE_TYPING_PROOF/);
+	});
+});
+
+describe("final typing API diagnostics before teardown", () => {
+	const seat = {
+		id: "current-seat",
+		harness: "copilot",
+		session: "new-native-session",
+		pane: "%2",
+		proc: { pid: 222, proc_start: 20260905133000 },
+		native_extension_delivery: true,
+	};
+	function setup() {
+		const calls: string[] = [];
+		const sensor = {
+			state: "unavailable",
+			reason: "native-typing-sensor-unavailable",
+			observed_at_ms: 777,
+		};
+		const io = {
+			tmux: (args: string[], preserveOutput?: boolean) => {
+				calls.push(`tmux:${args[0]}`);
+				if (args[0] === "list-panes")
+					return args.at(-1) === "#{pane_id}" ? "%2\n%3" : "%2 222 node\n%3 333 node";
+				if (args[0] === "display-message") {
+					expect(preserveOutput).toBe(true);
+					return "2\t45\t160\t48\n\nactual later viewport\n\n";
+				}
+				if (args[0] === "capture-pane") return "joined history";
+				if (args[0] === "kill-server") return "";
+				throw new Error(`unexpected mutation ${args.join(" ")}`);
+			},
+			seats: async (_signal: AbortSignal) => {
+				calls.push("GET:/v1/seats");
+				return [seat];
+			},
+			get: async (path: string, _signal: AbortSignal): Promise<unknown> => {
+				calls.push(`GET:${path}`);
+				return sensor;
+			},
+		};
+		return { io, calls, sensor };
+	}
+	it("captures the fresh roster tuple and nearby real viewport before cleanup without keys or sends", async () => {
+		const { io, calls, sensor } = setup();
+		const receipt: Record<string, unknown> = { status: "failed", error: "original typing failure" };
+		expect(await finishSmokePanes(io.tmux, receipt, () => captureSmokeFinalTyping(io))).toBe(true);
+		const capture = object(receipt.final_typing_capture);
+		expect(capture).toMatchObject({
+			timing: "nearby-not-atomic",
+			started_at_ms: expect.any(Number),
+			completed_at_ms: expect.any(Number),
+		});
+		expect(capture.observations).toMatchObject([
+			{
+				seat,
+				sensor,
+				requested_at_ms: expect.any(Number),
+				completed_at_ms: expect.any(Number),
+				sensor_request:
+					"/v1/inbox/typing?seat=current-seat&native_session=new-native-session&pid=222&proc_start=20260905133000",
+				pane_capture: { cursor_x: 2, cursor_y: 45, terminal: "\nactual later viewport\n\n" },
+			},
+		]);
+		expect(calls.filter((call) => call.startsWith("GET:"))).toEqual([
+			"GET:/v1/seats",
+			"GET:/v1/inbox/typing?seat=current-seat&native_session=new-native-session&pid=222&proc_start=20260905133000",
+		]);
+		expect(calls.at(-1)).toBe("tmux:kill-server");
+		expect(receipt).toMatchObject({ status: "failed", error: "original typing failure" });
+	});
+	it("queries only current attested Copilot seats on the isolated socket", async () => {
+		const { io, calls } = setup();
+		io.seats = async () => [
+			{ ...seat, id: "revoked-old", native_extension_delivery: false },
+			{ ...seat, id: "foreign", pane: "%99" },
+			{ ...seat, id: "non-copilot", harness: "omp" },
+			seat,
+		];
+		const capture = await captureSmokeFinalTyping(io);
+		expect(capture.observations).toHaveLength(1);
+		expect(calls.filter((call) => call.startsWith("GET:/v1/inbox/typing"))).toHaveLength(1);
+	});
+	it("rereads current tuples and preserves a later observed result without rewriting the original failure", async () => {
+		const { io, calls } = setup();
+		const original = await captureSmokeFinalTyping(io);
+		const current = {
+			...seat,
+			session: "resumed-native",
+			proc: { pid: 444, proc_start: 20260905134000 },
+		};
+		io.seats = async () => [current];
+		const observed = {
+			state: "observed",
+			semantic_hold: true,
+			retry_after_ms: 123,
+			observed_at_ms: 888,
+		};
+		io.get = async (path) => {
+			calls.push(`GET:${path}`);
+			return observed;
+		};
+		const receipt: Record<string, unknown> = {
+			status: "failed",
+			error: "original unavailable",
+			original,
+		};
+		await finishSmokePanes(io.tmux, receipt, () => captureSmokeFinalTyping(io));
+		expect(object(receipt.final_typing_capture).observations).toMatchObject([
+			{ seat: current, sensor: observed },
+		]);
+		expect(calls).toContain(
+			"GET:/v1/inbox/typing?seat=current-seat&native_session=resumed-native&pid=444&proc_start=20260905134000",
+		);
+		expect(receipt.original).toBe(original);
+		expect(receipt.error).toBe("original unavailable");
+		expect(receipt.status).toBe("failed");
+	});
+	it("retains invalid tuple errors without inventing identity or requesting the sensor", async () => {
+		const { io, calls } = setup();
+		io.seats = async () => [{ ...seat, proc: { ...seat.proc, pid: 0 } }];
+		const capture = await captureSmokeFinalTyping(io);
+		expect(capture.observations).toMatchObject([
+			{
+				error: expect.stringContaining("invalid current native tuple"),
+				pane_capture: { cursor_x: 2 },
+			},
+		]);
+		expect(calls.some((call) => call.startsWith("GET:/v1/inbox/typing"))).toBe(false);
+	});
+	it("retains per-seat API and pane errors without hiding other seats or replacing the outcome", async () => {
+		const { io, sensor } = setup();
+		io.seats = async () => [seat, { ...seat, id: "second", pane: "%3" }];
+		io.get = async (path) => {
+			if (path.includes("seat=current-seat")) throw new Error("HTTP 503 offline");
+			return sensor;
+		};
+		const tmux = io.tmux;
+		io.tmux = (args, raw) => {
+			if (args[0] === "display-message" && args.at(-1) === "%2") throw new Error("pane exited");
+			return tmux(args, raw);
+		};
+		const receipt: Record<string, unknown> = { status: "passed" };
+		expect(await finishSmokePanes(io.tmux, receipt, () => captureSmokeFinalTyping(io))).toBe(true);
+		expect(object(receipt.final_typing_capture).observations).toMatchObject([
+			{
+				seat,
+				error: "PIJ_NATIVE_FINAL_TYPING: Error: HTTP 503 offline",
+				pane_capture: { error: "Error: pane exited" },
+			},
+			{ seat: { id: "second" }, sensor },
+		]);
+		expect(receipt.status).toBe("passed");
+		expect(receipt.error).toBeUndefined();
+	});
+	it.each([
+		"daemon unavailable",
+		"ENOENT daemon.key",
+	])("retains %s and still cleans up with original failure", async (reason) => {
+		const { io, calls } = setup();
+		io.seats = async () => {
+			throw new Error(reason);
+		};
+		const receipt: Record<string, unknown> = {
+			status: "failed",
+			error: "original startup outcome",
+		};
+		expect(await finishSmokePanes(io.tmux, receipt, () => captureSmokeFinalTyping(io))).toBe(true);
+		expect(object(receipt.final_typing_capture).error).toBe(
+			`PIJ_NATIVE_FINAL_TYPING: Error: ${reason}`,
+		);
+		expect(receipt.error).toBe("original startup outcome");
+		expect(calls.at(-1)).toBe("tmux:kill-server");
+	});
+	it("bounds a stuck sensor request with the shared abort signal before teardown", async () => {
+		const { io, calls } = setup();
+		let rosterSignal: AbortSignal | undefined;
+		io.seats = async (signal) => {
+			rosterSignal = signal;
+			return [seat];
+		};
+		io.get = async (_path, signal) => {
+			expect(signal).toBe(rosterSignal);
+			return new Promise((_resolve, reject) =>
+				signal.addEventListener("abort", () => reject(signal.reason), { once: true }),
+			);
+		};
+		const receipt: Record<string, unknown> = { status: "failed", error: "original" };
+		expect(await finishSmokePanes(io.tmux, receipt, () => captureSmokeFinalTyping(io, 10))).toBe(
+			true,
+		);
+		expect(object(receipt.final_typing_capture).observations).toMatchObject([
+			{ error: expect.stringContaining("TimeoutError"), pane_capture: { cursor_x: 2 } },
+		]);
+		expect(calls.at(-1)).toBe("tmux:kill-server");
+		expect(receipt.error).toBe("original");
+	});
+	it("skips the optional API callback before daemon initialization and still cleans up", async () => {
+		const { io, calls } = setup();
+		const receipt: Record<string, unknown> = {
+			status: "failed",
+			error: "ordinary startup timeout",
+		};
+		expect(await finishSmokePanes(io.tmux, receipt)).toBe(true);
+		expect(receipt.final_typing_capture_skipped).toBe("daemon-api-roster-not-initialized");
+		expect(calls.some((call) => call.startsWith("GET:"))).toBe(false);
+		expect(calls.at(-1)).toBe("tmux:kill-server");
+		expect(receipt.error).toBe("ordinary startup timeout");
+	});
+	it("retains unexpected diagnostic callback failure without blocking teardown", async () => {
+		const { io, calls } = setup();
+		const receipt: Record<string, unknown> = { status: "failed", error: "original" };
+		expect(
+			await finishSmokePanes(io.tmux, receipt, async () => {
+				throw new Error("diagnostic failed");
+			}),
+		).toBe(true);
+		expect(receipt.final_typing_capture_error).toBe(
+			"PIJ_NATIVE_FINAL_TYPING: Error: diagnostic failed",
+		);
+		expect(calls.at(-1)).toBe("tmux:kill-server");
+		expect(receipt.error).toBe("original");
+	});
+	it("retains terminal capture failure and still performs cleanup", async () => {
+		const { io, calls } = setup();
+		const tmux = io.tmux;
+		io.tmux = (args, raw) => {
+			if (args[0] === "list-panes") throw new Error("capture failed");
+			return tmux(args, raw);
+		};
+		const receipt: Record<string, unknown> = { status: "passed" };
+		expect(await finishSmokePanes(io.tmux, receipt, () => captureSmokeFinalTyping(io))).toBe(true);
+		expect(receipt.final_capture_error).toBe("Error: capture failed");
+		expect(calls.at(-1)).toBe("tmux:kill-server");
+		expect(receipt.status).toBe("passed");
+	});
+	it("keeps cleanup failures distinct from diagnostic failures", async () => {
+		const { io } = setup();
+		const tmux = io.tmux;
+		io.tmux = (args, raw) => {
+			if (args[0] === "kill-server") throw new Error("cleanup failed");
+			return tmux(args, raw);
+		};
+		const receipt: Record<string, unknown> = { status: "failed", error: "original" };
+		expect(await finishSmokePanes(io.tmux, receipt, () => captureSmokeFinalTyping(io))).toBe(false);
+		expect(receipt.tmux_cleanup_error).toBe("Error: cleanup failed");
+		expect(receipt.error).toBe("original");
 	});
 });
 

@@ -368,6 +368,105 @@ export function captureSmokePanes(tmux: (args: string[], preserveOutput?: boolea
 	return { panes, captures };
 }
 
+/** Later read-only diagnostics; neither success nor failure changes the witness outcome. */
+export async function captureSmokeFinalTyping(
+	io: {
+		tmux: (args: string[], preserveOutput?: boolean) => string;
+		seats: (signal: AbortSignal) => Promise<Seat[]>;
+		get: (path: string, signal: AbortSignal) => Promise<unknown>;
+	},
+	timeoutMs = 5000,
+) {
+	const result = {
+		started_at_ms: Date.now(),
+		timeout_ms: timeoutMs,
+		timing: "nearby-not-atomic",
+		roster_request: "/v1/seats",
+		observations: [] as Record<string, unknown>[],
+	};
+	try {
+		// One HTTP budget covers the fresh roster and all exact-tuple requests.
+		const signal = AbortSignal.timeout(timeoutMs);
+		const panes = new Set(io.tmux(["list-panes", "-a", "-F", "#{pane_id}"]).split("\n"));
+		const roster = await io.seats(signal);
+		result.observations = await Promise.all(
+			roster
+				.filter(
+					(seat) =>
+						seat.harness === "copilot" &&
+						seat.native_extension_delivery === true &&
+						panes.has(seat.pane),
+				)
+				.map(async (seat) => {
+					const sample: Record<string, unknown> = { seat, requested_at_ms: Date.now() };
+					try {
+						assert(
+							typeof seat.id === "string" &&
+								seat.id &&
+								typeof seat.session === "string" &&
+								seat.session &&
+								Number.isSafeInteger(seat.proc?.pid) &&
+								seat.proc.pid > 0 &&
+								Number.isSafeInteger(seat.proc.proc_start) &&
+								seat.proc.proc_start > 0,
+							"invalid current native tuple",
+						);
+						const query = new URLSearchParams({
+							seat: seat.id,
+							native_session: seat.session,
+							pid: String(seat.proc.pid),
+							proc_start: String(seat.proc.proc_start),
+						});
+						const path = `/v1/inbox/typing?${query}`;
+						sample.sensor_request = path;
+						sample.sensor = await io.get(path, signal);
+					} catch (error) {
+						sample.error = `PIJ_NATIVE_FINAL_TYPING: ${String(error)}`;
+					}
+					sample.completed_at_ms = Date.now();
+					// This is a subsequent physical viewport, not the daemon's earlier sensor frame.
+					sample.pane_capture = captureSmokePaneViewport(io.tmux, seat.pane);
+					return sample;
+				}),
+		);
+		return { ...result, completed_at_ms: Date.now() };
+	} catch (error) {
+		return {
+			...result,
+			completed_at_ms: Date.now(),
+			error: `PIJ_NATIVE_FINAL_TYPING: ${String(error)}`,
+		};
+	}
+}
+
+/** Capture before destroying the owned socket; only cleanup failure affects its result. */
+export async function finishSmokePanes(
+	tmux: (args: string[], preserveOutput?: boolean) => string,
+	receipt: Record<string, unknown>,
+	captureTyping?: () => Promise<unknown>,
+): Promise<boolean> {
+	try {
+		if (captureTyping) receipt.final_typing_capture = await captureTyping();
+		else receipt.final_typing_capture_skipped = "daemon-api-roster-not-initialized";
+	} catch (error) {
+		receipt.final_typing_capture_error = `PIJ_NATIVE_FINAL_TYPING: ${String(error)}`;
+	}
+	try {
+		const final = captureSmokePanes(tmux);
+		receipt.final_panes = final.panes;
+		receipt.final_pane_captures = final.captures;
+	} catch (error) {
+		receipt.final_capture_error = String(error);
+	}
+	try {
+		tmux(["kill-server"]);
+		return true;
+	} catch (error) {
+		receipt.tmux_cleanup_error = String(error);
+		return false;
+	}
+}
+
 // Known Copilot welcome layout may finish painting before the composer below it.
 const COPILOT_WELCOME_ROWS = [
 	/^│\s*│$/,
@@ -902,6 +1001,7 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 	let env: NodeJS.ProcessEnv | undefined;
 	let socketCreated = false;
 	let code = 1;
+	let captureFinalTyping: (() => ReturnType<typeof captureSmokeFinalTyping>) | undefined;
 	const socket = join(run, "tmux.sock");
 	const tmux = (args: string[], preserveOutput = false) =>
 		command("tmux", ["-S", socket, ...args], env, preserveOutput);
@@ -1042,12 +1142,12 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 			secrets.add(value);
 			return value;
 		};
-		const api = async (path: string, body?: unknown): Promise<unknown> => {
+		const api = async (path: string, body?: unknown, signal?: AbortSignal): Promise<unknown> => {
 			const response = await fetch(`http://${addr}${path}`, {
 				method: body === undefined ? "GET" : "POST",
 				headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
 				body: body === undefined ? undefined : JSON.stringify(body),
-				signal: AbortSignal.timeout(10_000),
+				signal: signal ?? AbortSignal.timeout(10_000),
 			});
 			const raw = await response.text();
 			let envelope: Record<string, unknown>;
@@ -1194,12 +1294,14 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 				seat.id,
 				msgId,
 			);
-		const seats = async (): Promise<Seat[]> => {
-			const data = await api("/v1/seats");
+		const seats = async (signal?: AbortSignal): Promise<Seat[]> => {
+			const data = await api("/v1/seats", undefined, signal);
 			const list = Array.isArray(data) ? data : object(data).seats;
 			assert(Array.isArray(list), "roster must be array or seats envelope");
 			return list as Seat[];
 		};
+		captureFinalTyping = () =>
+			captureSmokeFinalTyping({ tmux, seats, get: (path, signal) => api(path, undefined, signal) });
 		const events = (seat: Seat) =>
 			readNativeEvents(join(copilotHome, "session-state", seat.session, "events.jsonl"));
 		const capture = (seat: Seat) => tmux(["capture-pane", "-p", "-J", "-t", seat.pane]);
@@ -1720,6 +1822,8 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 				resume.grade =
 					"native-accepted-not-model-complete; real host death observed before fresh manual resume";
 			}
+			// Successful modes also retire panes before the outer finally block.
+			witnesses.push({ kind: `${mode}-final-typing-capture`, ...(await captureFinalTyping()) });
 			for (const seat of [sender, activeTarget, disabled]) tmux(["kill-pane", "-t", seat.pane]);
 		}
 		receipt.status = "passed";
@@ -1732,21 +1836,7 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 		receipt.error = message;
 		code = receipt.status === "prerequisite-missing" ? 2 : 1;
 	} finally {
-		if (socketCreated) {
-			try {
-				const final = captureSmokePanes(tmux);
-				receipt.final_panes = final.panes;
-				receipt.final_pane_captures = final.captures;
-			} catch (error) {
-				receipt.final_capture_error = String(error);
-			}
-			try {
-				tmux(["kill-server"]);
-			} catch (error) {
-				receipt.tmux_cleanup_error = String(error);
-				code = 1;
-			}
-		}
+		if (socketCreated && !(await finishSmokePanes(tmux, receipt, captureFinalTyping))) code = 1;
 		if (daemon) await stopOwned(daemon);
 		if (fixture) {
 			receipt.fixture_requests = fixture.requests;
