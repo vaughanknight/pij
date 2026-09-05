@@ -14,8 +14,12 @@ use pij_core::model::{
     SystemState,
 };
 use std::path::Path;
+use std::time::Duration;
 
-use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, SeatFilter, Spine, TmuxPort};
+use pij_core::ports::{
+    DeferOutcome, DeliveryAck, DeliveryEnqueue, Queue, Registry, ReleaseOutcome, SeatFilter, Spine,
+    TmuxPort,
+};
 
 /// Every promise the [`Registry`] port makes, in one place.
 ///
@@ -476,6 +480,122 @@ pub async fn queue_contract(queue: &dyn Queue) {
         .ack(JobId(u64::MAX), Outcome::Done)
         .await
         .expect_err("acking a job nobody claimed must be refused");
+
+    // PLAN 136's TWO VERBS, pinned HERE because the reviewer found them pinned
+    // only by two independent hand-written suites — and drifting (f3). The pair
+    // decides whether a message a human is typing over comes back at the right
+    // moment, so a fake that is more permissive than the store makes every green
+    // typing test a false negative.
+    let typing = Job {
+        kind: "delivery:seat-typing".to_string(),
+        serial_key: "seat-typing".to_string(),
+        payload: "{}".to_string(),
+        dedupe_key: "typing-1".to_string(),
+        attempt: 0,
+    };
+    let DeliveryEnqueue::Queued { .. } = queue
+        .enqueue_delivery(typing.clone())
+        .await
+        .expect("enqueue the typing delivery")
+    else {
+        panic!("a new delivery must queue");
+    };
+    let typing_kinds = vec!["delivery:seat-typing".to_string()];
+    let (claimed_typing, _) = queue
+        .claim(&typing_kinds, "typing-worker")
+        .await
+        .expect("claim the typing delivery")
+        .expect("a queued delivery is claimable");
+
+    // DEFER moves a live row back to pending WITHOUT charging it an attempt: a
+    // hold is not a failed delivery, and inflating `attempt` would corrupt the
+    // backoff and budget logic that reads it.
+    let deferred = queue
+        .defer(claimed_typing, Duration::from_secs(60))
+        .await
+        .expect("defer a claimed delivery");
+    assert!(
+        matches!(deferred, DeferOutcome::Deferred { .. }),
+        "deferring a live row reports the identity the QUEUE holds: {deferred:?}"
+    );
+    assert!(
+        queue
+            .claim(&typing_kinds, "typing-worker")
+            .await
+            .expect("claim during the deferral")
+            .is_none(),
+        "a deferred row is not claimable until its deadline: this is the whole hold"
+    );
+
+    // RELEASE clears the deferral and the row is immediately claimable again.
+    let released = queue
+        .release_deferred(claimed_typing)
+        .await
+        .expect("release the deferral");
+    assert!(
+        matches!(released, ReleaseOutcome::Released { .. }),
+        "releasing a deferred row names it: {released:?}"
+    );
+    let (reclaimed, reclaimed_job) = queue
+        .claim(&typing_kinds, "typing-worker")
+        .await
+        .expect("claim after release")
+        .expect("a released row is eligible at once");
+    assert_eq!(reclaimed, claimed_typing, "the SAME row comes back");
+    assert_eq!(
+        reclaimed_job.attempt, 0,
+        "defer/release must not charge an attempt"
+    );
+
+    // RELEASE IS PENDING-ONLY. The row is RUNNING now, and a duplicate release —
+    // which a restarted extension issues routinely — must NOT revoke the claim a
+    // live reader is executing, or that message goes out twice.
+    assert!(
+        matches!(
+            queue
+                .release_deferred(reclaimed)
+                .await
+                .expect("release a running row"),
+            ReleaseOutcome::NotDeferred
+        ),
+        "a running row is left alone, and says so"
+    );
+    assert!(
+        queue
+            .claim(&typing_kinds, "other-worker")
+            .await
+            .expect("claim after the no-op release")
+            .is_none(),
+        "the live reader still owns its row after a duplicate release"
+    );
+
+    // Absent and terminal are DIFFERENT facts: an absent job on release is a
+    // caller bug, a terminal one is a benign race, and one silent no-op for both
+    // leaves an operator unable to tell them apart.
+    assert!(
+        matches!(
+            queue
+                .defer(JobId(u64::MAX), Duration::from_secs(1))
+                .await
+                .expect("defer an absent job"),
+            DeferOutcome::NotLive { .. }
+        ),
+        "deferring a job nobody has is a typed no-op, never an error"
+    );
+    queue
+        .ack(reclaimed, Outcome::Done)
+        .await
+        .expect("ack the typing delivery");
+    assert!(
+        matches!(
+            queue
+                .release_deferred(reclaimed)
+                .await
+                .expect("release a terminal job"),
+            ReleaseOutcome::NotLive { .. }
+        ),
+        "a terminal row reports not-live rather than resurrecting"
+    );
 }
 
 /// A seat descriptor with the shape most contract tests want.

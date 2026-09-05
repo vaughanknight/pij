@@ -414,7 +414,7 @@ pub(crate) async fn adopt(
             Ok(identity) => identity,
             Err(error) => return internal(ADOPT, error),
         };
-        let Some((proc, source)) = identity else {
+        let Some(binding) = identity else {
             return refused(
                 ADOPT,
                 format!(
@@ -424,7 +424,7 @@ pub(crate) async fn adopt(
                 ),
             );
         };
-        (observed.cwd, Some(proc), source)
+        (observed.cwd, Some(binding.proc), binding.source)
     } else {
         // F005 — ADOPT DERIVES ITS EVIDENCE; `register` ACCEPTS AN ASSERTED ONE.
         // PANELESS REGISTRATION IS REFUSED OUTRIGHT.

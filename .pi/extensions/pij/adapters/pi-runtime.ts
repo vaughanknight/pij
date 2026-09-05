@@ -26,7 +26,7 @@ export interface CommandControl {
 }
 
 type RuntimeContext = Pick<ExtensionContext, "isIdle" | "compact"> & {
-	readonly ui: Pick<ExtensionContext["ui"], "onTerminalInput" | "setStatus">;
+	readonly ui: Pick<ExtensionContext["ui"], "onTerminalInput" | "setStatus" | "notify">;
 };
 
 export class PiRuntimeAdapter implements PiRuntimePort {
@@ -50,6 +50,13 @@ export class PiRuntimeAdapter implements PiRuntimePort {
 			cb(this.clock());
 			return undefined;
 		});
+	}
+
+	/** Arrival becomes OBSERVABLE here. Delivery to a busy seat already happened;
+	 * a steered message just is not on screen until the step boundary, which on a
+	 * slow model is minutes of the human believing nothing came. */
+	notify(text: string, level: "info" | "warning" | "error" = "info"): void {
+		this.ctx.ui.notify(text, level);
 	}
 
 	setStatus(text: string | undefined): void {

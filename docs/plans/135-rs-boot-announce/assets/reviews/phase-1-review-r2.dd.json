@@ -1,0 +1,333 @@
+{
+  "dd": {
+    "schema": "builder/review"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Cross-model review — rs-boot-announce (135), phase 1, round 2 (u3 + u4 fix commits)",
+        "reviewer": "pij-wild-xoxarle",
+        "model": "github-copilot/claude-opus-5 (effort high)",
+        "round": "2",
+        "date": "2026-09-05",
+        "plan": "../../plan.dd.json#meta",
+        "note": "VERDICT: both fixes are CORRECT and several exceed what was commissioned. All eleven round-2 targets PASS. Three new MINOR findings, none blocking, one of which is a partial execution of AC8's own widened scope. SUBJECTS: u3 897b7cd771bebe4632ef7883aa628b9b33a2e7db (branch 135-rs-boot-announce-u3, parent 54342bf1) and u4 0979d3316567be57223abad7609e79f2a512e57c (branch 135-rs-boot-announce-u4-r2, parent be778b9c). HOW I VERIFIED, and it is the round-1 lesson applied to myself: u3's branch is based on a STALE main — 54342bf1 is an ancestor of today's main (1142c87e) but roughly 13,000 lines behind it, missing all of plan 136 AND the f1 fixture fix that this very review produced. Testing on the branch would therefore have proved something about a tree nobody will ship. I trial-merged each fix into main with `git merge-tree --write-tree` (no repo mutation, zero conflicts, disjoint file sets), materialised the resulting trees with `git archive`, and ran every suite THERE. That is the tree that ships. Results on the merged trees: pij-daemon --lib 187 passed 0 failed, including both the new behavioural witness and the T8 canary; pij-tmux + pij-transport 26 passed; the seven TS suites touching frame vocabulary 672 passed, 2 skipped. I also re-derived the recogniser change against a fresh 1663-process live sweep and independently re-implemented u4's vocabulary guard to check it from the outside. TWO OF MY OWN INSTRUMENTS FAILED TODAY and both were caught by re-measuring before reporting — a TZ probe whose shell quoting made local and UTC look identical, and a `grep` whose unbracketed `[pij from` pattern is a regex character class and silently matched nothing. The second one materially changed a finding: with `grep -F` the scope sweep returns four live seat-facing legacy heads that the broken form reported as zero. AMENDMENT: this record's headline verdict stands, but it must be read with r2o1 — one real-tmux adapter test (`watchdog_expiry_before_disable_cannot_strand_input`) was observed RED on u3's stale tree, in a file neither commit touches, in a run I should not have launched. Unreproduced, unattributed, and handed to the PM rather than dressed as a finding or omitted."
+      }
+    },
+    {
+      "name": "findings",
+      "value": [
+        {
+          "id": "r2t1",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "crates/daemon/src/http/identity_tests.rs pane_fallback_preserves_claim_and_rebounds_for_new_unrecognized_process",
+          "finding": "TARGET 1 — the behavioural witness. PASS, and it exceeds the commission. It does not merely assert that the override was skipped; it drives three registrations through the real router with a real process tree and asserts `bindings == [\"created\", \"same\", \"rebound\"]` with the comment 'a new process in the stable pane must rebound, not suppress its announce' — the plan's own bug expressed as a positive property. Four things make it a witness rather than a shape: it calls `child.restart_child()` between `same` and `rebound` while asserting `child.shell.id() == pane_pid`, so the pane root is genuinely STABLE while the harness process changes, which is exactly f2's scenario; it asserts `harness_process(pane_pid, Harness::Omp).pid == pane_pid` FIRST, proving the recogniser really does fail for this synthetic child rather than assuming the fallback is exercised; it asserts `accepted == claim` and `stored == Some(claim)`, so the caller identity is preserved rather than downgraded; and it carries three refusal arms — a live process OUTSIDE the subtree (`std::process::id()`, which proves liveness alone is insufficient), a recycled stamp (`current_start + 1`, which proves membership is by full identity and not by pid), and a half claim (`proc_start: null`). Each refusal arm additionally asserts the stored row is UNCHANGED, which proves 'nothing was written' is atomic rather than merely claimed. I asked for none of that last part.",
+          "receipt": "Green on the trial-merge tree main+u3 (06cb9d3a): `cargo test -p pij-daemon --lib` → 187 passed, 0 failed, including `http::identity_tests::pane_fallback_preserves_claim_and_rebounds_for_new_unrecognized_process`."
+        },
+        {
+          "id": "r2t2",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "crates/tmux/src/lib.rs harness_command",
+          "finding": "TARGET 2 — the recogniser, verified against a real sweep rather than synthetic strings. PASS, and the shipped change is exactly variant C: `script.contains(package) && matches!(name, Some(\"cli\" | \"index\"))` became `script.contains(package)`, with the `node|bun` interpreter list UNTOUCHED. That is the axis I reversed myself on, implemented in the direction the live data supported. I re-ran the sweep on a fresh 1663-process snapshot: 90 candidates, the shipped rule accepts 76 and admits ZERO `__omp_worker_*` processes — the property that made every interpreter-widening variant unacceptable. Worth recording honestly: on the CURRENT process population the old and new rules agree exactly, because the two copilot `npm-loader.js` processes that distinguished them are no longer running. The evidence that justified the change is no longer observable live. It survives only because u4… (u3) captured it as a test string, which is the right response to evidence with a short half-life, and the new test `captured_live_interpreters_and_review_loader_define_the_matcher_boundary` is honest about provenance in its comment ('captured live DURING the cross-model review sweep, not claimed live at test time'). I verified all four of its assertions against my own port: the bun shim accepts, the `bun.exe` package-path worker rejects, the copilot `npm-loader.js` accepts, and `node unrelated.js <pkg-path-as-argument>` rejects — that last negative is an addition of u3's that guards the case where the package path appears as an argument rather than as the script.",
+          "receipt": "Fresh sweep 2026-09-05: `ps -Awwo pid=,ppid=,command=` → 1663 processes, 90 candidates; shipped rule accepts 76, workers admitted 0; delta vs old rule on this population = 0 gained, 0 lost. All four shipped fixture strings reproduce against my independently verified port; the OLD rule rejects the copilot loader, so the test is a genuine RED-first witness for this change."
+        },
+        {
+          "id": "r2t4",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "crates/transport/src/uds.rs discover_pane",
+          "finding": "TARGET 4 — f3, and it was fixed better than I asked. The `entry.ok()?` became `let Ok(entry) = entry else { continue; };`, which is the one-line fix I named. The part I did not ask for: the loop was extracted into `discover_pane(&self, suffix, entries: impl Iterator<Item = io::Result<DirEntry>>)`, so the ENTRY STREAM IS INJECTABLE and an errored DirEntry can actually be tested rather than argued about. The PM's extension of my item — skip rather than return on ALL early exits, not only the DirEntry one — is satisfied by a single table-driven test that walks ELEVEN rejection classes (entry error, non-json path, malformed json, unreadable json, unrelated pane, missing pane, invalid process start, dead process, mismatched process start, missing socket, empty socket) and asserts the live candidate is still found after each. It also forces the rejected entry to be enumerated BEFORE the live one, so the test cannot pass by accident of directory order.",
+          "receipt": "Green on main+u3 (06cb9d3a): `cargo test -p pij-tmux -p pij-transport --lib` → 26 passed, including `uds::tests::pane_discovery_skips_every_rejected_entry_before_a_live_candidate`."
+        },
+        {
+          "id": "r2t6",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "crates/daemon/src/http/mod.rs pane_harness_identity + identity.rs adopt",
+          "finding": "TARGET 6 — placement, the hazard I flagged as most likely to be lost in a tidy refactor. PASS, and unambiguously. `pane_harness_identity` now returns a `PaneHarnessIdentity { proc, source, subtree }` and makes NO decision about any claim; its doc comment states the rule in terms — 'Daemon-derived selection and subtree evidence, never caller assertions. Only register may select a claimed member; adopt does not carry a claim here.' The claim-selection lives entirely in the `register` handler. `adopt` consumes only `binding.proc` and `binding.source`, never touches `subtree`, and never passes a claim — so `CallerContext.pid`, which identity.rs:119-122 marks 'DIAGNOSTIC ONLY, never admissible as bind evidence', cannot reach the preference by any path. A new test `adopt_ignores_diagnostic_caller_identity` pins it rather than leaving it to the comment.",
+          "receipt": "crates/daemon/src/http/mod.rs:391-450 at 897b7cd7 read in full; identity.rs adopt uses `binding.proc`/`binding.source` only. Green in the 187-test daemon run."
+        },
+        {
+          "id": "r2t7",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "crates/daemon/src/http/mod.rs register claim selection",
+          "finding": "TARGET 7 — subtree-tested rather than liveness-only. PASS, and the semantics are exactly the demotion I argued for: the claim is no longer EVIDENCE, it is a SELECTOR among processes the daemon observed for itself. When `source == ProcSource::Pane` and a claim carries a pid, the claim must satisfy `observed.subtree.contains(&claim)` where `claim` is a full `ProcIdentity`, so membership is by pid AND proc_start — a recycled pid does not qualify, and the test proves that with a `current_start + 1` arm. Failure REFUSES with 'nothing was written' rather than silently substituting the shell. Two properties I checked because they decide whether the remedy actually works rather than merely reads well: (1) the subtree is the COMPLETE descendant set, built by `harness_process_from_snapshot` whether or not a harness was selected, so a self-registering omp/pi whose command the recogniser does not know still finds its own pid in the evidence and keeps its identity — which is the entire point; (2) when the walk cannot run at all (`harness_process_tree` returns None) the second fallback sets `subtree: vec![pane_root]`, so a claim that is not the pane root is refused rather than downgraded. That second path converts a transient `ps -A` failure from a silent wrong binding into a loud refusal, which is remedy (b) from round one and the direction I asked for.",
+          "receipt": "mod.rs:477-497 at 897b7cd7; `harness_process_from_snapshot` builds `subtree` unconditionally (crates/tmux/src/lib.rs). Refusal arms green in `pane_fallback_preserves_claim_and_rebounds_for_new_unrecognized_process`."
+        },
+        {
+          "id": "r2t8",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "crates/daemon/src/http/identity_tests.rs register_walk_and_sqlite_roundtrip_preserve_identical_process_start",
+          "finding": "TARGET 8 — the canary. PASS on both halves. The test is byte-for-byte UNMODIFIED: I extracted the function body from 54342bf1 and from 897b7cd7 and diffed them — identical, 70 lines. And it is GREEN on the merged tree, which is the substantive half rather than the bookkeeping one. Recall why it is a canary: it posts `\"pid\": child.shell.id(), \"proc_start\": 1` — a deliberately wrong pair that would be refused by registration.rs:74 if it were ever honoured — and it passes only because the pane override discards that claim. Under the new code the walk SUCCEEDS in that scenario, so `source == Harness`, the preference does not engage, the claim is overwritten, and the test stays green exactly as predicted in round one. Had u3 implemented the preference too broadly it would have reddened, and it did not need to be touched.",
+          "receipt": "`git show 54342bf1:…identity_tests.rs` and `git show 897b7cd7:…` both sliced to the function → `diff` reports IDENTICAL (70 lines). Green in the 187-test daemon run on main+u3."
+        },
+        {
+          "id": "r2n1",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "crates/tmux/src/lib.rs harness_process_from_snapshot",
+          "finding": "n1 — ambiguity. PASS, and u3 took the stronger option rather than the one I named. I asked only that a same-depth tie be refused or justified; the walk was rewritten level-by-level so that equally-near matches are ambiguous and it falls back to the PANE ROOT instead of choosing by `ps` enumeration order. Both halves of this plan now agree that order is never a decision procedure, which was the substance of the finding. The test proves order-independence rather than asserting it: it builds a tree with two equally-near `claude` children, asserts the root is selected, then REVERSES the row order and re-asserts — and it additionally checks that the complete subtree is retained (4 members), that a process outside the pane is excluded, and that a same-pid-different-start identity is NOT a member. That last assertion is what makes r2t7's recycled-stamp refusal real rather than incidental.",
+          "receipt": "`equally_near_harnesses_are_ambiguous_but_the_complete_subtree_is_retained` green in the 26-test tmux/transport run on main+u3."
+        },
+        {
+          "id": "r2n4",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "crates/daemon/tests/review_regressions.rs",
+          "finding": "n4 — the timezone-dependent witness. PASS, implemented as recommended and then improved. On a host where local == UTC the test now writes an explicit SKIP line to stderr — 'this host cannot exercise the local/UTC split. Capability agreement still runs.' — so a UTC runner reports the property as UNEXERCISED instead of reporting it as held. That is the whole of my recommendation. The improvement I did not ask for: on a divergent host it adds an arm that re-runs `can_deliver` with `pane = None`, asserting that the EXACT-identity path alone succeeds, with the comment 'pane fallback must not rescue an incorrect local/UTC comparison'. That removes the fallback which could otherwise mask a timebase bug even on a host where the two timebases differ — a stronger property than the one I proposed. Also note the skip is written to stderr specifically to bypass libtest's successful-test output capture, which is the difference between a skip a human sees and a skip that is swallowed.",
+          "receipt": "crates/daemon/tests/review_regressions.rs at 897b7cd7, lines 342-366. This host diverges (local 11:29:34 / UTC 01:29:34, +1000), so the assert arm rather than the skip arm runs here."
+        },
+        {
+          "id": "r2n5",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": ".pi/extensions/pij/core/inbox.ts:358",
+          "finding": "n5 — the inbox listing. PASS, and it took the third form rather than either frame: `lines.push(`${message.from}: ${content}`)`. No head, no tail, and the listing's structure is preserved — one line per message, indented attachment continuations, count trailer. The reason this matters is not formatting: `pij inbox` output is read BY AN AGENT, and announceText plus AGENTS.md both tell every seat that only injected messages are live instructions and that the inbox is a transport log. Rendering log entries in the byte shape of a genuine injected frame would have erased the only cue distinguishing them — D-040's failure mode reintroduced inside a fix justified as 'stop teaching seats the wrong shape'. u4's words back to the PM, 'this is a log listing, not an injected instruction', are the distinction landing rather than being obeyed. The post-condition is now stronger than before: the listing contains NEITHER head, so the guard asserts absence of both rather than presence of the right one.",
+          "receipt": "core/inbox.ts at 0979d331; `core/inbox.test.ts` expectations updated to the new form; green in the 672-test TS run on main+u4 (92e64739)."
+        },
+        {
+          "id": "r2n6",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": ".pi/extensions/pij/core/cli.test.ts:751 + core/message.test.ts vocabulary guard",
+          "finding": "n6 and f6 — PASS, both, and f6 came back with a sensor rather than five string edits. The negative assertion was widened to `not.toContain(\"[pij\")` — the substring form, which survives a third generation, rather than enumerating the two heads anyone currently remembers. All five LLM-facing strings in index.ts are corrected (:69 description, :70 promptSnippet, :72 promptGuideline, :78 the `to` parameter, :293 pij_close), as are the two stale explanatory comments at core/daemon/router.ts:35 and core/daemon/loop.ts:586 which I had recorded but not raised. THE PART THAT MATTERS MOST is that AC8's vocabulary rule stopped being prose: a new extension-wide guard walks every file under `.pi/extensions/pij` and fails on any `[pij from` outside a structured allowlist, where whole-file allowances cover the parser and its own contract test and the captured pane-signal bytes, and EXACT LINE allowances cover the arbitrary typing-guard and terminal-transport payloads that are not frame renderings at all. That is INS-003's remedy applied to the exact class of rule that had been rotting: a rule no sensor reads becomes a rule a sensor reads. I re-implemented the guard independently against the merged tree and got the same answer — zero violations — rather than trusting its own green.",
+          "receipt": "Independent re-implementation over main+u4 (92e64739) with the allowlist transcribed verbatim from the source: 0 violations outside the allowlist, and 0 stale exemptions (every listed line exists exactly as written). `cli.test.ts:751` reads `not.toContain(\"[pij\")`. TS suites green: 672 passed, 2 skipped."
+        },
+        {
+          "id": "r2f1",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "checked",
+          "address": "skills/pij/references/routes/{agent.md:35, skill.md:19, peer.md:131, peer.md:140}",
+          "finding": "AC8's WIDENED SCOPE IS ONLY PARTLY EXECUTED, and the new guard cannot catch the remainder because its scan root is `.pi/extensions/pij`. The PM widened AC8 to repo-owned seat-facing docs and named peer.md:104; that line is fixed, and its pinning assertion at cli.integration.test.ts:306 was updated with it — correctly, since there the doc string genuinely is the contract. But FOUR live seat-facing occurrences remain, all in the same `skills/pij/references/routes/` directory: agent.md:35 'the report lands in **your** pane as a `[pij from <id>]` turn'; skill.md:19 'The report arrives in YOUR pane as a `[pij from <id>]` turn'; peer.md:131 '# round-trip lands back as [pij from pij-xxxxx]'; and peer.md:140 '# prints [pij from pij-xxxxx] ok'. These are active instructions read into agent context, the same class as f6's tool metadata, not historical records. THE SHARPEST ONE IS peer.md:140: it documents the output of `pij inbox`, which u4 JUST CHANGED to `<id>: content`, so that line is now doubly wrong — it names a dead frame AND a dead listing format, and it follows necessarily from u4's own edit. peer.md:131 is a canary instruction telling an operator what to look for on a round trip; someone following it will look for a head that is no longer emitted. SMALLEST FIX: correct the four lines. BETTER FIX, and the one that stops this recurring: extend the guard's scan root to include `skills/pij/**` (and arguably `docs/how` and `docs/domains`), explicitly EXCLUDING `docs/plans/**`, which is historical record and must keep describing what was true when it was written. The guard is the right instrument; its scope is one directory short of the problem it was built for. Not raised as a defect against the units — u3 and u4 each did what they were dispatched to do — but the AC is not yet true as widened.",
+          "receipt": "Fixed-string sweep on main+u4 (92e64739): `grep -rF -l \"[pij from\" skills crates docs harness AGENTS.md` → skills/pij/references/routes/{agent,peer,skill}.md, crates/core/src/framing.rs (the parser and its test — correct), crates/harnesses/src/interaction.rs (arbitrary self-injection payloads, the Rust twin of the allowlisted typing-guard lines — correct), docs/how/pij.md, docs/domains/{pij-messaging,flow-pair}/domain.md, plus docs/plans/** historical. NOTE ON METHOD: my first sweep used `grep -r \"[pij from\"` unquoted-as-regex, where `[pij` is an unterminated bracket expression; it returned ZERO and I nearly recorded 'nothing outside the extension'. The `-F` form is the one that found these four."
+        },
+        {
+          "id": "r2f2",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "checked",
+          "address": ".pi/extensions/pij/core/message.test.ts LEGACY_FRAME_ALLOWLIST",
+          "finding": "THE GUARD HAS NO UNUSED-EXEMPTION CHECK, which is the exact drift the PM said he was least sure of. The line-level allowlist is the right design — exact lines, not whole files, so a new legacy head cannot hide behind a broad exemption. What it cannot see is the other direction: if an allowlisted line is later edited or deleted, the entry silently persists as a dead exemption. Two consequences, and the second is the one that bites: the allowlist decays into a list nobody can justify, and a stale entry can later match a genuinely NEW line that happens to be textually identical — at which point the guard is scoped by something other than the list that was agreed, which is precisely the PM's stated worry. I checked today and there is NO drift: all fourteen listed lines exist exactly as written across the three files, verified by an independent re-implementation rather than by reading. So this is prophylactic. SMALLEST FIX: track which allowlisted lines were matched during the walk and assert the set is complete — an unused exemption then fails the same test, the way an unused lint suppression fails a linter. Cost is a `Set` and one assertion.",
+          "receipt": "Independent scan over main+u4 with the allowlist transcribed verbatim: 14 line exemptions across core/daemon/typing-guard-contract.test.ts (6), core/daemon/pane-signals.test.ts (2), adapters/daemon-tmux.test.ts (6); every one matched at least once; 0 stale. The guard's own code compares `line.trim()` against `allowance.lines` and never records which entries fired."
+        },
+        {
+          "id": "r2f3",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "checked",
+          "address": "branch 135-rs-boot-announce-u3 (parent 54342bf1)",
+          "finding": "u3's RECEIPTS ARE ABOUT A TREE NOBODY WILL SHIP, and this is the round-one lesson pointing at the fix for the round-one lesson. Its branch is based on 54342bf1, which IS an ancestor of today's main (1142c87e) but roughly 13,000 lines behind it: the branch is missing the whole of plan 136 (hold-queue, queue.rs, pointer/worker.rs, interaction.rs, vitest.config, biome, justfile) AND — the pointed part — the f1 golden-fixture relocation that this review produced, so on u3's own branch the fixture sits back in the plan folder. A green suite there is honest about that tree and says nothing about main. The DEFECT IS NOT THE STALENESS, which is normal for a branch cut hours ago; it is that a done-report's numbers will be read as a statement about the merge target unless the report says which tree it ran on. I did not accept them: I trial-merged into main with `git merge-tree --write-tree` (zero conflicts), materialised the resulting tree, and re-ran everything there. Everything is green on the merged tree, so there is no functional problem — the finding is about what the receipt MEANS. Both fixes merge cleanly and touch DISJOINT file sets (12 files vs 14, intersection empty), so composing them carries no shared-file hazard, which is the same guarantee the impl-guide's original fan-out relied on. RECOMMENDED: a done report states the merge-base it ran against, or the PM re-runs on the trial-merge tree before accepting. This is INS-001 one level out — not 'the working tree differs from the committed tree' but 'the committed tree differs from the tree it lands in'.",
+          "receipt": "`git merge-base --is-ancestor 54342bf1 main` → true; `git diff --stat main 897b7cd7` → 115 files, 13,393 deletions. `git merge-tree --write-tree main 897b7cd7` → tree 06cb9d3a, 0 conflicts; `… main 0979d331` → tree 92e64739, 0 conflicts. Shared files between the two commits: none. All suites re-run on the merged trees."
+        },
+        {
+          "id": "r2n7",
+          "kind": "question",
+          "severity": "NIT",
+          "state": "checked",
+          "address": "crates/transport/src/uds.rs SessionRecord/PeerKey pid_domain + crates/testkit/fixtures/MANIFEST.toml",
+          "finding": "THE pid_domain WIDENING IS SOUND BUT ITS CONTRACT ARTIFACT NOW CONTRADICTS THE CODE. `pid_domain` became `Option<String>` with `#[serde(default)]` on both the session record and the peer key, justified by REAL captured Claude 2.1.241 records that omit the field entirely — without it those seats cannot receive over uds at all. The equality requirement is preserved exactly where it matters: the new test pins the full truth table, and one-sided absence still refuses (None vs Some(darwin) → no capability), as does a mismatch. The change is therefore narrow and I would ship it. TWO BOOKKEEPING CONSEQUENCES. (1) The MANIFEST entry for `uds/4242.…key` still records the answer 'Authentication capability exists only when procStart and pidDomain equal the resolved session record and peerToken is non-empty; ABSENT, malformed, mismatched or ambiguous keys mean no capability.' Absent-on-both now DOES yield capability, so the recorded answer is false. The MANIFEST's own header promises that `verify_manifest` re-hashes bytes 'so a fixture cannot be edited into meaning something else while its recorded answer quietly stays behind' — but the sha guards the BYTES, and here the CODE moved while the answer stayed behind. That is the same shape one substrate over. (2) The new 2.1.241 captures live at `crates/transport/tests/fixtures/claude-2.1.241/` and are NOT registered in the MANIFEST corpus, so they carry no sha and no recorded answer. There is precedent for crate-local fixtures, so this is a NIT rather than a defect — but they are real captures with a known answer, which is exactly what the corpus is for, and plan 135 itself moved its golden fixture INTO the corpus so archival could not break it.",
+          "receipt": "crates/transport/src/uds.rs:284,295,321 at 897b7cd7 (`Option<String>` both sides, equality retained); `recorded_2_1_241_registry_pair_requires_equal_optional_pid_domains` pins (None,None)=true, (darwin,darwin)=true, (None,darwin)=false, (darwin,None)=false, (darwin,linux)=false. MANIFEST.toml answer text unchanged by either commit; `grep -c 2.1.241 crates/testkit/fixtures/MANIFEST.toml` → 0."
+        },
+        {
+          "id": "r2d1",
+          "kind": "question",
+          "severity": "NA",
+          "state": "checked",
+          "address": "proc_source consumer (target 3)",
+          "finding": "TARGET 3 — proc_source gets a real consumer, with its limitation stated rather than hidden. `RustSeatDescriptor` gains a typed `proc_source?: \"harness\" | \"pane\"`, so the TypeScript type stops being an incomplete description of the wire, and `rust-runtime.ts` emits a runtime notice on boot when the value is `pane`: 'pij: harness discovery fell back to the pane; registered pid …'. That closes the silent half of f2 — a pane-bound seat now says so at the moment it happens. The PM's ruling that the limitation be stated explicitly (proc_source is response-only and not persisted on the seat row, so `pij-rs state` and `pij list` cannot show it without a schema change that is out of scope) is the right call and is what makes this reviewable: a stated boundary can be checked, an invisible field cannot. The residual is honest and worth naming for prime: the signal exists only at the boot moment in one seat's own notice stream, so an operator auditing the FLEET for pane-bound seats still has no query — which is f4's gap, unchanged and still open.",
+          "receipt": ".pi/extensions/pij/core/daemon-wire.ts and adapters/rust-runtime.ts at 897b7cd7; `daemon-wire.test.ts` gains coverage (10 tests). Green in the TS run on main+u3."
+        },
+        {
+          "id": "r2o1",
+          "kind": "question",
+          "severity": "NIT",
+          "state": "unchecked",
+          "address": "crates/tmux/tests/adapter.rs:657 watchdog_expiry_before_disable_cannot_strand_input",
+          "finding": "AN OBSERVED RED THAT I AM NOT ATTRIBUTING, recorded because an unexplained failure I chose not to mention would be the same category of omission as a green describing the wrong tree. Early in round 2 I launched `cargo test -p pij-tmux -p pij-transport` WITHOUT `--lib`, which pulled in crates/tmux/tests/adapter.rs — real tmux integration tests — on a machine carrying a live fleet. 31 passed, 1 FAILED: `watchdog_expiry_before_disable_cannot_strand_input` panicking at adapter.rs:657 with 'submit marker did not clear'. THE OVERREACH IS MINE: the packet reserves the tmux smoke to the PM because it is serialized, and driving real panes is the same shared-resource class as the register curl the PM correctly stopped. I applied that rule to a registry write and not to a test binary that drives tmux. WHY IT IS PROBABLY NOT A REGRESSION, as evidence rather than reassurance: neither commit touches adapter.rs (0 hits for both SHAs; its last change is 1257c32f, unrelated to 135); u3's crates/tmux/src/lib.rs change is harness_process/harness_process_tree, which the submit-marker watchdog path does not call; it ran on u3's STALE tree rather than the merged tree, so it is not evidence about the merge target at all; and the machine carries debris from earlier runs of this exact test binary — four `adapter-53d95b069a4e770c` helper processes from Tue Sep 1 (pids 659, 22378, 87433, 96860) still running out of pij-worktrees/s122-tmux-full-body, plus a Sep 2 `pij-rs-submit-forced-adapter-cas-…` reservation shell at pid 97103. Stranded helpers holding `@pij-submit-owner` pane options is a plausible mechanism for this precise failure, which would make it environment-dependent rather than tree-dependent. I did NOT re-run it: that means driving real tmux against the live fleet again, and once was already a mistake. If it is re-run it should be by the PM on a quiet pane, and the four-day-old helper processes are worth killing first. I have deliberately NOT called it a load artifact: that is a claim about repetition and I ran it once.",
+          "receipt": "`cargo test -p pij-tmux -p pij-transport` in /tmp/pij-u3 (u3's own tree, parent 54342bf1): 31 passed, 1 failed. `git show --name-only` for 897b7cd7 and 0979d331: neither lists crates/tmux/tests/adapter.rs. `ps -Awwo pid=,lstart=,command= | grep -F acquire_watchdog_race_helper_process` → 4 processes dated Tue Sep 1 from a different worktree. All `--lib`-scoped runs reported elsewhere in this record are unaffected."
+        },
+        {
+          "id": "r2f4",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "checked",
+          "address": ".pi/APPEND_SYSTEM.md:162 (plus second-tier docs and one stale docstring)",
+          "finding": "THE SAME DEFECT AT THE HIGHEST ALTITUDE IT HAS, and it is the third iteration of one pattern. AC8 fixed the announce a seat reads at BOOT. f6 fixed the metadata a seat reads on the SEND TOOL. Both were scoped to where someone had looked. `.pi/APPEND_SYSTEM.md:162` still reads 'Real peer messages are injected **inline** as `[pij from <id>] <text>`.' — and per AGENTS.md that file is synced by `just install` to `~/.pi/agent/APPEND_SYSTEM.md`, the MACHINE-GLOBAL SYSTEM-PROMPT APPEND for every pi session on the box. So the highest-altitude seat-facing surface in the repository still teaches the dead generation, in the system prompt, to every session — strictly above the tool description and above the boot announce. The widened guard does not cover it: its maintained surfaces are `.pi/extensions/pij` and `skills/pij`, and this file sits at `.pi/`. SMALLEST FIX: one sentence. STRUCTURAL FIX: add the file to the guard's surfaces — it is a single file rather than a directory, so it needs an explicit entry rather than a third root, which is a five-line change to the walk. SECOND TIER, live documentation rather than historical record, listed so the sweep is complete rather than because each needs fixing now: docs/how/pij.md:243, docs/domains/pij-messaging/domain.md:33 and :63 (the domain doc for the very module that changed), docs/domains/flow-pair/domain.md:51. THIRD, cosmetic: harness/scripts/tmux-claude-topic-scan.py:16 is a docstring saying the scanner excludes '`[pij from ...]` peer relay traffic' — its RELAY_RE was correctly widened to `\\[pij(?:-rs)? (from|watchdog)` in the original 135 commit, so the comment now understates what the code matches. docs/plans/** is correctly excluded throughout: it is historical record and must keep describing what was true when written.",
+          "receipt": "Fixed-string sweep on the composed+main tree (77e099c4): `grep -rF -l \"[pij from\" skills .pi crates harness AGENTS.md` → the five allowlisted extension files, `.pi/APPEND_SYSTEM.md`, crates/core/src/framing.rs (the parser, correct), crates/harnesses/src/interaction.rs (arbitrary self-injection payloads, correct), and harness/scripts/tmux-claude-topic-scan.py (docstring only). AGENTS.md documents the APPEND_SYSTEM.md sync to ~/.pi/agent/ under `just install`."
+        },
+        {
+          "id": "r2f5",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "checked",
+          "address": ".agents-skills-port/pij-team/EXPERIENCES.md (merge hygiene, a685d1b0 vs main 702a6384)",
+          "finding": "THE FINAL COMPOSED BRANCH DOES NOT MERGE CLEANLY INTO TODAY'S MAIN, and prime should know before attempting it. `git merge-tree --write-tree main a685d1b0` exits 1 with exactly ONE conflict: .agents-skills-port/pij-team/EXPERIENCES.md. Main moved to 702a6384 ('Merge 136 PM buffer harvest') which appended to that ledger, and 135 appended to it too — two plans harvesting lessons into one prose file on the same day. EVERY PRODUCT-CODE FILE AUTO-MERGES: rust-runtime.ts, rust-runtime.test.ts and crates/daemon/src/http/ mod.rs all report 'Auto-merging' with no conflict, and the extracted merge tree carries conflict markers in that one file and nowhere else — I checked by scanning the whole tree for markers rather than trusting the summary. So this is merge hygiene, not a composition hazard, and it does not affect any verdict in this record: the suites do not read that file. It is a finding only because a clean `git merge` will stop, and a reviewer who reported 'verified on the merged tree' without saying the merge had a conflict would be describing a tree that required a human decision to exist.",
+          "receipt": "`git merge-tree --write-tree --messages main a685d1b0` → exit 1, tree 11d06f3d, 'CONFLICT (content): Merge conflict in .agents-skills-port/pij-team/EXPERIENCES.md'; `grep -rl '^<<<<<<< ' /tmp/pij-final` returns that path and nothing else. main at 702a6384."
+        },
+        {
+          "id": "r2n8",
+          "kind": "question",
+          "severity": "NIT",
+          "state": "checked",
+          "address": ".pi/extensions/pij/core/message.test.ts:250-254 (the surface-qualification assertion)",
+          "finding": "THE INVARIANT ASSERTION IS PRESENT AND SUFFICIENT, BUT IT GUARDS THE HARM RATHER THAN THE REFACTOR — and the distinction matters because the PM rested a decision on the stronger reading. The assertion is `if (allowance) expect(surface, \"Surface-qualify fired keys before widening allowances\").toBe(\".pi/extensions/pij\")`. I did not accept it from its own green; I mutation-tested it on a scratch copy in /tmp. RESULT ONE: generalising the ternary into a per-surface lookup — the exact refactor I flagged as the moment the prefix becomes load-bearing — leaves the test PASSING, 31/31. The refactor alone is invisible to it, because allowlist paths like `core/message.ts` never match a relative path under skills/pij, so `allowance` stays undefined and the assertion never fires. RESULT TWO: refactor PLUS an actual colliding path (I created skills/pij/core/message.ts containing a legacy head) FIRES, with exactly the remedy message intended — \"expected 'skills/pij' to be '.pi/extensions/pij'\". So it is a collision detector, not a widening detector. WHY THAT IS STILL ENOUGH, stated so nobody weakens it later on a wrong premise: masking REQUIRES a collision, and the assertion fires on the first collision that could mask anything, so the harm cannot occur silently. Not-prefixing the fired key is therefore safe. But the PM's phrasing — that the human check of reading the ternary in each diff 'has become a test' — is not accurate: between a widening landing and a colliding path appearing, the guard is weakened and nothing says so. Reading the ternary remains a human check; what became a sensor is the consequence, not the cause. u4's own RED proof used 'a temporary outside-surface resolution', which constructs the collision, so u4 proved the right thing — the description of what was proved drifted, not the proof.",
+          "receipt": "Mutation on /tmp/pij-final only. Refactor alone: `Tests 31 passed`. Refactor + skills/pij/core/message.ts: `AssertionError: Surface-qualify fired keys before widening allowances: expected 'skills/pij' to be '.pi/extensions/pij'` at message.test.ts:252. Tree restored and PROVEN pristine afterwards: sha256 of the restored file 8061268194df1d45a31093d35cae64180794180117924112b0880d0e416fd528 equals `git show a685d1b0:.pi/extensions/pij/core/message.test.ts | shasum -a 256`."
+        }
+      ]
+    },
+    {
+      "name": "verdict",
+      "value": [
+        {
+          "id": "rv1",
+          "finding": "phase-1-review-r2.dd.json#findings/r2t1",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Behavioural witness asserts rebound-not-same for a new process in a stable pane, proves the recogniser genuinely fails first, and adds three refusal arms each checking the row is unchanged. Exceeds the commission."
+        },
+        {
+          "id": "rv2",
+          "finding": "phase-1-review-r2.dd.json#findings/r2t2",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Variant C shipped exactly: stem constraint dropped, interpreter list untouched. Zero workers admitted on a fresh 1663-process sweep. Evidence captured as a test because it is no longer observable live."
+        },
+        {
+          "id": "rv3",
+          "finding": "phase-1-review-r2.dd.json#findings/r2t4",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "f3 fixed with the named one-liner plus an injectable entry stream, and eleven rejection classes tested with the rejected entry forced to enumerate first."
+        },
+        {
+          "id": "rv4",
+          "finding": "phase-1-review-r2.dd.json#findings/r2t6",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Preference lives in register only; the shared helper carries evidence and makes no claim decision; adopt cannot reach it. Pinned by a test, not left to the comment."
+        },
+        {
+          "id": "rv5",
+          "finding": "phase-1-review-r2.dd.json#findings/r2t7",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Claim demoted from evidence to selector: full-identity subtree membership, refusal with nothing written, and the complete descendant set retained so a self-registering seat keeps its own identity."
+        },
+        {
+          "id": "rv6",
+          "finding": "phase-1-review-r2.dd.json#findings/r2t8",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Canary byte-for-byte unmodified (70 lines, diff identical) and green on the merged tree — the outcome that only a correctly narrow preference produces."
+        },
+        {
+          "id": "rv7",
+          "finding": "phase-1-review-r2.dd.json#findings/r2n1",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Stronger than asked: equally-near matches fall back to the pane root, and order-independence is proven by reversing the rows rather than asserted."
+        },
+        {
+          "id": "rv8",
+          "finding": "phase-1-review-r2.dd.json#findings/r2n4",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "UTC hosts now report the property as unexercised on stderr, and a divergent host additionally proves the pane fallback cannot rescue a wrong timebase comparison."
+        },
+        {
+          "id": "rv9",
+          "finding": "phase-1-review-r2.dd.json#findings/r2n5",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Third form taken: `<id>: content`, neither head, no tail, listing structure preserved. D-040 confusion surface removed rather than migrated."
+        },
+        {
+          "id": "rv10",
+          "finding": "phase-1-review-r2.dd.json#findings/r2n6",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Substring negative adopted; all five LLM-facing strings and both stale comments corrected; and the vocabulary rule became a sensor, which is the durable half. Verified by independent re-implementation, not by its own green."
+        },
+        {
+          "id": "rv11",
+          "finding": "phase-1-review-r2.dd.json#findings/r2d1",
+          "resolution": "fixed",
+          "state": "checked",
+          "rationale": "Typed field plus a boot-time notice; limitation stated rather than hidden. Fleet-level visibility remains f4's open gap."
+        },
+        {
+          "id": "rv12",
+          "finding": "phase-1-review-r2.dd.json#findings/r2f1",
+          "resolution": "confirmed",
+          "state": "unchecked",
+          "rationale": "Open. Four live seat-facing legacy heads remain in skills/pij/references/routes/, including one documenting the very inbox output u4 changed. Fix the lines; better, extend the guard's root to skills/pij/** and exclude docs/plans/**."
+        },
+        {
+          "id": "rv13",
+          "finding": "phase-1-review-r2.dd.json#findings/r2f2",
+          "resolution": "confirmed",
+          "state": "unchecked",
+          "rationale": "Open and prophylactic — zero drift today, verified independently. Add an unused-exemption assertion so a dead allowlist entry fails the guard the way an unused suppression fails a linter."
+        },
+        {
+          "id": "rv14",
+          "finding": "phase-1-review-r2.dd.json#findings/r2f3",
+          "resolution": "confirmed",
+          "state": "unchecked",
+          "rationale": "Open as process, not code. u3's green describes a tree 13k lines behind main. Everything passes on the trial-merge tree, so nothing is broken — but a done report should name the merge-base it ran against."
+        },
+        {
+          "id": "rv15",
+          "finding": "phase-1-review-r2.dd.json#findings/r2n7",
+          "resolution": "confirmed",
+          "state": "unchecked",
+          "rationale": "Ship the widening; update the MANIFEST answer it falsifies, and consider registering the 2.1.241 captures in the corpus that exists for exactly this kind of evidence."
+        },
+        {
+          "id": "rv16",
+          "finding": "phase-1-review-r2.dd.json#findings/r2o1",
+          "resolution": "deferred",
+          "state": "unchecked",
+          "rationale": "Deferred to the PM, who owns real-tmux runs. Not attributed to either commit: untouched file, uncalled code path, stale tree, and documented four-day-old debris from the same test binary. The record exists so the round-2 verdict is not read as 'nothing was red anywhere'."
+        },
+        {
+          "id": "rv17",
+          "finding": "phase-1-review-r2.dd.json#findings/r2f4",
+          "resolution": "confirmed",
+          "state": "unchecked",
+          "rationale": "Open. Third iteration of one defect — boot announce, then tool metadata, now the machine-global system prompt. Each fix was scoped to where someone looked rather than to a rule about what a seat reads. One sentence to fix; the durable move is adding the file to the guard's maintained surfaces so the fourth iteration cannot happen."
+        },
+        {
+          "id": "rv18",
+          "finding": "phase-1-review-r2.dd.json#findings/r2f5",
+          "resolution": "confirmed",
+          "state": "unchecked",
+          "rationale": "Open for prime: one prose-ledger conflict to resolve by hand before merge. No product code conflicts; no verdict affected."
+        },
+        {
+          "id": "rv19",
+          "finding": "phase-1-review-r2.dd.json#findings/r2n8",
+          "resolution": "confirmed",
+          "state": "checked",
+          "rationale": "Assertion accepted as sufficient — masking requires a collision and it fires on the first one — but recorded as a collision detector rather than a widening detector, so the next person does not rely on it to catch the refactor. Reading the ternary stays a human check."
+        }
+      ]
+    }
+  ]
+}

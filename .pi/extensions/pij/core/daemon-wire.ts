@@ -53,6 +53,7 @@ export interface RustSeatDescriptor {
 	readonly harness: string;
 	readonly pane?: string;
 	readonly proc?: { readonly pid: number; readonly proc_start: number };
+	readonly proc_source?: "harness" | "pane";
 	readonly folder: string;
 	readonly state: string;
 	readonly parent?: string;

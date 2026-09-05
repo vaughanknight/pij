@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-
+import { frame } from "../message.js";
 import type { SessionDescriptor } from "../types.js";
 import { type DaemonPorts, drainTmuxInbox } from "./loop.js";
 import {
@@ -300,7 +300,7 @@ describe("the gate is re-derived per MESSAGE, not once per batch (s069 req 5)", 
 
 		const consumed = drainTmuxInbox(target, messages, ports, buffer, undefined, holds);
 
-		expect(sent).toEqual([{ pane: PANE, text: "[pij-rs from pij-boss]\nfirst\n[/pij]" }]);
+		expect(sent).toEqual([{ pane: PANE, text: frame("pij-boss", "first") }]);
 		expect(consumed.map((c) => c.messageId)).toEqual(["m1"]);
 		expect(buffer.pending("pij-c")).toBe(1);
 	});

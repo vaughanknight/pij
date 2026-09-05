@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-
+import { frame } from "../message.js";
 import type { PijMessage, SessionDescriptor } from "../types.js";
 import { USER_TYPING_IDLE_MS } from "./pane-signals.js";
 import { COMPACT_MAX_MS, injectionText, isCompacting, route, SendBuffer } from "./router.js";
@@ -27,9 +27,7 @@ describe("injectionText", () => {
 		expect(injectionText(msg("x", "", "compact"))).toBe("/compact");
 	});
 	it("frames free text with the sender (parity with the pi receiver)", () => {
-		expect(injectionText(msg("x", "hello there"))).toBe(
-			"[pij-rs from pij-me]\nhello there\n[/pij]",
-		);
+		expect(injectionText(msg("x", "hello there"))).toBe(frame("pij-me", "hello there"));
 	});
 });
 
@@ -70,7 +68,7 @@ describe("route (delivery ownership, AC-07/08)", () => {
 		expect(route(d, msg("claude-w", "go"))).toEqual({
 			kind: "inject",
 			paneId: "%7",
-			text: "[pij-rs from pij-me]\ngo\n[/pij]",
+			text: frame("pij-me", "go"),
 		});
 	});
 

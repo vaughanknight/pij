@@ -733,9 +733,30 @@ impl Queue for FakeQueue {
             recipient: SeatId(live.serial_key.clone()),
             msg_id: live.dedupe_key.clone(),
         };
+        // WHOLE SECONDS, exactly as the store computes them (store/queue.rs:421-435):
+        // SQLite eligibility compares `unixepoch()`, so the real deadline is the
+        // absolute one rounded UP to a whole second, and zero stays immediately
+        // eligible. Keeping full Duration precision here made the fake PERMISSIVE
+        // in the release-early direction — `defer(job, 10ms)` was claimable 10 ms
+        // later against the fake and up to a second later against the store — and
+        // a fake that releases earlier than production turns every green test
+        // built on sub-second delays into a false negative (reviewer f3).
         let not_before = state
             .now
             .checked_add(delay)
+            .and_then(|deadline| {
+                // checked_add, exactly as the store does it (queue.rs:429). Bare
+                // addition panics at the fake's own clock origin: state.now == 0
+                // plus Duration::MAX gives as_secs() == u64::MAX with a non-zero
+                // subsec, and the round-up overflows. The overflow test only
+                // misses it because it advances the clock by a nanosecond first,
+                // and that test's own words are "overflow is an error, never a
+                // panic" (reviewer f3.2).
+                deadline
+                    .as_secs()
+                    .checked_add(u64::from(!delay.is_zero() && deadline.subsec_nanos() != 0))
+                    .map(Duration::from_secs)
+            })
             .filter(|deadline| i64::try_from(deadline.as_secs()).is_ok())
             .ok_or_else(|| PijError::Adapter {
                 adapter: "testkit/fake-queue".to_string(),

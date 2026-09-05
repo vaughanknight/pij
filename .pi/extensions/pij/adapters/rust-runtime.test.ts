@@ -284,21 +284,63 @@ describe("RustRuntimeSession", () => {
 			}
 		});
 
-		it("announces a rebound seat once and never again on same-binding reload", async () => {
-			const { runtime, pi, input } = announceRuntime(
-				[REGISTER_RESPONSES.created],
-				[REGISTER_RESPONSES.rebound, REGISTER_RESPONSES.same],
-			);
+		it.each([
+			"pane",
+			"harness",
+			undefined,
+		] as const)("reports only pane provenance (%s) while announcing rebound once and same never", async (procSource) => {
+			const provenance = procSource === undefined ? {} : { proc_source: procSource };
+			const rebound = { ...REGISTER_RESPONSES.rebound, ...provenance };
+			const same = { ...REGISTER_RESPONSES.same, ...provenance };
+			const { runtime, pi, input } = announceRuntime([REGISTER_RESPONSES.created], [rebound, same]);
+			const notices: string[] = [];
+			const notice = (text: string) => notices.push(text);
 			try {
-				const boot = await runtime.boot(input);
+				const boot = await runtime.boot({ ...input, notice });
 				expect(pi.injects).toEqual([{ text: announceText(boot.id), mode: "immediate" }]);
+				expect(notices).toEqual(
+					procSource === "pane"
+						? [`pij: harness discovery fell back to the pane; registered pid ${rebound.proc?.pid}.`]
+						: [],
+				);
 				runtime.shutdown("reload");
 				const reloaded = await runtime.boot({
 					...input,
+					notice,
 					reason: "reload",
 					resetRuntimeState: false,
 				});
 				expect(reloaded.id).toBe(boot.id);
+				expect(pi.injects).toEqual([{ text: announceText(boot.id), mode: "immediate" }]);
+				expect(notices).toEqual(
+					procSource === "pane"
+						? [
+								`pij: harness discovery fell back to the pane; registered pid ${rebound.proc?.pid}.`,
+								`pij: harness discovery fell back to the pane; registered pid ${same.proc?.pid}.`,
+							]
+						: [],
+				);
+			} finally {
+				runtime.shutdown("quit");
+			}
+		});
+
+		it("reports unbound when pane provenance has no process identity", async () => {
+			const response: RustSeatDescriptor = {
+				id: REGISTER_RESPONSES.rebound.id,
+				harness: "omp",
+				folder: "/abs/tree",
+				state: "idle",
+				binding: "rebound",
+				proc_source: "pane",
+			};
+			const { runtime, pi, input } = announceRuntime([REGISTER_RESPONSES.created], [response]);
+			const notice = vi.fn();
+			try {
+				const boot = await runtime.boot({ ...input, notice });
+				expect(notice.mock.calls).toEqual([
+					["pij: harness discovery fell back to the pane; registered pid unbound."],
+				]);
 				expect(pi.injects).toEqual([{ text: announceText(boot.id), mode: "immediate" }]);
 			} finally {
 				runtime.shutdown("quit");
@@ -819,6 +861,22 @@ type GraceMessage = {
 class TypingPiRuntime extends FakePiRuntime {
 	private listener: ((at: number) => void) | undefined;
 	readonly statuses: Array<string | undefined> = [];
+	readonly notices: Array<{ text: string; level?: string }> = [];
+	private busy = false;
+
+	notify(text: string, level?: "info" | "warning" | "error"): void {
+		this.notices.push({ text, level });
+	}
+
+	/** Mid-generation: injections become steer and are invisible until the step
+	 * boundary — the pathology u5 exists to make visible. */
+	setBusy(busy: boolean): void {
+		this.busy = busy;
+	}
+
+	isIdle(): boolean {
+		return !this.busy;
+	}
 
 	onEditorChange(listener: (at: number) => void): () => void {
 		this.listener = listener;
@@ -1025,6 +1083,60 @@ describe("typing grace delivery", () => {
 		vi.useRealTimers();
 	});
 
+	it("announces arrival immediately and counts what a busy seat cannot yet see", async () => {
+		const { pi, client } = await start();
+		// A seat mid-generation: delivery still happens at once, but the runtime
+		// shows a steered message only at the step boundary — minutes on a slow
+		// model. Jordan's report: "the message is there, I just cannot see it".
+		pi.setBusy(true);
+		await client.push(message("mid-generation arrival that must be announced"));
+
+		expect(
+			pi.notices.map((row) => row.text),
+			"arrival is announced on claim, before anything waits on the runtime",
+		).toEqual(["📨 pij from pij-sender: mid-generation arrival that must be announced"]);
+		expect(pi.notices.at(-1)?.level).toBe("info");
+		expect(pi.statuses.at(-1), "a steered message stays counted while unseen").toBe("📨 1 pending");
+
+		// The turn ends; the seat can see it, so the count clears on the next tick.
+		pi.setBusy(false);
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(pi.statuses.at(-1)).toBeUndefined();
+	});
+
+	it("truncates a long announcement to 80 characters", async () => {
+		const { pi, client } = await start();
+		pi.setBusy(true);
+		await client.push(message("x".repeat(200)));
+		const text = pi.notices.at(-1)?.text ?? "";
+		expect(text.startsWith("📨 pij from pij-sender: ")).toBe(true);
+		expect(text.slice("📨 pij from pij-sender: ".length)).toBe(`${"x".repeat(80)}…`);
+	});
+
+	it("counts a held message as held, never as pending twice", async () => {
+		const { pi, client } = await start();
+		pi.edit();
+		await client.push(message("held-not-double-counted"));
+		expect(pi.statuses.at(-1)).toBe("⏸ 1 held · typing");
+		expect(
+			pi.notices.map((row) => row.text),
+			"a held message is still ANNOUNCED — the human should know it arrived",
+		).toEqual(["📨 pij from pij-sender: held-not-double-counted"]);
+
+		// PAST THE GRACE, because the property is about the SECOND pass: a held row
+		// re-enters routeClaim when releaseHeld re-claims it, and announcing again
+		// would put two identical toasts a minute apart on screen for one delivery
+		// — "counted twice reads as two" on the louder surface (reviewer f12).
+		await vi.advanceTimersByTimeAsync(HOLD_CONTRACT.grace.default_ms + 1_000);
+		expect(pi.injects.map((row) => row.text)).toEqual([
+			frame("pij-sender", "held-not-double-counted"),
+		]);
+		expect(
+			pi.notices.map((row) => row.text),
+			"one message, one delivery, ONE announcement",
+		).toEqual(["📨 pij from pij-sender: held-not-double-counted"]);
+	});
+
 	it("holds at 59 seconds and releases at 60 with exact hold/release payloads", async () => {
 		const { pi, client } = await start();
 		pi.edit();
@@ -1164,6 +1276,10 @@ describe("typing grace delivery", () => {
 				};
 			},
 			setStatus: (_key: string, _text: string | undefined) => {},
+			// The real OMP surface (types.d.ts:163). Modelled rather than guarded:
+			// a production fallback for a missing notify would silently stop
+			// announcing arrivals on any runtime that lacks it.
+			notify: (_message: string, _type?: "info" | "warning" | "error") => {},
 			setEditorText: (text: string) => {
 				editorText = text;
 			},

@@ -66,16 +66,16 @@ export default function (pi: ExtensionAPI): void {
 		name: "pij_send",
 		label: "pij send",
 		description:
-			"Send a message — or run an allow-listed control command (compact/new/reload) — to another pij peer session in this project. Prefer this over shelling out to the `pij` CLI: it resolves your id, delivers, and reports the receipt. Reply to a `[pij from <id>]` message by passing that <id> as `to`.",
-		promptSnippet: "Message or control a peer pij session (reply to [pij from <id>])",
+			"Send a message — or run an allow-listed control command (compact/new/reload) — to another pij peer session in this project. Prefer this over shelling out to the `pij` CLI: it resolves your id, delivers, and reports the receipt. Reply to a `[pij-rs from <id>] … [/pij]` message by passing that <id> as `to`.",
+		promptSnippet: "Message or control a peer pij session (reply to [pij-rs from <id>] … [/pij])",
 		promptGuidelines: [
-			"Use pij_send to reply to a `[pij from <id>]` message or to message/control a peer — do not shell out to the `pij` CLI to send.",
+			"Use pij_send to reply to a `[pij-rs from <id>] … [/pij]` message or to message/control a peer — do not shell out to the `pij` CLI to send.",
 		],
 		parameters: Type.Object(
 			{
 				to: Type.String({
 					description:
-						"Target peer session id, e.g. pij-1gzyr0p (the <id> from a `[pij from <id>]` message, or from `pij list --here`).",
+						"Target peer session id, e.g. pij-1gzyr0p (the <id> from a `[pij-rs from <id>] … [/pij]` message, or from `pij list --here`).",
 				}),
 				message: Type.Optional(
 					Type.String({
@@ -289,8 +289,8 @@ export default function (pi: ExtensionAPI): void {
 		promptSnippet: "Close a pij worker session",
 		promptGuidelines: [
 			// FT-005: pij_spawn returns spawnId+paneId, NOT the child SessionId.
-			// The child id arrives as [pij from <child-id>] or via pij list.
-			"Use pij_close to terminate a spawned worker session. Pass the child session id from its ready-ping ([pij from <child-id>]) or from pij list; do not pass the spawnId.",
+			// The child id arrives as [pij-rs from <child-id>] … [/pij] or via pij list.
+			"Use pij_close to terminate a spawned worker session. Pass the child session id from its ready-ping ([pij-rs from <child-id>] … [/pij]) or from pij list; do not pass the spawnId.",
 		],
 		parameters: Type.Object({
 			to: Type.String({
