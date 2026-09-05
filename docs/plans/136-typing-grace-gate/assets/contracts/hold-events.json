@@ -139,5 +139,12 @@
       "defer": "Deferred | NotLive{reason: absent|terminal} — 200 with {held:false, noop:true, reason} on NotLive.",
       "release_deferred": "Released{recipient,msg_id} | NotDeferred (the row is RUNNING — a live reader owns it; 200 with {released:false, noop:true, reason:'not-deferred'}) | NotLive{reason: absent|terminal} (200 with {released:false, noop:true, reason}). Three distinguishable states, because an absent job is a caller bug, a terminal one is benign, and a running one means the reader already has it — collapsing any of them loses the fact the operator needs."
     }
+  },
+  "recovery_peek": {
+    "$comment": "ADDED 2026-09-05 (PM ruling on u2's ordering counterexample). AC5 promises held rows come back IN ORDER after a restart, and that does NOT fall out of the queue by itself: Queue::claim orders only ELIGIBLE rows, so an older row re-held to a later deadline loses its place to a newer row whose deferral has already elapsed (u2's counterexample: job1 deferred to 120 s, job2 due at 61 s, restart at 61 s -> claim returns job2 first). The extension has lost its in-memory notes, so it cannot release job1 by id. Queue::peek is the ONE call that can see it: it returns the oldest LIVE row regardless of not_before (queue.rs:315-319) — the very property that made it wrong for typing-path polling makes it exactly right for recovery.",
+    "when": "session_start ONLY, after re-register, before ordinary claiming resumes. NEVER on the typing/bypass path — that remains the ordinary claim, which filters not_before.",
+    "loop": "peek -> if it returns a row, POST /v1/release for that job_id (clearing its deferral and its held evidence) -> claim -> inject+ack -> repeat until peek returns nothing deferred. Each pass takes the oldest live row, so FIFO is restored by construction rather than assumed.",
+    "fence": "u1 re-adds peekInbox to adapters/daemon-http.ts for this purpose only; u2 adds nothing — /v1/inbox?peek=true already exists.",
+    "witness": "Restart with two held rows whose deferrals differ (the older deferred LATER) must deliver them oldest-first. Assert the order, not merely that both arrived."
   }
 }
