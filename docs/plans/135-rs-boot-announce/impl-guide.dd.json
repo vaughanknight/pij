@@ -1,0 +1,109 @@
+{
+  "dd": {
+    "schema": "pij-team/impl-guide"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Implementation guide \u2014 rs-boot-announce",
+        "plan": "docs/plans/135-rs-boot-announce/plan.dd.json",
+        "mode": "build",
+        "updated": "2026-09-05"
+      }
+    },
+    {
+      "name": "architecture",
+      "value": "Doctrine: .agents-skills-port/pij-team/TENETS.md (tenets 1-6). This repo: Rust crates are the boundaries (crates/core types \u00b7 crates/store adapter \u00b7 crates/daemon http/composition root; arch-allowlist checked by `harness checks`); the pi extension lives in .pi/extensions/pij with core/ pi-free and fakes-tested (session.ts), adapters/ holding the runtime seams (rust-runtime.ts, daemon-http.ts). THE ONE FACT THIS PLAN MOVES: who knows a boot is fresh. Today the extension infers it from 'no row exists' (true under legacy, false under rs). After: the daemon states it. Vocabulary (frozen): `binding` = `created` (no row existed) | `rebound` (row existed, proc.pid/proc_start differ from stored) | `same` (row existed, same proc). fresh := binding !== 'same'. Extras-first: `binding` is an added optional field on the register response; nothing renamed. Seams: (1) crates/store registry put \u2192 must surface inserted-vs-updated + previous proc (pre-read inside the same transaction, or RETURNING with a CASE); (2) crates/daemon http register \u2192 sets binding; (3) core/daemon-wire.ts RustSeatDescriptor.binding?; (4) rust-runtime.ts boot passes `fresh` into session.boot; (5) core/session.ts BootInput.fresh?: boolean, `fresh = input.fresh ?? (liveDescriptor===null || wasDissolved)`. Golden fixture assets/contracts/register-response.json is the shared artifact both suites assert against (cross-runtime literal seam rule)."
+    },
+    {
+      "name": "fan_out",
+      "value": {
+        "decision": "coders",
+        "rationale": "Two units in two runtimes behind one frozen field; they share no file. u0 (fixture + vocabulary) is PM-owned wave 0. Compose = one PM wiring pass + live proof; nothing to negotiate at compose time if the fixture is honoured."
+      }
+    },
+    {
+      "name": "units",
+      "value": [
+        {
+          "id": "u0",
+          "name": "contract fixture",
+          "paths": "docs/plans/135-rs-boot-announce/assets/contracts/**",
+          "responsibility": "Three canonical register responses (created/rebound/same) as JSON, plus the vocabulary note.",
+          "interface": "register-response.json: {\"created\": {...RustSeatDescriptor, \"binding\":\"created\"}, \"rebound\": {...,\"binding\":\"rebound\"}, \"same\": {...,\"binding\":\"same\"}} \u2014 descriptor fields exactly as /v1/register returns today plus binding.",
+          "test_strategy": "Consumed by u1 and u2 tests; no tests of its own.",
+          "depends_on": "none",
+          "wave": 0,
+          "note": "PM writes it before spawning anyone (tenet 2)."
+        },
+        {
+          "id": "u1",
+          "name": "rs register binding",
+          "paths": "crates/store/src/registry.rs, crates/store/tests/**, crates/daemon/src/http/mod.rs (register handler + response type only), crates/daemon/src/http/tests.rs, crates/core/src/wire.rs (additive field only)",
+          "responsibility": "Make the daemon report binding on /v1/register.",
+          "interface": "Registry trait gains `async fn put_reporting(&self, d: SeatDescriptor) -> Result<(Seq, PutBinding)>` where `PutBinding { inserted: bool, previous_proc: Option<ProcIdentity> }` (existing `put` keeps its signature and delegates); handler computes binding = inserted ? created : (previous_proc != request.proc ? rebound : same) and serializes `\"binding\":\"created\"|\"rebound\"|\"same\"` on the response. Field is `#[serde(default, skip_serializing_if = Option::is_none)]` on the wire type.",
+          "test_strategy": "`cargo test -p pij-store -p pij-daemon`: store test for each of the three outcomes on the sqlite fake/temp db; http test that serializes each response and byte-compares against the golden fixture entries (read from the fixture path, not restated). RED first.",
+          "depends_on": "u0",
+          "wave": 1,
+          "note": "No spine kind changes; seat.put stays. Do not touch delivery/**."
+        },
+        {
+          "id": "u2",
+          "name": "extension fresh-from-binding",
+          "paths": ".pi/extensions/pij/core/daemon-wire.ts, .pi/extensions/pij/adapters/rust-runtime.ts, .pi/extensions/pij/adapters/rust-runtime.test.ts, .pi/extensions/pij/core/session.ts (BootInput + the one `fresh` line only)",
+          "responsibility": "Derive fresh from the daemon's binding and prove the announce fires on rs boots.",
+          "interface": "RustSeatDescriptor.binding?: 'created'|'rebound'|'same'; BootInput.fresh?: boolean; RustRuntimeSession.boot: `this.session.boot({...input, id: acceptedId, fresh: accepted.binding === undefined ? undefined : accepted.binding !== 'same'})` \u2014 undefined preserves today's inference for an old daemon.",
+          "test_strategy": "rust-runtime.test.ts: fake client returns each fixture entry (parsed from the golden file); assert pi.inject called once with announceText for created and rebound, zero times for same; assert reload with `same` never announces. Run the new test on the pre-fix tree first and paste the RED. `bun test .pi/extensions/pij` green; core/session.test.ts must show no diff.",
+          "depends_on": "u0",
+          "wave": 1,
+          "note": "Sibling hazard: none \u2014 u1 is Rust-only. Legacy PijSession path unchanged apart from the optional override."
+        }
+      ]
+    },
+    {
+      "name": "isolation",
+      "value": {
+        "mode": "worktree-per-coder",
+        "note": "Each coder branches off 135-rs-boot-announce into ../fs3-rs-boot-announce-<unit>; PM merges u1 then u2 (order irrelevant, no shared files). Toolchain pinned: rust per rust-toolchain, bun per repo \u2014 no unit may change either. The live daemon on this machine runs from a built binary: nobody restarts it except the PM at compose time."
+      }
+    },
+    {
+      "name": "composition",
+      "value": {
+        "composer": "pm",
+        "steps": "1) Merge u1, run cargo gates. 2) Merge u2, run bun test + harness checks. 3) Commit; `just bounce-rs`-style rebuild+restart of the rs daemon (verify pid change + ping + env PIJ_TELEGRAM_ENV still set \u2014 a bare restart drops Telegram). 4) Live proof: control on main first is already recorded in assets/inputs; now spawn omp, capture announce from session jsonl + pane; then AC2 (reused id, new process) and AC3 (/new + /reload). 5) Record everything in assets/live-proof.md with commands and outputs.",
+        "integration_proof": "On the rebuilt+restarted rs daemon: (1) `pij-rs spawn --harness omp --bin omp` \u2192 the seat's session jsonl contains exactly one `You are pij session <id>` user turn and the spine shows register\u2192announce ordering; (2) hand-start omp in a pane holding an existing seat row \u2192 register response binding=rebound and one announce; (3) `/new` then `/reload` on that seat \u2192 binding=same on reload, no second announce for the same pi session id. All three transcripts + `pij-rs ping` pid evidence pasted in assets/live-proof.md."
+      }
+    },
+    {
+      "name": "review",
+      "value": {
+        "when": "after composition, before PR",
+        "inputs": "plan.dd.md + this guide + branch diff; priority: the fresh derivation (is `same` ever wrong for a genuinely new process?), the fixture being READ not restated on both sides, RED evidence for AC5, legacy path untouched",
+        "model_override": "github-copilot/claude-opus-5 on omp, effort high (Jordan 2026-09-05)"
+      }
+    },
+    {
+      "name": "risks",
+      "value": [
+        {
+          "id": "r1",
+          "text": "rebound detection needs the PREVIOUS proc; a put that only returns changes() cannot tell rebound from same \u2014 retire by pre-reading the row inside the same write transaction (persist-before-mutate holds)."
+        },
+        {
+          "id": "r2",
+          "text": "Old daemon + new extension: binding absent \u2192 undefined \u2192 today's inference. Covered by u2's undefined branch test."
+        },
+        {
+          "id": "r3",
+          "text": "Spawn pre-mints the row, so a spawned seat's extension register is always `rebound`/`same`, never `created` \u2014 fresh must be true for rebound (proc differs from the spawner's placeholder) \u2014 assert this specific case in u1 (placeholder proc vs real proc) and in the live AC1."
+        },
+        {
+          "id": "r4",
+          "text": "Daemon not restarted after the Rust change \u2192 fix invisible, greens honest. Compose step 3 is mandatory and its pid/ping output is part of done."
+        }
+      ]
+    }
+  ]
+}

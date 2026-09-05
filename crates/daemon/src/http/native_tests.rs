@@ -16,10 +16,6 @@ use super::tests::{config, spawn};
 use super::{InboxAckRequest, router_with_config};
 use crate::delivery::{DeliveryService, InboxClaim, NativeInboxIdentity};
 
-const CONTRACT: &str = include_str!(
-    "../../../../docs/plans/137-copilot-native-extension/assets/contracts/native-extension.json"
-);
-
 struct HostFixture {
     directory: std::path::PathBuf,
     process: Option<std::process::Child>,
@@ -99,7 +95,10 @@ impl Drop for HostFixture {
 }
 
 fn contract_identity() -> (SeatDescriptor, NativeInboxIdentity) {
-    let contract: Value = serde_json::from_str(CONTRACT).expect("frozen wire fixture");
+    let contract: Value = serde_json::from_str(&pij_testkit::fixtures::read(
+        "native-extension-contract.json",
+    ))
+    .expect("designed native registration fixture");
     let registration = &contract["registration"]["request_example"];
     let mut seat = SeatDescriptor::new(
         registration["id"].as_str().unwrap(),
@@ -218,6 +217,66 @@ async fn native_http_claims(
     .await;
     assert!(body.get("meta").is_none(), "claim must not be held: {body}");
     serde_json::from_value(body["data"].clone()).unwrap()
+}
+
+#[tokio::test]
+async fn native_registration_preserves_claimed_host_and_reports_atomic_binding_transitions() {
+    let mut first_host = HostFixture::spawn();
+    let first_process = first_host.identity().await;
+    let store = FreshStore::new();
+    let folder = first_host.directory.to_string_lossy().into_owned();
+    let services = native_host_services(&store, &folder, &["%native-binding"]).await;
+    let registry = services.registry.clone();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let (mut seat, _) = contract_identity();
+    seat.id = "pij-native-binding".into();
+    seat.folder = folder;
+    seat.pane = Some("%native-binding".into());
+    seat.proc = Some(first_process);
+
+    // The fake pane's process is this test executable, not the native host.
+    // Ordinary pane normalization must never replace a native claim's tuple.
+    let mut invalid = native_registration(&seat);
+    invalid["pid"] = json!(std::process::id());
+    native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&invalid),
+        reqwest::StatusCode::BAD_REQUEST,
+    )
+    .await;
+    assert!(registry.get(&seat.id).await.unwrap().is_none());
+
+    for expected_binding in ["created", "same"] {
+        let body = native_http_response(
+            client
+                .post(format!("http://{addr}/v1/register"))
+                .json(&native_registration(&seat)),
+            reqwest::StatusCode::OK,
+        )
+        .await;
+        assert_eq!(body["data"]["binding"], expected_binding);
+        assert_eq!(body["data"]["proc_source"], "harness");
+        assert_eq!(body["data"]["proc"]["pid"], first_process.pid);
+        assert_eq!(body["data"]["native_extension_delivery"], true);
+    }
+
+    first_host.kill_and_reap(first_process).await;
+    let resumed_host = HostFixture::spawn();
+    let resumed_process = resumed_host.identity().await;
+    seat.proc = Some(resumed_process);
+    let body = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&native_registration(&seat)),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(body["data"]["binding"], "rebound");
+    assert_eq!(body["data"]["proc"]["pid"], resumed_process.pid);
+    assert_eq!(body["data"]["session"], seat.harness_session.unwrap());
+    server.abort();
 }
 
 #[tokio::test]

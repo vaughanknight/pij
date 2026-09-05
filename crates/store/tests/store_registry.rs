@@ -1,6 +1,6 @@
 //! Registry integration properties that require a real SQLite file.
 
-use pij_core::model::{Harness, SeatDescriptor, SeatId, Seq};
+use pij_core::model::{Harness, ProcIdentity, SeatDescriptor, SeatId, Seq};
 use pij_core::ports::{Registry, Spine};
 use pij_store::{SqliteRegistry, SqliteSpine};
 use pij_testkit::FreshStore;
@@ -158,5 +158,100 @@ async fn concurrent_registry_writers_serialize_and_both_succeed() {
     assert_eq!(
         torn, 0,
         "serialized commits must never expose a registry row without its matching spine event"
+    );
+}
+
+#[tokio::test]
+async fn put_reporting_distinguishes_created_placeholder_rebound_and_same() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let registry = SqliteRegistry::new(pool.clone());
+    let spine = SqliteSpine::new(pool);
+    let mut descriptor = SeatDescriptor::new("pij-binding", Harness::Omp, "/tmp/binding");
+    let (created_seq, created) = registry
+        .put_reporting(descriptor.clone())
+        .await
+        .expect("create");
+    assert!(created.inserted);
+    assert_eq!(created.previous_proc, None);
+
+    // Spawn pre-mints an unbound row. Its first real process is a rebind,
+    // not an insert; an absent previous process must not mean an absent row.
+    let identity = ProcIdentity {
+        pid: 42,
+        proc_start: 100,
+    };
+    descriptor.proc = Some(identity);
+    let (rebound_seq, rebound) = registry
+        .put_reporting(descriptor.clone())
+        .await
+        .expect("bind");
+    assert!(!rebound.inserted);
+    assert_eq!(rebound.previous_proc, None);
+    assert_ne!(rebound.previous_proc, descriptor.proc);
+    let (same_seq, same) = registry
+        .put_reporting(descriptor.clone())
+        .await
+        .expect("refresh");
+    assert!(!same.inserted);
+    assert_eq!(same.previous_proc, descriptor.proc);
+
+    descriptor.proc = Some(ProcIdentity {
+        pid: identity.pid,
+        proc_start: 101,
+    });
+    let (recycled_seq, recycled) = registry
+        .put_reporting(descriptor.clone())
+        .await
+        .expect("recycled pid");
+    assert!(!recycled.inserted);
+    assert_eq!(recycled.previous_proc, Some(identity));
+    assert_ne!(recycled.previous_proc, descriptor.proc);
+    assert_eq!(
+        registry.get(&descriptor.id).await.expect("committed row"),
+        Some(descriptor.clone())
+    );
+    assert!(created_seq < rebound_seq && rebound_seq < same_seq && same_seq < recycled_seq);
+    let events = spine
+        .tail(Some(&descriptor.id), Seq(0))
+        .await
+        .expect("write events");
+    assert_eq!(events.len(), 4);
+    assert!(events.iter().all(|event| event.kind == "seat.put"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn concurrent_put_reporting_observes_the_previous_committed_writer() {
+    let fresh = FreshStore::new();
+    let registry_a = SqliteRegistry::new(pij_store::open(&fresh.path()).await.expect("open a"));
+    let registry_b = SqliteRegistry::new(pij_store::open(&fresh.path()).await.expect("open b"));
+    let mut a = SeatDescriptor::new("pij-racing-binding", Harness::Omp, "/tmp/binding");
+    a.proc = Some(ProcIdentity {
+        pid: 42,
+        proc_start: 100,
+    });
+    let mut b = a.clone();
+    b.proc = Some(ProcIdentity {
+        pid: 43,
+        proc_start: 101,
+    });
+    let (result_a, result_b) = tokio::join!(
+        registry_a.put_reporting(a.clone()),
+        registry_b.put_reporting(b.clone()),
+    );
+    let (seq_a, report_a) = result_a.expect("writer a");
+    let (seq_b, report_b) = result_b.expect("writer b");
+    let (first, second, first_proc, last) = if seq_a < seq_b {
+        (report_a, report_b, a.proc, b)
+    } else {
+        (report_b, report_a, b.proc, a)
+    };
+    assert!(first.inserted);
+    assert_eq!(first.previous_proc, None);
+    assert!(!second.inserted);
+    assert_eq!(second.previous_proc, first_proc);
+    assert_eq!(
+        registry_a.get(&last.id).await.expect("final binding"),
+        Some(last)
     );
 }

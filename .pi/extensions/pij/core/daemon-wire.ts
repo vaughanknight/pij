@@ -57,6 +57,7 @@ export interface RustSeatDescriptor {
 	readonly state: string;
 	readonly parent?: string;
 	readonly spawn_id?: string;
+	readonly binding?: "created" | "rebound" | "same";
 }
 
 export interface SendRequest {

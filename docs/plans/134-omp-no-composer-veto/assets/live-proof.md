@@ -125,3 +125,104 @@ PASS
 ```
 
 Captured full-suite output: `artifact://229`; clippy: `artifact://233`.
+
+## Post-merge production veto run (main 46c9314c, daemon 53550) — BOTH ARMS
+
+Reported by `pij-binding-magpie` (fs3 o-prime) 2026-09-02, relayed by
+`pij-minor-unicorn` because the plan's prime seat `pij-still-weasel` was
+unreachable at the time (registry row pointed at pane `%2081`; `pij state`
+reported `idle · dead` and `tmux list-panes -a` showed no such pane —
+independently corroborated by the relaying seat, not taken on report).
+
+Composer empty throughout; no human typed into any seat.
+
+| # | pair | sent_at | outcome / reason | delivered_at | latency |
+|---|---|---|---|---|---|
+| 1 | claude → claude | 1788343433 | DELIVERED, origin=injected-to-transport | 1788343433 | 0 s |
+| 2 | → omp, seat IDLE | 1788343454 | reason=extension-stream | 1788343454 | 0 s |
+| 3 | → omp, seat BUSY (15 s into a real writing task) | 1788343477 | reason=extension-stream | 1788343477 | 0 s |
+
+`reason=human-typing` appeared on NO row. Row 3 is the state that previously
+tripped the veto.
+
+**Empty arm alone does NOT close AC6** — recorded here as it stood before the
+draft arm was run, because the reasoning is the load-bearing part. Every row
+above is the world in which the veto *should not* fire. A veto that is
+*correctly quiescent* and a veto that has been *removed* produce identical rows
+here, so these three rows were consistent with both. The draft arm below is what
+separates them.
+
+Magpie's stated caveats, preserved: the reverse direction was untested from its
+side, and all three rows read 0 s, which is a floor rather than a distribution —
+no evidence about behaviour under load or after a daemon restart, only that the
+veto did not fire.
+
+Also for the reaper: weasel's stale registry row survived the u3/132 deploy
+still pointing at a dead pane.
+
+### Plan 132 confirmation (same report)
+
+`pij-rs spawn --harness omp --bin omp` returned `bound=true dispatched=true`
+(seat `pij-unaware-unicorn`, pane `%3394`) and received on the first send — zero
+never-delivered rows, which is the exact failure mode of req-0046.
+
+### Draft arm — the separating witness (magpie, 2026-09-02)
+
+Run after the empty-arm rows above were challenged for testing only the world in
+which the veto should not fire.
+
+**Method.** Magpie spawned its own Claude seat (`pij-poor-mellanie`, pane
+`%3395`, scratch cwd) so no other seat's composer was disturbed, typed a real
+draft with `tmux send-keys` and **no Enter**, and computed the draft's sha256
+itself *before* sending.
+
+Draft text: `this is a REAL unsubmitted draft for plan-134 AC6 draft-arm, magpie 2026-09-02`
+Independently computed sha256 prefix: `c6d9d9af0b6ae506`
+
+Verbatim receipt:
+
+```json
+{"outcome":"queued","reason":"human-typing","next_retry_at":0,"draft_sha":"c6d9d9af0b6a"}
+```
+
+1. `reason` **is** `human-typing` in the draft world — the veto is alive, not
+   removed. This is the fact the empty arm could not establish.
+2. The receipt carries a draft sha, and `c6d9d9af0b6a` matches the sha magpie
+   computed over the exact bytes it passed to `tmux send-keys`, before sending.
+   The two values were produced by different paths — magpie's is
+   text-it-intended → sha, the daemon's is capture-of-the-pane → sha — so the
+   match carries **two** distinct claims, which are worth keeping apart because
+   someone will eventually ask which one the sha proves:
+   - the sha is of the *actual* draft, not a placeholder or an echo of a
+     configured value; **and**
+   - the pane was captured faithfully (a second fact riding along).
+
+   The match does **not** prove the draft was still unsubmitted at capture time.
+   That comes from a separate observation: delivery was withheld for 60 s and
+   then landed 1 s after `C-u`.
+3. The message stayed undelivered for as long as the draft sat there:
+   `sent_at 1788343742`, still nothing at +50 s.
+
+**The clear.** Magpie pressed `C-u` at `1788343802`; the message delivered at
+`1788343803` — 1 s after the composer emptied, 61 s after send.
+
+Both arms now exist: empty composer → `extension-stream` / delivered / 0 s; real
+draft → `human-typing` + true `draft_sha` + held until cleared. **AC6 has its
+separating witness.**
+
+**This does not close AC7.** AC7 asks for a *documented, capped* backoff curve,
+and the clear above is one sample of the benign case. The pathological instance
+on record is 8 min at **attempt 101** (`888D45C1`) — backoff that had grown over
+many attempts. A row that cleared while its attempt count was still small is
+silent about attempt 101, and one sample establishes neither the curve nor a
+cap. AC7 still needs the curve documented, the interval capped in config, and
+the N-veto-then-clear test asserting delivery within one cap.
+
+### Adjacent finding — spawn into an untrusted cwd (encode candidate)
+
+`pij-rs spawn --harness claude` into a cwd Claude does not yet trust hangs at the
+"Do you trust this folder" dialog and fails with `timed out after 60s waiting for
+registration ... no child output was captured`. The seat is alive and sitting on
+the dialog; the error names none of that. Magpie answered the dialog by hand to
+continue. Worth encoding: detect the trust prompt and say so, or pre-trust the
+cwd on spawn.

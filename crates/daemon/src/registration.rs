@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pij_core::error::PijError;
 use pij_core::model::{Event, Harness, ProcIdentity, SeatDescriptor, SeatId};
-use pij_core::ports::{LivenessPort, Registry, SeatFilter, TmuxPort};
+use pij_core::ports::{LivenessPort, PutBinding, Registry, SeatFilter, TmuxPort};
 use pij_core::wire;
 use pij_harnesses::ensure_claude_inbound_accept;
 
@@ -67,14 +67,16 @@ impl RegistrationService {
         &self,
         claim: Registration,
     ) -> std::result::Result<SeatDescriptor, RegistrationError> {
-        self.register_with_harness_session(claim, None).await
+        self.register_with_harness_session(claim, None)
+            .await
+            .map(|(descriptor, _)| descriptor)
     }
 
     pub(crate) async fn register_with_harness_session(
         &self,
         claim: Registration,
         harness_session: Option<String>,
-    ) -> std::result::Result<SeatDescriptor, RegistrationError> {
+    ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError> {
         self.register_inner(claim, harness_session, None).await
     }
 
@@ -84,7 +86,7 @@ impl RegistrationService {
         claim: Registration,
         harness_session: Option<String>,
         tmux: &dyn TmuxPort,
-    ) -> std::result::Result<SeatDescriptor, RegistrationError> {
+    ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError> {
         self.register_native_with_observer(claim, harness_session, tmux, observe_native_process)
             .await
     }
@@ -95,7 +97,7 @@ impl RegistrationService {
         harness_session: Option<String>,
         tmux: &dyn TmuxPort,
         mut observe: F,
-    ) -> std::result::Result<SeatDescriptor, RegistrationError>
+    ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError>
     where
         F: FnMut(u32) -> Fut,
         Fut: Future<Output = std::result::Result<Option<NativeProcess>, RegistrationError>>,
@@ -319,7 +321,7 @@ impl RegistrationService {
         claim: Registration,
         harness_session: Option<String>,
         handoff: Option<&NativeHandoff>,
-    ) -> std::result::Result<SeatDescriptor, RegistrationError> {
+    ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError> {
         let native = handoff.is_some();
         let dead_native = handoff.map_or(&[][..], |proof| proof.dead.as_slice());
         let harness_session = harness_session.filter(|session| !session.trim().is_empty());
@@ -580,8 +582,9 @@ impl RegistrationService {
                 .await
                 .map_err(RegistrationError::Runtime)?;
         }
-        self.registry
-            .put(descriptor.clone())
+        let (_, binding) = self
+            .registry
+            .put_reporting(descriptor.clone())
             .await
             .map_err(RegistrationError::Runtime)?;
         if binds_spawned_incarnation && model_matches {
@@ -602,7 +605,7 @@ impl RegistrationService {
                 .await
                 .map_err(RegistrationError::Runtime)?;
         }
-        Ok(descriptor)
+        Ok((descriptor, binding))
     }
 }
 
@@ -1120,9 +1123,10 @@ mod tests {
                 fixture_process,
             )
             .await
+            .map(|(descriptor, _)| descriptor)
     }
 
-    fn refused(result: std::result::Result<SeatDescriptor, RegistrationError>) {
+    fn refused<T: std::fmt::Debug>(result: std::result::Result<T, RegistrationError>) {
         assert!(
             matches!(result, Err(RegistrationError::Refused(_))),
             "{result:?}"
@@ -1494,6 +1498,7 @@ mod tests {
                 assert!(
                     !ordinary
                         .expect("ordinary registration unchanged")
+                        .0
                         .native_extension_delivery
                 );
             }
@@ -1811,7 +1816,7 @@ mod tests {
             claim.pid = Some(OTHER_HOST.pid);
             claim.proc_start = Some(OTHER_HOST.proc_start);
             let (service, _) = native_service(vec![old], native_liveness());
-            let rebound = service
+            let (rebound, _) = service
                 .register_with_harness_session(claim, Some("legacy-session".to_string()))
                 .await
                 .expect("other harness ordinary rebind unchanged");
@@ -2019,6 +2024,7 @@ mod tests {
             pending
                 .await
                 .expect("native observation resumes")
+                .0
                 .native_extension_delivery
         );
     }

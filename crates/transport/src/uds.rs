@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -8,7 +9,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
 use pij_core::framing::frame_message;
-use pij_core::model::{DeliveryOrigin, DeliveryOutcome, Harness, Msg, SeatDescriptor};
+use pij_core::model::{
+    DeliveryOrigin, DeliveryOutcome, Harness, Msg, SeatDescriptor, parse_process_start,
+};
 use pij_core::ports::Transport;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -64,6 +67,7 @@ pub struct UdsTransport {
     ack_wait: Duration,
     hold_grace: Duration,
     connect_timeout: Duration,
+    observe_start: fn(u32, bool) -> Option<u64>,
 }
 
 impl UdsTransport {
@@ -93,6 +97,7 @@ impl UdsTransport {
             ack_wait: ACK_WAIT,
             hold_grace: HOLD_GRACE,
             connect_timeout: CONNECT_TIMEOUT,
+            observe_start: process_start,
         }
     }
 
@@ -118,35 +123,54 @@ impl UdsTransport {
     }
 
     fn discover(&self, seat: &SeatDescriptor) -> Option<Endpoint> {
-        if let Some(pid) = seat.proc.map(|proc| proc.pid) {
-            let direct = self.sessions_dir.join(format!("{pid}.json"));
-            if let Some(endpoint) = self.endpoint_from_path(&direct) {
+        if let Some(proc) = seat.proc {
+            let direct = self.sessions_dir.join(format!("{}.json", proc.pid));
+            if let Some(record) = read_json::<SessionRecord>(&direct)
+                && record.pid == proc.pid
+                && (self.observe_start)(proc.pid, false) == Some(proc.proc_start)
+                && let Some(endpoint) = self.live_endpoint(record)
+            {
                 return Some(endpoint);
             }
         }
-        let pane = seat.pane.as_deref()?;
-        let suffix = format!(".{pane}");
-        let mut records = fs::read_dir(&self.sessions_dir)
-            .ok()?
-            .filter_map(std::result::Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
-            .collect::<Vec<_>>();
-        records.sort();
-
-        records.into_iter().find_map(|path| {
-            let record = read_json::<SessionRecord>(&path)?;
-            record
+        let suffix = format!(".{}", seat.pane.as_deref()?);
+        let mut candidate = None;
+        for entry in fs::read_dir(&self.sessions_dir).ok()? {
+            let path = entry.ok()?.path();
+            if !path.extension().is_some_and(|ext| ext == "json") {
+                continue;
+            }
+            let Some(record) = read_json::<SessionRecord>(&path) else {
+                continue;
+            };
+            if !record
                 .tmux
                 .as_deref()
                 .is_some_and(|tmux| tmux.ends_with(&suffix))
-                .then(|| self.endpoint_from_record(record))
-                .flatten()
-        })
+            {
+                continue;
+            }
+            let Some(endpoint) = self.live_endpoint(record) else {
+                continue;
+            };
+            // Multiple live owners are ambiguous, never decided by directory or
+            // lexical order. A verified exact identity above already wins.
+            if candidate.is_some() {
+                return None;
+            }
+            candidate = Some(endpoint);
+        }
+        candidate
     }
 
-    fn endpoint_from_path(&self, path: &Path) -> Option<Endpoint> {
-        self.endpoint_from_record(read_json(path)?)
+    fn live_endpoint(&self, record: SessionRecord) -> Option<Endpoint> {
+        // Claude records UTC. Observe this process in UTC too; a current UTC
+        // offset is NOT necessarily the offset when a long-lived process began.
+        let recorded = parse_process_start(&record.proc_start).ok()?;
+        if (self.observe_start)(record.pid, true)? != recorded {
+            return None;
+        }
+        self.endpoint_from_record(record)
     }
 
     fn endpoint_from_record(&self, record: SessionRecord) -> Option<Endpoint> {
@@ -159,6 +183,21 @@ impl UdsTransport {
             token,
         })
     }
+}
+
+fn process_start(pid: u32, utc: bool) -> Option<u64> {
+    let mut command = Command::new("ps");
+    command
+        .args(["-p", &pid.to_string(), "-o", "lstart="])
+        .env("LC_ALL", "C");
+    if utc {
+        command.env("TZ", "UTC");
+    }
+    let output = command.output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_process_start(std::str::from_utf8(&output.stdout).ok()?).ok()
 }
 
 #[async_trait]
@@ -758,7 +797,97 @@ mod tests {
         transport.ack_wait = Duration::from_millis(30);
         transport.hold_grace = Duration::from_millis(120);
         transport.connect_timeout = Duration::from_millis(200);
+        transport.observe_start =
+            |pid, utc| (pid == 4242).then_some(if utc { 20260829235605 } else { 1 });
         transport
+    }
+
+    #[test]
+    fn discovery_prefers_live_identity_over_first_dead_pane_record() {
+        let dir = TestDir::new();
+        let dead = u32::MAX;
+        let live = std::process::id();
+        let live_socket = dir.0.join("live.sock");
+        write_record(&dir.0, dead, "%99", &dir.0.join("dead.sock"));
+        fs::rename(dir.0.join(format!("{dead}.json")), dir.0.join("0.json"))
+            .expect("put dead record first lexically");
+        let output = std::process::Command::new("ps")
+            .args(["-p", &live.to_string(), "-o", "lstart="])
+            .env("LC_ALL", "C")
+            .env("TZ", "UTC")
+            .output()
+            .expect("observe fixture process start");
+        assert!(output.status.success());
+        let start = String::from_utf8(output.stdout).expect("ASCII start");
+        let start = start.trim();
+        fs::write(
+            dir.0.join(format!("{live}.json")),
+            serde_json::json!({
+                "pid": live, "procStart": start, "pidDomain": "darwin",
+                "tmux": "fixture:@1.%99", "messagingSocketPath": live_socket,
+            })
+            .to_string(),
+        )
+        .expect("write live record");
+        write_key(&dir.0, live, start, "darwin");
+        let mut target = seat(dead, Some("%99"), Harness::Claude);
+        target.proc = None;
+        let endpoint = UdsTransport::from_sessions_dir(dir.0.clone())
+            .discover(&target)
+            .expect("live candidate");
+        assert_eq!(endpoint.socket_path, live_socket);
+    }
+
+    #[test]
+    fn recycled_records_and_stale_exact_bindings_are_rejected() {
+        let dir = TestDir::new();
+        write_record(&dir.0, 4242, "%99", &dir.0.join("stale.sock"));
+        let mut transport = transport(&dir.0);
+        transport.observe_start = |_, utc| Some(if utc { 20260830000000 } else { 1 });
+        assert!(
+            transport
+                .discover(&seat(4242, Some("%99"), Harness::Claude))
+                .is_none()
+        );
+        transport.observe_start = |_, utc| Some(if utc { 20260829235605 } else { 2 });
+        assert!(
+            transport
+                .discover(&seat(4242, None, Harness::Claude))
+                .is_none()
+        );
+        transport.observe_start = |_, _| None;
+        assert!(
+            transport
+                .discover(&seat(4242, Some("%99"), Harness::Claude))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn two_live_pane_records_require_exact_identity_not_sort_order() {
+        let dir = TestDir::new();
+        write_record(&dir.0, 4242, "%99", &dir.0.join("first.sock"));
+        write_record(&dir.0, 4343, "%99", &dir.0.join("second.sock"));
+        let mut transport = transport(&dir.0);
+        transport.observe_start = |_, utc| Some(if utc { 20260829235605 } else { 1 });
+        let mut target = seat(4343, Some("%99"), Harness::Claude);
+        assert_eq!(
+            transport
+                .discover(&target)
+                .expect("exact identity")
+                .socket_path,
+            dir.0.join("second.sock")
+        );
+        target.proc = None;
+        assert!(
+            transport.discover(&target).is_none(),
+            "no first-directory-entry authority"
+        );
+        fs::rename(dir.0.join("4343.json"), dir.0.join("0.json")).expect("reverse filename order");
+        assert!(
+            transport.discover(&target).is_none(),
+            "renaming cannot resolve ambiguity"
+        );
     }
 
     #[tokio::test]
@@ -811,7 +940,10 @@ mod tests {
         )
         .expect("copy recorded key");
 
-        let endpoint = transport(&dir.0)
+        let mut transport = transport(&dir.0);
+        transport.observe_start =
+            |pid, utc| (pid == 4242).then_some(if utc { 20260830001157 } else { 1 });
+        let endpoint = transport
             .discover(&seat(9000, Some("%99"), Harness::Claude))
             .expect("pane fallback resolves recorded pair");
         assert_eq!(
