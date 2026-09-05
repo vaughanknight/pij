@@ -1,0 +1,98 @@
+{
+  "owner": "pij-worldwide-rat",
+  "status": "targeted implementation complete; scoped proof and read-only review passing",
+  "rulings": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/docs/plans/137-copilot-native-extension/assets/inputs/pm-code-review-rulings.md",
+  "base_commit": "abd1ec7b260f10a59344425cc48346b982060e16",
+  "source_commit": "70dbf39c87d685171f71e9d40b5bddbe53e9d632",
+  "source_sha256": {
+    ".copilot/extensions/pij/store.mjs": "06704a1fd4ea2a9e6f765470b2b17a6798d98089d926147607ab76a0ff9d9180",
+    ".copilot/extensions/pij/store.test.mjs": "53152ce75d21af35a28e0f98a9dd99130d46d88707da43c4c85bc1986c121088",
+    ".copilot/extensions/pij/extension.test.mjs": "5b4b1348388ac006c5b2c52e2b07b8b23f88f9fff3fc90dcf4de5e3a03be8d86"
+  },
+  "changes": {
+    "P1_B": "FileJournal hashes only Pij seat id + native session. PID/start continue to bind registration readback, every claim, and every ACK; no live-incarnation checks removed.",
+    "exact_recovery": "Only additional HTTP400 retry class: inbox claim/ack endpoint, v2, ok:false, command:pij inbox, error:refused, exact canonical meta daemon/native-inbox: native-extension-unavailable: Copilot requires current native registration. Existing network/auth/429/5xx behavior unchanged. Existing bridge retry performs re-registration with capped backoff.",
+    "fail_closed": "Wrong status/endpoint/command/category/version/ok flag/adapter or malformed/quoted/stale refusal metadata remains non-retryable. Invalid claim tuple and ambiguous native send stay held.",
+    "P1_A": "Added actual extension-shell roster rollover scenario. Same live process with a new native session selects new seat and supersedes predecessor, then claims and ACKs only successor-addressed work. No queue deletion, retargeting or daemon-policy change.",
+    "retained": "Acceptance -> persist -> ACK remains acceptance-grade; next claim remains completion-gated. Recovered accepted duplicate without live completion ACKs once then explicitly holds receiving; outgoing tool remains usable."
+  },
+  "producer_contract": [
+    "crates/daemon/src/delivery/mod.rs:77-82 native_refusal adapter identity",
+    "crates/daemon/src/delivery/mod.rs:575-599 exact unavailable versus mismatch reasons",
+    "crates/daemon/src/http/mod.rs:1164-1170 inbox_failure and1943-1948 refused HTTP400 envelope",
+    "crates/core/src/error.rs:137 adapter display",
+    "crates/core/src/model.rs:396-451 v2 refused envelope fields"
+  ],
+  "proof": {
+    "command": [
+      "node",
+      "--test",
+      "--test-reporter=tap",
+      "--test-timeout=15000",
+      ".copilot/extensions/pij/store.test.mjs",
+      ".copilot/extensions/pij/identity.test.mjs",
+      ".copilot/extensions/pij/extension.test.mjs"
+    ],
+    "cwd": "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime",
+    "env": {
+      "VITEST_MAX_THREADS": "4",
+      "CARGO_BUILD_JOBS": "4"
+    },
+    "exit": 0,
+    "tests": 70,
+    "pass": 70,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "stderr": "",
+    "artifact": "runtime-review-fixes-tests.tap",
+    "sha256": "2460f25d87ad331802276c9420f19b3fcff40bdff4174f08dfd3da9d3aec986c",
+    "filesystem_restart": "Real temporary directory/FileJournal: first bridge accepts native send and persists before interrupted ACK; a fresh journal/bridge with changed pid/start reclaims, sends no duplicate, ACKs exact new tuple, then holds for absent ephemeral completion. Outgoing succeeds while held. No Map substitution for journal.",
+    "isolation": "Pending exclusivity and accepted read survive changed pid/start; changed native session and changed seat cannot see prior accepted record. Different native namespace begins independently; private0700/0600 modes retained.",
+    "retry_matrix": "13 exact/near-miss HTTP envelope cases; only native-unavailable claim and ACK are retryable.",
+    "bounded_retry": "8 retry cycles re-register before claim; delays250,500,1000,2000,4000,5000,5000,5000; cancellation unsubscribes without native send/ACK.",
+    "shell": "Real extension child with explicit SDK/OS seams and real loopback HTTP: unavailable400 produces native-log, re-registers, then one native send/ACK; stale400 yields one held native-log and no repeat register/claim/send/ACK; new-seat rollover consumes successor-addressed work. EOF exits0/stdout empty.",
+    "formatter": [
+      {
+        "command": "node_modules/.bin/biome check --write .copilot/extensions/pij/store.mjs .copilot/extensions/pij/store.test.mjs .copilot/extensions/pij/extension.test.mjs",
+        "exit": 0,
+        "result": "Checked 3 files in 61ms. Fixed 3 files."
+      },
+      {
+        "command": "node_modules/.bin/biome check --write .copilot/extensions/pij/extension.test.mjs",
+        "exit": 0,
+        "result": "Checked 1 file in 54ms. Fixed 1 file."
+      }
+    ],
+    "lsp": "All5 runtime .mjs files no diagnostics; final shell-test-only recheck OK. Exported journal/client references returned none despite known callers; exact scoped callsite search used.",
+    "initial_test_correction": {
+      "exit": 1,
+      "tests": 70,
+      "pass": 68,
+      "fail": 2,
+      "reason": "New shell tests waited for private reconnecting/receive-held and connection-ready events intentionally not captured by native reporter; corrected assertions to visible native-log plus HTTP effects. No product change for test failure."
+    },
+    "independent_review": {
+      "agent": "HoldBoundaryReview",
+      "verdict": "no_material_findings",
+      "scope": "read-only stable journal/live tuple/exact-refusal consumption/corrected shell scenarios; no reviewer validation commands"
+    }
+  },
+  "limitations": [
+    "No migration or compatibility scan of pre-fix PID-scoped journal directories. No records deleted. Automatic recovery of old-format state is NOT claimed; explicitly disclosed to PM before commit.",
+    "Filesystem restart reconstitutes bridge/journal with a different live identity; not a real Copilot host-process resume proof.",
+    "Rollover scenario proves runtime successor selection and successor-targeted consumption, not real daemon old-M1 queue retention/tombstoning or manual/spawned/model acceptance.",
+    "Literal canonical refusal matching is intentionally narrow; a changed producer spelling fails closed rather than enabling blanket HTTP400 retry.",
+    "Full gates, composition and real native acceptance remain PM-owned; frozen real Pi/OMP spawn-based smoke not run."
+  ],
+  "freeze": {
+    "real_Pi_OMP_spawns": 0,
+    "new_worktrees": 0,
+    "global_link_changes": 0,
+    "daemon_restarts": 0,
+    "installs": 0,
+    "full_gates": 0
+  },
+  "harness_improvement": "Real-FS changed-incarnation recovery regression replaces inference from in-memory journal mocks; HTTP shell fixture now carries refusal envelopes and native-log assertions exercise the user-visible reporting boundary.",
+  "next": "PM compose source and evidence; runtime returns to integration hold"
+}
