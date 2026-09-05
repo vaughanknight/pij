@@ -1437,15 +1437,27 @@ async fn release_inbox(
 ) -> Response {
     let _transition = state.typing_lock.lock().await;
     let outcome = state.services.queue.release_deferred(request.job_id).await;
+    // ATTRIBUTION COMES FROM THE QUEUE, NOT THE CALLER — the same rule `hold`
+    // states at its own publish site, and the reason is the same: bearer identity
+    // is machine-grade, so a request may name a seat or msg_id it does not own.
+    // Both readers of this event key on (seat, msg_id) — `is_held` and
+    // `active_holds` — so a mismatched key leaves a phantom hold in
+    // `state --json` forever and a seat long-polling through its own release.
+    // Reviewer f2 (2026-09-05): release published `request.event` verbatim and
+    // discarded the recipient the queue had just returned.
+    let event = match &outcome {
+        Ok(pij_core::ports::ReleaseOutcome::Released { recipient, msg_id }) => ReleasedEvent {
+            seat: recipient.clone(),
+            msg_id: msg_id.clone(),
+            ..request.event.clone()
+        },
+        // No live row means no authority to correct with; the declaration is
+        // still published, carrying what the caller asserted and nothing more.
+        _ => request.event.clone(),
+    };
     // Publish after the queue attempt so an awakened inbox sees the new eligibility.
     // This event is the extension's declaration, including on named queue no-ops.
-    if let Err(error) = publish_typing_event(
-        &state,
-        "delivery.released",
-        &request.event.seat,
-        &request.event,
-    )
-    .await
+    if let Err(error) = publish_typing_event(&state, "delivery.released", &event.seat, &event).await
     {
         return internal("pij release", error);
     }

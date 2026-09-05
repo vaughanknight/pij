@@ -172,6 +172,12 @@ export class RustRuntimeSession {
 		this.holdQueue = new HoldQueue(this.clock, accepted.typing_grace_ms ?? 60000);
 		this.heldIds.clear();
 		this.declaredReleaseJobs.clear();
+		// A fresh lifecycle counts none of the previous one's messages. Only the
+		// ticker clears this set, and shutdown cancels the ticker, so without this
+		// line a reload carries the dead lifecycle's count into the next status
+		// line — and boot's setStatus(undefined) HIDES it until the first showHeld,
+		// which makes the wrong number appear later and harder to place (reviewer).
+		this.unseenIds.clear();
 		if (this.lastEditAt !== undefined) this.holdQueue.noteEdit(this.lastEditAt);
 		this.pi.setStatus(undefined);
 		const continuityRegistration = registrationFor(acceptedId, procStart, input);
@@ -499,6 +505,12 @@ export class RustRuntimeSession {
 	}
 
 	private announceArrival(claim: HeldRow): void {
+		// ONCE PER MESSAGE, not once per routing pass. A held row comes through
+		// routeClaim twice — withheld, then released a grace later — and two
+		// identical toasts sixty seconds apart for one delivery is the same
+		// "counted twice reads as two" error the pending counter refuses to make,
+		// on the louder surface (reviewer).
+		if (this.heldIds.has(claim.message.messageId)) return;
 		const body = claim.message.body ?? "";
 		const shown =
 			body.length > ANNOUNCE_BODY_CHARS ? `${body.slice(0, ANNOUNCE_BODY_CHARS)}…` : body;
