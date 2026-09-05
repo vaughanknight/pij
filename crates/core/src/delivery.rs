@@ -6,6 +6,35 @@
 
 use crate::error::{PijError, Result};
 use crate::model::{Msg, SeatDescriptor, SeatId, SemanticState};
+use serde::{Deserialize, Serialize};
+
+/// Quiet interval after the last human keystroke before ordinary delivery resumes.
+/// The daemon alone applies the environment override and publishes the value.
+pub const DEFAULT_TYPING_GRACE_MS: u64 = 60_000;
+
+/// Durable evidence that a pending delivery is waiting on human typing, not read.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct HeldEvent {
+    /// The sender's stable message id.
+    pub msg_id: String,
+    /// Stable wire reason, currently `human-typing`.
+    pub reason: String,
+    /// Recipient whose extension owns the claim.
+    pub seat: SeatId,
+    /// Unix milliseconds of the last observed human keystroke.
+    pub since_ms: u64,
+}
+
+/// Evidence that the extension is releasing a hold; this is not a delivery ack.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ReleasedEvent {
+    /// Unix milliseconds when the extension decided to release.
+    pub at_ms: u64,
+    /// The sender's stable message id.
+    pub msg_id: String,
+    /// Recipient whose extension owns the claim.
+    pub seat: SeatId,
+}
 
 /// Maximum complete framed message accepted by pane typing.
 ///
