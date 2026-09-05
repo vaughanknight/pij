@@ -1,0 +1,605 @@
+PLAN 135 / UNIT U4 — OFFLINE EVIDENCE
+Seat: pij-agreed-blackbird
+Worktree: /Users/jordanknight/pi-hacking/fs3-rs-boot-announce-u4
+Branch: 135-rs-boot-announce-u4
+
+VERSIONS / CAPS
+vitest/4.1.10 darwin-arm64 node-v24.7.0; bun 1.3.14; node v24.7.0. Every Vitest/gate run uses VITEST_MAX_WORKERS=4 VITEST_MAX_THREADS=4 CARGO_BUILD_JOBS=4. Installed Vitest dist/chunks/coverage.DM_a_rWm.js:380 reads VITEST_MAX_WORKERS; no VITEST_MAX_THREADS read found. No bun test used.
+
+RED A — NEW CONTRACT ON UNCHANGED SOURCE (verbatim command output)
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/core/message.test.ts --reporter=verbose
+
+(node:64559) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-rs-boot-announce-u4
+
+ × .pi/extensions/pij/core/message.test.ts > frame/parseFrame > matches the Rust canonical no-machine frame byte-for-byte 4ms
+   → expected '[pij from pij-a] hello' to be '[pij-rs from pij-a]\nhello\n[/pij]' // Object.is equality
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > still parses the legacy head without a closing tail 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > round-trips sender id + body 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > handles multi-line bodies 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > returns null for unframed text 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > roleLabel > labels parent/worker/unknown 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > shipped delivery receipt contract > freezes the send --wait vocabulary and receipt wire shape before dispatch receipts 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > BriefAckReceipt — AC-05 additive receipt kind > round-trips a structured brief ack without changing ReceiptState 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > BriefAckReceipt — AC-05 additive receipt kind > rejects malformed or identity-weak brief acks 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > announceText > names the session id, role, and how to reach a peer 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > announceText > receiptBody/parseReceiptBody > round-trips every receipt state, including unverified 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > announceText > is non-imperative and warns against acting on the inbox (D-040) 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/core/message.test.ts > frame/parseFrame > matches the Rust canonical no-machine frame byte-for-byte
+AssertionError: expected '[pij from pij-a] hello' to be '[pij-rs from pij-a]\nhello\n[/pij]' // Object.is equality
+
+- Expected
++ Received
+
+- [pij-rs from pij-a]
+- hello
++ [pij from pij-a] hello
+- [/pij]
+
+ ❯ .pi/extensions/pij/core/message.test.ts:19:35
+     17|  it("matches the Rust canonical no-machine frame byte-for-byte", () =>…
+     18|   // crates/core/src/framing.rs::frame_message (from_machine = None).
+     19|   expect(frame("pij-a", "hello")).toBe("[pij-rs from pij-a]\nhello\n[/…
+       |                                   ^
+     20|  });
+     21|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 11 passed (12)
+   Start at  10:29:16
+   Duration  108ms (transform 17ms, setup 0ms, import 25ms, tests 6ms, environment 0ms)
+
+error: Recipe `test` failed on line 86 with exit code 1
+
+RED B — OLD EXPECTATIONS AFTER SOURCE CHANGE (verbatim command output)
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/core/message.test.ts .pi/extensions/pij/core/session.test.ts .pi/extensions/pij/core/daemon/router.test.ts --reporter=verbose
+
+(node:73524) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-rs-boot-announce-u4
+
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > matches the Rust canonical no-machine frame byte-for-byte 1ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > still parses the legacy head without a closing tail 0ms
+ × .pi/extensions/pij/core/message.test.ts > frame/parseFrame > round-trips sender id + body 3ms
+   → expected '[pij-rs from w3]\nrefactor store.ts\n…' to be '[pij from w3] refactor store.ts' // Object.is equality
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > handles multi-line bodies 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > returns null for unframed text 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > roleLabel > labels parent/worker/unknown 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > shipped delivery receipt contract > freezes the send --wait vocabulary and receipt wire shape before dispatch receipts 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > BriefAckReceipt — AC-05 additive receipt kind > round-trips a structured brief ack without changing ReceiptState 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > BriefAckReceipt — AC-05 additive receipt kind > rejects malformed or identity-weak brief acks 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > announceText > names the session id, role, and how to reach a peer 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > announceText > receiptBody/parseReceiptBody > round-trips every receipt state, including unverified 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > announceText > is non-imperative and warns against acting on the inbox (D-040) 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > injectionText > renders a remote command as its raw slash form (executes; not framed) 1ms
+ × .pi/extensions/pij/core/daemon/router.test.ts > injectionText > frames free text with the sender (parity with the pi receiver) 3ms
+   → expected '[pij-rs from pij-me]\nhello there\n[/…' to be '[pij from pij-me] hello there' // Object.is equality
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > pi target → observe (the thin in-process receiver owns it; daemon never injects) 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > legacy descriptor (no harness) defaults to pi → observe 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > bound external pull target → observe, never inject 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > unbound external pull target → observe, never buffer 0ms
+ × .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > bound claude target → inject into its pane 1ms
+   → expected { kind: 'inject', paneId: '%7', …(1) } to deeply equal { kind: 'inject', paneId: '%7', …(1) }
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > a /compact command to a bound claude target injects '/compact' (AC-07) 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > unbound claude target → buffer (R-02: send outran the binding) 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > bound claude target with no pane id → buffer (cannot inject without a pane) 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > buffers per target and flushes FIFO, clearing the queue 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > flushing an unknown target is empty, not an error 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > holds and flushes FIFO only while human activity is fresh 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > expires a stale typing latch at the bounded hold deadline 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > clears an un-timestamped stale latch instead of holding forever 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > exposes busy read-only but never treats busy alone as a hold 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > deduplicates a retained unread message across held ticks 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > coalesces repeated held watchdog pings to one buffered delivery 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > isCompacting (compact-window drain hold, DL-004) > fresh mark → compacting (drain holds) 1ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > isCompacting (compact-window drain hold, DL-004) > no mark → not compacting 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > isCompacting (compact-window drain hold, DL-004) > expired past COMPACT_MAX_MS → not compacting (a dead compact never wedges the queue) 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > isCompacting (compact-window drain hold, DL-004) > malformed timestamp → not compacting (fail open to delivery) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > fresh boot writes a descriptor, announces once, returns fresh=true 2ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > persists the selected Pi-family runtime on first boot 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > reload reuses the descriptor: no re-announce, startedAt preserved, fresh=false 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > reload preserves an existing planId over a stale spawn environment 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > resume preserves durable fields while replacing stale runtime attachment 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > revives a dissolved Pi-family descriptor and clears terminal incarnation state 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > injects a Pi-family revive reframe without an announcement target 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > hydrates durable metadata when the live descriptor was removed 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > refreshes structural and repository metadata while preserving close ownership 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > hydrates durable structural metadata and applies a freshly resolved repository identity 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > reseeds the seq counter from lastSeq() (crash-safe, finding 04) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.capture > appends events with strictly monotonic seq + ISO timestamp 0ms
+ × .pi/extensions/pij/core/session.test.ts > PijSession.onInbound — free text > idle peer: immediate inject, framed sender id, single delivered receipt 5ms
+   → expected { …(2) } to match object { text: '[pij from bob] hi', …(1) }
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.onInbound — free text > busy peer: steer inject, queued receipt, then delivered at next turn_start 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.onInbound — commands (AC-6, finding 05) > compact is executed and recorded; no inject 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.onInbound — commands (AC-6, finding 05) > unknown command is rejected with E-CMD and never reaches pi 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.onInbound — commands (AC-6, finding 05) > new fires via the captured command context when armed; no compact, no inject 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.onInbound — commands (AC-6, finding 05) > reload is deferred when un-armed: queued + wakes, then drained on /pij 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.onInbound — receipts never wake the peer > a kind:receipt message is recorded as an event, never injected 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession descriptor state (D-A / AC-9, AC-7a) > boots idle, goes working on turn_start, idle again on turn_end 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession descriptor state (D-A / AC-9, AC-7a) > capture refreshes lastEventAt to the event's ISO timestamp 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession descriptor state (D-A / AC-9, AC-7a) > reload preserves state + lastEventAt 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.shutdown > dissolves a replacement descriptor without leaving it in the live registry list 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.shutdown > leaves quit available for daemon terminal observation 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > layout:window opens exactly one window; returns spawnId + paneId (AC-01) 1ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > persists the exact deadline before launch, then correlates pane and child registration 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > env carries PIJ_ANNOUNCE_TO=self, PIJ_SPAWN_ID, PIJ_ROLE=worker (AC-02) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > threads model via --model argv AND PIJ_SPAWN_MODEL env (§H2 / F003) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > model-facing spawn uses the same deterministic provider resolver 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > does NOT set PIJ_PANE_ID in child env (§H1: child reads $TMUX_PANE) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > passes task via PIJ_SPAWN_TASK env (finding 01 / CF-01) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > returns E-NOTMUX when not inside a tmux session (§M5 / F004 / AC-07) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > synchronous tmux launch failure removes only its owned expectation 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > DEFAULT (no layout) → split -h (~1/3 right column) on the current pane, no window 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > layout:split with 1 worker in-window → split -v (stack) on that pane + even out 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > a 3rd worker appends below the NEWEST pane (uncapped stack) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > layout:split counts only CURRENT-window pij panes (window-mode kids ignored) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > layout:split tracks panes parent-side across back-to-back spawns (registry lags boot) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > orders intent write → kill → requested terminal write → dissolve exactly 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > a failed kill stops after intent without terminalizing or dissolving 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > is idempotent after dissolve — a second close is a no-op 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > missing session → E-NOID, no killPane call 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > no paneId (not a spawned window) → E-NOID, no killPane call (§H3) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > warn-if-not-mine: captures internal warn event AND returns caller-visible warning (AC-06 / FT-002) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > warn when spawnedBy is absent but paneId exists (unknown origin — AC-06) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > no warning when this session spawned the target (spawnedBy === self) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot — spawned child path (T204) > fresh spawned boot: persists paneId from TMUX_PANE + spawnedBy; delivers ready-ping; injects announce (AC-03) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot — spawned child path (T204) > spawned boot with task: suppresses announceText, injects task only (finding 07 / AC-03) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot — spawned child path (T204) > model + effort become registry truth and thread into the ready-ping body (§H2) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot — spawned child path (T204) > reload (not fresh) does NOT re-ping (finding 04 / AC-04) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.noteInboxScan (plan 057 thread-1 — poll-primary liveness heartbeat) > persists lastInboxScanAt only at the ~2500ms cadence (per-scan accurate, persisted coarse) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.noteInboxScan (plan 057 thread-1 — poll-primary liveness heartbeat) > is a no-op before boot — the marker never advances, so the first post-boot scan still stamps 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/core/message.test.ts > frame/parseFrame > round-trips sender id + body
+AssertionError: expected '[pij-rs from w3]\nrefactor store.ts\n…' to be '[pij from w3] refactor store.ts' // Object.is equality
+
+- Expected
++ Received
+
+- [pij from w3] refactor store.ts
++ [pij-rs from w3]
++ refactor store.ts
++ [/pij]
+
+ ❯ .pi/extensions/pij/core/message.test.ts:31:16
+     29|  it("round-trips sender id + body", () => {
+     30|   const text = frame("w3", "refactor store.ts");
+     31|   expect(text).toBe("[pij from w3] refactor store.ts");
+       |                ^
+     32|   expect(parseFrame(text)).toEqual({ from: "w3", body: "refactor store…
+     33|  });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  .pi/extensions/pij/core/session.test.ts > PijSession.onInbound — free text > idle peer: immediate inject, framed sender id, single delivered receipt
+AssertionError: expected { …(2) } to match object { text: '[pij from bob] hi', …(1) }
+
+- Expected
++ Received
+
+  {
+    "mode": "immediate",
+-   "text": "[pij from bob] hi",
++   "text": "[pij-rs from bob]
++ hi
++ [/pij]",
+  }
+
+ ❯ .pi/extensions/pij/core/session.test.ts:391:27
+    389|   const res = h.session.onInbound({ from: "bob", to: "alice", body: "h…
+    390|   expect(res).toMatchObject({ kind: "delivered", state: "delivered" });
+    391|   expect(h.pi.injects[0]).toMatchObject({ text: "[pij from bob] hi", m…
+       |                           ^
+    392|   // receipt goes back to the sender as a kind:receipt message...
+    393|   expect(h.delivery.outbox).toHaveLength(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  .pi/extensions/pij/core/daemon/router.test.ts > injectionText > frames free text with the sender (parity with the pi receiver)
+AssertionError: expected '[pij-rs from pij-me]\nhello there\n[/…' to be '[pij from pij-me] hello there' // Object.is equality
+
+- Expected
++ Received
+
+- [pij from pij-me] hello there
++ [pij-rs from pij-me]
++ hello there
++ [/pij]
+
+ ❯ .pi/extensions/pij/core/daemon/router.test.ts:30:50
+     28|  });
+     29|  it("frames free text with the sender (parity with the pi receiver)", …
+     30|   expect(injectionText(msg("x", "hello there"))).toBe("[pij from pij-m…
+       |                                                  ^
+     31|  });
+     32| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > bound claude target → inject into its pane
+AssertionError: expected { kind: 'inject', paneId: '%7', …(1) } to deeply equal { kind: 'inject', paneId: '%7', …(1) }
+
+- Expected
++ Received
+
+  {
+    "kind": "inject",
+    "paneId": "%7",
+-   "text": "[pij from pij-me] go",
++   "text": "[pij-rs from pij-me]
++ go
++ [/pij]",
+  }
+
+ ❯ .pi/extensions/pij/core/daemon/router.test.ts:68:43
+     66|  it("bound claude target → inject into its pane", () => {
+     67|   const d = target({ id: "claude-w", harness: "claude", lifecycle: "bo…
+     68|   expect(route(d, msg("claude-w", "go"))).toEqual({
+       |                                           ^
+     69|    kind: "inject",
+     70|    paneId: "%7",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  3 failed (3)
+      Tests  4 failed | 82 passed (86)
+   Start at  10:29:36
+   Duration  228ms (transform 195ms, setup 0ms, import 250ms, tests 30ms, environment 0ms)
+
+error: Recipe `test` failed on line 86 with exit code 1
+
+GREEN — CORE AND DIRECT CONSUMERS (verbatim command output)
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/core/message.test.ts .pi/extensions/pij/core/session.test.ts .pi/extensions/pij/core/daemon/router.test.ts --reporter=verbose
+
+(node:85024) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-rs-boot-announce-u4
+
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > matches the Rust canonical no-machine frame byte-for-byte 1ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > still parses the legacy head without a closing tail 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > round-trips sender id + body 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > handles multi-line bodies 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > preserves canonical payload bytes including embedded tails: "" 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > preserves canonical payload bytes including embedded tails: "\n" 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > preserves canonical payload bytes including embedded tails: " \tline1\r\nline2\n " 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > preserves canonical payload bytes including embedded tails: "[/pij]" 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > preserves canonical payload bytes including embedded tails: "before\n[/pij]\nafter" 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > preserves canonical payload bytes including embedded tails: "before\n[/pij]\n" 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > preserves legacy payload bytes: "" 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > preserves legacy payload bytes: "line1\nline2" 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > preserves legacy payload bytes: " \tline1\r\nline2\n " 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > preserves legacy payload bytes: "before\n[/pij]\nafter" 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > preserves a machine-qualified sender already supplied on the wire 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > rejects malformed canonical envelopes: "[pij-rs from p1]\nhello" 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > rejects malformed canonical envelopes: "[pij-rs from p1] hello\n[/pij]" 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > rejects malformed canonical envelopes: "[pij-rs from p1]\nhello[/pij]" 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > rejects malformed canonical envelopes: "[pij-rs from p1]\nhello\n[/pij]\nadjacent text" 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > rejects malformed canonical envelopes: "[pij-rs from p1]\nhello\n[/pij]\n" 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > rejects malformed canonical envelopes: "[pij-rs from ]\nhello\n[/pij]" 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > frame/parseFrame > returns null for unframed text 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > roleLabel > labels parent/worker/unknown 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > shipped delivery receipt contract > freezes the send --wait vocabulary and receipt wire shape before dispatch receipts 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > BriefAckReceipt — AC-05 additive receipt kind > round-trips a structured brief ack without changing ReceiptState 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > BriefAckReceipt — AC-05 additive receipt kind > rejects malformed or identity-weak brief acks 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > announceText > names the session id, role, and how to reach a peer 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > announceText > receiptBody/parseReceiptBody > round-trips every receipt state, including unverified 0ms
+ ✓ .pi/extensions/pij/core/message.test.ts > announceText > is non-imperative and warns against acting on the inbox (D-040) 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > injectionText > renders a remote command as its raw slash form (executes; not framed) 1ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > injectionText > frames free text with the sender (parity with the pi receiver) 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > pi target → observe (the thin in-process receiver owns it; daemon never injects) 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > legacy descriptor (no harness) defaults to pi → observe 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > bound external pull target → observe, never inject 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > unbound external pull target → observe, never buffer 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > bound claude target → inject into its pane 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > a /compact command to a bound claude target injects '/compact' (AC-07) 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > unbound claude target → buffer (R-02: send outran the binding) 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > route (delivery ownership, AC-07/08) > bound claude target with no pane id → buffer (cannot inject without a pane) 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > buffers per target and flushes FIFO, clearing the queue 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > flushing an unknown target is empty, not an error 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > holds and flushes FIFO only while human activity is fresh 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > expires a stale typing latch at the bounded hold deadline 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > clears an un-timestamped stale latch instead of holding forever 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > exposes busy read-only but never treats busy alone as a hold 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > deduplicates a retained unread message across held ticks 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > SendBuffer (flush-on-bind, in arrival order) > coalesces repeated held watchdog pings to one buffered delivery 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > isCompacting (compact-window drain hold, DL-004) > fresh mark → compacting (drain holds) 1ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > isCompacting (compact-window drain hold, DL-004) > no mark → not compacting 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > isCompacting (compact-window drain hold, DL-004) > expired past COMPACT_MAX_MS → not compacting (a dead compact never wedges the queue) 0ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts > isCompacting (compact-window drain hold, DL-004) > malformed timestamp → not compacting (fail open to delivery) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > fresh boot writes a descriptor, announces once, returns fresh=true 2ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > persists the selected Pi-family runtime on first boot 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > reload reuses the descriptor: no re-announce, startedAt preserved, fresh=false 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > reload preserves an existing planId over a stale spawn environment 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > resume preserves durable fields while replacing stale runtime attachment 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > revives a dissolved Pi-family descriptor and clears terminal incarnation state 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > injects a Pi-family revive reframe without an announcement target 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > hydrates durable metadata when the live descriptor was removed 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > refreshes structural and repository metadata while preserving close ownership 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > hydrates durable structural metadata and applies a freshly resolved repository identity 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot > reseeds the seq counter from lastSeq() (crash-safe, finding 04) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.capture > appends events with strictly monotonic seq + ISO timestamp 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.onInbound — free text > idle peer: immediate inject, framed sender id, single delivered receipt 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.onInbound — free text > busy peer: steer inject, queued receipt, then delivered at next turn_start 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.onInbound — commands (AC-6, finding 05) > compact is executed and recorded; no inject 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.onInbound — commands (AC-6, finding 05) > unknown command is rejected with E-CMD and never reaches pi 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.onInbound — commands (AC-6, finding 05) > new fires via the captured command context when armed; no compact, no inject 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.onInbound — commands (AC-6, finding 05) > reload is deferred when un-armed: queued + wakes, then drained on /pij 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.onInbound — receipts never wake the peer > a kind:receipt message is recorded as an event, never injected 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession descriptor state (D-A / AC-9, AC-7a) > boots idle, goes working on turn_start, idle again on turn_end 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession descriptor state (D-A / AC-9, AC-7a) > capture refreshes lastEventAt to the event's ISO timestamp 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession descriptor state (D-A / AC-9, AC-7a) > reload preserves state + lastEventAt 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.shutdown > dissolves a replacement descriptor without leaving it in the live registry list 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.shutdown > leaves quit available for daemon terminal observation 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > layout:window opens exactly one window; returns spawnId + paneId (AC-01) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > persists the exact deadline before launch, then correlates pane and child registration 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > env carries PIJ_ANNOUNCE_TO=self, PIJ_SPAWN_ID, PIJ_ROLE=worker (AC-02) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > threads model via --model argv AND PIJ_SPAWN_MODEL env (§H2 / F003) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > model-facing spawn uses the same deterministic provider resolver 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > does NOT set PIJ_PANE_ID in child env (§H1: child reads $TMUX_PANE) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > passes task via PIJ_SPAWN_TASK env (finding 01 / CF-01) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > returns E-NOTMUX when not inside a tmux session (§M5 / F004 / AC-07) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > synchronous tmux launch failure removes only its owned expectation 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > DEFAULT (no layout) → split -h (~1/3 right column) on the current pane, no window 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > layout:split with 1 worker in-window → split -v (stack) on that pane + even out 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > a 3rd worker appends below the NEWEST pane (uncapped stack) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > layout:split counts only CURRENT-window pij panes (window-mode kids ignored) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.spawn > layout:split tracks panes parent-side across back-to-back spawns (registry lags boot) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > orders intent write → kill → requested terminal write → dissolve exactly 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > a failed kill stops after intent without terminalizing or dissolving 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > is idempotent after dissolve — a second close is a no-op 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > missing session → E-NOID, no killPane call 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > no paneId (not a spawned window) → E-NOID, no killPane call (§H3) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > warn-if-not-mine: captures internal warn event AND returns caller-visible warning (AC-06 / FT-002) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > warn when spawnedBy is absent but paneId exists (unknown origin — AC-06) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.close > no warning when this session spawned the target (spawnedBy === self) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot — spawned child path (T204) > fresh spawned boot: persists paneId from TMUX_PANE + spawnedBy; delivers ready-ping; injects announce (AC-03) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot — spawned child path (T204) > spawned boot with task: suppresses announceText, injects task only (finding 07 / AC-03) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot — spawned child path (T204) > model + effort become registry truth and thread into the ready-ping body (§H2) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.boot — spawned child path (T204) > reload (not fresh) does NOT re-ping (finding 04 / AC-04) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.noteInboxScan (plan 057 thread-1 — poll-primary liveness heartbeat) > persists lastInboxScanAt only at the ~2500ms cadence (per-scan accurate, persisted coarse) 0ms
+ ✓ .pi/extensions/pij/core/session.test.ts > PijSession.noteInboxScan (plan 057 thread-1 — poll-primary liveness heartbeat) > is a no-op before boot — the marker never advances, so the first post-boot scan still stamps 0ms
+
+ Test Files  3 passed (3)
+      Tests  103 passed (103)
+   Start at  10:30:01
+   Duration  213ms (transform 190ms, setup 0ms, import 243ms, tests 17ms, environment 0ms)
+
+
+GREEN — ADDITIONAL DOWNSTREAM CONSUMERS (verbatim command output)
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/daemon.test.ts .pi/extensions/pij/adapters/rust-runtime.test.ts .pi/extensions/pij/core/daemon/typing-guard-contract.test.ts
+
+(node:27678) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-rs-boot-announce-u4
+
+ ✓ .pi/extensions/pij/core/daemon/typing-guard-contract.test.ts (32 tests) 7ms
+ ✓ .pi/extensions/pij/adapters/rust-runtime.test.ts (17 tests) 851ms
+     ✓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)  306ms
+ ✓ .pi/extensions/pij/daemon.test.ts (62 tests | 2 skipped) 6611ms
+     ✓ coalesces repeated watchdog intervals while the composer hold is active  629ms
+     ✓ AC-03: still exactly one persist with 50 owned descriptors  901ms
+
+ Test Files  3 passed (3)
+      Tests  109 passed | 2 skipped (111)
+   Start at  10:34:32
+   Duration  7.49s (transform 661ms, setup 0ms, import 1.17s, tests 7.47s, environment 0ms)
+
+
+SCANNER REPRODUCTION AND CONFIRMATION
+Before fix, human_text({type:user,message:{content:canonical-frame}}) returned the full canonical relay as human text. Legacy relay and watchdog were excluded; human text retained.
+After fix: legacy relay PASS; canonical relay PASS; watchdog PASS; human PASS. Actual scan() over a temporary isolated four-record JSONL returned hits=1, examined=1 (only human counted). No live pane scan or real seat was spawned.
+
+ASSUMPTIONS / MEASUREMENTS
+1. MEASURED: Rust frame_message at crates/core/src/framing.rs:15–30 emits canonical no-machine head/newline/payload/newline/tail. The new exact fixture uses its existing pij-a/hello example. Rust code unchanged.
+2. MEASURED: PijMessage at core/types.ts:530–546 carries from/body, no machine field. pushedMessageValue at adapters/rust-runtime.ts:419–442 copies record.from and record.body. frame() keeps from unchanged; no machine identity invented.
+3. MEASURED: worktree-rooted LSP references locate frame() in PijSession.onInbound and daemon/router.injectionText; parseFrame has only unit-test references. Test file opened explicitly so the excluded test project was also queried.
+4. SOURCE-BASED, NOT LIVE: daemon message.pushed/inbox claims supply structured from/body; RustRuntimeSession feeds that to PijSession.onInbound, which frames at injection. PM owns live session-JSONL confirmation and real daemon composition.
+5. MEASURED: downstream legacy-only scanner filter was found and explicitly brought into scope by PM. It now recognizes both heads; old history remains excluded.
+6. DELIBERATE NON-CHANGE: core/inbox.ts independently renders legacy CLI text and does not call frame(); no need to change that separate pull-inbox output contract for an injected-message cutover.
+7. DELIBERATE NON-CHANGE: announceText content still cites the legacy head, as explicitly frozen by the plan. Ready-ping, freshness, announce ordering, production session.ts and rust-runtime.ts untouched.
+8. SELF-ECHO FIXTURES: exact echo, partial-prefix echo, full echo plus human k, and output-head filters migrate with render bytes; assertions, timing and ordering are not changed. Standalone legacy fixtures in other parser/caret suites remain intentionally unchanged.
+
+PM RULING (AC6 / AC8)
+AC6 says core/session.test.ts unchanged. Its INTENT was a fence rule for u2: the legacy freshness path must not be disturbed. AC8, ruled in by prime after AC6 was written, deliberately changes what frame() renders — so a test that pins the OLD rendered string is now asserting the thing the plan has decided to change.
+Granted exception: expected FRAME TEXT ONLY; no assertions about announce behaviour, freshness, ready-ping, or ordering move; production session.ts untouched. Later PM explicitly granted the additional fixture strings and the scanner regex.
+
+EXACT EXPECTED/FAKE/FILTER FRAME STRING CHANGES
+Coordinates: original baseline line -> final worktree line; strings show literal source escape sequences. Assertions unchanged; formatter may wrap the enclosing expression.
+
+1. .pi/extensions/pij/adapters/rust-runtime.test.ts:53 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:53
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+2. .pi/extensions/pij/adapters/rust-runtime.test.ts:313 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:314
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+3. .pi/extensions/pij/adapters/rust-runtime.test.ts:320 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:321
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+4. .pi/extensions/pij/adapters/rust-runtime.test.ts:378 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:379
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+5. .pi/extensions/pij/adapters/rust-runtime.test.ts:508 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:511
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+6. .pi/extensions/pij/adapters/rust-runtime.test.ts:547 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:552
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+7. .pi/extensions/pij/adapters/rust-runtime.test.ts:561 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:568
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+8. .pi/extensions/pij/adapters/rust-runtime.test.ts:698 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:706
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+9. .pi/extensions/pij/core/daemon/router.test.ts:30 -> .pi/extensions/pij/core/daemon/router.test.ts:31
+   BEFORE `[pij from pij-me] hello there`
+   AFTER  `[pij-rs from pij-me]\nhello there\n[/pij]`
+10. .pi/extensions/pij/core/daemon/router.test.ts:71 -> .pi/extensions/pij/core/daemon/router.test.ts:73
+   BEFORE `[pij from pij-me] go`
+   AFTER  `[pij-rs from pij-me]\ngo\n[/pij]`
+11. .pi/extensions/pij/core/daemon/typing-guard-contract.test.ts:303 -> .pi/extensions/pij/core/daemon/typing-guard-contract.test.ts:303
+   BEFORE `[pij from pij-boss] first`
+   AFTER  `[pij-rs from pij-boss]\nfirst\n[/pij]`
+12. .pi/extensions/pij/core/message.test.ts:19 -> .pi/extensions/pij/core/message.test.ts:31
+   BEFORE `[pij from w3] refactor store.ts`
+   AFTER  `[pij-rs from w3]\nrefactor store.ts\n[/pij]`
+13. .pi/extensions/pij/core/session.test.ts:391 -> .pi/extensions/pij/core/session.test.ts:392
+   BEFORE `[pij from bob] hi`
+   AFTER  `[pij-rs from bob]\nhi\n[/pij]`
+14. .pi/extensions/pij/daemon.test.ts:242 -> .pi/extensions/pij/daemon.test.ts:244
+   BEFORE `[pij from pij-boss] review the diff`
+   AFTER  `[pij-rs from pij-boss]\nreview the diff\n[/pij]`
+15. .pi/extensions/pij/daemon.test.ts:395 -> .pi/extensions/pij/daemon.test.ts:400
+   BEFORE `[pij from pij-boss] new`
+   AFTER  `[pij-rs from pij-boss]\nnew\n[/pij]`
+16. .pi/extensions/pij/daemon.test.ts:621 -> .pi/extensions/pij/daemon.test.ts:629
+   BEFORE `[pij from pij-boss] ${fixtureName}`
+   AFTER  `[pij-rs from pij-boss]\n${fixtureName}\n[/pij]`
+17. .pi/extensions/pij/daemon.test.ts:658 -> .pi/extensions/pij/daemon.test.ts:667
+   BEFORE `[pij from pij-boss] equal-length edit`
+   AFTER  `[pij-rs from pij-boss]\nequal-length edit\n[/pij]`
+18. .pi/extensions/pij/daemon.test.ts:688 -> .pi/extensions/pij/daemon.test.ts:699
+   BEFORE `[pij from pij-boss] first`
+   AFTER  `[pij-rs from pij-boss]\nfirst\n[/pij]`
+19. .pi/extensions/pij/daemon.test.ts:690 -> .pi/extensions/pij/daemon.test.ts:702
+   BEFORE `[pij from pij-boss] first`
+   AFTER  `[pij-rs from pij-boss]\nfirst\n[/pij]`
+20. .pi/extensions/pij/daemon.test.ts:695 -> .pi/extensions/pij/daemon.test.ts:709
+   BEFORE `[pij from pij-boss] second`
+   AFTER  `[pij-rs from pij-boss]\nsecond\n[/pij]`
+21. .pi/extensions/pij/daemon.test.ts:729 -> .pi/extensions/pij/daemon.test.ts:744
+   BEFORE `[pij from pij-boss] first`
+   AFTER  `[pij-rs from pij-boss]\nfirst\n[/pij]`
+22. .pi/extensions/pij/daemon.test.ts:734 -> .pi/extensions/pij/daemon.test.ts:751
+   BEFORE `[pij from pij-boss] second`
+   AFTER  `[pij-rs from pij-boss]\nsecond\n[/pij]`
+23. .pi/extensions/pij/daemon.test.ts:765 -> .pi/extensions/pij/daemon.test.ts:783
+   BEFORE `[pij from`
+   AFTER  `[pij-rs from`
+24. .pi/extensions/pij/daemon.test.ts:771 -> .pi/extensions/pij/daemon.test.ts:789
+   BEFORE `[pij from`
+   AFTER  `[pij-rs from`
+25. .pi/extensions/pij/daemon.test.ts:772 -> .pi/extensions/pij/daemon.test.ts:790
+   BEFORE `[pij from pij-boss] one`
+   AFTER  `[pij-rs from pij-boss]\none\n[/pij]`
+26. .pi/extensions/pij/daemon.test.ts:773 -> .pi/extensions/pij/daemon.test.ts:791
+   BEFORE `[pij from pij-boss] two`
+   AFTER  `[pij-rs from pij-boss]\ntwo\n[/pij]`
+27. .pi/extensions/pij/daemon.test.ts:812 -> .pi/extensions/pij/daemon.test.ts:832
+   BEFORE `[pij from pij-boss] after idle`
+   AFTER  `[pij-rs from pij-boss]\nafter idle\n[/pij]`
+28. .pi/extensions/pij/daemon.test.ts:816 -> .pi/extensions/pij/daemon.test.ts:839
+   BEFORE `[pij from pij-boss] no chaining`
+   AFTER  `[pij-rs from pij-boss]\nno chaining\n[/pij]`
+29. .pi/extensions/pij/daemon.test.ts:863 -> .pi/extensions/pij/daemon.test.ts:887
+   BEFORE `[pij from pij-boss] resume pipeline`
+   AFTER  `[pij-rs from pij-boss]\nresume pipeline\n[/pij]`
+30. .pi/extensions/pij/daemon.test.ts:931 -> .pi/extensions/pij/daemon.test.ts:957
+   BEFORE `[pij from pij-boss] racing`
+   AFTER  `[pij-rs from pij-boss]\nracing\n[/pij]`
+31. .pi/extensions/pij/daemon.test.ts:1125 -> .pi/extensions/pij/daemon.test.ts:1152
+   BEFORE `[pij from pij-boss] firs\x1b[46;4H`
+   AFTER  `[pij-rs from pij-boss]\nfirs\x1b[46;4H`
+32. .pi/extensions/pij/daemon.test.ts:1204 -> .pi/extensions/pij/daemon.test.ts:1231
+   BEFORE `[pij from pij-boss] firstk\x1b[46;4H`
+   AFTER  `[pij-rs from pij-boss]\nfirst\n[/pij]k\x1b[46;4H`
+33. .pi/extensions/pij/daemon.test.ts:1209 -> .pi/extensions/pij/daemon.test.ts:1236
+   BEFORE `[pij from pij-boss] first`
+   AFTER  `[pij-rs from pij-boss]\nfirst\n[/pij]`
+34. .pi/extensions/pij/daemon.test.ts:1216 -> .pi/extensions/pij/daemon.test.ts:1243
+   BEFORE `[pij from pij-boss] first`
+   AFTER  `[pij-rs from pij-boss]\nfirst\n[/pij]`
+35. .pi/extensions/pij/daemon.test.ts:1246 -> .pi/extensions/pij/daemon.test.ts:1275
+   BEFORE `[pij from pij-boss] racing`
+   AFTER  `[pij-rs from pij-boss]\nracing\n[/pij]`
+36. .pi/extensions/pij/daemon.test.ts:1322 -> .pi/extensions/pij/daemon.test.ts:1352
+   BEFORE `[pij from pij-boss] busy is not a gate`
+   AFTER  `[pij-rs from pij-boss]\nbusy is not a gate\n[/pij]`
+37. .pi/extensions/pij/daemon.test.ts:1756 -> .pi/extensions/pij/daemon.test.ts:1788
+   BEFORE `[pij from pij-boss] queued task`
+   AFTER  `[pij-rs from pij-boss]\nqueued task\n[/pij]`
+38. .pi/extensions/pij/daemon.test.ts:1778 -> .pi/extensions/pij/daemon.test.ts:1813
+   BEFORE `[pij from pij-boss] queued task`
+   AFTER  `[pij-rs from pij-boss]\nqueued task\n[/pij]`
+39. .pi/extensions/pij/daemon.test.ts:1817 -> .pi/extensions/pij/daemon.test.ts:1853
+   BEFORE `[pij from pij-boss] after compact`
+   AFTER  `[pij-rs from pij-boss]\nafter compact\n[/pij]`
+
+SCANNER: harness/scripts/tmux-claude-topic-scan.py:35
+BEFORE `^\s*\[pij (from|watchdog)\b`
+AFTER  `^\s*\[pij(?:-rs)? (from|watchdog)\b`
+
+
+FRICTION / HARNESS IMPROVEMENT
+DL-001: Flowspace path_unmatched for .pi/extensions/pij/** despite actual worktree files; interpreted as indexed-scope absence, not source absence.
+CONF-001 / DL-002: boot docs contradict default smoke behavior; advertised --full is not registered and returns E108. No default smoke run. Suggest declaring --full in boot.options and testing help/dispatch parity; not in unit fence.
+Existing observations remain in .harness/temp/agent/session-buffer.md, listed and NEVER cleared.
+Encoded improvement delivered in-fence: topic scanner no longer attributes canonical peer relay messages to the human, and framing boundary tests pin payload-byte preservation.
+
+FINAL EXTENSION / QUICK GATE RECEIPTS
+Command: VITEST_MAX_WORKERS=4 VITEST_MAX_THREADS=4 CARGO_BUILD_JOBS=4 just test .pi/extensions/pij && harness checks --quick
+Extension: Test Files 170 passed | 2 skipped (172); Tests 4062 passed | 15 skipped (4077).
+Quick gate: RED, one test sensor failure; other six sensors passed, smoke skipped.
+VERBATIM QUICK GATE ENVELOPE:
+{"command":"checks","status":"error","timestamp":"2026-09-05T00:41:39.670Z","error":{"code":"checks-failed","message":"1 check(s) failed: test.","details":{"results":[{"name":"local-paths","status":"pass","code":0,"proves":"operational files contain no user-specific absolute home paths"},{"name":"typecheck","status":"pass","code":0,"proves":"the TypeScript surface compiles"},{"name":"lint","status":"pass","code":0,"proves":"Biome (errors + warnings) is clean"},{"name":"test","status":"fail","code":1,"proves":"the vitest suite passes"},{"name":"windows-compat","status":"pass","code":0,"proves":"portable typecheck, lint, registry replacement, inbox, fake, and no-tmux CLI checks pass"},{"name":"smoke","status":"skipped","code":0,"proves":"the tmux-driven end-to-end driver scenarios pass"},{"name":"pkg-audit","status":"pass","code":0,"proves":"third-party package vetting surfaces no new findings"},{"name":"snapshots","status":"pass","code":0,"proves":"agent-pack snapshots have not drifted"}],"failures":[{"name":"test","output":"E-ARG: pij watch is for non-pi peers only; use the file-watch-notify extension inside pi sessions\nE-ARG: assignment 'asg-general-pij-B' is already undeclared — nothing to clear\nE-ARG: --project takes a kebab project slug (got '../escape')\n⚠ pij: your now/next card is 44680m old, never reported — pij report now \"<did>\" \"<next>\"\n⚠ pij: your now/next card is 44680m old, never reported — pij report now \"<did>\" \"<next>\"\nE-OWN: 'watchdog watch' is not available to a PA — refused by role 'pa' (field: orchestrationRole): 'pij-stranger' is neither you nor your parent — a PA may act only on ITSELF ('pij-pa') or its own parent ('pij-parent'), so ask 'pij-parent' to do it or relay the request. Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.\n⚠ pij: your now/next card is 44680m old, never reported — pij report now \"<did>\" \"<next>\"\nE-OWN: 'watchdog pause' is not available to a PA — refused by role 'pa' (field: orchestrationRole): a PA may 'list' the watchdog roster for any target, 'unwatch' any target — which removes only its OWN subscription and changes nothing else about that seat — and 'watch' only ITSELF or its own parent; every other watchdog action changes supervision policy for a seat and stays refused. Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.\n⚠ pij: your now/next card is 44680m old, never reported — pij report now \"<did>\" \"<next>\"\nE-OWN: 'close' is not available to a PA — refused by role 'pa' (field: orchestrationRole): it changes seat lineage or existence — a PA never creates, adopts, or ends a seat. Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.\n⚠ pij: your now/next card is 44680m old, never reported — pij report now \"<did>\" \"<next>\"\n⚠ pij: your now/next card is 44680m old, never reported — pij report now \"<did>\" \"<next>\"\n⚠ pij: your now/next card is 44680m old, never reported — pij report now \"<did>\" \"<next>\"\n⚠ pij: your now/next card is 44680m old, never reported — pij report now \"<did>\" \"<next>\"\n⚠ pij: your now/next card is 44680m old, never reported — pij report now \"<did>\" \"<next>\"\nE-OWN: 'watchdog watch' is not available to a PA — refused by role 'pa' (field: orchestrationRole): '--for' binds a subscription on ANOTHER seat's behalf, which is a prime's repair path — a PA acts only for itself, so run it without '--for'. Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.\n⚠ pij: your now/next card is 44680m old, never reported — pij report now \"<did>\" \"<next>\"\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  skills/flow-pair/test/identity.test.ts > deriveRepoId > falls back to basename-hash when git has no remote\nError: ENOTEMPTY: directory not empty, rmdir '/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/fp-test-i4gKyH/.git'\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\nerror: Recipe `test` failed on line 86 with exit code 1"}],"skipped":["smoke"]}},"next_action":"Fix the failing check(s) above (test), then re-run `harness checks`. Not ship/done-ready until this is green."}
+
+REQUIRED SINGLE ISOLATION RERUN
+Command: just test skills/flow-pair/test/identity.test.ts (same caps)
+Observed: 1 passed (1); 6 passed (6); tests 317ms; duration 416ms.
+This does NOT turn the full quick gate green. Failing code is untouched; afterEach recursively removes temporary git fixtures without retry. No unrelated fix applied.
+
+VERBATIM VISIBLE ISOLATION OUTPUT
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run skills/flow-pair/test/identity.test.ts
+
+(node:66360) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-rs-boot-announce-u4
+
+ ✓ skills/flow-pair/test/identity.test.ts (6 tests) 317ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  10:41:47
+   Duration  416ms (transform 16ms, setup 0ms, import 24ms, tests 317ms, environment 0ms)
+
+PM DISPOSITION / FINAL COMMIT
+COMMIT NOW authorized by pij-verbal-silverfish; no second quick gate.
+"six sensors pass, smoke skipped, one test-sensor red isolated to an unrelated teardown race, isolation rerun green 6/6"
+The PM owns the composed verdict. No claim that the quick gate passed.
+
+Commit: b27e067c7a6d273858a669da63d1433a36587782
+Message: fix(pij): use canonical rs frames across receivers
+Branch: 135-rs-boot-announce-u4
+harness commit: status ok, mode direct-verified, probe connected, verify landed, buffer null.
+All eight explicit fenced paths committed; refs/notes/ai authorship verified by harness commit.
+Separate commit warning: conversation ingest could not resolve session identity; no conversation ingested. Commit attribution landed independently; no repair attempted outside scope.
+
+Live AC8 remains PM-owned: send to a spawned OMP seat and capture canonical head and tail in its session JSONL. No live daemon changes, seat spawns, installs, or merges performed by u4.
