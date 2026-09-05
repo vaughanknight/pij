@@ -134,9 +134,20 @@ impl UdsTransport {
             }
         }
         let suffix = format!(".{}", seat.pane.as_deref()?);
+        self.discover_pane(&suffix, fs::read_dir(&self.sessions_dir).ok()?)
+    }
+
+    fn discover_pane(
+        &self,
+        suffix: &str,
+        entries: impl Iterator<Item = std::io::Result<fs::DirEntry>>,
+    ) -> Option<Endpoint> {
         let mut candidate = None;
-        for entry in fs::read_dir(&self.sessions_dir).ok()? {
-            let path = entry.ok()?.path();
+        for entry in entries {
+            let Ok(entry) = entry else {
+                continue;
+            };
+            let path = entry.path();
             if !path.extension().is_some_and(|ext| ext == "json") {
                 continue;
             }
@@ -146,7 +157,7 @@ impl UdsTransport {
             if !record
                 .tmux
                 .as_deref()
-                .is_some_and(|tmux| tmux.ends_with(&suffix))
+                .is_some_and(|tmux| tmux.ends_with(suffix))
             {
                 continue;
             }
@@ -269,7 +280,8 @@ impl Transport for UdsTransport {
 struct SessionRecord {
     pid: u32,
     proc_start: String,
-    pid_domain: String,
+    #[serde(default)]
+    pid_domain: Option<String>,
     tmux: Option<String>,
     messaging_socket_path: Option<String>,
 }
@@ -279,7 +291,8 @@ struct SessionRecord {
 struct PeerKey {
     peer_token: String,
     proc_start: String,
-    pid_domain: String,
+    #[serde(default)]
+    pid_domain: Option<String>,
 }
 
 struct Endpoint {
@@ -803,6 +816,84 @@ mod tests {
     }
 
     #[test]
+    fn pane_discovery_skips_every_rejected_entry_before_a_live_candidate() {
+        for case in [
+            "entry error",
+            "non-json path",
+            "malformed json",
+            "unreadable json",
+            "unrelated pane",
+            "missing pane",
+            "invalid process start",
+            "dead process",
+            "mismatched process start",
+            "missing socket",
+            "empty socket",
+        ] {
+            let dir = TestDir::new();
+            let live_socket = dir.0.join("live.sock");
+            write_record(&dir.0, 4242, "%99", &live_socket);
+            let mut rejected: Value = serde_json::from_slice(
+                &fs::read(dir.0.join("4242.json")).expect("read live record"),
+            )
+            .expect("decode live record");
+            match case {
+                "unrelated pane" => rejected["tmux"] = "fixture:@1.%100".into(),
+                "missing pane" => rejected["tmux"] = Value::Null,
+                "invalid process start" => rejected["procStart"] = "not a date".into(),
+                "dead process" => rejected["pid"] = 4343.into(),
+                "mismatched process start" => {
+                    rejected["procStart"] = "Sun Aug 30 00:00:00 2026".into();
+                }
+                "missing socket" => rejected["messagingSocketPath"] = Value::Null,
+                "empty socket" => rejected["messagingSocketPath"] = "".into(),
+                _ => {}
+            }
+            let rejected_name = if case == "non-json path" {
+                "rejected.txt"
+            } else {
+                "rejected.json"
+            };
+            let rejected_path = dir.0.join(rejected_name);
+            if case == "unreadable json" {
+                // Reading a directory fails even when tests run as root.
+                fs::create_dir(&rejected_path).expect("create unreadable record");
+            } else {
+                let contents = if case == "malformed json" {
+                    "not json".to_string()
+                } else {
+                    rejected.to_string()
+                };
+                fs::write(&rejected_path, contents).expect("write rejected record");
+            }
+            let mut entries = fs::read_dir(&dir.0)
+                .expect("read fixture directory")
+                .map(|entry| entry.expect("read fixture entry"))
+                .collect::<Vec<_>>();
+            let live_index = entries
+                .iter()
+                .position(|entry| entry.file_name() == "4242.json")
+                .expect("find live record");
+            let live = entries.swap_remove(live_index);
+            let rejected_index = entries
+                .iter()
+                .position(|entry| entry.file_name() == rejected_name)
+                .expect("find rejected record");
+            let rejected = entries.swap_remove(rejected_index);
+            let first = if case == "entry error" {
+                Err(std::io::Error::other("injected directory-entry failure"))
+            } else {
+                Ok(rejected)
+            };
+            let endpoint = transport(&dir.0)
+                .discover_pane(".%99", [first, Ok(live)].into_iter())
+                .unwrap_or_else(|| panic!("{case} must not hide the later live candidate"));
+            assert_eq!(endpoint.socket_path, live_socket, "{case}");
+            assert_eq!(endpoint.token, "sanitized-peer-token", "{case}");
+        }
+    }
+
+    #[test]
     fn discovery_prefers_live_identity_over_first_dead_pane_record() {
         let dir = TestDir::new();
         let dead = u32::MAX;
@@ -951,6 +1042,71 @@ mod tests {
             PathBuf::from("/tmp/cc-socks/4242.sock")
         );
         assert_eq!(endpoint.token, "sanitized-peer-token");
+    }
+
+    #[test]
+    fn recorded_2_1_241_registry_pair_requires_equal_optional_pid_domains() {
+        // Verbatim captures, not reconstructed fixtures:
+        // git show 5b0d6243:docs/plans/135-rs-boot-announce/assets/inputs/claude-2.1.241-shapes/session-record.json
+        // git show 5b0d6243:docs/plans/135-rs-boot-announce/assets/inputs/claude-2.1.241-shapes/peer-key.json
+        let fixture_dir =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/claude-2.1.241");
+        let recorded_session: Value = serde_json::from_slice(
+            &fs::read(fixture_dir.join("session-record.json"))
+                .expect("read captured 2.1.241 session"),
+        )
+        .expect("decode captured session");
+        let recorded_key: Value = serde_json::from_slice(
+            &fs::read(fixture_dir.join("peer-key.json")).expect("read captured 2.1.241 key"),
+        )
+        .expect("decode captured key");
+        assert!(recorded_session.get("pidDomain").is_none());
+        assert!(recorded_key.get("pidDomain").is_none());
+        let _: super::SessionRecord = serde_json::from_value(recorded_session.clone())
+            .expect("captured session without pidDomain must decode");
+        let _: super::PeerKey = serde_json::from_value(recorded_key.clone())
+            .expect("captured key without pidDomain must decode");
+
+        for (session_domain, key_domain, expected) in [
+            (None, None, true),
+            (Some("darwin"), Some("darwin"), true),
+            (None, Some("darwin"), false),
+            (Some("darwin"), None, false),
+            (Some("darwin"), Some("linux"), false),
+        ] {
+            let dir = TestDir::new();
+            let mut session = recorded_session.clone();
+            let mut key = recorded_key.clone();
+            if let Some(domain) = session_domain {
+                session["pidDomain"] = domain.into();
+            }
+            if let Some(domain) = key_domain {
+                key["pidDomain"] = domain.into();
+            }
+            fs::write(dir.0.join("75005.json"), session.to_string())
+                .expect("write captured session case");
+            fs::write(dir.0.join(format!("75005.{HASH}.key")), key.to_string())
+                .expect("write captured key case");
+            let mut transport = transport(&dir.0);
+            // Keep the captured human-date procStart unchanged in BOTH records.
+            transport.observe_start =
+                |pid, utc| (pid == 75005).then_some(if utc { 20260824002719 } else { 1 });
+            let mut target = seat(75005, Some("%8"), Harness::Claude);
+            target.proc = None;
+            let endpoint = transport.discover(&target);
+            assert_eq!(
+                endpoint.is_some(),
+                expected,
+                "session domain {session_domain:?}, key domain {key_domain:?}"
+            );
+            if let Some(endpoint) = endpoint {
+                assert_eq!(
+                    endpoint.socket_path,
+                    PathBuf::from("/tmp/cc-socks/75005.sock")
+                );
+                assert_eq!(endpoint.token, "<redacted>");
+            }
+        }
     }
 
     #[tokio::test]
