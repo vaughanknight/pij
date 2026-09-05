@@ -27,11 +27,14 @@
 use axum::extract::{Json, Query, State};
 use axum::http::StatusCode;
 use axum::response::Response;
-use pij_core::model::{Envelope, ProcIdentity, SeatDescriptor, SeatId};
+use pij_core::model::{Envelope, SeatDescriptor, SeatId};
 use pij_core::ports::SeatFilter;
 use serde::{Deserialize, Serialize};
 
-use super::{AppState, Registration, allocate_memorable_id, envelope, internal, refused};
+use super::{
+    AppState, Registration, RegistrationResponse, allocate_memorable_id, envelope, internal,
+    pane_harness_identity, refused,
+};
 use crate::registration::{RegistrationError, RegistrationService};
 
 /// The caller's environment, forwarded by the shim as a FIXED ALLOWLIST.
@@ -389,7 +392,7 @@ pub(crate) async fn adopt(
 
     // Derive folder and process identity. This is the whole difference between a
     // registration and an assertion.
-    let (folder, proc) = if let Some(pane) = pane.as_deref() {
+    let (folder, proc, proc_source) = if let Some(pane) = pane.as_deref() {
         let observed = match state.services.tmux.pane_process(pane).await {
             Ok(observed) => observed,
             Err(error) => return internal(ADOPT, error),
@@ -404,13 +407,14 @@ pub(crate) async fn adopt(
                 ),
             );
         };
-        // The start time comes from a DIFFERENT observer than the pid. That is
-        // the point: pids are recycled at boot, so the pair is the identity.
-        let start = match state.services.liveness.proc_start(observed.pid).await {
-            Ok(start) => start,
+        let Some(kind) = pij_core::model::Harness::parse(&harness) else {
+            return refused(ADOPT, format!("unknown harness `{harness}`"));
+        };
+        let identity = match pane_harness_identity(&state, observed.pid, kind).await {
+            Ok(identity) => identity,
             Err(error) => return internal(ADOPT, error),
         };
-        let Some(proc_start) = start else {
+        let Some((proc, source)) = identity else {
             return refused(
                 ADOPT,
                 format!(
@@ -420,13 +424,7 @@ pub(crate) async fn adopt(
                 ),
             );
         };
-        (
-            observed.cwd,
-            Some(ProcIdentity {
-                pid: observed.pid,
-                proc_start,
-            }),
-        )
+        (observed.cwd, Some(proc), source)
     } else {
         // F005 — ADOPT DERIVES ITS EVIDENCE; `register` ACCEPTS AN ASSERTED ONE.
         // PANELESS REGISTRATION IS REFUSED OUTRIGHT.
@@ -553,7 +551,14 @@ pub(crate) async fn adopt(
     // expressed from here.
     match state.services.registry.get(&seat_id).await {
         Ok(Some(persisted)) => {
-            let mut answer = Envelope::ok(ADOPT, persisted);
+            let mut answer = Envelope::ok(
+                ADOPT,
+                RegistrationResponse {
+                    descriptor: persisted,
+                    binding: None,
+                    proc_source: Some(proc_source),
+                },
+            );
             answer.meta = Some(format!(
                 "adopted {seat_id}; identity resolves from pane {} on each command — no PIJ_SESSION_ID export is required for this harness",
                 pane.as_deref()

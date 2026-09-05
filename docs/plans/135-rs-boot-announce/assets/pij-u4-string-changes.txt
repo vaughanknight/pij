@@ -1,0 +1,124 @@
+EXACT EXPECTED/FAKE/FILTER FRAME STRING CHANGES
+Coordinates: original baseline line -> final worktree line; strings show literal source escape sequences. Assertions unchanged; formatter may wrap the enclosing expression.
+
+1. .pi/extensions/pij/adapters/rust-runtime.test.ts:53 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:53
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+2. .pi/extensions/pij/adapters/rust-runtime.test.ts:313 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:314
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+3. .pi/extensions/pij/adapters/rust-runtime.test.ts:320 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:321
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+4. .pi/extensions/pij/adapters/rust-runtime.test.ts:378 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:379
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+5. .pi/extensions/pij/adapters/rust-runtime.test.ts:508 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:511
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+6. .pi/extensions/pij/adapters/rust-runtime.test.ts:547 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:552
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+7. .pi/extensions/pij/adapters/rust-runtime.test.ts:561 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:568
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+8. .pi/extensions/pij/adapters/rust-runtime.test.ts:698 -> .pi/extensions/pij/adapters/rust-runtime.test.ts:706
+   BEFORE `[pij from pij-from] before bind`
+   AFTER  `[pij-rs from pij-from]\nbefore bind\n[/pij]`
+9. .pi/extensions/pij/core/daemon/router.test.ts:30 -> .pi/extensions/pij/core/daemon/router.test.ts:31
+   BEFORE `[pij from pij-me] hello there`
+   AFTER  `[pij-rs from pij-me]\nhello there\n[/pij]`
+10. .pi/extensions/pij/core/daemon/router.test.ts:71 -> .pi/extensions/pij/core/daemon/router.test.ts:73
+   BEFORE `[pij from pij-me] go`
+   AFTER  `[pij-rs from pij-me]\ngo\n[/pij]`
+11. .pi/extensions/pij/core/daemon/typing-guard-contract.test.ts:303 -> .pi/extensions/pij/core/daemon/typing-guard-contract.test.ts:303
+   BEFORE `[pij from pij-boss] first`
+   AFTER  `[pij-rs from pij-boss]\nfirst\n[/pij]`
+12. .pi/extensions/pij/core/message.test.ts:19 -> .pi/extensions/pij/core/message.test.ts:31
+   BEFORE `[pij from w3] refactor store.ts`
+   AFTER  `[pij-rs from w3]\nrefactor store.ts\n[/pij]`
+13. .pi/extensions/pij/core/session.test.ts:391 -> .pi/extensions/pij/core/session.test.ts:392
+   BEFORE `[pij from bob] hi`
+   AFTER  `[pij-rs from bob]\nhi\n[/pij]`
+14. .pi/extensions/pij/daemon.test.ts:242 -> .pi/extensions/pij/daemon.test.ts:244
+   BEFORE `[pij from pij-boss] review the diff`
+   AFTER  `[pij-rs from pij-boss]\nreview the diff\n[/pij]`
+15. .pi/extensions/pij/daemon.test.ts:395 -> .pi/extensions/pij/daemon.test.ts:400
+   BEFORE `[pij from pij-boss] new`
+   AFTER  `[pij-rs from pij-boss]\nnew\n[/pij]`
+16. .pi/extensions/pij/daemon.test.ts:621 -> .pi/extensions/pij/daemon.test.ts:629
+   BEFORE `[pij from pij-boss] ${fixtureName}`
+   AFTER  `[pij-rs from pij-boss]\n${fixtureName}\n[/pij]`
+17. .pi/extensions/pij/daemon.test.ts:658 -> .pi/extensions/pij/daemon.test.ts:667
+   BEFORE `[pij from pij-boss] equal-length edit`
+   AFTER  `[pij-rs from pij-boss]\nequal-length edit\n[/pij]`
+18. .pi/extensions/pij/daemon.test.ts:688 -> .pi/extensions/pij/daemon.test.ts:699
+   BEFORE `[pij from pij-boss] first`
+   AFTER  `[pij-rs from pij-boss]\nfirst\n[/pij]`
+19. .pi/extensions/pij/daemon.test.ts:690 -> .pi/extensions/pij/daemon.test.ts:702
+   BEFORE `[pij from pij-boss] first`
+   AFTER  `[pij-rs from pij-boss]\nfirst\n[/pij]`
+20. .pi/extensions/pij/daemon.test.ts:695 -> .pi/extensions/pij/daemon.test.ts:709
+   BEFORE `[pij from pij-boss] second`
+   AFTER  `[pij-rs from pij-boss]\nsecond\n[/pij]`
+21. .pi/extensions/pij/daemon.test.ts:729 -> .pi/extensions/pij/daemon.test.ts:744
+   BEFORE `[pij from pij-boss] first`
+   AFTER  `[pij-rs from pij-boss]\nfirst\n[/pij]`
+22. .pi/extensions/pij/daemon.test.ts:734 -> .pi/extensions/pij/daemon.test.ts:751
+   BEFORE `[pij from pij-boss] second`
+   AFTER  `[pij-rs from pij-boss]\nsecond\n[/pij]`
+23. .pi/extensions/pij/daemon.test.ts:765 -> .pi/extensions/pij/daemon.test.ts:783
+   BEFORE `[pij from`
+   AFTER  `[pij-rs from`
+24. .pi/extensions/pij/daemon.test.ts:771 -> .pi/extensions/pij/daemon.test.ts:789
+   BEFORE `[pij from`
+   AFTER  `[pij-rs from`
+25. .pi/extensions/pij/daemon.test.ts:772 -> .pi/extensions/pij/daemon.test.ts:790
+   BEFORE `[pij from pij-boss] one`
+   AFTER  `[pij-rs from pij-boss]\none\n[/pij]`
+26. .pi/extensions/pij/daemon.test.ts:773 -> .pi/extensions/pij/daemon.test.ts:791
+   BEFORE `[pij from pij-boss] two`
+   AFTER  `[pij-rs from pij-boss]\ntwo\n[/pij]`
+27. .pi/extensions/pij/daemon.test.ts:812 -> .pi/extensions/pij/daemon.test.ts:832
+   BEFORE `[pij from pij-boss] after idle`
+   AFTER  `[pij-rs from pij-boss]\nafter idle\n[/pij]`
+28. .pi/extensions/pij/daemon.test.ts:816 -> .pi/extensions/pij/daemon.test.ts:839
+   BEFORE `[pij from pij-boss] no chaining`
+   AFTER  `[pij-rs from pij-boss]\nno chaining\n[/pij]`
+29. .pi/extensions/pij/daemon.test.ts:863 -> .pi/extensions/pij/daemon.test.ts:887
+   BEFORE `[pij from pij-boss] resume pipeline`
+   AFTER  `[pij-rs from pij-boss]\nresume pipeline\n[/pij]`
+30. .pi/extensions/pij/daemon.test.ts:931 -> .pi/extensions/pij/daemon.test.ts:957
+   BEFORE `[pij from pij-boss] racing`
+   AFTER  `[pij-rs from pij-boss]\nracing\n[/pij]`
+31. .pi/extensions/pij/daemon.test.ts:1125 -> .pi/extensions/pij/daemon.test.ts:1152
+   BEFORE `[pij from pij-boss] firs\x1b[46;4H`
+   AFTER  `[pij-rs from pij-boss]\nfirs\x1b[46;4H`
+32. .pi/extensions/pij/daemon.test.ts:1204 -> .pi/extensions/pij/daemon.test.ts:1231
+   BEFORE `[pij from pij-boss] firstk\x1b[46;4H`
+   AFTER  `[pij-rs from pij-boss]\nfirst\n[/pij]k\x1b[46;4H`
+33. .pi/extensions/pij/daemon.test.ts:1209 -> .pi/extensions/pij/daemon.test.ts:1236
+   BEFORE `[pij from pij-boss] first`
+   AFTER  `[pij-rs from pij-boss]\nfirst\n[/pij]`
+34. .pi/extensions/pij/daemon.test.ts:1216 -> .pi/extensions/pij/daemon.test.ts:1243
+   BEFORE `[pij from pij-boss] first`
+   AFTER  `[pij-rs from pij-boss]\nfirst\n[/pij]`
+35. .pi/extensions/pij/daemon.test.ts:1246 -> .pi/extensions/pij/daemon.test.ts:1275
+   BEFORE `[pij from pij-boss] racing`
+   AFTER  `[pij-rs from pij-boss]\nracing\n[/pij]`
+36. .pi/extensions/pij/daemon.test.ts:1322 -> .pi/extensions/pij/daemon.test.ts:1352
+   BEFORE `[pij from pij-boss] busy is not a gate`
+   AFTER  `[pij-rs from pij-boss]\nbusy is not a gate\n[/pij]`
+37. .pi/extensions/pij/daemon.test.ts:1756 -> .pi/extensions/pij/daemon.test.ts:1788
+   BEFORE `[pij from pij-boss] queued task`
+   AFTER  `[pij-rs from pij-boss]\nqueued task\n[/pij]`
+38. .pi/extensions/pij/daemon.test.ts:1778 -> .pi/extensions/pij/daemon.test.ts:1813
+   BEFORE `[pij from pij-boss] queued task`
+   AFTER  `[pij-rs from pij-boss]\nqueued task\n[/pij]`
+39. .pi/extensions/pij/daemon.test.ts:1817 -> .pi/extensions/pij/daemon.test.ts:1853
+   BEFORE `[pij from pij-boss] after compact`
+   AFTER  `[pij-rs from pij-boss]\nafter compact\n[/pij]`
+
+SCANNER: harness/scripts/tmux-claude-topic-scan.py:35
+BEFORE `^\s*\[pij (from|watchdog)\b`
+AFTER  `^\s*\[pij(?:-rs)? (from|watchdog)\b`

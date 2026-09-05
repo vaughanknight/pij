@@ -27,7 +27,9 @@ describe("injectionText", () => {
 		expect(injectionText(msg("x", "", "compact"))).toBe("/compact");
 	});
 	it("frames free text with the sender (parity with the pi receiver)", () => {
-		expect(injectionText(msg("x", "hello there"))).toBe("[pij from pij-me] hello there");
+		expect(injectionText(msg("x", "hello there"))).toBe(
+			"[pij-rs from pij-me]\nhello there\n[/pij]",
+		);
 	});
 });
 
@@ -68,7 +70,7 @@ describe("route (delivery ownership, AC-07/08)", () => {
 		expect(route(d, msg("claude-w", "go"))).toEqual({
 			kind: "inject",
 			paneId: "%7",
-			text: "[pij from pij-me] go",
+			text: "[pij-rs from pij-me]\ngo\n[/pij]",
 		});
 	});
 

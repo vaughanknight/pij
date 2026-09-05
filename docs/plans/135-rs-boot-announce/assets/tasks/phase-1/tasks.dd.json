@@ -1,0 +1,121 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Phase 1 \u2014 contract, units, live proof",
+        "slug": "phase-1",
+        "status": "draft",
+        "summary": "u0 contract (PM) \u00b7 u1 Rust \u00b7 u2 TS \u00b7 compose \u00b7 live proof"
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Wave 0 freezes the seam; waves 1 run in parallel behind it; the PM composes and runs the live spawn proof."
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "tk-1350",
+          "title": "u0 \u2014 freeze the binding vocabulary + golden fixture",
+          "domain": "contract",
+          "phase": "p1",
+          "state": "unchecked",
+          "done": "tasks.dd.json#done_when/tk-1350",
+          "success": "assets/contracts/register-response.json exists with three samples (created, rebound, same); vocabulary documented in impl-guide unit rows; PM-owned, lands before any coder spawns.",
+          "notes": "Cross-runtime literal seam: both suites READ this file; neither restates the strings.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC4"
+          ]
+        },
+        {
+          "id": "tk-1351",
+          "title": "u1 \u2014 Rust: /v1/register reports binding",
+          "domain": "pij-rs store + http",
+          "phase": "p1",
+          "state": "unchecked",
+          "done": "tasks.dd.json#done_when/tk-1351",
+          "success": "Registry::put (or a sibling) reports inserted vs updated and whether proc changed; register handler returns `binding`; Rust test deserializes the golden fixture; existing tests green.",
+          "notes": "Additive only. seat.put spine kind unchanged. RED first for the new assertion.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC4",
+            "../../../plan.dd.json#acceptance_criteria/AC6"
+          ]
+        },
+        {
+          "id": "tk-1352",
+          "title": "u2 \u2014 TS: derive fresh from binding, RED-first witness",
+          "domain": "pij extension (.pi/extensions/pij)",
+          "phase": "p1",
+          "state": "unchecked",
+          "done": "tasks.dd.json#done_when/tk-1352",
+          "success": "RustSeatDescriptor.binding?: parsed; BootInput.fresh?: override; RustRuntimeSession.boot passes fresh = binding !== 'same'; rust-runtime.test.ts asserts inject(announceText) exactly once for created/rebound and never for same; the test's RED output on the pre-fix tree is pasted into assets/live-proof.md.",
+          "notes": "Do not touch core/session.test.ts. PIJ_ANNOUNCE_TO / task-inject precedence rules in session.ts stay as they are.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC5",
+            "../../../plan.dd.json#acceptance_criteria/AC6"
+          ]
+        },
+        {
+          "id": "tk-1353",
+          "title": "compose + live proof",
+          "domain": "pm",
+          "phase": "p1",
+          "state": "unchecked",
+          "done": "tasks.dd.json#done_when/tk-1353",
+          "success": "Branch composed; daemon rebuilt + restarted (bounce recipe) ; AC1 control-then-fix spawn transcript, AC2 reused-id transcript, AC3 /new+/reload transcript all in assets/live-proof.md; harness checks + cargo gates pasted.",
+          "notes": "Daemon runs from a built binary \u2014 restart after the Rust change or the fix is not live (memory: always restart daemon on new build). Bounce refuses on a dirty tree; commit first.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC6"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {
+        "tk-1350": [
+          {
+            "id": "dw-1350",
+            "assertion": "Fixture file present with 3 samples and cited by path from both suites' source.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1351": [
+          {
+            "id": "dw-1351",
+            "assertion": "cargo test -p pij-store -p pij-daemon green incl. a fixture-deserialization test; response has binding on every path (create, rebind, same).",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1352": [
+          {
+            "id": "dw-1352",
+            "assertion": "RED output on pre-fix tree pasted; GREEN after; bun test for the extension green; core/session.test.ts diff is empty.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1353": [
+          {
+            "id": "dw-1353",
+            "assertion": "Live transcripts for AC1\u2013AC3 and full gate outputs recorded in assets/live-proof.md.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ]
+      }
+    }
+  ],
+  "references": []
+}
