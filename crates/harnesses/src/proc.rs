@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
+pub use pij_core::model::parse_process_start;
 use pij_core::ports::LivenessPort;
 
 const ADAPTER: &str = "process-liveness/ps";
@@ -20,6 +21,8 @@ const ADAPTER: &str = "process-liveness/ps";
 /// The returned `u64` packs the C-locale `lstart` fields as
 /// `YYYYMMDDhhmmss`. It is stable for the life of a process and ordered within
 /// a boot, but callers compare it rather than interpreting it.
+/// The fields remain in the host's local timezone; parsing does not convert
+/// them to UTC. Comparing a UTC record requires explicit timebase conversion.
 ///
 /// # Composition recipe
 ///
@@ -135,43 +138,6 @@ fn means_no_process(stderr: &str) -> bool {
         || stderr.contains("process id list syntax error")
 }
 
-/// Parse Claude's C-locale `procStart` using the same identity encoding as [`ProcLiveness`].
-///
-/// # Errors
-/// Returns an adapter error when the row is not `Www Mmm DD HH:MM:SS YYYY`.
-pub fn parse_process_start(row: &str) -> Result<u64> {
-    let mut fields = row.split_whitespace();
-    let weekday = fields.next();
-    let month = fields.next().and_then(parse_month);
-    let day = fields.next().and_then(|value| value.parse::<u32>().ok());
-    let time = fields.next().and_then(parse_time);
-    let year = fields.next().and_then(|value| value.parse::<u32>().ok());
-
-    let Some((month, day, (hour, minute, second), year)) = month
-        .zip(day)
-        .zip(time)
-        .zip(year)
-        .map(|(((m, d), t), y)| (m, d, t, y))
-    else {
-        return Err(parse_error(row));
-    };
-    if weekday.is_none()
-        || fields.next().is_some()
-        || !(1970..=9999).contains(&year)
-        || day == 0
-        || day > days_in_month(year, month)
-    {
-        return Err(parse_error(row));
-    }
-
-    Ok(u64::from(year) * 10_000_000_000
-        + u64::from(month) * 100_000_000
-        + u64::from(day) * 1_000_000
-        + u64::from(hour) * 10_000
-        + u64::from(minute) * 100
-        + u64::from(second))
-}
-
 /// Read the host's current UTC offset in minutes from the platform clock.
 ///
 /// Spawn binding uses this only for a fresh process, so the current offset is
@@ -266,35 +232,6 @@ fn packed_naive_seconds(value: u64) -> Result<i64> {
 const fn leap_days_before(year: u32) -> i64 {
     let prior = year - 1;
     (prior / 4 - prior / 100 + prior / 400) as i64
-}
-
-fn parse_month(value: &str) -> Option<u32> {
-    match value {
-        "Jan" => Some(1),
-        "Feb" => Some(2),
-        "Mar" => Some(3),
-        "Apr" => Some(4),
-        "May" => Some(5),
-        "Jun" => Some(6),
-        "Jul" => Some(7),
-        "Aug" => Some(8),
-        "Sep" => Some(9),
-        "Oct" => Some(10),
-        "Nov" => Some(11),
-        "Dec" => Some(12),
-        _ => None,
-    }
-}
-
-fn parse_time(value: &str) -> Option<(u32, u32, u32)> {
-    let mut fields = value.split(':');
-    let hour = fields.next()?.parse::<u32>().ok()?;
-    let minute = fields.next()?.parse::<u32>().ok()?;
-    let second = fields.next()?.parse::<u32>().ok()?;
-    if fields.next().is_some() || hour > 23 || minute > 59 || second > 59 {
-        return None;
-    }
-    Some((hour, minute, second))
 }
 
 const fn days_in_month(year: u32, month: u32) -> u32 {

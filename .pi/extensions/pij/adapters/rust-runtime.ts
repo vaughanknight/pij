@@ -289,7 +289,9 @@ export class RustRuntimeSession {
 		if (this.self !== "" && !replacing) return this.self;
 		if (!replacing) {
 			const samePane =
-				input.paneId === undefined ? undefined : seats.find((seat) => seat.pane === input.paneId);
+				input.paneId === undefined
+					? undefined
+					: seats.find((seat) => seat.pane === input.paneId && seat.harness === input.runtimeBin);
 			if (samePane) return samePane.id;
 			const sameProcess = seats.find(
 				(seat) => seat.proc?.pid === process.pid && seat.proc.proc_start === procStart,

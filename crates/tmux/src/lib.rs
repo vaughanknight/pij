@@ -16,7 +16,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use pij_core::delivery::MAX_TYPED_FRAME_BYTES;
 use pij_core::error::{PijError, Result};
-use pij_core::model::{Pane, PaneProcess};
+use pij_core::model::{Harness, Pane, PaneProcess, ProcIdentity};
 use pij_core::ports::{LaunchCommand, STAGED_SUBMIT_RECOVERY, StagedSubmit, TmuxPort};
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::{Instant, sleep};
@@ -1173,9 +1173,234 @@ fn new_window_args(
     args
 }
 
+/// Observe the first matching descendant breadth-first, or the pane process.
+///
+/// `proc_start` uses the same LOCAL C-locale wall time as `ProcLiveness`.
+/// A missing/dead pane yields `None`; callers label a pane fallback explicitly.
+#[must_use]
+pub fn harness_process(pane_pid: u32, harness: Harness) -> Option<ProcIdentity> {
+    let output = Command::new("ps")
+        .args(["-Awwo", "pid=,ppid=,lstart=,command="])
+        .env("LC_ALL", "C")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = std::str::from_utf8(&output.stdout).ok()?;
+    let processes: Vec<_> = text.lines().filter_map(process_row).collect();
+    let selected = harness_process_from_snapshot(pane_pid, harness, &processes)?;
+    let output = Command::new("ps")
+        .args(["-p", &selected.pid.to_string(), "-o", "lstart="])
+        .env("LC_ALL", "C")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let start =
+        pij_core::model::parse_process_start(std::str::from_utf8(&output.stdout).ok()?).ok()?;
+    (start == selected.proc_start).then_some(selected)
+}
+
+fn process_field<'a>(rest: &mut &'a str) -> Option<&'a str> {
+    *rest = rest.trim_start();
+    let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+    if end == 0 {
+        return None;
+    }
+    let (field, remaining) = rest.split_at(end);
+    *rest = remaining;
+    Some(field)
+}
+
+fn process_row(line: &str) -> Option<(ProcIdentity, u32, &str)> {
+    let mut rest = line;
+    let pid = process_field(&mut rest)?.parse().ok()?;
+    let parent = process_field(&mut rest)?.parse().ok()?;
+    let start = rest;
+    for _ in 0..5 {
+        process_field(&mut rest)?;
+    }
+    let proc_start =
+        pij_core::model::parse_process_start(&start[..start.len() - rest.len()]).ok()?;
+    Some((ProcIdentity { pid, proc_start }, parent, rest.trim_start()))
+}
+
+fn harness_process_from_snapshot(
+    pane_pid: u32,
+    harness: Harness,
+    processes: &[(ProcIdentity, u32, &str)],
+) -> Option<ProcIdentity> {
+    let root = processes
+        .iter()
+        .find(|(proc, _, _)| proc.pid == pane_pid)?
+        .0;
+    let mut parents = vec![pane_pid];
+    let mut next = 0;
+    while next < parents.len() {
+        let parent = parents[next];
+        next += 1;
+        for (proc, ppid, command) in processes {
+            if *ppid != parent || parents.contains(&proc.pid) {
+                continue;
+            }
+            if harness_command(command, harness) {
+                return Some(*proc);
+            }
+            parents.push(proc.pid);
+        }
+    }
+    Some(root)
+}
+
+fn harness_command(command: &str, harness: Harness) -> bool {
+    let mut args = command.split_whitespace();
+    let Some(executable) = args
+        .next()
+        .and_then(|arg| Path::new(arg).file_name())
+        .and_then(|name| name.to_str())
+    else {
+        return false;
+    };
+    if executable == harness.as_str() {
+        return true;
+    }
+    if executable != "node" && executable != "bun" {
+        return false;
+    }
+    let Some(script) = args.next() else {
+        return false;
+    };
+    let name = Path::new(script).file_stem().and_then(|name| name.to_str());
+    if name == Some(harness.as_str()) {
+        return true;
+    }
+    let package = match harness {
+        Harness::Claude => "/@anthropic-ai/claude-code/",
+        Harness::Copilot => "/@github/copilot/",
+        Harness::Codex => "/@openai/codex/",
+        Harness::Pi => "/@earendil-works/pi-coding-agent/",
+        Harness::Omp => "/@oh-my-pi/pi-coding-agent/",
+    };
+    script.contains(package) && matches!(name, Some("cli" | "index"))
+}
+
 #[cfg(test)]
 mod tests {
+    use super::harness_process_from_snapshot;
     use super::new_window_args;
+    use pij_core::model::{Harness, ProcIdentity};
+
+    #[test]
+    fn pane_shell_fixture_selects_claude_child() {
+        let shell = ProcIdentity {
+            pid: 64616,
+            proc_start: 20260905080000,
+        };
+        let child = ProcIdentity {
+            pid: 49862,
+            proc_start: 20260905080100,
+        };
+        let processes = [(shell, 1, "-zsh"), (child, shell.pid, "/opt/bin/claude")];
+        assert_eq!(
+            harness_process_from_snapshot(shell.pid, Harness::Claude, &processes),
+            Some(child)
+        );
+    }
+
+    #[test]
+    fn descendant_walk_is_breadth_first_and_falls_back_only_to_the_pane() {
+        let root = ProcIdentity {
+            pid: 1,
+            proc_start: 10,
+        };
+        let wrapper = ProcIdentity {
+            pid: 2,
+            proc_start: 11,
+        };
+        let grandchild = ProcIdentity {
+            pid: 3,
+            proc_start: 12,
+        };
+        let direct = ProcIdentity {
+            pid: 4,
+            proc_start: 13,
+        };
+        let processes = [
+            (root, 0, "-zsh"),
+            (wrapper, 1, "sh"),
+            (grandchild, 2, "claude"),
+            (direct, 1, "claude"),
+        ];
+        assert_eq!(
+            harness_process_from_snapshot(1, Harness::Claude, &processes),
+            Some(direct)
+        );
+        assert_eq!(
+            harness_process_from_snapshot(1, Harness::Omp, &processes),
+            Some(root)
+        );
+        assert_eq!(
+            harness_process_from_snapshot(99, Harness::Claude, &processes),
+            None
+        );
+        assert_eq!(
+            harness_process_from_snapshot(2, Harness::Claude, &processes),
+            Some(grandchild)
+        );
+    }
+
+    #[test]
+    fn harness_commands_match_entrypoints_not_prompt_arguments() {
+        for harness in [
+            Harness::Claude,
+            Harness::Copilot,
+            Harness::Codex,
+            Harness::Pi,
+            Harness::Omp,
+        ] {
+            assert!(super::harness_command(
+                &format!("/opt/bin/{} --model anything", harness.as_str()),
+                harness
+            ));
+        }
+        assert!(super::harness_command(
+            "node /opt/node_modules/@earendil-works/pi-coding-agent/dist/cli.js",
+            Harness::Pi
+        ));
+        assert!(super::harness_command(
+            "bun /opt/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js",
+            Harness::Omp
+        ));
+        assert!(!super::harness_command(
+            "bun /opt/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js",
+            Harness::Pi
+        ));
+        assert!(!super::harness_command("sh -c claude", Harness::Claude));
+        assert!(!super::harness_command(
+            "node unrelated.js --prompt claude",
+            Harness::Claude
+        ));
+        assert!(!super::harness_command("claude-helper", Harness::Claude));
+    }
+
+    #[test]
+    fn process_snapshot_uses_canonical_local_start_encoding() {
+        assert_eq!(
+            super::process_row(" 49862 64616 Sat Sep  5 08:01:00 2026 /opt/bin/claude --model x"),
+            Some((
+                ProcIdentity {
+                    pid: 49862,
+                    proc_start: 20260905080100
+                },
+                64616,
+                "/opt/bin/claude --model x"
+            ))
+        );
+        assert!(super::process_row("49862 broken").is_none());
+    }
+
     use pij_core::ports::LaunchCommand;
 
     #[test]

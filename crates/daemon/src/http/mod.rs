@@ -33,7 +33,8 @@ use axum::routing::{get, post};
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::model::{
-    Envelope, ErrorKind, Event, Harness, Msg, SeatDescriptor, SeatId, SemanticState, Seq,
+    Envelope, ErrorKind, Event, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId, SemanticState,
+    Seq,
 };
 use pij_core::names::memorable_pij_id_candidates;
 use pij_core::ports::{Registry, SeatFilter};
@@ -383,6 +384,53 @@ enum RegistrationBinding {
     Same,
 }
 
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum ProcSource {
+    Harness,
+    Pane,
+}
+
+/// Pane evidence wins over caller assertions; failed child discovery is an
+/// explicitly labelled pane fallback, never a fabricated harness identity.
+async fn pane_harness_identity(
+    state: &AppState,
+    pane_pid: u32,
+    harness: Harness,
+) -> Result<Option<(ProcIdentity, ProcSource)>> {
+    let candidate =
+        tokio::task::spawn_blocking(move || pij_tmux::harness_process(pane_pid, harness))
+            .await
+            .map_err(|error| PijError::Adapter {
+                adapter: "harness-process".to_string(),
+                message: error.to_string(),
+            })?;
+    if let Some(proc) = candidate
+        && state.services.liveness.proc_start(proc.pid).await? == Some(proc.proc_start)
+    {
+        let source = if proc.pid == pane_pid {
+            ProcSource::Pane
+        } else {
+            ProcSource::Harness
+        };
+        return Ok(Some((proc, source)));
+    }
+    Ok(state
+        .services
+        .liveness
+        .proc_start(pane_pid)
+        .await?
+        .map(|proc_start| {
+            (
+                ProcIdentity {
+                    pid: pane_pid,
+                    proc_start,
+                },
+                ProcSource::Pane,
+            )
+        }))
+}
+
 /// Registration-only metadata; it never becomes durable descriptor state.
 #[derive(Deserialize, Serialize)]
 struct RegistrationResponse {
@@ -390,6 +438,8 @@ struct RegistrationResponse {
     descriptor: SeatDescriptor,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     binding: Option<RegistrationBinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    proc_source: Option<ProcSource>,
 }
 
 /// Composition: the service returns `(descriptor, report)` from its committed
@@ -397,8 +447,34 @@ struct RegistrationResponse {
 /// otherwise `same`, and flatten the descriptor into this response only.
 async fn register(
     State(state): State<AppState>,
-    Json(request): Json<RegistrationRequest>,
+    Json(mut request): Json<RegistrationRequest>,
 ) -> Response {
+    let mut proc_source = None;
+    if let (Some(pane), Some(harness)) = (
+        request.claim.pane.as_deref(),
+        Harness::parse(&request.claim.harness),
+    ) {
+        let observed = match state.services.tmux.pane_process(pane).await {
+            Ok(observed) => observed,
+            Err(error) => return internal("pij register", error),
+        };
+        if let Some(observed) = observed {
+            match pane_harness_identity(&state, observed.pid, harness).await {
+                Ok(Some((proc, source))) => {
+                    request.claim.pid = Some(proc.pid);
+                    request.claim.proc_start = Some(proc.proc_start);
+                    proc_source = Some(source);
+                }
+                Ok(None) => {
+                    return refused(
+                        "pij register",
+                        "pane process disappeared before registration; nothing was written",
+                    );
+                }
+                Err(error) => return internal("pij register", error),
+            }
+        }
+    }
     let registration = RegistrationService::new(
         Arc::clone(&state.services.registry),
         Arc::clone(&state.services.liveness),
@@ -428,6 +504,7 @@ async fn register(
                 RegistrationResponse {
                     descriptor,
                     binding: Some(binding),
+                    proc_source,
                 },
             );
             answer.meta = meta;
