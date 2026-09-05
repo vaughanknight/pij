@@ -592,6 +592,9 @@ impl DeliveryService {
                 }
                 Ok(Some(recipient))
             }
+            None if identity.supplied() => Err(native_refusal(
+                "native-extension-unavailable: Copilot requires current native registration",
+            )),
             _ if identity.supplied() => Err(native_refusal(
                 "native incarnation no longer belongs to a current Copilot seat",
             )),
@@ -633,9 +636,7 @@ impl DeliveryService {
         if current.as_ref().map(|seat| seat.pane.as_deref())
             != observed.map(|seat| seat.pane.as_deref())
         {
-            return Err(native_refusal(
-                "native pane changed during consent observation",
-            ));
+            return Ok(Some("native-pane-changed".into()));
         }
         Ok(current
             .filter(|seat| seat.semantic_state == Some(SemanticState::Hold))
@@ -686,9 +687,7 @@ impl DeliveryService {
                         .await?
                         .is_none_or(|current| current.attempt != job.attempt)
                     {
-                        return Err(native_refusal(
-                            "native delivery claim attempt is no longer running",
-                        ));
+                        continue;
                     }
                     let permission = self
                         .revalidate_native_observation(seat, identity, Some(recipient))
@@ -1346,6 +1345,17 @@ mod tests {
                         let page = result.expect("new semantic hold");
                         assert!(page.claims.is_empty());
                         assert_eq!(page.held_reason.as_deref(), Some("semantic-hold"));
+                    }
+                    4 => {
+                        let page = result.expect("same-native pane change is recoverable");
+                        assert!(page.claims.is_empty());
+                        assert_eq!(page.held_reason.as_deref(), Some("native-pane-changed"));
+                    }
+                    6 | 7 => {
+                        let page = result.expect("ordinary claim contention re-observes");
+                        assert!(page.claims.is_empty());
+                        assert!(page.held_reason.is_none());
+                        assert!(observer.captures.load(Ordering::SeqCst) > 2);
                     }
                     _ => assert!(
                         result.is_err(),

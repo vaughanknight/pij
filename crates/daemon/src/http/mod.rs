@@ -1150,15 +1150,17 @@ async fn inbox(State(state): State<AppState>, Query(query): Query<InboxQuery>) -
         )
         .await
     {
-        Ok(page) => {
-            let mut answer = Envelope::ok("pij inbox", page.claims);
-            answer.meta = page
-                .held_reason
-                .map(|reason| format!("native-consumer-held:{reason}"));
-            envelope(StatusCode::OK, &answer)
-        }
+        Ok(page) => native_inbox_response(page),
         Err(error) => inbox_failure(error),
     }
+}
+
+fn native_inbox_response(page: crate::delivery::NativeInboxPage) -> Response {
+    let mut answer = Envelope::ok("pij inbox", page.claims);
+    answer.meta = page
+        .held_reason
+        .map(|reason| format!("native-consumer-held:{reason}"));
+    envelope(StatusCode::OK, &answer)
 }
 
 fn inbox_failure(error: PijError) -> Response {
