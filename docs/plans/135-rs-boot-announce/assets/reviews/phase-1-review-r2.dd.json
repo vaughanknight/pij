@@ -170,6 +170,24 @@
           "address": ".pi/APPEND_SYSTEM.md:162 (plus second-tier docs and one stale docstring)",
           "finding": "THE SAME DEFECT AT THE HIGHEST ALTITUDE IT HAS, and it is the third iteration of one pattern. AC8 fixed the announce a seat reads at BOOT. f6 fixed the metadata a seat reads on the SEND TOOL. Both were scoped to where someone had looked. `.pi/APPEND_SYSTEM.md:162` still reads 'Real peer messages are injected **inline** as `[pij from <id>] <text>`.' — and per AGENTS.md that file is synced by `just install` to `~/.pi/agent/APPEND_SYSTEM.md`, the MACHINE-GLOBAL SYSTEM-PROMPT APPEND for every pi session on the box. So the highest-altitude seat-facing surface in the repository still teaches the dead generation, in the system prompt, to every session — strictly above the tool description and above the boot announce. The widened guard does not cover it: its maintained surfaces are `.pi/extensions/pij` and `skills/pij`, and this file sits at `.pi/`. SMALLEST FIX: one sentence. STRUCTURAL FIX: add the file to the guard's surfaces — it is a single file rather than a directory, so it needs an explicit entry rather than a third root, which is a five-line change to the walk. SECOND TIER, live documentation rather than historical record, listed so the sweep is complete rather than because each needs fixing now: docs/how/pij.md:243, docs/domains/pij-messaging/domain.md:33 and :63 (the domain doc for the very module that changed), docs/domains/flow-pair/domain.md:51. THIRD, cosmetic: harness/scripts/tmux-claude-topic-scan.py:16 is a docstring saying the scanner excludes '`[pij from ...]` peer relay traffic' — its RELAY_RE was correctly widened to `\\[pij(?:-rs)? (from|watchdog)` in the original 135 commit, so the comment now understates what the code matches. docs/plans/** is correctly excluded throughout: it is historical record and must keep describing what was true when written.",
           "receipt": "Fixed-string sweep on the composed+main tree (77e099c4): `grep -rF -l \"[pij from\" skills .pi crates harness AGENTS.md` → the five allowlisted extension files, `.pi/APPEND_SYSTEM.md`, crates/core/src/framing.rs (the parser, correct), crates/harnesses/src/interaction.rs (arbitrary self-injection payloads, correct), and harness/scripts/tmux-claude-topic-scan.py (docstring only). AGENTS.md documents the APPEND_SYSTEM.md sync to ~/.pi/agent/ under `just install`."
+        },
+        {
+          "id": "r2f5",
+          "kind": "defect",
+          "severity": "MINOR",
+          "state": "checked",
+          "address": ".agents-skills-port/pij-team/EXPERIENCES.md (merge hygiene, a685d1b0 vs main 702a6384)",
+          "finding": "THE FINAL COMPOSED BRANCH DOES NOT MERGE CLEANLY INTO TODAY'S MAIN, and prime should know before attempting it. `git merge-tree --write-tree main a685d1b0` exits 1 with exactly ONE conflict: .agents-skills-port/pij-team/EXPERIENCES.md. Main moved to 702a6384 ('Merge 136 PM buffer harvest') which appended to that ledger, and 135 appended to it too — two plans harvesting lessons into one prose file on the same day. EVERY PRODUCT-CODE FILE AUTO-MERGES: rust-runtime.ts, rust-runtime.test.ts and crates/daemon/src/http/ mod.rs all report 'Auto-merging' with no conflict, and the extracted merge tree carries conflict markers in that one file and nowhere else — I checked by scanning the whole tree for markers rather than trusting the summary. So this is merge hygiene, not a composition hazard, and it does not affect any verdict in this record: the suites do not read that file. It is a finding only because a clean `git merge` will stop, and a reviewer who reported 'verified on the merged tree' without saying the merge had a conflict would be describing a tree that required a human decision to exist.",
+          "receipt": "`git merge-tree --write-tree --messages main a685d1b0` → exit 1, tree 11d06f3d, 'CONFLICT (content): Merge conflict in .agents-skills-port/pij-team/EXPERIENCES.md'; `grep -rl '^<<<<<<< ' /tmp/pij-final` returns that path and nothing else. main at 702a6384."
+        },
+        {
+          "id": "r2n8",
+          "kind": "question",
+          "severity": "NIT",
+          "state": "checked",
+          "address": ".pi/extensions/pij/core/message.test.ts:250-254 (the surface-qualification assertion)",
+          "finding": "THE INVARIANT ASSERTION IS PRESENT AND SUFFICIENT, BUT IT GUARDS THE HARM RATHER THAN THE REFACTOR — and the distinction matters because the PM rested a decision on the stronger reading. The assertion is `if (allowance) expect(surface, \"Surface-qualify fired keys before widening allowances\").toBe(\".pi/extensions/pij\")`. I did not accept it from its own green; I mutation-tested it on a scratch copy in /tmp. RESULT ONE: generalising the ternary into a per-surface lookup — the exact refactor I flagged as the moment the prefix becomes load-bearing — leaves the test PASSING, 31/31. The refactor alone is invisible to it, because allowlist paths like `core/message.ts` never match a relative path under skills/pij, so `allowance` stays undefined and the assertion never fires. RESULT TWO: refactor PLUS an actual colliding path (I created skills/pij/core/message.ts containing a legacy head) FIRES, with exactly the remedy message intended — \"expected 'skills/pij' to be '.pi/extensions/pij'\". So it is a collision detector, not a widening detector. WHY THAT IS STILL ENOUGH, stated so nobody weakens it later on a wrong premise: masking REQUIRES a collision, and the assertion fires on the first collision that could mask anything, so the harm cannot occur silently. Not-prefixing the fired key is therefore safe. But the PM's phrasing — that the human check of reading the ternary in each diff 'has become a test' — is not accurate: between a widening landing and a colliding path appearing, the guard is weakened and nothing says so. Reading the ternary remains a human check; what became a sensor is the consequence, not the cause. u4's own RED proof used 'a temporary outside-surface resolution', which constructs the collision, so u4 proved the right thing — the description of what was proved drifted, not the proof.",
+          "receipt": "Mutation on /tmp/pij-final only. Refactor alone: `Tests 31 passed`. Refactor + skills/pij/core/message.ts: `AssertionError: Surface-qualify fired keys before widening allowances: expected 'skills/pij' to be '.pi/extensions/pij'` at message.test.ts:252. Tree restored and PROVEN pristine afterwards: sha256 of the restored file 8061268194df1d45a31093d35cae64180794180117924112b0880d0e416fd528 equals `git show a685d1b0:.pi/extensions/pij/core/message.test.ts | shasum -a 256`."
         }
       ]
     },
@@ -294,6 +312,20 @@
           "resolution": "confirmed",
           "state": "unchecked",
           "rationale": "Open. Third iteration of one defect — boot announce, then tool metadata, now the machine-global system prompt. Each fix was scoped to where someone looked rather than to a rule about what a seat reads. One sentence to fix; the durable move is adding the file to the guard's maintained surfaces so the fourth iteration cannot happen."
+        },
+        {
+          "id": "rv18",
+          "finding": "phase-1-review-r2.dd.json#findings/r2f5",
+          "resolution": "confirmed",
+          "state": "unchecked",
+          "rationale": "Open for prime: one prose-ledger conflict to resolve by hand before merge. No product code conflicts; no verdict affected."
+        },
+        {
+          "id": "rv19",
+          "finding": "phase-1-review-r2.dd.json#findings/r2n8",
+          "resolution": "confirmed",
+          "state": "checked",
+          "rationale": "Assertion accepted as sufficient — masking requires a collision and it fires on the first one — but recorded as a collision detector rather than a widening detector, so the next person does not rely on it to catch the refactor. Reading the ternary stays a human check."
         }
       ]
     }
