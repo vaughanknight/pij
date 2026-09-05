@@ -52,7 +52,13 @@ interface NativeEvent {
 }
 
 const ROOT = resolve(import.meta.dirname, "../..");
-const HUMAN_KEYS = { clearDraft: "C-u", approveOnce: "Enter" } as const;
+const HUMAN_KEYS = {
+	clearDraft: "C-u",
+	approveOnce: "Enter",
+	submitCommand: "Enter",
+	newSession: "/new",
+	exit: "/exit",
+} as const;
 
 export function parseSmokeArgs(args: string[]): Options {
 	const options: Options = {
@@ -380,6 +386,155 @@ export async function confirmSmokeToolInvocation(
 		witness.error = String(error);
 		throw error;
 	}
+}
+
+/** Read only the actual bottom composer; quoted transcript text is never a control surface. */
+export function nativeComposer(terminal: string): string | undefined {
+	const lines = terminal.split("\n").map((line) => line.trim());
+	assert(!lines.some((line) => /^╭─+╮$/.test(line)), "PIJ_NATIVE_UNEXPECTED_LIFECYCLE_DIALOG");
+	let top = -1;
+	for (let index = lines.length - 1; index >= 0; index--) {
+		if (/^╻▄+$/.test(lines[index] ?? "")) {
+			top = index;
+			break;
+		}
+	}
+	if (top < 0) return undefined;
+	const bottom = lines.findIndex((line, index) => index > top && /^╹▀+$/.test(line));
+	if (bottom < 0) return undefined;
+	const text = lines.slice(top + 1, bottom).map((line) => {
+		assert(line.startsWith("┃"), "PIJ_NATIVE_AMBIGUOUS_COMPOSER");
+		return line.slice(1).trim();
+	});
+	return text.join("\n");
+}
+
+/** Stage only a documented lifecycle command; an optional hook proves a queue hold before submit. */
+export async function driveSmokeLifecycleCommand(
+	tmux: (args: string[]) => string,
+	expected: { pane: string; action: "newSession" | "exit" },
+	timeout: number,
+	witness: Record<string, unknown>,
+	whileStaged?: () => Promise<void>,
+): Promise<void> {
+	const capture = () => tmux(["capture-pane", "-p", "-J", "-t", expected.pane]);
+	const command = HUMAN_KEYS[expected.action];
+	Object.assign(witness, {
+		kind: "native-lifecycle-human-control",
+		...expected,
+		command,
+		status: "waiting",
+	});
+	try {
+		await until("empty native lifecycle composer", timeout, () => {
+			const terminal = capture();
+			witness.before = terminal;
+			const composer = nativeComposer(terminal);
+			if (composer === undefined) return undefined;
+			assert.equal(composer, "", "PIJ_NATIVE_HUMAN_DRAFT: refusing to overwrite composer");
+			return true;
+		});
+		tmux(["send-keys", "-t", expected.pane, "-l", "--", command]);
+		await until("exact native lifecycle command staged", timeout, () => {
+			const terminal = capture();
+			witness.staged = terminal;
+			return nativeComposer(terminal) === command ? true : undefined;
+		});
+		if (whileStaged) await whileStaged();
+		const terminal = capture();
+		witness.before_submit = terminal;
+		assert.equal(nativeComposer(terminal), command, "PIJ_NATIVE_LIFECYCLE_COMMAND_CHANGED");
+		witness.submit_keys = [HUMAN_KEYS.submitCommand];
+		tmux(["send-keys", "-t", expected.pane, HUMAN_KEYS.submitCommand]);
+		witness.command_submitted = true;
+		// /exit can remove the owned pane before capture; actual host death is proved separately.
+		try {
+			witness.after = capture();
+		} catch (error) {
+			witness.after_capture_error = String(error);
+		}
+		if (typeof witness.after === "string") nativeComposer(witness.after);
+		witness.status = "submitted-not-yet-lifecycle-proven";
+	} catch (error) {
+		witness.status = "failed";
+		witness.error = String(error);
+		throw error;
+	}
+}
+
+export function verifyNativeLifecycleIdentity(
+	previous: Seat,
+	current: Seat,
+	action: "new" | "resume",
+): void {
+	assert.equal(current.harness, "copilot");
+	assert.equal(current.native_extension_delivery, true);
+	assert(/^[0-9a-f-]{36}$/i.test(current.session), "native lifecycle requires a real session UUID");
+	assert(
+		current.proc.pid > 0 && current.proc.proc_start > 0,
+		"native lifecycle requires a real host tuple",
+	);
+	if (action === "new") {
+		assert.notEqual(current.session, previous.session, "/new must change native conversation");
+		assert.notEqual(current.id, previous.id, "/new must not retain old-context Pij address");
+		assert.equal(current.pane, previous.pane, "/new remains in the actual existing pane");
+		assert.deepEqual(current.proc, previous.proc, "/new remains in the actual existing host");
+	} else {
+		assert.equal(current.session, previous.session, "--resume must preserve native conversation");
+		assert.equal(
+			current.id,
+			previous.id,
+			"--resume must preserve Pij address after proven owner death",
+		);
+		assert.notDeepEqual(
+			current.proc,
+			previous.proc,
+			"--resume must use a fresh real host incarnation",
+		);
+	}
+}
+
+export function verifyNativeContextHeld(
+	expected: { seat: string; session: string; nonce: string; msgId: string },
+	snapshot: {
+		jobs: Record<string, unknown>[];
+		acknowledgements: Record<string, unknown>[];
+		predecessorEvents: NativeEvent[];
+		successorEvents: NativeEvent[];
+		successorJobs: Record<string, unknown>[];
+	},
+): void {
+	assert.equal(snapshot.jobs.length, 1, "old-context job must remain durable");
+	const job = snapshot.jobs[0];
+	assert(
+		job && ["pending", "running"].includes(String(job.state)),
+		"old-context job must remain live",
+	);
+	const payload = object(JSON.parse(String(job.payload)));
+	assert.equal(payload.to, expected.seat, "old-context recipient must not migrate");
+	assert.equal(
+		payload.native_target_session,
+		expected.session,
+		"old-context native stamp must survive",
+	);
+	assert.equal(payload.msg_id, expected.msgId);
+	assert.equal(payload.body, expected.nonce);
+	assert.equal(snapshot.acknowledgements.length, 0, "old-context job must not be acknowledged");
+	assert.equal(
+		nativeMessages(snapshot.predecessorEvents, expected.nonce).length,
+		0,
+		"old consumer must not drain held work",
+	);
+	assert.equal(
+		nativeMessages(snapshot.successorEvents, expected.nonce).length,
+		0,
+		"old context must not enter successor conversation",
+	);
+	assert.equal(
+		snapshot.successorJobs.length,
+		0,
+		"old-context work must not migrate to successor queue",
+	);
 }
 
 export async function runSmoke(options: Options): Promise<{ code: number; output: string }> {
@@ -711,7 +866,10 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 			mode: "manual" | "spawned",
 			disabled = false,
 			initial?: { from: Seat; body: string; msgId: string },
+			resume?: Seat,
 		): Promise<Seat> => {
+			if (resume)
+				assert(mode === "manual" && !disabled, "resume proof must be a native manual launch");
 			let pane: string;
 			let spawnReceipt: Record<string, unknown> | undefined;
 			if (mode === "manual") {
@@ -728,6 +886,7 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 					copilotBin,
 					...common,
 					...(disabled ? ["--no-experimental"] : []),
+					...(resume ? [`--resume=${resume.session}`] : []),
 				]);
 			} else {
 				spawnReceipt = object(
@@ -820,6 +979,7 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 				process: processProof,
 				spawn: spawnReceipt,
 				pane: capture(seat),
+				resume_of: resume,
 			});
 			return seat;
 		};
@@ -847,6 +1007,17 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 				grade: "native-accepted-not-model-complete",
 			};
 		};
+		const waitTurnEnd = (seat: Seat, nonce: string) =>
+			until("native turn ended and lifecycle composer ready", options.timeoutMs, () => {
+				const native = events(seat);
+				const message = nativeMessages(native, nonce)[0];
+				const index = native.findIndex((event) => event.id === message?.id);
+				if (index < 0) return undefined;
+				const ended = native.find(
+					(event, offset) => offset > index && event.type === "assistant.turn_end",
+				);
+				return ended && nativeComposer(capture(seat)) === "" ? ended : undefined;
+			});
 		for (const mode of options.mode === "both"
 			? (["manual", "spawned"] as const)
 			: [options.mode]) {
@@ -1012,7 +1183,181 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 				msgId: reconnectId,
 				...(await waitDelivery(target, reconnectNonce, reconnectId)),
 			});
-			for (const seat of [sender, target, disabled]) tmux(["kill-pane", "-t", seat.pane]);
+			const oldNonce = `PIJ_OLD_CONTEXT_${randomUUID()}`;
+			const oldMsgId = randomUUID();
+			const oldExpected = {
+				seat: target.id,
+				session: target.session,
+				nonce: oldNonce,
+				msgId: oldMsgId,
+			};
+			const rollover: Record<string, unknown> = {
+				kind: `${mode}-native-rollover`,
+				before: target,
+				old_expected: oldExpected,
+			};
+			witnesses.push(rollover);
+			rollover.previous_turn_end = await waitTurnEnd(target, reconnectNonce);
+			const oldContextSnapshot = (successor?: Seat) => ({
+				jobs: jobs(target, oldMsgId),
+				acknowledgements: rows(
+					"SELECT recipient, msg_id, origin, delivered_at FROM delivered_messages WHERE msg_id = ?",
+					oldMsgId,
+				),
+				predecessorEvents: events(target),
+				successorEvents: successor ? events(successor) : [],
+				successorJobs: successor ? jobs(successor, oldMsgId) : [],
+			});
+			const newControl: Record<string, unknown> = {};
+			rollover.human_control = newControl;
+			await driveSmokeLifecycleCommand(
+				tmux,
+				{ pane: target.pane, action: "newSession" },
+				options.timeoutMs,
+				newControl,
+				async () => {
+					rollover.old_send = await send(sender, target, oldNonce, oldMsgId);
+					await delay(2000);
+					const held = oldContextSnapshot();
+					rollover.held_before_new = held;
+					verifyNativeContextHeld(oldExpected, held);
+				},
+			);
+			const successor = await until(
+				"truthful native /new registration",
+				options.timeoutMs,
+				async () => {
+					const terminal = capture(target);
+					newControl.after = terminal;
+					nativeComposer(terminal); // An unexpected modal is not a new consent policy.
+					const roster = await seats();
+					rollover.roster_after = roster;
+					return roster.find(
+						(row) =>
+							row.pane === target.pane &&
+							row.session !== target.session &&
+							row.native_extension_delivery === true,
+					);
+				},
+			);
+			rollover.after = successor;
+			verifyNativeLifecycleIdentity(target, successor, "new");
+			if (mode === "spawned") {
+				assert.equal(typeof target.spawn_id, "string", "spawned source correlation required");
+				assert.equal(
+					successor.spawn_id,
+					target.spawn_id,
+					"spawned /new must preserve verified spawn correlation",
+				);
+			}
+			const retired = (await seats()).find((row) => row.id === target.id);
+			rollover.retired_predecessor = retired;
+			assert(retired, "superseded native predecessor must remain observable");
+			assert.equal(retired.native_extension_delivery, false);
+			assert(Number(object(retired).tombstoned_at) > 0);
+			assert(String(object(retired).tombstone_reason).includes(successor.id));
+			const oldQuery = new URLSearchParams({
+				seat: target.id,
+				wait: "false",
+				native_session: target.session,
+				pid: String(target.proc.pid),
+				proc_start: String(target.proc.proc_start),
+			});
+			const staleClaim = await fetch(`http://${addr}/v1/inbox?${oldQuery}`, {
+				headers: { Authorization: `Bearer ${key()}` },
+				signal: AbortSignal.timeout(10_000),
+			});
+			const staleBody = object(await staleClaim.json());
+			rollover.old_consumer_refusal = {
+				status: staleClaim.status,
+				body: staleBody,
+				tuple: target.proc,
+				session: target.session,
+			};
+			assert.equal(staleClaim.status, 400, "retired native consumer must be refused");
+			assert.equal(staleBody.ok, false);
+			assert.equal(staleBody.error, "refused");
+			assert(
+				String(staleBody.meta).includes(
+					"native-extension-unavailable: Copilot requires current native registration",
+				),
+			);
+			const freshNonce = `PIJ_NEW_CONTEXT_${randomUUID()}`;
+			const freshId = randomUUID();
+			rollover.fresh_send = await send(sender, successor, freshNonce, freshId);
+			rollover.fresh_delivery = await waitDelivery(successor, freshNonce, freshId);
+			rollover.fresh_turn_end = await waitTurnEnd(successor, freshNonce);
+			assert.equal(nativeMessages(events(successor), freshNonce).length, 1);
+			assert.equal(delivered(successor, freshId).length, 1);
+			const isolated = oldContextSnapshot(successor);
+			rollover.held_after_new = isolated;
+			verifyNativeContextHeld(oldExpected, isolated);
+			rollover.grade =
+				"native-accepted; old binding revoked and claims refused; private abort signal not observed";
+			let activeTarget = successor;
+			if (mode === "manual") {
+				const resume: Record<string, unknown> = {
+					kind: "manual-native-dead-host-resume",
+					before: successor,
+				};
+				witnesses.push(resume);
+				resume.process_before_exit = command("ps", [
+					"-p",
+					String(successor.proc.pid),
+					"-o",
+					"pid=,ppid=,lstart=,command=",
+				]);
+				const exitControl: Record<string, unknown> = {};
+				resume.human_control = exitControl;
+				await driveSmokeLifecycleCommand(
+					tmux,
+					{ pane: successor.pane, action: "exit" },
+					options.timeoutMs,
+					exitControl,
+				);
+				resume.host_death = await until(
+					"actual native host exits before resume",
+					options.timeoutMs,
+					() => {
+						try {
+							process.kill(successor.proc.pid, 0);
+							return undefined;
+						} catch (error) {
+							if (object(error).code !== "ESRCH") throw error;
+							return {
+								...successor.proc,
+								observed_at: new Date().toISOString(),
+								evidence: "kill(pid, 0): ESRCH",
+							};
+						}
+					},
+				);
+				const identityKeys: string[] = Object.keys(env).filter(
+					(name) => name.startsWith("PIJ_") && !["PIJ_RS_ADDR", "PIJ_RS_STATE_DIR"].includes(name),
+				);
+				resume.identity_environment_keys = identityKeys;
+				assert.deepEqual(identityKeys, [], "manual resume must not inherit Pij preallocation");
+				resume.launch_args = [...common, `--resume=${successor.session}`];
+				activeTarget = await launch("manual", false, undefined, successor);
+				resume.after = activeTarget;
+				verifyNativeLifecycleIdentity(successor, activeTarget, "resume");
+				const resumedNonce = `PIJ_RESUMED_${randomUUID()}`;
+				const resumedId = randomUUID();
+				resume.send = await send(sender, activeTarget, resumedNonce, resumedId);
+				resume.delivery = await waitDelivery(activeTarget, resumedNonce, resumedId);
+				resume.turn_end = await waitTurnEnd(activeTarget, resumedNonce);
+				resume.native_events = events(activeTarget);
+				resume.roster = await seats();
+				resume.terminal = capture(activeTarget);
+				assert.equal(nativeMessages(events(activeTarget), resumedNonce).length, 1);
+				assert.equal(delivered(activeTarget, resumedId).length, 1);
+				const stillIsolated = oldContextSnapshot(activeTarget);
+				resume.old_context_exclusion = stillIsolated;
+				verifyNativeContextHeld(oldExpected, stillIsolated);
+				resume.grade =
+					"native-accepted-not-model-complete; real host death observed before fresh manual resume";
+			}
+			for (const seat of [sender, activeTarget, disabled]) tmux(["kill-pane", "-t", seat.pane]);
 		}
 		receipt.status = "passed";
 		code = 0;

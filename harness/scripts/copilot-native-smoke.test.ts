@@ -12,10 +12,14 @@ import {
 import {
 	captureSmokePanes,
 	confirmSmokeToolInvocation,
+	driveSmokeLifecycleCommand,
+	nativeComposer,
 	nativeMessages,
 	parseSmokeArgs,
 	readNativeEvents,
 	runSmoke,
+	verifyNativeContextHeld,
+	verifyNativeLifecycleIdentity,
 	verifyOrdinaryUsability,
 	verifyToolApproval,
 	verifyWorkspaceTrustDiscriminator,
@@ -280,6 +284,203 @@ describe("isolated native tool human approval", () => {
 		).rejects.toThrow("pane exited after consent");
 		expect(commands.filter((command) => command[0] === "send-keys")).toHaveLength(1);
 		expect(witness).toMatchObject({ decision: "approve-once", status: "failed", before: dialog() });
+	});
+});
+
+describe("native lifecycle assertion boundaries, not live CLI proof", () => {
+	const composer = (text = "") =>
+		`Previous user /new\n╻▄▄▄▄▄▄\n┃  ${text}\n╹▀▀▀▀▀▀\n← open sidebar · / commands`;
+	const dialog = "╭────────╮\n│ Confirm folder trust │\n╰────────╯";
+
+	it.each([
+		"newSession",
+		"exit",
+	] as const)("stages and submits only the documented %s command", async (action) => {
+		const command = action === "newSession" ? "/new" : "/exit";
+		const frames = [composer(), composer(command), composer(command), composer()];
+		const keys: string[][] = [];
+		const witness: Record<string, unknown> = {};
+		let heldBeforeSubmit = false;
+		await driveSmokeLifecycleCommand(
+			(args) => {
+				if (args[0] === "capture-pane") return frames.shift() ?? composer();
+				if (args.at(-1) === "Enter") expect(heldBeforeSubmit).toBe(true);
+				keys.push(args);
+				return "";
+			},
+			{ pane: "%9", action },
+			1,
+			witness,
+			async () => {
+				expect(keys).toEqual([["send-keys", "-t", "%9", "-l", "--", command]]);
+				heldBeforeSubmit = true;
+			},
+		);
+		expect(keys).toEqual([
+			["send-keys", "-t", "%9", "-l", "--", command],
+			["send-keys", "-t", "%9", "Enter"],
+		]);
+		expect(witness).toMatchObject({
+			command,
+			before: composer(),
+			staged: composer(command),
+			before_submit: composer(command),
+			after: composer(),
+			command_submitted: true,
+		});
+	});
+
+	it("uses only the composer and rejects unknown dialogs and existing drafts without keys", async () => {
+		expect(nativeComposer(composer("/exit"))).toBe("/exit");
+		expect(nativeComposer("Previous user /new")).toBeUndefined();
+		for (const terminal of [dialog, composer("human draft")]) {
+			const keys: string[][] = [];
+			const witness: Record<string, unknown> = {};
+			await expect(
+				driveSmokeLifecycleCommand(
+					(args) => {
+						if (args[0] === "send-keys") keys.push(args);
+						return terminal;
+					},
+					{ pane: "%9", action: "newSession" },
+					1,
+					witness,
+				),
+			).rejects.toThrow(/PIJ_NATIVE_/);
+			expect(keys).toEqual([]);
+			expect(witness).toMatchObject({ status: "failed", before: terminal });
+		}
+	});
+
+	it.each([
+		composer("/exit"),
+		dialog,
+	])("does not submit a changed staged control", async (changed) => {
+		const frames = [composer(), composer("/new"), changed];
+		const keys: string[][] = [];
+		await expect(
+			driveSmokeLifecycleCommand(
+				(args) => {
+					if (args[0] === "capture-pane") return frames.shift() ?? changed;
+					keys.push(args);
+					return "";
+				},
+				{ pane: "%9", action: "newSession" },
+				1,
+				{},
+			),
+		).rejects.toThrow(/PIJ_NATIVE_/);
+		expect(keys).toEqual([["send-keys", "-t", "%9", "-l", "--", "/new"]]);
+	});
+
+	it("retains an exited pane capture error without claiming host death", async () => {
+		const frames = [composer(), composer("/exit"), composer("/exit")];
+		const witness: Record<string, unknown> = {};
+		await driveSmokeLifecycleCommand(
+			(args) => {
+				if (args[0] !== "capture-pane") return "";
+				const frame = frames.shift();
+				if (frame === undefined) throw new Error("owned pane exited");
+				return frame;
+			},
+			{ pane: "%9", action: "exit" },
+			1,
+			witness,
+		);
+		expect(witness).toMatchObject({
+			command_submitted: true,
+			after_capture_error: "Error: owned pane exited",
+			status: "submitted-not-yet-lifecycle-proven",
+		});
+		expect(witness.host_death).toBeUndefined();
+	});
+
+	const previous = {
+		id: "pij-old",
+		session: "00000000-0000-4000-8000-000000000137",
+		pane: "%9",
+		harness: "copilot",
+		native_extension_delivery: true,
+		proc: { pid: 137, proc_start: 1 },
+	};
+	const successor = { ...previous, id: "pij-new", session: "00000000-0000-4000-8000-000000000138" };
+	it("requires a new address on /new but stable identity on fresh-host resume", () => {
+		expect(() => verifyNativeLifecycleIdentity(previous, successor, "new")).not.toThrow();
+		expect(() =>
+			verifyNativeLifecycleIdentity(
+				successor,
+				{ ...successor, proc: { pid: 138, proc_start: 2 } },
+				"resume",
+			),
+		).not.toThrow();
+	});
+	it.each([
+		{ ...successor, session: previous.session },
+		{ ...successor, id: previous.id },
+		{ ...successor, pane: "%10" },
+		{ ...successor, proc: { pid: 138, proc_start: 2 } },
+		{ ...successor, native_extension_delivery: false },
+	])("rejects untruthful /new registration", (current) => {
+		expect(() => verifyNativeLifecycleIdentity(previous, current, "new")).toThrow();
+	});
+	it.each([
+		previous,
+		{ ...previous, id: "different", proc: { pid: 138, proc_start: 2 } },
+		{ ...previous, session: successor.session, proc: { pid: 138, proc_start: 2 } },
+	])("rejects fake or identity-changing resume", (current) => {
+		expect(() => verifyNativeLifecycleIdentity(previous, current, "resume")).toThrow();
+	});
+
+	const expected = {
+		seat: previous.id,
+		session: previous.session,
+		msgId: "old-id",
+		nonce: "OLD_CONTEXT_NONCE",
+	};
+	const payload = {
+		to: previous.id,
+		native_target_session: previous.session,
+		msg_id: expected.msgId,
+		body: expected.nonce,
+	};
+	const job = { state: "pending", payload: JSON.stringify(payload) };
+	const held = {
+		jobs: [job],
+		acknowledgements: [],
+		predecessorEvents: [],
+		successorEvents: [],
+		successorJobs: [],
+	};
+	const oldEvent = {
+		id: "event",
+		type: "user.message",
+		data: { content: expected.nonce, messageId: "native-id" },
+	};
+	it("accepts only preserved unacknowledged old-context work", () => {
+		expect(() => verifyNativeContextHeld(expected, held)).not.toThrow();
+	});
+	it.each([
+		{ jobs: [] },
+		{ jobs: [{ ...job, state: "done" }] },
+		{ acknowledgements: [{ recipient: successor.id, msg_id: expected.msgId }] },
+		{ predecessorEvents: [oldEvent] },
+		{ successorEvents: [oldEvent] },
+		{ successorJobs: [job] },
+	])("rejects lost, consumed, acknowledged or migrated old-context work", (changed) => {
+		expect(() => verifyNativeContextHeld(expected, { ...held, ...changed })).toThrow();
+	});
+	it.each([
+		"to",
+		"native_target_session",
+		"msg_id",
+		"body",
+	] as const)("rejects changed old-context %s", (field) => {
+		expect(() =>
+			verifyNativeContextHeld(expected, {
+				...held,
+				jobs: [{ ...job, payload: JSON.stringify({ ...payload, [field]: "changed" }) }],
+			}),
+		).toThrow();
 	});
 });
 
