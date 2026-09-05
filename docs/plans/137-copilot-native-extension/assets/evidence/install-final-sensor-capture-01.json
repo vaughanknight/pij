@@ -1,0 +1,53 @@
+{
+  "status": "later-final-api-diagnostics-implemented-scoped-checks-passed-no-live-run",
+  "source_base": "346caced",
+  "assignment": "assets/inputs/pm-final-sensor-capture.json",
+  "source_review": {
+    "reviewer": "FinalSensorReview",
+    "verdict": "correct", "confidence": 0.94, "findings": [],
+    "grade": "Source-only; reviewer ran no tests or live validation",
+    "boundary": "Matching GET consumer is in sibling daemon source; composed-binary integration remains PM-owned and unverified here."
+  },
+  "motivation": "PM reports local07 measured cursor2,45 but no later typing API snapshot. Terminal appearance alone cannot distinguish transient readiness from persistent unrecognition.",
+  "implementation": {
+    "captureSmokeFinalTyping": "Rereads /v1/seats, filters native-attested Copilot seats to actual panes on the private socket, and GETs /v1/inbox/typing with each current seat/native_session/pid/proc_start tuple. Retains the unmodified response or named PIJ_NATIVE_FINAL_TYPING error and measured pane_capture.",
+    "callback_lifetime": "Installed after the owned daemon is ready and API/roster functions exist. Reads the current key and fresh roster at invocation, not saved launch tuples.",
+    "failure_exit_path": "finishSmokePanes awaits final_typing_capture and legacy final pane captures before kill-server. runSmoke awaits this before stopOwned(daemon).",
+    "success_mode_path": "Each mode appends a manual-final-typing-capture or spawned-final-typing-capture witness before the existing per-mode kill-pane loop; otherwise successful panes would already be gone by outer finally.",
+    "bounds": "Shared 5000ms AbortSignal for roster and typing HTTP requests, passed through to actual fetch. Existing synchronous tmux commands each retain their 15000ms deadline; 5000ms is not a whole-finalization wall-clock claim.",
+    "measurement": "Batch started_at_ms/completed_at_ms; each seat/request and requested_at_ms/completed_at_ms plus pane_capture timestamp/cursor/dimensions/raw unjoined viewport. timing=nearby-not-atomic; viewport is later than its API read, never represented as the daemon's exact sensor frame.",
+    "failures": "Per-seat API and pane errors are independent. Missing key/daemon/roster becomes named batch error when initialized; uninitialized callback gets final_typing_capture_skipped=daemon-api-roster-not-initialized. Unexpected callback error retained separately. Diagnostic failures never rewrite status/error/code; existing cleanup failure behavior remains strict."
+  },
+  "verification": {
+    "environment": {"VITEST_MAX_WORKERS":"4", "VITEST_MAX_THREADS":"4", "CARGO_BUILD_JOBS":"4"},
+    "red": {
+      "command":"just test harness/scripts/copilot-native-smoke.test.ts -t 'final typing API diagnostics'",
+      "failed":8, "skipped":119, "exit_code":1,
+      "reason":"Missing captureSmokeFinalTyping/finishSmokePanes exports"
+    },
+    "focused_green": {"passed":8, "skipped":119, "exit_code":0},
+    "final_suite": {
+      "command":"just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts",
+      "passed":164, "installer":33, "smoke":131, "new_diagnostic_cases":12,
+      "duration_seconds":5.52, "exit_code":0
+    },
+    "strict_typescript": {
+      "command":"node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit_code":0
+    },
+    "biome": {"command":"node_modules/.bin/biome check harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts", "exit_code":0, "result":"Checked 2 files. No fixes applied."},
+    "grade":"Injected API/tmux tests plus source integration; not live CLI, actual daemon or provider proof."
+  },
+  "constraints": {
+    "no_product_or_policy_edits":true,
+    "no_queue_mutation_or_new_input":true,
+    "original_failure_preserved":true,
+    "unavailable_never_coerced_to_quiet":true,
+    "no_historical_cursor_or_sensor_backfill":true,
+    "live_runs":0, "live_keys_sent":0,
+    "full_gates":"Not run; PM-owned",
+    "docs":"How-to intentionally unchanged under packet scope; capture contract recorded here.",
+    "live_ac6_or_ac7_acceptance_claimed":false
+  },
+  "harness_lesson":"Retain semantic API evidence separately from measured terminal appearance and before every relevant teardown boundary; a diagnostic failure must not overwrite the failure being diagnosed."
+}
