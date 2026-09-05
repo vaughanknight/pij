@@ -205,6 +205,23 @@ async function stopOwned(child: ChildProcess): Promise<void> {
 	}
 }
 
+/** Snapshot every owned pane before teardown; an exited pane must not hide the others. */
+export function captureSmokePanes(tmux: (args: string[]) => string) {
+	const panes = tmux(["list-panes", "-a", "-F", "#{pane_id} #{pane_pid} #{pane_current_command}"]);
+	const captures = panes
+		.split("\n")
+		.filter(Boolean)
+		.map((row) => {
+			const pane = row.split(" ")[0] as string;
+			try {
+				return { pane, terminal: tmux(["capture-pane", "-p", "-J", "-S", "-2000", "-t", pane]) };
+			} catch (error) {
+				return { pane, error: String(error) };
+			}
+		});
+	return { panes, captures };
+}
+
 export async function runSmoke(options: Options): Promise<{ code: number; output: string }> {
 	if (options.output)
 		assert(!existsSync(options.output), `refusing to overwrite receipt ${options.output}`);
@@ -270,6 +287,13 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 				COPILOT_MODEL: "pij-native-fixture",
 			});
 		} else env.COPILOT_MODEL = options.model;
+		// Trust only this new, empty fixture workspace, never a global folder or all tools.
+		const trustedFolders = [realpathSync(cwd)];
+		mkdirSync(copilotHome, { recursive: true, mode: 0o700 });
+		writeFileSync(join(copilotHome, "settings.json"), `${JSON.stringify({ trustedFolders })}\n`, {
+			flag: "wx",
+			mode: 0o600,
+		});
 		const installLog: string[] = [];
 		assert.equal(
 			manageCopilotExtension({
@@ -319,6 +343,7 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 			state,
 			addr,
 			socket,
+			trusted_folders: trustedFolders,
 			manual_identity_env_keys: Object.keys(env).filter(
 				(key) => key.startsWith("PIJ_") && !["PIJ_RS_ADDR", "PIJ_RS_STATE_DIR"].includes(key),
 			),
@@ -826,14 +851,11 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 	} finally {
 		if (socketCreated) {
 			try {
-				receipt.final_panes = tmux([
-					"list-panes",
-					"-a",
-					"-F",
-					"#{pane_id} #{pane_pid} #{pane_current_command}",
-				]);
-			} catch {
-				/* panes may already have exited */
+				const final = captureSmokePanes(tmux);
+				receipt.final_panes = final.panes;
+				receipt.final_pane_captures = final.captures;
+			} catch (error) {
+				receipt.final_capture_error = String(error);
 			}
 			try {
 				tmux(["kill-server"]);

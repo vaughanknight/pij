@@ -10,6 +10,7 @@ import {
 	startFixtureProvider,
 } from "./copilot-native-fixture.js";
 import {
+	captureSmokePanes,
 	nativeMessages,
 	parseSmokeArgs,
 	readNativeEvents,
@@ -94,6 +95,23 @@ describe("native smoke fixture protocol", () => {
 });
 
 describe("native witness boundaries", () => {
+	it("captures all final panes before cleanup and preserves individual capture errors", () => {
+		const commands: string[][] = [];
+		const result = captureSmokePanes((args) => {
+			commands.push(args);
+			if (args[0] === "list-panes") return "%1 101 node\n%2 102 node\n%3 103 node";
+			if (args.at(-1) === "%2") throw new Error("pane exited");
+			return args.at(-1) === "%1" ? "Confirm folder trust" : "[pij native] unavailable: offline";
+		});
+		expect(result.panes).toBe("%1 101 node\n%2 102 node\n%3 103 node");
+		expect(result.captures).toEqual([
+			{ pane: "%1", terminal: "Confirm folder trust" },
+			{ pane: "%2", error: "Error: pane exited" },
+			{ pane: "%3", terminal: "[pij native] unavailable: offline" },
+		]);
+		expect(commands.slice(1).every((args) => args.includes("-2000"))).toBe(true);
+	});
+
 	it("requires ordinary native usability and exactly one actionable outage diagnostic", () => {
 		const user = {
 			id: "user-event",
