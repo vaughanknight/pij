@@ -1271,6 +1271,187 @@ function nativeTerminal(f, parentId, type = "session.idle", extra = {}) {
 	f.event({ type, id: `terminal-${parentId}`, parentId, data: {}, ...extra });
 }
 
+for (const type of ["session.idle", "session.error"]) {
+	test(`native-event diagnostics retain pre-observe ancestry for healthy ${type}`, async (t) => {
+		const f = fixture();
+		const run = f.bridge.run();
+		t.after(async () => {
+			f.bridge.stop();
+			await run;
+		});
+		await f.accepted.promise;
+		const root = nativeUser(f, "native-message-137", "diagnostic-user", "diagnostic-interaction");
+		f.event({
+			type: "assistant.message",
+			id: "diagnostic-assistant",
+			parentId: root,
+			data: { interactionId: "diagnostic-interaction", content: "private model text" },
+		});
+		nativeTerminal(f, "diagnostic-assistant", type);
+		const events = f.reports.filter((event) => event.kind === "native-event");
+		assert.equal(events.length, 3);
+		assert.deepEqual(events[2], {
+			kind: "native-event",
+			seat: registration.id,
+			nativeSession: registration.harness_session,
+			type,
+			eventId: "terminal-diagnostic-assistant",
+			nativeMessageId: null,
+			parentId: "diagnostic-assistant",
+			agentId: null,
+			interactionId: null,
+			completionNativeId: "native-message-137",
+			completionLive: true,
+			parentKnown: true,
+			descendantCount: 2,
+			terminal: { type, eventId: "terminal-diagnostic-assistant" },
+			grade: "native-event-not-pij-ack",
+		});
+		assert.equal(events[0].parentKnown, false);
+		assert.equal(events[0].descendantCount, 0);
+		assert.equal(events[0].interactionId, "diagnostic-interaction");
+		assert.equal(events[1].parentKnown, true);
+		assert.equal(events[1].descendantCount, 1);
+		assert.equal(f.bridge.completion.descendants.size, 0);
+		await flush();
+		assert.equal(f.reports.filter((event) => event.kind === "native-completed").length, 1);
+		assert.equal(f.trace.filter((event) => event === "claim").length, 2);
+	});
+}
+
+test("native-event diagnostics identify rejected idle without declaring a stall", async (t) => {
+	const f = fixture();
+	const run = f.bridge.run();
+	t.after(async () => {
+		f.bridge.stop();
+		await run;
+	});
+	await f.accepted.promise;
+	const root = nativeUser(f, "native-message-137", "diagnostic-user", "owned-interaction");
+	nativeTerminal(f, "missing-parent", "session.idle", {
+		data: { interactionId: "foreign-interaction" },
+	});
+	const rejected = f.reports.filter((event) => event.kind === "native-event").at(-1);
+	assert.deepEqual(rejected, {
+		kind: "native-event",
+		seat: registration.id,
+		nativeSession: registration.harness_session,
+		type: "session.idle",
+		eventId: "terminal-missing-parent",
+		nativeMessageId: null,
+		parentId: "missing-parent",
+		agentId: null,
+		interactionId: "foreign-interaction",
+		completionNativeId: "native-message-137",
+		completionLive: true,
+		parentKnown: false,
+		descendantCount: 1,
+		terminal: null,
+		grade: "native-event-not-pij-ack",
+	});
+	nativeTerminal(f, root, "session.idle", { agentId: "subagent" });
+	const subagent = f.reports.filter((event) => event.kind === "native-event").at(-1);
+	assert.equal(subagent.agentId, "subagent");
+	assert.equal(subagent.parentKnown, true);
+	assert.equal(subagent.terminal, null);
+	await flush();
+	assert.equal(f.reports.filter((event) => event.kind === "native-event").length, 3);
+	assert.equal(
+		f.reports.some((event) =>
+			["native-completed", "receive-held", "reconnecting"].includes(event.kind),
+		),
+		false,
+	);
+	assert.equal(f.trace.filter((event) => event === "claim").length, 1);
+	assert.equal((await f.bridge.send({ to: "pij-peer", message: "still working" })).ok, true);
+});
+
+test("native-event diagnostics expose only scalar IDs and never callback or buffered bodies", async (t) => {
+	const f = fixture();
+	const sending = deferred();
+	f.native.send = () => {
+		sending.resolve();
+		return new Promise(() => {});
+	};
+	const run = f.bridge.run();
+	t.after(async () => {
+		f.bridge.stop();
+		await run;
+	});
+	// Before there is a completion, absent metadata is explicit rather than fabricated.
+	f.event({ type: "session.idle", id: "before-send", data: {} });
+	const before = f.reports.find((event) => event.kind === "native-event");
+	assert.equal(before.completionNativeId, null);
+	assert.equal(before.completionLive, false);
+	assert.equal(before.parentKnown, false);
+	assert.equal(before.descendantCount, 0);
+	assert.equal(before.terminal, null);
+	await sending.promise;
+	const secret = "NEVER_LOG_BODY_ARGS_OR_CREDENTIALS";
+	for (const type of ["user.message", "assistant.message", "session.idle", "session.error"]) {
+		f.event({
+			type,
+			id: `event-${type}`,
+			parentId: "previous",
+			agentId: "subagent",
+			prompt: secret,
+			credentials: secret,
+			data: {
+				messageId: "unbound-native",
+				interactionId: "unbound-interaction",
+				content: secret,
+				body: secret,
+				arguments: { key: secret },
+				token: secret,
+			},
+		});
+	}
+	// Neither malformed ID objects nor unlogged callback types may leak arbitrary payloads.
+	const malformed = { key: secret };
+	f.event({
+		type: "assistant.message",
+		id: malformed,
+		parentId: malformed,
+		agentId: malformed,
+		data: { messageId: malformed, interactionId: malformed },
+	});
+	f.event({ type: "assistant.message_delta", id: "delta", data: { content: secret } });
+	f.event({ type: "tool.execution_complete", id: "tool", data: { arguments: secret } });
+	const events = f.reports.filter((event) => event.kind === "native-event");
+	assert.equal(events.length, 6);
+	assert.equal(JSON.stringify(events).includes(secret), false);
+	for (const event of events.slice(1)) {
+		assert.equal(event.completionNativeId, null);
+		assert.equal(event.completionLive, true);
+		assert.equal(event.parentKnown, false);
+		assert.equal(event.descendantCount, 0);
+		assert.equal(event.terminal, null);
+		assert.deepEqual(
+			Object.keys(event).sort(),
+			[
+				"kind",
+				"seat",
+				"nativeSession",
+				"type",
+				"eventId",
+				"nativeMessageId",
+				"parentId",
+				"agentId",
+				"interactionId",
+				"completionNativeId",
+				"completionLive",
+				"parentKnown",
+				"descendantCount",
+				"terminal",
+				"grade",
+			].sort(),
+		);
+	}
+	for (const key of ["eventId", "nativeMessageId", "parentId", "agentId", "interactionId"])
+		assert.equal(events.at(-1)[key], null);
+	assert.equal(f.trace.includes("ack"), false);
+});
+
 test("post-ack barrier blocks next claim until current native completion, not outgoing", async (t) => {
 	const f = fixture();
 	t.after(() => f.bridge.stop());

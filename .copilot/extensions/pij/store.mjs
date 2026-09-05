@@ -598,16 +598,36 @@ export class NativeBridge {
 			throwIfStopped(signal);
 			this.unsubscribe = this.native.on((event) => {
 				if (signal.aborted) return;
-				this.completion?.observe(event);
-				if (
-					["user.message", "assistant.message", "session.idle", "session.error"].includes(
-						event.type,
-					)
-				)
+				const completion = this.completion;
+				// Successful terminal observation clears ancestry; capture its pre-state, not the aftermath.
+				const metadata = [
+					"user.message",
+					"assistant.message",
+					"session.idle",
+					"session.error",
+				].includes(event.type)
+					? {
+							completionNativeId: completion?.nativeId ?? null,
+							completionLive: completion?.live ?? false,
+							parentKnown: completion?.descendants.has(event.parentId) ?? false,
+							descendantCount: completion?.descendants.size ?? 0,
+						}
+					: undefined;
+				completion?.observe(event);
+				if (metadata)
 					this.emit("native-event", {
 						type: event.type,
-						eventId: event.id ?? null,
-						nativeMessageId: event.data?.messageId ?? null,
+						eventId: typeof event.id === "string" ? event.id : null,
+						nativeMessageId:
+							typeof event.data?.messageId === "string" ? event.data.messageId : null,
+						parentId: typeof event.parentId === "string" ? event.parentId : null,
+						agentId: typeof event.agentId === "string" ? event.agentId : null,
+						interactionId:
+							typeof event.data?.interactionId === "string" ? event.data.interactionId : null,
+						...metadata,
+						terminal: completion?.terminal
+							? { type: completion.terminal.type, eventId: completion.terminal.eventId }
+							: null,
 						grade: "native-event-not-pij-ack",
 					});
 				if (event.type === "session.shutdown") this.stop();
