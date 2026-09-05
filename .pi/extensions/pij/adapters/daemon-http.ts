@@ -8,10 +8,14 @@ import {
 	decodeStreamLine,
 	type EventFrame,
 	type HealthPayload,
+	type HoldRequest,
+	type HoldResponse,
 	PijNoDaemonError,
 	parseProcessStart,
 	type QueueReceipt,
 	type Registration,
+	type ReleaseRequest,
+	type ReleaseResponse,
 	type RustSeatDescriptor,
 	type SendRequest,
 } from "../core/daemon-wire.js";
@@ -155,6 +159,14 @@ export class PijDaemonClient {
 
 	ackInbox(seat: string, jobId: number): Promise<number> {
 		return this.post<number>("/v1/inbox/ack", { seat, job_id: jobId });
+	}
+
+	hold(request: HoldRequest): Promise<HoldResponse> {
+		return this.post<HoldResponse>("/v1/hold", request);
+	}
+
+	release(request: ReleaseRequest): Promise<ReleaseResponse> {
+		return this.post<ReleaseResponse>("/v1/release", request);
 	}
 
 	async watchEvents(
