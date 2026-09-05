@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use pij_core::delivery::DeliveryDeferralReason;
+use pij_core::delivery::{DEFAULT_TYPING_GRACE_MS, DeliveryDeferralReason};
 use pij_core::error::{PijError, Result};
 use pij_core::framing::self_injection_matches;
 use pij_core::ports::{StagedSubmit, TmuxPort};
@@ -30,7 +30,10 @@ struct ComposerState {
     tap_active: bool,
     composer_active: bool,
     content: Option<String>,
+    content_is_self_echo: bool,
     last_interaction_at: Option<Instant>,
+    // Composer-edit evidence only: output taps and tmux mode never refresh this.
+    last_edit_at: Option<Instant>,
     uncertainty_since: Option<Instant>,
     self_injection: Option<SelfInjection>,
 }
@@ -82,6 +85,9 @@ pub struct InjectionVerdict {
     pub reason: Option<DeliveryDeferralReason>,
     /// Short SHA-256 fingerprint of a recognized non-blank draft.
     pub draft_sha: Option<String>,
+    /// Time remaining until the observed edit's grace expires, not a timestamp.
+    /// Callers may add this duration to their own clock; only HumanTyping sets it.
+    pub next_retry_at: Option<Duration>,
 }
 
 /// Outcome of a pane transaction whose input was owned before observation.
@@ -98,17 +104,17 @@ pub enum StagedSubmission {
     },
 }
 
-/// Injection safety gate combining tmux mode with stateful composer interaction.
-/// `TmuxPort::user_typing` reports only `pane_in_mode`. This gate owns the other
-/// half: tap activity and recent changes to captured composer content. A recent
-/// interaction-backed veto blocks independently of tmux mode; once every such
-/// observation reaches the idle bound, composer uncertainty and stale latches
-/// decay and the verdict falls back to tmux mode alone. Consumers must feed tap
-/// and composer observations before asking.
+/// Tracks composer edits separately from tmux-mode, tap and recognition latches.
+/// Fresh recognized verdicts use only edit recency for `HumanTyping`; an unchanged
+/// draft remains context, not an indefinite veto. Tap bytes are rendered output,
+/// never keystrokes. Unknown-layout/legacy latches retain their independent idle
+/// window. Consumers feed composer observations before asking; first observed
+/// non-blank content is conservatively treated as an edit at observation time.
 pub struct InteractionGate {
     tmux: Arc<dyn TmuxPort>,
     panes: Mutex<BTreeMap<String, ComposerState>>,
     idle_window: Duration,
+    typing_grace: Duration,
     clock: Clock,
 }
 
@@ -155,16 +161,50 @@ impl InteractionGate {
         Self::with_idle_window(tmux, DEFAULT_INTERACTION_IDLE)
     }
 
-    /// Construct a gate with a caller-selected idle window and the monotonic system clock.
+    /// Select the legacy idle window while using the core-owned typing default.
     pub fn with_idle_window(tmux: Arc<dyn TmuxPort>, idle_window: Duration) -> Self {
-        Self::with_clock(tmux, idle_window, Arc::new(Instant::now))
+        Self::with_typing_grace(tmux, idle_window, DEFAULT_TYPING_GRACE_MS)
     }
 
-    fn with_clock(tmux: Arc<dyn TmuxPort>, idle_window: Duration, clock: Clock) -> Self {
+    /// Construct with a daemon-resolved typing grace, in milliseconds.
+    ///
+    /// PM snap-in recipe for `crates/daemon/src/lib.rs`: resolve the same value
+    /// supplied to the register response, then preserve the distinct idle window.
+    /// This wiring belongs to the composer, not the harnesses unit.
+    ///
+    /// ```ignore
+    /// let typing_grace_ms = std::env::var("PIJ_TYPING_GRACE_MS")
+    ///     .ok()
+    ///     .and_then(|value| value.parse::<u64>().ok())
+    ///     .unwrap_or(pij_core::delivery::DEFAULT_TYPING_GRACE_MS);
+    /// let interaction = Arc::new(InteractionGate::with_typing_grace(
+    ///     Arc::clone(&tmux),
+    ///     Duration::from_millis(config.interaction_idle_ms),
+    ///     typing_grace_ms,
+    /// ));
+    /// ```
+    ///
+    /// Existing constructors remain unchanged and use the core default. Only the
+    /// composition root needs this constructor to apply the daemon's env override.
+    pub fn with_typing_grace(
+        tmux: Arc<dyn TmuxPort>,
+        idle_window: Duration,
+        grace_ms: u64,
+    ) -> Self {
+        Self::with_clock(tmux, idle_window, grace_ms, Arc::new(Instant::now))
+    }
+
+    fn with_clock(
+        tmux: Arc<dyn TmuxPort>,
+        idle_window: Duration,
+        grace_ms: u64,
+        clock: Clock,
+    ) -> Self {
         Self {
             tmux,
             panes: Mutex::new(BTreeMap::new()),
             idle_window,
+            typing_grace: Duration::from_millis(grace_ms),
             clock,
         }
     }
@@ -235,9 +275,20 @@ impl InteractionGate {
         if content.chars().all(char::is_whitespace) {
             let changed = state.content.as_deref() != Some(content);
             if changed {
+                // Initial blanks, padding and clearing our own echo are not keys.
+                if state.last_edit_at.is_some()
+                    && !state.content_is_self_echo
+                    && state
+                        .content
+                        .as_deref()
+                        .is_some_and(|previous| previous.chars().any(|ch| !ch.is_whitespace()))
+                {
+                    state.last_edit_at = Some(now);
+                }
                 state.content = Some(content.to_string());
                 state.last_interaction_at = Some(now);
             }
+            state.content_is_self_echo = false;
             state.composer_active = false;
             state.tap_active = preserve_tap && tick_tap_active;
             return;
@@ -245,21 +296,27 @@ impl InteractionGate {
 
         if state.content.as_deref() != Some(content) {
             let injection = state.self_injection.take();
+            let mut self_echo = false;
             let explained = injection.as_ref().is_some_and(|injection| {
-                injection.payload.chars().any(|ch| !ch.is_whitespace())
-                    && (self_injection_matches(&injection.payload, content)
-                        || injection
-                            .baseline
-                            .as_deref()
-                            .is_some_and(|baseline| collapsed_eq(content, baseline)))
+                if injection.payload.chars().all(char::is_whitespace) {
+                    return false;
+                }
+                self_echo = self_injection_matches(&injection.payload, content);
+                self_echo
+                    || injection
+                        .baseline
+                        .as_deref()
+                        .is_some_and(|baseline| collapsed_eq(content, baseline))
             });
             state.content = Some(content.to_string());
+            state.content_is_self_echo = self_echo || (explained && state.content_is_self_echo);
             if let Some(injection) = injection.filter(|_| explained) {
                 state.tap_active = injection.tap_active;
                 state.last_interaction_at = injection.last_interaction_at;
             } else {
                 state.composer_active = true;
                 state.last_interaction_at = Some(now);
+                state.last_edit_at = Some(now);
             }
         }
         let expired = state.expire_vetoes_if_idle(now, self.idle_window);
@@ -281,9 +338,13 @@ impl InteractionGate {
         state.composer_active = false;
         state.uncertainty_since = None;
         if changed {
+            if state.last_edit_at.is_some() && !state.content_is_self_echo {
+                state.last_edit_at = Some(now);
+            }
             state.content = Some(String::new());
             state.last_interaction_at = Some(now);
         }
+        state.content_is_self_echo = false;
     }
 
     /// Record that composer recognition is unavailable. The first observation
@@ -328,6 +389,7 @@ impl InteractionGate {
                 composer_idle: false,
                 reason: Some(DeliveryDeferralReason::TapUnowned),
                 draft_sha: None,
+                next_retry_at: None,
             });
         }
         let listed = self.tmux.list_panes().await?;
@@ -338,6 +400,7 @@ impl InteractionGate {
                 composer_idle: false,
                 reason: Some(DeliveryDeferralReason::Unrecognized),
                 draft_sha: None,
+                next_retry_at: None,
             });
         };
         let (Some(cursor_x), Some(cursor_y)) = (listed.cursor_x, listed.cursor_y) else {
@@ -347,6 +410,7 @@ impl InteractionGate {
                 composer_idle: false,
                 reason: Some(DeliveryDeferralReason::Unrecognized),
                 draft_sha: None,
+                next_retry_at: None,
             });
         };
         let capture = self.tmux.capture(pane, CAPTURE_LINES).await?;
@@ -356,11 +420,26 @@ impl InteractionGate {
                 // This fresh, recognized capture is the authority. It clears any
                 // historical tap latch because tap bytes are rendered output.
                 self.observe_composer_at(pane, &content, false);
+                let now = (self.clock)();
+                let last_edit_at = self
+                    .panes
+                    .lock()
+                    .expect("interaction gate mutex")
+                    .get(pane)
+                    .and_then(|state| state.last_edit_at);
+                let next_retry_at = last_edit_at
+                    .and_then(|last_edit| {
+                        self.typing_grace
+                            .checked_sub(now.saturating_duration_since(last_edit))
+                    })
+                    .filter(|remaining| !remaining.is_zero());
+                let human_typing = next_retry_at.is_some();
                 Ok(InjectionVerdict {
-                    permitted: composer_idle,
+                    permitted: !human_typing,
                     composer_idle,
-                    reason: (!composer_idle).then_some(DeliveryDeferralReason::HumanTyping),
+                    reason: human_typing.then_some(DeliveryDeferralReason::HumanTyping),
                     draft_sha: (!composer_idle).then(|| short_sha256(&content)),
+                    next_retry_at,
                 })
             }
             ComposerRegion::Unrecognized => {
@@ -370,6 +449,7 @@ impl InteractionGate {
                     composer_idle: false,
                     reason: Some(DeliveryDeferralReason::Unrecognized),
                     draft_sha: None,
+                    next_retry_at: None,
                 })
             }
         }
@@ -405,7 +485,7 @@ impl InteractionGate {
             return Ok(StagedSubmission::Deferred {
                 reason: verdict
                     .reason
-                    .unwrap_or(DeliveryDeferralReason::Unrecognized),
+                    .unwrap_or(DeliveryDeferralReason::ComposerBusy),
                 draft_sha: verdict.draft_sha,
             });
         }
@@ -453,7 +533,8 @@ mod tests {
     use pij_testkit::fakes::FakeTmux;
 
     use super::{
-        DeliveryDeferralReason, InteractionGate, PaneTransaction, StagedSubmission, short_sha256,
+        DEFAULT_TYPING_GRACE_MS, DeliveryDeferralReason, InteractionGate, PaneTransaction,
+        StagedSubmission, short_sha256,
     };
 
     const RULE: &str = "────────────────────────────────";
@@ -500,6 +581,7 @@ mod tests {
         let gate = InteractionGate::with_clock(
             Arc::new(FakeTmux::new()),
             Duration::from_secs(60),
+            contract_typing_grace_ms(),
             Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
         );
 
@@ -523,6 +605,7 @@ mod tests {
         let gate = InteractionGate::with_clock(
             Arc::new(FakeTmux::new()),
             Duration::from_secs(60),
+            contract_typing_grace_ms(),
             Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
         );
 
@@ -631,6 +714,7 @@ mod tests {
         let gate = InteractionGate::with_clock(
             Arc::new(FakeTmux::new()),
             Duration::from_secs(60),
+            contract_typing_grace_ms(),
             Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
         );
         gate.observe_composer("%108", "");
@@ -691,6 +775,7 @@ mod tests {
         let gate = InteractionGate::with_clock(
             tmux,
             Duration::from_secs(60),
+            contract_typing_grace_ms(),
             Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
         );
         gate.observe_composer("%108", "");
@@ -739,8 +824,208 @@ mod tests {
         assert!(block_on(gate.permits_injection_fresh("%108")).expect("blank permits"));
     }
 
+    fn contract_typing_grace_ms() -> u64 {
+        let contract: serde_json::Value = serde_json::from_str(include_str!(
+            "../../testkit/fixtures/delivery/hold-events.json"
+        ))
+        .expect("frozen typing-grace contract");
+        let grace_ms = contract["grace"]["default_ms"]
+            .as_u64()
+            .expect("contract grace in milliseconds");
+        assert_eq!(
+            DEFAULT_TYPING_GRACE_MS, grace_ms,
+            "core default matches frozen contract"
+        );
+        grace_ms
+    }
+
     #[test]
-    fn fresh_verdict_never_expires_a_recognized_draft() {
+    fn typing_grace_recent_edit_to_blank_still_defers() {
+        let elapsed_ms = Arc::new(AtomicU64::new(0));
+        let started_at = Instant::now();
+        let clock_ms = Arc::clone(&elapsed_ms);
+        let tmux = Arc::new(FakeTmux::new().with_clear_composer("%108"));
+        let gate = InteractionGate::with_clock(
+            tmux,
+            Duration::from_secs(1),
+            contract_typing_grace_ms(),
+            Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
+        );
+        gate.observe_composer("%108", "draft being edited");
+        elapsed_ms.store(1_000, Ordering::Relaxed);
+        gate.record_composer_cleared("%108");
+        elapsed_ms.store(6_000, Ordering::Relaxed);
+
+        let verdict = block_on(gate.fresh_injection_verdict("%108")).expect("recent edit verdict");
+        assert!(
+            !verdict.permitted,
+            "a key five seconds ago is recent even after deleting the draft"
+        );
+        assert!(verdict.composer_idle);
+        assert_eq!(verdict.reason, Some(DeliveryDeferralReason::HumanTyping));
+        assert_eq!(verdict.draft_sha, None);
+        assert_eq!(
+            verdict.next_retry_at,
+            Some(Duration::from_millis(contract_typing_grace_ms() - 5_000)),
+            "retry is last edit plus grace, not a fresh full-grace delay"
+        );
+    }
+
+    #[test]
+    fn typing_grace_parked_draft_releases_without_another_key() {
+        let elapsed_ms = Arc::new(AtomicU64::new(0));
+        let started_at = Instant::now();
+        let clock_ms = Arc::clone(&elapsed_ms);
+        let capture = format!("output\n{RULE}\n❯ parked draft\n{RULE}");
+        let tmux = Arc::new(
+            FakeTmux::new()
+                .with_pane(pane(14, 2))
+                .with_attached_tap("%108")
+                .script_capture(capture.clone())
+                .script_capture(capture.clone())
+                .script_capture(capture),
+        );
+        let gate = InteractionGate::with_clock(
+            tmux,
+            Duration::from_millis(contract_typing_grace_ms()),
+            contract_typing_grace_ms(),
+            Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
+        );
+        gate.observe_composer("%108", "parked draft");
+
+        // The live control still claimed human typing after 84.8 s and again at 200 s.
+        for elapsed in [contract_typing_grace_ms() + 1_000, 84_800, 200_000] {
+            elapsed_ms.store(elapsed, Ordering::Relaxed);
+            let verdict = block_on(gate.fresh_injection_verdict("%108")).expect("parked verdict");
+            assert!(
+                verdict.permitted,
+                "parked draft at {elapsed} ms is not a human at the keyboard"
+            );
+            assert!(!verdict.composer_idle);
+            assert_eq!(verdict.reason, None);
+            assert_eq!(verdict.draft_sha, Some(short_sha256("parked draft")));
+            assert_eq!(verdict.next_retry_at, None);
+        }
+    }
+
+    #[test]
+    fn typing_grace_uses_injected_boundary_independently_of_idle_window() {
+        for idle_ms in [1, 90_000] {
+            for grace_ms in [0, 7_000] {
+                let elapsed_ms = Arc::new(AtomicU64::new(0));
+                let started_at = Instant::now();
+                let clock_ms = Arc::clone(&elapsed_ms);
+                let capture = format!("output\n{RULE}\n❯ draft\n{RULE}");
+                let tmux = Arc::new(
+                    FakeTmux::new()
+                        .with_pane(pane(7, 2))
+                        .with_attached_tap("%108")
+                        .script_capture(capture.clone())
+                        .script_capture(capture.clone())
+                        .script_capture(capture),
+                );
+                let gate = InteractionGate::with_clock(
+                    tmux,
+                    Duration::from_millis(idle_ms),
+                    grace_ms,
+                    Arc::new(move || {
+                        started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))
+                    }),
+                );
+                gate.observe_composer("%108", "draft");
+                for at in [grace_ms.saturating_sub(1), grace_ms, grace_ms + 1] {
+                    elapsed_ms.store(at, Ordering::Relaxed);
+                    let verdict = block_on(gate.fresh_injection_verdict("%108")).expect("boundary");
+                    assert_eq!(
+                        verdict.permitted,
+                        at >= grace_ms,
+                        "at={at}, grace={grace_ms}, idle={idle_ms}"
+                    );
+                    assert_eq!(
+                        verdict.next_retry_at,
+                        (at < grace_ms).then(|| Duration::from_millis(grace_ms - at))
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn typing_grace_rendered_output_does_not_rearm_a_parked_draft() {
+        let started_at = Instant::now();
+        let elapsed_ms = Arc::new(AtomicU64::new(0));
+        let clock_ms = Arc::clone(&elapsed_ms);
+        let capture = format!("agent output\n{RULE}\n❯ parked draft\n{RULE}");
+        let tmux = Arc::new(
+            FakeTmux::new()
+                .with_pane(pane(14, 2))
+                .with_attached_tap("%108")
+                .script_tap(b"more agent output".to_vec())
+                .script_capture(capture),
+        );
+        let gate = InteractionGate::with_clock(
+            tmux,
+            Duration::from_secs(1),
+            contract_typing_grace_ms(),
+            Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
+        );
+        gate.observe_composer("%108", "parked draft");
+        elapsed_ms.store(contract_typing_grace_ms() + 1_000, Ordering::Relaxed);
+        gate.record_tap("%108");
+        let verdict = block_on(gate.fresh_injection_verdict("%108")).expect("output verdict");
+        assert!(verdict.permitted, "output bytes are not a fresh human edit");
+        assert_eq!(verdict.reason, None);
+        assert_eq!(verdict.next_retry_at, None);
+    }
+
+    #[test]
+    fn typing_grace_self_echo_does_not_start_human_grace() {
+        for prior_human_edit in [false, true] {
+            let elapsed_ms = Arc::new(AtomicU64::new(0));
+            let started_at = Instant::now();
+            let clock_ms = Arc::clone(&elapsed_ms);
+            let payload = "[pij from boss] status please";
+            let capture = format!("output\n{RULE}\n❯ {payload}\n{RULE}");
+            let blank = format!("output\n{RULE}\n❯ \n{RULE}");
+            let tmux = Arc::new(
+                FakeTmux::new()
+                    .with_pane(pane(100, 2))
+                    .with_attached_tap("%108")
+                    .script_capture(capture)
+                    .script_capture(blank),
+            );
+            let gate = InteractionGate::with_clock(
+                tmux,
+                Duration::from_secs(1),
+                contract_typing_grace_ms(),
+                Arc::new(move || {
+                    started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))
+                }),
+            );
+            gate.observe_composer("%108", "");
+            if prior_human_edit {
+                gate.observe_composer("%108", "old human draft");
+            }
+            elapsed_ms.store(contract_typing_grace_ms() + 1_000, Ordering::Relaxed);
+            gate.record_self_injection("%108", payload);
+            let verdict =
+                block_on(gate.fresh_injection_verdict("%108")).expect("self echo verdict");
+            assert!(verdict.permitted, "our own injection is not human typing");
+            assert_eq!(verdict.reason, None);
+            assert_eq!(verdict.next_retry_at, None);
+
+            gate.record_composer_cleared("%108");
+            let cleared = block_on(gate.fresh_injection_verdict("%108")).expect("self echo clear");
+            assert!(
+                cleared.permitted,
+                "clearing our echo must not rearm an expired human edit"
+            );
+            assert_eq!(cleared.next_retry_at, None);
+        }
+    }
+
+    #[test]
+    fn fresh_verdict_expires_a_recognized_draft_after_typing_grace() {
         let elapsed_ms = Arc::new(AtomicU64::new(0));
         let started_at = Instant::now();
         let clock_ms = Arc::clone(&elapsed_ms);
@@ -755,23 +1040,64 @@ mod tests {
         let gate = InteractionGate::with_clock(
             tmux,
             Duration::from_secs(60),
+            contract_typing_grace_ms(),
             Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
         );
 
+        // RED control: a parked draft is not evidence of a human at the keyboard.
+        // The former forever-veto assertion failed after the recency fix; the
+        // draft fingerprint remains context after the typing veto expires.
         let fresh = block_on(gate.fresh_injection_verdict("%108")).expect("fresh draft");
         assert!(!fresh.permitted);
         assert!(!fresh.composer_idle);
 
-        elapsed_ms.store(60_000, Ordering::Relaxed);
+        elapsed_ms.store(contract_typing_grace_ms(), Ordering::Relaxed);
         let stale = block_on(gate.fresh_injection_verdict("%108")).expect("stale draft");
-        assert!(!stale.permitted, "a recognized draft remains a human veto");
+        assert!(
+            stale.permitted,
+            "a parked draft is not a current human veto"
+        );
         assert!(!stale.composer_idle);
-        assert_eq!(stale.reason, Some(DeliveryDeferralReason::HumanTyping));
+        assert_eq!(stale.reason, None);
         assert_eq!(
             stale.draft_sha,
             Some(short_sha256("parked draft")),
             "the receipt can identify the exact draft without storing its text"
         );
+    }
+
+    #[test]
+    fn typing_grace_baseline_echo_clear_preserves_provenance() {
+        for explicit_clear in [false, true] {
+            let elapsed_ms = Arc::new(AtomicU64::new(0));
+            let started_at = Instant::now();
+            let clock_ms = Arc::clone(&elapsed_ms);
+            let gate = InteractionGate::with_clock(
+                Arc::new(FakeTmux::new().with_clear_composer("%108")),
+                Duration::from_secs(1),
+                7_000,
+                Arc::new(move || {
+                    started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))
+                }),
+            );
+            gate.observe_composer("%108", "old human draft");
+            elapsed_ms.store(10_000, Ordering::Relaxed);
+            gate.record_self_injection("%108", "[pij from boss] first");
+            gate.observe_composer("%108", "[pij from boss] first");
+            gate.record_self_injection("%108", "[pij from boss] second");
+            // Reflow still matches the first injection's baseline, not the second payload.
+            gate.observe_composer("%108", "[pij  from boss] first");
+            if explicit_clear {
+                gate.record_composer_cleared("%108");
+            }
+            let verdict =
+                block_on(gate.fresh_injection_verdict("%108")).expect("baseline echo clear");
+            assert!(
+                verdict.permitted,
+                "clearing a reflowed echo is not a new human edit"
+            );
+            assert_eq!(verdict.next_retry_at, None);
+        }
     }
 
     #[test]
@@ -782,6 +1108,7 @@ mod tests {
         let gate = InteractionGate::with_clock(
             Arc::new(FakeTmux::new()),
             Duration::from_secs(60),
+            contract_typing_grace_ms(),
             Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
         );
         assert!(!block_on(gate.permits_injection("%108")).expect("fresh uncertainty vetoes"));
@@ -798,6 +1125,7 @@ mod tests {
         let gate = InteractionGate::with_clock(
             Arc::new(FakeTmux::new()),
             Duration::from_secs(60),
+            contract_typing_grace_ms(),
             Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
         );
         gate.observe_composer("%108", "");
@@ -816,6 +1144,7 @@ mod tests {
         let gate = InteractionGate::with_clock(
             Arc::new(FakeTmux::new()),
             Duration::from_secs(60),
+            contract_typing_grace_ms(),
             Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
         );
         gate.observe_composer("%108", "human typing");
@@ -838,6 +1167,7 @@ mod tests {
         let gate = InteractionGate::with_clock(
             Arc::new(FakeTmux::new().with_user_typing()),
             Duration::from_secs(60),
+            contract_typing_grace_ms(),
             Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
         );
         gate.observe_composer("%108", "stale draft");
@@ -860,15 +1190,18 @@ mod tests {
         let draft_gate = InteractionGate::with_clock(
             Arc::clone(&draft_tmux) as Arc<dyn TmuxPort>,
             Duration::from_secs(60),
+            contract_typing_grace_ms(),
             Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
         );
         draft_gate.observe_composer("%108", "parked human draft");
         elapsed_ms.store(120_000, Ordering::Relaxed);
+        // This is a physical safety brake, not a human-typing policy: removing it
+        // would splice automated text into a parked draft. Keep it, named honestly.
         assert_eq!(
             block_on(draft_gate.submit_with_owned_input("%108", "AUTOMATED"))
                 .expect("stale draft decision"),
             StagedSubmission::Deferred {
-                reason: DeliveryDeferralReason::HumanTyping,
+                reason: DeliveryDeferralReason::ComposerBusy,
                 draft_sha: Some(short_sha256("parked human draft")),
             },
             "a non-blank composer is never a pane-typing target, regardless of age"

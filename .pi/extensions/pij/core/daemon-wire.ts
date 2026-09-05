@@ -57,6 +57,8 @@ export interface RustSeatDescriptor {
 	readonly state: string;
 	readonly parent?: string;
 	readonly spawn_id?: string;
+	/** Register-response-only addition; not persisted into the local registry. */
+	readonly typing_grace_ms?: number;
 	readonly binding?: "created" | "rebound" | "same";
 }
 
@@ -72,6 +74,31 @@ export interface QueueReceipt {
 	readonly msg_id: string;
 	readonly outcome: unknown;
 	readonly at: number;
+}
+
+export interface HoldRequest {
+	readonly seat: string;
+	readonly job_id: number;
+	readonly msg_id: string;
+	readonly reason: "human-typing";
+	readonly since_ms: number;
+}
+
+export interface HoldResponse {
+	readonly msg_id: string;
+	readonly held: boolean;
+}
+
+export interface ReleaseRequest {
+	readonly seat: string;
+	readonly job_id: number;
+	readonly msg_id: string;
+	readonly at_ms: number;
+}
+
+export interface ReleaseResponse {
+	readonly msg_id: string;
+	readonly released: boolean;
 }
 
 export interface WireEvent {
