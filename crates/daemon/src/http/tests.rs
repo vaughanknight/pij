@@ -100,6 +100,20 @@ impl Queue for CountingQueue {
             message: "the request path must not retry: it never claims".to_string(),
         })
     }
+
+    async fn defer(&self, _job: JobId, _delay: Duration) -> Result<pij_core::ports::DeferOutcome> {
+        Err(pij_core::error::PijError::Adapter {
+            adapter: "test/counting-queue".to_string(),
+            message: "the enqueue-only fixture must not defer".to_string(),
+        })
+    }
+
+    async fn release_deferred(&self, _job: JobId) -> Result<pij_core::ports::ReleaseOutcome> {
+        Err(pij_core::error::PijError::Adapter {
+            adapter: "test/counting-queue".to_string(),
+            message: "the enqueue-only fixture must not release deferrals".to_string(),
+        })
+    }
 }
 
 pub(super) async fn test_services(
@@ -169,6 +183,808 @@ fn expect_event(frame: StreamFrame) -> (String, u64, Event) {
             event,
         } => (machine, cursor, event),
         StreamFrame::PeerState { .. } => panic!("expected event frame"),
+    }
+}
+
+#[tokio::test]
+async fn typing_release_wakes_an_already_waiting_inbox_reader() {
+    let registry = Arc::new(FakeRegistry::new());
+    let seat = SeatId::from("pij-waiting");
+    registry
+        .put(SeatDescriptor::new(seat.clone(), Harness::Omp, "/abs/tree"))
+        .await
+        .expect("seat");
+    let services = test_services(
+        registry,
+        Arc::new(FakeQueue::new(1_024).expect("queue")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services
+        .delivery
+        .accept(Msg {
+            from: "pij-sender".into(),
+            from_machine: None,
+            to: seat.clone(),
+            body: "waiting".to_string(),
+            msg_id: "waiting".to_string(),
+            in_reply_to: None,
+            command: None,
+        })
+        .await
+        .expect("send");
+    let claim = services
+        .delivery
+        .claim_inbox(&seat, false)
+        .await
+        .expect("claim")
+        .remove(0);
+    let state = AppState {
+        services,
+        auth: AuthRing::new("key".to_string(), Vec::new()),
+        machine_alias: "local".to_string(),
+        spawn_lock: Arc::new(tokio::sync::Mutex::new(())),
+        typing_lock: Arc::new(tokio::sync::Mutex::new(())),
+        typing_grace_ms: DEFAULT_TYPING_GRACE_MS,
+        federation: None,
+    };
+    let held = hold_inbox(
+        State(state.clone()),
+        Json(HoldRequest {
+            job_id: claim.job_id,
+            event: HeldEvent {
+                seat: seat.clone(),
+                msg_id: "waiting".to_string(),
+                reason: "human-typing".to_string(),
+                since_ms: 7,
+            },
+        }),
+    )
+    .await;
+    assert_eq!(held.status(), StatusCode::OK);
+    let waiting = inbox(
+        State(state.clone()),
+        Query(InboxQuery {
+            seat: seat.clone(),
+            wait: true,
+            peek: false,
+        }),
+    );
+    tokio::pin!(waiting);
+    // Poll through the empty claim to establish subscription before releasing.
+    assert!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(std::future::Future::poll(
+            waiting.as_mut(),
+            cx
+        )))
+        .await
+        .is_pending()
+    );
+    let released = release_inbox(
+        State(state),
+        Json(ReleaseRequest {
+            job_id: claim.job_id,
+            event: ReleasedEvent {
+                seat,
+                msg_id: "waiting".to_string(),
+                at_ms: 8,
+            },
+        }),
+    )
+    .await;
+    assert_eq!(released.status(), StatusCode::OK);
+    let response = tokio::time::timeout(Duration::from_millis(250), waiting)
+        .await
+        .expect("release wakes the existing reader without another send");
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    let response: Envelope<Vec<crate::delivery::InboxClaim>> =
+        serde_json::from_slice(&body).expect("inbox response");
+    assert_eq!(response.data.expect("claims")[0].job_id, claim.job_id);
+}
+
+#[tokio::test]
+async fn typing_release_declaration_clears_running_and_terminal_holds_after_restart() {
+    for terminal in [false, true] {
+        let registry = Arc::new(FakeRegistry::new());
+        let seat = SeatId::from("pij-release-declaration");
+        registry
+            .put(SeatDescriptor::new(seat.clone(), Harness::Omp, "/abs/tree"))
+            .await
+            .expect("seat");
+        let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+        let services = test_services(registry, queue.clone(), Arc::new(FakeSpine::new())).await;
+        services
+            .delivery
+            .accept(Msg {
+                from: "pij-sender".into(),
+                from_machine: None,
+                to: seat.clone(),
+                body: "survives restart".to_string(),
+                msg_id: "declaration".to_string(),
+                in_reply_to: None,
+                command: None,
+            })
+            .await
+            .expect("send");
+        let (addr, server) = spawn(router_with_config(services.clone(), config("key", &[]))).await;
+        let client = reqwest::Client::new();
+        let claim = typing_claim(&client, addr, &seat).await.remove(0);
+        typing_post(&client, addr, "/v1/hold", &serde_json::json!({
+            "seat": seat, "job_id": claim.job_id, "msg_id": "declaration", "reason": "human-typing", "since_ms": 7,
+        })).await;
+        server.abort();
+        let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+        queue.advance(Duration::from_millis(DEFAULT_TYPING_GRACE_MS));
+        let claim = typing_claim(&client, addr, &seat).await.remove(0);
+        if terminal {
+            typing_post(
+                &client,
+                addr,
+                "/v1/inbox/ack",
+                &serde_json::json!({"seat": seat, "job_id": claim.job_id}),
+            )
+            .await;
+        }
+        let response = typing_post(
+            &client,
+            addr,
+            "/v1/release",
+            &serde_json::json!({
+                "seat": seat, "job_id": claim.job_id, "msg_id": "declaration", "at_ms": 8,
+            }),
+        )
+        .await;
+        assert_eq!(response["data"]["released"], false);
+        assert_eq!(
+            response["data"]["reason"],
+            if terminal { "terminal" } else { "not-deferred" }
+        );
+        let state = typing_post(&client, addr, "/v1/state", &serde_json::json!({"id": seat})).await;
+        assert_eq!(
+            state["data"]["held"],
+            serde_json::json!([]),
+            "queue no-op must not leave stale held evidence"
+        );
+        if !terminal {
+            typing_post(
+                &client,
+                addr,
+                "/v1/inbox/ack",
+                &serde_json::json!({"seat": seat, "job_id": claim.job_id}),
+            )
+            .await;
+        }
+        assert_eq!(queue.acked(), [(claim.job_id, Outcome::Done)]);
+        server.abort();
+    }
+}
+
+async fn typing_post(
+    client: &reqwest::Client,
+    addr: SocketAddr,
+    path: &str,
+    body: &serde_json::Value,
+) -> serde_json::Value {
+    let response = client
+        .post(format!("http://{addr}{path}"))
+        .bearer_auth("key")
+        .json(body)
+        .send()
+        .await
+        .expect("typing request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    response.json().await.expect("typing response")
+}
+
+async fn typing_claim(
+    client: &reqwest::Client,
+    addr: SocketAddr,
+    seat: &SeatId,
+) -> Vec<crate::delivery::InboxClaim> {
+    let response: Envelope<Vec<crate::delivery::InboxClaim>> = client
+        .get(format!("http://{addr}/v1/inbox"))
+        .bearer_auth("key")
+        .query(&[("seat", seat.as_str())])
+        .send()
+        .await
+        .expect("inbox")
+        .json()
+        .await
+        .expect("inbox envelope");
+    response.data.expect("claims")
+}
+
+#[tokio::test]
+async fn typing_not_live_names_absent_and_terminal_noops_on_both_routes() {
+    let registry = Arc::new(FakeRegistry::new());
+    let seat = SeatId::from("pij-noop");
+    registry
+        .put(SeatDescriptor::new(seat.clone(), Harness::Omp, "/abs/tree"))
+        .await
+        .expect("seat");
+    let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+    let spine = Arc::new(FakeSpine::new());
+    let services = test_services(registry, queue.clone(), spine.clone()).await;
+    services
+        .delivery
+        .accept(Msg {
+            from: "pij-sender".into(),
+            from_machine: None,
+            to: seat.clone(),
+            body: "already read".to_string(),
+            msg_id: "terminal".to_string(),
+            in_reply_to: None,
+            command: None,
+        })
+        .await
+        .expect("send");
+    let claimed = services
+        .delivery
+        .claim_inbox(&seat, false)
+        .await
+        .expect("claim")
+        .remove(0);
+    services
+        .delivery
+        .acknowledge_inbox(claimed.job_id)
+        .await
+        .expect("terminal");
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    for (job_id, reason) in [(JobId(999_999), "absent"), (claimed.job_id, "terminal")] {
+        for (path, outcome) in [("/v1/hold", "held"), ("/v1/release", "released")] {
+            let response = typing_post(&client, addr, path, &serde_json::json!({
+                "seat": seat, "job_id": job_id, "msg_id": "terminal", "reason": "human-typing", "since_ms": 7, "at_ms": 8,
+            })).await;
+            assert_eq!(response["data"][outcome], false);
+            assert_eq!(
+                response["data"]["noop"], true,
+                "{path} {reason}: {response}"
+            );
+            assert_eq!(response["data"]["reason"], reason);
+        }
+    }
+    assert_eq!(queue.acked().len(), 1);
+    let events = spine.tail(Some(&seat), Seq(0)).await.expect("events");
+    assert!(events.iter().all(|event| event.kind != "delivery.held"));
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.kind == "delivery.released")
+            .count(),
+        2,
+        "release declarations remain facts even when queue mutation is a no-op"
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn typing_unknown_claim_after_restart_is_harmless_and_keeps_pending_body() {
+    let registry = Arc::new(FakeRegistry::new());
+    let seat = SeatId::from("pij-restart");
+    registry
+        .put(SeatDescriptor::new(seat.clone(), Harness::Omp, "/abs/tree"))
+        .await
+        .expect("seat");
+    let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+    let spine = Arc::new(FakeSpine::new());
+    let services = test_services(registry, queue.clone(), spine.clone()).await;
+    services
+        .delivery
+        .accept(Msg {
+            from: "pij-sender".into(),
+            from_machine: None,
+            to: seat.clone(),
+            body: "pending body".to_string(),
+            msg_id: "restart-body".to_string(),
+            in_reply_to: None,
+            command: None,
+        })
+        .await
+        .expect("send");
+    let claim = services
+        .delivery
+        .claim_inbox(&seat, false)
+        .await
+        .expect("old client claim")
+        .remove(0);
+    queue
+        .defer(claim.job_id, Duration::ZERO)
+        .await
+        .expect("previous hold returned row");
+    // An obsolete job id after restart cannot mutate a different pending body.
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    typing_post(&client, addr, "/v1/hold", &serde_json::json!({
+        "seat": seat, "job_id": 999_999, "msg_id": "restart-body", "reason": "human-typing", "since_ms": 10,
+    })).await;
+    assert!(
+        spine
+            .tail(Some(&seat), Seq(0))
+            .await
+            .expect("events")
+            .iter()
+            .all(|event| event.kind != "delivery.held")
+    );
+    assert!(queue.acked().is_empty());
+    let claims = typing_claim(&client, addr, &seat).await;
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].job_id, claim.job_id);
+    assert_eq!(claims[0].message.body, "pending body");
+    server.abort();
+}
+
+#[tokio::test]
+async fn typing_pending_holds_allow_bypass_rehold_and_restart_in_order() {
+    let registry = Arc::new(FakeRegistry::new());
+    let seat = SeatId::from("pij-typist");
+    registry
+        .put(SeatDescriptor::new(seat.clone(), Harness::Omp, "/abs/tree"))
+        .await
+        .expect("seat");
+    let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+    let spine = Arc::new(FakeSpine::new());
+    let services = test_services(registry, queue.clone(), spine.clone()).await;
+    for msg_id in ["first", "second"] {
+        services
+            .delivery
+            .accept(Msg {
+                from: "pij-sender".into(),
+                from_machine: None,
+                to: seat.clone(),
+                body: msg_id.to_string(),
+                msg_id: msg_id.to_string(),
+                in_reply_to: None,
+                command: None,
+            })
+            .await
+            .expect("send");
+    }
+    let (addr, server) = spawn(router_with_config(services.clone(), config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    let hold = |msg_id, job_id| serde_json::json!({"seat": seat, "job_id": job_id, "msg_id": msg_id, "reason": "human-typing", "since_ms": 10});
+    let mut held_ids = BTreeMap::new();
+    for msg_id in ["first", "second"] {
+        let claims = typing_claim(&client, addr, &seat).await;
+        assert_eq!(
+            claims.len(),
+            1,
+            "a pending hold frees the serial key for the next message"
+        );
+        assert_eq!(claims[0].message.msg_id, msg_id);
+        held_ids.insert(msg_id, claims[0].job_id);
+        typing_post(&client, addr, "/v1/hold", &hold(msg_id, claims[0].job_id)).await;
+    }
+    assert_eq!(
+        queue.live_len(),
+        2,
+        "holds are pending, not owned by dead clients"
+    );
+    assert!(queue.acked().is_empty());
+    let grace = Duration::from_millis(
+        typing_contract()["grace"]["default_ms"]
+            .as_u64()
+            .expect("grace"),
+    );
+    assert!(
+        queue.retried().is_empty(),
+        "typing holds are not failed attempts"
+    );
+    assert!(typing_claim(&client, addr, &seat).await.is_empty());
+    services
+        .delivery
+        .accept(Msg {
+            from: "pij-sender".into(),
+            from_machine: None,
+            to: seat.clone(),
+            body: String::new(),
+            msg_id: "bypass".to_string(),
+            in_reply_to: None,
+            command: Some("compact".to_string()),
+        })
+        .await
+        .expect("control command");
+    let bypass = typing_claim(&client, addr, &seat).await.remove(0);
+    assert_eq!(bypass.message.msg_id, "bypass");
+    typing_post(
+        &client,
+        addr,
+        "/v1/inbox/ack",
+        &serde_json::json!({"seat": seat, "job_id": bypass.job_id}),
+    )
+    .await;
+    queue.advance(grace - Duration::from_millis(1));
+    assert!(
+        typing_claim(&client, addr, &seat).await.is_empty(),
+        "not reoffered before grace"
+    );
+    queue.advance(Duration::from_millis(1));
+    for msg_id in ["first", "second"] {
+        let claims = typing_claim(&client, addr, &seat).await;
+        assert_eq!(claims[0].message.msg_id, msg_id);
+        typing_post(&client, addr, "/v1/hold", &hold(msg_id, claims[0].job_id)).await;
+    }
+    assert!(
+        held_ids.values().all(|job_id| queue.attempts(*job_id) == 0),
+        "re-holds preserve attempt budgets"
+    );
+    assert_eq!(
+        spine
+            .tail(Some(&seat), Seq(0))
+            .await
+            .expect("events")
+            .iter()
+            .filter(|event| event.kind == "delivery.held")
+            .count(),
+        2,
+        "re-holds never duplicate active events"
+    );
+    server.abort();
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    for msg_id in ["first", "second"] {
+        typing_post(&client, addr, "/v1/release", &serde_json::json!({"seat": seat, "job_id": held_ids[msg_id], "msg_id": msg_id, "at_ms": 20})).await;
+        let claims = typing_claim(&client, addr, &seat).await;
+        assert_eq!(
+            claims.len(),
+            1,
+            "release clears the pending deferral, even after router restart"
+        );
+        assert_eq!(
+            claims[0].message.msg_id, msg_id,
+            "restart preserves queue order"
+        );
+        typing_post(
+            &client,
+            addr,
+            "/v1/inbox/ack",
+            &serde_json::json!({"seat": seat, "job_id": claims[0].job_id}),
+        )
+        .await;
+    }
+    assert_eq!(queue.live_len(), 0);
+    assert_eq!(queue.acked().len(), 3);
+    server.abort();
+}
+
+#[tokio::test]
+async fn typing_state_projects_active_holds_only() {
+    let registry = Arc::new(FakeRegistry::new());
+    let seat = SeatId::from("pij-state");
+    registry
+        .put(SeatDescriptor::new(seat.clone(), Harness::Omp, "/abs/tree"))
+        .await
+        .expect("seat");
+    let services = test_services(
+        registry,
+        Arc::new(FakeQueue::new(1_024).expect("queue")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    for (kind, msg_id) in [
+        ("delivery.held", "released"),
+        ("delivery.released", "released"),
+        ("delivery.held", "active"),
+    ] {
+        let payload = if kind == "delivery.held" {
+            serde_json::json!({"seat": seat, "msg_id": msg_id, "reason": "human-typing", "since_ms": 7})
+        } else {
+            serde_json::json!({"seat": seat, "msg_id": msg_id, "at_ms": 8})
+        };
+        services
+            .event_bus
+            .publish(Event {
+                seq: None,
+                v: 1,
+                at: 10,
+                kind: kind.to_string(),
+                seat: Some(seat.clone()),
+                payload: payload.to_string(),
+            })
+            .await
+            .expect("event");
+    }
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let response = typing_post(
+        &reqwest::Client::new(),
+        addr,
+        "/v1/state",
+        &serde_json::json!({"id": seat}),
+    )
+    .await;
+    assert_eq!(
+        response["data"]["held"],
+        serde_json::json!([{"seat": seat, "msg_id": "active", "reason": "human-typing", "since_ms": 7}])
+    );
+    server.abort();
+}
+
+fn typing_contract() -> serde_json::Value {
+    serde_json::from_str(include_str!(
+        "../../../../docs/plans/136-typing-grace-gate/assets/contracts/hold-events.json"
+    ))
+    .expect("frozen typing contract")
+}
+
+#[tokio::test]
+async fn typing_registration_flattens_grace_without_persisting_it_on_the_seat() {
+    // Separate processes exercise the real environment read without racing other tests.
+    let expected = match std::env::var("PIJ_TEST_GRACE_EXPECTED") {
+        Ok(value) => value.parse::<u64>().expect("expected grace"),
+        Err(_) => {
+            let default = typing_contract()["grace"]["default_ms"]
+                .as_u64()
+                .expect("default");
+            for (value, expected) in [
+                (None, default),
+                (Some("4321"), 4_321),
+                (Some("invalid"), default),
+            ] {
+                let mut child =
+                    std::process::Command::new(std::env::current_exe().expect("test binary"));
+                child.args(["--exact", "http::tests::typing_registration_flattens_grace_without_persisting_it_on_the_seat", "--nocapture"])
+                    .env("PIJ_TEST_GRACE_EXPECTED", expected.to_string())
+                    .env_remove("PIJ_TYPING_GRACE_MS");
+                if let Some(value) = value {
+                    child.env("PIJ_TYPING_GRACE_MS", value);
+                }
+                let output = child.output().expect("isolated registration witness");
+                assert!(
+                    output.status.success(),
+                    "grace {value:?}: {}{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            return;
+        }
+    };
+    let identity = ProcIdentity {
+        pid: 43,
+        proc_start: 20260902152500,
+    };
+    let registry = Arc::new(FakeRegistry::new());
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("queue")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(identity));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let response: serde_json::Value = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({
+            "id": "pij-grace", "harness": "omp", "folder": "/abs/tree",
+            "pid": identity.pid, "proc_start": identity.proc_start
+        }))
+        .send()
+        .await
+        .expect("registration")
+        .json()
+        .await
+        .expect("envelope");
+    assert_eq!(response["data"]["typing_grace_ms"], expected);
+    assert_eq!(response["data"]["id"], "pij-grace");
+    assert!(response["data"].get("descriptor").is_none());
+    let seat = registry
+        .get(&SeatId::from("pij-grace"))
+        .await
+        .expect("read seat")
+        .expect("registered");
+    assert!(
+        serde_json::to_value(seat)
+            .expect("seat json")
+            .get("typing_grace_ms")
+            .is_none()
+    );
+    server.abort();
+}
+
+#[test]
+fn typing_hold_and_release_are_known_wire_events() {
+    let contract = typing_contract();
+    for key in ["held", "released"] {
+        let event = Event {
+            seq: None,
+            v: wire::EVENT_VERSION,
+            at: contract[key]["at"].as_u64().expect("timestamp"),
+            kind: contract[key]["kind"].as_str().expect("kind").to_string(),
+            seat: Some(contract[key]["seat"].as_str().expect("seat").into()),
+            payload: serde_json::to_string(&contract[key]["payload"]).expect("payload"),
+        };
+        let line = wire::encode_event(&event).expect("encode event");
+        assert!(matches!(
+            wire::decode_event_line(1, &line).expect("decode event"),
+            WireEvent::Known(_)
+        ));
+    }
+}
+
+#[tokio::test]
+async fn typing_hold_release_match_contract_and_are_idempotent() {
+    let contract = typing_contract();
+    let registry = Arc::new(FakeRegistry::new());
+    let seat: SeatId = contract["held"]["seat"].as_str().expect("seat").into();
+    registry
+        .put(SeatDescriptor::new(seat.clone(), Harness::Omp, "/abs/tree"))
+        .await
+        .expect("recipient");
+    let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+    let spine = Arc::new(FakeSpine::new());
+    let services = test_services(registry, queue.clone(), spine.clone()).await;
+    services
+        .delivery
+        .accept(Msg {
+            from: "pij-sender".into(),
+            from_machine: None,
+            to: seat.clone(),
+            body: "held body".to_string(),
+            msg_id: contract["held"]["payload"]["msg_id"]
+                .as_str()
+                .expect("id")
+                .to_string(),
+            in_reply_to: None,
+            command: None,
+        })
+        .await
+        .expect("send");
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    let claims: Envelope<Vec<crate::delivery::InboxClaim>> = client
+        .get(format!("http://{addr}/v1/inbox"))
+        .bearer_auth("key")
+        .query(&[("seat", seat.as_str())])
+        .send()
+        .await
+        .expect("claim")
+        .json()
+        .await
+        .expect("claim envelope");
+    let claims = claims.data.expect("claims");
+    assert_eq!(claims.len(), 1);
+    for (key, repeats) in [("hold_request", 2), ("release_request", 1)] {
+        let mut request = contract[key]["body"].clone();
+        request["job_id"] = serde_json::json!(claims[0].job_id);
+        for _ in 0..repeats {
+            let response = client
+                .post(format!(
+                    "http://{addr}{}",
+                    contract[key]["path"].as_str().expect("path")
+                ))
+                .bearer_auth("key")
+                .json(&request)
+                .send()
+                .await
+                .expect("request");
+            assert_eq!(response.status(), reqwest::StatusCode::OK);
+            let body: serde_json::Value = response.json().await.expect("envelope");
+            assert_eq!(body, contract[key]["response"]);
+        }
+    }
+    let events = spine.tail(Some(&seat), Seq(0)).await.expect("events");
+    for key in ["held", "released"] {
+        let rows: Vec<_> = events
+            .iter()
+            .filter(|event| event.kind == contract[key]["kind"].as_str().expect("kind"))
+            .collect();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].seat.as_ref(), Some(&seat));
+        // Compare the actual spine payload bytes, not a re-serialized producer type.
+        assert_eq!(
+            rows[0].payload.as_bytes(),
+            serde_json::to_vec(&contract[key]["payload"]).expect("golden payload")
+        );
+    }
+    assert!(
+        queue.acked().is_empty(),
+        "hold and release never acknowledge"
+    );
+    let next = typing_claim(&client, addr, &seat).await;
+    assert_eq!(next.len(), 1);
+    let mut release = contract["release_request"]["body"].clone();
+    release["job_id"] = serde_json::json!(next[0].job_id);
+    let repeat: serde_json::Value = client
+        .post(format!("http://{addr}/v1/release"))
+        .bearer_auth("key")
+        .json(&release)
+        .send()
+        .await
+        .expect("optimistic release")
+        .json()
+        .await
+        .expect("release envelope");
+    assert_eq!(repeat["data"]["released"], false);
+    typing_post(
+        &client,
+        addr,
+        "/v1/inbox/ack",
+        &serde_json::json!({
+            "seat": seat, "job_id": next[0].job_id,
+        }),
+    )
+    .await;
+    assert_eq!(
+        queue.acked(),
+        [(next[0].job_id, Outcome::Done)],
+        "duplicate release preserves current claim ownership"
+    );
+    for path in ["/v1/hold", "/v1/release"] {
+        let denied = client
+            .post(format!("http://{addr}{path}"))
+            .json(&serde_json::json!({}))
+            .send()
+            .await
+            .expect("unauthorized");
+        assert_eq!(denied.status(), reqwest::StatusCode::UNAUTHORIZED);
+    }
+    server.abort();
+}
+
+#[tokio::test]
+async fn typing_receipt_is_queued_until_ack_then_reader_read_for_omp_and_pi() {
+    let contract = typing_contract();
+    for harness in [Harness::Omp, Harness::Pi] {
+        let registry = Arc::new(FakeRegistry::new());
+        let mut seat = SeatDescriptor::new("pij-reader", harness, "/abs/tree");
+        seat.proc = Some(ProcIdentity {
+            pid: 42,
+            proc_start: 7,
+        });
+        seat.pane = Some("%42".to_string());
+        registry.put(seat).await.expect("bound recipient");
+        let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+        let services = test_services(registry, queue.clone(), Arc::new(FakeSpine::new())).await;
+        let message = Msg {
+            from: "pij-sender".into(),
+            from_machine: None,
+            to: "pij-reader".into(),
+            body: "ordinary push".to_string(),
+            msg_id: "receipt-guard".to_string(),
+            in_reply_to: None,
+            command: None,
+        };
+        let before = services
+            .delivery
+            .accept(message.clone())
+            .await
+            .expect("push");
+        assert_eq!(
+            serde_json::to_value(before.outcome).expect("receipt"),
+            contract["receipt_note"]["current_outcome_before_ack"]
+        );
+        let claims = services
+            .delivery
+            .claim_inbox(&message.to, false)
+            .await
+            .expect("claim");
+        assert_eq!(claims.len(), 1);
+        assert!(queue.acked().is_empty());
+        let (addr, server) = spawn(router_with_config(services.clone(), config("key", &[]))).await;
+        let response = reqwest::Client::new()
+            .post(format!("http://{addr}/v1/inbox/ack"))
+            .bearer_auth("key")
+            .json(&InboxAckRequest {
+                seat: message.to.clone(),
+                job_id: claims[0].job_id,
+            })
+            .send()
+            .await
+            .expect("ack");
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let after = services
+            .delivery
+            .accept(message)
+            .await
+            .expect("same-message receipt");
+        assert_eq!(
+            serde_json::to_value(after.outcome).expect("receipt"),
+            contract["receipt_note"]["current_outcome_after_ack"]
+        );
+        assert_eq!(queue.acked(), [(claims[0].job_id, Outcome::Done)]);
+        server.abort();
     }
 }
 
