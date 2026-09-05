@@ -70,7 +70,6 @@ impl RegistrationService {
         claim: Registration,
         harness_session: Option<String>,
     ) -> std::result::Result<SeatDescriptor, RegistrationError> {
-        let _guard = self.registration_lock.lock().await;
         self.register_inner(claim, harness_session, false).await
     }
 
@@ -96,7 +95,6 @@ impl RegistrationService {
         F: FnMut(u32) -> Fut,
         Fut: Future<Output = std::result::Result<Option<NativeProcess>, RegistrationError>>,
     {
-        let _guard = self.registration_lock.lock().await;
         if claim.harness != Harness::Copilot.as_str() || claim.relay {
             return Err(native_refusal("requires harness copilot and relay false"));
         }
@@ -258,6 +256,10 @@ impl RegistrationService {
             }
         };
 
+        // Process/ancestry evidence is collected without excluding inbox readers.
+        // Re-read the entire roster under shared mutation exclusion: two different
+        // seat IDs can still contend for the same process, session, or pane.
+        let _guard = self.registration_lock.lock().await;
         let seats = self
             .registry
             .list(SeatFilter::default())
@@ -700,6 +702,9 @@ fn read_native_process(pid: u32) -> std::result::Result<Option<NativeProcess>, R
     // One requested PID, never a machine-wide process census. The child, output,
     // and wall time are bounded independently of the async caller's lifetime.
     const OUTPUT_LIMIT: u64 = 64 * 1024;
+    // Darwin truncates `comm` paths when followed by another output column.
+    // Read the kernel accounting name instead: the supported host basenames
+    // fit, and is_copilot_host still independently checks argv/entrypoint.
     let mut child = Command::new("/bin/ps")
         .args([
             "-ww",
@@ -708,7 +713,7 @@ fn read_native_process(pid: u32) -> std::result::Result<Option<NativeProcess>, R
             "-o",
             "ppid=",
             "-o",
-            "comm=",
+            "ucomm=",
             "-o",
             "args=",
         ])
@@ -829,13 +834,22 @@ fn system_time_ms() -> std::result::Result<u64, RegistrationError> {
 mod tests {
     use std::fs;
     use std::future::{Ready, ready};
+    #[cfg(unix)]
+    use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Duration;
 
     use pij_core::model::{Harness, PaneProcess, ProcIdentity, SeatDescriptor, Seq};
+    use pij_core::ports::Queue;
     use pij_core::ports::{LivenessPort, Registry, SeatFilter, Spine};
+    use pij_harnesses::InteractionGate;
     use pij_testkit::fakes::{FakeLiveness, FakeRegistry, FakeSpine, FakeTmux};
+    use pij_testkit::fakes::{FakeQueue, FakeTransport};
+    use tokio::sync::Notify;
+
+    use crate::delivery::DeliveryService;
 
     use super::{
         NativeProcess, RegistrationError, RegistrationService, parse_native_process,
@@ -1001,6 +1015,8 @@ mod tests {
         for output in [
             "41 /opt/copilot/copilot /opt/copilot/copilot --model gpt-5\n",
             "41 /usr/bin/node node /opt/node_modules/@github/copilot/index.js\n",
+            "41 copilot /long/absolute/install/path/copilot --model gpt-5\n",
+            "41 node /long/absolute/install/path/node /opt/node_modules/@github/copilot/index.js\n",
         ] {
             assert!(
                 parse_native_process(output.as_bytes())
@@ -1017,6 +1033,9 @@ mod tests {
             "41 /usr/bin/node node /opt/not-@github/copilot/index.js\n",
             "41 /opt/copilot-evil copilot\n",
             "41 /opt/copilot/copilot sh -c copilot\n",
+            "41 sh /long/absolute/install/path/copilot --model gpt-5\n",
+            "41 node node /opt/node_modules/@github/copilot/npm-loader.js\n",
+            "41 node node /home/me/.copilot/extensions/pij/extension.mjs\n",
         ] {
             assert!(
                 !parse_native_process(output.as_bytes())
@@ -1033,7 +1052,9 @@ mod tests {
     #[tokio::test]
     async fn real_shell_process_is_not_an_actual_copilot_host() {
         // A test-owned child only: no fleet inspection, signal, or environment mutation.
+        // A forged argv[0] must not outrank the observed kernel executable name.
         let mut shell = Command::new("/bin/sh")
+            .arg0("copilot")
             .args(["-c", "read line"])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
@@ -1532,6 +1553,130 @@ mod tests {
                 .await
                 .expect("roster")
                 .is_empty()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn blocked_native_host_observation_does_not_block_unrelated_inbox_ack() {
+        let (service, registry) = native_service(Vec::new(), native_liveness());
+        let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+        let delivery = DeliveryService::new(
+            registry.clone(),
+            queue.clone(),
+            Arc::new(FakeTransport::unreachable()),
+            Arc::new(InteractionGate::new(Arc::new(FakeTmux::new()))),
+            service.event_bus.clone(),
+        )
+        .expect("delivery service");
+        let service = service.with_native_lock(delivery.native_lock());
+        let entered = Notify::new();
+        let release = Notify::new();
+        let tmux = native_tmux();
+        let pending = service.register_native_with_observer(
+            native_claim("pij-observing"),
+            Some(SESSION.to_string()),
+            &tmux,
+            |pid| {
+                let entered = &entered;
+                let release = &release;
+                async move {
+                    if pid == HOST.pid {
+                        entered.notify_one();
+                        release.notified().await;
+                    }
+                    fixture_process(pid).await
+                }
+            },
+        );
+        tokio::pin!(pending);
+        tokio::select! {
+            _ = entered.notified() => {}
+            result = &mut pending => panic!("observer did not block: {result:?}"),
+        }
+
+        for harness in [Harness::Omp, Harness::Pi] {
+            let reader = SeatDescriptor::new(
+                format!("pij-reader-{}", harness.as_str()),
+                harness,
+                "/isolated/reader",
+            );
+            registry.put(reader.clone()).await.expect("register reader");
+            delivery
+                .send("pij-peer".into(), reader.id.clone(), "unrelated")
+                .await
+                .expect("enqueue");
+            tokio::time::timeout(Duration::from_secs(1), async {
+                let claims = delivery
+                    .claim_inbox(&reader.id, false)
+                    .await
+                    .expect("claim");
+                assert_eq!(claims.len(), 1);
+                delivery
+                    .acknowledge_inbox(&reader.id, claims[0].job_id, &Default::default())
+                    .await
+                    .expect("ack");
+                assert!(
+                    queue
+                        .claimed_delivery(claims[0].job_id)
+                        .await
+                        .expect("queue")
+                        .is_none()
+                );
+            })
+            .await
+            .expect("unrelated reader progresses before native observer is released");
+        }
+        release.notify_one();
+        assert!(
+            pending
+                .await
+                .expect("native observation resumes")
+                .native_extension_delivery
+        );
+    }
+
+    #[tokio::test]
+    async fn native_observation_revalidates_cross_seat_process_takeover_before_commit() {
+        let (service, registry) = native_service(Vec::new(), native_liveness());
+        let entered = Notify::new();
+        let release = Notify::new();
+        let tmux = FakeTmux::new();
+        let mut first_claim = native_claim("pij-delayed");
+        first_claim.pane = None;
+        let pending = service.register_native_with_observer(
+            first_claim,
+            Some("delayed-session".to_string()),
+            &tmux,
+            |pid| {
+                let entered = &entered;
+                let release = &release;
+                async move {
+                    entered.notify_one();
+                    release.notified().await;
+                    fixture_process(pid).await
+                }
+            },
+        );
+        tokio::pin!(pending);
+        tokio::select! {
+            _ = entered.notified() => {}
+            result = &mut pending => panic!("observer did not block: {result:?}"),
+        }
+        // Different seat AND session, no pane: only process ownership conflicts.
+        let mut winner_claim = native_claim("pij-winner");
+        winner_claim.pane = None;
+        let winner = tokio::time::timeout(
+            Duration::from_secs(1),
+            attest(&service, winner_claim, Some("winner-session"), &tmux),
+        )
+        .await
+        .expect("winner is not blocked by observation")
+        .expect("winner registers");
+        release.notify_one();
+        refused(pending.await);
+        assert_eq!(
+            registry.list(SeatFilter::default()).await.expect("roster"),
+            vec![winner]
         );
     }
 

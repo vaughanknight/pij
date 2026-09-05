@@ -1245,14 +1245,13 @@ async fn ordinary_registration_clears_native_attestation_but_preserves_claude_co
         assert_eq!(response.status(), reqwest::StatusCode::OK);
     }
 
-    assert_eq!(
-        registry
+    assert!(
+        !registry
             .get(&"pij-copilot".into())
             .await
             .unwrap()
             .unwrap()
-            .native_extension_delivery,
-        false
+            .native_extension_delivery
     );
     assert_eq!(
         registry

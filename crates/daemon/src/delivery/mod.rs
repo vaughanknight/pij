@@ -599,34 +599,47 @@ impl DeliveryService {
         }
     }
 
-    async fn native_claim_permitted(
-        &self,
-        seat: &SeatId,
-        identity: &NativeInboxIdentity,
-    ) -> Result<Option<String>> {
-        let Some(recipient) = self.native_recipient(seat, identity).await? else {
-            return Ok(None);
-        };
+    async fn native_claim_permitted(&self, recipient: &SeatDescriptor) -> Option<String> {
         if recipient.semantic_state == Some(SemanticState::Hold) {
-            return Ok(Some("semantic-hold".into()));
+            return Some("semantic-hold".into());
         }
         if let Some(pane) = recipient.pane.as_deref() {
             let verdict = match self.interaction.fresh_injection_verdict(pane).await {
                 Ok(verdict) => verdict,
-                Err(error) => return Ok(Some(format!("sensor-unavailable:{error}"))),
+                Err(error) => return Some(format!("sensor-unavailable:{error}")),
             };
             // Failed recognition cannot grant consent even if an uncertainty timer decayed.
             if !verdict.permitted || verdict.reason == Some(DeliveryDeferralReason::Unrecognized) {
-                return Ok(Some(
+                return Some(
                     verdict
                         .reason
                         .map_or("human-consent", DeliveryDeferralReason::as_str)
                         .into(),
-                ));
+                );
             }
         }
-        self.native_recipient(seat, identity).await?;
-        Ok(None)
+        None
+    }
+
+    /// Revalidate the observation's identity and pane while mutation is excluded.
+    /// Semantic hold can only veto; clearing it never overrides an observed veto.
+    async fn revalidate_native_observation(
+        &self,
+        seat: &SeatId,
+        identity: &NativeInboxIdentity,
+        observed: Option<&SeatDescriptor>,
+    ) -> Result<Option<String>> {
+        let current = self.native_recipient(seat, identity).await?;
+        if current.as_ref().map(|seat| seat.pane.as_deref())
+            != observed.map(|seat| seat.pane.as_deref())
+        {
+            return Err(native_refusal(
+                "native pane changed during consent observation",
+            ));
+        }
+        Ok(current
+            .filter(|seat| seat.semantic_state == Some(SemanticState::Hold))
+            .map(|_| "semantic-hold".into()))
     }
 
     async fn claim_inbox_inner(
@@ -641,17 +654,47 @@ impl DeliveryService {
                 .subscribe_live(EventFilter::kinds([OUTCOME_EVENT_KIND]).for_seat(seat.clone()))
         });
         loop {
+            // Slow tmux observations must not exclude unrelated readers. A fresh
+            // roster check under the shared lock binds the verdict to its target.
+            let observed = self.native_recipient(seat, identity).await?;
+            let native = observed.is_some();
+            let held_reason = match &observed {
+                Some(recipient) => self.native_claim_permitted(recipient).await,
+                None => None,
+            };
             let native_guard = self.native_lock.lock().await;
-            let native = self.native_recipient(seat, identity).await?.is_some();
-            if native && let Some(reason) = self.native_claim_permitted(seat, identity).await? {
+            if let Some(reason) = self
+                .revalidate_native_observation(seat, identity, observed.as_ref())
+                .await?
+                .or(held_reason)
+            {
                 return Ok(NativeInboxPage {
                     claims: Vec::new(),
                     held_reason: Some(reason),
                 });
             }
             if let Some((job_id, job)) = self.queue.claim(&kinds, seat.as_str()).await? {
-                if native {
-                    match self.native_claim_permitted(seat, identity).await {
+                let _handoff_guard = if let Some(recipient) = &observed {
+                    drop(native_guard);
+                    let held_reason = self.native_claim_permitted(recipient).await;
+                    let guard = self.native_lock.lock().await;
+                    // ACK or lease expiry/reclaim may finish this attempt while
+                    // observation waits. Neither hand out nor retry its successor.
+                    if self
+                        .queue
+                        .claimed_delivery(job_id)
+                        .await?
+                        .is_none_or(|current| current.attempt != job.attempt)
+                    {
+                        return Err(native_refusal(
+                            "native delivery claim attempt is no longer running",
+                        ));
+                    }
+                    let permission = self
+                        .revalidate_native_observation(seat, identity, Some(recipient))
+                        .await
+                        .map(|current_hold| current_hold.or(held_reason));
+                    match permission {
                         Ok(None) => {}
                         result => {
                             self.queue.retry(job_id, Duration::ZERO).await?;
@@ -662,7 +705,10 @@ impl DeliveryService {
                             });
                         }
                     }
-                }
+                    guard
+                } else {
+                    native_guard
+                };
                 let payload = serde_json::from_str::<ClaimedPayload>(&job.payload);
                 let message = payload.as_ref().map(|payload| &payload.message);
                 let invalid = match &message {
@@ -700,6 +746,9 @@ impl DeliveryService {
                     && let Some(reason) =
                         native_target_mismatch(payload.native_target_session.as_deref(), identity)
                 {
+                    // Durable CONTEXT HOLD, not a failed delivery: retry only
+                    // releases this claim. Attempt count must never discard the
+                    // body; only its original native context may consume it.
                     self.queue.retry(job_id, Duration::ZERO).await?;
                     return Ok(NativeInboxPage {
                         claims: Vec::new(),
@@ -708,9 +757,20 @@ impl DeliveryService {
                 }
                 let message = payload.message;
                 self.publish_pointer_unparked_if_parked(seat, 1).await?;
-                if native && let Err(error) = self.native_recipient(seat, identity).await {
-                    self.queue.retry(job_id, Duration::ZERO).await?;
-                    return Err(error);
+                if native {
+                    match self
+                        .revalidate_native_observation(seat, identity, observed.as_ref())
+                        .await
+                    {
+                        Ok(None) => {}
+                        result => {
+                            self.queue.retry(job_id, Duration::ZERO).await?;
+                            return Ok(NativeInboxPage {
+                                claims: Vec::new(),
+                                held_reason: result?,
+                            });
+                        }
+                    }
                 }
                 return Ok(NativeInboxPage {
                     claims: vec![InboxClaim {
@@ -1031,28 +1091,34 @@ fn system_time_ms() -> Result<u64> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
     use pij_core::delivery::{MAX_TYPED_FRAME_BYTES, delivery_kind};
     use pij_core::error::PijError;
     use pij_core::events::EventFilter;
     use pij_core::framing::frame_message;
-    use pij_core::model::Pane;
     use pij_core::model::{
         DeliveryOrigin, DeliveryOutcome, Event, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId,
         SemanticState, Seq, SystemState,
     };
-    use pij_core::ports::{DeliveryEnqueue, Queue, Registry, Spine, TmuxPort};
+    use pij_core::model::{Pane, PaneProcess};
+    use pij_core::ports::{
+        DeliveryEnqueue, LaunchCommand, Queue, Registry, Spine, StagedSubmit, TmuxPort,
+    };
     use pij_harnesses::InteractionGate;
     use pij_testkit::fakes::{
         CountingSpine, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
     };
     use serde_json::Value;
+    use tokio::sync::Notify;
     use tokio_stream::StreamExt;
 
     use super::{
-        DeliveryService, DeliverySources, OUTCOME_EVENT_KIND, PUSHED_EVENT_KIND, delivery_job,
+        DeliveryService, DeliverySources, NativeInboxIdentity, OUTCOME_EVENT_KIND,
+        PUSHED_EVENT_KIND, delivery_job,
     };
     use crate::events::EventBus;
     use crate::pointer::{POINTER_PARKED_EVENT_KIND, POINTER_UNPARKED_EVENT_KIND};
@@ -1062,6 +1128,259 @@ mod tests {
         let overhead = frame_message(from, None, "").len();
         assert!(bytes >= overhead);
         "x".repeat(bytes - overhead)
+    }
+
+    /// Suspend one exact capture, before or after the durable queue claim.
+    struct BlockingCapture {
+        inner: Arc<FakeTmux>,
+        block_at: usize,
+        captures: AtomicUsize,
+        entered: Notify,
+        release: Notify,
+    }
+
+    #[async_trait::async_trait]
+    impl TmuxPort for BlockingCapture {
+        async fn list_panes(&self) -> pij_core::error::Result<Vec<Pane>> {
+            self.inner.list_panes().await
+        }
+        async fn pane_process(&self, pane: &str) -> pij_core::error::Result<Option<PaneProcess>> {
+            self.inner.pane_process(pane).await
+        }
+        async fn acquire_submit(&self, pane: &str) -> pij_core::error::Result<StagedSubmit> {
+            self.inner.acquire_submit(pane).await
+        }
+        async fn stage_submit(
+            &self,
+            staged: &mut StagedSubmit,
+            text: &str,
+        ) -> pij_core::error::Result<()> {
+            self.inner.stage_submit(staged, text).await
+        }
+        async fn commit_submit(&self, staged: &StagedSubmit) -> pij_core::error::Result<()> {
+            self.inner.commit_submit(staged).await
+        }
+        async fn abort_submit(&self, staged: &StagedSubmit) -> pij_core::error::Result<()> {
+            self.inner.abort_submit(staged).await
+        }
+        async fn submit(&self, pane: &str, text: &str) -> pij_core::error::Result<()> {
+            self.inner.submit(pane, text).await
+        }
+        async fn send_keys(&self, pane: &str, keys: &str) -> pij_core::error::Result<()> {
+            self.inner.send_keys(pane, keys).await
+        }
+        async fn capture(&self, pane: &str, lines: u32) -> pij_core::error::Result<String> {
+            if self.captures.fetch_add(1, Ordering::SeqCst) + 1 == self.block_at {
+                self.entered.notify_one();
+                self.release.notified().await;
+            }
+            self.inner.capture(pane, lines).await
+        }
+        async fn attach_pane_tap(&self, pane: &str, sink: &Path) -> pij_core::error::Result<()> {
+            self.inner.attach_pane_tap(pane, sink).await
+        }
+        async fn pane_tap_sink(&self, pane: &str) -> pij_core::error::Result<Option<PathBuf>> {
+            self.inner.pane_tap_sink(pane).await
+        }
+        async fn drain_pane_tap(&self, pane: &str) -> pij_core::error::Result<Vec<u8>> {
+            self.inner.drain_pane_tap(pane).await
+        }
+        async fn detach_pane_tap(&self, pane: &str) -> pij_core::error::Result<()> {
+            self.inner.detach_pane_tap(pane).await
+        }
+        async fn kill(&self, pane: &str) -> pij_core::error::Result<()> {
+            self.inner.kill(pane).await
+        }
+        async fn new_window(
+            &self,
+            session: &str,
+            name: &str,
+            cwd: &str,
+            command: Option<&LaunchCommand>,
+        ) -> pij_core::error::Result<Pane> {
+            self.inner.new_window(session, name, cwd, command).await
+        }
+        async fn user_typing(&self, pane: &str) -> pij_core::error::Result<bool> {
+            self.inner.user_typing(pane).await
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn blocked_native_consent_allows_unrelated_ack_and_revalidates_before_handoff() {
+        for block_at in [1, 2] {
+            // The second observation also races ACK and retry/reclaim. Neither
+            // terminal work nor a successor attempt belongs to the old observer.
+            for change in 0..if block_at == 2 { 8 } else { 6 } {
+                let mut fixture = fixture_with_gate(
+                    FakeTransport::unreachable(),
+                    FakeTmux::new().with_clear_composer("%137"),
+                );
+                let observer = Arc::new(BlockingCapture {
+                    inner: fixture.tmux.clone(),
+                    block_at,
+                    captures: AtomicUsize::new(0),
+                    entered: Notify::new(),
+                    release: Notify::new(),
+                });
+                fixture.interaction = Arc::new(InteractionGate::new(observer.clone()));
+                fixture.service = Arc::new(
+                    DeliveryService::new(
+                        fixture.registry.clone(),
+                        fixture.queue.clone(),
+                        fixture.transport.clone(),
+                        fixture.interaction.clone(),
+                        Arc::new(EventBus::new(fixture.spine.clone(), 16).expect("bus")),
+                    )
+                    .expect("delivery"),
+                );
+                let mut recipient = bound("pij-native");
+                recipient.harness = Harness::Copilot;
+                recipient.pane = Some("%137".to_string());
+                recipient.harness_session = Some("native-session".to_string());
+                recipient.native_extension_delivery = true;
+                let identity = NativeInboxIdentity {
+                    native_session: recipient.harness_session.clone(),
+                    pid: Some(7),
+                    proc_start: Some(11),
+                };
+                register(&fixture, recipient.clone()).await;
+                fixture
+                    .service
+                    .send("pij-peer".into(), recipient.id.clone(), "native body")
+                    .await
+                    .expect("enqueue native");
+                let (job_id, _) = fixture
+                    .queue
+                    .peek(&[delivery_kind(&recipient.id)])
+                    .await
+                    .expect("queue")
+                    .expect("native body");
+                let pending = fixture
+                    .service
+                    .claim_native_inbox(&recipient.id, false, &identity);
+                tokio::pin!(pending);
+                tokio::select! {
+                    _ = observer.entered.notified() => {}
+                    result = &mut pending => panic!("capture did not block: {result:?}"),
+                }
+                for harness in [Harness::Omp, Harness::Pi] {
+                    let reader = SeatDescriptor::new(
+                        format!("pij-{}", harness.as_str()),
+                        harness,
+                        "/isolated/reader",
+                    );
+                    register(&fixture, reader.clone()).await;
+                    fixture
+                        .service
+                        .send("pij-peer".into(), reader.id.clone(), "unrelated")
+                        .await
+                        .expect("enqueue reader");
+                    tokio::time::timeout(Duration::from_secs(1), async {
+                        let claims = fixture
+                            .service
+                            .claim_inbox(&reader.id, false)
+                            .await
+                            .expect("unrelated claim");
+                        assert_eq!(claims.len(), 1);
+                        fixture
+                            .service
+                            .acknowledge_inbox(&reader.id, claims[0].job_id, &Default::default())
+                            .await
+                            .expect("unrelated ack");
+                    })
+                    .await
+                    .expect("unrelated reader progresses while native consent is blocked");
+                }
+                {
+                    let _guard = fixture.service.native_lock.lock().await;
+                    match change {
+                        0 | 6 | 7 => {}
+                        1 => recipient.semantic_state = Some(SemanticState::Hold),
+                        2 => recipient.native_extension_delivery = false,
+                        3 => recipient.proc.as_mut().expect("native proc").proc_start += 1,
+                        4 => recipient.pane = Some("%replacement".to_string()),
+                        5 => recipient.harness_session = Some("replacement-session".to_string()),
+                        _ => unreachable!(),
+                    }
+                    fixture
+                        .registry
+                        .put(recipient.clone())
+                        .await
+                        .expect("lifecycle mutation");
+                }
+                if change == 6 {
+                    fixture
+                        .service
+                        .acknowledge_inbox(&recipient.id, job_id, &identity)
+                        .await
+                        .expect("current tuple may acknowledge");
+                }
+                if change == 7 {
+                    // Requeue advances the same attempt field as lease expiry.
+                    fixture
+                        .queue
+                        .retry(job_id, Duration::ZERO)
+                        .await
+                        .expect("release old attempt");
+                    let next = fixture
+                        .service
+                        .claim_native_inbox(&recipient.id, false, &identity)
+                        .await
+                        .expect("new consumer claims next attempt");
+                    assert_eq!(next.claims[0].job_id, job_id);
+                }
+                observer.release.notify_one();
+                let result = pending.await;
+                match change {
+                    0 => {
+                        let page = result.expect("unchanged native identity admits");
+                        assert_eq!(page.claims.len(), 1);
+                        assert_eq!(page.claims[0].message.body, "native body");
+                        fixture
+                            .service
+                            .acknowledge_inbox(&recipient.id, job_id, &identity)
+                            .await
+                            .expect("native ack");
+                    }
+                    1 => {
+                        let page = result.expect("new semantic hold");
+                        assert!(page.claims.is_empty());
+                        assert_eq!(page.held_reason.as_deref(), Some("semantic-hold"));
+                    }
+                    _ => assert!(
+                        result.is_err(),
+                        "changed/finished native target refused: observation {block_at}, change {change}"
+                    ),
+                }
+                assert_eq!(
+                    fixture.queue.live_len(),
+                    usize::from(matches!(change, 1..=5))
+                );
+                if matches!(change, 1..=5) {
+                    let retained = fixture
+                        .service
+                        .peek_inbox(&recipient.id)
+                        .await
+                        .expect("body stays pending");
+                    assert_eq!(retained[0].job_id, job_id);
+                    assert_eq!(retained[0].message.body, "native body");
+                }
+                if change == 7 {
+                    let current = fixture
+                        .queue
+                        .claimed_delivery(job_id)
+                        .await
+                        .expect("queue")
+                        .expect("old observer must not release successor attempt");
+                    assert_eq!(current.attempt, 1);
+                    fixture
+                        .service
+                        .acknowledge_inbox(&recipient.id, job_id, &identity)
+                        .await
+                        .expect("successor consumer can still finish");
+                }
+            }
+        }
     }
 
     struct Fixture {
