@@ -16,7 +16,8 @@
 			"!**/prime-flow.json",
 			"!crates",
 			"!target",
-			"!**/target"
+			"!**/target",
+			"!.claude/settings.local.json"
 		]
 	},
 	"vcs": {

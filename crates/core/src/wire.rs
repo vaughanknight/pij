@@ -171,6 +171,8 @@ pub const KNOWN_EVENT_KINDS: &[&str] = &[
     "message",
     "job.enqueued",
     "job.acked",
+    "delivery.held",
+    "delivery.released",
 ];
 
 /// Decode one NDJSON line.

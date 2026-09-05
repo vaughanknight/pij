@@ -1219,7 +1219,11 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
             .with_standing_capture("╰──── hello ─╯"),
     );
     services.tmux = tmux.clone();
-    services.interaction = Arc::new(pij_harnesses::InteractionGate::new(tmux.clone()));
+    services.interaction = Arc::new(pij_harnesses::InteractionGate::with_typing_grace(
+        tmux.clone(),
+        Duration::from_secs(60),
+        100,
+    ));
     services.delivery = Arc::new(
         DeliveryService::new(
             services.registry.clone(),
@@ -1300,8 +1304,20 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
             .is_some()
     );
 
-    // Release consent, without another send or synthetic readiness event.
+    // Clearing is itself a recent edit; native delivery waits for its grace too.
     tmux.arrange_clear_composer("%137");
+    let clearing: Envelope<Vec<InboxClaim>> = client
+        .get(claim_url(addr, &seat.id, &identity))
+        .bearer_auth("native-key")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(clearing.data.unwrap().is_empty());
+    assert!(clearing.meta.is_some());
+    tokio::time::sleep(Duration::from_millis(150)).await;
     let admitted: Envelope<Vec<InboxClaim>> = client
         .get(claim_url(addr, &seat.id, &identity))
         .bearer_auth("native-key")

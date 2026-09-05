@@ -429,6 +429,9 @@ pub struct StateCard {
     /// The explanation supplied with `report blocked` / `report question`,
     /// which TS renders beside the declared state (cli.ts:5794).
     pub state_note: Option<String>,
+    /// Active human-typing holds; the queue, not this projection, owns the bodies.
+    #[serde(default)]
+    pub held: Vec<pij_core::delivery::HeldEvent>,
     /// Every TS field this store cannot answer, named with its reason.
     pub unsupported: Vec<UnsupportedField>,
 }

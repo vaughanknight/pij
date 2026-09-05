@@ -103,6 +103,12 @@ impl Queue for FailFirstClaim {
     async fn retry(&self, job: JobId, delay: Duration) -> Result<()> {
         self.inner.retry(job, delay).await
     }
+    async fn defer(&self, job: JobId, delay: Duration) -> Result<pij_core::ports::DeferOutcome> {
+        self.inner.defer(job, delay).await
+    }
+    async fn release_deferred(&self, job: JobId) -> Result<pij_core::ports::ReleaseOutcome> {
+        self.inner.release_deferred(job).await
+    }
 }
 
 #[tokio::test]
@@ -569,6 +575,12 @@ impl Queue for RefuseFirstDelivery {
     }
     async fn retry(&self, job: JobId, delay: Duration) -> Result<()> {
         self.inner.retry(job, delay).await
+    }
+    async fn defer(&self, job: JobId, delay: Duration) -> Result<pij_core::ports::DeferOutcome> {
+        self.inner.defer(job, delay).await
+    }
+    async fn release_deferred(&self, job: JobId) -> Result<pij_core::ports::ReleaseOutcome> {
+        self.inner.release_deferred(job).await
     }
 }
 

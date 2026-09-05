@@ -552,6 +552,10 @@ pub(crate) async fn adopt(
                     descriptor: persisted,
                     binding: None,
                     proc_source: Some(proc_source),
+                    // An adopted seat runs the same extension as a registered
+                    // one and must hear the same grace; answering 0 here would
+                    // make adopt the one path that steps on a typing human.
+                    typing_grace_ms: Some(super::resolve_typing_grace_ms()),
                 },
             );
             answer.meta = Some(format!(

@@ -611,8 +611,12 @@ impl DeliveryService {
                 Ok(verdict) => verdict,
                 Err(error) => return Some(format!("sensor-unavailable:{error}")),
             };
-            // Failed recognition cannot grant consent even if an uncertainty timer decayed.
-            if !verdict.permitted || verdict.reason == Some(DeliveryDeferralReason::Unrecognized) {
+            // Native Copilot retains strict draft consent; the shared recency
+            // policy may permit an old draft, but that does not clear this veto.
+            if !verdict.permitted
+                || !verdict.composer_idle
+                || verdict.reason == Some(DeliveryDeferralReason::Unrecognized)
+            {
                 return Some(
                     verdict
                         .reason
@@ -2660,7 +2664,22 @@ mod tests {
 
     #[tokio::test]
     async fn native_claim_consent_holds_then_admits_without_touching_composer() {
-        let fixture = fixture_with_gate(FakeTransport::unreachable(), typing_pane("%137"));
+        let mut fixture = fixture_with_gate(FakeTransport::unreachable(), typing_pane("%137"));
+        fixture.interaction = Arc::new(InteractionGate::with_typing_grace(
+            fixture.tmux.clone(),
+            Duration::from_secs(60),
+            100,
+        ));
+        fixture.service = Arc::new(
+            DeliveryService::new(
+                fixture.registry.clone(),
+                fixture.queue.clone(),
+                fixture.transport.clone(),
+                fixture.interaction.clone(),
+                Arc::new(EventBus::new(fixture.spine.clone(), 16).expect("event bus")),
+            )
+            .expect("native consent fixture"),
+        );
         register(&fixture, native_seat(Some("%137"))).await;
         fixture
             .service
@@ -2679,7 +2698,27 @@ mod tests {
         assert!(held.claims.is_empty());
         assert_eq!(held.held_reason.as_deref(), Some("human-typing"));
         assert_eq!(fixture.queue.live_len(), 1);
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        assert!(
+            fixture
+                .service
+                .claim_native_inbox(&seat, false, &identity)
+                .await
+                .expect("static draft remains held")
+                .claims
+                .is_empty()
+        );
         fixture.tmux.arrange_clear_composer("%137");
+        assert!(
+            fixture
+                .service
+                .claim_native_inbox(&seat, false, &identity)
+                .await
+                .expect("clearing is a recent edit")
+                .claims
+                .is_empty()
+        );
+        tokio::time::sleep(Duration::from_millis(150)).await;
         let claimed = fixture
             .service
             .claim_native_inbox(&seat, false, &identity)

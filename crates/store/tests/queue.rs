@@ -5,10 +5,11 @@
 //! would be testing the fake's opinion of the rule, not the rule.
 
 use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pij_core::config::Config;
 use pij_core::model::{DeliveryOrigin, Job, JobId, Outcome, SeatId};
-use pij_core::ports::{DeliveryEnqueue, Queue};
+use pij_core::ports::{DeferNoopReason, DeferOutcome, DeliveryEnqueue, Queue, ReleaseOutcome};
 use pij_store::SqliteQueue;
 use pij_testkit::FreshStore;
 use pij_testkit::contract::queue_contract;
@@ -722,6 +723,666 @@ async fn delivery_enqueue_returns_the_persisted_not_before_after_backoff() {
     };
     assert_eq!(collapsed, job_id);
     assert_eq!(not_before_ms, (persisted as u64).saturating_mul(1_000));
+}
+
+async fn persisted_job(pool: &sqlx::SqlitePool, id: JobId) -> String {
+    sqlx::query_scalar(
+        "SELECT json_object(\
+             'id', id, 'kind', kind, 'serial_key', serial_key, 'payload', payload, \
+             'dedupe_key', dedupe_key, 'state', state, 'worker', worker, \
+             'outcome', outcome, 'enqueued_at', enqueued_at, 'claimed_at', claimed_at, \
+             'acked_at', acked_at, 'attempt', attempt, 'not_before', not_before\
+         ) FROM jobs WHERE id = ?1",
+    )
+    .bind(id.0 as i64)
+    .fetch_one(pool)
+    .await
+    .expect("read every persisted job field")
+}
+
+#[tokio::test]
+async fn defer_running_delivery_releases_ownership_without_counting_attempt_or_delivery() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("valid queue policy");
+    let original = delivered_job("pij-recipient", "m-deferred");
+    let id = queue
+        .enqueue(original.clone())
+        .await
+        .expect("enqueue first");
+    let next = queue
+        .enqueue(delivered_job("pij-recipient", "m-next"))
+        .await
+        .expect("enqueue next");
+    let kinds = [original.kind.clone()];
+    queue
+        .claim(&kinds, "failed-worker")
+        .await
+        .expect("claim")
+        .expect("first job");
+    queue
+        .retry(id, Duration::ZERO)
+        .await
+        .expect("one real retry");
+    let claimed = queue
+        .claim(&kinds, "reader")
+        .await
+        .expect("claim")
+        .expect("retried job");
+    assert_eq!(claimed.0, id);
+    assert_eq!(claimed.1.attempt, 1);
+
+    assert_eq!(
+        queue
+            .defer(id, Duration::from_secs(3_600))
+            .await
+            .expect("defer running delivery"),
+        DeferOutcome::Deferred {
+            recipient: SeatId::from("pij-recipient"),
+            msg_id: "m-deferred".to_string(),
+        }
+    );
+    let state: (
+        String,
+        Option<String>,
+        Option<i64>,
+        i64,
+        Option<i64>,
+        Option<String>,
+    ) = sqlx::query_as(
+        "SELECT state, worker, claimed_at, attempt, acked_at, outcome FROM jobs WHERE id = ?1",
+    )
+    .bind(id.0 as i64)
+    .fetch_one(&pool)
+    .await
+    .expect("read deferred ownership and evidence");
+    assert_eq!(state, ("pending".to_string(), None, None, 1, None, None));
+    assert!(
+        queue
+            .ack_delivery(id, DeliveryOrigin::ReaderRead)
+            .await
+            .is_err(),
+        "deferral revokes the old reader's claim"
+    );
+    let delivered: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM delivered_messages")
+        .fetch_one(&pool)
+        .await
+        .expect("read delivery ledger");
+    assert_eq!(delivered, 0, "deferral is not evidence of delivery");
+    let following = queue
+        .claim(&kinds, "next-reader")
+        .await
+        .expect("claim")
+        .expect("serial key is free");
+    assert_eq!(
+        following.0, next,
+        "a delayed row does not block eligible work on its serial key"
+    );
+    queue
+        .ack(next, Outcome::Done)
+        .await
+        .expect("finish next row");
+    assert!(
+        queue
+            .claim(&kinds, "too-early")
+            .await
+            .expect("claim")
+            .is_none()
+    );
+    let peeked = queue
+        .peek(&kinds)
+        .await
+        .expect("peek")
+        .expect("deferred row remains visible");
+    assert_eq!(peeked.0, id);
+    assert_eq!(peeked.1.attempt, 1);
+}
+
+#[tokio::test]
+async fn defer_pending_delivery_replaces_deadline_and_zero_releases_it() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("valid queue policy");
+    let original = delivered_job("pij-pending", "m-pending");
+    let id = queue.enqueue(original.clone()).await.expect("enqueue");
+    let expected = DeferOutcome::Deferred {
+        recipient: SeatId::from("pij-pending"),
+        msg_id: "m-pending".to_string(),
+    };
+    queue
+        .note_delivered(
+            &SeatId::from("pij-other"),
+            "m-existing",
+            DeliveryOrigin::VerifiedArrival,
+        )
+        .await
+        .expect("seed existing delivery evidence");
+
+    assert_eq!(
+        queue
+            .defer(id, Duration::from_secs(7_200))
+            .await
+            .expect("defer pending"),
+        expected
+    );
+    let first: i64 = sqlx::query_scalar("SELECT not_before FROM jobs WHERE id = ?1")
+        .bind(id.0 as i64)
+        .fetch_one(&pool)
+        .await
+        .expect("first deadline");
+    assert_eq!(
+        queue
+            .defer(id, Duration::from_secs(3_600))
+            .await
+            .expect("replace deadline"),
+        expected
+    );
+    let second: i64 = sqlx::query_scalar("SELECT not_before FROM jobs WHERE id = ?1")
+        .bind(id.0 as i64)
+        .fetch_one(&pool)
+        .await
+        .expect("replacement deadline");
+    assert!(
+        second < first,
+        "re-deferral replaces the deadline rather than extending it"
+    );
+    assert!(
+        queue
+            .claim(std::slice::from_ref(&original.kind), "early")
+            .await
+            .expect("claim")
+            .is_none()
+    );
+    assert_eq!(queue.live_len().await.expect("live count"), 1);
+
+    assert_eq!(
+        queue
+            .defer(id, Duration::ZERO)
+            .await
+            .expect("release immediately"),
+        expected
+    );
+    let eligible: bool =
+        sqlx::query_scalar("SELECT not_before <= unixepoch() FROM jobs WHERE id = ?1")
+            .bind(id.0 as i64)
+            .fetch_one(&pool)
+            .await
+            .expect("immediate eligibility");
+    assert!(eligible);
+    let released = queue
+        .claim(std::slice::from_ref(&original.kind), "released-reader")
+        .await
+        .expect("claim")
+        .expect("zero delay is eligible now");
+    assert_eq!(released, (id, original));
+    assert_eq!(
+        queue
+            .note_delivered(
+                &SeatId::from("pij-other"),
+                "m-existing",
+                DeliveryOrigin::ReaderRead
+            )
+            .await
+            .expect("read existing evidence"),
+        Some(DeliveryOrigin::VerifiedArrival),
+        "deferral leaves previously recorded delivery evidence intact"
+    );
+}
+
+#[tokio::test]
+async fn defer_preserves_delivery_body_and_original_fifo_position() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("valid queue policy");
+    let mut original = delivered_job("pij-fifo", "m-oldest");
+    original.payload =
+        "{\"text\":\"keep the full body\\nexactly\",\"metadata\":[1,2,3]}".to_string();
+    let oldest = queue
+        .enqueue(original.clone())
+        .await
+        .expect("enqueue oldest");
+    let later = queue
+        .enqueue(delivered_job("pij-fifo", "m-later"))
+        .await
+        .expect("enqueue later");
+    let enqueued_at: i64 = sqlx::query_scalar("SELECT enqueued_at FROM jobs WHERE id = ?1")
+        .bind(oldest.0 as i64)
+        .fetch_one(&pool)
+        .await
+        .expect("original enqueue time");
+    let kinds = [original.kind.clone()];
+    assert_eq!(
+        queue
+            .claim(&kinds, "first-reader")
+            .await
+            .expect("claim")
+            .expect("oldest"),
+        (oldest, original.clone())
+    );
+    queue
+        .defer(oldest, Duration::from_secs(3_600))
+        .await
+        .expect("defer oldest");
+    assert_eq!(
+        queue.peek(&kinds).await.expect("peek"),
+        Some((oldest, original.clone()))
+    );
+    assert!(
+        matches!(queue.enqueue_delivery(original.clone()).await.expect("dedupe deferred body"),
+        DeliveryEnqueue::Queued { job_id, .. } if job_id == oldest)
+    );
+    queue
+        .defer(oldest, Duration::ZERO)
+        .await
+        .expect("release oldest");
+    assert_eq!(
+        queue
+            .claim(&kinds, "replacement-reader")
+            .await
+            .expect("claim")
+            .expect("oldest still first"),
+        (oldest, original)
+    );
+    let preserved: i64 = sqlx::query_scalar("SELECT enqueued_at FROM jobs WHERE id = ?1")
+        .bind(oldest.0 as i64)
+        .fetch_one(&pool)
+        .await
+        .expect("preserved enqueue time");
+    assert_eq!(preserved, enqueued_at);
+    queue
+        .ack(oldest, Outcome::Done)
+        .await
+        .expect("finish oldest");
+    assert_eq!(
+        queue
+            .claim(&kinds, "next-reader")
+            .await
+            .expect("claim")
+            .expect("later row")
+            .0,
+        later
+    );
+}
+
+#[tokio::test]
+async fn defer_absent_and_terminal_jobs_are_not_live() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("valid queue policy");
+    for absent in [JobId(0), JobId(u64::MAX)] {
+        assert_eq!(
+            queue
+                .defer(absent, Duration::ZERO)
+                .await
+                .expect("absent row"),
+            DeferOutcome::NotLive {
+                reason: DeferNoopReason::Absent
+            }
+        );
+    }
+    for (msg_id, outcome) in [
+        ("m-done", Outcome::Done),
+        (
+            "m-failed",
+            Outcome::Failed {
+                reason: "terminal failure".to_string(),
+            },
+        ),
+    ] {
+        let original = delivered_job("pij-terminal", msg_id);
+        let id = queue.enqueue(original.clone()).await.expect("enqueue");
+        queue
+            .claim(std::slice::from_ref(&original.kind), "terminal-worker")
+            .await
+            .expect("claim")
+            .expect("job");
+        queue.ack(id, outcome).await.expect("finish terminal row");
+        let before = persisted_job(&pool, id).await;
+        for delay in [Duration::ZERO, Duration::from_secs(3_600)] {
+            assert_eq!(
+                queue.defer(id, delay).await.expect("terminal row"),
+                DeferOutcome::NotLive {
+                    reason: DeferNoopReason::Terminal
+                }
+            );
+            assert_eq!(
+                persisted_job(&pool, id).await,
+                before,
+                "terminal history must not change"
+            );
+        }
+    }
+    assert_eq!(queue.live_len().await.expect("live count"), 0);
+}
+
+#[tokio::test]
+async fn defer_refuses_non_delivery_jobs_without_mutation() {
+    for kind in ["pointer", "federation:remote", "delivery:wrong-recipient"] {
+        let fresh = FreshStore::new();
+        let pool = pij_store::open(&fresh.path()).await.expect("open");
+        let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("valid queue policy");
+        let id = queue
+            .enqueue(job(kind, "pij-recipient", "m-refused"))
+            .await
+            .expect("enqueue");
+        for running in [false, true] {
+            if running {
+                assert_eq!(
+                    queue
+                        .claim(&[kind.to_string()], "owner")
+                        .await
+                        .expect("claim")
+                        .expect("job")
+                        .0,
+                    id
+                );
+            }
+            let before = persisted_job(&pool, id).await;
+            assert!(
+                queue.defer(id, Duration::from_secs(3_600)).await.is_err(),
+                "only a correctly addressed delivery may be deferred: {kind}"
+            );
+            assert_eq!(
+                persisted_job(&pool, id).await,
+                before,
+                "refusal must not mutate the row"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn defer_positive_delay_never_becomes_eligible_early() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("valid queue policy");
+    let id = queue
+        .enqueue(delivered_job("pij-timing", "m-timing"))
+        .await
+        .expect("enqueue");
+    for delay in [
+        Duration::from_nanos(1),
+        Duration::from_secs(1),
+        Duration::from_millis(1_001),
+    ] {
+        let before = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock after epoch");
+        queue
+            .defer(id, delay)
+            .await
+            .expect("defer positive duration");
+        let not_before: i64 = sqlx::query_scalar("SELECT not_before FROM jobs WHERE id = ?1")
+            .bind(id.0 as i64)
+            .fetch_one(&pool)
+            .await
+            .expect("persisted deadline");
+        assert!(
+            Duration::from_secs(u64::try_from(not_before).expect("positive epoch"))
+                >= before + delay,
+            "integer-second storage must round the absolute deadline upward, including whole-second delays"
+        );
+    }
+}
+
+#[tokio::test]
+async fn defer_rejects_unrepresentable_delay_without_mutation() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("valid queue policy");
+    let original = delivered_job("pij-overflow", "m-overflow");
+    let id = queue.enqueue(original.clone()).await.expect("enqueue");
+    queue
+        .claim(std::slice::from_ref(&original.kind), "owner")
+        .await
+        .expect("claim")
+        .expect("job");
+    let before = persisted_job(&pool, id).await;
+    for delay in [Duration::MAX, Duration::from_secs(i64::MAX as u64)] {
+        assert!(
+            queue.defer(id, delay).await.is_err(),
+            "an unrepresentable deadline must be rejected"
+        );
+        assert_eq!(
+            persisted_job(&pool, id).await,
+            before,
+            "overflow must not change running ownership or evidence"
+        );
+    }
+}
+
+#[tokio::test]
+async fn release_deferred_pending_delivery_is_immediate_without_changing_body_attempt_or_evidence()
+{
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("valid queue policy");
+    let mut original = delivered_job("pij-release", "m-release");
+    original.payload = "{\"text\":\"the complete deferred body\"}".to_string();
+    let id = queue.enqueue(original.clone()).await.expect("enqueue");
+    let kinds = [original.kind.clone()];
+    queue
+        .claim(&kinds, "failed-worker")
+        .await
+        .expect("claim")
+        .expect("job");
+    queue
+        .retry(id, Duration::ZERO)
+        .await
+        .expect("one real retry");
+    queue
+        .defer(id, Duration::from_secs(3_600))
+        .await
+        .expect("hold pending delivery");
+    queue
+        .note_delivered(
+            &SeatId::from("pij-other"),
+            "m-existing",
+            DeliveryOrigin::VerifiedArrival,
+        )
+        .await
+        .expect("seed unrelated delivery evidence");
+    let mut before: serde_json::Value =
+        serde_json::from_str(&persisted_job(&pool, id).await).expect("decode pending row snapshot");
+    let ledger_before: Vec<(String, String, String, i64)> = sqlx::query_as(
+        "SELECT recipient, msg_id, origin, seq FROM delivered_messages ORDER BY seq",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("existing delivery ledger");
+
+    assert_eq!(
+        queue
+            .release_deferred(id)
+            .await
+            .expect("release pending delivery"),
+        ReleaseOutcome::Released {
+            recipient: SeatId::from("pij-release"),
+            msg_id: "m-release".to_string(),
+        }
+    );
+    let after: serde_json::Value = serde_json::from_str(&persisted_job(&pool, id).await)
+        .expect("decode released row snapshot");
+    assert_ne!(before["not_before"], after["not_before"]);
+    before["not_before"] = after["not_before"].clone();
+    assert_eq!(
+        after, before,
+        "release changes only the eligibility deadline"
+    );
+    let eligible: bool =
+        sqlx::query_scalar("SELECT not_before <= unixepoch() FROM jobs WHERE id = ?1")
+            .bind(id.0 as i64)
+            .fetch_one(&pool)
+            .await
+            .expect("immediate eligibility");
+    assert!(eligible);
+    let ledger_after: Vec<(String, String, String, i64)> = sqlx::query_as(
+        "SELECT recipient, msg_id, origin, seq FROM delivered_messages ORDER BY seq",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("unchanged delivery ledger");
+    assert_eq!(
+        ledger_after, ledger_before,
+        "release neither adds nor removes delivery evidence"
+    );
+    original.attempt = 1;
+    assert_eq!(
+        queue
+            .claim(&kinds, "released-reader")
+            .await
+            .expect("claim")
+            .expect("released delivery"),
+        (id, original)
+    );
+}
+
+#[tokio::test]
+async fn release_deferred_duplicate_or_optimistic_release_preserves_the_active_claim() {
+    for held_first in [false, true] {
+        let fresh = FreshStore::new();
+        let pool = pij_store::open(&fresh.path()).await.expect("open");
+        let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("valid queue policy");
+        let original = delivered_job("pij-active", "m-active");
+        let id = queue.enqueue(original.clone()).await.expect("enqueue");
+        let kinds = [original.kind.clone()];
+        if held_first {
+            queue
+                .defer(id, Duration::from_secs(3_600))
+                .await
+                .expect("hold delivery");
+            assert!(matches!(
+                queue.release_deferred(id).await.expect("first release"),
+                ReleaseOutcome::Released { .. }
+            ));
+        }
+        assert_eq!(
+            queue
+                .claim(&kinds, "executing-reader")
+                .await
+                .expect("claim")
+                .expect("job"),
+            (id, original.clone())
+        );
+        let before = persisted_job(&pool, id).await;
+        for _ in 0..2 {
+            assert_eq!(
+                queue
+                    .release_deferred(id)
+                    .await
+                    .expect("release while reader executes"),
+                ReleaseOutcome::NotDeferred
+            );
+            assert_eq!(
+                persisted_job(&pool, id).await,
+                before,
+                "release must not revoke or modify an active claim"
+            );
+            assert!(
+                queue
+                    .claim(&kinds, "duplicate-reader")
+                    .await
+                    .expect("claim")
+                    .is_none(),
+                "the executing body must not be offered to another reader"
+            );
+        }
+        let ack = queue
+            .ack_delivery(id, DeliveryOrigin::ReaderRead)
+            .await
+            .expect("the original reader still owns its acknowledgement");
+        assert_eq!(ack.recipient, SeatId::from("pij-active"));
+        assert_eq!(ack.msg_id, "m-active");
+        assert_eq!(
+            queue
+                .enqueue_delivery(original)
+                .await
+                .expect("duplicate after acknowledgement"),
+            DeliveryEnqueue::AlreadyDelivered(DeliveryOrigin::ReaderRead)
+        );
+    }
+}
+
+#[tokio::test]
+async fn release_deferred_distinguishes_absent_and_terminal_jobs() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("valid queue policy");
+    for absent in [JobId(0), JobId(u64::MAX)] {
+        assert_eq!(
+            queue.release_deferred(absent).await.expect("absent row"),
+            ReleaseOutcome::NotLive {
+                reason: DeferNoopReason::Absent
+            }
+        );
+    }
+    for (msg_id, outcome) in [
+        ("m-done", Outcome::Done),
+        (
+            "m-failed",
+            Outcome::Failed {
+                reason: "terminal failure".to_string(),
+            },
+        ),
+    ] {
+        let original = delivered_job("pij-release-terminal", msg_id);
+        let id = queue.enqueue(original.clone()).await.expect("enqueue");
+        queue
+            .claim(std::slice::from_ref(&original.kind), "terminal-worker")
+            .await
+            .expect("claim")
+            .expect("job");
+        queue.ack(id, outcome).await.expect("finish terminal row");
+        let before = persisted_job(&pool, id).await;
+        assert_eq!(
+            queue.release_deferred(id).await.expect("terminal row"),
+            ReleaseOutcome::NotLive {
+                reason: DeferNoopReason::Terminal
+            }
+        );
+        assert_eq!(
+            persisted_job(&pool, id).await,
+            before,
+            "release must not alter terminal history"
+        );
+    }
+    assert_eq!(queue.live_len().await.expect("live count"), 0);
+}
+
+#[tokio::test]
+async fn release_deferred_refuses_non_delivery_jobs_without_mutation() {
+    for kind in ["pointer", "federation:remote", "delivery:wrong-recipient"] {
+        let fresh = FreshStore::new();
+        let pool = pij_store::open(&fresh.path()).await.expect("open");
+        let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("valid queue policy");
+        let id = queue
+            .enqueue(job(kind, "pij-recipient", "m-refused-release"))
+            .await
+            .expect("enqueue");
+        for running in [false, true] {
+            if running {
+                assert_eq!(
+                    queue
+                        .claim(&[kind.to_string()], "owner")
+                        .await
+                        .expect("claim")
+                        .expect("job")
+                        .0,
+                    id
+                );
+            }
+            let before = persisted_job(&pool, id).await;
+            assert!(
+                queue.release_deferred(id).await.is_err(),
+                "release only accepts a correctly addressed delivery: {kind}"
+            );
+            assert_eq!(
+                persisted_job(&pool, id).await,
+                before,
+                "refusal must not change the row"
+            );
+        }
+    }
 }
 
 #[tokio::test]
