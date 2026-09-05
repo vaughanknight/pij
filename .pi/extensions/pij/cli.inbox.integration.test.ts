@@ -449,7 +449,7 @@ describe("portable pij CLI baseline", () => {
 			expect(sent.stdout).toContain("queued (pull-inbox): awaiting the peer's own inbox check");
 			expect(sent.stdout).toContain("receipt → delivered");
 			expect(received).toMatchObject({ code: 0, stderr: "" });
-			expect(received.stdout).toContain("[pij from");
+			expect(received.stdout).toContain(`${sender.id}: `);
 			expect(received.stdout).toContain("hello from portable sender");
 			expect(competing).toMatchObject({ code: 0, stderr: "" });
 			expect(JSON.parse(competing.stdout)).toEqual({

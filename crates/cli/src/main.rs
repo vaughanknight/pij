@@ -4,6 +4,7 @@ mod identity;
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
+use std::fmt::Write as _;
 use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -709,7 +710,11 @@ async fn run(cli: Cli) -> ExitCode {
             emit(&client.report(&acting, &argv).await, cli.json)
         }
         Command::List => emit(&client.list().await, cli.json),
-        Command::State { id } => emit(&client.state(&id).await, cli.json),
+        Command::State { id } => {
+            let response = client.state(&id).await;
+            println!("{}", render_state(&response, cli.json));
+            ExitCode::from(exit_code(&response))
+        }
         Command::Tail { since } => {
             let since = match cursor_map(since) {
                 Ok(since) => since,
@@ -1278,6 +1283,20 @@ fn emit<T: serde::Serialize>(envelope: &Envelope<T>, json: bool) -> ExitCode {
     ExitCode::from(exit_code(envelope))
 }
 
+fn render_state(envelope: &Envelope<pij_daemon::http::StateCard>, json: bool) -> String {
+    let mut output = render(envelope, json);
+    if !json
+        && envelope.ok
+        && let Some(card) = &envelope.data
+    {
+        let _ = write!(output, "\nheld: {}", card.held.len());
+        if let Some(first) = card.held.iter().min_by_key(|hold| hold.since_ms) {
+            let _ = write!(output, " ({} since {} ms)", first.reason, first.since_ms);
+        }
+    }
+    output
+}
+
 fn parse_machine_cursor(value: &str) -> Result<MachineCursor, String> {
     let (machine, cursor) = value
         .split_once('=')
@@ -1609,6 +1628,26 @@ mod tests {
         prepare_revive_request, prepare_spawn_request, resolve_bind_addr, resolve_client_addr,
         resolve_state_dir,
     };
+
+    #[test]
+    fn typing_state_renders_count_and_since_without_corrupting_json() {
+        let card: pij_daemon::http::StateCard = serde_json::from_value(serde_json::json!({
+            "id": "pij-typist", "state": "idle", "liveness": "active", "cwd": "/abs/tree", "harness": "omp", "unsupported": [],
+            "held": [
+                {"msg_id": "one", "seat": "pij-typist", "reason": "human-typing", "since_ms": 7},
+                {"msg_id": "two", "seat": "pij-typist", "reason": "human-typing", "since_ms": 9}
+            ]
+        })).expect("typed daemon state");
+        let response = pij_core::model::Envelope::ok("pij state", card);
+        let human = super::render_state(&response, false);
+        assert!(
+            human.contains("held: 2 (human-typing since 7 ms)"),
+            "{human}"
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(&super::render_state(&response, true)).expect("unadorned JSON");
+        assert_eq!(json["data"]["held"].as_array().expect("holds").len(), 2);
+    }
 
     #[test]
     fn claude_adopt_warns_for_unaccepted_caller_config_dir() {

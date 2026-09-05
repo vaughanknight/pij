@@ -332,6 +332,13 @@ note = "Provenance note for the uds fixtures: which lines are recordings, which 
 answer = "A fixture authored by its own consumer proves nothing about the wire; the previously invented status shapes kept the suite green over a decoder production could never satisfy."
 
 [[fixture]]
+path = "delivery/hold-events.json"
+sha256 = "4412d2bf3bb450ca6772845fe64286b2e043fe9a5787205797efde89000f45f9"
+bytes = 14822
+note = "The frozen wire contract for plan 136 (typing grace gate), authored before fan-out and amended six times on coder evidence. Moved here from docs/plans/136-typing-grace-gate/assets/contracts/ at composition: four suites read it — crates/harnesses/src/interaction.rs, crates/daemon/src/http/tests.rs, .pi/extensions/pij/core/hold-queue.test.ts and .pi/extensions/pij/adapters/rust-runtime.test.ts — and post-flight archives plan folders, so a fixture living in one is a test suite with an expiry date."
+answer = "Byte-compare against it, never restate it. delivery.held/delivery.released payloads, the /v1/hold and /v1/release bodies (both carrying job_id), the register response field typing_grace_ms, and the Queue::defer / Queue::release_deferred outcomes are what the daemon must emit and the extension must send. The grace has exactly ONE definition — DEFAULT_TYPING_GRACE_MS in crates/core/src/delivery.rs — and the TS 60000 is a fallback used only when the daemon omits the field."
+
+[[fixture]]
 path = "register-response.json"
 sha256 = "52a9f41c5e76432bf67430c1b3b274219967b9966589868ce36c2e2a93f4f139"
 bytes = 1416

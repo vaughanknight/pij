@@ -1,0 +1,148 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Phase 1 — contract, units, compose, live",
+        "slug": "phase-1",
+        "status": "draft",
+        "summary": "u0 · u1 ∥ u2 ∥ u3 · compose · live proofs"
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Wave 0 freezes the wire; wave 1 runs three coders in parallel; PM composes and runs the live proofs (omp and Claude)."
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "tk-1360",
+          "title": "u0 — freeze hold/release wire + grace source",
+          "domain": "contract",
+          "phase": "p1",
+          "state": "checked",
+          "receipt": "commit 68f6b3aa — docs/plans/136-typing-grace-gate/assets/contracts/hold-events.json (jq-valid): delivery.held / delivery.released event samples, /v1/hold and /v1/release request+response bodies, register_response_with_grace carrying typing_grace_ms, a grace block naming DEFAULT_TYPING_GRACE_MS in crates/core/src/delivery.rs as the single definition, and an invariants block (held_is_unacked, order_preserved, bypass, one_grace, no_false_typing, no_double_delivery). Field spellings derived from crates/core/src/model.rs (Event, Envelope, SeatDescriptor, DeliveryOutcome, DeliveryOrigin) and crates/daemon/src/http/mod.rs:399 — none invented. Cited as ref r2 in all three coder packets.",
+          "done": "tasks.dd.json#done_when/tk-1360",
+          "success": "assets/contracts/hold-events.json holds canonical `delivery.held` / `delivery.released` payloads and the grace exposure sample; impl-guide unit rows cite it.",
+          "notes": "PM-owned wave 0; both runtimes READ this file in tests.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC7"
+          ]
+        },
+        {
+          "id": "tk-1361",
+          "title": "u1 — extension: typing sensor + hold queue + status",
+          "domain": ".pi/extensions/pij",
+          "phase": "p1",
+          "state": "unchecked",
+          "done": "tasks.dd.json#done_when/tk-1361",
+          "success": "lastEditAt from editor.onChange; HoldQueue in consumePushed (claim→hold→inject→ack) with fake-clock tests; status line; bypass for commands; reports held/released to the daemon.",
+          "notes": "Held = unacked. No timers that survive /new without re-arming.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC4",
+            "../../../plan.dd.json#acceptance_criteria/AC5"
+          ]
+        },
+        {
+          "id": "tk-1362",
+          "title": "u2 — daemon: held/released rows, grace exposure, honest push receipt",
+          "domain": "pij-rs daemon/core",
+          "phase": "p1",
+          "state": "unchecked",
+          "done": "tasks.dd.json#done_when/tk-1362",
+          "success": "POST /v1/hold + /v1/release (additive) write spine rows; `pij state` renders held; PIJ_TYPING_GRACE_MS exposed additively; push receipt for extension-stream reads queued until ack.",
+          "notes": "Vocabulary lives in crates/core/src/delivery.rs; no changes to delivery/mod.rs match arm (plan 137 baton).",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC5",
+            "../../../plan.dd.json#acceptance_criteria/AC7"
+          ]
+        },
+        {
+          "id": "tk-1363",
+          "title": "u3 — interaction gate: recency not draft-present",
+          "domain": "crates/harnesses",
+          "phase": "p1",
+          "state": "unchecked",
+          "done": "tasks.dd.json#done_when/tk-1363",
+          "success": "human-typing derives from last keystroke < grace (pane-signals/tmux evidence); draft parked ≥ grace no longer vetoes; next_retry_at ≤ grace; RED control for the old behaviour.",
+          "notes": "Keep the `human-typing` word; change its derivation. draft_sha stays on the receipt when present.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC6",
+            "../../../plan.dd.json#acceptance_criteria/AC8"
+          ]
+        },
+        {
+          "id": "tk-1364",
+          "title": "compose + live proofs",
+          "domain": "pm",
+          "phase": "p1",
+          "state": "unchecked",
+          "done": "tasks.dd.json#done_when/tk-1364",
+          "success": "Composed branch green on all gates; daemon rebuilt+restarted (with PIJ_TELEGRAM_ENV); AC1–AC6 live transcripts in assets/live-proof.md.",
+          "notes": "Restart the daemon or Rust changes are not live.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/AC1",
+            "../../../plan.dd.json#acceptance_criteria/AC2",
+            "../../../plan.dd.json#acceptance_criteria/AC3",
+            "../../../plan.dd.json#acceptance_criteria/AC4",
+            "../../../plan.dd.json#acceptance_criteria/AC5",
+            "../../../plan.dd.json#acceptance_criteria/AC6",
+            "../../../plan.dd.json#acceptance_criteria/AC8"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {
+        "tk-1360": [
+          {
+            "id": "dw-1360",
+            "assertion": "Contract file present; cited by path from u1/u2/u3 test sources.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1361": [
+          {
+            "id": "dw-1361",
+            "assertion": "bun test green incl. fake-clock hold/inject, bypass, and unacked-while-held tests; RED pasted on pre-fix tree.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1362": [
+          {
+            "id": "dw-1362",
+            "assertion": "cargo test -p pij-core -p pij-daemon green; spine rows byte-compare to the contract; receipt test proves queued-until-ack.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1363": [
+          {
+            "id": "dw-1363",
+            "assertion": "cargo test -p pij-harnesses green with the recency tests and the RED control on the old draft-present behaviour.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1364": [
+          {
+            "id": "dw-1364",
+            "assertion": "Live transcripts for AC1–AC6 + full gate outputs recorded.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ]
+      }
+    }
+  ]
+}

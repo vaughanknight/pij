@@ -29,8 +29,9 @@ use pij_core::model::{
     Outcome, Pane, PaneProcess, ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
 };
 use pij_core::ports::{
-    DeliveryAck, DeliveryEnqueue, HarnessPort, LaunchCommand, LivenessPort, Queue, Registry,
-    STAGED_SUBMIT_RECOVERY, SeatFilter, Spine, StagedSubmit, TmuxPort, Transport,
+    DeferNoopReason, DeferOutcome, DeliveryAck, DeliveryEnqueue, HarnessPort, LaunchCommand,
+    LivenessPort, Queue, Registry, ReleaseOutcome, STAGED_SUBMIT_RECOVERY, SeatFilter, Spine,
+    StagedSubmit, TmuxPort, Transport,
 };
 
 /// One recorded interaction, rendered as a stable string so assertions read as
@@ -697,6 +698,73 @@ impl Queue for FakeQueue {
         state.not_before.insert(job.0, not_before);
         state.retried.push((job, delay));
         Ok(())
+    }
+
+    async fn defer(&self, job: JobId, delay: Duration) -> Result<DeferOutcome> {
+        let mut state = self.state.lock().expect("fake queue mutex");
+        let live = state.claimed.get(&job.0).map(|(row, _)| row).or_else(|| {
+            state
+                .live
+                .iter()
+                .find(|(id, _)| *id == job)
+                .map(|(_, row)| row)
+        });
+        let Some(live) = live else {
+            let reason = if state.acked.iter().any(|(id, _)| *id == job) {
+                DeferNoopReason::Terminal
+            } else {
+                DeferNoopReason::Absent
+            };
+            return Ok(DeferOutcome::NotLive { reason });
+        };
+        require_delivery_job(live)?;
+        let outcome = DeferOutcome::Deferred {
+            recipient: SeatId(live.serial_key.clone()),
+            msg_id: live.dedupe_key.clone(),
+        };
+        let not_before = state
+            .now
+            .checked_add(delay)
+            .filter(|deadline| i64::try_from(deadline.as_secs()).is_ok())
+            .ok_or_else(|| PijError::Adapter {
+                adapter: "testkit/fake-queue".to_string(),
+                message: "deferral deadline exceeds the supported timestamp range".to_string(),
+            })?;
+        if let Some((row, _worker)) = state.claimed.remove(&job.0) {
+            // Restoring a claim keeps its original FIFO position, unlike retry.
+            let index = state
+                .live
+                .iter()
+                .position(|(id, _)| id.0 > job.0)
+                .unwrap_or(state.live.len());
+            state.live.insert(index, (job, row));
+        }
+        state.not_before.insert(job.0, not_before);
+        Ok(outcome)
+    }
+
+    async fn release_deferred(&self, job: JobId) -> Result<ReleaseOutcome> {
+        let mut state = self.state.lock().expect("fake queue mutex");
+        if let Some((running, _worker)) = state.claimed.get(&job.0) {
+            require_delivery_job(running)?;
+            return Ok(ReleaseOutcome::NotDeferred);
+        }
+        let Some((_, pending)) = state.live.iter().find(|(id, _)| *id == job) else {
+            let reason = if state.acked.iter().any(|(id, _)| *id == job) {
+                DeferNoopReason::Terminal
+            } else {
+                DeferNoopReason::Absent
+            };
+            return Ok(ReleaseOutcome::NotLive { reason });
+        };
+        require_delivery_job(pending)?;
+        let outcome = ReleaseOutcome::Released {
+            recipient: SeatId(pending.serial_key.clone()),
+            msg_id: pending.dedupe_key.clone(),
+        };
+        let now = state.now;
+        state.not_before.insert(job.0, now);
+        Ok(outcome)
     }
 }
 

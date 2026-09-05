@@ -30,6 +30,7 @@ use axum::extract::{Extension, Json, Query, State};
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
+use pij_core::delivery::{DEFAULT_TYPING_GRACE_MS, HeldEvent, ReleasedEvent};
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::model::{
@@ -62,6 +63,8 @@ pub(crate) struct AppState {
     auth: AuthRing,
     machine_alias: String,
     spawn_lock: Arc<tokio::sync::Mutex<()>>,
+    typing_lock: Arc<tokio::sync::Mutex<()>>,
+    typing_grace_ms: u64,
     federation: Option<Arc<FederationService>>,
 }
 
@@ -96,6 +99,8 @@ enum Endpoint {
     Send,
     Inbox,
     InboxAck,
+    Hold,
+    Release,
     Seats,
     Events,
     /// Producer for the three sidecar consumers. The consumers are queue-backed,
@@ -139,7 +144,7 @@ enum Endpoint {
 }
 
 impl Endpoint {
-    const ALL: [Self; 19] = [
+    const ALL: [Self; 21] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -147,6 +152,8 @@ impl Endpoint {
         Self::Send,
         Self::Inbox,
         Self::InboxAck,
+        Self::Hold,
+        Self::Release,
         Self::Seats,
         Self::Events,
         Self::Sidecar,
@@ -170,6 +177,8 @@ impl Endpoint {
             Self::Send => "/v1/send",
             Self::Inbox => "/v1/inbox",
             Self::InboxAck => "/v1/inbox/ack",
+            Self::Hold => "/v1/hold",
+            Self::Release => "/v1/release",
             Self::Seats => "/v1/seats",
             Self::Events => "/v1/events",
             Self::Sidecar => "/v1/sidecar",
@@ -197,6 +206,8 @@ impl Endpoint {
             | Self::Revive
             | Self::Send
             | Self::InboxAck
+            | Self::Hold
+            | Self::Release
             | Self::Sidecar
             | Self::Report => Method::POST,
             Self::Adopt | Self::Whoami | Self::Phonehome => Method::POST,
@@ -227,6 +238,18 @@ pub fn router(services: Services, token: String) -> Router {
 /// `reqwest::Client`; it resolves a machine alias and calls `post_to_peer` once.
 /// Removing a configured peer key from `HttpConfig::peer_keys` revokes inbound
 /// access for that machine.
+///
+/// Plan 136's routes are already composed here under the same bearer ring:
+/// ```text
+/// Endpoint::Hold => router.route(endpoint.path(), post(hold_inbox)),
+/// Endpoint::Release => router.route(endpoint.path(), post(release_inbox)),
+/// Envelope::ok("pij register", RegistrationResponse {
+///     descriptor, binding, proc_source, typing_grace_ms: Some(state.typing_grace_ms),
+/// })
+/// ```
+/// The outer daemon composition root needs no extra queue or worker: keep its
+/// existing call to this router and its existing pointer drain cadence. Omp/Pi
+/// are excluded by that worker's eligibility predicate, not by another timer.
 pub fn router_with_config(services: Services, config: HttpConfig) -> Router {
     router_with_optional_federation(services, config, None)
 }
@@ -240,6 +263,21 @@ pub fn router_with_federation(
     router_with_optional_federation(services, config, Some(federation))
 }
 
+/// The typing grace this daemon serves, resolved ONCE per process.
+///
+/// Composition (plan 136): the register response and the interaction gate must
+/// answer with the same number, or the extension holds for one window while the
+/// send-keys gate defers for another and neither is wrong on its own. The
+/// constant lives in `pij_core::delivery`; this function is the single place the
+/// env override is read.
+#[must_use]
+pub fn resolve_typing_grace_ms() -> u64 {
+    std::env::var("PIJ_TYPING_GRACE_MS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(DEFAULT_TYPING_GRACE_MS)
+}
+
 fn router_with_optional_federation(
     services: Services,
     config: HttpConfig,
@@ -250,6 +288,8 @@ fn router_with_optional_federation(
         auth: AuthRing::new(config.local_key, config.peer_keys),
         machine_alias: config.machine_alias,
         spawn_lock: Arc::new(tokio::sync::Mutex::new(())),
+        typing_lock: Arc::new(tokio::sync::Mutex::new(())),
+        typing_grace_ms: resolve_typing_grace_ms(),
         federation,
     };
     let mut router = Router::new();
@@ -263,6 +303,8 @@ fn router_with_optional_federation(
                     | Endpoint::Revive
                     | Endpoint::Send
                     | Endpoint::InboxAck
+                    | Endpoint::Hold
+                    | Endpoint::Release
                     | Endpoint::Sidecar
                     | Endpoint::Report
                     | Endpoint::Adopt
@@ -286,6 +328,8 @@ fn router_with_optional_federation(
             Endpoint::Send => router.route(endpoint.path(), post(send)),
             Endpoint::Inbox => router.route(endpoint.path(), get(inbox)),
             Endpoint::InboxAck => router.route(endpoint.path(), post(ack_inbox)),
+            Endpoint::Hold => router.route(endpoint.path(), post(hold_inbox)),
+            Endpoint::Release => router.route(endpoint.path(), post(release_inbox)),
             Endpoint::Seats => router.route(endpoint.path(), get(seats)),
             Endpoint::Events => router.route(endpoint.path(), get(events)),
             Endpoint::Sidecar => router.route(endpoint.path(), post(sidecar)),
@@ -457,6 +501,18 @@ struct RegistrationResponse {
     binding: Option<RegistrationBinding>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     proc_source: Option<ProcSource>,
+    /// The daemon-owned quiet interval after a human edit, in milliseconds
+    /// (plan 136). The extension reads it here rather than restating 60000:
+    /// one definition (`pij_core::delivery::DEFAULT_TYPING_GRACE_MS`), one
+    /// resolver (`resolve_typing_grace_ms`), one answer.
+    ///
+    /// OPTIONAL ON THE WIRE, and deliberately so: this daemon always sends it,
+    /// but a response captured before plan 136 has no such key, and a required
+    /// field would make every old fixture fail to parse while a `default` would
+    /// silently mint a grace of ZERO — a number nobody chose, meaning "never
+    /// hold". Absent stays absent, and the extension's own fallback applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    typing_grace_ms: Option<u64>,
 }
 
 /// Composition: the service returns `(descriptor, report)` from its committed
@@ -532,12 +588,17 @@ async fn register(
             } else {
                 RegistrationBinding::Same
             };
+            // Convergence 135 + 136: ONE response type carries every additive
+            // field. 135 added binding/proc_source here and 136 added
+            // typing_grace_ms in `wire`; two structs serializing the same
+            // response is how two answers to one question start drifting.
             let mut answer = Envelope::ok(
                 "pij register",
                 RegistrationResponse {
                     descriptor,
                     binding: Some(binding),
                     proc_source,
+                    typing_grace_ms: Some(state.typing_grace_ms),
                 },
             );
             answer.meta = meta;
@@ -1256,19 +1317,184 @@ struct InboxQuery {
 /// Read one inbox message. The default path claims it for explicit client ack;
 /// `peek=true` is observation-only and never changes queue state.
 async fn inbox(State(state): State<AppState>, Query(query): Query<InboxQuery>) -> Response {
-    let result = if query.peek {
-        state.services.delivery.peek_inbox(&query.seat).await
-    } else {
-        state
-            .services
-            .delivery
-            .claim_inbox(&query.seat, query.wait)
-            .await
+    // Subscribe before claiming, including the transition that makes a held row
+    // eligible. The delivery service's older waiter only observes new sends.
+    let mut wake = (query.wait && !query.peek).then(|| {
+        state.services.event_bus.subscribe_live(
+            EventFilter::kinds(["delivery.outcome", "delivery.released"])
+                .for_seat(query.seat.clone()),
+        )
+    });
+    let result = loop {
+        let result = if query.peek {
+            state.services.delivery.peek_inbox(&query.seat).await
+        } else {
+            state
+                .services
+                .delivery
+                .claim_inbox(&query.seat, false)
+                .await
+        };
+        if !result.as_ref().is_ok_and(Vec::is_empty) {
+            break result;
+        }
+        let Some(subscription) = wake.as_mut() else {
+            break result;
+        };
+        if subscription.next().await.is_none() {
+            break result;
+        }
     };
     match result {
         Ok(claims) => envelope(StatusCode::OK, &Envelope::ok("pij inbox", claims)),
         Err(error) => internal("pij inbox", error),
     }
+}
+
+/// True only when the newest fact for this exact message is a hold.
+async fn is_held(state: &AppState, seat: &SeatId, msg_id: &str) -> Result<bool> {
+    let held = state
+        .services
+        .event_bus
+        .latest_matching_message(seat, "delivery.held", msg_id)
+        .await?;
+    let released = state
+        .services
+        .event_bus
+        .latest_matching_message(seat, "delivery.released", msg_id)
+        .await?;
+    Ok(held.is_some_and(|held| released.is_none_or(|released| held.seq > released.seq)))
+}
+
+async fn publish_typing_event<T: Serialize>(
+    state: &AppState,
+    kind: &str,
+    seat: &SeatId,
+    payload: &T,
+) -> Result<()> {
+    let payload = serde_json::to_string(payload).map_err(|error| PijError::Adapter {
+        adapter: "daemon/http".to_string(),
+        message: format!("encode typing event: {error}"),
+    })?;
+    state
+        .services
+        .event_bus
+        .publish(Event {
+            seq: None,
+            v: wire::EVENT_VERSION,
+            at: system_time_ms()?,
+            kind: kind.to_string(),
+            seat: Some(seat.clone()),
+            payload,
+        })
+        .await?;
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct HoldRequest {
+    job_id: pij_core::model::JobId,
+    #[serde(flatten)]
+    event: HeldEvent,
+}
+
+#[derive(Deserialize)]
+struct ReleaseRequest {
+    job_id: pij_core::model::JobId,
+    #[serde(flatten)]
+    event: ReleasedEvent,
+}
+
+/// Return a recently claimed inbox row to the durable queue, without acknowledging.
+///
+/// Held means PENDING/unclaimed (prime ruling 2026-09-05), not a long-lived claim.
+/// The next eligible read may re-offer it; the extension must re-hold an existing
+/// msg_id idempotently while typing continues. The note never owns the body.
+async fn hold_inbox(State(state): State<AppState>, Json(request): Json<HoldRequest>) -> Response {
+    if request.event.reason != "human-typing" {
+        return refused("pij hold", "hold reason must be human-typing");
+    }
+    let _transition = state.typing_lock.lock().await;
+    let (recipient, msg_id) = match state
+        .services
+        .queue
+        .defer(request.job_id, Duration::from_millis(state.typing_grace_ms))
+        .await
+    {
+        Ok(pij_core::ports::DeferOutcome::Deferred { recipient, msg_id }) => (recipient, msg_id),
+        Ok(pij_core::ports::DeferOutcome::NotLive { reason }) => {
+            return envelope(
+                StatusCode::OK,
+                &Envelope::ok(
+                    "pij hold",
+                    serde_json::json!({
+                        "msg_id": request.event.msg_id, "held": false, "noop": true, "reason": reason,
+                    }),
+                ),
+            );
+        }
+        Err(error) => return internal("pij hold", error),
+    };
+    // Bearer identity is machine-grade: the queue, not the request, attributes the event.
+    let event = HeldEvent {
+        seat: recipient,
+        msg_id,
+        ..request.event
+    };
+    let held = match is_held(&state, &event.seat, &event.msg_id).await {
+        Ok(held) => held,
+        Err(error) => return internal("pij hold", error),
+    };
+    if !held
+        && let Err(error) = publish_typing_event(&state, "delivery.held", &event.seat, &event).await
+    {
+        return internal("pij hold", error);
+    }
+    envelope(
+        StatusCode::OK,
+        &Envelope::ok(
+            "pij hold",
+            serde_json::json!({
+                "msg_id": event.msg_id, "held": true,
+            }),
+        ),
+    )
+}
+
+/// Record the extension's release declaration independently of queue mutation.
+/// Only the normal inbox ack attests ReaderRead; a release clears readback even
+/// when a restarted extension already claimed or acknowledged the durable row.
+async fn release_inbox(
+    State(state): State<AppState>,
+    Json(request): Json<ReleaseRequest>,
+) -> Response {
+    let _transition = state.typing_lock.lock().await;
+    let outcome = state.services.queue.release_deferred(request.job_id).await;
+    // Publish after the queue attempt so an awakened inbox sees the new eligibility.
+    // This event is the extension's declaration, including on named queue no-ops.
+    if let Err(error) = publish_typing_event(
+        &state,
+        "delivery.released",
+        &request.event.seat,
+        &request.event,
+    )
+    .await
+    {
+        return internal("pij release", error);
+    }
+    let data = match outcome {
+        Ok(pij_core::ports::ReleaseOutcome::Released { msg_id, .. }) => serde_json::json!({
+            "msg_id": msg_id, "released": true,
+        }),
+        Ok(pij_core::ports::ReleaseOutcome::NotDeferred) => serde_json::json!({
+            "msg_id": request.event.msg_id, "released": false, "noop": true, "reason": "not-deferred",
+        }),
+        Ok(pij_core::ports::ReleaseOutcome::NotLive { reason }) => serde_json::json!({
+            "msg_id": request.event.msg_id, "released": false, "noop": true, "reason": reason,
+        }),
+        Err(error) => return internal("pij release", error),
+    };
+    envelope(StatusCode::OK, &Envelope::ok("pij release", data))
 }
 
 #[derive(serde::Serialize)]
@@ -1415,14 +1641,39 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
         Ok(record) => record.and_then(|record| record.note),
         Err(error) => return internal("pij state", error),
     };
+    let mut projection = state_card(seat, liveness, &state.machine_alias, card, state_note);
+    projection.card.held = match active_holds(&state, &id).await {
+        Ok(holds) => holds,
+        Err(error) => return internal("pij state", error),
+    };
 
-    envelope(
-        StatusCode::OK,
-        &Envelope::ok(
-            "pij state",
-            state_card(seat, liveness, &state.machine_alias, card, state_note),
-        ),
-    )
+    envelope(StatusCode::OK, &Envelope::ok("pij state", projection))
+}
+
+async fn active_holds(state: &AppState, seat: &SeatId) -> Result<Vec<HeldEvent>> {
+    let mut holds = BTreeMap::new();
+    for event in state.services.spine.tail(Some(seat), Seq(0)).await? {
+        match event.kind.as_str() {
+            "delivery.held" => {
+                let held: HeldEvent =
+                    serde_json::from_str(&event.payload).map_err(|error| PijError::Adapter {
+                        adapter: "daemon/http".to_string(),
+                        message: format!("decode held event: {error}"),
+                    })?;
+                holds.insert(held.msg_id.clone(), held);
+            }
+            "delivery.released" => {
+                let released: ReleasedEvent =
+                    serde_json::from_str(&event.payload).map_err(|error| PijError::Adapter {
+                        adapter: "daemon/http".to_string(),
+                        message: format!("decode released event: {error}"),
+                    })?;
+                holds.remove(&released.msg_id);
+            }
+            _ => {}
+        }
+    }
+    Ok(holds.into_values().collect())
 }
 
 #[derive(Serialize)]
@@ -1489,6 +1740,7 @@ fn state_card(
                 .map(|seq| seq.0),
             status_stale: card.as_ref().map(|status| status.stale),
             state_note,
+            held: Vec::new(),
             unsupported: unsupported_state_fields(),
         },
     }

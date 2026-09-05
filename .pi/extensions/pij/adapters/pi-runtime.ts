@@ -25,17 +25,35 @@ export interface CommandControl {
 	reload(): void;
 }
 
+type RuntimeContext = Pick<ExtensionContext, "isIdle" | "compact"> & {
+	readonly ui: Pick<ExtensionContext["ui"], "onTerminalInput" | "setStatus">;
+};
+
 export class PiRuntimeAdapter implements PiRuntimePort {
 	constructor(
-		private readonly pi: ExtensionAPI,
-		private readonly ctx: ExtensionContext,
+		private readonly pi: Pick<ExtensionAPI, "sendUserMessage">,
+		private readonly ctx: RuntimeContext,
 		/** Reads the currently-armed command control, or undefined if no `/pij`
 		 *  invocation has captured one yet (or it was consumed by a prior op). */
 		private readonly controlRef: () => CommandControl | undefined = () => undefined,
+		private readonly clock: () => number = () => Date.now(),
 	) {}
 
 	isIdle(): boolean {
 		return this.ctx.isIdle();
+	}
+
+	/** Public pi/OMP UI hook. All terminal keys count, including cursor/menu
+	 * keys. inject/setEditorText never enter this path: no suppression timer. */
+	onEditorChange(cb: (at: number) => void): () => void {
+		return this.ctx.ui.onTerminalInput(() => {
+			cb(this.clock());
+			return undefined;
+		});
+	}
+
+	setStatus(text: string | undefined): void {
+		this.ctx.ui.setStatus("pij-held", text);
 	}
 
 	inject(text: string, mode: "immediate" | "steer"): void {
