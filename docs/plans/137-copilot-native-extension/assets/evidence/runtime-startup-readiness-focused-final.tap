@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: startup readiness waits over real HTTP without claims and requires a fresh pre-intent observation
+ok 1 - startup readiness waits over real HTTP without claims and requires a fresh pre-intent observation
+  ---
+  duration_ms: 30.569334
+  type: 'test'
+  ...
+# Subtest: startup readiness accepts recent edit availability but a fresh observation still holds delivery
+ok 2 - startup readiness accepts recent edit availability but a fresh observation still holds delivery
+  ---
+  duration_ms: 7.684958
+  type: 'test'
+  ...
+# Subtest: startup readiness accepts semantic Hold availability but a fresh observation still holds delivery
+ok 3 - startup readiness accepts semantic Hold availability but a fresh observation still holds delivery
+  ---
+  duration_ms: 3.843041
+  type: 'test'
+  ...
+# Subtest: startup readiness quiet observation cannot authorize an unavailable fresh pre-intent gate
+ok 4 - startup readiness quiet observation cannot authorize an unavailable fresh pre-intent gate
+  ---
+  duration_ms: 3.2725
+  type: 'test'
+  ...
+# Subtest: startup readiness rechecks after auth reconnect without registration churn while unavailable
+ok 5 - startup readiness rechecks after auth reconnect without registration churn while unavailable
+  ---
+  duration_ms: 7.197917
+  type: 'test'
+  ...
+# Subtest: startup readiness rechecks after transport reconnect without registration churn while unavailable
+ok 6 - startup readiness rechecks after transport reconnect without registration churn while unavailable
+  ---
+  duration_ms: 5.952375
+  type: 'test'
+  ...
+# Subtest: startup readiness waits before loading recovered acceptance but never waits for quiet or reinjects it
+ok 7 - startup readiness waits before loading recovered acceptance but never waits for quiet or reinjects it
+  ---
+  duration_ms: 0.453542
+  type: 'test'
+  ...
+# Subtest: startup readiness shutdown cancels uncooperative snapshot and ignores late observed resolution
+ok 8 - startup readiness shutdown cancels uncooperative snapshot and ignores late observed resolution
+  ---
+  duration_ms: 0.423542
+  type: 'test'
+  ...
+# Subtest: startup readiness shutdown cancels uncooperative poll delay and ignores late observed resolution
+ok 9 - startup readiness shutdown cancels uncooperative poll delay and ignores late observed resolution
+  ---
+  duration_ms: 0.278834
+  type: 'test'
+  ...
+# Subtest: startup readiness malformed actual HTTP snapshot stops explicitly without retry or claim
+ok 10 - startup readiness malformed actual HTTP snapshot stops explicitly without retry or claim
+  ---
+  duration_ms: 2.86825
+  type: 'test'
+  ...
+# Subtest: startup readiness forged actual HTTP snapshot stops explicitly without retry or claim
+ok 11 - startup readiness forged actual HTTP snapshot stops explicitly without retry or claim
+  ---
+  duration_ms: 2.482667
+  type: 'test'
+  ...
+# Subtest: startup readiness diagnostic says waiting and retrying without hiding later invalidity
+ok 12 - startup readiness diagnostic says waiting and retrying without hiding later invalidity
+  ---
+  duration_ms: 0.308416
+  type: 'test'
+  ...
+# Subtest: startup readiness diagnostic says waiting and retrying without hiding later invalidity after reconnect
+ok 13 - startup readiness diagnostic says waiting and retrying without hiding later invalidity after reconnect
+  ---
+  duration_ms: 0.092667
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 118.567834
