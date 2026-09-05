@@ -26,7 +26,7 @@ use pij_core::error::{PijError, Result};
 pub type StorePool = Pool<Sqlite>;
 
 /// The schema version this binary speaks.
-pub const SCHEMA_VERSION: u32 = 12;
+pub const SCHEMA_VERSION: u32 = 13;
 
 /// The embedded migration set. Compiled in, so a binary always carries the
 /// schema it expects rather than trusting a directory to be present.
@@ -55,8 +55,9 @@ pub async fn open(path: &str) -> Result<Pool<Sqlite>> {
     .foreign_keys(true);
 
     let pool = SqlitePoolOptions::new()
-        // Single writer at the store level: SQLite serialises writers anyway,
-        // and one connection makes that fact explicit rather than emergent.
+        // Do not warm up siblings against the old schema: migration pins the
+        // first connection before runtime readers can grow the pool.
+        .min_connections(0)
         .max_connections(if path.is_empty() { 1 } else { 4 })
         .connect_with(options)
         .await
@@ -81,7 +82,22 @@ pub async fn open(path: &str) -> Result<Pool<Sqlite>> {
 /// the migration is a no-op the second time, so `user_version` stayed 0 and every
 /// command afterwards refused a perfectly current store.)
 async fn migrate(pool: &Pool<Sqlite>, path: &str) -> Result<()> {
-    let found = schema_version(pool).await?;
+    // Keep bootstrap on one connection until every schema change is committed.
+    // Releasing and reacquiring between these steps can open a sibling with
+    // the old schema cached; SQLite then reprepares SELECT * during stepping,
+    // after sqlx has already captured its obsolete column-name metadata.
+    let mut connection = pool.acquire().await.map_err(|error| PijError::Adapter {
+        adapter: "store".to_string(),
+        message: format!("could not acquire the migration connection: {error}"),
+    })?;
+    let found: i64 = sqlx::query_scalar("PRAGMA user_version")
+        .fetch_one(&mut *connection)
+        .await
+        .map_err(|error| PijError::Adapter {
+            adapter: "store".to_string(),
+            message: format!("could not read the schema version: {error}"),
+        })?;
+    let found = found.max(0) as u32;
 
     if found > SCHEMA_VERSION {
         return Err(PijError::StoreSchemaStale {
@@ -97,7 +113,7 @@ async fn migrate(pool: &Pool<Sqlite>, path: &str) -> Result<()> {
     }
 
     MIGRATIONS
-        .run(pool)
+        .run(&mut *connection)
         .await
         .map_err(|error| PijError::Adapter {
             adapter: "store".to_string(),
@@ -107,7 +123,7 @@ async fn migrate(pool: &Pool<Sqlite>, path: &str) -> Result<()> {
     // `PRAGMA user_version` takes no bind parameters; the value is a compile-time
     // constant of this binary, never caller input.
     sqlx::query(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
-        .execute(pool)
+        .execute(&mut *connection)
         .await
         .map_err(|error| PijError::Adapter {
             adapter: "store".to_string(),

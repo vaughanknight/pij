@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
 	classifyRsResponse,
+	copilotControlRefusal,
 	decidePreCall,
 	describeOutcome,
 	findRoute,
@@ -26,6 +27,22 @@ const ROW: RsRouteRow = {
 
 const pre = (over: Partial<Parameters<typeof decidePreCall>[0]> = {}) =>
 	decidePreCall({ verb: "adopt", force: undefined, addr: ADDR, rsLive: true, ...over });
+
+describe("Copilot native control boundary", () => {
+	it.each(["compact", "new", "reload"])("refuses programmatic %s only for Copilot", (command) => {
+		expect(copilotControlRefusal("copilot", command)).toMatch(
+			/unsupported.*No legacy or tmux fallback/,
+		);
+		for (const harness of ["pi", "omp", "claude", "codex", undefined]) {
+			expect(copilotControlRefusal(harness, command)).toBeUndefined();
+		}
+	});
+
+	it("does not invent a protocol for bodies or unknown controls", () => {
+		expect(copilotControlRefusal("copilot", "hello")).toBeUndefined();
+		expect(copilotControlRefusal("copilot", "compact with instructions")).toBeUndefined();
+	});
+});
 
 describe("route table is data", () => {
 	it("routes a verb only when the table lists it", () => {

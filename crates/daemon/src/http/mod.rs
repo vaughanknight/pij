@@ -62,6 +62,7 @@ pub(crate) struct AppState {
     machine_alias: String,
     spawn_lock: Arc<tokio::sync::Mutex<()>>,
     federation: Option<Arc<FederationService>>,
+    registration: RegistrationService,
 }
 
 /// HTTP configuration supplied by the daemon composition root.
@@ -244,12 +245,20 @@ fn router_with_optional_federation(
     config: HttpConfig,
     federation: Option<Arc<FederationService>>,
 ) -> Router {
+    let registration = RegistrationService::new(
+        Arc::clone(&services.registry),
+        Arc::clone(&services.liveness),
+        Arc::clone(&services.event_bus),
+        pij_harnesses::claude_homes(),
+    )
+    .with_native_lock(services.delivery.native_lock());
     let state = AppState {
         services,
         auth: AuthRing::new(config.local_key, config.peer_keys),
         machine_alias: config.machine_alias,
         spawn_lock: Arc::new(tokio::sync::Mutex::new(())),
         federation,
+        registration,
     };
     let mut router = Router::new();
     for endpoint in Endpoint::ALL {
@@ -373,22 +382,29 @@ struct RegistrationRequest {
         alias = "harnessSession"
     )]
     harness_session: Option<String>,
+    #[serde(default)]
+    native_extension_delivery: bool,
 }
 
 async fn register(
     State(state): State<AppState>,
     Json(request): Json<RegistrationRequest>,
 ) -> Response {
-    let registration = RegistrationService::new(
-        Arc::clone(&state.services.registry),
-        Arc::clone(&state.services.liveness),
-        Arc::clone(&state.services.event_bus),
-        pij_harnesses::claude_homes(),
-    );
-    match registration
-        .register_with_harness_session(request.claim, request.harness_session)
-        .await
-    {
+    let registration = &state.registration;
+    let registered = if request.native_extension_delivery {
+        registration
+            .register_native(
+                request.claim,
+                request.harness_session,
+                state.services.tmux.as_ref(),
+            )
+            .await
+    } else {
+        registration
+            .register_with_harness_session(request.claim, request.harness_session)
+            .await
+    };
+    match registered {
         Ok(descriptor) => {
             let meta = descriptor.pane.is_none().then(|| {
                 format!(
@@ -639,29 +655,6 @@ pub(crate) async fn launch_seat(
         None => return refused(command_name, "revive requires an existing seat id"),
     };
 
-    let copilot_rpc_port_intent = if request.harness == Harness::Copilot {
-        let mut unavailable = displaced
-            .as_ref()
-            .and_then(|seat| seat.rpc_port_intent)
-            .into_iter()
-            .collect::<BTreeSet<_>>();
-        let seats = match state.services.registry.list(SeatFilter::default()).await {
-            Ok(seats) => seats,
-            Err(error) => return internal(command_name, error),
-        };
-        unavailable.extend(
-            seats
-                .into_iter()
-                .filter(|seat| seat.tombstoned_at.is_none())
-                .filter_map(|seat| seat.rpc_port_intent),
-        );
-        match state.services.rpc_ports.allocate(&unavailable).await {
-            Ok(port) => Some(port),
-            Err(error) => return internal(command_name, error),
-        }
-    } else {
-        None
-    };
     let plan = match build_spawn_plan(SpawnPlanInput {
         seat_id: seat_id.clone(),
         spawn_id: spawn_id.clone(),
@@ -671,7 +664,6 @@ pub(crate) async fn launch_seat(
         resolved_provider: None,
         effort: request.effort,
         accept_inbound: request.accept_inbound,
-        copilot_rpc_port_intent,
     }) {
         Ok(plan) => plan,
         Err(error) => return refused(command_name, error),
@@ -729,7 +721,6 @@ pub(crate) async fn launch_seat(
     descriptor.pane = Some(pane.id.clone());
     descriptor.parent = request.parent;
     descriptor.cross_session_inbound_accept = Some(plan.cross_session_inbound_accept);
-    descriptor.rpc_port_intent = plan.rpc_port_intent;
     descriptor.spawn_id = Some(spawn_id);
     descriptor.model = plan.model;
     descriptor.provider = plan.provider;
@@ -1035,7 +1026,30 @@ fn last_lines(value: &str, count: usize) -> String {
     lines[lines.len().saturating_sub(count)..].join("\n")
 }
 
-async fn send(State(state): State<AppState>, Json(request): Json<SendRequest>) -> Response {
+#[derive(Deserialize)]
+struct SendBodyRequest {
+    #[serde(flatten)]
+    message: SendRequest,
+    #[serde(default)]
+    command: Option<String>,
+}
+
+async fn send(State(state): State<AppState>, Json(request): Json<SendBodyRequest>) -> Response {
+    // This is a body-messaging endpoint, not a control protocol. Do not silently
+    // drop a Copilot control field and enqueue its empty body as if it succeeded.
+    if request.command.is_some() && request.message.to.machine.is_none() {
+        match state.services.registry.get(&request.message.to.seat).await {
+            Ok(Some(seat)) if seat.harness == Harness::Copilot => {
+                return refused(
+                    "pij send",
+                    "Copilot programmatic controls are unsupported; use native user controls; no legacy or tmux fallback",
+                );
+            }
+            Err(error) => return internal("pij send", error),
+            _ => {}
+        }
+    }
+    let request = request.message;
     if request.to.machine.is_some() {
         let Some(federation) = state.federation.as_ref() else {
             return refused(
@@ -1108,23 +1122,51 @@ struct InboxQuery {
     wait: bool,
     #[serde(default)]
     peek: bool,
+    native_session: Option<String>,
+    pid: Option<u32>,
+    proc_start: Option<u64>,
 }
 
 /// Read one inbox message. The default path claims it for explicit client ack;
 /// `peek=true` is observation-only and never changes queue state.
 async fn inbox(State(state): State<AppState>, Query(query): Query<InboxQuery>) -> Response {
-    let result = if query.peek {
-        state.services.delivery.peek_inbox(&query.seat).await
-    } else {
-        state
-            .services
-            .delivery
-            .claim_inbox(&query.seat, query.wait)
-            .await
-    };
-    match result {
-        Ok(claims) => envelope(StatusCode::OK, &Envelope::ok("pij inbox", claims)),
-        Err(error) => internal("pij inbox", error),
+    if query.peek {
+        return match state.services.delivery.peek_inbox(&query.seat).await {
+            Ok(claims) => envelope(StatusCode::OK, &Envelope::ok("pij inbox", claims)),
+            Err(error) => inbox_failure(error),
+        };
+    }
+    match state
+        .services
+        .delivery
+        .claim_native_inbox(
+            &query.seat,
+            query.wait,
+            &crate::delivery::NativeInboxIdentity {
+                native_session: query.native_session,
+                pid: query.pid,
+                proc_start: query.proc_start,
+            },
+        )
+        .await
+    {
+        Ok(page) => {
+            let mut answer = Envelope::ok("pij inbox", page.claims);
+            answer.meta = page
+                .held_reason
+                .map(|reason| format!("native-consumer-held:{reason}"));
+            envelope(StatusCode::OK, &answer)
+        }
+        Err(error) => inbox_failure(error),
+    }
+}
+
+fn inbox_failure(error: PijError) -> Response {
+    match &error {
+        PijError::Adapter { adapter, .. } if adapter == "daemon/native-inbox" => {
+            refused("pij inbox", error)
+        }
+        _ => internal("pij inbox", error),
     }
 }
 
@@ -1149,11 +1191,11 @@ async fn ack_inbox(
     let acknowledged = match state
         .services
         .delivery
-        .acknowledge_inbox(request.job_id)
+        .acknowledge_inbox(&request.seat, request.job_id, &request.native)
         .await
     {
         Ok(acknowledged) => acknowledged,
-        Err(error) => return internal("pij inbox", error),
+        Err(error) => return inbox_failure(error),
     };
     let payload = match serde_json::to_string(&InboxAckAudit {
         job_id: request.job_id,
@@ -1930,6 +1972,8 @@ pub(crate) fn envelope<T: serde::Serialize>(status: StatusCode, body: &Envelope<
 
 #[cfg(test)]
 mod identity_tests;
+#[cfg(test)]
+mod native_tests;
 #[cfg(test)]
 mod tests;
 

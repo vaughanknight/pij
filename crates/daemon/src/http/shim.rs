@@ -388,7 +388,7 @@ pub(crate) async fn shim_inbox(State(state): State<AppState>, body: axum::body::
             axum::http::StatusCode::OK,
             &pij_core::model::Envelope::ok(INBOX, claims),
         ),
-        Err(error) => internal(INBOX, error),
+        Err(error) => super::inbox_failure(error),
     }
 }
 
@@ -409,12 +409,9 @@ pub(crate) async fn shim_inbox(State(state): State<AppState>, body: axum::body::
 /// already ignores its `seat` field for attribution — it keys on the job's
 /// serial key — so nothing is weakened by not sending one.)
 ///
-/// KNOWN RESIDUAL, stated rather than hidden: deriving the reader proves the
-/// CALLER is a real live seat on its pane; it does not prove this job was
-/// claimed by that seat, because the ack path has no queue read to check it
-/// against. That is no weaker than the existing endpoint, which asserts a seat
-/// and then ignores it — but it is not a proof either, and calling it one would
-/// be the kind of claim this plan exists to stop making.
+/// Copilot requires its native tuple at the service boundary. This legacy shim
+/// cannot supply one, so neither claim nor ack may retire native work. Other
+/// harnesses retain machine-grade acknowledgement with queue-owned attribution.
 pub(crate) async fn shim_inbox_ack(
     State(state): State<AppState>,
     body: axum::body::Bytes,
@@ -425,20 +422,25 @@ pub(crate) async fn shim_inbox_ack(
     };
     // The reader is derived BEFORE the ack, so an unresolvable caller cannot
     // retire another seat's message.
-    if let Subject::Refusal(response) = subject(&state, INBOX, request.caller.as_ref()).await {
-        return response;
-    }
+    let reader = match subject(&state, INBOX, request.caller.as_ref()).await {
+        Subject::Seat(reader) => reader,
+        Subject::Refusal(response) => return response,
+    };
     match state
         .services
         .delivery
-        .acknowledge_inbox(request.job_id)
+        .acknowledge_inbox(
+            &reader,
+            request.job_id,
+            &crate::delivery::NativeInboxIdentity::default(),
+        )
         .await
     {
         Ok(acknowledged) => super::envelope(
             axum::http::StatusCode::OK,
             &pij_core::model::Envelope::ok(INBOX, acknowledged.origin),
         ),
-        Err(error) => internal(INBOX, error),
+        Err(error) => super::inbox_failure(error),
     }
 }
 

@@ -339,6 +339,34 @@ impl Queue for SqliteQueue {
         Ok(Some((JobId(id as u64), job)))
     }
 
+    async fn claimed_delivery(&self, job: JobId) -> Result<Option<Job>> {
+        require_current_schema(&self.pool).await?;
+        let Ok(id) = i64::try_from(job.0) else {
+            return Ok(None);
+        };
+        let row = sqlx::query(
+            "SELECT kind, serial_key, payload, dedupe_key, attempt FROM jobs \
+             WHERE id = ?1 AND state = 'running' AND kind = 'delivery:' || serial_key",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(adapter_error)?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        Ok(Some(Job {
+            kind: row.try_get("kind").map_err(adapter_error)?,
+            serial_key: row.try_get("serial_key").map_err(adapter_error)?,
+            payload: row.try_get("payload").map_err(adapter_error)?,
+            dedupe_key: row.try_get("dedupe_key").map_err(adapter_error)?,
+            attempt: row
+                .try_get::<i64, _>("attempt")
+                .map_err(adapter_error)?
+                .max(0) as u32,
+        }))
+    }
+
     /// R4-AMEND-1: pending again, counted, and not before `delay` has passed —
     /// all in ONE transaction, because the whole point is that no crash window
     /// exists between "this attempt failed" and "it will be tried again".

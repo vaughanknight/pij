@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pij_core::delivery::{
     DeliveryDeferralReason, DeliveryRoute, DeliveryRung, MAX_TYPED_FRAME_BYTES, QueueReason,
@@ -12,7 +12,8 @@ use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::framing::frame_message;
 use pij_core::model::{
-    DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, Receipt, SeatId,
+    DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, Receipt,
+    SeatDescriptor, SeatId, SemanticState,
 };
 use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, Transport};
 use pij_harnesses::{InteractionGate, StagedSubmission};
@@ -31,14 +32,62 @@ const OUTCOME_EVENT_KIND: &str = "delivery.outcome";
 /// message had been delivered to it without ever being able to read it.
 const PUSHED_EVENT_KIND: &str = "message.pushed";
 
-/// One claimed inbox row. The client must acknowledge `job_id` only after it
-/// has received and decoded `message`.
+/// One claimed inbox row. Native clients acknowledge only after SDK acceptance;
+/// other readers acknowledge after decoding. Neither is evidence of model completion.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InboxClaim {
     /// Queue identity used by the explicit acknowledgement step.
     pub job_id: JobId,
     /// Message body claimed for the recipient.
     pub message: Msg,
+    /// Echo of the native incarnation validated at handoff; absent on legacy/peek rows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_consumer: Option<NativeInboxIdentity>,
+}
+
+/// Runtime identity supplied on native Copilot claims and acknowledgements.
+/// Optional wire fields preserve existing non-Copilot clients; Copilot requires all three.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeInboxIdentity {
+    /// Native session supplied by the attached Copilot runtime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_session: Option<String>,
+    /// Actual Copilot host PID, never the extension child or pane shell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
+    /// Observed start stamp of that host process.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proc_start: Option<u64>,
+}
+
+impl NativeInboxIdentity {
+    fn supplied(&self) -> bool {
+        self.native_session.is_some() || self.pid.is_some() || self.proc_start.is_some()
+    }
+
+    fn matches(&self, seat: &SeatDescriptor) -> bool {
+        seat.proc.is_some_and(|identity| {
+            self.pid == Some(identity.pid) && self.proc_start == Some(identity.proc_start)
+        }) && self.native_session.as_deref().is_some_and(|session| {
+            !session.is_empty() && seat.harness_session.as_deref() == Some(session)
+        })
+    }
+}
+
+fn native_refusal(reason: impl Into<String>) -> PijError {
+    PijError::Adapter {
+        adapter: "daemon/native-inbox".to_string(),
+        message: reason.into(),
+    }
+}
+
+/// Claims plus the exact held verdict, so HTTP does not re-observe mutable consent.
+#[derive(Debug, Default)]
+pub struct NativeInboxPage {
+    /// Zero or one durable claims.
+    pub claims: Vec<InboxClaim>,
+    /// Stable consent reason when the native consumer must retry with backoff.
+    pub held_reason: Option<String>,
 }
 
 type Clock = dyn Fn() -> Result<u64> + Send + Sync;
@@ -69,6 +118,7 @@ pub struct DeliveryService {
     id_prefix: u64,
     next_id: AtomicU64,
     clock: Arc<Clock>,
+    native_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl DeliveryService {
@@ -118,7 +168,12 @@ impl DeliveryService {
             id_prefix: sources.id_prefix,
             next_id: AtomicU64::new(0),
             clock: sources.clock,
+            native_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
+    }
+
+    pub(crate) fn native_lock(&self) -> Arc<tokio::sync::Mutex<()>> {
+        Arc::clone(&self.native_lock)
     }
 
     fn queued_outcome(reason: Option<&str>, not_before_ms: u64) -> DeliveryOutcome {
@@ -213,6 +268,22 @@ impl DeliveryService {
                 }
             }
         };
+        if recipient.harness == Harness::Copilot
+            && recipient.tombstoned_at.is_none()
+            && msg.command.is_some()
+        {
+            let receipt = Receipt {
+                msg_id: msg.msg_id,
+                outcome: DeliveryOutcome::Refused {
+                    reason:
+                        "Copilot programmatic controls are unsupported; use native user controls"
+                            .into(),
+                },
+                at,
+            };
+            self.publish_outcome(&to, &receipt).await?;
+            return Ok(receipt);
+        }
         let mut publish_to_recipient = true;
         let outcome = match selected {
             DeliveryRoute::Tombstoned { reason } => {
@@ -231,7 +302,11 @@ impl DeliveryService {
             // A duplicate is a duplicate. Where it entered from does not change
             // whether the recipient has already been given it.
             DeliveryRoute::Queue(reason) => {
-                match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
+                match self
+                    .queue
+                    .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
+                    .await?
+                {
                     DeliveryEnqueue::Queued { not_before_ms, .. } => {
                         Self::queued_outcome(Some(reason.as_str()), not_before_ms)
                     }
@@ -242,11 +317,12 @@ impl DeliveryService {
                 }
             }
             DeliveryRoute::Transport => {
-                // Omp/Pi consume the durable row through `message.pushed`, then
-                // claim and acknowledge it through the inbox API. That extension
-                // stream is not a `Transport`; routing here avoids both composer
-                // gates and the pane-oriented rung selector.
-                let extension_stream = matches!(recipient.harness, Harness::Omp | Harness::Pi);
+                // Extension consumers exclusively own these durable rows. Copilot
+                // additionally checks native incarnation and human consent at claim.
+                let extension_stream = matches!(
+                    recipient.harness,
+                    Harness::Omp | Harness::Pi | Harness::Copilot
+                );
                 let (rung, interaction_reason, draft_sha) = if extension_stream {
                     (DeliveryRung::Observe, None, None)
                 } else {
@@ -304,7 +380,11 @@ impl DeliveryService {
                             None => match self.transport.deliver(&recipient, &msg).await {
                                 Ok(DeliveryOutcome::Queued { reason, .. }) => {
                                     self.queue.forget_delivered(&to, &msg.msg_id).await?;
-                                    match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
+                                    match self
+                                        .queue
+                                        .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
+                                        .await?
+                                    {
                                         DeliveryEnqueue::Queued { not_before_ms, .. } => {
                                             Self::queued_outcome(
                                                 reason.as_deref().or(Some("unreachable")),
@@ -333,7 +413,11 @@ impl DeliveryService {
                         let framed =
                             frame_message(&msg.from, msg.from_machine.as_deref(), &msg.body);
                         if framed.len() > MAX_TYPED_FRAME_BYTES {
-                            match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
+                            match self
+                                .queue
+                                .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
+                                .await?
+                            {
                                 DeliveryEnqueue::Queued { not_before_ms, .. } => {
                                     Self::queued_outcome(Some("frame-too-large"), not_before_ms)
                                 }
@@ -364,7 +448,7 @@ impl DeliveryService {
                                         self.queue.forget_delivered(&to, &msg.msg_id).await?;
                                         match self
                                             .queue
-                                            .enqueue_delivery(delivery_job(&msg)?)
+                                            .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
                                             .await?
                                         {
                                             DeliveryEnqueue::Queued { not_before_ms, .. } => {
@@ -392,10 +476,22 @@ impl DeliveryService {
                     | DeliveryRung::Queue
                     | DeliveryRung::Pty
                     | DeliveryRung::ControlBodyPull => {
-                        match self.queue.enqueue_delivery(delivery_job(&msg)?).await? {
+                        match self
+                            .queue
+                            .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
+                            .await?
+                        {
                             DeliveryEnqueue::Queued { not_before_ms, .. } => {
                                 let reason = if extension_stream {
-                                    Some("extension-stream")
+                                    Some(
+                                        if recipient.harness == Harness::Copilot
+                                            && !recipient.native_extension_delivery
+                                        {
+                                            "native-extension-unavailable"
+                                        } else {
+                                            "extension-stream"
+                                        },
+                                    )
                                 } else {
                                     interaction_reason.map(DeliveryDeferralReason::as_str).or(
                                         match rung {
@@ -460,19 +556,131 @@ impl DeliveryService {
     /// # Errors
     /// Queue failures or a corrupt/misdirected delivery payload.
     pub async fn claim_inbox(&self, seat: &SeatId, wait: bool) -> Result<Vec<InboxClaim>> {
-        let kind = delivery_kind(seat);
-        let kinds = [kind];
+        Ok(self
+            .claim_inbox_inner(seat, wait, &NativeInboxIdentity::default())
+            .await?
+            .claims)
+    }
+
+    /// Claim native work only for the current attested incarnation, with fresh consent.
+    pub async fn claim_native_inbox(
+        &self,
+        seat: &SeatId,
+        wait: bool,
+        identity: &NativeInboxIdentity,
+    ) -> Result<NativeInboxPage> {
+        self.claim_inbox_inner(seat, wait, identity).await
+    }
+
+    async fn native_recipient(
+        &self,
+        seat: &SeatId,
+        identity: &NativeInboxIdentity,
+    ) -> Result<Option<SeatDescriptor>> {
+        let recipient = self.registry.get(seat).await?;
+        match recipient {
+            Some(recipient) if recipient.harness == Harness::Copilot => {
+                if recipient.tombstoned_at.is_some() || !recipient.native_extension_delivery {
+                    return Err(native_refusal(
+                        "native-extension-unavailable: Copilot requires current native registration",
+                    ));
+                }
+                if !identity.matches(&recipient) {
+                    return Err(native_refusal(
+                        "native incarnation mismatch: native_session, pid and proc_start must match the current Copilot seat",
+                    ));
+                }
+                Ok(Some(recipient))
+            }
+            _ if identity.supplied() => Err(native_refusal(
+                "native incarnation no longer belongs to a current Copilot seat",
+            )),
+            _ => Ok(None),
+        }
+    }
+
+    async fn native_claim_permitted(
+        &self,
+        seat: &SeatId,
+        identity: &NativeInboxIdentity,
+    ) -> Result<Option<String>> {
+        let Some(recipient) = self.native_recipient(seat, identity).await? else {
+            return Ok(None);
+        };
+        if recipient.semantic_state == Some(SemanticState::Hold) {
+            return Ok(Some("semantic-hold".into()));
+        }
+        if let Some(pane) = recipient.pane.as_deref() {
+            let verdict = match self.interaction.fresh_injection_verdict(pane).await {
+                Ok(verdict) => verdict,
+                Err(error) => return Ok(Some(format!("sensor-unavailable:{error}"))),
+            };
+            // Failed recognition cannot grant consent even if an uncertainty timer decayed.
+            if !verdict.permitted || verdict.reason == Some(DeliveryDeferralReason::Unrecognized) {
+                return Ok(Some(
+                    verdict
+                        .reason
+                        .map_or("human-consent", DeliveryDeferralReason::as_str)
+                        .into(),
+                ));
+            }
+        }
+        self.native_recipient(seat, identity).await?;
+        Ok(None)
+    }
+
+    async fn claim_inbox_inner(
+        &self,
+        seat: &SeatId,
+        wait: bool,
+        identity: &NativeInboxIdentity,
+    ) -> Result<NativeInboxPage> {
+        let kinds = [delivery_kind(seat)];
         let mut wake = wait.then(|| {
             self.event_bus
                 .subscribe_live(EventFilter::kinds([OUTCOME_EVENT_KIND]).for_seat(seat.clone()))
         });
-
         loop {
-            if let Some((job_id, job)) = self.queue.claim(&kinds, seat.0.as_str()).await? {
-                let message: Msg = match serde_json::from_str(&job.payload) {
-                    Ok(message) => message,
-                    Err(error) => {
-                        let reason = format!("invalid delivery payload: {error}");
+            let native_guard = self.native_lock.lock().await;
+            let native = self.native_recipient(seat, identity).await?.is_some();
+            if native && let Some(reason) = self.native_claim_permitted(seat, identity).await? {
+                return Ok(NativeInboxPage {
+                    claims: Vec::new(),
+                    held_reason: Some(reason),
+                });
+            }
+            if let Some((job_id, job)) = self.queue.claim(&kinds, seat.as_str()).await? {
+                if native {
+                    match self.native_claim_permitted(seat, identity).await {
+                        Ok(None) => {}
+                        result => {
+                            self.queue.retry(job_id, Duration::ZERO).await?;
+                            let held_reason = result?;
+                            return Ok(NativeInboxPage {
+                                claims: Vec::new(),
+                                held_reason,
+                            });
+                        }
+                    }
+                }
+                let payload = serde_json::from_str::<ClaimedPayload>(&job.payload);
+                let message = payload.as_ref().map(|payload| &payload.message);
+                let invalid = match &message {
+                    Err(error) => Some(format!("invalid delivery payload: {error}")),
+                    Ok(message) if &message.to != seat || job.serial_key != seat.as_str() => {
+                        Some(format!(
+                            "delivery kind {} contained message for {}",
+                            kinds[0], message.to
+                        ))
+                    }
+                    Ok(message) if native && message.command.is_some() => Some(
+                        "Copilot remote control is unsupported; native claim held without ack"
+                            .into(),
+                    ),
+                    _ => None,
+                };
+                if let Some(reason) = invalid {
+                    if !native {
                         self.queue
                             .ack(
                                 job_id,
@@ -481,46 +689,48 @@ impl DeliveryService {
                                 },
                             )
                             .await?;
-                        return Err(PijError::Adapter {
-                            adapter: "daemon/delivery".to_string(),
-                            message: reason,
-                        });
                     }
-                };
-                if &message.to != seat {
-                    let reason = format!(
-                        "delivery kind {} contained message for {}",
-                        kinds[0], message.to
-                    );
-                    self.queue
-                        .ack(
-                            job_id,
-                            Outcome::Failed {
-                                reason: reason.clone(),
-                            },
-                        )
-                        .await?;
                     return Err(PijError::Adapter {
-                        adapter: "daemon/delivery".to_string(),
+                        adapter: "daemon/delivery".into(),
                         message: reason,
                     });
                 }
-                // A READ is the only thing that un-parks a seat (wave-6 ruling):
-                // a new msg_id must not let a sender mint their way past a cap
-                // the human has not satisfied. Published here rather than at ack,
-                // because the seat has now been GIVEN its message — the pointer's
-                // job is done whether or not the client gets as far as acking.
+                let payload = payload.expect("validated delivery payload");
+                if native
+                    && let Some(reason) =
+                        native_target_mismatch(payload.native_target_session.as_deref(), identity)
+                {
+                    self.queue.retry(job_id, Duration::ZERO).await?;
+                    return Ok(NativeInboxPage {
+                        claims: Vec::new(),
+                        held_reason: Some(reason),
+                    });
+                }
+                let message = payload.message;
                 self.publish_pointer_unparked_if_parked(seat, 1).await?;
-                return Ok(vec![InboxClaim { job_id, message }]);
+                if native && let Err(error) = self.native_recipient(seat, identity).await {
+                    self.queue.retry(job_id, Duration::ZERO).await?;
+                    return Err(error);
+                }
+                return Ok(NativeInboxPage {
+                    claims: vec![InboxClaim {
+                        job_id,
+                        message,
+                        native_consumer: native.then(|| identity.clone()),
+                    }],
+                    held_reason: None,
+                });
             }
+            drop(native_guard);
             if !wait {
-                return Ok(Vec::new());
+                return Ok(NativeInboxPage::default());
             }
             let Some(subscription) = wake.as_mut() else {
-                return Ok(Vec::new());
+                return Ok(NativeInboxPage::default());
             };
-            if subscription.next().await.is_none() {
-                return Ok(Vec::new());
+            tokio::select! {
+                event = subscription.next() => { if event.is_none() { return Ok(NativeInboxPage::default()); } }
+                _ = tokio::time::sleep(Duration::from_millis(500)), if native => {}
             }
         }
     }
@@ -546,14 +756,59 @@ impl DeliveryService {
                 ),
             });
         }
-        Ok(vec![InboxClaim { job_id, message }])
+        Ok(vec![InboxClaim {
+            job_id,
+            message,
+            native_consumer: None,
+        }])
     }
 
     /// Record `ReaderRead` and return the authority-owned job identity committed.
     ///
     /// # Errors
     /// Queue failures or an id that is not a running delivery claim.
-    pub async fn acknowledge_inbox(&self, job_id: JobId) -> Result<DeliveryAck> {
+    pub async fn acknowledge_inbox(
+        &self,
+        seat: &SeatId,
+        job_id: JobId,
+        identity: &NativeInboxIdentity,
+    ) -> Result<DeliveryAck> {
+        let _native_guard = self.native_lock.lock().await;
+        let job = self
+            .queue
+            .claimed_delivery(job_id)
+            .await?
+            .ok_or_else(|| PijError::Adapter {
+                adapter: "daemon/delivery".into(),
+                message: format!("job {} is not a running delivery claim", job_id.0),
+            })?;
+        let recipient = SeatId::from(job.serial_key);
+        if self.native_recipient(&recipient, identity).await?.is_some() {
+            if seat != &recipient {
+                return Err(native_refusal(
+                    "native acknowledgement seat must match the claimed job recipient",
+                ));
+            }
+            let payload: ClaimedPayload = serde_json::from_str(&job.payload).map_err(|error| {
+                native_refusal(format!(
+                    "malformed native claim remains unacknowledged: {error}"
+                ))
+            })?;
+            if let Some(reason) =
+                native_target_mismatch(payload.native_target_session.as_deref(), identity)
+            {
+                return Err(native_refusal(reason));
+            }
+            let message = payload.message;
+            if message.to != recipient
+                || job.kind != delivery_kind(&recipient)
+                || message.command.is_some()
+            {
+                return Err(native_refusal(
+                    "native acknowledgement does not match a valid body claim",
+                ));
+            }
+        }
         self.queue
             .ack_delivery(job_id, DeliveryOrigin::ReaderRead)
             .await
@@ -657,8 +912,37 @@ impl DeliveryService {
     }
 }
 
-fn delivery_job(msg: &Msg) -> Result<Job> {
-    let payload = serde_json::to_string(msg).map_err(|error| PijError::Adapter {
+#[derive(Serialize)]
+struct DeliveryPayload<'a> {
+    #[serde(flatten)]
+    message: &'a Msg,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    native_target_session: Option<&'a str>,
+}
+
+#[derive(Deserialize)]
+struct ClaimedPayload {
+    #[serde(flatten)]
+    message: Msg,
+    #[serde(default)]
+    native_target_session: Option<String>,
+}
+
+fn native_target_mismatch(target: Option<&str>, identity: &NativeInboxIdentity) -> Option<String> {
+    target.filter(|target| Some(*target) != identity.native_session.as_deref()).map(|target| format!(
+        "native-target-session:{target}; resume that native session or use a new seat and intentionally reissue the message"
+    ))
+}
+
+fn delivery_job(msg: &Msg, recipient: Option<&SeatDescriptor>) -> Result<Job> {
+    let native_target_session = recipient
+        .filter(|seat| seat.harness == Harness::Copilot && seat.native_extension_delivery)
+        .and_then(|seat| seat.harness_session.as_deref());
+    let payload = serde_json::to_string(&DeliveryPayload {
+        message: msg,
+        native_target_session,
+    })
+    .map_err(|error| PijError::Adapter {
         adapter: "daemon/delivery".to_string(),
         message: format!("could not encode message {}: {error}", msg.msg_id),
     })?;
@@ -843,7 +1127,7 @@ mod tests {
             command: None,
         };
         queue
-            .enqueue(delivery_job(&msg).expect("delivery job"))
+            .enqueue(delivery_job(&msg, None).expect("delivery job"))
             .await
             .expect("enqueue mail");
         let transport = Arc::new(FakeTransport::unreachable());
@@ -891,7 +1175,7 @@ mod tests {
         };
         fixture
             .queue
-            .enqueue(delivery_job(&message).expect("delivery job"))
+            .enqueue(delivery_job(&message, None).expect("delivery job"))
             .await
             .expect("enqueue message");
 
@@ -919,7 +1203,7 @@ mod tests {
             msg_id: "peek-2".to_string(),
             ..message
         };
-        let mut wrong_kind = delivery_job(&misdirected).expect("delivery job");
+        let mut wrong_kind = delivery_job(&misdirected, None).expect("delivery job");
         wrong_kind.kind = delivery_kind(&wrong_recipient);
         fixture
             .queue
@@ -1158,7 +1442,7 @@ mod tests {
         };
         let DeliveryEnqueue::Queued { job_id, .. } = fixture
             .queue
-            .enqueue_delivery(delivery_job(&msg).expect("delivery job"))
+            .enqueue_delivery(delivery_job(&msg, None).expect("delivery job"))
             .await
             .expect("pre-enqueue delivery")
         else {
@@ -1663,7 +1947,7 @@ mod tests {
         assert_eq!(claimed.len(), 1);
         fixture
             .service
-            .acknowledge_inbox(claimed[0].job_id)
+            .acknowledge_inbox(&msg.to, claimed[0].job_id, &Default::default())
             .await
             .expect("recipient acknowledges decoded page");
 
@@ -1845,7 +2129,7 @@ mod tests {
 
         fixture
             .service
-            .acknowledge_inbox(first[0].job_id)
+            .acknowledge_inbox(&seat, first[0].job_id, &Default::default())
             .await
             .expect("ack first");
         let second = fixture
@@ -1993,5 +2277,164 @@ mod tests {
             "a claim whose delivery failed must NOT suppress the retry of a message nobody got"
         );
         assert_eq!(fixture.transport.delivered().len(), 1);
+    }
+
+    fn native_seat(pane: Option<&str>) -> SeatDescriptor {
+        let mut seat = SeatDescriptor::new("pij-native", Harness::Copilot, "/abs/tree");
+        seat.proc = Some(ProcIdentity {
+            pid: 137,
+            proc_start: 1370,
+        });
+        seat.harness_session = Some("native-137".to_string());
+        seat.pane = pane.map(str::to_string);
+        seat.native_extension_delivery = true;
+        seat
+    }
+
+    fn native_identity() -> super::NativeInboxIdentity {
+        super::NativeInboxIdentity {
+            native_session: Some("native-137".to_string()),
+            pid: Some(137),
+            proc_start: Some(1370),
+        }
+    }
+
+    #[tokio::test]
+    async fn copilot_first_arrival_is_native_only_even_without_capability() {
+        for attached in [false, true] {
+            let fixture = fixture(FakeTransport::reachable());
+            let mut seat = native_seat(Some("%137"));
+            seat.native_extension_delivery = attached;
+            register(&fixture, seat).await;
+            let receipt = fixture
+                .service
+                .send("pij-from".into(), "pij-native".into(), "native body")
+                .await
+                .expect("durably queued");
+            assert!(matches!(receipt.outcome, DeliveryOutcome::Queued { .. }));
+            assert!(
+                fixture.transport.delivered().is_empty(),
+                "no transport fallback"
+            );
+            assert!(
+                fixture.tmux.calls().is_empty(),
+                "arrival must never consult or submit tmux"
+            );
+            assert_eq!(fixture.queue.live_len(), 1);
+            fixture
+                .service
+                .claim_inbox(&"pij-native".into(), false)
+                .await
+                .expect_err("unattested caller cannot claim native work");
+        }
+    }
+
+    #[tokio::test]
+    async fn native_claim_consent_holds_then_admits_without_touching_composer() {
+        let fixture = fixture_with_gate(FakeTransport::unreachable(), typing_pane("%137"));
+        register(&fixture, native_seat(Some("%137"))).await;
+        fixture
+            .service
+            .send("pij-from".into(), "pij-native".into(), "held body")
+            .await
+            .expect("queue");
+        let identity = native_identity();
+        let seat = SeatId::from("pij-native");
+        let held = tokio::time::timeout(
+            Duration::from_millis(100),
+            fixture.service.claim_native_inbox(&seat, true, &identity),
+        )
+        .await
+        .expect("consent hold returns promptly even wait=true")
+        .expect("held");
+        assert!(held.claims.is_empty());
+        assert_eq!(held.held_reason.as_deref(), Some("human-typing"));
+        assert_eq!(fixture.queue.live_len(), 1);
+        fixture.tmux.arrange_clear_composer("%137");
+        let claimed = fixture
+            .service
+            .claim_native_inbox(&seat, false, &identity)
+            .await
+            .expect("admitted")
+            .claims;
+        assert_eq!(claimed.len(), 1);
+        assert_eq!(claimed[0].message.body, "held body");
+        assert_eq!(claimed[0].native_consumer.as_ref(), Some(&identity));
+        assert!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .all(|call| !call.starts_with("type")
+                    && !call.starts_with("stage")
+                    && !call.starts_with("commit")
+                    && !call.starts_with("send_keys"))
+        );
+    }
+
+    #[tokio::test]
+    async fn native_wait_revalidates_replacement_before_handoff() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let seat = native_seat(None);
+        register(&fixture, seat.clone()).await;
+        let identity = native_identity();
+        let service = Arc::clone(&fixture.service);
+        let waiting = tokio::spawn(async move {
+            service
+                .claim_native_inbox(&"pij-native".into(), true, &identity)
+                .await
+        });
+        tokio::task::yield_now().await;
+        let mut replacement = seat;
+        replacement.proc = Some(ProcIdentity {
+            pid: 138,
+            proc_start: 1380,
+        });
+        replacement.harness_session = Some("native-138".into());
+        fixture
+            .registry
+            .put(replacement)
+            .await
+            .expect("replacement attested");
+        fixture
+            .service
+            .send("pij-from".into(), "pij-native".into(), "new session only")
+            .await
+            .expect("queue");
+        tokio::time::timeout(Duration::from_secs(1), waiting)
+            .await
+            .expect("bounded wake")
+            .expect("task")
+            .expect_err("old tuple refused");
+        assert_eq!(
+            fixture.queue.live_len(),
+            1,
+            "old consumer did not take new work"
+        );
+    }
+
+    #[tokio::test]
+    async fn copilot_programmatic_controls_refuse_without_enqueue_or_tmux() {
+        let fixture = fixture(FakeTransport::reachable());
+        register(&fixture, native_seat(Some("%137"))).await;
+        for command in ["compact", "new", "reload"] {
+            let result = fixture
+                .service
+                .accept(Msg {
+                    from: "pij-from".into(),
+                    to: "pij-native".into(),
+                    body: String::new(),
+                    msg_id: format!("native-{command}"),
+                    from_machine: None,
+                    in_reply_to: None,
+                    command: Some(command.into()),
+                })
+                .await
+                .expect("explicit refusal receipt");
+            assert!(matches!(result.outcome, DeliveryOutcome::Refused { .. }));
+        }
+        assert_eq!(fixture.queue.live_len(), 0);
+        assert!(fixture.tmux.calls().is_empty());
+        assert!(fixture.transport.delivered().is_empty());
     }
 }

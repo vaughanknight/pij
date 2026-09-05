@@ -556,6 +556,16 @@ export const NEVER_ROUTED: readonly DenyEntry[] = [
 	},
 ];
 
+/** Native Copilot accepts message bodies, never programmatic session controls. */
+export function copilotControlRefusal(
+	harness: string | undefined,
+	command: string,
+): string | undefined {
+	if (harness !== "copilot" || (command !== "compact" && command !== "new" && command !== "reload"))
+		return undefined;
+	return `Copilot programmatic ${command} is unsupported; use Copilot's native user controls. No legacy or tmux fallback is permitted.`;
+}
+
 /** Verbs whose leaves must be ENUMERATED: an unlisted leaf does not route.
  *
  *  THE DEFAULT IS THE WHOLE POINT. While `inbox` was denied at VERB
