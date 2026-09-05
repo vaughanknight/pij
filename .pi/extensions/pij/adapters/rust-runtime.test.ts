@@ -819,6 +819,22 @@ type GraceMessage = {
 class TypingPiRuntime extends FakePiRuntime {
 	private listener: ((at: number) => void) | undefined;
 	readonly statuses: Array<string | undefined> = [];
+	readonly notices: Array<{ text: string; level?: string }> = [];
+	private busy = false;
+
+	notify(text: string, level?: "info" | "warning" | "error"): void {
+		this.notices.push({ text, level });
+	}
+
+	/** Mid-generation: injections become steer and are invisible until the step
+	 * boundary — the pathology u5 exists to make visible. */
+	setBusy(busy: boolean): void {
+		this.busy = busy;
+	}
+
+	isIdle(): boolean {
+		return !this.busy;
+	}
 
 	onEditorChange(listener: (at: number) => void): () => void {
 		this.listener = listener;
@@ -1025,6 +1041,47 @@ describe("typing grace delivery", () => {
 		vi.useRealTimers();
 	});
 
+	it("announces arrival immediately and counts what a busy seat cannot yet see", async () => {
+		const { pi, client } = await start();
+		// A seat mid-generation: delivery still happens at once, but the runtime
+		// shows a steered message only at the step boundary — minutes on a slow
+		// model. Jordan's report: "the message is there, I just cannot see it".
+		pi.setBusy(true);
+		await client.push(message("mid-generation arrival that must be announced"));
+
+		expect(
+			pi.notices.map((row) => row.text),
+			"arrival is announced on claim, before anything waits on the runtime",
+		).toEqual(["📨 pij from pij-sender: mid-generation arrival that must be announced"]);
+		expect(pi.notices.at(-1)?.level).toBe("info");
+		expect(pi.statuses.at(-1), "a steered message stays counted while unseen").toBe("📨 1 pending");
+
+		// The turn ends; the seat can see it, so the count clears on the next tick.
+		pi.setBusy(false);
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(pi.statuses.at(-1)).toBeUndefined();
+	});
+
+	it("truncates a long announcement to 80 characters", async () => {
+		const { pi, client } = await start();
+		pi.setBusy(true);
+		await client.push(message("x".repeat(200)));
+		const text = pi.notices.at(-1)?.text ?? "";
+		expect(text.startsWith("📨 pij from pij-sender: ")).toBe(true);
+		expect(text.slice("📨 pij from pij-sender: ".length)).toBe(`${"x".repeat(80)}…`);
+	});
+
+	it("counts a held message as held, never as pending twice", async () => {
+		const { pi, client } = await start();
+		pi.edit();
+		await client.push(message("held-not-double-counted"));
+		expect(pi.statuses.at(-1)).toBe("⏸ 1 held · typing");
+		expect(
+			pi.notices.map((row) => row.text),
+			"a held message is still ANNOUNCED — the human should know it arrived",
+		).toEqual(["📨 pij from pij-sender: held-not-double-counted"]);
+	});
+
 	it("holds at 59 seconds and releases at 60 with exact hold/release payloads", async () => {
 		const { pi, client } = await start();
 		pi.edit();
@@ -1164,6 +1221,10 @@ describe("typing grace delivery", () => {
 				};
 			},
 			setStatus: (_key: string, _text: string | undefined) => {},
+			// The real OMP surface (types.d.ts:163). Modelled rather than guarded:
+			// a production fallback for a missing notify would silently stop
+			// announcing arrivals on any runtime that lacks it.
+			notify: (_message: string, _type?: "info" | "warning" | "error") => {},
 			setEditorText: (text: string) => {
 				editorText = text;
 			},
