@@ -67,7 +67,10 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		},
 	});
 } else {
-	async function launch(t, { daemon = true, key = true, joinFails = false, messages = 1 } = {}) {
+	async function launch(
+		t,
+		{ daemon = true, key = true, joinFails = false, messages = 1, inboxPages = [] } = {},
+	) {
 		const home = await mkdtemp(join(tmpdir(), "pij-native-shell-"));
 		const requests = [];
 		let registered;
@@ -83,6 +86,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				requests.push({ path: request.url, body });
 				assert.equal(request.headers.authorization, "Bearer fixture-secret");
 				let data;
+				let meta;
 				if (request.url === "/v1/seats") data = { seats: [] };
 				else if (request.url === "/v1/register") {
 					registered = body;
@@ -101,26 +105,30 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 					assert.equal(query.get("native_session"), registered.harness_session);
 					assert.equal(Number(query.get("pid")), registered.pid);
 					assert.equal(Number(query.get("proc_start")), registered.proc_start);
-					data =
-						claimed >= messages
-							? []
-							: [
-									{
-										job_id: 137 + claimed,
-										message: {
-											msg_id: `shell-${137 + claimed}`,
-											from: "pij-peer",
-											to: registered.id,
-											body: "SHELL_NONCE_137",
+					if (inboxPages.length > 0) {
+						({ data, meta } = inboxPages.shift());
+					} else {
+						data =
+							claimed >= messages
+								? []
+								: [
+										{
+											job_id: 137 + claimed,
+											message: {
+												msg_id: `shell-${137 + claimed}`,
+												from: "pij-peer",
+												to: registered.id,
+												body: "SHELL_NONCE_137",
+											},
+											native_consumer: {
+												native_session: registered.harness_session,
+												pid: registered.pid,
+												proc_start: registered.proc_start,
+											},
 										},
-										native_consumer: {
-											native_session: registered.harness_session,
-											pid: registered.pid,
-											proc_start: registered.proc_start,
-										},
-									},
-								];
-					claimed++;
+									];
+						claimed++;
+					}
 				} else if (request.url === "/v1/inbox/ack") {
 					assert.deepEqual(body, {
 						seat: registered.id,
@@ -134,7 +142,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 					data = { msg_id: body.msg_id, outcome: { outcome: "queued" }, at: 137 };
 				else throw new Error(`Unexpected native endpoint ${request.url}`);
 				response.setHeader("Content-Type", "application/json");
-				response.end(JSON.stringify({ ok: true, v: 2, data }));
+				response.end(JSON.stringify({ ok: true, v: 2, data, meta }));
 			});
 			server.listen(0, "127.0.0.1");
 			await once(server, "listening");
@@ -267,6 +275,59 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 2);
 		assert.equal(f.events.filter((e) => e.kind === "native-send").length, 2);
 		assert.equal(f.events.filter((e) => e.kind === "native-completed").length, 1);
+		const exited = once(f.child, "exit");
+		f.child.stdin.end();
+		assert.equal((await exited)[0], 0);
+		assert.equal(f.stdout(), "");
+	});
+
+	test("actual HTTP target-session hold stops claims and ack with actionable native diagnostic", async (t) => {
+		const f = await launch(t, {
+			inboxPages: [
+				{
+					data: [],
+					meta: "native-consumer-held:native-target-session:original-native; resume that native session or use a new seat and intentionally reissue the message",
+				},
+			],
+		});
+		const notice = await f.waitFor("native-log");
+		assert.match(notice.message, /queued work targets another native session/);
+		assert.match(
+			notice.message,
+			/resume that native session or use a new seat and intentionally reissue/,
+		);
+		f.child.stdin.write(
+			`${JSON.stringify({ to: "pij-peer", message: "OUTGOING_WHILE_TARGET_HELD" })}\n`,
+		);
+		assert.equal((await f.waitFor("tool-result")).result.ok, true);
+		await sleep(350);
+		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 1);
+		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 0);
+		assert.equal(f.requests.filter((r) => r.path === "/v1/send").length, 1);
+		assert.equal(f.events.filter((e) => e.kind === "native-send").length, 0);
+		assert.equal(f.events.filter((e) => e.kind === "native-log").length, 1);
+		const exited = once(f.child, "exit");
+		f.child.stdin.end();
+		assert.equal((await exited)[0], 0);
+		assert.equal(f.stdout(), "");
+	});
+
+	test("actual HTTP empty page differs from consent hold and release delivers without another send", async (t) => {
+		const f = await launch(t, {
+			inboxPages: [{ data: [] }, { data: [], meta: "native-consumer-held:human-typing" }],
+		});
+		const hold = await f.waitFor("consent-held");
+		assert.equal(hold.reason, "human-typing");
+		assert.equal(hold.retryMs, 500);
+		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 2);
+		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 0);
+		assert.equal(f.events.filter((e) => e.kind === "native-send").length, 0);
+		await f.waitFor("completion-wait");
+		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 3);
+		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 1);
+		assert.equal(f.events.filter((e) => e.kind === "native-send").length, 1);
+		assert.equal(f.events.filter((e) => e.kind === "consent-held").length, 1);
+		assert.equal(f.events.filter((e) => e.kind === "native-log").length, 0);
 		const exited = once(f.child, "exit");
 		f.child.stdin.end();
 		assert.equal((await exited)[0], 0);
