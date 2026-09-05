@@ -32,7 +32,7 @@ STRIP_RE = re.compile(
     r"<(system-reminder|local-command-stdout|local-command-caveat|command-message|command-name)>.*?</\1>",
     re.S,
 )
-RELAY_RE = re.compile(r"^\s*\[pij (from|watchdog)\b")
+RELAY_RE = re.compile(r"^\s*\[pij(?:-rs)? (from|watchdog)\b")
 
 
 def sh(cmd):
