@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -786,6 +787,186 @@ test("HTTP client reloads key on every request, binds tuple, keeps bounded non-J
 			error.message.length < 5000 &&
 			!error.message.includes(key),
 	);
+});
+
+async function deadlineHttpFixture(t, handler) {
+	const requests = [];
+	const server = createServer(async (request, response) => {
+		let raw = "";
+		for await (const chunk of request) raw += chunk;
+		const entry = {
+			url: new URL(request.url, "http://localhost"),
+			authorization: request.headers.authorization,
+			body: raw ? JSON.parse(raw) : undefined,
+		};
+		requests.push(entry);
+		handler(entry, response);
+	});
+	t.after(
+		() =>
+			new Promise((resolve) => {
+				server.closeAllConnections();
+				server.close(resolve);
+			}),
+	);
+	await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+	const client = new DaemonClient({
+		addr: `127.0.0.1:${server.address().port}`,
+		stateDir: "/isolated",
+		readKey: async () => "deadline-key",
+		requestTimeoutMs: 150,
+	});
+	return { client, requests };
+}
+
+test("own inbox wait deadlines renew with bounded delay without re-registering or outage logs", async (t) => {
+	let polls = 0;
+	const { client, requests } = await deadlineHttpFixture(t, ({ url, body }, response) => {
+		if (url.pathname === "/v1/register")
+			response.end(JSON.stringify({ ok: true, v: 2, data: descriptor }));
+		else if (url.pathname === "/v1/inbox") {
+			assert.equal(url.searchParams.get("wait"), "true");
+			if (++polls === 9) response.end(JSON.stringify({ ok: true, v: 2, data: [claim] }));
+		} else if (url.pathname === "/v1/inbox/ack") {
+			assert.deepEqual(body, { ...tuple, job_id: claim.job_id });
+			response.end(JSON.stringify({ ok: true, v: 2, data: claim.job_id }));
+		} else if (url.pathname === "/v1/send")
+			response.end(JSON.stringify({ ok: true, v: 2, data: { msg_id: body.msg_id } }));
+		else assert.fail(`Unexpected request ${url.pathname}`);
+	});
+	const waits = [];
+	const f = fixture({
+		client,
+		delay: async (ms) => {
+			waits.push(ms);
+			assert.equal(f.bridge.registered, true);
+			assert.equal(f.trace.includes("send"), false);
+			if (waits.length === 4)
+				assert.equal(
+					(await f.bridge.send({ to: "pij-peer", message: "still available" })).ok,
+					true,
+				);
+		},
+	});
+	t.after(() => f.bridge.stop());
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	f.bridge.stop();
+	await run;
+	assert.deepEqual(waits, [250, 500, 1000, 2000, 4000, 5000, 5000, 5000]);
+	assert.equal(polls, 9);
+	assert.equal(requests.filter(({ url }) => url.pathname === "/v1/register").length, 1);
+	assert.equal(requests.filter(({ url }) => url.pathname === "/v1/inbox/ack").length, 1);
+	assert.equal(
+		requests.every(({ authorization }) => authorization === "Bearer deadline-key"),
+		true,
+	);
+	assert.equal(f.trace.filter((entry) => entry === "send").length, 1);
+	assert.equal(
+		f.reports.some(({ kind }) =>
+			["reconnecting", "connection-ready", "receive-held", "consent-held"].includes(kind),
+		),
+		false,
+	);
+	assert.equal(f.trace.at(-1), "unsubscribe");
+});
+
+test("inbox wait renewal does not reset an existing outage episode", async (t) => {
+	let polls = 0;
+	const { client, requests } = await deadlineHttpFixture(t, ({ url }, response) => {
+		if (url.pathname === "/v1/register")
+			response.end(JSON.stringify({ ok: true, v: 2, data: descriptor }));
+		else if (url.pathname === "/v1/inbox") {
+			polls++;
+			if (polls === 1 || polls === 3) {
+				response.writeHead(401);
+				response.end(JSON.stringify({ ok: false, v: 2, error: "unauthorized" }));
+			} else if (polls === 4) response.end(JSON.stringify({ ok: true, v: 2, data: [claim] }));
+		} else response.end(JSON.stringify({ ok: true, v: 2, data: claim.job_id }));
+	});
+	const waits = [];
+	const f = fixture({
+		client,
+		delay: async (ms) => {
+			waits.push(ms);
+			assert.equal(f.reports.filter(({ kind }) => kind === "connection-ready").length, 0);
+		},
+	});
+	t.after(() => f.bridge.stop());
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	f.bridge.stop();
+	await run;
+	assert.deepEqual(waits, [250, 500, 1000]);
+	assert.equal(requests.filter(({ url }) => url.pathname === "/v1/register").length, 3);
+	assert.equal(f.reports.filter(({ kind }) => kind === "reconnecting").length, 1);
+	assert.equal(f.reports.filter(({ kind }) => kind === "connection-ready").length, 1);
+});
+
+test("HTTP non-wait deadlines, body stalls and connection failures remain retryable", async (t) => {
+	let mode = "unanswered";
+	const { client } = await deadlineHttpFixture(t, (_entry, response) => {
+		if (mode === "disconnect") response.destroy();
+		else if (mode === "body") {
+			response.writeHead(200, { "Content-Type": "application/json" });
+			response.write('{"ok":true,');
+		}
+	});
+	for (const [path, body] of [
+		["/v1/register", registration],
+		["/v1/send", { to: "pij-peer", body: "test" }],
+		["/v1/inbox/ack", { ...tuple, job_id: claim.job_id }],
+		["/v1/seats?scope=local", undefined],
+		["/v1/inbox?wait=false", undefined],
+	])
+		await assert.rejects(client.request(path, body), { retryable: true }, path);
+	mode = "body";
+	await assert.rejects(client.claimInbox(tuple), { retryable: true });
+	mode = "disconnect";
+	await assert.rejects(client.claimInbox(tuple), { retryable: true });
+});
+
+test("foreign TimeoutError remains retryable even after the own inbox deadline", async (t) => {
+	const { client } = await deadlineHttpFixture(t, () => {});
+	client.fetch = async (url, init) => {
+		try {
+			return await fetch(url, init);
+		} catch {
+			throw new DOMException("foreign fetch timeout", "TimeoutError");
+		}
+	};
+	await assert.rejects(client.claimInbox(tuple), { retryable: true });
+});
+
+test("external inbox abort is cancellation even with a TimeoutError reason", async (t) => {
+	const controller = new AbortController();
+	const reason = new DOMException("external cancellation", "TimeoutError");
+	const { client, requests } = await deadlineHttpFixture(t, () => controller.abort(reason));
+	await assert.rejects(client.claimInbox(tuple, controller.signal), (error) => error === reason);
+	assert.equal(requests.length, 1);
+});
+
+test("shutdown during inbox renewal delay does not claim or re-register", async (t) => {
+	const { client, requests } = await deadlineHttpFixture(t, ({ url }, response) => {
+		if (url.pathname === "/v1/register")
+			response.end(JSON.stringify({ ok: true, v: 2, data: descriptor }));
+	});
+	const f = fixture({
+		client,
+		delay: async (_ms, signal) => {
+			f.bridge.stop();
+			signal.throwIfAborted();
+		},
+	});
+	await f.bridge.run();
+	assert.equal(requests.filter(({ url }) => url.pathname === "/v1/register").length, 1);
+	assert.equal(requests.filter(({ url }) => url.pathname === "/v1/inbox").length, 1);
+	assert.equal(f.trace.includes("send"), false);
+	assert.equal(
+		f.reports.some(({ kind }) => ["reconnecting", "receive-held"].includes(kind)),
+		false,
+	);
+	assert.equal(f.trace.at(-1), "unsubscribe");
 });
 
 test("accepted-but-unacked reconnect reclaims and acknowledges without second native send", async () => {
