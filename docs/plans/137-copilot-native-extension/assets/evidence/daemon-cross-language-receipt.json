@@ -1,0 +1,96 @@
+{
+  "status": "contract_verified_real_cli_acceptance_pm_owned",
+  "test_source_commit": "b927c802106ec52acbcfe5797a48f8c07e31abc8",
+  "daemon_product_source": "dba208cd682656694076336399e5e5df8f9cc55e",
+  "test": "crates/daemon/tests/native_runtime_cold_resume.rs",
+  "gate_membership": "PM approval 7e26522c: explicit opt-in #[ignore], no Node requirement added to default Rust gate; named run fails if module, Node or platform fixture unavailable, never conditionally succeeds/skips.",
+  "command": "PIJ_NATIVE_RUNTIME_MODULE=/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/.copilot/extensions/pij/store.mjs CARGO_BUILD_JOBS=4 VITEST_MAX_WORKERS=4 VITEST_MAX_THREADS=4 cargo test --locked -p pij-daemon --test native_runtime_cold_resume -- --ignored --nocapture --test-threads=4",
+  "result": "1 test actually passed; no test skipped in the explicit invocation",
+  "static_checks": {
+    "command": "cargo clippy --locked -p pij-daemon --test native_runtime_cold_resume -- -D warnings && rustfmt --check --edition 2024 --config skip_children=true crates/daemon/tests/native_runtime_cold_resume.rs",
+    "result": "exit 0"
+  },
+  "log": {
+    "file": "daemon-cross-language-tests.log",
+    "artifact": "artifact://182",
+    "lines": 13,
+    "sha256": "a661cbcc682ad9aed3a95c335ed8c4a47e4ce66386563ad9f4dfeaef70d10018",
+    "verification": "SHA256 matches original artifact bytes; raw/full-range export, no reader footer"
+  },
+  "runtime": {
+    "module": "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/.copilot/extensions/pij/store.mjs",
+    "owner_source": "cd4e5b86 / evidence f75826a8, later evidence-only closure a955dc1b",
+    "sha256": "33119791f229046e7b1ac32a9b3227994ab646d1f8dff72d29ea6d2441f6299b"
+  },
+  "stages": {
+    "initial": {
+      "registration": {
+        "id": "pij-copilot-41d6bd03b9d6255c4c09f279",
+        "harness": "copilot",
+        "harness_session": "native-cross-language-cold-resume",
+        "folder": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-native-cross-language-43579-1788571888869962000-0",
+        "pid": 43982,
+        "proc_start": 20260905113128,
+        "relay": false,
+        "native_extension_delivery": true,
+        "pane": "%137-cross-old"
+      },
+      "moduleDigest": "33119791f229046e7b1ac32a9b3227994ab646d1f8dff72d29ea6d2441f6299b",
+      "jobId": 1,
+      "messageId": "cross-language-original-m1",
+      "journalDirectory": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-native-cross-language-43579-1788571888869962000-0/native-extensions/copilot/be9ea820426735ae53f0cb9ab236c42a1d465e164037e677bc6cc812f052e73b",
+      "journalPath": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-native-cross-language-43579-1788571888869962000-0/native-extensions/copilot/be9ea820426735ae53f0cb9ab236c42a1d465e164037e677bc6cc812f052e73b/bda394dd1440caa727ef16305392b597556212e9f8c67c90a36a6f38df3bbd38.json",
+      "journalDigest": "e5ab2a861256135cfea5e5f9dd99c23d6b8d3b42820a5c998741a9c219d6e45a",
+      "acceptanceBoundaryCalls": 1,
+      "acknowledged": false
+    },
+    "live": {
+      "registration": {
+        "id": "pij-copilot-41d6bd03b9d6255c4c09f279",
+        "harness": "copilot",
+        "harness_session": "native-cross-language-cold-resume",
+        "folder": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-native-cross-language-43579-1788571888869962000-0",
+        "pid": 44013,
+        "proc_start": 20260905113129,
+        "relay": false,
+        "native_extension_delivery": true,
+        "pane": "%137-cross-old"
+      },
+      "moduleDigest": "33119791f229046e7b1ac32a9b3227994ab646d1f8dff72d29ea6d2441f6299b",
+      "refusedLiveOwner": true
+    },
+    "resume": {
+      "registration": {
+        "id": "pij-copilot-41d6bd03b9d6255c4c09f279",
+        "harness": "copilot",
+        "harness_session": "native-cross-language-cold-resume",
+        "folder": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-native-cross-language-43579-1788571888869962000-0",
+        "pid": 44013,
+        "proc_start": 20260905113129,
+        "relay": false,
+        "native_extension_delivery": true,
+        "pane": "%137-cross-new"
+      },
+      "moduleDigest": "33119791f229046e7b1ac32a9b3227994ab646d1f8dff72d29ea6d2441f6299b",
+      "jobId": 1,
+      "messageId": "cross-language-original-m1",
+      "journalDirectory": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-native-cross-language-43579-1788571888869962000-0/native-extensions/copilot/be9ea820426735ae53f0cb9ab236c42a1d465e164037e677bc6cc812f052e73b",
+      "journalPath": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-native-cross-language-43579-1788571888869962000-0/native-extensions/copilot/be9ea820426735ae53f0cb9ab236c42a1d465e164037e677bc6cc812f052e73b/bda394dd1440caa727ef16305392b597556212e9f8c67c90a36a6f38df3bbd38.json",
+      "journalDigest": "e5ab2a861256135cfea5e5f9dd99c23d6b8d3b42820a5c998741a9c219d6e45a",
+      "acceptanceBoundaryCalls": 1,
+      "acknowledged": true
+    }
+  },
+  "proven": [
+    "Each fresh Node process calls actual chooseRegistration against actual HTTP roster; previous id is only an assertion, not a selection input.",
+    "Initial actual NativeBridge.deliver persists real FileJournal acceptance, then ACK interception models interruption before HTTP acknowledgement.",
+    "A new live host cannot take the old live owner; real HTTP refusal leaves row, running job and journal bytes unchanged.",
+    "Old owned host is killed/reaped; actual ProcLiveness observes disappearance/replacement. Real queue retry releases the same job to model lease expiry.",
+    "New process imports the same hashed runtime module, selects the original Pij id, rebinds via real HTTP/SQLite, reads the original accepted journal, never calls native.send, and acknowledges the same job using its new tuple.",
+    "Journal digest/bytes and one acceptance-log line remain unchanged; authoritative queue no longer has the job after replay ACK."
+  ],
+  "ceiling": "Cross-language contract proof only: FakeTmux, inert copied/signed Copilot-named host, simulated native.send acceptance, intercepted ACK and explicit queue retry. Not real SDK/model, abrupt-crash durability, actual lease-timer or whole-composer proof.",
+  "review": "Read-only reviewer inspected actual selection, producer, filesystem, replay and cleanup paths; no remaining findings. Execution and static checks by Main.",
+  "cleanup": "All owned child processes are killed/reaped and temporary copied executables/journal directory removed. No shared daemon restart, global link/configuration, dependency/toolchain change, merge or push.",
+  "harness_improvement": "One explicit bounded executable witness now joins real runtime selection/client/bridge/journal to HTTP/SQLite, so a stable journal key cannot hide a reminted registration id."
+}

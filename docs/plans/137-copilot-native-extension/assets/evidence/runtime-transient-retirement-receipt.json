@@ -1,0 +1,129 @@
+{
+  "owner": "pij-worldwide-rat",
+  "status": "Runtime and producer wire-contract proof complete; recovered producer log verified; PM integration pending",
+  "base_commit": "8a101e3196d8c5999863e4fbeed803190ea29d95",
+  "source_commit": "cd4e5b86e682f0cf2ea99eb89769f168cbfe4d8f",
+  "rulings": [
+    "pm-native-transient-rulings.md",
+    "pm-native-retirement-ruling.md"
+  ],
+  "changes": {
+    "retirement": "Explicit tombstones cannot nominate native addresses even if a malformed row retained native_extension_delivery. A retired deterministic-id collision mints a fresh PID-independent24hex attachment id. All other address collisions refuse, including same-process collisions. Existing NativeBridge freezes selected registration across retries.",
+    "cold_resume": "Currently native-attested dead-incarnation row retains address, subject to daemon death/new-host/locked proof. Explicit retirement is intentionally different: no resurrection, old queue inheritance or journal migration.",
+    "ambiguity": "Non-unique native candidate throws retryable NativeError. Existing bootstrap capped250..5000ms cancellable retry refreshes roster without selecting/registering/injecting until unique.",
+    "transient": "General request/claim parser unchanged. Exact canonical unavailable400 remains sole additional recoverable refusal; native-consumer-held:native-pane-changed is parsed as retryable hold. Shared old missing/nonCopilot400 remains non-retryable.",
+    "wire": "No new publicfields, endpoints, provenance column or request shape. Registration harness_session and inbox native_session/pid/proc_start unchanged."
+  },
+  "verification": {
+    "command": [
+      "node",
+      "--test",
+      "--test-reporter=tap",
+      "--test-timeout=15000",
+      ".copilot/extensions/pij/store.test.mjs",
+      ".copilot/extensions/pij/identity.test.mjs",
+      ".copilot/extensions/pij/extension.test.mjs"
+    ],
+    "cwd": "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime",
+    "env": {
+      "VITEST_MAX_THREADS": "4",
+      "CARGO_BUILD_JOBS": "4"
+    },
+    "exit": 0,
+    "tests": 80,
+    "pass": 80,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "stderr": "",
+    "tap": "runtime-transient-retirement-tests.tap",
+    "tap_sha256": "5d6cc21d812f2d97b09d12b7e270613a8b67ce736c3bac1dc3b1b6cc5e404638",
+    "formatter": "Checked3files in74ms. Fixed3files. biome check --write scoped runtime files, exit0.",
+    "lsp": "All5runtime files no issues. chooseRegistration references empty despite known callers; scoped consumer search used.",
+    "reopen": "Real chooseRegistration A->B->A yields new address; existing FileJournal acceptance untouched and invisible in fresh attachment. New host later resumes attested fresh address. Cold reopen of retired A also gets fresh address; explicit retired launch intent refuses.",
+    "registration_retry": "Actual extension child+loopback HTTP drops initial retired-reopen registration response; two identical register bodies/id, one roster read, one native send/ACK, EOF exit0/stdout empty.",
+    "ambiguous_roster": "Actual extension child observes two ambiguous rosters then unique; zero registration/send at first notice, exactly3roster reads and1registration, one episode notice, clean exit.",
+    "pane_hold": "Typed-parser and actual shell HTTP fixture empty -> native-pane-changed hold -> release; retry500ms, no ACK/send before release, then one send/ACK. Fixture matches independently inspected producer branches and HTTP constructor assertions; composed real-daemon/native execution is not claimed.",
+    "review": {
+      "agent": "HoldBoundaryReview",
+      "verdict": "no_material_findings",
+      "scope": "runtime-only vs8a101e31; reviewer no validation/edits; producer explicitly unverified"
+    }
+  },
+  "producer": {
+    "owner": "pij-grotesque-armadillo",
+    "status": "Source-pinned receipt and exact producer tripwires consumed; recovered raw log count, digest and 284/12 totals verified",
+    "source_commit": "dba208cd682656694076336399e5e5df8f9cc55e",
+    "evidence_commit": "b77db17e68464413a77159f1a360a17b1e844a5e",
+    "source_observation": {
+      "owner": "pij-worldwide-rat",
+      "root": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon",
+      "branches": "crates/daemon/src/delivery/mod.rs:575-643: absent native seat uses canonical unavailable; present non-Copilot remains a permanent refusal. Existing Copilot tombstone/disabled handling stays unavailable and stale tuples still refuse. Tuple validation precedes pane-change success hold.",
+      "http": "crates/daemon/src/http/mod.rs:1132-1163,1945-1950; native_tests.rs:180-199 asserts HTTP status, ok, refused category and absent data.",
+      "assertions": [
+        "native_sqlite_http_missing_registration_is_retryable_but_noncopilot_identity_is_refused",
+        "native_http_pane_change_hold_preserves_retryable_wire_discriminator"
+      ],
+      "assertion_lines": "crates/daemon/src/http/native_tests.rs:1042-1103",
+      "proof_boundary": "Independent source inspection, not independently executed daemon tests. Missing/non-Copilot test uses real HTTP/SQLite; pane test invokes the production response constructor, with observation-race behavior tested separately in delivery/mod.rs. Runtime parser widening is unnecessary."
+    },
+    "counterpart_validation": {
+      "origin": "pij-grotesque-armadillo source-pinned receipt, independently read by runtime owner",
+      "daemon_tests_observed_in_counterpart_log": 284,
+      "suites_observed_in_counterpart_log": 12,
+      "strict_clippy": "Counterpart receipt reports pass; recovered log includes final Checking pij-daemon and Finished dev profile output",
+      "rustfmt": "Counterpart source-pinned receipt reports pass; silent successful command, not separately executed by runtime",
+      "receipt": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/docs/plans/137-copilot-native-extension/assets/evidence/daemon-cold-resume-receipt.json",
+      "log": "daemon-cold-resume-tests-final.log",
+      "raw_log_lines": 360,
+      "raw_log_sha256": "9ef5f2594cef2a31ca29f47f31de12eb053388850df8402a91edcab449f1be59",
+      "raw_log_verification": "Runtime read complete bytes, independently computed line count/hash, summed all12 suite results to284 pass/0 fail, and confirmed no reader footer. Count/hash match corrected counterpart receipt.",
+      "observed_named_passes": "Lines25,73,80 show observation revalidation, pane constructor, and missing/non-Copilot HTTP tests passing; line221 shows all214 library tests passed.",
+      "log_recovery": "Resolved by evidence-only b77db17e. Original3bdd2dbb export had302 lines including a literal reader footer; corrected export has360 original lines. Counterpart reports raw artifact157 recovery with no rerun. Runtime verified recovered bytes against the corrected receipt, not independently against the original counterpart tool artifact.",
+      "independently_executed_by_runtime": false
+    },
+    "observed_missing": {
+      "http": 400,
+      "body": {
+        "ok": false,
+        "v": 2,
+        "command": "pij inbox",
+        "error": "refused",
+        "meta": "daemon/native-inbox: native-extension-unavailable: Copilot requires current native registration"
+      }
+    },
+    "observed_pane": {
+      "http": 200,
+      "body": {
+        "ok": true,
+        "v": 2,
+        "command": "pij inbox",
+        "data": [],
+        "meta": "native-consumer-held:native-pane-changed"
+      }
+    },
+    "observed_noncopilot": {
+      "http": 400,
+      "body": {
+        "ok": false,
+        "v": 2,
+        "command": "pij inbox",
+        "error": "refused",
+        "meta": "daemon/native-inbox: native incarnation no longer belongs to a current Copilot seat"
+      },
+      "runtime_disposition": "non-retryable; no broadened recovery"
+    },
+    "envelope_comparison": "Bun parsed both receipts and compared source_commit plus all keys/types/values of the missing-registration, non-Copilot and pane-change envelopes: sourceMatches=true and all three equal=true. This checks fixture/producer agreement, not a new daemon execution.",
+    "conclusion": "Observed producer missing/non-Copilot/pane shapes match passing runtime fixtures; no parser change required. Corrected source-pinned receipt and full284/12 raw log consumed. Execution remains counterpart-owned; whole real-native composition remains PM-owned. Separately held observer source8f56be95 is not approved by this compatibility proof."
+  },
+  "constraints": {
+    "full_gates": 0,
+    "real_Pi_OMP_spawns": 0,
+    "toolchain_changes": 0,
+    "installs": 0,
+    "daemon_restarts": 0,
+    "new_worktrees": 0,
+    "gate_policy": "unchanged awaiting Jordan"
+  },
+  "harness_improvement": "Actual shell roster scripting/drop-registration-response now proves ambiguity non-selection and chosen-id freezing; realFS A->B->A guards retired queue/journal separation."
+}

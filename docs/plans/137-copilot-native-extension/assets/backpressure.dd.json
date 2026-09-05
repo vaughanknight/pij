@@ -8,7 +8,7 @@
       "value": {
         "title": "Copilot native extension — selected backpressure",
         "plan": "../plan.dd.json#meta",
-        "basis_sha": "463f734e00564a0bdc193e7d779e6101c2196c246bfa92a7354c6f393212872a",
+        "basis_sha": "a239b839bbcd170d18748cf4ab9008bb6cc47c08bbf3ae5b962202abee5da2c6",
         "certainty": "Partial"
       }
     },
@@ -47,7 +47,7 @@
         },
         {
           "id": "bp-0004",
-          "criterion": "ac-0004: Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged.",
+          "criterion": "ac-0004: Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Known Pi/OMP/Claude contracts remain unchanged; unverifiable control targets explicitly refuse rather than blindly type.",
           "phase": "ph-66f1",
           "mode": "EXTEND",
           "tier": "computational",
@@ -72,8 +72,8 @@
           "mode": "BUILD",
           "tier": "computational",
           "proof": "Existing InteractionGate consumer contract tests plus real native smoke with nonempty human draft held then permitted delivery. Both worlds emit positive evidence, original text preserved. No changes to136 typing policy; just copilot-native-rust-test and copilot-native-smoke.",
-          "state": "unchecked",
-          "note": "Selection, not completed proof. No numeric confidence score."
+          "state": "blocked",
+          "note": "Real native smoke03 proves correct daemon/host registration but input gate remains unrecognized on actual Copilot1.0.84 boxed UI. Prime proposes native-owned claim bypass of composer gate like OMP/Pi; PM surfaced model-turn-during-draft consequence to Jordan and awaits explicit decision before changing this consent criterion. No fallback/permission weakening applied."
         },
         {
           "id": "bp-0007",

@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pij_core::error::PijError;
 use pij_core::model::{Event, Harness, ProcIdentity, SeatDescriptor, SeatId};
-use pij_core::ports::{LivenessPort, Registry, SeatFilter, TmuxPort};
+use pij_core::ports::{LivenessPort, PutBinding, Registry, SeatFilter, TmuxPort};
 use pij_core::wire;
 use pij_harnesses::ensure_claude_inbound_accept;
 
@@ -37,6 +37,11 @@ pub(crate) struct RegistrationService {
     registration_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
+struct NativeHandoff {
+    dead: Vec<SeatDescriptor>,
+    prebind: Option<SeatDescriptor>,
+}
+
 impl RegistrationService {
     pub(crate) fn new(
         registry: Arc<dyn Registry>,
@@ -62,16 +67,17 @@ impl RegistrationService {
         &self,
         claim: Registration,
     ) -> std::result::Result<SeatDescriptor, RegistrationError> {
-        self.register_with_harness_session(claim, None).await
+        self.register_with_harness_session(claim, None)
+            .await
+            .map(|(descriptor, _)| descriptor)
     }
 
     pub(crate) async fn register_with_harness_session(
         &self,
         claim: Registration,
         harness_session: Option<String>,
-    ) -> std::result::Result<SeatDescriptor, RegistrationError> {
-        let _guard = self.registration_lock.lock().await;
-        self.register_inner(claim, harness_session, false).await
+    ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError> {
+        self.register_inner(claim, harness_session, None).await
     }
 
     /// Attest extension delivery only after observing the actual Copilot host.
@@ -80,7 +86,7 @@ impl RegistrationService {
         claim: Registration,
         harness_session: Option<String>,
         tmux: &dyn TmuxPort,
-    ) -> std::result::Result<SeatDescriptor, RegistrationError> {
+    ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError> {
         self.register_native_with_observer(claim, harness_session, tmux, observe_native_process)
             .await
     }
@@ -91,12 +97,11 @@ impl RegistrationService {
         harness_session: Option<String>,
         tmux: &dyn TmuxPort,
         mut observe: F,
-    ) -> std::result::Result<SeatDescriptor, RegistrationError>
+    ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError>
     where
         F: FnMut(u32) -> Fut,
         Fut: Future<Output = std::result::Result<Option<NativeProcess>, RegistrationError>>,
     {
-        let _guard = self.registration_lock.lock().await;
         if claim.harness != Harness::Copilot.as_str() || claim.relay {
             return Err(native_refusal("requires harness copilot and relay false"));
         }
@@ -122,7 +127,89 @@ impl RegistrationService {
         )
         .await
         .map_err(|_| native_refusal("host observation exceeded two seconds"))??;
-        self.register_inner(claim, harness_session, true).await
+        let dead_native = self
+            .observe_dead_native_owners(
+                &claim,
+                harness_session
+                    .as_deref()
+                    .expect("validated native session"),
+                identity,
+            )
+            .await?;
+        self.register_inner(claim, harness_session, Some(&dead_native))
+            .await
+    }
+
+    /// A dead exact incarnation cannot come back to life. Collect that witness
+    /// outside global exclusion, then bind it to unchanged ownership at commit.
+    async fn observe_dead_native_owners(
+        &self,
+        claim: &Registration,
+        session: &str,
+        identity: ProcIdentity,
+    ) -> std::result::Result<NativeHandoff, RegistrationError> {
+        let seats = self
+            .registry
+            .list(SeatFilter::default())
+            .await
+            .map_err(RegistrationError::Runtime)?;
+        let prebind = registration_target(claim, true, &seats)
+            .filter(|seat| {
+                seat.harness == Harness::Copilot
+                    && !seat.relay
+                    && seat.tombstoned_at.is_none()
+                    && seat.proc.is_none()
+                    && seat.pane.is_some()
+                    && seat.pane == claim.pane
+                    && seat.spawn_id.as_deref().is_some_and(|spawn| {
+                        !spawn.is_empty() && claim.spawn_id.as_deref() == Some(spawn)
+                    })
+                    && seat
+                        .harness_session
+                        .as_deref()
+                        .is_none_or(|native| native == session)
+            })
+            .cloned();
+        let mut dead = Vec::new();
+        for seat in seats {
+            if seat.harness != Harness::Copilot
+                || !seat.native_extension_delivery
+                || seat.tombstoned_at.is_some()
+                || seat.relay
+            {
+                continue;
+            }
+            let Some(previous) = seat.proc.filter(|proc| proc.pid > 0 && proc.proc_start > 0)
+            else {
+                continue;
+            };
+            if previous == identity {
+                continue;
+            }
+            let same_address_resume =
+                seat.id.as_str() == claim.id && seat.harness_session.as_deref() == Some(session);
+            let stale_pane_owner = seat.id.as_str() != claim.id
+                && claim.pane.is_some()
+                && seat.pane == claim.pane
+                && seat
+                    .harness_session
+                    .as_deref()
+                    .is_some_and(|old| !old.is_empty() && old != session);
+            let explicit_same_native_prebind =
+                prebind.as_ref().is_some_and(|target| target.id != seat.id)
+                    && seat.harness_session.as_deref() == Some(session);
+            if (same_address_resume || stale_pane_owner || explicit_same_native_prebind)
+                && self
+                    .liveness
+                    .proc_start(previous.pid)
+                    .await
+                    .map_err(RegistrationError::Runtime)?
+                    != Some(previous.proc_start)
+            {
+                dead.push(seat);
+            }
+        }
+        Ok(NativeHandoff { dead, prebind })
     }
 
     async fn verify_native_host<F, Fut>(
@@ -233,8 +320,10 @@ impl RegistrationService {
         &self,
         claim: Registration,
         harness_session: Option<String>,
-        native: bool,
-    ) -> std::result::Result<SeatDescriptor, RegistrationError> {
+        handoff: Option<&NativeHandoff>,
+    ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError> {
+        let native = handoff.is_some();
+        let dead_native = handoff.map_or(&[][..], |proof| proof.dead.as_slice());
         let harness_session = harness_session.filter(|session| !session.trim().is_empty());
         let proc = match (claim.pid, claim.proc_start) {
             (Some(pid), Some(proc_start)) => {
@@ -258,24 +347,31 @@ impl RegistrationService {
             }
         };
 
+        // Process/ancestry evidence is collected without excluding inbox readers.
+        // Re-read the entire roster under shared mutation exclusion: two different
+        // seat IDs can still contend for the same process, session, or pane.
+        let _guard = self.registration_lock.lock().await;
         let seats = self
             .registry
             .list(SeatFilter::default())
             .await
             .map_err(RegistrationError::Runtime)?;
-        let claimed_id = SeatId::from(claim.id.clone());
-        let existing = seats.iter().find(|seat| seat.id == claimed_id).or_else(|| {
-            if native && claim.supersedes.is_some() {
-                return None;
-            }
-            let spawn_id = claim.spawn_id.as_deref().filter(|id| !id.is_empty())?;
-            let pane = claim.pane.as_deref()?;
-            seats.iter().find(|seat| {
-                seat.proc.is_none()
-                    && seat.spawn_id.as_deref() == Some(spawn_id)
-                    && seat.pane.as_deref() == Some(pane)
+        if dead_native
+            .iter()
+            .chain(handoff.and_then(|proof| proof.prebind.as_ref()))
+            .any(|observed| {
+                seats
+                    .iter()
+                    .find(|seat| seat.id == observed.id)
+                    .is_none_or(|current| !same_native_owner(observed, current))
             })
-        });
+        {
+            return Err(native_refusal(
+                "native owner changed during death observation; retry registration",
+            ));
+        }
+        let claimed_id = SeatId::from(claim.id.clone());
+        let existing = registration_target(&claim, native, &seats);
         // Native-only ownership is a harness invariant, not a live-process flag.
         // Relabeling a prebind or retired row would bypass inbox tuple checks.
         if existing.is_some_and(|seat| seat.harness == Harness::Copilot)
@@ -286,7 +382,14 @@ impl RegistrationService {
             ));
         }
         if native {
-            check_native_roster(&claim, harness_session.as_deref(), proc, &seats, existing)?;
+            check_native_roster(
+                &claim,
+                harness_session.as_deref(),
+                proc,
+                &seats,
+                existing,
+                dead_native,
+            )?;
         } else if let Some(owner) = seats.iter().find(|seat| {
             seat.harness == Harness::Copilot
                 && seat.proc.is_some()
@@ -445,6 +548,26 @@ impl RegistrationService {
         // Only this request's verified process/session observation can grant it.
         descriptor.native_extension_delivery = native;
 
+        // Retire only a proven-dead native resource owner, never its queued work.
+        // Same-conversation resume updates its original address instead.
+        for observed in dead_native.iter().filter(|seat| seat.id != descriptor.id) {
+            let mut retired = seats
+                .iter()
+                .find(|seat| seat.id == observed.id)
+                .expect("revalidated native owner")
+                .clone();
+            retired.tombstoned_at = Some(system_time_ms()?);
+            retired.tombstone_reason = Some(format!(
+                "dead native incarnation released its pane to `{}`; queued work retains its original context",
+                descriptor.id
+            ));
+            retired.native_extension_delivery = false;
+            self.registry
+                .put(retired)
+                .await
+                .map_err(RegistrationError::Runtime)?;
+        }
+
         if let Some(mut previous) = predecessor
             && previous.tombstoned_at.is_none()
         {
@@ -459,8 +582,9 @@ impl RegistrationService {
                 .await
                 .map_err(RegistrationError::Runtime)?;
         }
-        self.registry
-            .put(descriptor.clone())
+        let (_, binding) = self
+            .registry
+            .put_reporting(descriptor.clone())
             .await
             .map_err(RegistrationError::Runtime)?;
         if binds_spawned_incarnation && model_matches {
@@ -481,12 +605,45 @@ impl RegistrationService {
                 .await
                 .map_err(RegistrationError::Runtime)?;
         }
-        Ok(descriptor)
+        Ok((descriptor, binding))
     }
 }
 
 fn native_refusal(reason: impl std::fmt::Display) -> RegistrationError {
     RegistrationError::Refused(format!("native Copilot registration refused: {reason}"))
+}
+
+fn registration_target<'a>(
+    claim: &Registration,
+    native: bool,
+    seats: &'a [SeatDescriptor],
+) -> Option<&'a SeatDescriptor> {
+    seats
+        .iter()
+        .find(|seat| seat.id.as_str() == claim.id)
+        .or_else(|| {
+            if native && claim.supersedes.is_some() {
+                return None;
+            }
+            let spawn_id = claim.spawn_id.as_deref().filter(|id| !id.is_empty())?;
+            let pane = claim.pane.as_deref()?;
+            seats.iter().find(|seat| {
+                seat.proc.is_none()
+                    && seat.spawn_id.as_deref() == Some(spawn_id)
+                    && seat.pane.as_deref() == Some(pane)
+            })
+        })
+}
+
+fn same_native_owner(observed: &SeatDescriptor, current: &SeatDescriptor) -> bool {
+    observed.harness == current.harness
+        && observed.proc == current.proc
+        && observed.pane == current.pane
+        && observed.harness_session == current.harness_session
+        && observed.spawn_id == current.spawn_id
+        && observed.native_extension_delivery == current.native_extension_delivery
+        && observed.relay == current.relay
+        && observed.tombstoned_at == current.tombstoned_at
 }
 
 fn check_native_roster(
@@ -495,6 +652,7 @@ fn check_native_roster(
     identity: Option<ProcIdentity>,
     seats: &[SeatDescriptor],
     existing: Option<&SeatDescriptor>,
+    dead_native: &[SeatDescriptor],
 ) -> std::result::Result<(), RegistrationError> {
     let session = session.ok_or_else(|| native_refusal("requires a runtime native session"))?;
     let identity = identity.ok_or_else(|| native_refusal("requires a process identity"))?;
@@ -526,10 +684,11 @@ fn check_native_roster(
     };
 
     if let Some(existing) = existing {
+        let dead_previous = dead_native.iter().any(|seat| seat.id == existing.id);
         if existing.tombstoned_at.is_some()
             || existing.harness != Harness::Copilot
             || existing.relay
-            || existing.pane != claim.pane
+            || (existing.pane != claim.pane && !dead_previous)
             || existing
                 .harness_session
                 .as_deref()
@@ -540,7 +699,7 @@ fn check_native_roster(
             ));
         }
         match existing.proc {
-            Some(previous) if previous != identity => {
+            Some(previous) if previous != identity && !dead_previous => {
                 return Err(native_refusal(
                     "seat id belongs to a different process incarnation",
                 ));
@@ -572,6 +731,7 @@ fn check_native_roster(
     for seat in seats.iter().filter(|seat| seat.tombstoned_at.is_none()) {
         if existing.is_some_and(|existing| existing.id == seat.id)
             || predecessor.is_some_and(|previous| previous.id == seat.id)
+            || dead_native.iter().any(|observed| observed.id == seat.id)
         {
             continue;
         }
@@ -700,6 +860,9 @@ fn read_native_process(pid: u32) -> std::result::Result<Option<NativeProcess>, R
     // One requested PID, never a machine-wide process census. The child, output,
     // and wall time are bounded independently of the async caller's lifetime.
     const OUTPUT_LIMIT: u64 = 64 * 1024;
+    // Darwin truncates `comm` paths when followed by another output column.
+    // Read the kernel accounting name instead: the supported host basenames
+    // fit, and is_copilot_host still independently checks argv/entrypoint.
     let mut child = Command::new("/bin/ps")
         .args([
             "-ww",
@@ -708,7 +871,7 @@ fn read_native_process(pid: u32) -> std::result::Result<Option<NativeProcess>, R
             "-o",
             "ppid=",
             "-o",
-            "comm=",
+            "ucomm=",
             "-o",
             "args=",
         ])
@@ -829,13 +992,22 @@ fn system_time_ms() -> std::result::Result<u64, RegistrationError> {
 mod tests {
     use std::fs;
     use std::future::{Ready, ready};
+    #[cfg(unix)]
+    use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Duration;
 
-    use pij_core::model::{Harness, PaneProcess, ProcIdentity, SeatDescriptor, Seq};
+    use pij_core::model::{Harness, PaneProcess, ProcIdentity, SeatDescriptor, SemanticState, Seq};
+    use pij_core::ports::Queue;
     use pij_core::ports::{LivenessPort, Registry, SeatFilter, Spine};
+    use pij_harnesses::InteractionGate;
     use pij_testkit::fakes::{FakeLiveness, FakeRegistry, FakeSpine, FakeTmux};
+    use pij_testkit::fakes::{FakeQueue, FakeTransport};
+    use tokio::sync::Notify;
+
+    use crate::delivery::DeliveryService;
 
     use super::{
         NativeProcess, RegistrationError, RegistrationService, parse_native_process,
@@ -951,9 +1123,10 @@ mod tests {
                 fixture_process,
             )
             .await
+            .map(|(descriptor, _)| descriptor)
     }
 
-    fn refused(result: std::result::Result<SeatDescriptor, RegistrationError>) {
+    fn refused<T: std::fmt::Debug>(result: std::result::Result<T, RegistrationError>) {
         assert!(
             matches!(result, Err(RegistrationError::Refused(_))),
             "{result:?}"
@@ -1001,6 +1174,8 @@ mod tests {
         for output in [
             "41 /opt/copilot/copilot /opt/copilot/copilot --model gpt-5\n",
             "41 /usr/bin/node node /opt/node_modules/@github/copilot/index.js\n",
+            "41 copilot /long/absolute/install/path/copilot --model gpt-5\n",
+            "41 node /long/absolute/install/path/node /opt/node_modules/@github/copilot/index.js\n",
         ] {
             assert!(
                 parse_native_process(output.as_bytes())
@@ -1017,6 +1192,9 @@ mod tests {
             "41 /usr/bin/node node /opt/not-@github/copilot/index.js\n",
             "41 /opt/copilot-evil copilot\n",
             "41 /opt/copilot/copilot sh -c copilot\n",
+            "41 sh /long/absolute/install/path/copilot --model gpt-5\n",
+            "41 node node /opt/node_modules/@github/copilot/npm-loader.js\n",
+            "41 node node /home/me/.copilot/extensions/pij/extension.mjs\n",
         ] {
             assert!(
                 !parse_native_process(output.as_bytes())
@@ -1033,7 +1211,9 @@ mod tests {
     #[tokio::test]
     async fn real_shell_process_is_not_an_actual_copilot_host() {
         // A test-owned child only: no fleet inspection, signal, or environment mutation.
+        // A forged argv[0] must not outrank the observed kernel executable name.
         let mut shell = Command::new("/bin/sh")
+            .arg0("copilot")
             .args(["-c", "read line"])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
@@ -1318,6 +1498,7 @@ mod tests {
                 assert!(
                     !ordinary
                         .expect("ordinary registration unchanged")
+                        .0
                         .native_extension_delivery
                 );
             }
@@ -1353,6 +1534,239 @@ mod tests {
                 vec![old]
             );
         }
+    }
+
+    #[tokio::test]
+    async fn cold_resume_requires_dead_attested_incarnation_and_preserves_hold() {
+        for observed_start in [None, Some(HOST.proc_start), Some(HOST.proc_start + 1)] {
+            for attested in [false, true] {
+                let mut old = native_seat("pij-cold-resume");
+                old.native_extension_delivery = attested;
+                old.semantic_state = Some(SemanticState::Hold);
+                let mut liveness = FakeLiveness::new().with_proc(SHELL).with_proc(OTHER_HOST);
+                if let Some(proc_start) = observed_start {
+                    liveness = liveness.with_proc(ProcIdentity {
+                        pid: HOST.pid,
+                        proc_start,
+                    });
+                }
+                let (service, registry) = native_service(vec![old.clone()], Arc::new(liveness));
+                let mut claim = native_claim(old.id.as_str());
+                claim.pid = Some(OTHER_HOST.pid);
+                claim.proc_start = Some(OTHER_HOST.proc_start);
+                claim.pane = Some("%cold-resume".into());
+                let tmux = FakeTmux::new().with_pane_process(
+                    "%cold-resume",
+                    PaneProcess {
+                        pid: SHELL.pid,
+                        cwd: old.folder.clone(),
+                    },
+                );
+                let result = attest(&service, claim, Some(SESSION), &tmux).await;
+                if attested && observed_start != Some(HOST.proc_start) {
+                    let resumed =
+                        result.expect("absent/recycled attested process permits cold resume");
+                    assert_eq!(resumed.id, old.id);
+                    assert_eq!(resumed.proc, Some(OTHER_HOST));
+                    assert_eq!(resumed.pane.as_deref(), Some("%cold-resume"));
+                    assert_eq!(resumed.harness_session, old.harness_session);
+                    assert_eq!(resumed.semantic_state, Some(SemanticState::Hold));
+                    assert!(resumed.native_extension_delivery);
+                } else {
+                    refused(result);
+                    assert_eq!(registry.get(&old.id).await.expect("roster"), Some(old));
+                }
+            }
+        }
+    }
+
+    struct PendingDeadOwner {
+        entered: Notify,
+        release: Notify,
+        fail: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl LivenessPort for PendingDeadOwner {
+        async fn proc_start(&self, pid: u32) -> pij_core::error::Result<Option<u64>> {
+            if pid == HOST.pid {
+                self.entered.notify_one();
+                self.release.notified().await;
+                return if self.fail {
+                    Err(pij_core::error::PijError::Adapter {
+                        adapter: "test/previous-native-process".into(),
+                        message: "owner observation denied".into(),
+                    })
+                } else {
+                    Ok(None)
+                };
+            }
+            Ok(match pid {
+                pid if pid == OTHER_HOST.pid => Some(OTHER_HOST.proc_start),
+                pid if pid == SHELL.pid => Some(SHELL.proc_start),
+                _ => None,
+            })
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cold_resume_revalidates_owner_after_unlocked_death_observation() {
+        for change in 0..9 {
+            let mut old = native_seat("pij-cold-resume");
+            let liveness = Arc::new(PendingDeadOwner {
+                entered: Notify::new(),
+                release: Notify::new(),
+                fail: false,
+            });
+            let (service, registry) = native_service(vec![old.clone()], liveness.clone());
+            let mut claim = native_claim(old.id.as_str());
+            claim.pid = Some(OTHER_HOST.pid);
+            claim.proc_start = Some(OTHER_HOST.proc_start);
+            let tmux = native_tmux();
+            let pending = attest(&service, claim, Some(SESSION), &tmux);
+            tokio::pin!(pending);
+            tokio::select! {
+                _ = liveness.entered.notified() => {}
+                result = &mut pending => panic!("death observer did not block: {result:?}"),
+            }
+            let mut unrelated = native_claim("pij-unrelated-omp");
+            unrelated.harness = "omp".into();
+            unrelated.pid = Some(SHELL.pid);
+            unrelated.proc_start = Some(SHELL.proc_start);
+            unrelated.pane = None;
+            tokio::time::timeout(Duration::from_secs(1), service.register(unrelated))
+                .await
+                .expect("unrelated registration progresses during death observation")
+                .expect("unrelated registration");
+            {
+                let _guard = service.registration_lock.lock().await;
+                match change {
+                    0 => {}
+                    1 => old.proc = Some(OTHER_HOST),
+                    2 => old.native_extension_delivery = false,
+                    3 => old.pane = None,
+                    4 => old.harness_session = Some("changed-native".into()),
+                    5 => {
+                        old.tombstoned_at = Some(1);
+                        old.native_extension_delivery = false;
+                    }
+                    6 => old.spawn_id = Some("changed-spawn".into()),
+                    7 => old.folder.push_str("/metadata-change"),
+                    8 => old.semantic_state = Some(SemanticState::Hold),
+                    _ => unreachable!(),
+                }
+                registry
+                    .put(old.clone())
+                    .await
+                    .expect("concurrent lifecycle update");
+            }
+            liveness.release.notify_one();
+            let result = pending.await;
+            if matches!(change, 0 | 7 | 8) {
+                let resumed = result.expect("unchanged ownership permits rebind");
+                assert_eq!(resumed.proc, Some(OTHER_HOST));
+                assert_eq!(resumed.semantic_state, old.semantic_state);
+            } else {
+                refused(result);
+                assert_eq!(registry.get(&old.id).await.expect("roster"), Some(old));
+            }
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn explicit_prebind_revalidates_both_rows_before_retiring_dead_same_native_owner() {
+        for change in 0..5 {
+            let old = native_seat("pij-old-native");
+            let mut prebind =
+                SeatDescriptor::new("pij-new-prebind", Harness::Copilot, old.folder.clone());
+            prebind.spawn_id = Some("verified-new-spawn".into());
+            prebind.pane = Some("%new-prebind".into());
+            let liveness = Arc::new(PendingDeadOwner {
+                entered: Notify::new(),
+                release: Notify::new(),
+                fail: false,
+            });
+            let (service, registry) =
+                native_service(vec![old.clone(), prebind.clone()], liveness.clone());
+            let mut claim = native_claim(prebind.id.as_str());
+            claim.pid = Some(OTHER_HOST.pid);
+            claim.proc_start = Some(OTHER_HOST.proc_start);
+            claim.pane = prebind.pane.clone();
+            claim.spawn_id = prebind.spawn_id.clone();
+            let tmux = FakeTmux::new().with_pane_process(
+                "%new-prebind",
+                PaneProcess {
+                    pid: SHELL.pid,
+                    cwd: old.folder.clone(),
+                },
+            );
+            let pending = attest(&service, claim, Some(SESSION), &tmux);
+            tokio::pin!(pending);
+            tokio::select! {
+                _ = liveness.entered.notified() => {}
+                result = &mut pending => panic!("death observer did not block: {result:?}"),
+            }
+            {
+                let _guard = service.registration_lock.lock().await;
+                match change {
+                    0 => {}
+                    1 => prebind.spawn_id = Some("replaced-spawn".into()),
+                    2 => prebind.proc = Some(OTHER_HOST),
+                    3 => prebind.pane = Some("%replaced-pane".into()),
+                    4 => prebind.tombstoned_at = Some(1),
+                    _ => unreachable!(),
+                }
+                registry
+                    .put(prebind.clone())
+                    .await
+                    .expect("prebind changed concurrently");
+            }
+            liveness.release.notify_one();
+            let result = pending.await;
+            if change == 0 {
+                let bound = result.expect("verified new-address intent takes precedence");
+                assert_eq!(bound.id, prebind.id);
+                assert_eq!(bound.proc, Some(OTHER_HOST));
+                assert_eq!(bound.harness_session, old.harness_session);
+                assert!(bound.native_extension_delivery);
+                assert!(
+                    registry
+                        .get(&old.id)
+                        .await
+                        .unwrap()
+                        .unwrap()
+                        .tombstoned_at
+                        .is_some()
+                );
+            } else {
+                refused(result);
+                assert_eq!(registry.get(&old.id).await.expect("old owner"), Some(old));
+                assert_eq!(
+                    registry.get(&prebind.id).await.expect("prebind"),
+                    Some(prebind)
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn cold_resume_never_treats_previous_process_sensor_failure_as_death() {
+        let old = native_seat("pij-cold-resume");
+        let liveness = Arc::new(PendingDeadOwner {
+            entered: Notify::new(),
+            release: Notify::new(),
+            fail: true,
+        });
+        liveness.release.notify_one();
+        let (service, registry) = native_service(vec![old.clone()], liveness);
+        let mut claim = native_claim(old.id.as_str());
+        claim.pid = Some(OTHER_HOST.pid);
+        claim.proc_start = Some(OTHER_HOST.proc_start);
+        let error = attest(&service, claim, Some(SESSION), &native_tmux())
+            .await
+            .expect_err("unknown liveness never permits takeover");
+        assert!(error.to_string().contains("owner observation denied"));
+        assert_eq!(registry.get(&old.id).await.expect("roster"), Some(old));
     }
 
     #[tokio::test]
@@ -1402,7 +1816,7 @@ mod tests {
             claim.pid = Some(OTHER_HOST.pid);
             claim.proc_start = Some(OTHER_HOST.proc_start);
             let (service, _) = native_service(vec![old], native_liveness());
-            let rebound = service
+            let (rebound, _) = service
                 .register_with_harness_session(claim, Some("legacy-session".to_string()))
                 .await
                 .expect("other harness ordinary rebind unchanged");
@@ -1532,6 +1946,131 @@ mod tests {
                 .await
                 .expect("roster")
                 .is_empty()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn blocked_native_host_observation_does_not_block_unrelated_inbox_ack() {
+        let (service, registry) = native_service(Vec::new(), native_liveness());
+        let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
+        let delivery = DeliveryService::new(
+            registry.clone(),
+            queue.clone(),
+            Arc::new(FakeTransport::unreachable()),
+            Arc::new(InteractionGate::new(Arc::new(FakeTmux::new()))),
+            service.event_bus.clone(),
+        )
+        .expect("delivery service");
+        let service = service.with_native_lock(delivery.native_lock());
+        let entered = Notify::new();
+        let release = Notify::new();
+        let tmux = native_tmux();
+        let pending = service.register_native_with_observer(
+            native_claim("pij-observing"),
+            Some(SESSION.to_string()),
+            &tmux,
+            |pid| {
+                let entered = &entered;
+                let release = &release;
+                async move {
+                    if pid == HOST.pid {
+                        entered.notify_one();
+                        release.notified().await;
+                    }
+                    fixture_process(pid).await
+                }
+            },
+        );
+        tokio::pin!(pending);
+        tokio::select! {
+            _ = entered.notified() => {}
+            result = &mut pending => panic!("observer did not block: {result:?}"),
+        }
+
+        for harness in [Harness::Omp, Harness::Pi] {
+            let reader = SeatDescriptor::new(
+                format!("pij-reader-{}", harness.as_str()),
+                harness,
+                "/isolated/reader",
+            );
+            registry.put(reader.clone()).await.expect("register reader");
+            delivery
+                .send("pij-peer".into(), reader.id.clone(), "unrelated")
+                .await
+                .expect("enqueue");
+            tokio::time::timeout(Duration::from_secs(1), async {
+                let claims = delivery
+                    .claim_inbox(&reader.id, false)
+                    .await
+                    .expect("claim");
+                assert_eq!(claims.len(), 1);
+                delivery
+                    .acknowledge_inbox(&reader.id, claims[0].job_id, &Default::default())
+                    .await
+                    .expect("ack");
+                assert!(
+                    queue
+                        .claimed_delivery(claims[0].job_id)
+                        .await
+                        .expect("queue")
+                        .is_none()
+                );
+            })
+            .await
+            .expect("unrelated reader progresses before native observer is released");
+        }
+        release.notify_one();
+        assert!(
+            pending
+                .await
+                .expect("native observation resumes")
+                .0
+                .native_extension_delivery
+        );
+    }
+
+    #[tokio::test]
+    async fn native_observation_revalidates_cross_seat_process_takeover_before_commit() {
+        let (service, registry) = native_service(Vec::new(), native_liveness());
+        let entered = Notify::new();
+        let release = Notify::new();
+        let tmux = FakeTmux::new();
+        let mut first_claim = native_claim("pij-delayed");
+        first_claim.pane = None;
+        let pending = service.register_native_with_observer(
+            first_claim,
+            Some("delayed-session".to_string()),
+            &tmux,
+            |pid| {
+                let entered = &entered;
+                let release = &release;
+                async move {
+                    entered.notify_one();
+                    release.notified().await;
+                    fixture_process(pid).await
+                }
+            },
+        );
+        tokio::pin!(pending);
+        tokio::select! {
+            _ = entered.notified() => {}
+            result = &mut pending => panic!("observer did not block: {result:?}"),
+        }
+        // Different seat AND session, no pane: only process ownership conflicts.
+        let mut winner_claim = native_claim("pij-winner");
+        winner_claim.pane = None;
+        let winner = tokio::time::timeout(
+            Duration::from_secs(1),
+            attest(&service, winner_claim, Some("winner-session"), &tmux),
+        )
+        .await
+        .expect("winner is not blocked by observation")
+        .expect("winner registers");
+        release.notify_one();
+        refused(pending.await);
+        assert_eq!(
+            registry.list(SeatFilter::default()).await.expect("roster"),
+            vec![winner]
         );
     }
 

@@ -159,7 +159,7 @@
           },
           {
             "id": "dw-0007",
-            "assertion": "Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged.",
+            "assertion": "Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Known Pi/OMP/Claude contracts remain unchanged; unverifiable control targets explicitly refuse rather than blindly type.",
             "state": "unchecked",
             "pressure": "../../backpressure.dd.json#rows/bp-0004"
           },
@@ -179,7 +179,7 @@
           },
           {
             "id": "dw-000a",
-            "assertion": "Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged.",
+            "assertion": "Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Known Pi/OMP/Claude contracts remain unchanged; unverifiable control targets explicitly refuse rather than blindly type.",
             "state": "unchecked",
             "pressure": "../../backpressure.dd.json#rows/bp-0004"
           },
@@ -239,7 +239,7 @@
         "tk-0006": [
           {
             "id": "dw-0012",
-            "assertion": "Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged.",
+            "assertion": "Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Known Pi/OMP/Claude contracts remain unchanged; unverifiable control targets explicitly refuse rather than blindly type.",
             "state": "unchecked",
             "pressure": "../../backpressure.dd.json#rows/bp-0004"
           },

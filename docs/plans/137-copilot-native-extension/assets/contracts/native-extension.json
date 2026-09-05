@@ -130,9 +130,10 @@
       "separate native idle from acceptance",
       "abort old pending loop on native session shutdown/replacement",
       "no direct artificial /clear or typed slash commands",
-      "private acceptance namespace under state-dir/native-extensions/copilot hashed from seat/native session/host incarnation; exact file layout unit-local",
+      "private acceptance namespace under state-dir/native-extensions/copilot hashed from stable seat/native session (process tuple is live validation and optional diagnostic metadata only); exact file layout unit-local",
       "ambiguous or malformed claim stops affected receive work with diagnostic and no ack; outgoing tool remains usable; no new nack API",
-      "After a fresh native send, await observed completion/idle in the same generation before claiming the next message; acknowledge after acceptance separately. Subscribe before send so early idle cannot be lost. Accepted-duplicate recovery must use completion evidence or explicitly hold, not blindly send subsequent work."
+      "After a fresh native send, await observed completion/idle in the same generation before claiming the next message; acknowledge after acceptance separately. Subscribe before send so early idle cannot be lost. Accepted-duplicate recovery must use completion evidence or explicitly hold, not blindly send subsequent work.",
+      "Durable journal key is stable seatID + native session only; a new PID resuming that same logical native session must see earlier accepted records. Different native sessions remain isolated. Supersedes changes seat ID on user-driven new session."
     ]
   },
   "commands": "Body messaging only: no new native command protocol. Copilot programmatic controls explicitly unsupported at producer/caller boundary with no legacy/tmux fallback; preserve other harness controls. Native user-driven new/resume/reload is lifecycle input, not remote control.",

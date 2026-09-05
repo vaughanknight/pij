@@ -1,0 +1,149 @@
+{
+	"dd": {
+		"schema": "pij-team/packet"
+	},
+	"sections": [
+		{
+			"name": "meta",
+			"value": {
+				"title": "Reviewer packet — rs-boot-announce (135)",
+				"role": "reviewer",
+				"plan": "docs/plans/135-rs-boot-announce/plan.dd.json",
+				"seat": "<filled at spawn>",
+				"updated": "2026-09-05"
+			}
+		},
+		{
+			"name": "mission",
+			"value": "You are the cross-model reviewer for plan 135-rs-boot-announce. Four units are composed on branch 135-rs-boot-announce: u1 made the rs daemon REPORT whether a registration created a seat row, re-bound an existing id to a new process, or refreshed the same one (`binding: created|rebound|same`); u2 made the pi/omp extension derive boot freshness from that instead of from 'a row exists' (which under rs is always true, so no seat had announced since 2026-08-30); u3 made seat identity bind to the HARNESS process rather than the tmux pane's shell, made uds discovery prefer a live matching record, and blocked cross-harness seat hijack; u4 made omp/pi seats render the same wire frame the daemon uses for Claude seats. Judge whether the code makes the plan's promises TRUE — plan fidelity, correctness, and above all COMPOSITION SEAMS, because where units meet is where this breaks. You are READ-ONLY on code. STANDING RULES: never run `flowspace3 daemon` in any form (client verbs only; if doctor says down, tell the PM and stop). NEVER start, restart, rebuild or kill the pij-rs daemon — it is the machine's only daemon and currently runs the PM's worktree binary. Never spawn or kill seats. Never run npm or just install in the MAIN checkout, and readlink any node_modules before writing near it."
+		},
+		{
+			"name": "instructions",
+			"value": [
+				{
+					"id": "i0",
+					"text": "IDENTITY AND PLACE first: run `pij whoami` and quote it verbatim; quote your omp FOOTER model line. Read at /Users/jordanknight/pi-hacking/fs3-rs-boot-announce (the PM's composed worktree, branch 135-rs-boot-announce). ABSOLUTE paths for every read — a spawned seat's tools may resolve relative paths against the SPAWN directory (the main checkout) while your shell resolves against the worktree, and both then lie in the same direction. Measured today: rust-analyzer in a spawned seat loads the SPAWN directory's workspace, so LSP answers can silently describe MAIN, not this branch. Verify your analyzer's workspace root before trusting any empty result."
+				},
+				{
+					"id": "i1",
+					"text": "Orient: read plan.dd.md (the promises under judgment, AC1-AC8), impl-guide.dd.json RAW (the intended decomposition and the frozen interfaces — the rendered .md truncates long cells at ~768 chars and will silently hand you a shortened contract), assets/contracts/README.md + register-response.json (the frozen vocabulary and the golden fixture), assets/live-proof.md (what was proven live and how), then the full diff of the branch against its base."
+				},
+				{
+					"id": "i2",
+					"text": "Verify claims against FRESH evidence: run targeted tests yourself, read exit status, never trust a green you did not see. Cap every run with VITEST_MAX_WORKERS=4 VITEST_MAX_THREADS=4 CARGO_BUILD_JOBS=4 (note: the THREADS variable is INERT on the installed Vitest 4.1.10 — its dist reads WORKERS only — so set both and trust neither blindly). Do NOT run the full tmux smoke and do NOT run cargo test --workspace; the PM serializes those."
+				},
+				{
+					"id": "i3",
+					"text": "WHERE THE AUTHORS AND THE PM ARE LEAST CONFIDENT — hunt here first, in this order. (a) uds discover (crates/transport/src/uds.rs): the fix replaces lexical-order selection with a live pid+proc_start preference; is there any input where it now picks NOTHING although a usable record exists, or still picks a stale one? (b) harness_process (crates/tmux/src/lib.rs): the tree walk must find the harness child across claude / omp / pi / copilot / codex; what happens for a pane with two candidate descendants, a re-parented child, or a harness that died between registration and the walk — and is proc_start captured from the child or accidentally from the shell? (c) the `same` derivation (core/session.ts + adapters/rust-runtime.ts): is `same` EVER wrong for a genuinely new process — and specifically, is suppressing the announce correct when the daemon says `same` but the extension's local registry row is MISSING? (d) the cross-harness samePane guard (rust-runtime.ts): does harness equality use a value that is reliably present, and can a legitimate same-harness reuse now be refused? (e) the frame parser (core/message.ts): a body containing a literal `[/pij]`, CRLF, or trailing whitespace — does it round-trip, and can a malformed frame be parsed as a valid one? (f) atomicity in store/registry.rs put_reporting: the previous proc is pre-read inside the same write transaction — is there any path where the reported binding and the committed row can disagree?"
+				},
+				{
+					"id": "i4",
+					"text": "DISBELIEVE THE AUTHORS' RECEIPTS — re-derive, do not audit prose. Every unit reported RED-then-GREEN and every unit's numbers are in this packet's history, but a receipt is a claim about a run you did not see. Re-run the witnesses you care about. In particular re-derive, do not take on trust: that BOTH suites genuinely READ the golden fixture from disk rather than restating its literals (AC4 — the paths are crates/daemon/src/http/tests.rs and .pi/extensions/pij/adapters/rust-runtime.test.ts); that the new tests actually FAIL on the pre-fix tree (AC5 — check out the base and run them if you want it properly); and that core/session.ts changed by exactly one line plus an optional field."
+				},
+				{
+					"id": "i5",
+					"text": "WHAT IS ALREADY KNOWN-OPEN — spend ZERO findings on any of these. (1) Three timing-sensitive tests in UNTOUCHED code failed inside full gates and passed on quiet re-runs: core/cli.test.ts, core/cli.integration.test.ts, pij-sidecars direct_child_failure_survives_a_lingering_grandchild (10/10 quiet). They are load artifacts, downstream of an inert concurrency cap. (2) VITEST_MAX_THREADS is inert on Vitest 4. (3) `harness boot --full` is advertised but exits E108, and bare `harness boot` defaults into the smoke stage that spawns seats. (4) `ddocs set` refuses the `text` part on an AC item. (5) omp seats load the extension through a machine-global symlink into the MAIN checkout, so live proof required a bounded, prime-ruled repoint (recorded in live-proof.md with the readlink triplet). (6) AC6 was amended by prime ruling after AC8 was added; the frame-expectation exception is deliberate and enumerated. (7) AC3's mechanism differs from the plan's original wording — /new and /reload cause no re-registration at all; the claim was amended to the observation. None of these are findings."
+				},
+				{
+					"id": "i6",
+					"text": "COMPOSITION SEAMS are the priority, because each unit was proven ALONE and green: u1's binding value crossing into u2's fresh derivation; u3's proc_source and harness-process identity crossing into registration/adopt where u1 changed the write path (does put_reporting still report the truth when the recorded proc is now the harness child rather than the pane shell?); u3's samePane guard crossing into u2's announce path in the SAME file (rust-runtime.ts — u2 wrote the fresh line, u3 wrote the harness guard, sequenced by the PM, never concurrently); u4's frame change crossing into every consumer of frame()/parseFrame(). A unit can be green, mutation-checked and still carry a baked-in assumption that only surfaces where it meets another unit — the ASSUMPTIONS sections in the done reports are where to look for those."
+				},
+				{
+					"id": "i7",
+					"text": "Priority order for findings: (1) plan promises that are not actually true, (2) composition-seam defects, (3) interface drift from the impl-guide's frozen interfaces, (4) correctness/safety in changed code, (5) test gaps on the contract. Style noise is unwanted. Each finding: severity CRITICAL/HIGH/MEDIUM, exact location, the claim, the PROOF (command + output), and the smallest fix. `no_material_findings` is a valid and respected verdict — do not manufacture findings to look thorough."
+				},
+				{
+					"id": "i8",
+					"text": "Deliver a ddoc review record in docs/plans/135-rs-boot-announce/assets/reviews/, `ddocs validate` and `ddocs build` it, then send the PM the PATH plus a one-line verdict via `pij send pij-verbal-silverfish`. Capture friction with `harness observe`; list, never clear."
+				}
+			]
+		},
+		{
+			"name": "working_with",
+			"value": [
+				{
+					"id": "w1",
+					"text": "The PM (pij-verbal-silverfish) is your counterpart: verdict and findings go there. The PM may refute a finding with evidence — re-judge refutations on the evidence, not on rank, and say plainly when a refutation fails to persuade you."
+				},
+				{
+					"id": "w2",
+					"text": "You do not fix code, commit, merge, or open PRs. Something outside this plan's scope: name it as a note for prime rather than expanding the review."
+				},
+				{
+					"id": "w3",
+					"text": "The four coder seats may still be alive and holding. If you need to ask an author what they intended, ask the PM to relay — do not message them directly."
+				}
+			]
+		},
+		{
+			"name": "scope",
+			"value": {
+				"worktree": "/Users/jordanknight/pi-hacking/pij (MAIN checkout — 135 is MERGED)",
+				"branch": "main @ 4b000ffb (no-ff merge of fef83b97); base for the diff is the merge parent",
+				"fence": "READ-ONLY on all code. Write only docs/plans/135-rs-boot-announce/assets/reviews/**.",
+				"forbidden_note": "No code edits, no commits, no merges, no government files, no daemon operations, no seat spawning, no dependency installs. Do not modify the golden fixture or any test while reviewing — if a test is wrong, that is a finding, not a fix."
+			}
+		},
+		{
+			"name": "done_bar",
+			"value": [
+				{
+					"id": "d1",
+					"text": "Every AC (AC1-AC8) judged true or false with evidence you generated, not evidence you were handed."
+				},
+				{
+					"id": "d2",
+					"text": "All four composition seams named in i6 explicitly examined and reported on, including the ones you found clean."
+				},
+				{
+					"id": "d3",
+					"text": "The six least-confident areas in i3 each addressed with a verdict, even if the verdict is 'checked, no defect found'."
+				},
+				{
+					"id": "d4",
+					"text": "Review record ddoc written, validated, built, and its path delivered to the PM with a one-line verdict."
+				}
+			]
+		},
+		{
+			"name": "refs",
+			"value": [
+				{
+					"id": "r0",
+					"path": ".agents-skills-port/pij-team/TENETS.md",
+					"note": "doctrine — tenet 5: judge diffs against contracts, not philosophy"
+				},
+				{
+					"id": "r1",
+					"path": "docs/plans/135-rs-boot-announce/impl-guide.dd.json",
+					"note": "intended units + FROZEN interfaces — drift is a finding. Read the RAW json."
+				},
+				{
+					"id": "r2",
+					"path": "docs/plans/135-rs-boot-announce/plan.dd.md",
+					"note": "the promises under judgment, AC1-AC8"
+				},
+				{
+					"id": "r3",
+					"path": "docs/plans/135-rs-boot-announce/assets/contracts/README.md",
+					"note": "frozen vocabulary + the golden fixture both runtimes must READ, never restate"
+				},
+				{
+					"id": "r4",
+					"path": "docs/plans/135-rs-boot-announce/assets/live-proof.md",
+					"note": "what was proven live, how, and where a claim was amended to match the observation"
+				},
+				{
+					"id": "r5",
+					"path": "docs/plans/135-rs-boot-announce/assets/inputs/diagnosis-2026-09-05.md",
+					"note": "the original premise: why seats booted blind under rs"
+				},
+				{
+					"id": "r6",
+					"path": "docs/plans/135-rs-boot-announce/assets/inputs/claude-seat-pid-is-pane-shell.md",
+					"note": "u3's premise: pane shell vs harness process, with file/line pointers"
+				}
+			]
+		}
+	]
+}

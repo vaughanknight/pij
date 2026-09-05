@@ -14,15 +14,67 @@ import {
 import type { ReceiptState } from "./types.js";
 
 describe("frame/parseFrame", () => {
+	it("matches the Rust canonical no-machine frame byte-for-byte", () => {
+		// crates/core/src/framing.rs::frame_message (from_machine = None).
+		expect(frame("pij-a", "hello")).toBe("[pij-rs from pij-a]\nhello\n[/pij]");
+	});
+
+	it("still parses the legacy head without a closing tail", () => {
+		expect(parseFrame("[pij from w3] refactor store.ts")).toEqual({
+			from: "w3",
+			body: "refactor store.ts",
+		});
+	});
+
 	it("round-trips sender id + body", () => {
 		const text = frame("w3", "refactor store.ts");
-		expect(text).toBe("[pij from w3] refactor store.ts");
+		expect(text).toBe("[pij-rs from w3]\nrefactor store.ts\n[/pij]");
 		expect(parseFrame(text)).toEqual({ from: "w3", body: "refactor store.ts" });
 	});
 
 	it("handles multi-line bodies", () => {
 		const text = frame("p1", "line1\nline2");
 		expect(parseFrame(text)).toEqual({ from: "p1", body: "line1\nline2" });
+	});
+
+	it.each([
+		"",
+		"\n",
+		" \tline1\r\nline2\n ",
+		"[/pij]",
+		"before\n[/pij]\nafter",
+		"before\n[/pij]\n",
+	])("preserves canonical payload bytes including embedded tails: %j", (body) => {
+		const text = `[pij-rs from p1]\n${body}\n[/pij]`;
+		expect(frame("p1", body)).toBe(text);
+		expect(parseFrame(text)).toEqual({ from: "p1", body });
+	});
+
+	it.each([
+		"",
+		"line1\nline2",
+		" \tline1\r\nline2\n ",
+		"before\n[/pij]\nafter",
+	])("preserves legacy payload bytes: %j", (body) => {
+		expect(parseFrame(`[pij from p1] ${body}`)).toEqual({ from: "p1", body });
+	});
+
+	it("preserves a machine-qualified sender already supplied on the wire", () => {
+		expect(parseFrame("[pij-rs from pij-a@desktop]\nhello\n[/pij]")).toEqual({
+			from: "pij-a@desktop",
+			body: "hello",
+		});
+	});
+
+	it.each([
+		"[pij-rs from p1]\nhello",
+		"[pij-rs from p1] hello\n[/pij]",
+		"[pij-rs from p1]\nhello[/pij]",
+		"[pij-rs from p1]\nhello\n[/pij]\nadjacent text",
+		"[pij-rs from p1]\nhello\n[/pij]\n",
+		"[pij-rs from ]\nhello\n[/pij]",
+	])("rejects malformed canonical envelopes: %j", (text) => {
+		expect(parseFrame(text)).toBeNull();
 	});
 
 	it("returns null for unframed text", () => {
@@ -106,8 +158,18 @@ describe("announceText", () => {
 	it("is non-imperative and warns against acting on the inbox (D-040)", () => {
 		const t = announceText("w3", "worker");
 		expect(t).toContain("no action is required");
-		expect(t).toMatch(/\[pij from <id>\]/);
 		expect(t.toLowerCase()).toContain("do not read");
 		expect(t.toLowerCase()).toContain("inbox");
+	});
+
+	// AC8: the announce describes the frame we EMIT. A boot message that documents
+	// the legacy shape teaches every fresh seat to expect the generation it is not
+	// on — the same observability defect AC8 exists to close, shipped in the one
+	// message every seat reads first.
+	it("describes the frame peers actually arrive in, not the legacy one", () => {
+		const t = announceText("w3", "worker");
+		expect(t).toContain("[pij-rs from <id>]");
+		expect(t).toContain("[/pij]");
+		expect(t).not.toMatch(/\[pij from <id>\]/);
 	});
 });

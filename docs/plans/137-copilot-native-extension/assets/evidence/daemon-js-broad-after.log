@@ -298,5 +298,14 @@ E-OWN: 'watchdog watch' is not available to a PA — refused by role 'pa' (field
      ✓ whoami through the bin reports watchdog as CONDITIONAL, not flatly refused  529ms
      ✓ lets a PA `chore add` THROUGH THE REAL BIN — the raw-argv subverb mapping  974ms
      ✓ registers the NAMED seat, re-binds without duplicating, and unwatches it again  2958ms
+     ✓ preserves addedAt across a re-bind THROUGH THE BIN, and stamps a new one  1023ms
+     ✓ refuses --for to a PA through the bin, while the plain form still works  1584ms
+     ✓ names --for on BOTH the watch and the unwatch usage lines  494ms
+     ✓ explains what --for DOES, not merely that it exists  501ms
+     ✓ the help path is REACHABLE — guards this whole pin against being vacuous  516ms
 
-[Showing lines 1-300 of 311. Use :301 to continue]
+ Test Files  2 passed (2)
+      Tests  153 passed | 1 skipped (154)
+   Start at  09:55:11
+   Duration  172.06s (transform 882ms, setup 0ms, import 1.26s, tests 170.81s, environment 0ms)
+

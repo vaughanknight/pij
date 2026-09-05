@@ -187,7 +187,10 @@ fn is_plain_rule(line: &str) -> bool {
 
 fn is_copilot_footer(line: &str) -> bool {
     let lower = line.trim().to_lowercase();
-    lower.starts_with("/ commands") || lower.contains("esc interrupt") || lower.contains("context")
+    lower.starts_with("/ commands")
+        || lower.starts_with("← open sidebar · / commands · ? help · tab next tab")
+        || lower.contains("esc interrupt")
+        || lower.contains("context")
 }
 
 fn is_codex_footer(line: &str) -> bool {
@@ -243,6 +246,40 @@ mod tests {
             ComposerRegion::Recognized(String::new()),
             "Copilot v1.0.82 recorded 2026-08-31 from pane %1962"
         );
+    }
+
+    #[test]
+    fn copilot_v1_0_84_captured_idle_footer_is_recognized() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/2026-09-05-copilot-v1.0.84-smoke03.json"
+        ))
+        .expect("captured Copilot fixture is valid JSON");
+        let capture = fixture["terminal"]
+            .as_str()
+            .expect("fixture retains the actual terminal capture");
+        let footer = capture.lines().last().expect("capture contains a footer");
+        assert!(
+            is_copilot_footer(footer),
+            "Copilot v1.0.84-0 smoke03 captured idle footer: {footer:?}"
+        );
+    }
+
+    #[test]
+    fn copilot_footer_preserves_existing_variants() {
+        for footer in [
+            "/ commands · ? help",
+            "esc interrupt",
+            "Claude Opus 5 · 1M context",
+        ] {
+            assert!(is_copilot_footer(footer), "existing footer: {footer:?}");
+        }
+    }
+
+    #[test]
+    fn copilot_footer_rejects_command_help_in_prose() {
+        assert!(!is_copilot_footer(
+            "Use / commands to open the menu and ? help for documentation."
+        ));
     }
 
     #[test]

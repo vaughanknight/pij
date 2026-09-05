@@ -61,7 +61,7 @@ Use impl-guide.dd.json as the frozen contract. No product edits outside fence; n
 | --- | --- | --- | --- |
 | dw-0005 | A new Copilot CLI started manually in tmux with no Pij identity/preallocation env or RPC flags (isolated endpoint/state overrides allowed) auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages. | [ ] unchecked | [bp-0002](../../backpressure.dd.md#rows) |
 | dw-0006 | A Pij-spawned new Copilot session uses the same installed extension, binds the preallocated seat/spawn correlation exactly once, receives initial task once, and sends replies with the same Pij identity. | [ ] unchecked | [bp-0003](../../backpressure.dd.md#rows) |
-| dw-0007 | Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged. | [ ] unchecked | [bp-0004](../../backpressure.dd.md#rows) |
+| dw-0007 | Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Known Pi/OMP/Claude contracts remain unchanged; unverifiable control targets explicitly refuse rather than blindly type. | [ ] unchecked | [bp-0004](../../backpressure.dd.md#rows) |
 | dw-0008 | Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence. | [ ] unchecked | [bp-0006](../../backpressure.dd.md#rows) |
 
 ### tk-0003
@@ -69,7 +69,7 @@ Use impl-guide.dd.json as the frozen contract. No product edits outside fence; n
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
 | dw-0009 | A new Copilot CLI started manually in tmux with no Pij identity/preallocation env or RPC flags (isolated endpoint/state overrides allowed) auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages. | [ ] unchecked | [bp-0002](../../backpressure.dd.md#rows) |
-| dw-000a | Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged. | [ ] unchecked | [bp-0004](../../backpressure.dd.md#rows) |
+| dw-000a | Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Known Pi/OMP/Claude contracts remain unchanged; unverifiable control targets explicitly refuse rather than blindly type. | [ ] unchecked | [bp-0004](../../backpressure.dd.md#rows) |
 | dw-000b | One inbox claim is injected through native SDK and acknowledged only after acceptance; accepted duplicate msg_id is not reinjected; queue/API errors preserve recoverable state and acceptance is never mislabeled model completion. | [ ] unchecked | [bp-0005](../../backpressure.dd.md#rows) |
 
 ### tk-0004
@@ -93,7 +93,7 @@ Use impl-guide.dd.json as the frozen contract. No product edits outside fence; n
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-0012 | Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged. | [ ] unchecked | [bp-0004](../../backpressure.dd.md#rows) |
+| dw-0012 | Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Known Pi/OMP/Claude contracts remain unchanged; unverifiable control targets explicitly refuse rather than blindly type. | [ ] unchecked | [bp-0004](../../backpressure.dd.md#rows) |
 | dw-0013 | Obsolete Copilot UI-server launch/port-intent runtime machinery is removed with safe forward migration semantics and historical migrations untouched; programmatic Copilot controls refuse explicitly without legacy/tmux fallback, while other harness controls are unchanged. | [ ] unchecked | [bp-0008](../../backpressure.dd.md#rows) |
 
 ### tk-0007

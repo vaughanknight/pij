@@ -1,0 +1,56 @@
+{
+  "state": "not-release-ready",
+  "source_integration": "native runtime70 tests and installer41 tests independently passed in PM tree; later cold-resume runtimef75826a8 and daemon authority fixes await paired composition",
+  "engineering_gate": {
+    "command": "harness checks --json",
+    "status": "ok",
+    "ok": true,
+    "ran": [
+      "local-paths",
+      "typecheck",
+      "lint",
+      "test",
+      "copilot-native",
+      "windows-compat",
+      "smoke",
+      "pkg-audit",
+      "snapshots"
+    ],
+    "skipped": [],
+    "timestamp": "2026-09-05T00:51:11.989Z",
+    "wall_seconds": 287.24
+  },
+  "rust_workspace": {
+    "command": "cargo test --locked --workspace --no-fail-fast",
+    "exit_code": 0,
+    "observed_summary": "655 passed;63 suites;6 ignored;93 filtered in nested fixture runs",
+    "evidence": "artifact://315",
+    "wall_seconds": 68.59,
+    "toolchain": "observed rustc/cargo1.95.0 Homebrew; clippy0.1.98; declared1.98.0 pin not enforced (rustup absent)"
+  },
+  "live_native": {
+    "receipts": [
+      "pm-native-local-01.json",
+      "pm-native-local-02.json",
+      "pm-native-local-03.json"
+    ],
+    "passed_boundaries": [
+      "real Copilot ordinary use with daemon/key absent",
+      "one outage diagnostic",
+      "real daemon health offline=false",
+      "two manual native host/session/pane registrations after ucomm fix"
+    ],
+    "blocked_boundary": "Pij body remains held as unrecognized by current input gate on actual Copilot1.0.84 idle footer",
+    "not_proven": [
+      "pane-backed body round trip",
+      "Pij-spawned native full path",
+      "real-model canary through new transport",
+      "complete real host-resume/rollover proof"
+    ]
+  },
+  "decisions_pending": [
+    "Jordan: shared60s recent-typing grace versus strict draft gate; no sendkeys fallback either way",
+    "upstream135 main landing before approved footer observer correction composition"
+  ],
+  "no_global_rollout": true
+}

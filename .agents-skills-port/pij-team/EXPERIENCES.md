@@ -442,4 +442,86 @@ we hand the pattern to pij and the harness. Also `harness observe` each one.
   six orphan ACs — confirming the template must refuse empty task ledgers before
   dispatch. This run fixed the PM/coder/reviewer template TENETS paths to the
   resolvable `.agents-skills-port/pij-team/TENETS.md` source.
+- 2026-09-05 (silverfish, PM 135 rs-boot-announce, 4 coders + 1 reviewer, all
+  units merged): **the ack gate paid for itself seven times, and every defect it
+  caught was in the PM's packet rather than in a coder's understanding.** u1
+  found the fence named `http/mod.rs:292` when the adopt handler actually lives
+  in `identity.rs:357` (mod.rs only routes) and that the packet's "byte-compare"
+  wording was superseded by the contract README's parsed-Value rule; u2 found the
+  packet's `bun test` command matches nothing (the hidden `.pi/` path is treated
+  as a filter, and the suites use `vi.stubEnv`, which bun lacks — the canonical
+  runner is Vitest); u3 found the premise evidence file missing from its worktree
+  because the PM copied it in AFTER the commit that worktree branched from; u4
+  found the RED instruction self-contradictory (a test that PASSES pre-change
+  cannot be the pre-change failing witness). **Template rules earned:** a test
+  command inside a packet is a contract — the author executes it once before
+  dispatch; the fence is derived by opening the routing, not by copying the unit
+  spec; and every asset a packet cites must be committed on the branch the
+  worktree will branch from, verified before spawn.
+- 2026-09-05 (silverfish, 135): **contract fixtures consumed by tests must never
+  live under `docs/plans/<ord>/`.** Post-flight archives the plan folder, and both
+  suites read the golden fixture at test time, so closing the flow correctly would
+  have broken the branch it had just proved. No gate can see this until the
+  archive move happens; it surfaced only because a coder wrote it in its
+  ASSUMPTIONS section. Fixture relocated to `crates/testkit/fixtures/` at compose
+  (prime-approved) — where the repo's corpus gate promptly refused it as an
+  unindexed fixture ("an unaddressable fixture cannot be cited in a packet"),
+  which is tenet 7 working exactly as designed. **Scaffold rule: seed shared
+  fixtures under testkit from the start; the plan folder keeps the vocabulary note
+  and a pointer.**
+- 2026-09-05 (silverfish, 135): **`pij send` bodies must never be composed as
+  interpolated double-quoted shell strings.** Prose written for an agent routinely
+  contains backticks and `$`; one such message performed command substitution on
+  its own text and executed `npm ci` inside the MAIN checkout, destroying its
+  `node_modules` mid-flight, breaking the pij JS launcher for every seat on the
+  box, and corrupting two coders' dependency copies while they read from it.
+  Earlier messages survived only by accidental backslash-escaping. This is a
+  missing affordance, not a discipline failure: until `pij send` grows a
+  `--body-file`/stdin mode, persist the body and send a PATH pointer.
+  Compounding sibling: `cp -Rc SRC DST` copies SRC *inside* DST when DST exists,
+  and a worktree `node_modules` can be a SYMLINK into main — so a repair aimed at
+  a worktree wrote 566 MB into main, and reading through the symlink made the
+  damage report name the wrong tree. **Rules: `readlink` any `node_modules`
+  before writing near it (a symlink into main IS main), and verify a dependency
+  tree BY EXECUTION (`vitest --version`), never by counting entries — a tree with
+  255 packages and 21 `.bin` entries was unusable while both numbers were true.**
+- 2026-09-05 (silverfish, 135): **a concurrency cap nobody verified is worse than
+  no cap.** The fleet-wide load rule imposed `VITEST_MAX_THREADS=4`, which is
+  INERT on Vitest 4 (its dist reads `VITEST_MAX_WORKERS`); `VITEST_MAX_WORKERS`
+  was then also not honoured — a gate ran 29 workers at load 382/16 cores with it
+  exported, and only the CLI flag `--maxWorkers=4` actually capped it. Four
+  "flaky" failures were adjudicated across the day (`cli.test.ts`,
+  `cli.integration.test.ts`, `pij-sidecars`, `flow-pair/identity.test.ts`), all in
+  untouched code, all green on quiet re-runs, and all nearly attributed to code
+  instead of contention. **Rule: bound concurrency in `vitest.config.ts` by
+  construction, and re-run a timing-sensitive failure ONCE in isolation before
+  reporting red.** Same class, same day: `rust-toolchain.toml` pins 1.98.0 while
+  rustup is absent and PATH resolves Homebrew 1.95.0 — every Rust receipt cited
+  the observed version as if it confirmed the pin. A control that is a comment.
+- 2026-09-05 (silverfish, 135): **worktree isolation cannot isolate a
+  machine-global link, and the live-proof step must name where it reads the code
+  FROM.** Every omp seat loads the extension through
+  `~/.omp/agent/extensions/pij` → the MAIN checkout, so a TypeScript fix that was
+  committed, merged and fully green in the plan worktree was simply not the code
+  any live seat ran: the rebuilt daemon told the truth to an extension that could
+  not hear it, producing a silent no-announce identical to the pre-fix symptom.
+  The impl-guide named the daemon-not-restarted version of this hazard (r4) and
+  missed the extension-link twin. Same shape one level up: PATH `pij-rs` symlinks
+  to MAIN's binary, so `just bounce-rs` from a worktree restarts the stale one.
+  **Rule: any plan touching `.pi/extensions/` or the daemon states in wave 0 where
+  the live proof will read the binary and the extension from, and proves the
+  running artifact by path (`ps -o command=`) plus a wire field only the new build
+  emits.**
+- 2026-09-05 (silverfish, 135): **an invalid experiment that cannot fail is worse
+  than a missing one.** The first AC7 attempt launched `claude` AS the pane
+  command, so the pane pid WAS the claude pid — no shell layer existed, the test
+  could not have failed, and a pass would have proven nothing. Caught before it
+  was claimed and redone with a shell hosting the process (shell 90801, claude
+  child 93017). **Rule for live proof: before running it, state what result would
+  falsify the claim; if nothing could, the setup is wrong, not the claim.**
+  Related: when the observed mechanism contradicts the plan's wording, amend the
+  CLAIM to the observation and record the wrong prediction (AC3 here: `/new` and
+  `/reload` caused no re-registration at all, so `binding=same` was never
+  requested live). An AC that is literally false at merge time teaches everyone
+  that ACs are approximate.
 - (add as they arise)

@@ -1,0 +1,21 @@
+{
+  "harness": "Copilot CLI1.0.84-0",
+  "probe": "owned isolated actual CLI, no model prompt",
+  "wrapper_pid": 87512,
+  "native_pid": 87595,
+  "exact_daemon_ps_argv": [
+    "/bin/ps",
+    "-ww",
+    "-p",
+    "87595",
+    "-o",
+    "ppid=",
+    "-o",
+    "comm=",
+    "-o",
+    "args="
+  ],
+  "observed_line": "87512 copilot /Users/jordanknight/.npm-global/lib/node_modules/@github/copilot/node_modules/@github/copilot-darwin-arm64/copilot --no-custom-instructions --disable-builtin-mcps --no-remote --no-auto-update",
+  "lstart": "Sat Sep  5 10:36:24 2026",
+  "conclusion": "Actual native Copilot comm is intact copilot and argv0 basename copilot, satisfying current is_copilot_host; fixture copied-sleep path truncation does not reproduce on this real launch. Pane-backed refusal still needs raw HTTP/pane ancestry proof."
+}

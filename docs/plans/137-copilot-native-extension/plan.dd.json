@@ -65,7 +65,7 @@
         },
         {
           "id": "ac-0004",
-          "claim": "Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Pi/OMP/Claude contracts remain unchanged.",
+          "claim": "Every Copilot delivery path including first arrival, drain, retry and control commands avoids tmux submit/sendkeys/paste; missing or disabled extension is visibly queued/refused and never silently falls back. Known Pi/OMP/Claude contracts remain unchanged; unverifiable control targets explicitly refuse rather than blindly type.",
           "state": "unchecked",
           "pressure": "assets/backpressure.dd.json#rows/bp-0004"
         },
@@ -78,8 +78,9 @@
         {
           "id": "ac-0006",
           "claim": "Human draft/typing veto holds Copilot delivery without altering the composer; the admitted case subsequently delivers once after the existing consent policy permits it. Both worlds have tangible real-client evidence.",
-          "state": "unchecked",
-          "pressure": "assets/backpressure.dd.json#rows/bp-0006"
+          "state": "blocked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0006",
+          "note": "Real native smoke03 proves correct daemon/host registration but input gate remains unrecognized on actual Copilot1.0.84 boxed UI. Prime proposes native-owned claim bypass of composer gate like OMP/Pi; PM surfaced model-turn-during-draft consequence to Jordan and awaits explicit decision before changing this consent criterion. No fallback/permission weakening applied."
         },
         {
           "id": "ac-0007",

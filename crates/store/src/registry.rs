@@ -11,7 +11,7 @@ use pij_core::error::{PijError, Result};
 use pij_core::model::{
     Harness, ProcIdentity, SeatDescriptor, SeatId, SemanticState, Seq, SystemState,
 };
-use pij_core::ports::{Registry, SeatFilter};
+use pij_core::ports::{PutBinding, Registry, SeatFilter};
 
 use crate::migrate::{begin_write, require_current_schema};
 
@@ -45,6 +45,25 @@ fn adapter_error(error: sqlx::Error) -> PijError {
     PijError::Adapter {
         adapter: "store/registry".to_string(),
         message: error.to_string(),
+    }
+}
+
+fn row_proc(row: &sqlx::sqlite::SqliteRow) -> Result<Option<ProcIdentity>> {
+    // A half identity cannot truthfully distinguish a rebind from a refresh.
+    let pid: Option<i64> = row.try_get("pid").map_err(adapter_error)?;
+    let proc_start: Option<i64> = row.try_get("proc_start").map_err(adapter_error)?;
+    match (pid, proc_start) {
+        (Some(pid), Some(proc_start)) => Ok(Some(ProcIdentity {
+            pid: pid as u32,
+            proc_start: proc_start as u64,
+        })),
+        (None, None) => Ok(None),
+        _ => Err(PijError::Adapter {
+            adapter: "store/registry".to_string(),
+            message: "seat row has half a process identity (pid without proc_start, or \
+                      the reverse) — liveness cannot be judged from it"
+                .to_string(),
+        }),
     }
 }
 
@@ -86,26 +105,11 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
         }
     };
 
-    // The pair, or nothing. A row with a pid and no start time is not half an
-    // identity — it is an unusable one, and treating it as usable is the
-    // recycled-pid bug wearing a different hat.
+    let proc = row_proc(row)?;
+    // Keep native attestation's raw bounds checks before relying on the
+    // descriptor conversion used by the binding-report path.
     let pid: Option<i64> = row.try_get("pid").map_err(adapter_error)?;
     let proc_start: Option<i64> = row.try_get("proc_start").map_err(adapter_error)?;
-    let proc = match (pid, proc_start) {
-        (Some(pid), Some(proc_start)) => Some(ProcIdentity {
-            pid: pid as u32,
-            proc_start: proc_start as u64,
-        }),
-        (None, None) => None,
-        _ => {
-            return Err(PijError::Adapter {
-                adapter: "store/registry".to_string(),
-                message: "seat row has half a process identity (pid without proc_start, or \
-                          the reverse) — liveness cannot be judged from it"
-                    .to_string(),
-            });
-        }
-    };
 
     let relay: i64 = row.try_get("relay").map_err(adapter_error)?;
     let parent: Option<String> = row.try_get("parent").map_err(adapter_error)?;
@@ -202,6 +206,10 @@ impl Registry for SqliteRegistry {
     }
 
     async fn put(&self, descriptor: SeatDescriptor) -> Result<Seq> {
+        self.put_reporting(descriptor).await.map(|(seq, _)| seq)
+    }
+
+    async fn put_reporting(&self, descriptor: SeatDescriptor) -> Result<(Seq, PutBinding)> {
         require_current_schema(&self.pool).await?;
 
         // ONE transaction. Persist-before-mutate orders the two writes; the
@@ -209,6 +217,15 @@ impl Registry for SqliteRegistry {
         // version: a failed second statement left the spine claiming something
         // the registry never did.
         let mut tx = begin_write(&self.pool).await?;
+        let previous = sqlx::query("SELECT pid, proc_start FROM seats WHERE id = ?1")
+            .bind(descriptor.id.as_str())
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+        let binding = PutBinding {
+            inserted: previous.is_none(),
+            previous_proc: previous.as_ref().map(row_proc).transpose()?.flatten(),
+        };
 
         let seq: i64 = sqlx::query_scalar(
             "INSERT INTO spine_events (v, at, kind, seat, payload) VALUES (1, 0, 'seat.put', ?1, '') \
@@ -264,7 +281,7 @@ impl Registry for SqliteRegistry {
         .map_err(adapter_error)?;
 
         tx.commit().await.map_err(adapter_error)?;
-        Ok(Seq(seq as u64))
+        Ok((Seq(seq as u64), binding))
     }
 
     async fn list(&self, filter: SeatFilter) -> Result<Vec<SeatDescriptor>> {
