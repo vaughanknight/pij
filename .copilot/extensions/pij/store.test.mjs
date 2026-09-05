@@ -12,6 +12,7 @@ import {
 	FileJournal,
 	NativeBridge,
 	parseProcessStart,
+	resolveRegistration,
 } from "./store.mjs";
 
 const registration = Object.freeze({
@@ -906,7 +907,7 @@ test("registration tolerates additive plan135 binding metadata", async () => {
 	await run;
 });
 
-test("manual identity stable; exact process native rollover supersedes predecessor", () => {
+test("manual identity requests daemon allocation; exact process rollover supersedes predecessor", () => {
 	const input = {
 		sessionId: registration.harness_session,
 		host: { pid: registration.pid, proc_start: registration.proc_start, pane: registration.pane },
@@ -914,7 +915,7 @@ test("manual identity stable; exact process native rollover supersedes predecess
 		env: {},
 	};
 	const fresh = chooseRegistration({ ...input, seats: [] });
-	assert.equal(fresh.id, chooseRegistration({ ...input, seats: [] }).id);
+	assert.equal(fresh.id, "");
 	assert.equal(
 		fresh.id,
 		chooseRegistration({
@@ -1036,14 +1037,29 @@ test("explicit retirement reopens as fresh attachment, including same-process A 
 		folder: "/work",
 		env: {},
 	};
-	const first = chooseRegistration({ ...input, seats: [] });
+	const allocate = (request, id) =>
+		resolveRegistration(
+			{
+				request: async () => ({
+					...descriptor,
+					id,
+					session: request.harness_session,
+					proc: { pid: request.pid, proc_start: request.proc_start },
+					pane: request.pane,
+				}),
+			},
+			request,
+			new AbortController().signal,
+		);
+	const first = await allocate(chooseRegistration({ ...input, seats: [] }), "pij-bright-otter");
 	const firstSeat = { ...descriptor, id: first.id, session: first.harness_session };
 	const message = { ...claim.message, to: first.id };
 	const oldJournal = new FileJournal(home, first);
 	assert.equal(await oldJournal.begin(message), true);
 	await oldJournal.accept(message, "old-acceptance");
-	const next = chooseRegistration({ ...input, sessionId: "native-B", seats: [firstSeat] });
-	assert.equal(next.supersedes, first.id);
+	const nextRequest = chooseRegistration({ ...input, sessionId: "native-B", seats: [firstSeat] });
+	assert.equal(nextRequest.supersedes, first.id);
+	const next = await allocate(nextRequest, "pij-calm-badger");
 	const retired = {
 		...firstSeat,
 		tombstoned_at: 1,
@@ -1051,10 +1067,12 @@ test("explicit retirement reopens as fresh attachment, including same-process A 
 		state: "tombstoned",
 	};
 	const current = { ...descriptor, id: next.id, session: next.harness_session };
-	const reopened = chooseRegistration({ ...input, seats: [retired, current] });
+	const reopenedRequest = chooseRegistration({ ...input, seats: [retired, current] });
+	assert.equal(reopenedRequest.supersedes, next.id);
+	const reopened = await allocate(reopenedRequest, "pij-quiet-raven");
 	assert.notEqual(reopened.id, first.id);
 	assert.notEqual(reopened.id, next.id);
-	assert.equal(reopened.supersedes, next.id);
+	assert.equal(reopened.supersedes, undefined);
 	assert.equal(await new FileJournal(home, reopened).load(message.msg_id), undefined);
 	assert.equal((await oldJournal.load(message.msg_id)).nativeId, "old-acceptance");
 	const reopenedSeat = { ...firstSeat, id: reopened.id };
@@ -1192,7 +1210,11 @@ test("real chooseRegistration and filesystem preserve accepted-before-ack across
 		folder: "/work",
 		env: {},
 	};
-	const selected = chooseRegistration({ ...input, seats: [] });
+	const selected = await resolveRegistration(
+		{ request: async () => ({ ...descriptor, id: "pij-bright-otter" }) },
+		chooseRegistration({ ...input, seats: [] }),
+		new AbortController().signal,
+	);
 	const registered = { ...descriptor, id: selected.id };
 	const queued = { ...claim, message: { ...claim.message, to: selected.id } };
 	const journal = new FileJournal(home, selected);

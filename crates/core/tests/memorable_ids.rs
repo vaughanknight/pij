@@ -17,9 +17,9 @@ fn curated_corpus_is_pinned_and_clean() {
     // production corpus and its TS pinning test contain 1,176; pin data, not the
     // stale historical denominator.
     assert_eq!(NAME_ADJECTIVES.len(), 1_176);
-    assert_eq!(NAME_NOUNS.len(), 420);
+    assert_eq!(NAME_NOUNS.len(), 552);
     assert_eq!(SHIP_NAMES.len(), 40);
-    assert_eq!(MEMORABLE_PIJ_ID_SPACE, 493_960);
+    assert_eq!(MEMORABLE_PIJ_ID_SPACE, 649_192);
     assert_eq!(
         MEMORABLE_PIJ_ID_SPACE,
         NAME_ADJECTIVES.len() * NAME_NOUNS.len() + SHIP_NAMES.len()
@@ -76,10 +76,9 @@ fn curated_corpus_is_pinned_and_clean() {
 
 #[test]
 fn rust_matches_the_typescript_oracle() {
-    // Oracle: /Users/jordanknight/pi-hacking/pij at
-    // c8d99b1326908a9351ff918fb6d797e8caff6c8e.
-    // Generated once with this exact command (the shell variable preserves NUL
-    // escapes until tsx parses the ECMAScript string literals):
+    // Oracle: the TypeScript production implementation in this checkout.
+    // Regenerate after any corpus change; Bun runs it without node_modules.
+    // The shell variable preserves NUL escapes until Bun parses the literals:
     //
     // ORACLE_SCRIPT='import { memorablePijIdCandidate, MEMORABLE_PIJ_ID_SPACE } from
     // "./.pi/extensions/pij/core/memorable-id.ts"; const cases =
@@ -88,33 +87,37 @@ fn rust_matches_the_typescript_oracle() {
     // ["s1754000000000-9000",1],["s1754000000000-9000",17],
     // ["adopt\x00claude\x00%100\x0020000",0],["adopt\x00claude\x00%100\x0020000",1],
     // ["adopt\x00claude\x00%100\x0020000",17],["full-space-seed",0],
-    // ["full-space-seed",1],["full-space-seed",493920],["full-space-seed",493959],
-    // ["stable-seed",493959],["café-🐙",0],["café-🐙",1]];
+    // ["full-space-seed",1],["full-space-seed",649152],["full-space-seed",649191],
+    // ["stable-seed",649191],["café-🐙",0],["café-🐙",1]];
     // console.log(JSON.stringify({space:MEMORABLE_PIJ_ID_SPACE,vectors:cases.map(([seed,
     // attempt])=>({seed,attempt,result:memorablePijIdCandidate(seed,attempt)}))},null,2));'
-    // ./node_modules/.bin/tsx --eval "$ORACLE_SCRIPT"
+    // bun --eval "$ORACLE_SCRIPT"
     const GOLDENS: &[(&str, usize, &str)] = &[
         (
             "4dffbee3-5d42-4b02-a739-74be162940bc",
             0,
-            "pij-dangerous-dragon",
+            "pij-intermediate-nenneke",
         ),
-        ("copilot-session-alpha", 0, "pij-bewildered-tochee"),
-        ("claude-session-beta", 0, "pij-whispering-leopard"),
-        ("pi-session-gamma", 0, "pij-electrical-swordtail"),
-        ("s1754000000000-9000", 0, "pij-royal-moose"),
-        ("s1754000000000-9000", 1, "pij-brief-ptarmigan"),
-        ("s1754000000000-9000", 17, "pij-rubber-egret"),
-        ("adopt\0claude\0%100\x0020000", 0, "pij-relevant-tahr"),
-        ("adopt\0claude\0%100\x0020000", 1, "pij-atomic-yak"),
-        ("adopt\0claude\0%100\x0020000", 17, "pij-reliable-meerkat"),
+        ("copilot-session-alpha", 0, "pij-young-eagle"),
+        ("claude-session-beta", 0, "pij-mild-demeter"),
+        ("pi-session-gamma", 0, "pij-enchanting-ermine"),
+        ("s1754000000000-9000", 0, "pij-acute-olin"),
+        ("s1754000000000-9000", 1, "pij-thin-dijkstra"),
+        ("s1754000000000-9000", 17, "pij-naughty-snipe"),
+        ("adopt\x00claude\x00%100\x0020000", 0, "pij-good-gopher"),
+        (
+            "adopt\x00claude\x00%100\x0020000",
+            1,
+            "pij-disciplinary-louse",
+        ),
+        ("adopt\x00claude\x00%100\x0020000", 17, "pij-united-pavetta"),
         ("full-space-seed", 0, "pij-no-more-mr-nice-guy"),
-        ("full-space-seed", 1, "pij-comprehensive-lungfish"),
-        ("full-space-seed", 493_920, "pij-sole-harrier"),
-        ("full-space-seed", 493_959, "pij-vulture"),
-        ("stable-seed", 493_959, "pij-vulture"),
-        ("café-🐙", 0, "pij-christian-xerinae"),
-        ("café-🐙", 1, "pij-just-vrell"),
+        ("full-space-seed", 1, "pij-homely-ifechi"),
+        ("full-space-seed", 649_152, "pij-misleading-ciri"),
+        ("full-space-seed", 649_191, "pij-vulture"),
+        ("stable-seed", 649_191, "pij-vulture"),
+        ("café-🐙", 0, "pij-nearby-parrotfish"),
+        ("café-🐙", 1, "pij-inadequate-skunk"),
     ];
 
     for &(seed, attempt, expected) in GOLDENS {
@@ -141,7 +144,10 @@ fn candidate_sequence_is_complete_without_repeats() {
         assert!(ship_ids.is_subset(&ids), "seed={seed}");
     }
 
-    assert_eq!(candidate("stable-seed", 0).as_str(), "pij-familiar-canid");
+    assert_eq!(
+        candidate("stable-seed", 0).as_str(),
+        "pij-frequent-mousesack"
+    );
     assert!(ship_ids.contains(&candidate("full-space-seed", 0)));
     assert_eq!(
         memorable_pij_id_candidate("seed", MEMORABLE_PIJ_ID_SPACE),
@@ -154,7 +160,7 @@ fn candidate_sequence_is_complete_without_repeats() {
 #[test]
 fn collision_probes_leave_the_starting_adjective_row() {
     // Treat the first 80 candidates as 79 occupied slots. A stride of one can
-    // cross at most one 420-noun row boundary; the selected coprime stride must
+    // cross at most one 552-noun row boundary; the selected coprime stride must
     // spread the collision sequence across the grid instead.
     let adjectives = memorable_pij_id_candidates("stable-seed")
         .take(80)

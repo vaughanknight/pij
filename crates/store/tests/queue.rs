@@ -235,7 +235,7 @@ async fn claimed_delivery_lookup_does_not_refresh_or_expire_a_running_lease() {
     let expected = job("delivery:seat-a", "seat-a", "message");
     let id = queue.enqueue(expected.clone()).await.expect("enqueue");
     queue
-        .claim(&[expected.kind.clone()], "reader")
+        .claim(std::slice::from_ref(&expected.kind), "reader")
         .await
         .expect("claim")
         .expect("job");
