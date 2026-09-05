@@ -83,7 +83,11 @@ export default defineConfig({
 		// CPU count on a box that also runs the fleet — load 200-380 on 16 cores and
 		// a varying red set of real-binary timing tests. The gate runs through
 		// `npm run test` with no way to pass --maxWorkers, so the cap lives here.
-		maxWorkers: 4,
+		// The cap is for the fleet box only. Hosted CI (4 vCPU) ran at vitest's
+		// default before this cap existed and went green; pinning 4 there doubled
+		// contention (summed test time 455s→995s) and timed out the real-binary
+		// tests (main 7c97c726, PR #369). Leave CI on the default.
+		...(process.env.CI ? {} : { maxWorkers: 4 }),
 		// Skip physical fsync barriers in tests (adapters/atomic-file.ts
 		// maybeFsyncSync): 18 fsync sites x 16 parallel workers on one disk
 		// starved boot-path tests into 20s+ timeouts. Ordering/content
