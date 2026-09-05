@@ -1,0 +1,77 @@
+{
+  "status": "scoped-checks-passed-source-review-clean-no-live-run",
+  "source_base": "3c2ad795",
+  "source_review": {
+    "reviewer": "LifecycleGhostReview",
+    "initial_finding": "Malformed command-menu rows truncated the scan, hiding an earlier duplicate selection while accepting the suffix.",
+    "correction": "Scan the full adjacent nonblank region, using blank rows or blank transcript scrollbar rows as boundaries. Strict validation rejects malformed rows instead of ignoring them.",
+    "follow_up": "No remaining actionable findings in the bounded source-only review; reviewer ran no validation and made no edits."
+  },
+  "request": "Live09 lifecycle driver mistakes /new [prompt] ghost for typed input; use measured prefix/cursor and exact selected command, never type placeholder or submit other selection.",
+  "fixture": {
+    "path": "harness/scripts/fixtures/copilot-native-new-command.json",
+    "receipt": "docs/plans/137-copilot-native-extension/assets/evidence/pm-native-local-09.json",
+    "receipt_source_commit": "f14cf56b1114c96dc8a453a5ea0ea67d6f7b3533",
+    "human_control": "witnesses[kind=manual-native-rollover].human_control",
+    "capture": "final_pane_captures[pane=%3].pane_capture",
+    "cursor_x": 6,
+    "cursor_y": 45,
+    "pane_width": 160,
+    "pane_height": 48,
+    "timing": "Final measured capture is not an atomic observation of the earlier failed stage read. Both are retained with distinct provenance."
+  },
+  "implementation": {
+    "scope": "driveSmokeLifecycleCommand only; existing nativeComposer and captureSmokePaneViewport implementations unchanged",
+    "measured_fields": ["staged_pane_capture", "before_submit_pane_capture"],
+    "stage": "Capture actual cursor and unjoined viewport with existing raw tmux batch; bind parsed command to the last composer's single physical row and exact cursor after ASCII command",
+    "ghost": "Only /new [prompt], with measured typed prefix /new and exactly one adjacent selected /new command",
+    "recheck": "Repeat measured validation after optional staged hook immediately before the existing one Enter; preserve captures on failure",
+    "safety": "No typing of placeholder, no blind Enter, no retry of Enter, no parser/footer policy changes or message-body delivery through tmux"
+  },
+  "verification": {
+    "environment": { "VITEST_MAX_WORKERS": "4", "VITEST_MAX_THREADS": "4", "CARGO_BUILD_JOBS": "4" },
+    "red": {
+      "command": "just test harness/scripts/copilot-native-smoke.test.ts -t 'retained measured ghost'",
+      "failed": 1,
+      "skipped": 132,
+      "failure": "PIJ_NATIVE_TIMEOUT: exact native lifecycle command staged",
+      "exit": 1
+    },
+    "review_red": {
+      "command": "just test harness/scripts/copilot-native-smoke.test.ts -t 'hidden duplicate selection'",
+      "failed": 2,
+      "skipped": 148,
+      "failure": "Malformed indentation or unknown menu text hid another selected command and allowed Enter before correction",
+      "exit": 1
+    },
+    "focused": {
+      "basis": "Before review correction; superseded by the final combined suite below",
+      "command": "just test harness/scripts/copilot-native-smoke.test.ts -t 'native lifecycle assertion boundaries'",
+      "passed": 43,
+      "skipped": 105,
+      "exit": 0
+    },
+    "counterexamples": "17 measured-frame variants, each exercised at both initial stage and pre-submit recheck. Wrong/beyond/inside-placeholder cursor; unavailable metadata; unknown or actually typed placeholder; wrong, prefix-only, absent, duplicate or malformed selection; hidden duplicate across malformed indentation or unknown text; plain command with wrong selection; incomplete repaint; historical selection only. Each retains failed capture and sends no Enter.",
+    "combined": {
+      "command": "just test harness/scripts/link-global.test.ts harness/scripts/copilot-native-smoke.test.ts",
+      "passed": 183,
+      "installer": 33,
+      "smoke": 150,
+      "duration_seconds": 9.56,
+      "exit": 0
+    },
+    "typescript": {
+      "command": "node_modules/.bin/tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --types node harness/scripts/link-global.ts harness/scripts/link-global.test.ts harness/scripts/copilot-native-fixture.ts harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts",
+      "exit": 0
+    },
+    "biome": {
+      "command": "node_modules/.bin/biome check harness/scripts/copilot-native-smoke.ts harness/scripts/copilot-native-smoke.test.ts harness/scripts/fixtures/copilot-native-new-command.json",
+      "files": 3,
+      "fixes_applied": false,
+      "exit": 0
+    }
+  },
+  "grade": "Injected-IO and retained-screen source proof only. No live CLI or provider execution; no claim of successful rollover, lifecycle acceptance, or new AC6/AC7 proof. PM owns live continuation and full gates.",
+  "scope_exclusions": ["product recognizer", "third footer variant", "Rust", "shipping extension", "input/queue policy", "composition tree", "governance", "live/full runs", "global configuration or daemon repair"],
+  "lesson": { "observation": "DL-001", "fingerprint": "45d44cf415c8", "encoded_in": ["retained measured fixture", "lifecycle refusal regressions", "receipt documentation"] }
+}
