@@ -26,6 +26,9 @@
     ],
     "result": "284 tests passed across 12 suites; strict Clippy and rustfmt passed",
     "log": "daemon-cold-resume-tests-final.log",
+    "raw_log_lines": 360,
+    "raw_log_sha256": "9ef5f2594cef2a31ca29f47f31de12eb053388850df8402a91edcab449f1be59",
+    "evidence_correction": "Recovered byte-identical original artifact157 using explicit raw/full-range read; prior reader-mode export truncated at 300 lines. No tests rerun for this correction. See daemon-proof-log-recovery.json.",
     "caps": {"CARGO_BUILD_JOBS": "4", "VITEST_MAX_WORKERS": "4", "VITEST_MAX_THREADS": "4", "rust_test_threads": 4},
     "cargo_target": "worktree-local target directory",
     "observed_toolchain": {"cargo": "1.95.0 Homebrew", "rustc": "1.95.0 Homebrew", "clippy": "0.1.98", "note": "Observed versions, not an enforced pin. rust-toolchain.toml 1.98.0 is not enforced without rustup. --locked constrains dependency resolution only. No toolchain installation/update."}
