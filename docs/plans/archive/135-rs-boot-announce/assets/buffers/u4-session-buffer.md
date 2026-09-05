@@ -79,3 +79,12 @@
       status: open
       source: agent-self
       first_seen_at: "2026-09-05T03:00:43.610Z"
+- id: DL-006
+  kind: difficulty
+  description: "u4 final guard pass: LSP code_actions for statSync crashed in TypeScript5.9.3 refactor code with undefined.kind. Fresh-read fallback added only statSync to existing node:fs import; guard RED/GREEN and quick gate passed. No server or toolchain mutation. Need reliable import quick-fix behavior across long-lived worktree sessions."
+  fp: b9f86bf11366
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-05T03:09:11.108Z"
