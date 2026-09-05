@@ -48,14 +48,16 @@
         {
           "id": "ac-0001",
           "claim": "Canonical setup installs the repo-owned Copilot extension and persistently enables experimental features while preserving unrelated settings, foreign symlinks and files; repeated setup is idempotent and COPILOT_HOME is honored.",
-          "state": "unchecked",
-          "pressure": "assets/backpressure.dd.json#rows/bp-0001"
+          "state": "checked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0001",
+          "receipt": "PM: just test harness/scripts/link-global.test.ts within85-test scoped run:33/33 install tests passed, including preservation/idempotency/COPILOT_HOME/optional CLI; assets/evidence/pm-lifecycle-install-checks.log. Actual isolated installer+doctor and native auto-load passed in pm-native-local-05.json and pm-native-completion-live-01.json. No global rollout."
         },
         {
           "id": "ac-0002",
           "claim": "A new Copilot CLI started manually in tmux with no Pij identity/preallocation env or RPC flags (isolated endpoint/state overrides allowed) auto-loads the extension, registers truthful copilot/native-session/process/pane identity and can receive and send Pij messages.",
-          "state": "unchecked",
-          "pressure": "assets/backpressure.dd.json#rows/bp-0002"
+          "state": "checked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0002",
+          "receipt": "Actual CLI/SDK real-provider canary pm-native-real-canary-04.json passed on module2cc04cb1: no manual identity/preallocation env or RPC flags, native host/session/pane registrations, one explicit native pij_send reply and subsequent native receive. Model reported gpt-5.6-luna. Local08 also passed manual native roundtrip."
         },
         {
           "id": "ac-0003",
@@ -78,9 +80,10 @@
         {
           "id": "ac-0006",
           "claim": "Native-owned Copilot delivery follows OMP recent-typing policy: the extension consumes observed human edits (136 pane-side recency is authorized because the actual SDK lacks pre-submit input hooks), uses daemon-resolved PIJ_TYPING_GRACE_MS and136 hold/release, retains explicit operator Hold, and admits after grace despite a static draft; unowned Copilot stays queued/refused without sendkeys fallback.",
-          "state": "unchecked",
+          "state": "checked",
           "pressure": "assets/backpressure.dd.json#rows/bp-0006",
-          "note": "Jordan ruling in assets/inputs/jordan-ruling-consent-2026-09-05.md; prime-preauthorized pane sensor and actual injected SDK evidence in assets/inputs/pm-typing-sensor-contract-v4.json. Supersedes strict draft blocking. Implementation and RED/live proofs remain pending; never permission for ungated send."
+          "note": "Jordan ruling in assets/inputs/jordan-ruling-consent-2026-09-05.md; prime-preauthorized pane sensor and actual injected SDK evidence in assets/inputs/pm-typing-sensor-contract-v4.json. Supersedes strict draft blocking. Implementation and RED/live proofs remain pending; never permission for ungated send.",
+          "receipt": "pm-native-local-08.json witnesses[6] status passed: daemon typing_grace_ms60000; actual human draft held with durable pending job and delivery.held; observed expiry retry_after_ms0 then delivery.released, one native user message and one reader-read ACK. Accepted pane_capture measured cursor50,45 at160x48 and unchanged draft. Overall run later failed at obsolete disabled-CLI readiness glyph check; this does not claim full acceptance."
         },
         {
           "id": "ac-0007",

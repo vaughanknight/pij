@@ -1,0 +1,71 @@
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.95s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-18bad1c90de73721)
+
+running 54 tests
+test http::tests::a_reraised_cursor_refusal_carries_the_peers_own_numbers ... ok
+test http::tests::direct_http_spawn_carries_no_claude_default_the_cli_owns_it ... ok
+test http::tests::a_native_session_boundary_supersedes_its_own_seat_but_never_another ... ok
+test http::tests::events_are_live_by_default_and_frame_unknown_kinds_with_a_cursor ... ok
+test http::tests::exposure_banner_names_the_address_it_classifies ... ok
+test http::tests::explicit_since_replays_then_stays_live ... ok
+test http::tests::auth_ring_covers_every_declared_route_and_accepts_peer_keys ... ok
+test http::tests::inbox_claims_without_evidence_then_ack_records_machine_graded_reader_read ... ok
+test http::tests::paneless_registration_returns_the_identity_export_it_requires ... ok
+test http::tests::peer_forwarding_makes_one_authenticated_request ... ok
+test http::tests::registration_binding_absent_preserves_descriptor_shape ... ok
+test http::tests::peer_key_removal_takes_effect_when_router_restarts ... ok
+test http::tests::event_loop_survives_one_stream_error_and_processes_the_next_frame ... ok
+test http::tests::ordinary_registration_preserves_native_attestation_and_claude_consent ... ok
+test http::tests::registration_cannot_adopt_a_spawn_match_from_another_pane ... ok
+test http::tests::registration_binding_created_matches_shared_fixture ... ok
+test http::tests::registration_cannot_adopt_a_spawn_match_that_is_already_bound ... ok
+test http::tests::registration_binding_rebound_matches_shared_fixture ... ok
+test http::tests::registration_corroborates_process_and_refuses_shared_process_aliases ... ok
+test http::tests::registration_does_not_inherit_native_capability_from_another_incarnation ... ok
+test http::tests::reregistration_prefers_exact_id_over_spawn_match_without_fresh_allocation ... ok
+test http::tests::registration_refuses_uncorroborated_or_half_process_identity ... ok
+test http::tests::seats_performs_one_unfiltered_registry_list ... ok
+test http::tests::send_request_uses_resolved_destination_object_and_optional_reply_id ... ok
+test http::tests::send_enqueues_exactly_once_and_refuses_remote_without_federation ... ok
+test http::tests::registration_binding_same_matches_shared_fixture ... ok
+test http::tests::spawn_stamps_only_the_argv_that_reached_the_observed_launch ... ok
+test http::tests::roster_loop_survives_one_peer_error_and_processes_the_next_poll ... ok
+test http::tests::spawned_registration_adopts_prebind_row_and_preserves_port ... ok
+test http::tests::state_names_what_it_cannot_answer_instead_of_nulling_it ... ok
+test http::tests::state_reads_one_seat_back_by_id ... ok
+test http::tests::state_refusal_is_not_classifiable_as_route_absence ... ok
+test http::tests::state_reports_a_recycled_pid_as_neither_active_nor_dead ... ok
+test http::tests::state_reports_a_seat_with_no_process_as_unbound ... ok
+test http::tests::state_request_takes_the_seat_from_shim_argv_and_prefers_an_explicit_id ... ok
+test http::tests::state_tolerates_a_body_field_it_does_not_know ... ok
+test http::tests::state_without_a_seat_refuses_by_name ... ok
+test http::tests::spawn_wait_returns_bound_process_and_publishes_event ... ok
+test http::tests::the_memorable_allocator_advances_past_an_occupied_name ... ok
+test http::tests::spawn_reports_model_mismatch_without_killing_registered_seat ... ok
+test http::tests::two_daemons_forward_remote_send_into_destination_queue_and_spine ... ok
+test http::tests::typing_hold_and_release_are_known_wire_events ... ok
+test http::tests::typing_not_live_names_absent_and_terminal_noops_on_both_routes ... ok
+test http::tests::spawn_wait_reports_child_exit_with_log_tail ... ok
+test http::tests::typing_hold_release_match_contract_and_are_idempotent ... ok
+test http::tests::typing_receipt_is_queued_until_ack_then_reader_read_for_omp_and_pi ... ok
+test http::tests::typing_pending_holds_allow_bypass_rehold_and_restart_in_order ... ok
+test http::tests::typing_release_wakes_an_already_waiting_inbox_reader ... ok
+test http::tests::typing_release_declaration_clears_running_and_terminal_holds_after_restart ... ok
+test http::tests::typing_state_projects_active_holds_only ... ok
+test http::tests::typing_unknown_claim_after_restart_is_harmless_and_keeps_pending_body ... ok
+test http::tests::wrong_peer_key_is_permanent_and_never_hot_loops ... ok
+test http::tests::the_event_loop_resumes_live_after_a_peer_refuses_an_impossible_cursor ... ok
+test http::tests::typing_registration_flattens_grace_without_persisting_it_on_the_seat ... ok
+
+test result: ok. 54 passed; 0 failed; 0 ignored; 0 measured; 186 filtered out; finished in 0.28s
+
+    Checking pij-core v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/core)
+    Checking pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/harnesses)
+    Checking pij-transport v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/transport)
+    Checking pij-sidecars v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/sidecars)
+    Checking pij-store v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/store)
+    Checking pij-tmux v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/tmux)
+    Checking pij-testkit v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/testkit)
+    Checking pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/daemon)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 14.24s

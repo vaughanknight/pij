@@ -1,0 +1,35 @@
+   Compiling pij-core v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/core)
+   Compiling pij-testkit v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/testkit)
+   Compiling pij-store v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/store)
+   Compiling pij-sidecars v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/sidecars)
+   Compiling pij-transport v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/transport)
+   Compiling pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/harnesses)
+   Compiling pij-tmux v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/tmux)
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 29.33s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-18bad1c90de73721)
+
+running 2 tests
+
+thread 'http::native_tests::native_typing_http_snapshot_is_authenticated_read_only_and_echoes_owner' (902053894) panicked at crates/daemon/src/http/native_tests.rs:2174:5:
+assertion `left == right` failed: typing read route must exist
+  left: 404
+ right: 200
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test http::native_tests::native_typing_http_snapshot_is_authenticated_read_only_and_echoes_owner ... FAILED
+
+thread 'http::native_tests::native_typing_aged_nonempty_draft_does_not_gate_native_claim' (902053893) panicked at crates/daemon/src/http/native_tests.rs:2220:5:
+assertion `left == right` failed: an aged draft cannot block native claim: NativeInboxPage { claims: [], held_reason: Some("human-consent") }
+  left: 0
+ right: 1
+test http::native_tests::native_typing_aged_nonempty_draft_does_not_gate_native_claim ... FAILED
+
+failures:
+
+failures:
+    http::native_tests::native_typing_aged_nonempty_draft_does_not_gate_native_claim
+    http::native_tests::native_typing_http_snapshot_is_authenticated_read_only_and_echoes_owner
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 235 filtered out; finished in 0.06s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

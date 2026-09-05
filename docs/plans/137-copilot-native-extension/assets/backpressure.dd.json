@@ -8,7 +8,7 @@
       "value": {
         "title": "Copilot native extension — selected backpressure",
         "plan": "../plan.dd.json#meta",
-        "basis_sha": "82f119a5bc015d7ed3ca6ce25276c1e22546c9d559d27950b1d4e92b4a9ac8a1",
+        "basis_sha": "a526f5c7e5a9b0b15fce077ba71a0ad96de06d4ae141beadaf9e28bb9a5b7316",
         "certainty": "Partial"
       }
     },
@@ -22,8 +22,9 @@
           "mode": "EXTEND",
           "tier": "computational",
           "proof": "Extend link-global tests: absent/existing/foreign path and settings preservation, repeat setup/COPILOT_HOME; RUN just test harness/scripts/link-global.test.ts. Installation unit owns fixtures.",
-          "state": "unchecked",
-          "note": "Selection, not completed proof. No numeric confidence score."
+          "state": "checked",
+          "note": "Selection, not completed proof. No numeric confidence score.",
+          "receipt": "PM: just test harness/scripts/link-global.test.ts within85-test scoped run:33/33 install tests passed, including preservation/idempotency/COPILOT_HOME/optional CLI; assets/evidence/pm-lifecycle-install-checks.log. Actual isolated installer+doctor and native auto-load passed in pm-native-local-05.json and pm-native-completion-live-01.json. No global rollout."
         },
         {
           "id": "bp-0002",
@@ -32,8 +33,9 @@
           "mode": "BUILD",
           "tier": "computational",
           "proof": "Pave just copilot-native-rust-test with actual registration/identity cases; BUILD just copilot-native-smoke --mode manual --provider local and real. Hand-started Copilot in dedicated tmux, no Pij env/RPC flags, truthful native/process/pane identity, outgoing tool and incoming nonce.",
-          "state": "unchecked",
-          "note": "Selection, not completed proof. No numeric confidence score."
+          "state": "checked",
+          "note": "Selection, not completed proof. No numeric confidence score.",
+          "receipt": "Actual CLI/SDK real-provider canary pm-native-real-canary-04.json passed on module2cc04cb1: no manual identity/preallocation env or RPC flags, native host/session/pane registrations, one explicit native pij_send reply and subsequent native receive. Model reported gpt-5.6-luna. Local08 also passed manual native roundtrip."
         },
         {
           "id": "bp-0003",
@@ -72,8 +74,9 @@
           "mode": "BUILD",
           "tier": "computational",
           "proof": "RED first: fresh human typing holds native claimed work via136 hold/release; expiry admits exactly once despite unchanged nonempty draft; fresh edits renew hold; synthetic injection does not count as human typing; explicit operator Hold still vetoes; unowned Copilot cannot fall back. Real Copilot callback/UI observation is required, then actual client hold/release and daemon spine receipts. One daemon grace resolver; no independent client default.",
-          "state": "unchecked",
-          "note": "Authoritative ruling plus approved pane sensor: ../assets/inputs/pm-typing-sensor-contract-v4.json. Actual1.0.84 SDK has no pre-submit hook; use136 observed-edit recency, never rendered-output-as-keypress or sendkeys transport. Unchecked until composed execution proof."
+          "state": "checked",
+          "note": "Authoritative ruling plus approved pane sensor: ../assets/inputs/pm-typing-sensor-contract-v4.json. Actual1.0.84 SDK has no pre-submit hook; use136 observed-edit recency, never rendered-output-as-keypress or sendkeys transport. Unchecked until composed execution proof.",
+          "receipt": "pm-native-local-08.json witnesses[6] status passed: daemon typing_grace_ms60000; actual human draft held with durable pending job and delivery.held; observed expiry retry_after_ms0 then delivery.released, one native user message and one reader-read ACK. Accepted pane_capture measured cursor50,45 at160x48 and unchanged draft. Overall run later failed at obsolete disabled-CLI readiness glyph check; this does not claim full acceptance."
         },
         {
           "id": "bp-0007",

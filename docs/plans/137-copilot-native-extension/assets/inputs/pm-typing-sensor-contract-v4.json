@@ -23,7 +23,7 @@
     "Before preparing/journaling any NEW native send, validate current typing snapshot and native_consumer. Existing accepted duplicate ACK recovery must not become a new injection.",
     "If recent typing: POST existing /v1/hold with job_id, seat, msg_id, reason human-typing, since_ms derived from observed_at_ms-(typing_grace_ms-retry_after_ms). Do not ack or inject; queue owns body.",
     "Poll the sensor abortably at existing bounded cadence; no second grace constant. New edits renew observation. Once quiet and not semantic Hold, POST /v1/release with original job_id/seat/msg_id and current at_ms; then RECLAIM normally before native send, never send a stale released claim.",
-    "Existing hold defer is finite and durable; restart may re-offer it and must recheck typing. No new persistent queue/body copy.",
+    "Existing hold defer is finite and durable; restart may re-offer it and must recheck typing. Follow canonical1142 release-before-ACK: declare CURRENT release even without local historical notes, after durable native acceptance; share a successful earlier un-deferral within the cycle, reset if re-held. A no-op release is a current declaration, not invented evidence of an earlier hold. No new persistent queue/body copy or resend on release/ACK failure.",
     "On unavailable observation, visibly hold/refuse affected receive work rather than sending ungated; outgoing remains usable. Shutdown/rollover cancels old consumer and old-context work never follows it.",
     "Keep completion barrier, durable acceptance before ACK, duplicate suppression and source identity unchanged."
   ],
