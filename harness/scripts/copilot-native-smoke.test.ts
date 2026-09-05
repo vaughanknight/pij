@@ -16,6 +16,7 @@ import {
 	readNativeEvents,
 	runSmoke,
 	verifyOrdinaryUsability,
+	verifyWorkspaceTrustDiscriminator,
 } from "./copilot-native-smoke.js";
 
 const roots: string[] = [];
@@ -147,6 +148,83 @@ describe("native witness boundaries", () => {
 		expect(() =>
 			verifyOrdinaryUsability([user, assistant], "ordinary-nonce", `${diagnostic}\n${diagnostic}`),
 		).toThrow("one diagnostic");
+		const positive = {
+			run: "/fresh-seeded",
+			isolation: {
+				home: "/fresh-seeded/home",
+				workspace: "/fresh-seeded/workspace",
+				trust_config_before: '{"trustedFolders":["/fresh-seeded/workspace"]}',
+			},
+			witnesses: [
+				{
+					kind: "daemon-key-absent-ordinary-use",
+					events: [user, assistant],
+					nonce: "ordinary-nonce",
+					terminal: diagnostic,
+					daemon_started: false,
+					key_present: false,
+				},
+			],
+		};
+		const negative = {
+			run: "/fresh-prompt",
+			isolation: {
+				home: "/fresh-prompt/home",
+				workspace: "/fresh-prompt/workspace",
+				trust_config_before: null,
+			},
+			witnesses: [],
+			fixture_requests: [],
+			final_pane_captures: [
+				{ pane: "%1", terminal: "Confirm folder trust\n/fresh-prompt/workspace" },
+			],
+		};
+		expect(() => verifyWorkspaceTrustDiscriminator(positive, negative)).not.toThrow();
+		expect(() =>
+			verifyWorkspaceTrustDiscriminator(positive, { ...negative, isolation: positive.isolation }),
+		).toThrow("distinct private HOMEs");
+		expect(() =>
+			verifyWorkspaceTrustDiscriminator(positive, {
+				...negative,
+				fixture_requests: ["POST /v1/chat/completions"],
+			}),
+		).toThrow("no provider activity");
+		expect(() =>
+			verifyWorkspaceTrustDiscriminator(positive, {
+				...negative,
+				final_pane_captures: [{ terminal: "Confirm folder trust\n/other-workspace" }],
+			}),
+		).toThrow("exact isolated workspace");
+		expect(() =>
+			verifyWorkspaceTrustDiscriminator({ ...positive, witnesses: [] }, negative),
+		).toThrow("ordinary-use witness");
+		expect(() =>
+			verifyWorkspaceTrustDiscriminator(
+				{ ...positive, isolation: { ...positive.isolation, trust_config_before: null } },
+				negative,
+			),
+		).toThrow("seeded native config");
+		expect(() =>
+			verifyWorkspaceTrustDiscriminator(
+				{
+					...positive,
+					isolation: { ...positive.isolation, trust_config_before: '{"trustedFolders":["/"]}' },
+				},
+				negative,
+			),
+		).toThrow("only the isolated workspace");
+		expect(() =>
+			verifyWorkspaceTrustDiscriminator(positive, {
+				...negative,
+				isolation: { ...negative.isolation, trust_config_before: "{}" },
+			}),
+		).toThrow("without native config");
+		expect(() =>
+			verifyWorkspaceTrustDiscriminator(positive, {
+				...negative,
+				final_pane_captures: [{ terminal: "Confirm folder trust\n/fresh-prompt/workspace-other" }],
+			}),
+		).toThrow("exact isolated workspace");
 	});
 	it("manual launch drops identity and SDK context, only real mode inherits auth in memory", () => {
 		const inherited = {
@@ -220,6 +298,9 @@ describe("native witness boundaries", () => {
 		expect(() => parseSmokeArgs(["--provider", "fake"])).toThrow();
 		expect(() => parseSmokeArgs(["--mode"])).toThrow();
 		expect(() => parseSmokeArgs(["--timeout-seconds", "NaN"])).toThrow();
+		expect(parseSmokeArgs([]).workspaceTrust).toBe("seeded");
+		expect(parseSmokeArgs(["--workspace-trust", "prompt"]).workspaceTrust).toBe("prompt");
+		expect(() => parseSmokeArgs(["--workspace-trust", "all"])).toThrow();
 		const root = temporary();
 		const output = join(root, "receipt.json");
 		const options = parseSmokeArgs(["--pij-bin", join(root, "missing"), "--output", output]);
