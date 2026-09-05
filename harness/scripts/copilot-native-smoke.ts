@@ -305,20 +305,37 @@ export function captureSmokePanes(tmux: (args: string[]) => string) {
 	return { panes, captures };
 }
 
+/** False: no active box. Undefined: incomplete repaint. Array: complete bottom box body. */
+function activeBottomModal(lines: string[]): string[] | false | undefined {
+	let top = -1;
+	for (let index = lines.length - 1; index >= 0; index--) {
+		if (/^╭─+╮$/.test(lines[index] ?? "")) {
+			top = index;
+			break;
+		}
+	}
+	const last = lines.at(-1) ?? "";
+	if (top < 0) return /^[│╭╰]/.test(last) ? undefined : false;
+	const bottom = lines.findIndex((line, index) => index > top && /^╰─+╯$/.test(line));
+	if (bottom < 0) return undefined;
+	// Welcome/transcript boxes above later UI are not the active control surface.
+	if (bottom !== lines.length - 1) return /^[│╭╰]/.test(last) ? undefined : false;
+	return lines.slice(top + 1, bottom);
+}
+
 /** Match only the active bottom modal, never arguments echoed in earlier conversation. */
 export function verifyToolApproval(
 	terminal: string,
 	expected: { to: string; message: string },
-): boolean {
+): boolean | undefined {
 	const lines = terminal
 		.trim()
 		.split("\n")
 		.map((line) => line.trim());
-	const top = lines.findIndex((line) => /^╭─+╮$/.test(line));
-	if (top < 0) return false;
+	const body = activeBottomModal(lines);
+	if (body === false || body === undefined) return body;
 	const fail = "PIJ_NATIVE_UNEXPECTED_APPROVAL";
-	assert(/^╰─+╯$/.test(lines.at(-1) ?? ""), `${fail}: incomplete or non-active modal`);
-	const modal = lines.slice(top + 1, -1).map((line) => {
+	const modal = body.map((line) => {
 		assert(/^│.*│$/.test(line), `${fail}: ambiguous modal boundary`);
 		return line.slice(1, -1).trim();
 	});
@@ -367,14 +384,14 @@ export async function confirmSmokeToolInvocation(
 		await until("exact native pij_send approval dialog", timeout, () => {
 			const terminal = capture();
 			witness.before = terminal;
-			return verifyToolApproval(terminal, args) ? true : undefined;
+			if (verifyToolApproval(terminal, args) !== true) {
+				witness.waiting_before = terminal;
+				return undefined;
+			}
+			const rechecked = capture();
+			witness.before_confirm = rechecked;
+			return verifyToolApproval(rechecked, args) === true ? true : undefined;
 		});
-		const rechecked = capture();
-		witness.before_confirm = rechecked;
-		assert(
-			verifyToolApproval(rechecked, args),
-			"PIJ_NATIVE_UNEXPECTED_APPROVAL: dialog changed before confirmation",
-		);
 		Object.assign(witness, { decision: "approve-once", keys: [HUMAN_KEYS.approveOnce] });
 		tmux(["send-keys", "-t", expected.pane, HUMAN_KEYS.approveOnce]);
 		witness.status = "confirmation-sent";
@@ -382,12 +399,12 @@ export async function confirmSmokeToolInvocation(
 		const afterInput = capture();
 		witness.after_input = afterInput;
 		witness.after = afterInput;
-		// No modal means already dismissed; a visible malformed/unknown dialog still throws.
-		if (verifyToolApproval(afterInput, args)) {
+		// Absence proves dismissal; an incomplete repaint still needs a bounded wait.
+		if (verifyToolApproval(afterInput, args) !== false) {
 			await until("one-time native tool approval dismissed", timeout, () => {
 				const terminal = capture();
 				witness.after = terminal;
-				return verifyToolApproval(terminal, args) ? undefined : true;
+				return verifyToolApproval(terminal, args) === false ? true : undefined;
 			});
 		}
 		witness.status = "dismissed";
@@ -401,8 +418,13 @@ export async function confirmSmokeToolInvocation(
 
 /** Read only the actual bottom composer; quoted transcript text is never a control surface. */
 export function nativeComposer(terminal: string): string | undefined {
-	const lines = terminal.split("\n").map((line) => line.trim());
-	assert(!lines.some((line) => /^╭─+╮$/.test(line)), "PIJ_NATIVE_UNEXPECTED_LIFECYCLE_DIALOG");
+	const lines = terminal
+		.trim()
+		.split("\n")
+		.map((line) => line.trim());
+	const modal = activeBottomModal(lines);
+	if (modal === undefined) return undefined;
+	assert(modal === false, "PIJ_NATIVE_UNEXPECTED_LIFECYCLE_DIALOG");
 	let top = -1;
 	for (let index = lines.length - 1; index >= 0; index--) {
 		if (/^╻▄+$/.test(lines[index] ?? "")) {

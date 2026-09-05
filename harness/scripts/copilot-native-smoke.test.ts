@@ -124,6 +124,133 @@ describe("isolated native tool human approval", () => {
 			"│ ↑/↓ to navigate · enter to select · esc to cancel │",
 			"╰────────────────╯",
 		].join("\n");
+	const welcome = object(
+		JSON.parse(
+			readFileSync(new URL("./fixtures/copilot-native-welcome.json", import.meta.url), "utf8"),
+		),
+	);
+	const welcomeTerminal = String(welcome.terminal);
+	const incomplete = dialog().replace("╰────────────────╯", "");
+
+	it("recognizes the retained real welcome panel as history above the composer", () => {
+		const nativeExpected = object(welcome.expected);
+		expect(
+			verifyToolApproval(welcomeTerminal, {
+				to: String(nativeExpected.to),
+				message: String(nativeExpected.message),
+			}),
+		).toBe(false);
+		expect(nativeComposer(welcomeTerminal)).toBe("");
+	});
+	it.each([
+		welcomeTerminal,
+		`${dialog()}\n❯ ordinary composer`,
+		incomplete,
+		dialog().replace("╭────────────────╮", "╭────"),
+		dialog().replace("╰────────────────╯", "╰────"),
+	])("waits boundedly without keys on non-active boxes or incomplete repaint", async (terminal) => {
+		const keys: string[][] = [];
+		const witness: Record<string, unknown> = {};
+		await expect(
+			confirmSmokeToolInvocation(
+				(command) => {
+					if (command[0] === "send-keys") keys.push(command);
+					return terminal;
+				},
+				expected,
+				1,
+				witness,
+			),
+		).rejects.toThrow("PIJ_NATIVE_TIMEOUT");
+		expect(keys).toEqual([]);
+		expect(witness.decision).toBe("withhold");
+	});
+	it("matches only the active bottom dialog after welcome and transcript boxes", () => {
+		expect(verifyToolApproval(`${welcomeTerminal}\n${dialog()}`, args)).toBe(true);
+		expect(
+			verifyToolApproval(`${dialog({ ...args, to: "historic-peer" })}\n${dialog()}`, args),
+		).toBe(true);
+	});
+	it.each([
+		dialog({ ...args, to: "wrong-active-peer" }),
+		dialog().replace('Run extension tool "pij_send"', "Confirm folder trust"),
+	])("still refuses a complete mismatching active dialog below welcome", (active) => {
+		expect(() => verifyToolApproval(`${welcomeTerminal}\n${active}`, args)).toThrow(
+			"PIJ_NATIVE_UNEXPECTED_APPROVAL",
+		);
+	});
+	it("waits through welcome and incomplete repaint before two exact confirmations", async () => {
+		const frames = [welcomeTerminal, incomplete, dialog(), dialog(), welcomeTerminal];
+		const keys: string[][] = [];
+		await confirmSmokeToolInvocation(
+			(command) => {
+				if (command[0] === "capture-pane") return frames.shift() ?? welcomeTerminal;
+				expect(frames).toHaveLength(1);
+				keys.push(command);
+				return "";
+			},
+			expected,
+			2000,
+			{},
+		);
+		expect(keys).toEqual([["send-keys", "-t", expected.pane, "Enter"]]);
+	});
+	it.each([
+		incomplete,
+		welcomeTerminal,
+	])("retries a pre-key repaint or vanished dialog without approval", async (repaint) => {
+		const frames = [dialog(), repaint, dialog(), dialog(), welcomeTerminal];
+		const keys: string[][] = [];
+		await confirmSmokeToolInvocation(
+			(command) => {
+				if (command[0] === "capture-pane") return frames.shift() ?? welcomeTerminal;
+				expect(frames).toHaveLength(1);
+				keys.push(command);
+				return "";
+			},
+			expected,
+			2000,
+			{},
+		);
+		expect(keys).toHaveLength(1);
+	});
+	it("does not equate a post-key incomplete repaint with dismissal", async () => {
+		const frames = [dialog(), dialog(), incomplete];
+		const keys: string[][] = [];
+		const witness: Record<string, unknown> = {};
+		await expect(
+			confirmSmokeToolInvocation(
+				(command) => {
+					if (command[0] === "capture-pane") return frames.shift() ?? incomplete;
+					keys.push(command);
+					return "";
+				},
+				expected,
+				1,
+				witness,
+			),
+		).rejects.toThrow("PIJ_NATIVE_TIMEOUT");
+		expect(keys).toHaveLength(1);
+		expect(witness).toMatchObject({ status: "failed", after_input: incomplete });
+	});
+	it("fails a complete unknown dialog after a post-key repaint without another key", async () => {
+		const unknown = dialog().replace('Run extension tool "pij_send"', "Confirm folder trust");
+		const frames = [dialog(), dialog(), incomplete, unknown];
+		const keys: string[][] = [];
+		await expect(
+			confirmSmokeToolInvocation(
+				(command) => {
+					if (command[0] === "capture-pane") return frames.shift() ?? unknown;
+					keys.push(command);
+					return "";
+				},
+				expected,
+				1,
+				{},
+			),
+		).rejects.toThrow("PIJ_NATIVE_UNEXPECTED_APPROVAL");
+		expect(keys).toHaveLength(1);
+	});
 
 	it("approves once only after two exact matches and retains before/after screens", async () => {
 		const before = dialog({ message: expected.message, to: expected.to });
@@ -210,9 +337,6 @@ describe("isolated native tool human approval", () => {
 			"multiple argument objects",
 			dialog().replace("│ ❯ 1. Yes │", '│ { │\n│ "to": "wrong" │\n│ } │\n│ ❯ 1. Yes │'),
 		],
-		["incomplete modal", dialog().replace("╰────────────────╯", "")],
-		["history rather than active modal", `${dialog()}\n❯ ordinary composer`],
-		["ambiguous multiple modals", `${dialog()}\n${dialog()}`],
 	])("rejects %s without pressing any key", async (_label, terminal) => {
 		const commands: string[][] = [];
 		const witness: Record<string, unknown> = {};
