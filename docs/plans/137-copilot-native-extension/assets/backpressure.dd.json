@@ -61,7 +61,7 @@
           "phase": "ph-66f1",
           "mode": "BUILD",
           "tier": "computational",
-          "proof": "BUILD just copilot-native-test: fake native/HTTP seam models claim -> send acceptance -> durable mapping -> ack, duplicate and ambiguous crash cases. Real SQLite acceptance duplicate plus actual native CLI events in smoke; prove acceptance distinct from model idle.",
+          "proof": "BUILD just copilot-native-test: fake native/HTTP seam models claim -> send acceptance -> durable mapping -> ack, duplicate and ambiguous crash cases. Real SQLite acceptance duplicate plus actual native CLI events in smoke; prove acceptance distinct from model idle. Explicitly test two incoming messages: second native send waits for first observed idle, including idle-before-ack race and restarted accepted duplicate recovery.",
           "state": "unchecked",
           "note": "Selection, not completed proof. No numeric confidence score."
         },

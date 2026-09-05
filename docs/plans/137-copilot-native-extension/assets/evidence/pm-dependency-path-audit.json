@@ -1,0 +1,80 @@
+{
+  "requested_copy_command": "mkdir -p .harness/temp/s137-dependencies && cp -a /Users/jordanknight/pi-hacking/pij-worktrees/s107-harness-checks-latency/node_modules .harness/temp/s137-dependencies/node_modules",
+  "cwd": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension",
+  "observed_during_copy": {
+    "pid": 10888,
+    "lsof_cwd": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension",
+    "lsof_fd4": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/.harness/temp/s137-dependencies/node_modules",
+    "du": "158M under exact temporary destination"
+  },
+  "stopped": "hub cancel bg_1; pgrep exact cp pattern subsequently no matches",
+  "cleanup": "rm -rf exact .harness/temp/s137-dependencies only; first30s timeout, second invocation exit0",
+  "current_paths": [
+    {
+      "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/.harness/temp",
+      "exists": true,
+      "is_symlink": false,
+      "symlink_target": null,
+      "resolved": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/.harness/temp"
+    },
+    {
+      "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/.harness/temp/s137-dependencies",
+      "exists": false,
+      "is_symlink": false,
+      "symlink_target": null,
+      "resolved": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/.harness/temp/s137-dependencies"
+    },
+    {
+      "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/.harness/temp/s137-dependencies/node_modules",
+      "exists": false,
+      "is_symlink": false,
+      "symlink_target": null,
+      "resolved": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/.harness/temp/s137-dependencies/node_modules"
+    },
+    {
+      "path": "/Users/jordanknight/pi-hacking/pij-worktrees/s107-harness-checks-latency/node_modules",
+      "exists": true,
+      "is_symlink": false,
+      "symlink_target": null,
+      "resolved": "/Users/jordanknight/pi-hacking/pij-worktrees/s107-harness-checks-latency/node_modules"
+    },
+    {
+      "path": "/Users/jordanknight/pi-hacking/pij-worktrees/s107-harness-checks-latency/node_modules/node_modules",
+      "exists": false,
+      "is_symlink": false,
+      "symlink_target": null,
+      "resolved": "/Users/jordanknight/pi-hacking/pij-worktrees/s107-harness-checks-latency/node_modules/node_modules"
+    },
+    {
+      "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/node_modules",
+      "exists": true,
+      "is_symlink": true,
+      "symlink_target": "/Users/jordanknight/pi-hacking/pij/node_modules",
+      "resolved": "/Users/jordanknight/pi-hacking/pij/node_modules"
+    },
+    {
+      "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/node_modules",
+      "exists": true,
+      "is_symlink": true,
+      "symlink_target": "/Users/jordanknight/pi-hacking/pij/node_modules",
+      "resolved": "/Users/jordanknight/pi-hacking/pij/node_modules"
+    },
+    {
+      "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-install/node_modules",
+      "exists": true,
+      "is_symlink": true,
+      "symlink_target": "/Users/jordanknight/pi-hacking/pij/node_modules",
+      "resolved": "/Users/jordanknight/pi-hacking/pij/node_modules"
+    },
+    {
+      "path": "/Users/jordanknight/pi-hacking/fs3-copilot-native-extension/node_modules",
+      "exists": true,
+      "is_symlink": true,
+      "symlink_target": "/Users/jordanknight/pi-hacking/pij/node_modules",
+      "resolved": "/Users/jordanknight/pi-hacking/pij/node_modules"
+    }
+  ],
+  "prime_observation": "stray main/node_modules/node_modules566MB removed by prime; causal attribution to this copy not established by captured command/path evidence",
+  "decision": "leave all4 existing links on prime-restored main read-only; no further copy/install/repoint",
+  "prime_correction": "Prime confirmed nested main/node_modules/node_modules copy belonged to another plan135 seat, not137; removed and verified actual module resolution. Daemon changed-control failures passed fresh without fixture/dependency edits."
+}

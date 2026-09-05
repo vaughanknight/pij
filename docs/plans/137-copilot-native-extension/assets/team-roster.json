@@ -15,7 +15,7 @@
       "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon",
       "branch": "137-copilot-native-daemon",
       "packet": "docs/plans/137-copilot-native-extension/assets/packets/coder-daemon.dd.json",
-      "state": "GO; implementing"
+      "state": "final lifecycle-relabel regression before commit"
     },
     "runtime": {
       "seat": "pij-worldwide-rat",
@@ -26,7 +26,7 @@
       "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime",
       "branch": "137-copilot-native-runtime",
       "packet": "docs/plans/137-copilot-native-extension/assets/packets/coder-runtime.dd.json",
-      "state": "GO; implementing"
+      "state": "source+ordering correction composed;59 PM tests passed; live integration pending"
     },
     "install": {
       "seat": "pij-intellectual-mosquito",
@@ -37,7 +37,7 @@
       "worktree": "/Users/jordanknight/pi-hacking/fs3-copilot-native-install",
       "branch": "137-copilot-native-install",
       "packet": "docs/plans/137-copilot-native-extension/assets/packets/coder-install.dd.json",
-      "state": "GO; implementing"
+      "state": "source composed;29 PM tests passed; live integration pending"
     }
   },
   "reviewer": {
