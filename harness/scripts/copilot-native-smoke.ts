@@ -51,6 +51,14 @@ interface NativeEvent {
 	data: Record<string, unknown>;
 }
 
+interface TypingSample {
+	sensor: unknown;
+	jobs: Record<string, unknown>[];
+	acknowledgements: Record<string, unknown>[];
+	nativeEvents: NativeEvent[];
+	deliveryEvents: Record<string, unknown>[];
+}
+
 const ROOT = resolve(import.meta.dirname, "../..");
 const HUMAN_KEYS = {
 	clearDraft: "C-u",
@@ -297,20 +305,37 @@ export function captureSmokePanes(tmux: (args: string[]) => string) {
 	return { panes, captures };
 }
 
+/** False: no active box. Undefined: incomplete repaint. Array: complete bottom box body. */
+function activeBottomModal(lines: string[]): string[] | false | undefined {
+	let top = -1;
+	for (let index = lines.length - 1; index >= 0; index--) {
+		if (/^╭─+╮$/.test(lines[index] ?? "")) {
+			top = index;
+			break;
+		}
+	}
+	const last = lines.at(-1) ?? "";
+	if (top < 0) return /^[│╭╰]/.test(last) ? undefined : false;
+	const bottom = lines.findIndex((line, index) => index > top && /^╰─+╯$/.test(line));
+	if (bottom < 0) return undefined;
+	// Welcome/transcript boxes above later UI are not the active control surface.
+	if (bottom !== lines.length - 1) return /^[│╭╰]/.test(last) ? undefined : false;
+	return lines.slice(top + 1, bottom);
+}
+
 /** Match only the active bottom modal, never arguments echoed in earlier conversation. */
 export function verifyToolApproval(
 	terminal: string,
 	expected: { to: string; message: string },
-): boolean {
+): boolean | undefined {
 	const lines = terminal
 		.trim()
 		.split("\n")
 		.map((line) => line.trim());
-	const top = lines.findIndex((line) => /^╭─+╮$/.test(line));
-	if (top < 0) return false;
+	const body = activeBottomModal(lines);
+	if (body === false || body === undefined) return body;
 	const fail = "PIJ_NATIVE_UNEXPECTED_APPROVAL";
-	assert(/^╰─+╯$/.test(lines.at(-1) ?? ""), `${fail}: incomplete or non-active modal`);
-	const modal = lines.slice(top + 1, -1).map((line) => {
+	const modal = body.map((line) => {
 		assert(/^│.*│$/.test(line), `${fail}: ambiguous modal boundary`);
 		return line.slice(1, -1).trim();
 	});
@@ -359,14 +384,14 @@ export async function confirmSmokeToolInvocation(
 		await until("exact native pij_send approval dialog", timeout, () => {
 			const terminal = capture();
 			witness.before = terminal;
-			return verifyToolApproval(terminal, args) ? true : undefined;
+			if (verifyToolApproval(terminal, args) !== true) {
+				witness.waiting_before = terminal;
+				return undefined;
+			}
+			const rechecked = capture();
+			witness.before_confirm = rechecked;
+			return verifyToolApproval(rechecked, args) === true ? true : undefined;
 		});
-		const rechecked = capture();
-		witness.before_confirm = rechecked;
-		assert(
-			verifyToolApproval(rechecked, args),
-			"PIJ_NATIVE_UNEXPECTED_APPROVAL: dialog changed before confirmation",
-		);
 		Object.assign(witness, { decision: "approve-once", keys: [HUMAN_KEYS.approveOnce] });
 		tmux(["send-keys", "-t", expected.pane, HUMAN_KEYS.approveOnce]);
 		witness.status = "confirmation-sent";
@@ -374,12 +399,12 @@ export async function confirmSmokeToolInvocation(
 		const afterInput = capture();
 		witness.after_input = afterInput;
 		witness.after = afterInput;
-		// No modal means already dismissed; a visible malformed/unknown dialog still throws.
-		if (verifyToolApproval(afterInput, args)) {
+		// Absence proves dismissal; an incomplete repaint still needs a bounded wait.
+		if (verifyToolApproval(afterInput, args) !== false) {
 			await until("one-time native tool approval dismissed", timeout, () => {
 				const terminal = capture();
 				witness.after = terminal;
-				return verifyToolApproval(terminal, args) ? undefined : true;
+				return verifyToolApproval(terminal, args) === false ? true : undefined;
 			});
 		}
 		witness.status = "dismissed";
@@ -393,8 +418,13 @@ export async function confirmSmokeToolInvocation(
 
 /** Read only the actual bottom composer; quoted transcript text is never a control surface. */
 export function nativeComposer(terminal: string): string | undefined {
-	const lines = terminal.split("\n").map((line) => line.trim());
-	assert(!lines.some((line) => /^╭─+╮$/.test(line)), "PIJ_NATIVE_UNEXPECTED_LIFECYCLE_DIALOG");
+	const lines = terminal
+		.trim()
+		.split("\n")
+		.map((line) => line.trim());
+	const modal = activeBottomModal(lines);
+	if (modal === undefined) return undefined;
+	assert(modal === false, "PIJ_NATIVE_UNEXPECTED_LIFECYCLE_DIALOG");
 	let top = -1;
 	for (let index = lines.length - 1; index >= 0; index--) {
 		if (/^╻▄+$/.test(lines[index] ?? "")) {
@@ -538,6 +568,231 @@ export function verifyNativeContextHeld(
 		0,
 		"old-context work must not migrate to successor queue",
 	);
+}
+
+/** Observe product hold/release; never release a job or clear the draft to make it pass. */
+export async function driveSmokeTypingWitness(
+	io: {
+		tmux: (args: string[]) => string;
+		observe: () => Promise<TypingSample>;
+		send: () => Promise<unknown>;
+	},
+	expected: { seat: Seat; draft: string; nonce: string; msgId: string },
+	timeout: number,
+	witness: Record<string, unknown>,
+): Promise<void> {
+	const { seat, draft, nonce, msgId } = expected;
+	const capture = () => io.tmux(["capture-pane", "-p", "-J", "-t", seat.pane]);
+	function check(condition: unknown, message: string): asserts condition {
+		assert(condition, `PIJ_NATIVE_TYPING_PROOF: ${message}`);
+	}
+	Object.assign(witness, { seat, draft, nonce, msgId, status: "running", keys: [] });
+	let grace: number | undefined;
+	let lastObserved = 0;
+	const sample = async () => {
+		const value = await io.observe();
+		witness.last_observation = value;
+		const terminal = capture();
+		witness.after = terminal;
+		check(nativeComposer(terminal) === draft, "same nonempty composer must remain intact");
+		const sensor = object(value.sensor);
+		check(sensor.state === "observed", "typing observation unavailable or unknown");
+		assert.deepEqual(
+			sensor.native_consumer,
+			{ native_session: seat.session, ...seat.proc },
+			"PIJ_NATIVE_TYPING_PROOF: current native owner echo required",
+		);
+		check(sensor.source === "pane-observed-edit-recency", "unexpected typing sensor source");
+		check(sensor.semantic_hold === false, "operator Hold must not be cleared by this proof");
+		for (const field of ["typing_grace_ms", "observed_at_ms", "retry_after_ms"]) {
+			check(Number.isSafeInteger(sensor[field]) && Number(sensor[field]) >= 0, `invalid ${field}`);
+		}
+		const observedAt = Number(sensor.observed_at_ms);
+		const retry = Number(sensor.retry_after_ms);
+		const currentGrace = Number(sensor.typing_grace_ms);
+		check(
+			currentGrace > 0 && retry <= currentGrace,
+			"positive daemon grace and bounded retry required",
+		);
+		check(grace === undefined || currentGrace === grace, "daemon grace changed during proof");
+		check(observedAt >= lastObserved && observedAt > 0, "sensor observation clock moved backwards");
+		grace = currentGrace;
+		lastObserved = observedAt;
+		return { ...value, sensor, terminal, observedAt, retry, grace: currentGrace };
+	};
+	const receipts = (value: TypingSample, kind: string) =>
+		value.deliveryEvents
+			.filter((row) => row.kind === kind)
+			.map((row) => ({
+				...row,
+				seq: Number(row.seq),
+				seat: row.seat,
+				payload: object(JSON.parse(String(row.payload))),
+			}))
+			.filter(
+				(row) =>
+					row.seat === seat.id && row.payload.seat === seat.id && row.payload.msg_id === msgId,
+			);
+	try {
+		check(
+			/^HUMAN_DRAFT_[a-zA-Z0-9-]+$/.test(draft),
+			"only the fixture human draft is a typing control",
+		);
+		witness.before = capture();
+		check(nativeComposer(String(witness.before)) === "", "refusing to overwrite existing composer");
+		const keys = ["send-keys", "-t", seat.pane, "-l", "--", draft];
+		witness.keys = [keys];
+		io.tmux(keys);
+		await until("exact human draft visible", timeout, () => {
+			const terminal = capture();
+			witness.staged = terminal;
+			const composer = nativeComposer(terminal);
+			if (composer === draft) return true;
+			check(composer === undefined || composer === "", "unexpected staged draft");
+			return undefined;
+		});
+		const initial = await sample();
+		witness.typing_observed = initial;
+		check(initial.retry > 0, "recent typing must be observed before sending");
+		witness.send = await io.send();
+		const held = await until(
+			"durable delivery.held while same draft remains",
+			timeout,
+			async () => {
+				const value = await sample();
+				check(
+					nativeMessages(value.nativeEvents, nonce).length === 0 &&
+						value.acknowledgements.length === 0,
+					"held work must not be accepted or acknowledged",
+				);
+				check(value.retry > 0, "typing expired before durable hold was witnessed");
+				const evidence = receipts(value, "delivery.held");
+				if (!evidence.length) return undefined;
+				check(
+					evidence.every((row) => row.payload.reason === "human-typing"),
+					"wrong hold reason",
+				);
+				check(
+					evidence.every(
+						(row) =>
+							Number.isSafeInteger(row.payload.since_ms) &&
+							Number(row.payload.since_ms) >= initial.observedAt + initial.retry - initial.grace &&
+							Number(row.payload.since_ms) <= value.observedAt,
+					),
+					"hold timestamp must match the witnessed edit window",
+				);
+				check(
+					value.jobs.length === 1 && value.jobs[0]?.state === "pending",
+					"held job must remain pending and unclaimed",
+				);
+				const job = value.jobs[0] as Record<string, unknown>;
+				check(Number.isSafeInteger(job.id) && Number(job.id) > 0, "real durable job id required");
+				const payload = object(JSON.parse(String(job.payload)));
+				check(
+					payload.to === seat.id &&
+						payload.msg_id === msgId &&
+						payload.body === nonce &&
+						payload.native_target_session === seat.session,
+					"held job identity or native context changed",
+				);
+				return { ...value, held_events: evidence, job_id: job.id };
+			},
+		);
+		witness.held = held;
+		const deadline = Math.max(initial.observedAt + initial.retry, held.observedAt + held.retry);
+		witness.observed_expiry_ms = deadline;
+		const expired = await until(
+			"typing recency expires with unchanged nonempty draft",
+			timeout,
+			async () => {
+				let value = await sample();
+				if (
+					value.retry > 0 &&
+					(nativeMessages(value.nativeEvents, nonce).length > 0 ||
+						value.acknowledgements.length > 0)
+				) {
+					// Sensor is read before files/SQLite: those later reads can cross the expiry boundary.
+					witness.expiry_boundary_before = value;
+					value = await sample();
+					witness.expiry_boundary_after = value;
+					check(value.retry === 0, "native acceptance occurred before typing grace expired");
+				}
+				return value.retry === 0 ? value : undefined;
+			},
+		);
+		witness.expired = expired;
+		check(expired.observedAt >= deadline, "sensor expired before observed grace elapsed");
+		const accepted = await until(
+			"released job reclaimed and accepted once with intact draft",
+			timeout,
+			async () => {
+				const value = await sample();
+				check(value.retry === 0, "typing observation renewed without a human edit");
+				const released = receipts(value, "delivery.released");
+				if (!released.length) return undefined;
+				const holds = receipts(value, "delivery.held");
+				check(holds.length > 0, "held evidence disappeared");
+				for (const hold of holds) {
+					check(Number.isSafeInteger(hold.payload.since_ms), "hold lacks observed edit timestamp");
+					check(
+						released.every(
+							(row) =>
+								Number(row.seq) > Number(hold.seq) &&
+								Number.isSafeInteger(row.payload.at_ms) &&
+								Number(row.payload.at_ms) >=
+									Math.max(deadline, Number(hold.payload.since_ms) + value.grace),
+						),
+						"release must follow hold and its full observed typing grace",
+					);
+				}
+				const native = nativeMessages(value.nativeEvents, nonce);
+				check(
+					native.length <= 1 && value.acknowledgements.length <= 1,
+					"duplicate native acceptance or ACK",
+				);
+				if (!native.length || !value.acknowledgements.length) return undefined;
+				check(
+					typeof native[0]?.data.messageId === "string" && native[0].data.messageId.length > 0,
+					"real native message id required",
+				);
+				const ack = value.acknowledgements[0];
+				check(
+					ack?.recipient === seat.id && ack.msg_id === msgId && ack.origin === "reader-read",
+					"wrong native ACK identity or origin",
+				);
+				check(
+					value.jobs.length === 1 &&
+						value.jobs[0]?.id === held.job_id &&
+						value.jobs[0]?.state === "done",
+					"original held job must be the completed delivery",
+				);
+				const ackEvents = value.deliveryEvents
+					.filter((row) => row.kind === "delivery.inbox-ack" && row.seat === seat.id)
+					.map((row) => ({
+						...row,
+						seq: Number(row.seq),
+						payload: object(JSON.parse(String(row.payload))),
+					}))
+					.filter(
+						(row) => row.payload.job_id === held.job_id && row.payload.outcome === "reader-read",
+					);
+				if (!ackEvents.length) return undefined;
+				check(
+					ackEvents.length === 1 && released.every((row) => row.seq < Number(ackEvents[0]?.seq)),
+					"release declaration must precede the original job ACK",
+				);
+				return { ...value, released_events: released, ack_events: ackEvents, native: native[0] };
+			},
+		);
+		Object.assign(witness, {
+			accepted,
+			status: "passed",
+			grade: "native-accepted-not-model-complete",
+		});
+	} catch (error) {
+		Object.assign(witness, { status: "failed", error: String(error) });
+		throw error;
+	}
 }
 
 export async function runSmoke(options: Options): Promise<{ code: number; output: string }> {
@@ -848,6 +1103,16 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 				seat.id,
 				msgId,
 			);
+		const typingEvents = (seat: Seat, msgId: string) =>
+			rows(
+				`SELECT s.seq, s.at, s.kind, s.seat, s.payload FROM spine_events s
+			 JOIN jobs j ON j.serial_key = s.seat AND
+			 (json_extract(s.payload, '$.msg_id') = j.dedupe_key OR json_extract(s.payload, '$.job_id') = j.id)
+			 WHERE j.serial_key = ? AND j.dedupe_key = ?
+			 AND s.kind IN ('delivery.held', 'delivery.released', 'delivery.inbox-ack') ORDER BY s.seq`,
+				seat.id,
+				msgId,
+			);
 		const seats = async (): Promise<Seat[]> => {
 			const data = await api("/v1/seats");
 			const list = Array.isArray(data) ? data : object(data).seats;
@@ -1098,40 +1363,54 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 				sender_events: events(sender),
 				note: "native IDs and reader-read are acceptance; assistant completion/idle events are separate",
 			});
+			await waitTurnEnd(target, nonce);
 			const draft = `HUMAN_DRAFT_${randomUUID()}`;
-			tmux(["send-keys", "-t", target.pane, "-l", "--", draft]);
-			await until("human draft visible", options.timeoutMs, () =>
-				capture(target).includes(draft) ? true : undefined,
-			);
 			const heldNonce = `PIJ_HELD_${randomUUID()}`;
 			const heldId = randomUUID();
-			const held = await send(sender, target, heldNonce, heldId);
-			await delay(2000);
-			const heldPane = capture(target);
-			assert(heldPane.includes(draft), "human draft must survive native delivery veto");
-			assert.equal(nativeMessages(events(target), heldNonce).length, 0);
-			assert.equal(delivered(target, heldId).length, 0);
-			const pending = jobs(target, heldId);
-			assert(
-				pending.some((row) => row.state === "pending" || row.state === "running"),
-				"hold must retain a durable live job",
-			);
-			witnesses.push({
-				kind: `${mode}-typing-held`,
-				draft,
-				nonce: heldNonce,
-				msgId: heldId,
-				receipt: held,
-				pending,
-				pane: heldPane,
+			const typingQuery = new URLSearchParams({
+				seat: target.id,
+				native_session: target.session,
+				pid: String(target.proc.pid),
+				proc_start: String(target.proc.proc_start),
 			});
-			tmux(["send-keys", "-t", target.pane, HUMAN_KEYS.clearDraft]);
-			await until("human draft cleared by fixture human control", options.timeoutMs, () =>
-				!capture(target).includes(draft) ? true : undefined,
+			const sensorPath = `/v1/inbox/typing?${typingQuery}`;
+			const typing: Record<string, unknown> = {
+				kind: `${mode}-typing-held-then-aged-draft-admitted`,
+				sensor_request: sensorPath,
+			};
+			witnesses.push(typing);
+			await driveSmokeTypingWitness(
+				{
+					tmux,
+					observe: async () => ({
+						sensor: await api(sensorPath),
+						nativeEvents: events(target),
+						acknowledgements: delivered(target, heldId),
+						deliveryEvents: typingEvents(target, heldId),
+						jobs: jobs(target, heldId),
+					}),
+					send: () => send(sender, target, heldNonce, heldId),
+				},
+				{ seat: target, draft, nonce: heldNonce, msgId: heldId },
+				options.timeoutMs,
+				typing,
 			);
-			witnesses.push({
-				kind: `${mode}-typing-admitted`,
-				...(await waitDelivery(target, heldNonce, heldId)),
+			// Only AFTER native acceptance with the unchanged draft: restore the fixture for later scenarios.
+			const cleanup: Record<string, unknown> = {
+				before: capture(target),
+				key: HUMAN_KEYS.clearDraft,
+			};
+			typing.post_proof_cleanup = cleanup;
+			assert.equal(
+				nativeComposer(String(cleanup.before)),
+				draft,
+				"refusing to clear changed composer",
+			);
+			tmux(["send-keys", "-t", target.pane, HUMAN_KEYS.clearDraft]);
+			await until("post-proof fixture draft cleanup", options.timeoutMs, () => {
+				const terminal = capture(target);
+				cleanup.after = terminal;
+				return nativeComposer(terminal) === "" ? true : undefined;
 			});
 			const disabled = await launch("manual", true);
 			const absentNonce = `PIJ_ABSENT_${randomUUID()}`;

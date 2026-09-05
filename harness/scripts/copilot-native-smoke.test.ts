@@ -13,6 +13,7 @@ import {
 	captureSmokePanes,
 	confirmSmokeToolInvocation,
 	driveSmokeLifecycleCommand,
+	driveSmokeTypingWitness,
 	nativeComposer,
 	nativeMessages,
 	parseSmokeArgs,
@@ -123,6 +124,133 @@ describe("isolated native tool human approval", () => {
 			"│ ↑/↓ to navigate · enter to select · esc to cancel │",
 			"╰────────────────╯",
 		].join("\n");
+	const welcome = object(
+		JSON.parse(
+			readFileSync(new URL("./fixtures/copilot-native-welcome.json", import.meta.url), "utf8"),
+		),
+	);
+	const welcomeTerminal = String(welcome.terminal);
+	const incomplete = dialog().replace("╰────────────────╯", "");
+
+	it("recognizes the retained real welcome panel as history above the composer", () => {
+		const nativeExpected = object(welcome.expected);
+		expect(
+			verifyToolApproval(welcomeTerminal, {
+				to: String(nativeExpected.to),
+				message: String(nativeExpected.message),
+			}),
+		).toBe(false);
+		expect(nativeComposer(welcomeTerminal)).toBe("");
+	});
+	it.each([
+		welcomeTerminal,
+		`${dialog()}\n❯ ordinary composer`,
+		incomplete,
+		dialog().replace("╭────────────────╮", "╭────"),
+		dialog().replace("╰────────────────╯", "╰────"),
+	])("waits boundedly without keys on non-active boxes or incomplete repaint", async (terminal) => {
+		const keys: string[][] = [];
+		const witness: Record<string, unknown> = {};
+		await expect(
+			confirmSmokeToolInvocation(
+				(command) => {
+					if (command[0] === "send-keys") keys.push(command);
+					return terminal;
+				},
+				expected,
+				1,
+				witness,
+			),
+		).rejects.toThrow("PIJ_NATIVE_TIMEOUT");
+		expect(keys).toEqual([]);
+		expect(witness.decision).toBe("withhold");
+	});
+	it("matches only the active bottom dialog after welcome and transcript boxes", () => {
+		expect(verifyToolApproval(`${welcomeTerminal}\n${dialog()}`, args)).toBe(true);
+		expect(
+			verifyToolApproval(`${dialog({ ...args, to: "historic-peer" })}\n${dialog()}`, args),
+		).toBe(true);
+	});
+	it.each([
+		dialog({ ...args, to: "wrong-active-peer" }),
+		dialog().replace('Run extension tool "pij_send"', "Confirm folder trust"),
+	])("still refuses a complete mismatching active dialog below welcome", (active) => {
+		expect(() => verifyToolApproval(`${welcomeTerminal}\n${active}`, args)).toThrow(
+			"PIJ_NATIVE_UNEXPECTED_APPROVAL",
+		);
+	});
+	it("waits through welcome and incomplete repaint before two exact confirmations", async () => {
+		const frames = [welcomeTerminal, incomplete, dialog(), dialog(), welcomeTerminal];
+		const keys: string[][] = [];
+		await confirmSmokeToolInvocation(
+			(command) => {
+				if (command[0] === "capture-pane") return frames.shift() ?? welcomeTerminal;
+				expect(frames).toHaveLength(1);
+				keys.push(command);
+				return "";
+			},
+			expected,
+			2000,
+			{},
+		);
+		expect(keys).toEqual([["send-keys", "-t", expected.pane, "Enter"]]);
+	});
+	it.each([
+		incomplete,
+		welcomeTerminal,
+	])("retries a pre-key repaint or vanished dialog without approval", async (repaint) => {
+		const frames = [dialog(), repaint, dialog(), dialog(), welcomeTerminal];
+		const keys: string[][] = [];
+		await confirmSmokeToolInvocation(
+			(command) => {
+				if (command[0] === "capture-pane") return frames.shift() ?? welcomeTerminal;
+				expect(frames).toHaveLength(1);
+				keys.push(command);
+				return "";
+			},
+			expected,
+			2000,
+			{},
+		);
+		expect(keys).toHaveLength(1);
+	});
+	it("does not equate a post-key incomplete repaint with dismissal", async () => {
+		const frames = [dialog(), dialog(), incomplete];
+		const keys: string[][] = [];
+		const witness: Record<string, unknown> = {};
+		await expect(
+			confirmSmokeToolInvocation(
+				(command) => {
+					if (command[0] === "capture-pane") return frames.shift() ?? incomplete;
+					keys.push(command);
+					return "";
+				},
+				expected,
+				1,
+				witness,
+			),
+		).rejects.toThrow("PIJ_NATIVE_TIMEOUT");
+		expect(keys).toHaveLength(1);
+		expect(witness).toMatchObject({ status: "failed", after_input: incomplete });
+	});
+	it("fails a complete unknown dialog after a post-key repaint without another key", async () => {
+		const unknown = dialog().replace('Run extension tool "pij_send"', "Confirm folder trust");
+		const frames = [dialog(), dialog(), incomplete, unknown];
+		const keys: string[][] = [];
+		await expect(
+			confirmSmokeToolInvocation(
+				(command) => {
+					if (command[0] === "capture-pane") return frames.shift() ?? unknown;
+					keys.push(command);
+					return "";
+				},
+				expected,
+				1,
+				{},
+			),
+		).rejects.toThrow("PIJ_NATIVE_UNEXPECTED_APPROVAL");
+		expect(keys).toHaveLength(1);
+	});
 
 	it("approves once only after two exact matches and retains before/after screens", async () => {
 		const before = dialog({ message: expected.message, to: expected.to });
@@ -209,9 +337,6 @@ describe("isolated native tool human approval", () => {
 			"multiple argument objects",
 			dialog().replace("│ ❯ 1. Yes │", '│ { │\n│ "to": "wrong" │\n│ } │\n│ ❯ 1. Yes │'),
 		],
-		["incomplete modal", dialog().replace("╰────────────────╯", "")],
-		["history rather than active modal", `${dialog()}\n❯ ordinary composer`],
-		["ambiguous multiple modals", `${dialog()}\n${dialog()}`],
 	])("rejects %s without pressing any key", async (_label, terminal) => {
 		const commands: string[][] = [];
 		const witness: Record<string, unknown> = {};
@@ -511,6 +636,277 @@ describe("native lifecycle assertion boundaries, not live CLI proof", () => {
 				jobs: [{ ...job, payload: JSON.stringify({ ...payload, [field]: "changed" }) }],
 			}),
 		).toThrow();
+	});
+});
+
+describe("AC6 unchanged-draft witness boundaries, not live CLI proof", () => {
+	const seat = {
+		id: "pij-target",
+		session: "00000000-0000-4000-8000-000000000137",
+		pane: "%9",
+		harness: "copilot",
+		proc: { pid: 137, proc_start: 1370 },
+		native_extension_delivery: true,
+	};
+	const expected = { seat, draft: "HUMAN_DRAFT_137", nonce: "PIJ_HELD_137", msgId: "msg-137" };
+	const composer = (draft: string) => `Transcript\n╻▄▄▄▄▄▄\n┃ ${draft}\n╹▀▀▀▀▀▀`;
+	const sensor = (retry: number, at = 100000) => ({
+		state: "observed",
+		native_consumer: { native_session: seat.session, ...seat.proc },
+		typing_grace_ms: 60000,
+		observed_at_ms: at,
+		retry_after_ms: retry,
+		semantic_hold: false,
+		source: "pane-observed-edit-recency",
+	});
+	const event = (seq: number, kind: string, payload: Record<string, unknown>) => ({
+		seq,
+		at: 100000 + seq,
+		kind,
+		seat: seat.id,
+		payload: JSON.stringify({ seat: seat.id, msg_id: expected.msgId, ...payload }),
+	});
+	const heldEvent = event(1, "delivery.held", { reason: "human-typing", since_ms: 99000 });
+	const releasedEvent = event(2, "delivery.released", { at_ms: 159000 });
+	const ackEvent = {
+		seq: 3,
+		at: 159001,
+		kind: "delivery.inbox-ack",
+		seat: seat.id,
+		payload: JSON.stringify({
+			job_id: 137,
+			authenticated_machine: "local",
+			evidence_grade: "machine",
+			outcome: "reader-read",
+		}),
+	};
+	const job = {
+		id: 137,
+		state: "pending",
+		payload: JSON.stringify({
+			to: seat.id,
+			msg_id: expected.msgId,
+			body: expected.nonce,
+			native_target_session: seat.session,
+		}),
+	};
+	const acceptedEvent = {
+		id: "native-event",
+		type: "user.message",
+		data: {
+			content: expected.nonce,
+			messageId: "native-message",
+		},
+	};
+	const ack = { recipient: seat.id, msg_id: expected.msgId, origin: "reader-read" };
+	type Sample = Awaited<ReturnType<Parameters<typeof driveSmokeTypingWitness>[0]["observe"]>>;
+	const sample = (overrides: Partial<Sample> = {}): Sample => ({
+		sensor: sensor(59000),
+		jobs: [job],
+		acknowledgements: [],
+		nativeEvents: [],
+		deliveryEvents: [heldEvent],
+		...overrides,
+	});
+	const samples = () => [
+		sample({ jobs: [], deliveryEvents: [] }),
+		sample(),
+		sample({ sensor: sensor(0, 159000), deliveryEvents: [heldEvent, releasedEvent] }),
+		sample({
+			sensor: sensor(0, 159001),
+			jobs: [{ ...job, state: "done" }],
+			nativeEvents: [acceptedEvent],
+			acknowledgements: [ack],
+			deliveryEvents: [heldEvent, releasedEvent, ackEvent],
+		}),
+	];
+	async function run(observations = samples(), changedDraft?: string) {
+		let draft = "";
+		let sends = 0;
+		const keys: string[][] = [];
+		const witness: Record<string, unknown> = {};
+		const result = driveSmokeTypingWitness(
+			{
+				tmux(args: string[]) {
+					if (args[0] === "capture-pane") return composer(draft);
+					keys.push(args);
+					draft = args.at(-1) === "C-u" ? "" : String(args.at(-1));
+					return "";
+				},
+				async observe() {
+					const next = observations.shift();
+					if (!next) throw new Error("proof snapshots exhausted");
+					if (changedDraft !== undefined && observations.length === 0) draft = changedDraft;
+					return next;
+				},
+				async send() {
+					sends++;
+					return { outcome: "queued" };
+				},
+			},
+			expected,
+			1,
+			witness,
+		);
+		return { result, keys, witness, sends: () => sends };
+	}
+	it("observes hold then expiry/release and one acceptance without clearing the draft", async () => {
+		const proof = await run();
+		await proof.result;
+		expect(proof.sends()).toBe(1);
+		expect(proof.keys).toEqual([["send-keys", "-t", seat.pane, "-l", "--", expected.draft]]);
+		expect(proof.witness).toMatchObject({
+			status: "passed",
+			draft: expected.draft,
+			grade: "native-accepted-not-model-complete",
+			after: composer(expected.draft),
+		});
+	});
+	it.each([
+		"",
+		"HUMAN_DRAFT_corrupted",
+		`${expected.draft}${expected.nonce}`,
+	])("rejects cleared or corrupted composer even after native acceptance: %s", async (draft) => {
+		const proof = await run(samples(), draft);
+		await expect(proof.result).rejects.toThrow(/PIJ_NATIVE_TYPING_PROOF/);
+		expect(proof.keys).toHaveLength(1);
+	});
+	it.each([
+		{ state: "unavailable" },
+		{ state: "unknown" },
+		{ semantic_hold: true },
+		{ native_consumer: { native_session: "stale", ...seat.proc } },
+		{ native_consumer: { native_session: seat.session, pid: 138, proc_start: 1370 } },
+		{ native_consumer: { native_session: seat.session, pid: 137, proc_start: 1371 } },
+		{ typing_grace_ms: 0 },
+		{ retry_after_ms: -1 },
+		{ retry_after_ms: 60001 },
+		{ retry_after_ms: 0 },
+		{ source: "invented-native-api" },
+	])("rejects unavailable, stale, unheld or malformed initial sensor %j", async (changed) => {
+		const observations = samples();
+		observations[0] = sample({ sensor: { ...sensor(59000), ...changed } });
+		const proof = await run(observations);
+		await expect(proof.result).rejects.toThrow(/PIJ_NATIVE_TYPING_PROOF/);
+		expect(proof.sends()).toBe(0);
+	});
+	it.each([
+		{ deliveryEvents: [] },
+		{ jobs: [] },
+		{ jobs: [{ ...job, state: "done" }] },
+		{ acknowledgements: [ack] },
+		{ nativeEvents: [acceptedEvent] },
+		{
+			deliveryEvents: [
+				event(1, "delivery.held", { msg_id: "wrong", reason: "human-typing", since_ms: 99000 }),
+			],
+		},
+		{ deliveryEvents: [event(1, "delivery.held", { reason: "semantic-hold", since_ms: 99000 })] },
+	])("rejects missing hold evidence, lost work or premature acceptance %j", async (changed) => {
+		const observations = samples();
+		observations[1] = sample(changed);
+		const proof = await run(observations);
+		await expect(proof.result).rejects.toThrow(/PIJ_NATIVE_(?:TYPING_PROOF|TIMEOUT)/);
+	});
+	it.each([
+		{ nativeEvents: [acceptedEvent, { ...acceptedEvent, id: "duplicate-event" }] },
+		{ acknowledgements: [ack, ack] },
+		{ acknowledgements: [{ ...ack, origin: "tmux" }] },
+		{ deliveryEvents: [heldEvent, releasedEvent] },
+		{ deliveryEvents: [heldEvent, releasedEvent, { ...ackEvent, seq: 1 }] },
+		{
+			deliveryEvents: [
+				heldEvent,
+				releasedEvent,
+				{ ...ackEvent, payload: JSON.stringify({ job_id: 138, outcome: "reader-read" }) },
+			],
+		},
+		{ deliveryEvents: [heldEvent, releasedEvent, ackEvent, { ...ackEvent, seq: 4 }] },
+		{ deliveryEvents: [heldEvent] },
+		{ deliveryEvents: [heldEvent, event(0, "delivery.released", { at_ms: 159000 })] },
+		{ deliveryEvents: [heldEvent, event(2, "delivery.released", { at_ms: 100001 })] },
+		{
+			deliveryEvents: [
+				heldEvent,
+				event(2, "delivery.released", { msg_id: "wrong", at_ms: 159000 }),
+			],
+		},
+	])("rejects duplicate acceptance or uncorrelated/premature release %j", async (changed) => {
+		const observations = samples();
+		observations[3] = { ...sample(), ...observations[3], ...changed };
+		const proof = await run(observations);
+		await expect(proof.result).rejects.toThrow(/PIJ_NATIVE_(?:TYPING_PROOF|TIMEOUT)/);
+	});
+	it("rejects an early release hidden by an unrelated old hold timestamp", async () => {
+		const observations = samples().map((value) => ({
+			...value,
+			deliveryEvents: value.deliveryEvents.map((row) =>
+				row.kind === "delivery.held"
+					? event(1, "delivery.held", { reason: "human-typing", since_ms: 0 })
+					: row.kind === "delivery.released"
+						? event(2, "delivery.released", { at_ms: 100001 })
+						: row,
+			),
+		}));
+		const proof = await run(observations);
+		await expect(proof.result).rejects.toThrow(/PIJ_NATIVE_TYPING_PROOF/);
+	});
+	it("rechecks a positive sensor when later receipt reads cross the expiry boundary", async () => {
+		const observations = samples();
+		observations[2] = sample({
+			sensor: sensor(1, 158999),
+			nativeEvents: [acceptedEvent],
+			acknowledgements: [ack],
+			deliveryEvents: [heldEvent, releasedEvent, ackEvent],
+			jobs: [{ ...job, state: "done" }],
+		});
+		observations.push({ ...sample(), ...observations[3] });
+		const proof = await run(observations);
+		await proof.result;
+		expect(proof.witness).toMatchObject({ status: "passed" });
+		expect(proof.sends()).toBe(1);
+	});
+	it("rejects an early release even when a later release satisfies the deadline", async () => {
+		const observations = samples();
+		observations[3] = {
+			...sample(),
+			...observations[3],
+			deliveryEvents: [
+				heldEvent,
+				event(2, "delivery.released", { at_ms: 100001 }),
+				event(3, "delivery.released", { at_ms: 159000 }),
+				{ ...ackEvent, seq: 4 },
+			],
+		};
+		const proof = await run(observations);
+		await expect(proof.result).rejects.toThrow(/PIJ_NATIVE_TYPING_PROOF/);
+	});
+	it("uses a nondefault daemon grace rather than a second policy constant", async () => {
+		const observations = samples().map((value, index) => ({
+			...value,
+			sensor: {
+				...sensor(index < 2 ? 234 : 0, index < 2 ? 100000 : 100234 + index - 2),
+				typing_grace_ms: 1234,
+			},
+			deliveryEvents: value.deliveryEvents.map((row) =>
+				row.kind === "delivery.released" ? event(2, "delivery.released", { at_ms: 100234 }) : row,
+			),
+		}));
+		const proof = await run(observations);
+		await proof.result;
+		expect(proof.sends()).toBe(1);
+	});
+	it.each([
+		{ sensor: sensor(0, 100001) },
+		{ sensor: { ...sensor(0, 159000), typing_grace_ms: 60001 } },
+		{ sensor: { ...sensor(0, 159000), state: "unavailable" } },
+		{ sensor: sensor(1, 158999), nativeEvents: [acceptedEvent] },
+	])("rejects early expiry, changed grace, unavailable sensor or pre-expiry acceptance %j", async (changed) => {
+		const observations = samples();
+		observations[2] = sample(changed);
+		if ("nativeEvents" in changed) observations.splice(3, 0, sample(changed));
+		const proof = await run(observations);
+		await expect(proof.result).rejects.toThrow(/PIJ_NATIVE_TYPING_PROOF/);
 	});
 });
 
