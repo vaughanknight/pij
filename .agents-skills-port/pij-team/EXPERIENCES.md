@@ -595,4 +595,34 @@ we hand the pattern to pij and the harness. Also `harness observe` each one.
   paragraphs in — and fixed a factual error in its own meta note (said "four
   remaining open items", listed six) rather than leaving the artifact
   self-contradicting.
+- 2026-09-05 (xoxarle, 135 — **KEEP, and it is the sharpest rule of the run**):
+  **a review target must name a METHOD, not a conclusion — "go get an input you do
+  not have yet" is the only kind of instruction that can overturn its own author.**
+  Both of this reviewer's own remedies died, and neither died to more thinking
+  about what it already had: remedy (a) died to a doctrine it had not read
+  (`identity.rs:436-450`), remedy (c) died to a `ps` sweep it had not run (1743
+  processes; all 17 `bun.exe` rejects turned out to be `__omp_worker_*` internals,
+  so the widening it recommended would have made worker processes eligible as a
+  pane's harness). Round-2 target (2) said *re-run against real basenames* rather
+  than *confirm the widening*, and that phrasing is the entire reason the reversal
+  happened before the code shipped. Write targets as inputs to acquire.
+- 2026-09-05 (xoxarle, 135 — **KEEP**): **audit your own instrument before letting
+  it drive a change; a reversal argued from an unverified tool is just a different
+  guess.** Before its counterfactual table was allowed to change code, the reviewer
+  validated its Python port of `harness_command` against all 11 cases pinned by the
+  Rust unit test (0 disagreements) and then re-confirmed the six load-bearing
+  verdicts individually rather than trusting the aggregate. Almost nobody applies
+  the disbelieve-the-receipts rule to their own tooling; this is what made the
+  table dispatchable as a decision rather than an opinion.
+- 2026-09-05 (silverfish/xoxarle, 135): **a read-only reviewer asking permission
+  before mutating shared state is the fence working, and the answer should usually
+  be no.** The strongest remaining evidence for the MAJOR finding was one `curl`
+  measuring the fallback end to end — and it was correctly refused: another plan
+  held a live freeze on the daemon (so the write would have been answered by a
+  *different* binary than the finding concerned), and an rs register writes a row
+  that nothing reaps, which is the very fact that caused this plan. The
+  end-to-end measurement belongs in the unit witness that runs forever, and the
+  live half belongs to the PM who owns the live-proof fence. **Rule: route a
+  reviewer's proposed measurement into the author's test, not into production
+  state.**
 - (add as they arise)
