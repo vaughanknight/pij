@@ -1,0 +1,230 @@
+TAP version 13
+# Subtest: native-event diagnostics retain pre-observe ancestry for healthy session.idle
+not ok 1 - native-event diagnostics retain pre-observe ancestry for healthy session.idle
+  ---
+  duration_ms: 2.44575
+  type: 'test'
+  location: '/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/.copilot/extensions/pij/store.test.mjs:1275:2'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+    -   agentId: null,
+    -   completionLive: true,
+    -   completionNativeId: 'native-message-137',
+    -   descendantCount: 2,
+        eventId: 'terminal-diagnostic-assistant',
+        grade: 'native-event-not-pij-ack',
+    -   interactionId: null,
+        kind: 'native-event',
+        nativeMessageId: null,
+        nativeSession: 'native-137',
+    -   parentId: 'diagnostic-assistant',
+    -   parentKnown: true,
+        seat: 'pij-test',
+    -   terminal: {
+    -     eventId: 'terminal-diagnostic-assistant',
+    -     type: 'session.idle'
+    -   },
+        type: 'session.idle'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    kind: 'native-event'
+    seat: 'pij-test'
+    nativeSession: 'native-137'
+    type: 'session.idle'
+    eventId: 'terminal-diagnostic-assistant'
+    nativeMessageId: ~
+    parentId: 'diagnostic-assistant'
+    agentId: ~
+    interactionId: ~
+    completionNativeId: 'native-message-137'
+    completionLive: true
+    parentKnown: true
+    descendantCount: 2
+    terminal:
+      type: 'session.idle'
+      eventId: 'terminal-diagnostic-assistant'
+    grade: 'native-event-not-pij-ack'
+  actual:
+    kind: 'native-event'
+    seat: 'pij-test'
+    nativeSession: 'native-137'
+    type: 'session.idle'
+    eventId: 'terminal-diagnostic-assistant'
+    nativeMessageId: ~
+    grade: 'native-event-not-pij-ack'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/.copilot/extensions/pij/store.test.mjs:1286:10)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3)
+  ...
+# Subtest: native-event diagnostics retain pre-observe ancestry for healthy session.error
+not ok 2 - native-event diagnostics retain pre-observe ancestry for healthy session.error
+  ---
+  duration_ms: 0.402209
+  type: 'test'
+  location: '/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/.copilot/extensions/pij/store.test.mjs:1275:2'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+    -   agentId: null,
+    -   completionLive: true,
+    -   completionNativeId: 'native-message-137',
+    -   descendantCount: 2,
+        eventId: 'terminal-diagnostic-assistant',
+        grade: 'native-event-not-pij-ack',
+    -   interactionId: null,
+        kind: 'native-event',
+        nativeMessageId: null,
+        nativeSession: 'native-137',
+    -   parentId: 'diagnostic-assistant',
+    -   parentKnown: true,
+        seat: 'pij-test',
+    -   terminal: {
+    -     eventId: 'terminal-diagnostic-assistant',
+    -     type: 'session.error'
+    -   },
+        type: 'session.error'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    kind: 'native-event'
+    seat: 'pij-test'
+    nativeSession: 'native-137'
+    type: 'session.error'
+    eventId: 'terminal-diagnostic-assistant'
+    nativeMessageId: ~
+    parentId: 'diagnostic-assistant'
+    agentId: ~
+    interactionId: ~
+    completionNativeId: 'native-message-137'
+    completionLive: true
+    parentKnown: true
+    descendantCount: 2
+    terminal:
+      type: 'session.error'
+      eventId: 'terminal-diagnostic-assistant'
+    grade: 'native-event-not-pij-ack'
+  actual:
+    kind: 'native-event'
+    seat: 'pij-test'
+    nativeSession: 'native-137'
+    type: 'session.error'
+    eventId: 'terminal-diagnostic-assistant'
+    nativeMessageId: ~
+    grade: 'native-event-not-pij-ack'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/.copilot/extensions/pij/store.test.mjs:1286:10)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+  ...
+# Subtest: native-event diagnostics identify rejected idle without declaring a stall
+not ok 3 - native-event diagnostics identify rejected idle without declaring a stall
+  ---
+  duration_ms: 0.402958
+  type: 'test'
+  location: '/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/.copilot/extensions/pij/store.test.mjs:1307:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+    -   agentId: null,
+    -   completionLive: true,
+    -   completionNativeId: 'native-message-137',
+    -   descendantCount: 1,
+        eventId: 'terminal-missing-parent',
+        grade: 'native-event-not-pij-ack',
+    -   interactionId: 'foreign-interaction',
+        kind: 'native-event',
+        nativeMessageId: null,
+        nativeSession: 'native-137',
+    -   parentId: 'missing-parent',
+    -   parentKnown: false,
+        seat: 'pij-test',
+    -   terminal: null,
+        type: 'session.idle'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    kind: 'native-event'
+    seat: 'pij-test'
+    nativeSession: 'native-137'
+    type: 'session.idle'
+    eventId: 'terminal-missing-parent'
+    nativeMessageId: ~
+    parentId: 'missing-parent'
+    agentId: ~
+    interactionId: 'foreign-interaction'
+    completionNativeId: 'native-message-137'
+    completionLive: true
+    parentKnown: false
+    descendantCount: 1
+    terminal: ~
+    grade: 'native-event-not-pij-ack'
+  actual:
+    kind: 'native-event'
+    seat: 'pij-test'
+    nativeSession: 'native-137'
+    type: 'session.idle'
+    eventId: 'terminal-missing-parent'
+    nativeMessageId: ~
+    grade: 'native-event-not-pij-ack'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/.copilot/extensions/pij/store.test.mjs:1315:9)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+  ...
+# Subtest: native-event diagnostics expose only scalar IDs and never callback or buffered bodies
+not ok 4 - native-event diagnostics expose only scalar IDs and never callback or buffered bodies
+  ---
+  duration_ms: 0.35225
+  type: 'test'
+  location: '/Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/.copilot/extensions/pij/store.test.mjs:1334:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + undefined
+    - null
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: ~
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-copilot-native-runtime/.copilot/extensions/pij/store.test.mjs:1343:9)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1106:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+    Test.postRun (node:internal/test_runner/test:1235:19)
+    Test.run (node:internal/test_runner/test:1163:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 0
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 58.928916
