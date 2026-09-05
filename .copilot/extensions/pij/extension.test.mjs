@@ -18,15 +18,25 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
     const emit = (event) => console.error('TEST_EVENT ' + JSON.stringify(event));
     export async function joinSession(config) {
       if (process.env.PIJ_NATIVE_TEST_JOIN_FAIL === '1') throw new Error('Fixture join unsupported');
+      const listeners = new Set();
+      let sends = 0;
       const session = {
         sessionId: process.env.SESSION_ID,
-        on() { return () => {}; },
-        async send(input) { emit({kind:'native-send',input}); return 'native-shell-137'; },
+        on(type, handler) {
+          const listener = typeof type === 'function' ? type : (event) => { if (event.type === type) handler(event); };
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+        async send(input) { emit({kind:'native-send',input}); return 'native-shell-' + (137 + sends++); },
         async log(message, options) { emit({kind:'native-log',message,options}); },
         async disconnect() {}
       };
       process.stdin.on('data', async (data) => {
         const input = JSON.parse(String(data));
+        if (input.nativeEvents) {
+          for (const event of input.nativeEvents) for (const listener of listeners) listener(event);
+          return;
+        }
         const result = await config.tools[0].handler(input, {sessionId:session.sessionId});
         emit({kind:'tool-result',result});
       });
@@ -57,11 +67,11 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		},
 	});
 } else {
-	async function launch(t, { daemon = true, key = true, joinFails = false } = {}) {
+	async function launch(t, { daemon = true, key = true, joinFails = false, messages = 1 } = {}) {
 		const home = await mkdtemp(join(tmpdir(), "pij-native-shell-"));
 		const requests = [];
 		let registered;
-		let claimed = false;
+		let claimed = 0;
 		let server;
 		let port;
 		if (key) await writeFile(join(home, "daemon.key"), "fixture-secret", { mode: 0o600 });
@@ -91,34 +101,35 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 					assert.equal(query.get("native_session"), registered.harness_session);
 					assert.equal(Number(query.get("pid")), registered.pid);
 					assert.equal(Number(query.get("proc_start")), registered.proc_start);
-					data = claimed
-						? []
-						: [
-								{
-									job_id: 137,
-									message: {
-										msg_id: "shell-137",
-										from: "pij-peer",
-										to: registered.id,
-										body: "SHELL_NONCE_137",
+					data =
+						claimed >= messages
+							? []
+							: [
+									{
+										job_id: 137 + claimed,
+										message: {
+											msg_id: `shell-${137 + claimed}`,
+											from: "pij-peer",
+											to: registered.id,
+											body: "SHELL_NONCE_137",
+										},
+										native_consumer: {
+											native_session: registered.harness_session,
+											pid: registered.pid,
+											proc_start: registered.proc_start,
+										},
 									},
-									native_consumer: {
-										native_session: registered.harness_session,
-										pid: registered.pid,
-										proc_start: registered.proc_start,
-									},
-								},
-							];
-					claimed = true;
+								];
+					claimed++;
 				} else if (request.url === "/v1/inbox/ack") {
 					assert.deepEqual(body, {
 						seat: registered.id,
-						job_id: 137,
+						job_id: 136 + claimed,
 						native_session: registered.harness_session,
 						pid: registered.pid,
 						proc_start: registered.proc_start,
 					});
-					data = 137;
+					data = body.job_id;
 				} else if (request.url === "/v1/send")
 					data = { msg_id: body.msg_id, outcome: { outcome: "queued" }, at: 137 };
 				else throw new Error(`Unexpected native endpoint ${request.url}`);
@@ -197,10 +208,10 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				}
 			}
 		});
-		async function waitFor(kind) {
+		async function waitFor(kind, matches = () => true) {
 			const signal = AbortSignal.timeout(5000);
 			for (;;) {
-				const found = events.find((event) => event.kind === kind);
+				const found = events.find((event) => event.kind === kind && matches(event));
 				if (found) return found;
 				await once(emitter, "event", { signal });
 			}
@@ -224,6 +235,41 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.equal(f.requests.find((r) => r.path === "/v1/send").body.from, registration.id);
 		assert.equal(f.events.filter((e) => e.kind === "native-send").length, 1);
 		assert.match(f.events.find((e) => e.kind === "native-send").input.prompt, /SHELL_NONCE_137/);
+		assert.equal(f.stdout(), "");
+	});
+
+	test("actual extension shell acknowledges then waits for native completion before second delivery", async (t) => {
+		const f = await launch(t, { messages: 2 });
+		await f.waitFor("completion-wait", (e) => e.nativeMessageId === "native-shell-137");
+		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 1);
+		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 1);
+		f.child.stdin.write(
+			`${JSON.stringify({
+				nativeEvents: [
+					{
+						type: "user.message",
+						id: "user-shell-137",
+						parentId: null,
+						data: { messageId: "native-shell-137" },
+					},
+					{
+						type: "session.idle",
+						id: "idle-shell-137",
+						parentId: "user-shell-137",
+						ephemeral: true,
+						data: {},
+					},
+				],
+			})}\n`,
+		);
+		await f.waitFor("completion-wait", (e) => e.nativeMessageId === "native-shell-138");
+		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 2);
+		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 2);
+		assert.equal(f.events.filter((e) => e.kind === "native-send").length, 2);
+		assert.equal(f.events.filter((e) => e.kind === "native-completed").length, 1);
+		const exited = once(f.child, "exit");
+		f.child.stdin.end();
+		assert.equal((await exited)[0], 0);
 		assert.equal(f.stdout(), "");
 	});
 

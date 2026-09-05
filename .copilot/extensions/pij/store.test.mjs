@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { setImmediate as flush } from "node:timers/promises";
 import {
 	chooseRegistration,
 	DaemonClient,
@@ -469,6 +470,12 @@ test("HTTP client reloads key on every request, binds tuple, keeps bounded non-J
 
 test("accepted-but-unacked reconnect reclaims and acknowledges without second native send", async () => {
 	const f = fixture({ delay: async () => undefined });
+	const nativeSend = f.native.send;
+	f.native.send = async (input) => {
+		const nativeId = await nativeSend(input);
+		nativeTerminal(f, nativeUser(f, nativeId));
+		return nativeId;
+	};
 	const request = f.client.request;
 	let acks = 0;
 	let claims = 0;
@@ -662,4 +669,240 @@ test("consent hold release delivers the queued claim without a second message", 
 	await run;
 	assert.equal(waits, 1);
 	assert.equal(f.trace.filter((x) => x === "send").length, 1);
+});
+
+function nativeUser(f, nativeId, id = `user-${nativeId}`) {
+	f.event({
+		type: "user.message",
+		id,
+		parentId: "previous",
+		data: { messageId: nativeId, turnId: `turn-${nativeId}` },
+	});
+	return id;
+}
+
+function nativeTerminal(f, parentId, type = "session.idle", extra = {}) {
+	f.event({ type, id: `terminal-${parentId}`, parentId, data: {}, ...extra });
+}
+
+test("post-ack barrier blocks next claim until current native completion, not outgoing", async (t) => {
+	const f = fixture();
+	t.after(() => f.bridge.stop());
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	await flush();
+	assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+	assert.equal(f.trace.includes("ack"), true);
+	assert.equal(
+		(await f.bridge.send({ to: "pij-peer", message: "explicit while working" })).ok,
+		true,
+	);
+	nativeTerminal(f, "old-turn");
+	const user = nativeUser(f, "native-message-137");
+	nativeTerminal(f, "old-turn");
+	nativeTerminal(f, user, "session.idle", { agentId: "subagent" });
+	f.event({
+		type: "assistant.message",
+		id: "assistant-current",
+		parentId: user,
+		data: { content: "not idle" },
+	});
+	await flush();
+	assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+	nativeTerminal(f, "assistant-current");
+	await flush();
+	assert.equal(f.trace.filter((x) => x === "claim").length, 2);
+	f.bridge.stop();
+	await run;
+});
+
+for (const type of ["session.idle", "session.error"]) {
+	test(`post-ack barrier retains ${type} before native send resolves`, async (t) => {
+		const f = fixture();
+		t.after(() => f.bridge.stop());
+		const sending = deferred();
+		const acceptance = deferred();
+		f.native.send = () => {
+			f.trace.push("send");
+			const user = nativeUser(f, "early-native");
+			nativeTerminal(f, user, type);
+			sending.resolve();
+			return acceptance.promise;
+		};
+		const run = f.bridge.run();
+		await sending.promise;
+		assert.equal(f.trace.includes("ack"), false);
+		acceptance.resolve("early-native");
+		await f.accepted.promise;
+		await flush();
+		assert.equal(f.trace.filter((x) => x === "claim").length, 2);
+		assert.ok(f.reports.some((e) => e.kind === "native-completed" && e.type === type));
+		f.bridge.stop();
+		await run;
+	});
+}
+
+test("post-ack barrier captures idle during acknowledgement but cannot overtake ack", async (t) => {
+	const f = fixture();
+	t.after(() => f.bridge.stop());
+	const acknowledging = deferred();
+	const ack = deferred();
+	const request = f.client.request;
+	f.client.request = (p, b, s) => {
+		if (p === "/v1/inbox/ack") {
+			acknowledging.resolve();
+			return ack.promise;
+		}
+		return request(p, b, s);
+	};
+	const run = f.bridge.run();
+	await acknowledging.promise;
+	nativeTerminal(f, nativeUser(f, "native-message-137"));
+	await flush();
+	assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+	ack.resolve(claim.job_id);
+	await f.accepted.promise;
+	await flush();
+	assert.equal(f.trace.filter((x) => x === "claim").length, 2);
+	f.bridge.stop();
+	await run;
+});
+
+test("post-ack barrier cannot release a later send from earlier generation events", async (t) => {
+	const f = fixture();
+	t.after(() => f.bridge.stop());
+	const request = f.client.request;
+	let claims = 0;
+	let sends = 0;
+	f.client.request = (p, b, s) => {
+		if (p.startsWith("/v1/inbox?") && ++claims <= 2)
+			return [{ ...claim, job_id: claims, message: { ...claim.message, msg_id: `pij-${claims}` } }];
+		if (p === "/v1/inbox/ack") return b.job_id;
+		if (p.startsWith("/v1/inbox?"))
+			return new Promise((resolve) =>
+				s.addEventListener("abort", () => resolve([]), { once: true }),
+			);
+		return request(p, b, s);
+	};
+	f.native.send = async () => `native-${++sends}`;
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	nativeTerminal(f, nativeUser(f, "native-1"));
+	await flush();
+	assert.equal(sends, 2);
+	assert.equal(claims, 2);
+	const currentUser = nativeUser(f, "native-2");
+	nativeTerminal(f, "user-native-1");
+	f.event({
+		type: "user.message",
+		id: "user-native-1",
+		parentId: currentUser,
+		data: { messageId: "native-1" },
+	});
+	nativeTerminal(f, "user-native-1");
+	await flush();
+	assert.equal(claims, 2);
+	nativeTerminal(f, currentUser);
+	await flush();
+	assert.equal(claims, 3);
+	f.bridge.stop();
+	await run;
+});
+
+test("post-ack barrier explicitly holds accepted duplicate without completion evidence", {
+	timeout: 1000,
+}, async (t) => {
+	const f = fixture();
+	t.after(() => f.bridge.stop());
+	f.records.set(claim.message.msg_id, {
+		state: "accepted",
+		message: claim.message,
+		nativeId: "previous-native",
+	});
+	await f.bridge.run();
+	assert.equal(f.trace.includes("ack"), true);
+	assert.equal(f.trace.includes("send"), false);
+	assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+	assert.ok(f.reports.some((e) => e.kind === "receive-held" && /completion/i.test(e.diagnostic)));
+	assert.equal(f.trace.filter((x) => x === "unsubscribe").length, 1);
+	assert.equal((await f.bridge.send({ to: "pij-peer", message: "receive is held" })).ok, true);
+});
+
+test("post-ack barrier survives failed ack before reclaiming accepted duplicate", async (t) => {
+	const f = fixture({ delay: async () => undefined });
+	t.after(() => f.bridge.stop());
+	const request = f.client.request;
+	let claims = 0;
+	let acks = 0;
+	f.client.request = (p, b, s) => {
+		if (p.startsWith("/v1/inbox?")) {
+			claims++;
+			return [claim];
+		}
+		if (p === "/v1/inbox/ack" && acks++ === 0)
+			throw Object.assign(new Error("lost ack response"), { retryable: true });
+		if (p === "/v1/inbox/ack" && acks > 2) f.bridge.stop();
+		return request(p, b, s);
+	};
+	const run = f.bridge.run();
+	await flush();
+	assert.equal(claims, 1);
+	assert.equal(acks, 1);
+	nativeTerminal(f, nativeUser(f, "native-message-137"));
+	await f.accepted.promise;
+	f.bridge.stop();
+	await run;
+	assert.equal(claims, 2);
+	assert.equal(f.trace.filter((x) => x === "send").length, 1);
+	assert.equal(f.reports.filter((e) => e.kind === "native-completed").length, 1);
+});
+
+test("post-ack barrier shutdown disposes subscription and ignores late completion", async () => {
+	const f = fixture();
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	await flush();
+	f.event({ type: "session.shutdown", data: {} });
+	await run;
+	nativeTerminal(f, nativeUser(f, "native-message-137"));
+	await flush();
+	assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+	assert.equal(f.trace.filter((x) => x === "unsubscribe").length, 1);
+	assert.equal(
+		f.reports.some((e) => e.kind === "native-completed"),
+		false,
+	);
+});
+
+test("post-ack barrier follows real native PoC ancestry with sibling ephemeral idles", async (t) => {
+	const f = fixture();
+	t.after(() => f.bridge.stop());
+	// Native PoC target-events.jsonl:36-54, supplied by PM. Opaque IDs remapped;
+	// only the terminal's ancestor chain and sibling assistant.idle retained, no bodies.
+	const events = [
+		{
+			type: "user.message",
+			id: "poc-36",
+			parentId: "prior-context",
+			data: { messageId: "native-poc-second", turnId: "0" },
+		},
+		{ type: "system.message", id: "poc-37", parentId: "poc-36", data: {} },
+		{ type: "assistant.turn_start", id: "poc-39", parentId: "poc-37", data: { turnId: "0" } },
+		{ type: "assistant.message", id: "poc-48", parentId: "poc-39", data: {} },
+		{ type: "assistant.turn_end", id: "poc-51", parentId: "poc-48", data: { turnId: "0" } },
+		{ type: "assistant.idle", id: "poc-53", parentId: "poc-51", ephemeral: true, data: {} },
+		{ type: "session.idle", id: "poc-54", parentId: "poc-51", ephemeral: true, data: {} },
+	];
+	f.native.send = async () => "native-poc-second";
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	for (const event of events.slice(0, -1)) f.event(event);
+	await flush();
+	assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+	f.event(events.at(-1));
+	await flush();
+	assert.equal(f.trace.filter((x) => x === "claim").length, 2);
+	assert.ok(f.reports.some((e) => e.kind === "native-completed" && e.eventId === "poc-54"));
+	f.bridge.stop();
+	await run;
 });
