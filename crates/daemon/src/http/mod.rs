@@ -375,6 +375,26 @@ struct RegistrationRequest {
     harness_session: Option<String>,
 }
 
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum RegistrationBinding {
+    Created,
+    Rebound,
+    Same,
+}
+
+/// Registration-only metadata; it never becomes durable descriptor state.
+#[derive(Deserialize, Serialize)]
+struct RegistrationResponse {
+    #[serde(flatten)]
+    descriptor: SeatDescriptor,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    binding: Option<RegistrationBinding>,
+}
+
+/// Composition: the service returns `(descriptor, report)` from its committed
+/// `put_reporting`; derive `created` on insert, `rebound` on a changed process,
+/// otherwise `same`, and flatten the descriptor into this response only.
 async fn register(
     State(state): State<AppState>,
     Json(request): Json<RegistrationRequest>,
@@ -389,14 +409,27 @@ async fn register(
         .register_with_harness_session(request.claim, request.harness_session)
         .await
     {
-        Ok(descriptor) => {
+        Ok((descriptor, report)) => {
             let meta = descriptor.pane.is_none().then(|| {
                 format!(
                     "export PIJ_SESSION_ID={} — this paneless seat has no observable pane, so subsequent commands require the registered id",
                     descriptor.id
                 )
             });
-            let mut answer = Envelope::ok("pij register", descriptor);
+            let binding = if report.inserted {
+                RegistrationBinding::Created
+            } else if report.previous_proc != descriptor.proc {
+                RegistrationBinding::Rebound
+            } else {
+                RegistrationBinding::Same
+            };
+            let mut answer = Envelope::ok(
+                "pij register",
+                RegistrationResponse {
+                    descriptor,
+                    binding: Some(binding),
+                },
+            );
             answer.meta = meta;
             envelope(StatusCode::OK, &answer)
         }

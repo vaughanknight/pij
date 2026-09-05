@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use pij_core::error::PijError;
 use pij_core::model::{Event, Harness, ProcIdentity, SeatDescriptor, SeatId};
-use pij_core::ports::{LivenessPort, Registry, SeatFilter};
+use pij_core::ports::{LivenessPort, PutBinding, Registry, SeatFilter};
 use pij_core::wire;
 use pij_harnesses::ensure_claude_inbound_accept;
 
@@ -53,14 +53,16 @@ impl RegistrationService {
         &self,
         claim: Registration,
     ) -> std::result::Result<SeatDescriptor, RegistrationError> {
-        self.register_with_harness_session(claim, None).await
+        self.register_with_harness_session(claim, None)
+            .await
+            .map(|(descriptor, _)| descriptor)
     }
 
     pub(crate) async fn register_with_harness_session(
         &self,
         claim: Registration,
         harness_session: Option<String>,
-    ) -> std::result::Result<SeatDescriptor, RegistrationError> {
+    ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError> {
         let harness_session = harness_session.filter(|session| !session.trim().is_empty());
         let proc = match (claim.pid, claim.proc_start) {
             (Some(pid), Some(proc_start)) => {
@@ -250,8 +252,9 @@ impl RegistrationService {
                 .await
                 .map_err(RegistrationError::Runtime)?;
         }
-        self.registry
-            .put(descriptor.clone())
+        let (_, binding) = self
+            .registry
+            .put_reporting(descriptor.clone())
             .await
             .map_err(RegistrationError::Runtime)?;
         if binds_spawned_incarnation && model_matches {
@@ -272,7 +275,7 @@ impl RegistrationService {
                 .await
                 .map_err(RegistrationError::Runtime)?;
         }
-        Ok(descriptor)
+        Ok((descriptor, binding))
     }
 }
 

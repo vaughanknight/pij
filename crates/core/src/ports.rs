@@ -45,6 +45,15 @@ pub struct SeatFilter {
     pub parent: Option<SeatId>,
 }
 
+/// The binding replaced by one committed registry write.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PutBinding {
+    /// No row existed for this id before the write.
+    pub inserted: bool,
+    /// The old process, not the incoming claim. `None` can also mean an unbound row.
+    pub previous_proc: Option<ProcIdentity>,
+}
+
 /// The seat roster: who exists, what they are, who governs them.
 ///
 /// Single-writer at the store level. `get` returning `None` means the seat is
@@ -58,6 +67,13 @@ pub trait Registry: Send + Sync {
     /// Write a descriptor, returning the sequence number of the write.
     /// Persist-before-mutate: the row exists before anything acts on it.
     async fn put(&self, descriptor: SeatDescriptor) -> Result<Seq>;
+
+    /// Write and report the previous binding in the same atomic operation.
+    ///
+    /// `put` implementations delegate with
+    /// `self.put_reporting(descriptor).await.map(|(seq, _)| seq)`.
+    /// A separate `get` before or after `put` cannot satisfy this contract.
+    async fn put_reporting(&self, d: SeatDescriptor) -> Result<(Seq, PutBinding)>;
 
     /// Every seat matching `filter`, ordered by id so callers can diff listings.
     async fn list(&self, filter: SeatFilter) -> Result<Vec<SeatDescriptor>>;
