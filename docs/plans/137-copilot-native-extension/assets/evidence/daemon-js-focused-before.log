@@ -1,0 +1,221 @@
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/cli.integration.test.ts -t refuses Copilot|compact-self|refuses rs-only|unreadable native roster|preserves known non-Copilot controls|does not classify message bodies|AC-6 command --no-cache
+
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-copilot-native-daemon
+
+(node:43154) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+E-UNSUPPORTED: Copilot programmatic compact is unsupported; use Copilot's native user controls. No legacy or tmux fallback is permitted.
+E-UNSUPPORTED: Copilot programmatic compact is unsupported; use Copilot's native user controls. No legacy or tmux fallback is permitted.
+E-UNSUPPORTED: Copilot programmatic compact is unsupported; use Copilot's native user controls. No legacy or tmux fallback is permitted.
+E-UNSUPPORTED: Copilot programmatic compact is unsupported; use Copilot's native user controls. No legacy or tmux fallback is permitted.
+E-UNSUPPORTED: Copilot programmatic new is unsupported; use Copilot's native user controls. No legacy or tmux fallback is permitted.
+E-UNSUPPORTED: Copilot programmatic new is unsupported; use Copilot's native user controls. No legacy or tmux fallback is permitted.
+E-UNSUPPORTED: Copilot programmatic new is unsupported; use Copilot's native user controls. No legacy or tmux fallback is permitted.
+E-UNSUPPORTED: Copilot programmatic new is unsupported; use Copilot's native user controls. No legacy or tmux fallback is permitted.
+
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+Error: Cannot find package '/Users/jordanknight/pi-hacking/pij/node_modules/node_modules/@opentelemetry/resources/index.js' imported from /Users/jordanknight/pi-hacking/pij/node_modules/minih/dist/telemetry/init.js
+Did you mean to import "@opentelemetry/resources/build/src/index.js"?
+    at legacyMainResolve (node:internal/modules/esm/resolve:204:26)
+    at packageResolve (node:internal/modules/esm/resolve:778:12)
+    at moduleResolve (node:internal/modules/esm/resolve:858:18)
+    at defaultResolve (node:internal/modules/esm/resolve:990:11)
+    at nextResolve (node:internal/modules/esm/hooks:748:28)
+    at resolveBase (file:///Users/jordanknight/pi-hacking/pij/node_modules/tsx/dist/register-D5KIhaFJ.mjs:2:8511)
+    at resolveDirectory (file:///Users/jordanknight/pi-hacking/pij/node_modules/tsx/dist/register-D5KIhaFJ.mjs:2:9597)
+    at resolveTsPaths (file:///Users/jordanknight/pi-hacking/pij/node_modules/tsx/dist/register-D5KIhaFJ.mjs:2:11127)
+    at resolve (file:///Users/jordanknight/pi-hacking/pij/node_modules/tsx/dist/register-D5KIhaFJ.mjs:2:12307)
+    at nextResolve (node:internal/modules/esm/hooks:748:28) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+Node.js v24.7.0
+
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+Error: Cannot find package '/Users/jordanknight/pi-hacking/pij/node_modules/node_modules/@opentelemetry/api/index.js' imported from /Users/jordanknight/pi-hacking/pij/node_modules/minih/dist/runner/runner.js
+Did you mean to import "@opentelemetry/api/build/src/index.js"?
+    at legacyMainResolve (node:internal/modules/esm/resolve:204:26)
+    at packageResolve (node:internal/modules/esm/resolve:778:12)
+    at moduleResolve (node:internal/modules/esm/resolve:858:18)
+    at defaultResolve (node:internal/modules/esm/resolve:990:11)
+    at nextResolve (node:internal/modules/esm/hooks:748:28)
+    at resolveBase (file:///Users/jordanknight/pi-hacking/pij/node_modules/tsx/dist/register-D5KIhaFJ.mjs:2:8511)
+    at resolveDirectory (file:///Users/jordanknight/pi-hacking/pij/node_modules/tsx/dist/register-D5KIhaFJ.mjs:2:9597)
+    at resolveTsPaths (file:///Users/jordanknight/pi-hacking/pij/node_modules/tsx/dist/register-D5KIhaFJ.mjs:2:11127)
+    at resolve (file:///Users/jordanknight/pi-hacking/pij/node_modules/tsx/dist/register-D5KIhaFJ.mjs:2:12307)
+    at nextResolve (node:internal/modules/esm/hooks:748:28) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+Node.js v24.7.0
+ ❯ .pi/extensions/pij/cli.integration.test.ts (110 tests | 2 failed | 97 skipped) 7249ms
+     ↓ top-level help advertises the prime list filter
+     ↓ report help prints only the report family block
+     ↓ top-level help and skill guidance distinguish pull from push delivery
+     ↓ skill guidance routes first-person reports and retires completion self-pause
+     ↓ auto-registers an ambient session before E-NOREG and aliases adopt --current
+     ↓ rejects and repairs a contaminated external ambient identity in place
+     ↓ 'invalid Copilot UUID' prevents pane/cwd fallback
+     ↓ 'Copilot UUID without matching session…' prevents pane/cwd fallback
+     ↓ 'invalid Codex UUID' prevents pane/cwd fallback
+     ↓ 'Codex UUID without matching rollout' prevents pane/cwd fallback
+     ↓ sets, filters, unsets, and durably reattaches prime designations through the real CLI
+     ↓ rejects valued --prime=false instead of silently disabling the filter
+     ↓ AC-1 discovery: list --here sees both peers in this folder
+     ↓ AC-5/whoami: PIJ_SESSION_ID resolves self unambiguously
+     ↓ AC-3 send: message reaches the peer's inbox on disk (raw body)
+     ↓ broadcast send writes the same raw body once to each target inbox
+     ↓ broadcast --wait timeout names every unresolved target
+     ↓ single-target --wait timeout output remains byte-identical
+     ↓ broadcast preflights the full target set before writing any inbox
+     ↓ AC-7/8 tail: --since filters to seq>N, events are ordered + timestamped
+     ↓ AC-9/10 state: reports state + liveness without a stream parse
+     ↓ AC-11 path: prints the readable events.ndjson path
+     ↓ AC-6 errors: invalid target exit codes are honored (E-NOID exit 2)
+     ↓ standalone pi spawn persists a pane-correlated five-minute expectation before launch without a descriptor
+     ↓ pins an ambiguous OMP model to github-copilot before tmux launch
+     ↓ refuses other provider ambiguity before expectation or tmux mutation
+     ↓ projects live-shape OMP thinking arrays through the real models command
+     ↓ fails bare and filtered discovery when requested OMP inventory is unavailable or malformed
+     ↓ keeps --harness openrouter as an upstream-provider filter through the real bin
+     ↓ keeps --harness sakana as an upstream-provider filter through the real bin
+     ↓ keeps --harness github-copilot as an upstream-provider filter through the real bin
+     ↓ control-plane spawn correlates one prelaunch expectation with descriptor and pane
+     ↓ real pi and daemon-bound spawns carry unresolved and not-probeable plan warnings into JSON and human receipts
+     ↓ revives a dissolved Claude session under the same pij id with fail-loud resume argv
+     ↓ resolves the prime seat from the CURRENT FOLDER and prints a paste-able line
+     ↓ a REUSED pane id reads uncertain, not live, and says which id was recycled
+     ↓ a matching pane pid does NOT rescue a descriptor that predates this host's boot
+     ↓ a matching pane pid is uncertain when ps says that process started after our last event
+     ↓ a pane process born FOUR SECONDS after our last activity is uncertain, not live
+     ↓ --print survives tmux being unreachable, degrading to an unprobed pane
+     ↓ --attach binds the operator's OWN pane to the seat without spawning one
+     ↓ resolves an ARCHIVED seat and --print leaves it archived
+     ↓ prints the human-readable form with the self-adopt truth spelled out
+     ↓ states the REAL reason a pi seat needs no attach step
+     ↓ an UNAVAILABLE terminal observation is not evidence of death
+     ↓ refuses to print for a folder that has no seat, naming the folder
+     ↓ cleans the expectation when revival pane launch fails
+     ↓ kills the spawned pane and removes its expectation when tombstone replacement fails
+     ↓ launches pi revival asynchronously with an unconditional reframe
+     ↓ launches omp revival asynchronously with an unconditional reframe
+     ↓ reports the interim Copilot session-in-use action instead of waiting silently
+     ↓ refuses a missing Copilot native artifact before tmux mutation
+     ↓ refuses revival while the prior process incarnation is still alive
+     ↓ daemon-bound Copilot descriptor records github-copilot provider
+     ↓ known pane-launch failure releases only its reservation and expectation
+     ↓ agent spawn correlates its prelaunch expectation, pane, descriptor, and harness
+     ↓ CLI close traces intent → kill → requested terminal → dissolve and retains history
+     ↓ Copilot adopt uses only the validated current env uuid, never the global newest session
+     ↓ Copilot adopt ignores global newest when env is absent, then phonehome binds the pending id
+     ↓ adopt --id renders the stored final binding when no native artifact is discoverable
+     ↓ T001 regression-locks live and pending adopt outcomes before dissolved recovery
+     ↓ T002 refuses to report a dissolved adopt binding that was not persisted
+     ↓ T005 whoami directs a dissolved ambient identity to revive
+     ↓ adopt --id is reattachment-only, preserves prime, and can explicitly recover a reservation
+     ↓ first adopt without --id allocates a memorable primary id
+     ↓ no-native adopt reserves then publishes one memorable pending descriptor
+     ↓ tree/link/adopt/spawn compose over a real repository, linked worktree, and scratch registry
+     ✓ AC-6 command: send --command compact is accepted + the peer executes it  796ms
+     ✓ refuses Copilot compact before either generation can deliver it  2175ms
+     ✓ refuses Copilot new before either generation can deliver it  2234ms
+     × refuses Copilot reload before either generation can deliver it 349ms
+     ✓ keeps compact-self's tmux control for a known non-Copilot target  1342ms
+     × refuses ambient Copilot and unknown compact-self panes without typing or follow-up 342ms
+     ✓ refuses rs-only Copilot compact even under forced legacy 1ms
+     ✓ refuses rs-only Copilot new even under forced legacy 0ms
+     ✓ refuses rs-only Copilot reload even under forced legacy 0ms
+     ✓ refuses native Copilot compact-self by the target pane, not the caller 0ms
+     ✓ refuses an unreadable native roster rather than falling through to tmux 0ms
+     ✓ preserves known non-Copilot controls without consulting another daemon 0ms
+     ✓ does not classify message bodies as native controls 0ms
+     ↓ AC-13 receipt loop: B records inbound + emits a receipt; A records it; tail shows it
+     ↓ peer watch CLI mutates the caller sidecar via PIJ_SESSION_ID
+     ↓ peer watch CLI parses and upserts --debounce values
+     ↓ peer watch CLI rejects invalid debounce values before writing a sidecar
+     ↓ peer watch CLI errors for unresolved self, missing args, and pi sessions
+     ↓ state clear round-trips through the real CLI without materializing a second assignment
+     ↓ report now round-trips state-set → status and projects the durable denorm
+     ↓ issue-#20 kill: env unset + no pane match ⇒ NO parent, even with a lone cwd cohabitant
+     ↓ env unset + pane-exact match resolves the caller across the FULL registry (cross-cwd)
+     ↓ PIJ_SESSION_ID wins over both cwd cohabitants and pane matches
+     ↓ pi spawn announce target follows the same rule: pane identity yes, cwd cohabitant no
+     ↓ adopt honors --parent end-to-end and stays parentless without it
+     ↓ writes spine/spine.md byte-identical to the pure render; --json reports path/bytes/events
+     ↓ re-render of an unchanged log is byte-stable; human mode names the path
+     ↓ renders an EMPTY spine as the header-only document (fresh temp home)
+     ↓ --project publishes a FILTERED view to spine/<slug>.spine.md — spine.md untouched (s057)
+     ↓ --project rejects a non-slug shape with E-ARG (the slug becomes a filename)
+     ↓ tree --global --liveness dead --json over 1200 descriptors parses complete THROUGH A REAL PIPE
+     ↓ lets a PA watch and unwatch its own parent THROUGH THE REAL BIN
+     ↓ refuses a PA watching a stranger THROUGH THE REAL BIN, naming role and field
+     ↓ refuses a policy-changing watchdog action through the bin, even on its own parent
+     ↓ still refuses a FLATLY refused verb at the bin seam — the gate is not disarmed
+     ↓ whoami through the bin reports watchdog as CONDITIONAL, not flatly refused
+     ↓ lets a PA `chore add` THROUGH THE REAL BIN — the raw-argv subverb mapping
+     ↓ registers the NAMED seat, re-binds without duplicating, and unwatches it again
+     ↓ preserves addedAt across a re-bind THROUGH THE BIN, and stamps a new one
+     ↓ refuses --for to a PA through the bin, while the plain form still works
+     ↓ names --for on BOTH the watch and the unwatch usage lines
+     ↓ explains what --for DOES, not merely that it exists
+     ↓ the help path is REACHABLE — guards this whole pin against being vacuous
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/cli.integration.test.ts > pij two-peer integration (real coordinators + real CLI over sandbox PIJ_HOME) > refuses Copilot reload before either generation can deliver it
+AssertionError: expected 1 to be 2 // Object.is equality
+
+- Expected
++ Received
+
+- 2
++ 1
+
+ ❯ .pi/extensions/pij/cli.integration.test.ts:2774:26
+    2772|       PIJ_DAEMON_GENERATION: generation,
+    2773|      });
+    2774|      expect(result.code).toBe(2);
+       |                          ^
+    2775|      expect(result.out).toContain(`Copilot programmatic ${command} is …
+    2776|      expect(result.out).toContain("No legacy or tmux fallback");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  .pi/extensions/pij/cli.integration.test.ts > pij two-peer integration (real coordinators + real CLI over sandbox PIJ_HOME) > refuses ambient Copilot and unknown compact-self panes without typing or follow-up
+AssertionError: expected 1 to be 2 // Object.is equality
+
+- Expected
++ Received
+
+- 2
++ 1
+
+ ❯ .pi/extensions/pij/cli.integration.test.ts:2818:24
+    2816|    COPILOT_AGENT_SESSION_ID: "native-control-session",
+    2817|   });
+    2818|   expect(copilot.code).toBe(2);
+       |                        ^
+    2819|   expect(copilot.out).toContain("Copilot programmatic compact is unsup…
+    2820|   const unknown = pij(["compact-self", "--pane", "%9138"], {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 11 passed | 97 skipped (110)
+   Start at  09:51:02
+   Duration  8.32s (transform 574ms, setup 0ms, import 980ms, tests 7.25s, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/.pi/extensions/pij/cli.integration.test.ts,title=.pi/extensions/pij/cli.integration.test.ts > pij two-peer integration (real coordinators + real CLI over sandbox PIJ_HOME) > refuses Copilot reload before either generation can deliver it,line=2774,column=26::AssertionError: expected 1 to be 2 // Object.is equality%0A%0A- Expected%0A+ Received%0A%0A- 2%0A+ 1%0A%0A ❯ .pi/extensions/pij/cli.integration.test.ts:2774:26%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/.pi/extensions/pij/cli.integration.test.ts,title=.pi/extensions/pij/cli.integration.test.ts > pij two-peer integration (real coordinators + real CLI over sandbox PIJ_HOME) > refuses ambient Copilot and unknown compact-self panes without typing or follow-up,line=2818,column=24::AssertionError: expected 1 to be 2 // Object.is equality%0A%0A- Expected%0A+ Received%0A%0A- 2%0A+ 1%0A%0A ❯ .pi/extensions/pij/cli.integration.test.ts:2818:24%0A%0A
+error: Recipe `test` failed on line 86 with exit code 1

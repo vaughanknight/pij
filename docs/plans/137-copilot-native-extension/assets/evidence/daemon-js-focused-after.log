@@ -1,0 +1,24 @@
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/cli.integration.test.ts -t refuses Copilot reload before|refuses ambient Copilot and unknown compact-self --no-cache
+
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-copilot-native-daemon
+
+(node:37485) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+E-UNSUPPORTED: Copilot programmatic reload is unsupported; use Copilot's native user controls. No legacy or tmux fallback is permitted.
+E-UNSUPPORTED: Copilot programmatic reload is unsupported; use Copilot's native user controls. No legacy or tmux fallback is permitted.
+E-UNSUPPORTED: Copilot programmatic reload is unsupported; use Copilot's native user controls. No legacy or tmux fallback is permitted.
+E-UNSUPPORTED: Copilot programmatic reload is unsupported; use Copilot's native user controls. No legacy or tmux fallback is permitted.
+E-UNSUPPORTED: Copilot programmatic compact is unsupported; use Copilot's native user controls. No legacy or tmux fallback is permitted.
+E-UNSUPPORTED: Cannot verify the harness for %9138; programmatic compact is unsupported without target evidence. No legacy or tmux fallback is permitted.
+ ✓ .pi/extensions/pij/cli.integration.test.ts (110 tests | 108 skipped) 3601ms
+     ✓ refuses Copilot reload before either generation can deliver it  2368ms
+     ✓ refuses ambient Copilot and unknown compact-self panes without typing or follow-up  1224ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed | 108 skipped (110)
+   Start at  09:54:23
+   Duration  5.01s (transform 1.06s, setup 0ms, import 1.32s, tests 3.60s, environment 0ms)

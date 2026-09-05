@@ -1,0 +1,24 @@
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-copilot-native-daemon/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.07s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-18bad1c90de73721)
+
+running 1 test
+test http::native_tests::retired_or_prebind_copilot_cannot_be_relabelled_to_bypass_native_inbox ... FAILED
+
+failures:
+
+---- http::native_tests::retired_or_prebind_copilot_cannot_be_relabelled_to_bypass_native_inbox stdout ----
+
+thread 'http::native_tests::retired_or_prebind_copilot_cannot_be_relabelled_to_bypass_native_inbox' (891648494) panicked at crates/daemon/src/http/native_tests.rs:672:9:
+assertion `left == right` failed: ordinary relabel must not unlock native claim or ack: {"command":"pij inbox","data":1,"ok":true,"v":2}
+  left: Bool(true)
+ right: false
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    http::native_tests::retired_or_prebind_copilot_cannot_be_relabelled_to_bypass_native_inbox
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 198 filtered out; finished in 0.04s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`
