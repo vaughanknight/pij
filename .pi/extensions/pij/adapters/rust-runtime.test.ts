@@ -179,6 +179,72 @@ function announceRuntime(
 }
 
 describe("RustRuntimeSession", () => {
+	it("does not overwrite a claude seat when omp boots in the same pane", async () => {
+		vi.stubEnv("PIJ_ANNOUNCE_TO", "");
+		vi.stubEnv("PIJ_SESSION_ID", undefined);
+		vi.stubEnv("PIJ_SPAWN_TASK", undefined);
+		const incumbent: RustSeatDescriptor = {
+			...REGISTER_RESPONSES.created,
+			id: "pij-claude-incumbent",
+			harness: "claude",
+			pane: "%123",
+			proc: { pid: 64616, proc_start: 20260905080000 },
+		};
+		const seats = new Map([[incumbent.id, incumbent]]);
+		const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+			const path = new URL(String(url)).pathname;
+			if (path === "/v1/seats") {
+				return envelope("pij seats", { seats: [...seats.values()], unavailable: [] });
+			}
+			if (path === "/v1/register") {
+				const claim = JSON.parse(String(init?.body)) as Registration;
+				const accepted: RustSeatDescriptor = {
+					...REGISTER_RESPONSES.created,
+					id: claim.id,
+					harness: claim.harness,
+					pane: claim.pane,
+				};
+				seats.set(accepted.id, accepted);
+				return envelope("pij register", accepted);
+			}
+			if (path === "/v1/events") {
+				return eventResponse(`${JSON.stringify({ hello: true, v: 1, build: "pij-rs test" })}\n`);
+			}
+			throw new Error(`unexpected path ${path}`);
+		});
+		const client = new PijDaemonClient(
+			{ addr: "127.0.0.1:7461", stateDir: "/tmp/state" },
+			"secret",
+			{
+				fetch: fetchMock as typeof fetch,
+				readFile: async () => "secret",
+				processStart: () => 20260905092248,
+			},
+		);
+		const runtime = new RustRuntimeSession(client, new FakeTmux(), []);
+		runtime.setPi(new FakePiRuntime());
+		try {
+			const boot = await runtime.boot({
+				folder: "/abs/tree",
+				dataDir: "",
+				eventsPath: "",
+				harness: "pi",
+				harnessSessionId: "omp-native-session",
+				piSessionId: "omp-native-session",
+				runtimeBin: "omp",
+				paneId: incumbent.pane,
+				resetRuntimeState: true,
+				reason: "startup",
+			});
+			expect(boot.id).not.toBe(incumbent.id);
+			expect(seats.size).toBe(2);
+			expect(seats.get(incumbent.id)).toEqual(incumbent);
+			expect(seats.get(boot.id)?.harness).toBe("omp");
+		} finally {
+			runtime.shutdown("quit");
+		}
+	});
+
 	describe("register binding announce contract", () => {
 		it.each([
 			["created", false, 1],

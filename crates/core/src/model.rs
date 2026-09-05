@@ -155,6 +155,100 @@ pub struct ProcIdentity {
     pub proc_start: u64,
 }
 
+/// Parse C-locale process-start fields into a `YYYYMMDDhhmmss` identity.
+///
+/// This encodes the supplied wall-time fields without timezone conversion or
+/// clock access. Native `ps` observations are local time; Claude's `procStart`
+/// records are UTC. Callers comparing them must explicitly convert timebases or
+/// observe the process in UTC before parsing.
+///
+/// # Errors
+/// Returns an adapter error when the row is not `Www Mmm DD HH:MM:SS YYYY`
+/// with a valid date in 1970..=9999 and a valid time. The weekday is required
+/// but its spelling and agreement with the date are not validated.
+pub fn parse_process_start(row: &str) -> crate::error::Result<u64> {
+    let mut fields = row.split_whitespace();
+    let weekday = fields.next();
+    let month = fields.next().and_then(parse_month);
+    let day = fields.next().and_then(|value| value.parse::<u32>().ok());
+    let time = fields.next().and_then(parse_time);
+    let year = fields.next().and_then(|value| value.parse::<u32>().ok());
+
+    let Some((month, day, (hour, minute, second), year)) = month
+        .zip(day)
+        .zip(time)
+        .zip(year)
+        .map(|(((m, d), t), y)| (m, d, t, y))
+    else {
+        return Err(parse_error(row));
+    };
+    if weekday.is_none()
+        || fields.next().is_some()
+        || !(1970..=9999).contains(&year)
+        || day == 0
+        || day > days_in_month(year, month)
+    {
+        return Err(parse_error(row));
+    }
+
+    Ok(u64::from(year) * 10_000_000_000
+        + u64::from(month) * 100_000_000
+        + u64::from(day) * 1_000_000
+        + u64::from(hour) * 10_000
+        + u64::from(minute) * 100
+        + u64::from(second))
+}
+
+fn parse_month(value: &str) -> Option<u32> {
+    match value {
+        "Jan" => Some(1),
+        "Feb" => Some(2),
+        "Mar" => Some(3),
+        "Apr" => Some(4),
+        "May" => Some(5),
+        "Jun" => Some(6),
+        "Jul" => Some(7),
+        "Aug" => Some(8),
+        "Sep" => Some(9),
+        "Oct" => Some(10),
+        "Nov" => Some(11),
+        "Dec" => Some(12),
+        _ => None,
+    }
+}
+
+fn parse_time(value: &str) -> Option<(u32, u32, u32)> {
+    let mut fields = value.split(':');
+    let hour = fields.next()?.parse::<u32>().ok()?;
+    let minute = fields.next()?.parse::<u32>().ok()?;
+    let second = fields.next()?.parse::<u32>().ok()?;
+    if fields.next().is_some() || hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+    Some((hour, minute, second))
+}
+
+const fn days_in_month(year: u32, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if year.is_multiple_of(400) || (year.is_multiple_of(4) && !year.is_multiple_of(100)) => {
+            29
+        }
+        2 => 28,
+        _ => 0,
+    }
+}
+
+fn parse_error(row: &str) -> crate::error::PijError {
+    crate::error::PijError::Adapter {
+        adapter: "process-liveness/ps".to_string(),
+        message: format!(
+            "could not parse `ps -o lstart=` row {row:?}; expected C-locale `Www Mmm DD HH:MM:SS YYYY`"
+        ),
+    }
+}
+
 /// Everything the registry knows about one seat.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SeatDescriptor {
@@ -874,4 +968,77 @@ pub enum Liveness {
         /// The start time recorded at bind.
         recorded_start: u64,
     },
+}
+
+#[cfg(test)]
+mod process_start_tests {
+    use super::parse_process_start;
+    use crate::error::PijError;
+
+    #[test]
+    fn valid_dates_preserve_the_packed_identity() {
+        for (row, expected) in [
+            ("Sat Aug 29 09:11:48 2026", 20_260_829_091_148),
+            ("Thu Jan 01 00:00:00 1970", 19_700_101_000_000),
+            ("Thu Feb 29 23:59:59 2024", 20_240_229_235_959),
+            ("Tue Feb 29 01:02:03 2000", 20_000_229_010_203),
+            ("Fri Dec 31 23:59:59 9999", 99_991_231_235_959),
+        ] {
+            assert_eq!(parse_process_start(row).unwrap(), expected, "{row}");
+        }
+    }
+
+    #[test]
+    fn whitespace_and_existing_field_flexibility_are_preserved() {
+        for row in [
+            "Thu Jan  8 00:20:51 2026",
+            " \tThu\tJan  8\t00:20:51 2026\n",
+            "weekday Jan 8 0:20:51 2026",
+        ] {
+            assert_eq!(parse_process_start(row).unwrap(), 20_260_108_002_051);
+        }
+    }
+
+    #[test]
+    fn malformed_dates_times_and_rows_keep_the_adapter_error() {
+        for row in [
+            "",
+            "Jan 08 00:20:51 2026",
+            "Thu Jan 08 00:20:51 2026 UTC",
+            "Thu JAN 08 00:20:51 2026",
+            "Thu Jan 00 00:20:51 2026",
+            "Thu Apr 31 00:20:51 2026",
+            "Thu Feb 29 00:20:51 2026",
+            "Thu Feb 29 00:20:51 2100",
+            "Thu Jan 08 24:00:00 2026",
+            "Thu Jan 08 00:60:00 2026",
+            "Thu Jan 08 00:00:60 2026",
+            "Thu Jan 08 00:20 2026",
+            "Thu Jan 08 00:20:51:00 2026",
+            "Thu Jan 08 xx:20:51 2026",
+            "Thu Jan 08 00:20:51 1969",
+            "Thu Jan 08 00:20:51 10000",
+        ] {
+            let PijError::Adapter { adapter, message } = parse_process_start(row).unwrap_err()
+            else {
+                panic!("expected the existing adapter error for {row:?}");
+            };
+            assert_eq!(adapter, "process-liveness/ps");
+            assert_eq!(
+                message,
+                format!(
+                    "could not parse `ps -o lstart=` row {row:?}; expected C-locale `Www Mmm DD HH:MM:SS YYYY`"
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn supplied_wall_time_is_encoded_without_timezone_conversion() {
+        let record_utc = parse_process_start("Mon Aug 31 10:02:54 2026").unwrap();
+        let observed_local = parse_process_start("Mon Aug 31 20:02:54 2026").unwrap();
+        assert_eq!(record_utc, 20_260_831_100_254);
+        assert_eq!(observed_local, 20_260_831_200_254);
+        assert_ne!(record_utc, observed_local);
+    }
 }
