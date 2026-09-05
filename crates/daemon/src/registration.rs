@@ -546,6 +546,7 @@ impl RegistrationService {
         descriptor.relay = claim.relay;
         // Ordinary registration preserves only an unchanged current attested owner.
         // Grants, transfers and revivals require verified native observation.
+        // Compare before assignment: the clone still carries the incumbent's flag and tombstone.
         descriptor.native_extension_delivery = native
             || existing.is_some_and(|owner| {
                 owner.native_extension_delivery
