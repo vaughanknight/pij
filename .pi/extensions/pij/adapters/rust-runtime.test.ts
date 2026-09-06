@@ -863,6 +863,11 @@ class TypingPiRuntime extends FakePiRuntime {
 	readonly statuses: Array<string | undefined> = [];
 	readonly notices: Array<{ text: string; level?: string }> = [];
 	private busy = false;
+	draft = "";
+
+	getEditorText(): string {
+		return this.draft;
+	}
 
 	notify(text: string, level?: "info" | "warning" | "error"): void {
 		this.notices.push({ text, level });
@@ -885,7 +890,9 @@ class TypingPiRuntime extends FakePiRuntime {
 		};
 	}
 
-	edit(): void {
+	// Grace witnesses need a draft: input alone no longer holds a delivery.
+	edit(draft = "draft"): void {
+		this.draft = draft;
 		this.listener?.(Date.now());
 	}
 	setStatus(text: string | undefined): void {
@@ -1081,6 +1088,31 @@ describe("typing grace delivery", () => {
 	afterEach(() => {
 		for (const runtime of runtimes.splice(0)) runtime.shutdown("quit");
 		vi.useRealTimers();
+	});
+
+	it("delivers immediately after spawn input has left an empty editor", async () => {
+		const { pi, client } = await start();
+		pi.edit("");
+		await client.push(message("empty-after-spawn"));
+		expect(client.holds).toEqual([]);
+		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "empty-after-spawn")]);
+		expect(client.acks).toEqual([1]);
+	});
+
+	it("samples a cleared editor on the next tick without another input event", async () => {
+		const { pi, client } = await start();
+		pi.edit();
+		await client.push(message("clear-to-release"));
+		expect(pi.injects).toEqual([]);
+		pi.draft = "";
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "clear-to-release")]);
+		expect(client.operations).toEqual([
+			"hold:clear-to-release",
+			"release:clear-to-release",
+			"ack:clear-to-release",
+		]);
+		expect(pi.statuses.at(-1)).toBeUndefined();
 	});
 
 	it("announces arrival immediately and counts what a busy seat cannot yet see", async () => {
@@ -1280,6 +1312,7 @@ describe("typing grace delivery", () => {
 			// a production fallback for a missing notify would silently stop
 			// announcing arrivals on any runtime that lacks it.
 			notify: (_message: string, _type?: "info" | "warning" | "error") => {},
+			getEditorText: () => editorText,
 			setEditorText: (text: string) => {
 				editorText = text;
 			},
@@ -1297,7 +1330,10 @@ describe("typing grace delivery", () => {
 					{ isIdle: () => true, compact: () => {}, ui },
 				),
 		);
-		onInput?.("\u001b[D"); // Cursor movement counts even without a text change.
+		// Cursor movement no longer counts; this witness requires a text edit.
+		onInput?.("x");
+		ui.setEditorText("draftx"); // The focused editor runs after input listeners.
+		await Promise.resolve();
 		await client.push(message("terminal-held"));
 		expect(pi.injects).toEqual([]);
 		await vi.advanceTimersByTimeAsync(59_000);

@@ -17,10 +17,24 @@ const row = (jobId: number): HeldRow => ({
 // GREEN-on-new-code: this module had no predecessor. The seven runtime
 // witnesses carry the behavioral RED provenance, not a missing-module error.
 describe("HoldQueue", () => {
+	it.each(["", " \t\n"])("does not hold a blank draft %j after recent input", (draft) => {
+		const queue = new HoldQueue(() => 0, grace);
+		queue.noteEdit(0);
+		expect(queue.shouldHold(1, draft)).toBe(false);
+	});
+
+	it("releases on the next drain when the draft clears within grace", () => {
+		const queue = new HoldQueue(() => 0, grace);
+		queue.noteEdit(0);
+		queue.push(row(1));
+		expect(queue.drain(1, "draft")).toEqual([]);
+		expect(queue.drain(1_000, "")).toEqual([row(1)]);
+	});
+
 	it("starts outside the grace even when the injected clock starts at zero", () => {
 		const queue = new HoldQueue(() => 0, grace);
-		expect(queue.shouldHold(0)).toBe(false);
-		expect(queue.drain(0)).toEqual([]);
+		expect(queue.shouldHold(0, "draft")).toBe(false);
+		expect(queue.drain(0, "draft")).toEqual([]);
 	});
 
 	it("holds at 59 seconds, drains at 60, and retains exact claim order", () => {
@@ -30,22 +44,22 @@ describe("HoldQueue", () => {
 		queue.noteEdit(0);
 		queue.push(first);
 		queue.push(second);
-		expect(queue.shouldHold(59_000)).toBe(true);
-		expect(queue.drain(59_000)).toEqual([]);
+		expect(queue.shouldHold(59_000, "draft")).toBe(true);
+		expect(queue.drain(59_000, "draft")).toEqual([]);
 		expect(queue.size()).toBe(2);
-		expect(queue.shouldHold(grace)).toBe(false);
-		expect(queue.drain(grace)).toEqual([first, second]);
+		expect(queue.shouldHold(grace, "draft")).toBe(false);
+		expect(queue.drain(grace, "draft")).toEqual([first, second]);
 		expect(queue.size()).toBe(0);
-		expect(queue.drain(grace)).toEqual([]);
+		expect(queue.drain(grace, "draft")).toEqual([]);
 	});
 
-	it("new terminal input restarts the grace without a maximum hold cap", () => {
+	it("new draft edits restart the grace without a maximum hold cap", () => {
 		const queue = new HoldQueue(() => 0, grace);
 		queue.noteEdit(0);
 		queue.push(row(1));
 		queue.noteEdit(grace - 1);
-		expect(queue.drain(grace)).toEqual([]);
-		expect(queue.drain(grace * 2 - 1)).toEqual([row(1)]);
+		expect(queue.drain(grace, "draft")).toEqual([]);
+		expect(queue.drain(grace * 2 - 1, "draft")).toEqual([row(1)]);
 	});
 
 	it("deduplicates an already held claim without reordering it", () => {
@@ -54,6 +68,6 @@ describe("HoldQueue", () => {
 		queue.push(row(2));
 		queue.push(row(1));
 		expect(queue.size()).toBe(2);
-		expect(queue.drain(0)).toEqual([row(1), row(2)]);
+		expect(queue.drain(0, "draft")).toEqual([row(1), row(2)]);
 	});
 });
