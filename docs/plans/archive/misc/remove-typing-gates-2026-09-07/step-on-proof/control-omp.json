@@ -1,0 +1,2390 @@
+{
+  "harness": "omp",
+  "run": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-IrQJMl",
+  "source_root": "/Users/jordanknight/pi-hacking/pij",
+  "source_commit": "a04124a600a9126d932f264856085a203ad16c3d",
+  "binary_sha256": "6ca39297ac74aeed58856957a6c95cad2f059190f3f77fe6b6c4833b9ce8ed78",
+  "isolation": {
+    "state": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-IrQJMl/daemon",
+    "addr": "127.0.0.1:64380",
+    "socket": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-IrQJMl/tmux.sock",
+    "cwd": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-IrQJMl/workspace"
+  },
+  "started": "2026-09-06T22:24:43.813Z",
+  "pane": "%1",
+  "seat": {
+    "id": "pij-mistake-not",
+    "machine": "JordansacStudio.localdomain",
+    "harness": "omp",
+    "session": "01a078d2-ee9f-7000-9d25-b80e5d1572c3",
+    "pane": "%1",
+    "proc": {
+      "pid": 57725,
+      "proc_start": 20260907082443
+    },
+    "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-IrQJMl/workspace",
+    "state": "idle",
+    "semantic_state": null,
+    "role": null,
+    "parent": null,
+    "relay": false,
+    "native_extension_delivery": false,
+    "generation": "rs"
+  },
+  "before": {
+    "draft": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+    "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+    "viewport": "│          ██  ██          │ $ to run python                                                       │\n│          ██  ██          │ ───────────────────────────────────────────────────────────────────── │\n│          ▒▒  ██          │ LSP Servers                                                           │\n│              ██          │ No LSP servers                                                        │\n│                          │                                                                       │\n│       GPT-6 Astra        │                                                                       │\n│      github-copilot      │                                                                       │\n│                          │ ───────────────────────────────────────────────────────────────────── │\n│                          │ Recent sessions                                                       │\n│                          │ No recent sessions                                                    │\n│                          │                                                                       │\n│                          │                                                                       │\n│                          │                                                                       │\n│                          │                                                                       │\n╰──────────────────────────┴───────────────────────────────────────────────────────────────────────╯\n Tip: Please use nerdfont 😭.\n\n\n pij: detected rs daemon at 127.0.0.1:64380; registered pij-mistake-not\n\n\n You are pij session pij-mistake-not (PEER). This is context only — no action is required.\n Peers can reach you; their messages arrive inline as \"[pij-rs from <id>]\" on its own line, then the body, then \"[/pij]\". Only those injected messages are live instructions.\n Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not tasks, and replaying them re-runs old requests.\n To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For control, pij_send takes { to, command: \"compact\" | \"new\" | \"reload\" }\n instead of message. Do NOT shell out to the pij CLI to send.\n To observe peers, use the pij CLI: \"pij list --here\" (peers), \"pij tail <id>\" / \"pij state <id>\" (watch one).\n\n\n Connected: perplexity, zen-browser. Failed: flowspace [config: ~/.codex/config.toml]: Failed to parse JSONL. Still connecting: serena…\n\n Ready.\n\n 2026-09-07 08:24:45  ⤵ 281  ⤴ 28  💾 12K  ⏱ 4.5s  ⚡ 6.2/s\n\n\n Reply exactly BOOT_1f5ac35e-3bcf-4a1c-949a-52ba8ed9b841. Do not call tools. This is an isolated delivery probe.\n\n\n MCP finished with failures. Connected: perplexity, zen-browser, serena. Failed: flowspace [config: ~/.codex/config.toml]: Failed to parse JSONL\n\n BOOT_1f5ac35e-3bcf-4a1c-949a-52ba8ed9b841\n\n 2026-09-07 08:24:50  ⤵ 359  ⤴ 32  💾 12K  ⏱ 2.7s  ⚡ 11.5/s\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ◫ 3.1%/400K ⟲ · rs·pij-mistake-not · ⬢ GPT-6 Astra · ◒ high · S0.01 ★ 2\nrs pij-mistake-not\n"
+  },
+  "send": {
+    "msg_id": "1e4a10bc-7ab1-4bfa-8c44-c1553178a027",
+    "outcome": {
+      "outcome": "queued",
+      "reason": "extension-stream",
+      "next_retry_at": 0
+    },
+    "at": 1788733494661
+  },
+  "model_replies": [
+    "\nReady.",
+    "BOOT_1f5ac35e-3bcf-4a1c-949a-52ba8ed9b841",
+    "\nMESSAGE_003d28be-a572-4702-88d1-6c3772dd6503"
+  ],
+  "spine": [
+    {
+      "seq": 1,
+      "at": 0,
+      "kind": "seat.put",
+      "seat": "pij-mistake-not",
+      "payload": ""
+    },
+    {
+      "seq": 2,
+      "at": 1788733494661,
+      "kind": "message.pushed",
+      "seat": "pij-mistake-not",
+      "payload": "{\"msg_id\":\"1e4a10bc-7ab1-4bfa-8c44-c1553178a027\",\"from\":\"pij-step-on-probe\",\"body\":\"Reply exactly MESSAGE_003d28be-a572-4702-88d1-6c3772dd6503. Do not call tools.\"}"
+    },
+    {
+      "seq": 3,
+      "at": 1788733494661,
+      "kind": "delivery.outcome",
+      "seat": "pij-mistake-not",
+      "payload": "{\"msg_id\":\"1e4a10bc-7ab1-4bfa-8c44-c1553178a027\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 4,
+      "at": 1788733494665,
+      "kind": "delivery.held",
+      "seat": "pij-mistake-not",
+      "payload": "{\"msg_id\":\"1e4a10bc-7ab1-4bfa-8c44-c1553178a027\",\"reason\":\"human-typing\",\"seat\":\"pij-mistake-not\",\"since_ms\":1788733494547}"
+    },
+    {
+      "seq": 5,
+      "at": 1788733555000,
+      "kind": "delivery.released",
+      "seat": "pij-mistake-not",
+      "payload": "{\"at_ms\":1788733554999,\"msg_id\":\"1e4a10bc-7ab1-4bfa-8c44-c1553178a027\",\"seat\":\"pij-mistake-not\"}"
+    },
+    {
+      "seq": 6,
+      "at": 1788733555007,
+      "kind": "delivery.outcome",
+      "seat": "pij-mistake-not",
+      "payload": "{\"msg_id\":\"1e4a10bc-7ab1-4bfa-8c44-c1553178a027\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    },
+    {
+      "seq": 7,
+      "at": 1788733555008,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-mistake-not",
+      "payload": "{\"job_id\":1,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    }
+  ],
+  "jobs": [
+    {
+      "id": 1,
+      "state": "done",
+      "payload": "{\"from\":\"pij-step-on-probe\",\"to\":\"pij-mistake-not\",\"body\":\"Reply exactly MESSAGE_003d28be-a572-4702-88d1-6c3772dd6503. Do not call tools.\",\"msg_id\":\"1e4a10bc-7ab1-4bfa-8c44-c1553178a027\"}"
+    }
+  ],
+  "samples": [
+    {
+      "elapsed_ms": 11,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 218,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 424,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 632,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 861,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1066,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1273,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1478,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1682,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1888,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2094,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2300,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2505,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2711,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2954,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3161,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3367,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3573,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3779,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3985,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4192,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4398,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4604,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4809,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5015,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5221,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5429,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5635,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5840,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6045,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6274,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6487,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6693,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6898,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7106,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7313,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7520,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7726,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7935,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8142,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8348,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8555,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8761,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8966,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9172,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9378,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9584,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9792,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9999,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 10206,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 10412,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 10618,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 10825,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 11314,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 11521,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 11727,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 11932,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 12168,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 12373,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 12580,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 12785,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 12997,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 13204,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 13408,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 13614,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 13820,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 14026,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 14232,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 14438,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 14644,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 14850,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 15055,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 15262,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 15468,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 15673,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 15880,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 16114,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 16324,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 16533,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 16740,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 17007,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 17215,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 17422,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 17628,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 17833,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 18040,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 18246,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 18452,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 18659,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 18866,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 19072,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 19277,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 19483,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 19689,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 19897,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 20103,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 20310,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 20517,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 20750,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 20965,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 21172,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 21378,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 21587,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 21793,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 22003,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 22213,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 22419,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 22628,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 22834,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 23041,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 23248,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 23454,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 23663,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 23869,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 24116,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 24322,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 24527,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 24736,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 24941,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 25148,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 25354,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 25564,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 25769,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 25975,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 26179,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 26383,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 26588,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 26793,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 26999,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 27204,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 27411,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 27618,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 27823,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 28034,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 28239,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 28445,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 28651,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 28859,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 29065,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 29272,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 29477,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 29682,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 29943,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 30164,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 30372,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 30578,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 30860,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 31066,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 31278,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 31486,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 31692,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 31898,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 32105,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 32311,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 32518,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 32725,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 32932,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 33139,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 33346,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 33553,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 33759,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 33965,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 34172,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 34378,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 34584,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 34790,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 34997,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 35203,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 35408,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 35614,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 35821,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 36029,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 36237,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 36442,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 36647,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 36856,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 37061,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 37267,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 37473,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 37678,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 37884,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 38090,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 38297,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 38503,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 38708,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 38914,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 39120,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 39326,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 39532,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 39737,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 39945,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 40150,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 40393,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 40599,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 40805,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 41010,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 41215,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 41422,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 41628,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 41834,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 42041,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 42247,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 42453,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 42659,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 42866,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 43072,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 43279,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 43485,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 43691,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 43897,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 44103,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 44308,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 44515,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 44722,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 44929,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 45134,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 45340,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 45547,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 45752,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 45957,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 46163,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 46614,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 46821,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 47027,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 47231,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 47438,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 47645,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 47853,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 48062,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 48268,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 48473,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 48679,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 48884,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 49090,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 49297,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 49502,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 49709,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 49915,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 50120,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 50331,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 50540,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 50745,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 50951,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 51156,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 51362,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 51569,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 51776,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 52004,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 52239,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 52444,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 52711,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 52921,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 53171,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 53380,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 53589,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 53798,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 54009,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 54221,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 54431,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 54641,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 54856,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 55065,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 55276,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 55489,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 56094,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 56563,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 57236,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 57454,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 57664,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 57871,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 58079,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 58320,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 58560,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 58767,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 58978,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 59191,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 59399,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 59606,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 59816,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 60027,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 60235,
+      "composer": "UNSUBMITTED_64af0ac3-84a2-4403-b4bc-c0529841cfd1_keep spaces  exactly",
+      "sha256": "0098f1868da417222da2db68b814e2c499e1e3c2bb4d4f0395167ecafac639b9",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 60445,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 60655,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 60862,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 61068,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 61276,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 61486,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 61692,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 61910,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 62125,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 62337,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 62583,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 62878,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 63130,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 63344,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 63552,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 63762,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 64031,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 64259,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 64469,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 64946,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 65243,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 65455,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 65668,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 65878,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 66088,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 66300,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 66512,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 66720,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 66931,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 67141,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 67359,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 67594,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 67803,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 68013,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 68226,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 68522,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 68788,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 69027,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 69236,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 69447,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 69655,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 69925,
+      "composer": "❯",
+      "sha256": "a2830aefd70a1c95192c9a9c903f5a59ef452f6b74a44f64fb42752e3eb16b9e",
+      "reached": true,
+      "submitted": false
+    }
+  ],
+  "after": "│                          │                                                                       │\n│                          │                                                                       │\n╰──────────────────────────┴───────────────────────────────────────────────────────────────────────╯\n Tip: Please use nerdfont 😭.\n\n\n pij: detected rs daemon at 127.0.0.1:64380; registered pij-mistake-not\n\n\n You are pij session pij-mistake-not (PEER). This is context only — no action is required.\n Peers can reach you; their messages arrive inline as \"[pij-rs from <id>]\" on its own line, then the body, then \"[/pij]\". Only those injected messages are live instructions.\n Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not tasks, and replaying them re-runs old requests.\n To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For control, pij_send takes { to, command: \"compact\" | \"new\" | \"reload\" }\n instead of message. Do NOT shell out to the pij CLI to send.\n To observe peers, use the pij CLI: \"pij list --here\" (peers), \"pij tail <id>\" / \"pij state <id>\" (watch one).\n\n\n Connected: perplexity, zen-browser. Failed: flowspace [config: ~/.codex/config.toml]: Failed to parse JSONL. Still connecting: serena…\n\n Ready.\n\n 2026-09-07 08:24:45  ⤵ 281  ⤴ 28  💾 12K  ⏱ 4.5s  ⚡ 6.2/s\n\n\n Reply exactly BOOT_1f5ac35e-3bcf-4a1c-949a-52ba8ed9b841. Do not call tools. This is an isolated delivery probe.\n\n\n MCP finished with failures. Connected: perplexity, zen-browser, serena. Failed: flowspace [config: ~/.codex/config.toml]: Failed to parse JSONL\n\n BOOT_1f5ac35e-3bcf-4a1c-949a-52ba8ed9b841\n\n 2026-09-07 08:24:50  ⤵ 359  ⤴ 32  💾 12K  ⏱ 2.7s  ⚡ 11.5/s\n\n 📨 pij from pij-step-on-probe: Reply exactly MESSAGE_003d28be-a572-4702-88d1-6c3772dd6503. Do not call tools.\n\n\n [pij-rs from pij-step-on-probe]\n Reply exactly MESSAGE_003d28be-a572-4702-88d1-6c3772dd6503. Do not call tools.\n [/pij]\n\n\n MESSAGE_003d28be-a572-4702-88d1-6c3772dd6503\n\n 2026-09-07 08:25:55  ⤵ 13K  ⤴ 51  ⏱ 2.9s  ⚡ 15.9/s\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ◫ 3.2%/400K ⟲ · rs·pij-mistake-not · ⬢ GPT-6 Astra · ◒ high · S0.05 ★ 3\nrs pij-mistake-not\n",
+  "transcripts": [
+    "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-IrQJMl/sessions/2026-09-06T22-24-44-703Z_01a078d2-ee9f-7000-9d25-b80e5d1572c3.jsonl"
+  ],
+  "verdict": {
+    "harness": "omp",
+    "transport_rung": "extension-stream",
+    "draft_intact": false,
+    "message_reached_model": true,
+    "draft_submitted": false,
+    "delivered_within_ms": 60445
+  },
+  "final_panes": "%0 sleep\n%1 bun.exe\n",
+  "final_viewport": "│                          │                                                                       │\n│                          │                                                                       │\n╰──────────────────────────┴───────────────────────────────────────────────────────────────────────╯\n Tip: Please use nerdfont 😭.\n\n\n pij: detected rs daemon at 127.0.0.1:64380; registered pij-mistake-not\n\n\n You are pij session pij-mistake-not (PEER). This is context only — no action is required.\n Peers can reach you; their messages arrive inline as \"[pij-rs from <id>]\" on its own line, then the body, then \"[/pij]\". Only those injected messages are live instructions.\n Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not tasks, and replaying them re-runs old requests.\n To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For control, pij_send takes { to, command: \"compact\" | \"new\" | \"reload\" }\n instead of message. Do NOT shell out to the pij CLI to send.\n To observe peers, use the pij CLI: \"pij list --here\" (peers), \"pij tail <id>\" / \"pij state <id>\" (watch one).\n\n\n Connected: perplexity, zen-browser. Failed: flowspace [config: ~/.codex/config.toml]: Failed to parse JSONL. Still connecting: serena…\n\n Ready.\n\n 2026-09-07 08:24:45  ⤵ 281  ⤴ 28  💾 12K  ⏱ 4.5s  ⚡ 6.2/s\n\n\n Reply exactly BOOT_1f5ac35e-3bcf-4a1c-949a-52ba8ed9b841. Do not call tools. This is an isolated delivery probe.\n\n\n MCP finished with failures. Connected: perplexity, zen-browser, serena. Failed: flowspace [config: ~/.codex/config.toml]: Failed to parse JSONL\n\n BOOT_1f5ac35e-3bcf-4a1c-949a-52ba8ed9b841\n\n 2026-09-07 08:24:50  ⤵ 359  ⤴ 32  💾 12K  ⏱ 2.7s  ⚡ 11.5/s\n\n 📨 pij from pij-step-on-probe: Reply exactly MESSAGE_003d28be-a572-4702-88d1-6c3772dd6503. Do not call tools.\n\n\n [pij-rs from pij-step-on-probe]\n Reply exactly MESSAGE_003d28be-a572-4702-88d1-6c3772dd6503. Do not call tools.\n [/pij]\n\n\n MESSAGE_003d28be-a572-4702-88d1-6c3772dd6503\n\n 2026-09-07 08:25:55  ⤵ 13K  ⤴ 51  ⏱ 2.9s  ⚡ 15.9/s\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ◫ 3.2%/400K ⟲ · rs·pij-mistake-not · ⬢ GPT-6 Astra · ◒ high · S0.05 ★ 3\nrs pij-mistake-not\n",
+  "daemon_log": "pij-rs claude inbound: /Users/jordanknight/.claude=skipped, /Users/jordanknight/.claude-alt=skipped\npij-rs claude hook: /Users/jordanknight/.claude=skipped, /Users/jordanknight/.claude-alt=skipped\npij-rs claude statusline: /Users/jordanknight/.claude=skipped, /Users/jordanknight/.claude-alt=skipped\npij-rs daemon: listening on 127.0.0.1:64380 · key /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-IrQJMl/daemon/daemon.key (0600) · offline=false\n",
+  "exit_code": 1
+}
