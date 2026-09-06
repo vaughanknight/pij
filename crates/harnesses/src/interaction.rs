@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use pij_core::delivery::{DEFAULT_TYPING_GRACE_MS, DeliveryDeferralReason};
 use pij_core::error::{PijError, Result};
@@ -30,7 +30,6 @@ struct ComposerState {
     tap_active: bool,
     composer_active: bool,
     content: Option<String>,
-    content_is_self_echo: bool,
     last_interaction_at: Option<Instant>,
     // Composer-edit evidence only: output taps and tmux mode never refresh this.
     last_edit_at: Option<Instant>,
@@ -39,6 +38,38 @@ struct ComposerState {
 }
 
 impl ComposerState {
+    // Opt-in, hash-only diagnostics: set PIJ_INTERACTION_TRACE to a pane id (or 1).
+    // Capture callers share this state, so log the baseline before changing it.
+    fn trace_edit(
+        &self,
+        pane: &str,
+        content: Option<&str>,
+        reason: &str,
+        edit: Option<Instant>,
+        now: Instant,
+    ) {
+        if !std::env::var("PIJ_INTERACTION_TRACE")
+            .is_ok_and(|target| target == "1" || target == pane)
+        {
+            return;
+        }
+        let at_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let last_edit_at =
+            edit.map(|at| at_ms.saturating_sub(now.saturating_duration_since(at).as_millis()));
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "trace": "composer-edit", "pane": pane, "at_ms": at_ms,
+                "prev_content_hash": self.content.as_deref().map(short_sha256),
+                "new_content_hash": content.map(short_sha256),
+                "reason": reason, "last_edit_at": last_edit_at,
+            })
+        );
+    }
+
     fn expire_vetoes_if_idle(&mut self, now: Instant, idle_window: Duration) -> bool {
         let recent_interaction = self
             .last_interaction_at
@@ -56,7 +87,10 @@ impl ComposerState {
     }
 
     fn veto_active(&self) -> bool {
-        self.content.is_none() || self.tap_active || self.composer_active
+        self.content.is_none()
+            || self.uncertainty_since.is_some()
+            || self.tap_active
+            || self.composer_active
     }
 }
 fn collapsed_eq(left: &str, right: &str) -> bool {
@@ -88,6 +122,8 @@ pub struct InjectionVerdict {
     /// Time remaining until the observed edit's grace expires, not a timestamp.
     /// Callers may add this duration to their own clock; only HumanTyping sets it.
     pub next_retry_at: Option<Duration>,
+    /// Elapsed time since the last observed real edit, for caller-clock receipts.
+    pub last_edit_age: Option<Duration>,
 }
 
 /// Outcome of a pane transaction whose input was owned before observation.
@@ -275,20 +311,17 @@ impl InteractionGate {
         if content.chars().all(char::is_whitespace) {
             let changed = state.content.as_deref() != Some(content);
             if changed {
-                // Initial blanks, padding and clearing our own echo are not keys.
-                if state.last_edit_at.is_some()
-                    && !state.content_is_self_echo
-                    && state
-                        .content
-                        .as_deref()
-                        .is_some_and(|previous| previous.chars().any(|ch| !ch.is_whitespace()))
-                {
-                    state.last_edit_at = Some(now);
-                }
+                // Submit/clear is not active composition and must not start grace.
+                state.trace_edit(
+                    pane,
+                    Some(content),
+                    "recognized-clear",
+                    state.last_edit_at,
+                    now,
+                );
                 state.content = Some(content.to_string());
                 state.last_interaction_at = Some(now);
             }
-            state.content_is_self_echo = false;
             state.composer_active = false;
             state.tap_active = preserve_tap && tick_tap_active;
             return;
@@ -296,28 +329,26 @@ impl InteractionGate {
 
         if state.content.as_deref() != Some(content) {
             let injection = state.self_injection.take();
-            let mut self_echo = false;
             let explained = injection.as_ref().is_some_and(|injection| {
                 if injection.payload.chars().all(char::is_whitespace) {
                     return false;
                 }
-                self_echo = self_injection_matches(&injection.payload, content);
-                self_echo
+                self_injection_matches(&injection.payload, content)
                     || injection
                         .baseline
                         .as_deref()
                         .is_some_and(|baseline| collapsed_eq(content, baseline))
             });
-            state.content = Some(content.to_string());
-            state.content_is_self_echo = self_echo || (explained && state.content_is_self_echo);
             if let Some(injection) = injection.filter(|_| explained) {
                 state.tap_active = injection.tap_active;
                 state.last_interaction_at = injection.last_interaction_at;
             } else {
                 state.composer_active = true;
                 state.last_interaction_at = Some(now);
+                state.trace_edit(pane, Some(content), "recognized-change", Some(now), now);
                 state.last_edit_at = Some(now);
             }
+            state.content = Some(content.to_string());
         }
         let expired = state.expire_vetoes_if_idle(now, self.idle_window);
         if preserve_tap && !expired {
@@ -338,13 +369,10 @@ impl InteractionGate {
         state.composer_active = false;
         state.uncertainty_since = None;
         if changed {
-            if state.last_edit_at.is_some() && !state.content_is_self_echo {
-                state.last_edit_at = Some(now);
-            }
+            state.trace_edit(pane, Some(""), "explicit-clear", state.last_edit_at, now);
             state.content = Some(String::new());
             state.last_interaction_at = Some(now);
         }
-        state.content_is_self_echo = false;
     }
 
     /// Record that composer recognition is unavailable. The first observation
@@ -354,7 +382,14 @@ impl InteractionGate {
         let now = (self.clock)();
         let mut panes = self.panes.lock().expect("interaction gate mutex");
         let state = panes.entry(pane.to_string()).or_default();
-        state.content = None;
+        // Retain the last recognized baseline: recovery alone is not an edit.
+        state.trace_edit(
+            pane,
+            state.content.as_deref(),
+            "unrecognized",
+            state.last_edit_at,
+            now,
+        );
         state.uncertainty_since.get_or_insert(now);
     }
 
@@ -390,6 +425,7 @@ impl InteractionGate {
                 reason: Some(DeliveryDeferralReason::TapUnowned),
                 draft_sha: None,
                 next_retry_at: None,
+                last_edit_age: None,
             });
         }
         let listed = self.tmux.list_panes().await?;
@@ -401,6 +437,7 @@ impl InteractionGate {
                 reason: Some(DeliveryDeferralReason::Unrecognized),
                 draft_sha: None,
                 next_retry_at: None,
+                last_edit_age: None,
             });
         };
         let (Some(cursor_x), Some(cursor_y)) = (listed.cursor_x, listed.cursor_y) else {
@@ -411,6 +448,7 @@ impl InteractionGate {
                 reason: Some(DeliveryDeferralReason::Unrecognized),
                 draft_sha: None,
                 next_retry_at: None,
+                last_edit_age: None,
             });
         };
         let capture = self.tmux.capture(pane, CAPTURE_LINES).await?;
@@ -427,11 +465,11 @@ impl InteractionGate {
                     .expect("interaction gate mutex")
                     .get(pane)
                     .and_then(|state| state.last_edit_at);
-                let next_retry_at = last_edit_at
-                    .and_then(|last_edit| {
-                        self.typing_grace
-                            .checked_sub(now.saturating_duration_since(last_edit))
-                    })
+                let last_edit_age =
+                    last_edit_at.map(|last_edit| now.saturating_duration_since(last_edit));
+                let next_retry_at = last_edit_age
+                    .filter(|_| !composer_idle)
+                    .and_then(|age| self.typing_grace.checked_sub(age))
                     .filter(|remaining| !remaining.is_zero());
                 let human_typing = next_retry_at.is_some();
                 Ok(InjectionVerdict {
@@ -440,6 +478,7 @@ impl InteractionGate {
                     reason: human_typing.then_some(DeliveryDeferralReason::HumanTyping),
                     draft_sha: (!composer_idle).then(|| short_sha256(&content)),
                     next_retry_at,
+                    last_edit_age,
                 })
             }
             ComposerRegion::Unrecognized => {
@@ -450,6 +489,7 @@ impl InteractionGate {
                     reason: Some(DeliveryDeferralReason::Unrecognized),
                     draft_sha: None,
                     next_retry_at: None,
+                    last_edit_age: None,
                 })
             }
         }
@@ -840,35 +880,114 @@ mod tests {
     }
 
     #[test]
-    fn typing_grace_recent_edit_to_blank_still_defers() {
+    fn typing_grace_blank_or_submitted_composer_releases_immediately() {
+        // A blank composer is authoritative; prior input must not hold a reply.
+        for explicit_clear in [false, true] {
+            for elapsed in [0, 5_000] {
+                let elapsed_ms = Arc::new(AtomicU64::new(0));
+                let started_at = Instant::now();
+                let clock_ms = Arc::clone(&elapsed_ms);
+                let gate = InteractionGate::with_clock(
+                    Arc::new(FakeTmux::new().with_clear_composer("%108")),
+                    Duration::from_secs(1),
+                    contract_typing_grace_ms(),
+                    Arc::new(move || {
+                        started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))
+                    }),
+                );
+                gate.observe_composer("%108", "draft being edited");
+                elapsed_ms.store(elapsed, Ordering::Relaxed);
+                if explicit_clear {
+                    gate.record_composer_cleared("%108");
+                }
+                let verdict =
+                    block_on(gate.fresh_injection_verdict("%108")).expect("blank verdict");
+                assert!(
+                    verdict.permitted,
+                    "blank after {elapsed}ms, explicit_clear={explicit_clear}"
+                );
+                assert!(verdict.composer_idle);
+                assert_eq!(verdict.reason, None);
+                assert_eq!(verdict.draft_sha, None);
+                assert_eq!(verdict.next_retry_at, None);
+                assert_eq!(
+                    gate.panes.lock().expect("state")["%108"].last_edit_at,
+                    Some(started_at)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn typing_grace_recognition_gap_does_not_manufacture_an_edit() {
         let elapsed_ms = Arc::new(AtomicU64::new(0));
         let started_at = Instant::now();
         let clock_ms = Arc::clone(&elapsed_ms);
-        let tmux = Arc::new(FakeTmux::new().with_clear_composer("%108"));
+        let capture = format!("output\n{RULE}\n❯ parked draft\n{RULE}");
+        let tmux = Arc::new(
+            FakeTmux::new()
+                .with_pane(pane(14, 2))
+                .with_attached_tap("%108")
+                .script_capture(capture.clone())
+                .script_capture("temporary redraw")
+                .script_capture(capture),
+        );
+        let gate = InteractionGate::with_clock(
+            tmux,
+            Duration::from_secs(60),
+            contract_typing_grace_ms(),
+            Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
+        );
+        assert!(
+            !block_on(gate.fresh_injection_verdict("%108"))
+                .expect("first edit")
+                .permitted
+        );
+        elapsed_ms.store(30_000, Ordering::Relaxed);
+        gate.record_unknown("%108");
+        assert_eq!(
+            block_on(gate.fresh_injection_verdict("%108"))
+                .expect("redraw")
+                .reason,
+            Some(DeliveryDeferralReason::Unrecognized)
+        );
+        elapsed_ms.store(61_000, Ordering::Relaxed);
+        let verdict = block_on(gate.fresh_injection_verdict("%108")).expect("recovered draft");
+        assert!(verdict.permitted, "recognition recovery is not an edit");
+        assert_eq!(
+            gate.panes.lock().expect("state")["%108"].last_edit_at,
+            Some(started_at)
+        );
+        assert_eq!(verdict.draft_sha, Some(short_sha256("parked draft")));
+        assert_eq!(verdict.next_retry_at, None);
+    }
+
+    #[test]
+    fn typing_grace_real_edit_ten_seconds_ago_has_fifty_seconds_remaining() {
+        let elapsed_ms = Arc::new(AtomicU64::new(0));
+        let started_at = Instant::now();
+        let clock_ms = Arc::clone(&elapsed_ms);
+        let capture = format!("output\n{RULE}\n❯ edited draft\n{RULE}");
+        let tmux = Arc::new(
+            FakeTmux::new()
+                .with_pane(pane(14, 2))
+                .with_attached_tap("%108")
+                .script_capture(capture),
+        );
         let gate = InteractionGate::with_clock(
             tmux,
             Duration::from_secs(1),
             contract_typing_grace_ms(),
             Arc::new(move || started_at + Duration::from_millis(clock_ms.load(Ordering::Relaxed))),
         );
-        gate.observe_composer("%108", "draft being edited");
-        elapsed_ms.store(1_000, Ordering::Relaxed);
-        gate.record_composer_cleared("%108");
-        elapsed_ms.store(6_000, Ordering::Relaxed);
-
-        let verdict = block_on(gate.fresh_injection_verdict("%108")).expect("recent edit verdict");
-        assert!(
-            !verdict.permitted,
-            "a key five seconds ago is recent even after deleting the draft"
-        );
-        assert!(verdict.composer_idle);
+        gate.observe_composer("%108", "old draft");
+        elapsed_ms.store(70_000, Ordering::Relaxed);
+        gate.observe_composer("%108", "edited draft");
+        elapsed_ms.store(80_000, Ordering::Relaxed);
+        let verdict = block_on(gate.fresh_injection_verdict("%108")).expect("recent edit");
+        assert!(!verdict.permitted);
         assert_eq!(verdict.reason, Some(DeliveryDeferralReason::HumanTyping));
-        assert_eq!(verdict.draft_sha, None);
-        assert_eq!(
-            verdict.next_retry_at,
-            Some(Duration::from_millis(contract_typing_grace_ms() - 5_000)),
-            "retry is last edit plus grace, not a fresh full-grace delay"
-        );
+        assert_eq!(verdict.next_retry_at, Some(Duration::from_secs(50)));
     }
 
     #[test]

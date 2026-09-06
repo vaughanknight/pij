@@ -32,6 +32,9 @@ pub struct EventBus {
     spine: Arc<dyn Spine>,
     live: broadcast::Sender<Event>,
     publish_lock: Mutex<()>,
+    // A held row must publish its admission facts before a worker can ack it.
+    // Never held across transport IO; only queue and receipt publication.
+    pub(crate) socket_delivery_order: Mutex<()>,
 }
 
 impl EventBus {
@@ -51,6 +54,7 @@ impl EventBus {
             spine,
             live,
             publish_lock: Mutex::new(()),
+            socket_delivery_order: Mutex::new(()),
         })
     }
 
