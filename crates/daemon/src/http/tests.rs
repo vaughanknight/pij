@@ -722,6 +722,113 @@ async fn typing_state_projects_active_holds_only() {
     server.abort();
 }
 
+#[tokio::test]
+async fn typing_hold_projections_follow_terminal_outcomes_and_sequence() {
+    use pij_core::model::DeliveryOutcome;
+
+    for terminal in [
+        DeliveryOutcome::Refused {
+            reason: "operator denied".to_string(),
+        },
+        DeliveryOutcome::Delivered {
+            origin: DeliveryOrigin::VerifiedArrival,
+        },
+    ] {
+        let services = test_services(
+            Arc::new(FakeRegistry::new()),
+            Arc::new(FakeQueue::new(1_024).expect("queue")),
+            Arc::new(FakeSpine::new()),
+        )
+        .await;
+        let state = AppState {
+            registration: RegistrationService::new(
+                Arc::clone(&services.registry),
+                Arc::clone(&services.liveness),
+                Arc::clone(&services.event_bus),
+                Vec::new(),
+            )
+            .with_native_lock(services.delivery.native_lock()),
+            services,
+            auth: AuthRing::new("key".to_string(), Vec::new()),
+            machine_alias: "local".to_string(),
+            spawn_lock: Arc::new(tokio::sync::Mutex::new(())),
+            typing_lock: Arc::new(tokio::sync::Mutex::new(())),
+            typing_grace_ms: DEFAULT_TYPING_GRACE_MS,
+            federation: None,
+        };
+        let seat = SeatId::from("pij-held");
+        let other_seat = SeatId::from("pij-other");
+        let held = serde_json::json!({
+            "seat": seat, "msg_id": "held", "reason": "human-typing", "since_ms": 7,
+        });
+        let outcome = |msg_id: &str, outcome: &DeliveryOutcome| serde_json::json!({"msg_id": msg_id, "outcome": outcome, "transport": "claude-uds"});
+        let queued = DeliveryOutcome::Queued {
+            reason: None,
+            next_retry_at: None,
+            draft_sha: None,
+        };
+        let pending = DeliveryOutcome::Held {
+            reason: "awaiting approval".to_string(),
+        };
+        // Constant timestamps deliberately make durable sequence the only ordering signal.
+        for (event_seat, kind, payload, expected) in [
+            (&seat, "delivery.held", held.clone(), true),
+            (
+                &other_seat,
+                "delivery.outcome",
+                outcome("held", &terminal),
+                true,
+            ),
+            (
+                &seat,
+                "delivery.outcome",
+                outcome("held-other", &terminal),
+                true,
+            ),
+            (&seat, "delivery.outcome", outcome("held", &queued), true),
+            (&seat, "delivery.outcome", outcome("held", &pending), true),
+            (&seat, "delivery.outcome", outcome("held", &terminal), false),
+            (&seat, "delivery.outcome", outcome("held", &queued), false),
+            (&seat, "delivery.outcome", outcome("held", &pending), false),
+            (&seat, "delivery.held", held.clone(), true),
+            (
+                &seat,
+                "delivery.released",
+                serde_json::json!({"seat": seat, "msg_id": "held", "at_ms": 8}),
+                false,
+            ),
+            (&seat, "delivery.held", held, true),
+            (&seat, "delivery.outcome", outcome("held", &terminal), false),
+        ] {
+            state
+                .services
+                .event_bus
+                .publish(Event {
+                    seq: None,
+                    v: wire::EVENT_VERSION,
+                    at: 10,
+                    kind: kind.to_string(),
+                    seat: Some(event_seat.clone()),
+                    payload: payload.to_string(),
+                })
+                .await
+                .expect("event");
+            let actual = is_held(&state, &seat, "held").await.expect("held lookup");
+            let holds = active_holds(&state, &seat).await.expect("held projection");
+            assert_eq!(actual, expected, "{terminal:?}: {kind} {payload}");
+            assert_eq!(
+                holds.len(),
+                usize::from(expected),
+                "{terminal:?}: {kind} {payload}"
+            );
+            if expected {
+                assert_eq!(holds[0].msg_id, "held");
+                assert_eq!(holds[0].seat, seat);
+            }
+        }
+    }
+}
+
 fn typing_contract() -> serde_json::Value {
     serde_json::from_str(include_str!(
         "../../../testkit/fixtures/delivery/hold-events.json"

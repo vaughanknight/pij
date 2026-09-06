@@ -34,8 +34,8 @@ use pij_core::delivery::{DEFAULT_TYPING_GRACE_MS, HeldEvent, ReleasedEvent};
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::model::{
-    Envelope, ErrorKind, Event, Harness, Msg, ProcIdentity, SeatDescriptor, SeatId, SemanticState,
-    Seq,
+    DeliveryOutcome, Envelope, ErrorKind, Event, Harness, Msg, ProcIdentity, SeatDescriptor,
+    SeatId, SemanticState, Seq,
 };
 use pij_core::names::memorable_pij_id_candidates;
 use pij_core::ports::{Registry, SeatFilter};
@@ -1436,19 +1436,70 @@ fn inbox_failure(error: PijError) -> Response {
     }
 }
 
-/// True only when the newest fact for this exact message is a hold.
+/// True while this exact message's latest hold has no newer release or terminal outcome.
 async fn is_held(state: &AppState, seat: &SeatId, msg_id: &str) -> Result<bool> {
-    let held = state
+    let Some(held) = state
         .services
         .event_bus
         .latest_matching_message(seat, "delivery.held", msg_id)
-        .await?;
+        .await?
+    else {
+        return Ok(false);
+    };
     let released = state
         .services
         .event_bus
         .latest_matching_message(seat, "delivery.released", msg_id)
         .await?;
-    Ok(held.is_some_and(|held| released.is_none_or(|released| held.seq > released.seq)))
+    if released.is_some_and(|released| released.seq >= held.seq) {
+        return Ok(false);
+    }
+    let Some(outcome) = state
+        .services
+        .event_bus
+        .latest_matching_message(seat, "delivery.outcome", msg_id)
+        .await?
+    else {
+        return Ok(true);
+    };
+    if outcome.seq <= held.seq {
+        return Ok(true);
+    }
+    if terminal_outcome_message(&outcome.payload)?.as_deref() == Some(msg_id) {
+        return Ok(false);
+    }
+    // A later pending outcome cannot undo an earlier terminal outcome. Only
+    // this ambiguous case needs replay, bounded to facts after the latest hold.
+    for event in state
+        .services
+        .spine
+        .tail(Some(seat), held.seq.unwrap_or(Seq(0)))
+        .await?
+    {
+        if event.kind == "delivery.outcome"
+            && terminal_outcome_message(&event.payload)?.as_deref() == Some(msg_id)
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn terminal_outcome_message(payload: &str) -> Result<Option<String>> {
+    #[derive(Deserialize)]
+    struct OutcomeEvent {
+        msg_id: String,
+        outcome: DeliveryOutcome,
+    }
+
+    let event: OutcomeEvent = serde_json::from_str(payload).map_err(|error| PijError::Adapter {
+        adapter: "daemon/http".to_string(),
+        message: format!("decode delivery outcome event: {error}"),
+    })?;
+    Ok(match event.outcome {
+        DeliveryOutcome::Delivered { .. } | DeliveryOutcome::Refused { .. } => Some(event.msg_id),
+        DeliveryOutcome::Queued { .. } | DeliveryOutcome::Held { .. } => None,
+    })
 }
 
 async fn publish_typing_event<T: Serialize>(
@@ -1766,6 +1817,11 @@ async fn active_holds(state: &AppState, seat: &SeatId) -> Result<Vec<HeldEvent>>
                         message: format!("decode released event: {error}"),
                     })?;
                 holds.remove(&released.msg_id);
+            }
+            "delivery.outcome" => {
+                if let Some(msg_id) = terminal_outcome_message(&event.payload)? {
+                    holds.remove(&msg_id);
+                }
             }
             _ => {}
         }
