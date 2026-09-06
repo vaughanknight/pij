@@ -39,6 +39,7 @@ interface RustBootInput extends Omit<BootInput, "id"> {
 
 interface TypingRuntimePort extends PiRuntimePort {
 	onEditorChange?(cb: (at: number) => void): () => void;
+	getEditorText?(): string;
 	setStatus?(text: string | undefined): void;
 	notify?(text: string, level?: "info" | "warning" | "error"): void;
 }
@@ -81,8 +82,8 @@ const ANNOUNCE_BODY_CHARS = 80;
  *   restores ORDER, not forced delivery: current grace may re-hold the head,
  *   ending recovery rather than spinning or injecting into active typing.
  *   The daemon still owns migration to successor seats on new/fork.
- * - The caller supplies current pi/OMP UI context before each boot. Raw input
- *   includes cursor/menu keys; direct inject/setEditorText is not terminal input.
+ * - The caller supplies current pi/OMP UI context before each boot. Only draft
+ *   edits refresh grace; every hold decision samples the current editor text.
  */
 export class RustRuntimeSession {
 	private readonly registry = new MemoryRegistry();
@@ -366,7 +367,7 @@ export class RustRuntimeSession {
 		const heldJobId = this.heldIds.get(announced.messageId);
 		if (
 			heldJobId !== undefined &&
-			this.holdQueue?.shouldHold(this.clock()) &&
+			this.holdQueue?.shouldHold(this.clock(), this.pi.getEditorText()) &&
 			this.lastEditAt !== undefined
 		) {
 			await client.hold({
@@ -426,7 +427,11 @@ export class RustRuntimeSession {
 		// happens before any hold or steer decision can defer the visible part.
 		this.announceArrival(claim);
 		const bypass = claim.message.command !== undefined || claim.message.urgent === true;
-		if (!bypass && this.holdQueue?.shouldHold(this.clock()) && this.lastEditAt !== undefined) {
+		if (
+			!bypass &&
+			this.holdQueue?.shouldHold(this.clock(), this.pi.getEditorText()) &&
+			this.lastEditAt !== undefined
+		) {
 			await client.hold({
 				seat,
 				job_id: claim.jobId,
@@ -551,7 +556,7 @@ export class RustRuntimeSession {
 		if (this.self !== seat || this.lifecycle !== lifecycle) return;
 		const queue = this.holdQueue;
 		if (!queue || this.heldIds.size === 0) return;
-		const ready = queue.drain(this.clock());
+		const ready = queue.drain(this.clock(), this.pi.getEditorText());
 		try {
 			// Clear every eligible note's deferral first; claiming one-by-one
 			// while releasing would accidentally impose the note's order.
@@ -739,6 +744,10 @@ function pushedMessageValue(value: unknown, to: string, label: string): HeldRow[
 
 class MutablePiRuntime implements PiRuntimePort {
 	private current: TypingRuntimePort | undefined;
+	getEditorText(): string {
+		return this.current?.getEditorText?.() ?? "";
+	}
+
 	setStatus(text: string | undefined): void {
 		this.current?.setStatus?.(text);
 	}
