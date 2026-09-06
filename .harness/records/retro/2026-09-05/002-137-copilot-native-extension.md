@@ -64,3 +64,9 @@ Jordan's course correction: stop expanding test contracts and review cycles; use
 ## Boot-reporting follow-up
 
 Jordan's boot screenshot exposed a reporting mistake: normal typing-sensor readiness was classified as an outage. Commit `d9f29b87` routes that progress through existing extension diagnostics while keeping real failures visible. The existing extension-process scenario now exercises unavailable-to-ready delivery with no native timeline notice; the native suite and all nine `harness checks` sensors passed. No consent policy, polling, daemon, or global installation changed.
+
+## Draft-aware delivery follow-up
+
+The prime traced a reported 22.9-second delivery delay to typing grace after prompt submission, not transport. The captured blank-composer regression returned 60,000 ms before the fix. Native Copilot now interprets recognized blank as zero typing delay while retaining nonblank grace, semantic Hold, and identity/pane revalidation. Existing HTTP/SQLite hold-release coverage checks zero delay after clearing and reclaim of the same job. Shared interaction policy is unchanged. Live sampler-tick timing remains pending the prime's deployment and spine witness.
+
+Environment friction: the isolated worktree required a read-only link to main's existing node_modules; no install was run. Baseline typecheck then passed, but file-watch-notify smoke failed before source edits. Final `harness checks` passed all nine sensors, including smoke; focused verification passed 50 native cases, 12 hold cases, 9 release cases, 7 shared typing-grace cases, and strict daemon clippy. Counts overlap and are not additive.

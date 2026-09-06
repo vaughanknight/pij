@@ -63,6 +63,12 @@ A malformed or ambiguous claim stops affected receiving with a diagnostic, not a
 successful ack or a replay loop. Daemon/key absence must leave ordinary Copilot
 usable with a bounded reconnect and one actionable diagnostic per outage episode.
 
+Copilot typing protection is draft-aware: a recognized blank composer permits
+delivery immediately, even just after submitting or clearing a prompt. Recent
+edits delay delivery only while a nonblank draft remains. An unchanged draft may
+still age out under the configured typing grace; explicit operator Hold remains
+a separate veto. Missing or unrecognized composer observations do not count as blank.
+
 Post-join outages expose `[pij native] unavailable:` through the native session,
 once per failure episode. The smoke counts the terminal prefix and proves an
 ordinary user/assistant interaction before starting its isolated daemon. A
