@@ -115,6 +115,10 @@ copilot-native-contract-test:
 copilot-native-smoke *ARGS:
     node_modules/.bin/tsx harness/scripts/copilot-native-smoke.ts "$@"
 
+
+# Real-client draft-safety classifier; requires PIJ_STEP_ON_REAL=1 explicitly.
+step-on-probe *ARGS:
+    node_modules/.bin/tsx harness/scripts/step-on-probe.ts "$@"
 # Read-only installation diagnosis. Does not enable extensions or change settings.
 copilot-native-doctor:
     copilot --version

@@ -16,7 +16,7 @@ use pij_core::model::{
     SeatDescriptor, SeatId, SemanticState,
 };
 use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, Transport};
-use pij_harnesses::{InjectionVerdict, InteractionGate, StagedSubmission};
+use pij_harnesses::{InteractionGate, StagedSubmission};
 use serde::{Deserialize, Serialize};
 use tokio_stream::StreamExt;
 
@@ -131,7 +131,7 @@ struct DeliverySources {
 /// Construct one `Arc<InteractionGate>` from the composed tmux port before
 /// `DeliveryService`, pass the same instance to this service and `DrainWorker`,
 /// and feed it from `PaneObserver`. The gate owns staged pane transactions;
-/// socket delivery retains its existing permission-only policy.
+/// socket delivery never consults or changes the composer.
 pub struct DeliveryService {
     registry: Arc<dyn Registry>,
     queue: Arc<dyn Queue>,
@@ -308,7 +308,7 @@ impl DeliveryService {
             return Ok(receipt);
         }
         let mut publish_to_recipient = true;
-        let mut _socket_delivery_order = None;
+        let mut _delivery_order = None;
         let outcome = match selected {
             DeliveryRoute::Tombstoned { reason } => {
                 return Err(PijError::SeatIsGone {
@@ -347,42 +347,20 @@ impl DeliveryService {
                     recipient.harness,
                     Harness::Omp | Harness::Pi | Harness::Copilot
                 );
-                let (rung, socket_verdict) = if extension_stream {
-                    (DeliveryRung::Observe, None)
+                let rung = if extension_stream {
+                    DeliveryRung::Observe
                 } else {
                     let socket_available = self.transport.can_deliver(&recipient, &msg).await?;
-                    // Socket delivery keeps the fresh permission policy. Pane-body
-                    // permission is checked once, after input ownership is acquired,
-                    // inside `submit_with_owned_input`.
-                    let socket_verdict = match recipient.pane.as_deref() {
-                        Some(pane) if socket_available => {
-                            let verdict = self.interaction.fresh_injection_verdict(pane).await?;
-                            Some((verdict, (self.clock)()?))
-                        }
-                        _ => None,
-                    };
-                    let interaction_permits = socket_verdict
-                        .as_ref()
-                        .is_none_or(|(verdict, _)| verdict.permitted);
-                    let composer_idle = socket_verdict
-                        .as_ref()
-                        .is_none_or(|(verdict, _)| verdict.composer_idle);
-
+                    // Send-keys fallbacks check permission after acquiring input
+                    // ownership. Socket bodies do not touch the human composer.
                     // Paneless socket consumers remain transport-owned. The rung
                     // selector governs pane fallbacks and deliberately returns
                     // `Observe` before consulting socket capability.
-                    let rung = if recipient.pane.is_none() && socket_available {
+                    if recipient.pane.is_none() && socket_available {
                         DeliveryRung::Socket
                     } else {
-                        select_rung(
-                            &recipient,
-                            &msg,
-                            socket_available,
-                            !interaction_permits,
-                            composer_idle,
-                        )
-                    };
-                    (rung, socket_verdict)
+                        select_rung(&recipient, &msg, socket_available, false, true)
+                    }
                 };
 
                 match rung {
@@ -468,12 +446,23 @@ impl DeliveryService {
                                     },
                                     Ok(StagedSubmission::Deferred { reason, draft_sha }) => {
                                         self.queue.forget_delivered(&to, &msg.msg_id).await?;
+                                        // Keep admission evidence ahead of a worker's completion.
+                                        _delivery_order =
+                                            Some(self.event_bus.socket_delivery_order.lock().await);
                                         match self
                                             .queue
                                             .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
                                             .await?
                                         {
                                             DeliveryEnqueue::Queued { not_before_ms, .. } => {
+                                                publish_delivery_held(
+                                                    &self.event_bus,
+                                                    &msg,
+                                                    reason,
+                                                    draft_sha.as_deref(),
+                                                    at,
+                                                )
+                                                .await?;
                                                 Self::queued_outcome_with_draft(
                                                     Some(reason.as_str()),
                                                     not_before_ms,
@@ -498,33 +487,12 @@ impl DeliveryService {
                     | DeliveryRung::Queue
                     | DeliveryRung::Pty
                     | DeliveryRung::ControlBodyPull => {
-                        if msg.command.is_none()
-                            && socket_verdict
-                                .as_ref()
-                                .is_some_and(|(verdict, _)| !verdict.permitted)
-                        {
-                            // Keep the first hold and queued receipt ahead of worker completion.
-                            _socket_delivery_order =
-                                Some(self.event_bus.socket_delivery_order.lock().await);
-                        }
                         match self
                             .queue
                             .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
                             .await?
                         {
                             DeliveryEnqueue::Queued { not_before_ms, .. } => {
-                                if msg.command.is_none()
-                                    && let Some((verdict, observed_at)) = socket_verdict.as_ref()
-                                    && !verdict.permitted
-                                {
-                                    publish_socket_held(
-                                        &self.event_bus,
-                                        &msg,
-                                        verdict,
-                                        *observed_at,
-                                    )
-                                    .await?;
-                                }
                                 let reason = if extension_stream {
                                     Some(
                                         if recipient.harness == Harness::Copilot
@@ -536,23 +504,13 @@ impl DeliveryService {
                                         },
                                     )
                                 } else {
-                                    socket_verdict
-                                        .as_ref()
-                                        .and_then(|(verdict, _)| verdict.reason)
-                                        .map(DeliveryDeferralReason::as_str)
-                                        .or(match rung {
-                                            DeliveryRung::Observe => Some("unreachable"),
-                                            DeliveryRung::ControlBodyPull => {
-                                                Some("terminal-control")
-                                            }
-                                            _ => None,
-                                        })
+                                    match rung {
+                                        DeliveryRung::Observe => Some("unreachable"),
+                                        DeliveryRung::ControlBodyPull => Some("terminal-control"),
+                                        _ => None,
+                                    }
                                 };
-                                Self::queued_outcome_with_draft(
-                                    reason,
-                                    not_before_ms,
-                                    socket_verdict.and_then(|(verdict, _)| verdict.draft_sha),
-                                )
+                                Self::queued_outcome(reason, not_before_ms)
                             }
                             DeliveryEnqueue::AlreadyDelivered(origin) => {
                                 publish_to_recipient = false;
@@ -621,7 +579,7 @@ impl DeliveryService {
         self.claim_inbox_inner(seat, wait, identity).await
     }
 
-    async fn native_recipient(
+    async fn inbox_recipient(
         &self,
         seat: &SeatId,
         identity: &NativeInboxIdentity,
@@ -647,13 +605,13 @@ impl DeliveryService {
             _ if identity.supplied() => Err(native_refusal(
                 "native incarnation no longer belongs to a current Copilot seat",
             )),
-            _ => Ok(None),
+            recipient => Ok(recipient),
         }
     }
 
-    /// Observe the existing recency policy without claiming, releasing or ACKing work.
-    /// Slow pane IO runs outside the native lock; only current identity and pane
-    /// may authorize the returned snapshot. Operator Hold is reported separately.
+    /// Informational recency snapshot; typing never authorizes native delivery.
+    /// Slow pane IO runs outside the native lock. Current identity and pane bind
+    /// the returned evidence; Operator Hold is reported independently.
     pub(crate) async fn native_typing_snapshot(
         &self,
         seat: &SeatId,
@@ -661,8 +619,9 @@ impl DeliveryService {
         typing_grace_ms: u64,
     ) -> Result<NativeTypingSnapshot> {
         let observed = self
-            .native_recipient(seat, identity)
+            .inbox_recipient(seat, identity)
             .await?
+            .filter(|recipient| recipient.harness == Harness::Copilot)
             .ok_or_else(|| {
                 native_refusal("native typing observation requires current native registration")
             })?;
@@ -671,9 +630,8 @@ impl DeliveryService {
         };
         let remaining = match observed.pane.as_deref() {
             Some(pane) => match self.interaction.fresh_injection_verdict(pane).await {
-                // Copilot native delivery cannot overwrite a recognized blank composer.
-                // Submission/clearing may be a recent edit, but there is no draft to protect.
-                // Semantic Hold and owner/pane revalidation still apply below.
+                // Blank composers have no remaining draft recency to report.
+                // This observation is not a native delivery permission check.
                 Ok(verdict) if verdict.composer_idle => Some(0),
                 Ok(verdict) if verdict.reason == Some(DeliveryDeferralReason::HumanTyping) => {
                     verdict.next_retry_at.map(|remaining| {
@@ -690,8 +648,9 @@ impl DeliveryService {
         let observed_at_ms = (self.clock)()?;
         let _guard = self.native_lock.lock().await;
         let current = self
-            .native_recipient(seat, identity)
+            .inbox_recipient(seat, identity)
             .await?
+            .filter(|recipient| recipient.harness == Harness::Copilot)
             .ok_or_else(|| {
                 native_refusal("native typing observation requires current native registration")
             })?;
@@ -715,17 +674,22 @@ impl DeliveryService {
         })
     }
 
-    /// Revalidate the observation's identity and pane while mutation is excluded.
-    /// Semantic hold can only veto; clearing it never overrides an observed veto.
-    async fn revalidate_native_observation(
+    /// Revalidate native identity/pane and every recipient's semantic Hold.
+    /// A stream claim must not bypass the registry hold that queued its arrival.
+    async fn revalidate_inbox_observation(
         &self,
         seat: &SeatId,
         identity: &NativeInboxIdentity,
         observed: Option<&SeatDescriptor>,
     ) -> Result<Option<String>> {
-        let current = self.native_recipient(seat, identity).await?;
-        if current.as_ref().map(|seat| seat.pane.as_deref())
-            != observed.map(|seat| seat.pane.as_deref())
+        let current = self.inbox_recipient(seat, identity).await?;
+        if current
+            .as_ref()
+            .filter(|seat| seat.harness == Harness::Copilot)
+            .map(|seat| seat.pane.as_deref())
+            != observed
+                .filter(|seat| seat.harness == Harness::Copilot)
+                .map(|seat| seat.pane.as_deref())
         {
             return Ok(Some("native-pane-changed".into()));
         }
@@ -747,13 +711,15 @@ impl DeliveryService {
         });
         loop {
             // Native claims are queue ownership, not permission to inject. The
-            // receiver observes typing before NEW sends and owns hold/release.
+            // receiver owns native consent; typing is never a native gate.
             // Keep mutation excluded through handoff; no pane IO occurs here.
             let native_guard = self.native_lock.lock().await;
-            let observed = self.native_recipient(seat, identity).await?;
-            let native = observed.is_some();
+            let observed = self.inbox_recipient(seat, identity).await?;
+            let native = observed
+                .as_ref()
+                .is_some_and(|seat| seat.harness == Harness::Copilot);
             if let Some(reason) = self
-                .revalidate_native_observation(seat, identity, observed.as_ref())
+                .revalidate_inbox_observation(seat, identity, observed.as_ref())
                 .await?
             {
                 return Ok(NativeInboxPage {
@@ -762,7 +728,10 @@ impl DeliveryService {
                 });
             }
             if let Some((job_id, job)) = self.queue.claim(&kinds, seat.as_str()).await? {
-                if let Some(recipient) = &observed {
+                if let Some(recipient) = observed
+                    .as_ref()
+                    .filter(|seat| seat.harness == Harness::Copilot)
+                {
                     // Lease expiry may invalidate a running attempt independently
                     // of registration. Never hand out or retry its successor.
                     if self
@@ -774,7 +743,7 @@ impl DeliveryService {
                         continue;
                     }
                     let permission = self
-                        .revalidate_native_observation(seat, identity, Some(recipient))
+                        .revalidate_inbox_observation(seat, identity, Some(recipient))
                         .await;
                     match permission {
                         Ok(None) => {}
@@ -836,19 +805,17 @@ impl DeliveryService {
                 }
                 let message = payload.message;
                 self.publish_pointer_unparked_if_parked(seat, 1).await?;
-                if native {
-                    match self
-                        .revalidate_native_observation(seat, identity, observed.as_ref())
-                        .await
-                    {
-                        Ok(None) => {}
-                        result => {
-                            self.queue.retry(job_id, Duration::ZERO).await?;
-                            return Ok(NativeInboxPage {
-                                claims: Vec::new(),
-                                held_reason: result?,
-                            });
-                        }
+                match self
+                    .revalidate_inbox_observation(seat, identity, observed.as_ref())
+                    .await
+                {
+                    Ok(None) => {}
+                    result => {
+                        self.queue.retry(job_id, Duration::ZERO).await?;
+                        return Ok(NativeInboxPage {
+                            claims: Vec::new(),
+                            held_reason: result?,
+                        });
                     }
                 }
                 return Ok(NativeInboxPage {
@@ -922,7 +889,11 @@ impl DeliveryService {
                 message: format!("job {} is not a running delivery claim", job_id.0),
             })?;
         let recipient = SeatId::from(job.serial_key);
-        if self.native_recipient(&recipient, identity).await?.is_some() {
+        if self
+            .inbox_recipient(&recipient, identity)
+            .await?
+            .is_some_and(|seat| seat.harness == Harness::Copilot)
+        {
             if seat != &recipient {
                 return Err(native_refusal(
                     "native acknowledgement seat must match the claimed job recipient",
@@ -1077,9 +1048,9 @@ pub(crate) async fn publish_delivery_outcome(
     Ok(())
 }
 
-/// The extension's frozen held payload, with additive socket-gate evidence.
+/// Frozen held payload with additive pane evidence from the owned-input verdict.
 #[derive(Serialize)]
-struct SocketHeldEvent<'a> {
+struct DeliveryHeldEvent<'a> {
     #[serde(flatten)]
     held: HeldEvent,
     last_edit_at: Option<u64>,
@@ -1087,35 +1058,29 @@ struct SocketHeldEvent<'a> {
     draft_sha: Option<&'a str>,
 }
 
-pub(crate) async fn publish_socket_held(
+pub(crate) async fn publish_delivery_held(
     event_bus: &EventBus,
     msg: &Msg,
-    verdict: &InjectionVerdict,
+    reason: DeliveryDeferralReason,
+    draft_sha: Option<&str>,
     at: u64,
 ) -> Result<()> {
-    let millis = |duration: Duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
-    let last_edit_at = verdict
-        .last_edit_age
-        .map(|age| at.saturating_sub(millis(age)));
-    let payload = serde_json::to_string(&SocketHeldEvent {
+    let payload = serde_json::to_string(&DeliveryHeldEvent {
         held: HeldEvent {
             msg_id: msg.msg_id.clone(),
             seat: msg.to.clone(),
-            reason: verdict
-                .reason
-                .unwrap_or(DeliveryDeferralReason::Unrecognized)
-                .as_str()
-                .to_string(),
-            // The legacy field is numeric; zero denotes no observed edit.
-            since_ms: last_edit_at.unwrap_or(0),
+            reason: reason.as_str().to_string(),
+            // Staged submission returns the authoritative reason and draft hash,
+            // not edit age. Zero denotes unavailable timing without re-observation.
+            since_ms: 0,
         },
-        last_edit_at,
-        remaining_ms: verdict.next_retry_at.map(millis),
-        draft_sha: verdict.draft_sha.as_deref(),
+        last_edit_at: None,
+        remaining_ms: None,
+        draft_sha,
     })
     .map_err(|error| PijError::Adapter {
         adapter: "daemon/delivery".to_string(),
-        message: format!("could not encode socket hold {}: {error}", msg.msg_id),
+        message: format!("could not encode delivery hold {}: {error}", msg.msg_id),
     })?;
     event_bus
         .publish(Event {
@@ -1921,8 +1886,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn socket_gate_initial_admission_audit_precedes_concurrent_worker_completion() {
-        let fixture = fixture_with_gate(FakeTransport::reachable(), typing_pane("%108"));
+    async fn typed_hold_initial_admission_audit_precedes_concurrent_socket_completion() {
+        let fixture = fixture_with_gate(FakeTransport::unreachable(), typing_pane("%108"));
         let mut recipient = bound("pij-admission-order");
         recipient.pane = Some("%108".into());
         register(&fixture, recipient.clone()).await;
@@ -1934,13 +1899,13 @@ mod tests {
         });
         let bus = Arc::new(EventBus::new(spine.clone(), 16).expect("blocking bus"));
         let transport = Arc::new(NotifyingSocketTransport {
-            inner: fixture.transport.clone(),
+            inner: Arc::new(FakeTransport::reachable()),
             accepted: Notify::new(),
         });
         let service = DeliveryService::with_sources(
             fixture.registry.clone(),
             fixture.queue.clone(),
-            transport.clone(),
+            fixture.transport.clone(),
             fixture.interaction.clone(),
             bus.clone(),
             DeliverySources {
@@ -1978,7 +1943,6 @@ mod tests {
         );
         assert!(fixture.spine.is_empty(), "held publication is still paused");
 
-        fixture.tmux.arrange_clear_composer("%108");
         let drain = worker.drain_once();
         tokio::pin!(drain);
         tokio::select! {
@@ -1986,7 +1950,7 @@ mod tests {
             result = &mut drain => panic!("worker completed before admission audit: {result:?}"),
         }
         assert_eq!(
-            fixture.transport.delivered().len(),
+            transport.inner.delivered().len(),
             1,
             "transport runs outside the audit ordering lock"
         );
@@ -2035,8 +1999,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn socket_gate_manual_inbox_ack_releases_hold_with_reader_read_outcome() {
-        let fixture = fixture_with_gate(FakeTransport::reachable(), typing_pane("%108"));
+    async fn typed_hold_manual_inbox_ack_releases_hold_with_reader_read_outcome() {
+        let fixture = fixture_with_gate(FakeTransport::unreachable(), typing_pane("%108"));
         let mut recipient = bound("pij-manual-inbox");
         recipient.pane = Some("%108".into());
         register(&fixture, recipient.clone()).await;
@@ -2045,10 +2009,10 @@ mod tests {
             .send(
                 "pij-from".into(),
                 recipient.id.clone(),
-                "manually read socket-held body",
+                "manually read typed-held body",
             )
             .await
-            .expect("socket veto queues");
+            .expect("send-keys veto queues");
         assert_eq!(receipt.outcome, queued_draft_outcome(0));
         let claims = fixture
             .service
@@ -2106,18 +2070,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn socket_gate_initial_hold_is_released_by_worker_after_clear() {
-        let fixture = fixture_with_gate(FakeTransport::reachable(), typing_pane("%108"));
+    async fn typed_hold_is_released_by_worker_after_clear() {
+        let fixture = fixture_with_gate(FakeTransport::unreachable(), typing_pane("%108"));
         let mut recipient = bound("pij-initial-hold");
         recipient.pane = Some("%108".to_string());
         register(&fixture, recipient.clone()).await;
         let receipt = fixture
             .service
-            .send(
-                "pij-from".into(),
-                recipient.id.clone(),
-                "queued socket body",
-            )
+            .send("pij-from".into(), recipient.id.clone(), "queued pane body")
             .await
             .expect("initial veto queues");
         assert_eq!(receipt.outcome, queued_draft_outcome(0));
@@ -2130,18 +2090,15 @@ mod tests {
         let held = events
             .iter()
             .find(|event| event.kind == "delivery.held")
-            .expect("initial socket veto publishes held");
+            .expect("send-keys veto publishes held");
         let payload: Value = serde_json::from_str(&held.payload).expect("held payload");
         assert_eq!(payload["msg_id"], receipt.msg_id);
         assert_eq!(payload["seat"], recipient.id.as_str());
         assert_eq!(payload["reason"], "human-typing");
         assert_eq!(payload["draft_sha"], "2cf24dba5fb0");
-        assert_eq!(payload["since_ms"], payload["last_edit_at"]);
-        assert!(
-            payload["remaining_ms"]
-                .as_u64()
-                .is_some_and(|remaining| remaining > 0 && remaining <= 60_000)
-        );
+        assert_eq!(payload["since_ms"], 0);
+        assert!(payload["last_edit_at"].is_null());
+        assert!(payload["remaining_ms"].is_null());
         assert!(events.iter().all(|event| event.kind != "delivery.released"));
 
         let worker = crate::pointer::DrainWorker::new(
@@ -2162,10 +2119,10 @@ mod tests {
             worker
                 .drain_once()
                 .await
-                .expect("clear delivers queued socket"),
+                .expect("clear delivers queued pane body"),
             1
         );
-        assert_eq!(fixture.transport.delivered().len(), 1);
+        assert!(fixture.transport.delivered().is_empty());
         assert_eq!(fixture.queue.live_len(), 0);
         let events = fixture
             .spine
@@ -2196,82 +2153,101 @@ mod tests {
             serde_json::from_str(&delivery_events[3].payload).expect("delivered outcome");
         assert_eq!(outcome["msg_id"], receipt.msg_id);
         assert_eq!(outcome["outcome"]["outcome"], "delivered");
-        assert_eq!(outcome["outcome"]["origin"], "injected-to-transport");
-        assert_eq!(outcome["transport"], "fake");
+        assert_eq!(outcome["outcome"]["origin"], "typed-to-pane");
+        assert_eq!(outcome["transport"], "tmux");
     }
 
     #[tokio::test]
-    async fn first_attempt_socket_delivery_obeys_the_same_politeness_gate_as_retries() {
-        for (label, fixture, observe_clear, expected_reason, expected_draft_sha) in [
-            (
-                "unknown",
-                fixture(FakeTransport::reachable()),
-                false,
-                "tap-unowned",
-                None,
-            ),
-            (
-                "recognized draft",
-                fixture_with_gate(FakeTransport::reachable(), typing_pane("%108")),
-                true,
-                "human-typing",
-                Some("2cf24dba5fb0"),
-            ),
+    async fn first_attempt_socket_delivery_ignores_typing_and_unavailable_composer() {
+        for (label, tmux) in [
+            ("unknown", FakeTmux::new()),
+            ("recognized draft", typing_pane("%108")),
+            ("human typing", typing_pane("%108").with_user_typing()),
         ] {
+            let fixture = fixture_with_gate(FakeTransport::reachable(), tmux);
             let mut recipient = bound(&format!("pij-{label}"));
             recipient.pane = Some("%108".to_string());
-            if observe_clear {
-                fixture.interaction.observe_composer("%108", "   ");
-            }
             register(&fixture, recipient.clone()).await;
 
             let receipt = fixture
                 .service
-                .send("pij-from".into(), recipient.id, "do not interrupt")
+                .send(
+                    "pij-from".into(),
+                    recipient.id.clone(),
+                    "deliver without touching the draft",
+                )
                 .await
-                .expect("a politeness veto queues durably");
+                .expect("socket delivery does not consult composer permission");
 
-            let wire = serde_json::to_value(&receipt.outcome).expect("queued outcome wire");
-            assert_eq!(wire["reason"], expected_reason);
-            assert_eq!(wire["next_retry_at"], 0);
-            assert_eq!(wire["draft_sha"].as_str(), expected_draft_sha);
             assert_eq!(
                 receipt.outcome,
-                DeliveryOutcome::Queued {
-                    reason: Some(expected_reason.to_string()),
-                    next_retry_at: Some(0),
-                    draft_sha: expected_draft_sha.map(str::to_string),
+                DeliveryOutcome::Delivered {
+                    origin: DeliveryOrigin::InjectedToTransport
                 },
                 "{label}"
             );
-            assert!(fixture.transport.delivered().is_empty(), "{label}");
+            assert_eq!(fixture.transport.delivered().len(), 1, "{label}");
+            assert_eq!(fixture.queue.live_len(), 0, "{label}");
+            assert!(
+                fixture.tmux.calls().is_empty(),
+                "{label}: socket must not inspect or mutate the pane"
+            );
+            let events = fixture
+                .spine
+                .tail(Some(&recipient.id), Seq(0))
+                .await
+                .expect("events");
+            assert!(
+                events.iter().all(|event| !matches!(
+                    event.kind.as_str(),
+                    "delivery.held" | "delivery.released"
+                )),
+                "{label}: no typing lifecycle"
+            );
         }
+    }
 
-        // The clear arm now has to be clear AT THE BOUNDARY, not merely at the
-        // last observer tick: first-attempt delivery re-captures before it
-        // authorizes. That is the whole behaviour change, so this arm arranges a
-        // recognizable blank composer rather than only seeding the tick state.
-        let clear = fixture_with_gate(
-            FakeTransport::reachable(),
-            FakeTmux::new().with_clear_composer("%108"),
-        );
-        clear.interaction.observe_composer("%108", "   ");
-        let mut recipient = bound("pij-clear");
-        recipient.pane = Some("%108".to_string());
-        register(&clear, recipient.clone()).await;
+    #[tokio::test]
+    async fn extension_claims_preserve_semantic_hold_while_ignoring_typing() {
+        for harness in [Harness::Omp, Harness::Pi] {
+            let fixture = fixture_with_gate(FakeTransport::reachable(), typing_pane("%held"));
+            let mut recipient = bound("pij-extension-held");
+            recipient.harness = harness;
+            recipient.pane = Some("%held".into());
+            recipient.semantic_state = Some(SemanticState::Hold);
+            register(&fixture, recipient.clone()).await;
+            fixture
+                .service
+                .send(
+                    "pij-from".into(),
+                    recipient.id.clone(),
+                    "semantic hold survives typing removal",
+                )
+                .await
+                .expect("queued");
 
-        let receipt = clear
-            .service
-            .send("pij-from".into(), recipient.id, "safe to deliver")
-            .await
-            .expect("known-clear delivery");
-        assert_eq!(
-            receipt.outcome,
-            DeliveryOutcome::Delivered {
-                origin: DeliveryOrigin::InjectedToTransport
-            }
-        );
-        assert_eq!(clear.transport.delivered().len(), 1);
+            assert!(
+                fixture
+                    .service
+                    .claim_inbox(&recipient.id, false)
+                    .await
+                    .expect("held claim")
+                    .is_empty()
+            );
+            assert_eq!(fixture.queue.live_len(), 1);
+            recipient.semantic_state = None;
+            register(&fixture, recipient.clone()).await;
+            let claims = fixture
+                .service
+                .claim_inbox(&recipient.id, false)
+                .await
+                .expect("released semantic hold");
+            assert_eq!(claims.len(), 1);
+            assert!(
+                fixture.tmux.calls().is_empty(),
+                "extension claims never observe or mutate the composer"
+            );
+        }
     }
 
     #[tokio::test]
@@ -2467,34 +2443,30 @@ mod tests {
             )
     }
 
-    /// The legacy idle window does not shorten the independently configured typing grace.
+    // Plan 136: typing grace protects send-keys, not socket delivery into a separate channel.
     #[tokio::test]
-    async fn socket_draft_remains_held_inside_typing_grace_after_legacy_idle_window() {
-        let idle = Duration::from_millis(30);
-        let fixture =
-            fixture_with_gate_and_idle(FakeTransport::reachable(), typing_pane("%108"), idle);
+    async fn socket_delivery_ignores_existing_draft_recency() {
+        let fixture = fixture_with_gate(FakeTransport::reachable(), typing_pane("%108"));
         let mut recipient = bound("pij-parked");
         recipient.pane = Some("%108".to_string());
         register(&fixture, recipient.clone()).await;
+        fixture.interaction.observe_composer("%108", "hello");
 
-        let held = fixture
-            .service
-            .send("pij-from".into(), recipient.id.clone(), "wait your turn")
-            .await
-            .expect("a live draft queues durably");
-        assert_eq!(held.outcome, queued_draft_outcome(0));
-        assert!(fixture.transport.delivered().is_empty());
-
-        // The draft remains unchanged, but only the legacy idle window elapses.
-        tokio::time::sleep(idle * 3).await;
-
-        let still_held = fixture
-            .service
-            .send("pij-from".into(), recipient.id, "still your turn")
-            .await
-            .expect("the configured typing grace still vetoes the draft");
-        assert_eq!(still_held.outcome, queued_draft_outcome(0));
-        assert!(fixture.transport.delivered().is_empty());
+        for body in ["first incoming message", "second incoming message"] {
+            let receipt = fixture
+                .service
+                .send("pij-from".into(), recipient.id.clone(), body)
+                .await
+                .expect("socket delivery during typing grace");
+            assert_eq!(
+                receipt.outcome,
+                DeliveryOutcome::Delivered {
+                    origin: DeliveryOrigin::InjectedToTransport
+                }
+            );
+        }
+        assert_eq!(fixture.transport.delivered().len(), 2);
+        assert!(fixture.tmux.calls().is_empty());
     }
 
     #[tokio::test]
@@ -2528,18 +2500,14 @@ mod tests {
                 .calls()
                 .iter()
                 .all(|call| !call.starts_with("submit:")),
-            "policy expiry may permit sockets but must not type into non-empty composer"
+            "socket policy must never permit send-keys into a non-empty composer"
         );
     }
 
-    /// ac-1114 end to end: the verdict comes from the send boundary, not the tick.
-    ///
-    /// The observer state says the composer is clear — the human started typing
-    /// after that observation. Only a capture taken at the send boundary can see
-    /// it, so a stale-clear tick must not be enough to authorize an injection.
+    /// ac-1114 and plan 136 still apply to send-keys: stale observer state cannot authorize typing.
     #[tokio::test]
-    async fn a_stale_clear_tick_cannot_authorize_an_injection_a_fresh_capture_vetoes() {
-        let fixture = fixture_with_gate(FakeTransport::reachable(), typing_pane("%108"));
+    async fn a_stale_clear_tick_cannot_authorize_send_keys_a_fresh_capture_vetoes() {
+        let fixture = fixture_with_gate(FakeTransport::unreachable(), typing_pane("%108"));
         let mut recipient = bound("pij-racing");
         recipient.pane = Some("%108".to_string());
         register(&fixture, recipient.clone()).await;
@@ -2675,15 +2643,16 @@ mod tests {
             .expect("operator hold queues");
         assert_eq!(receipt.outcome, queued_outcome("operator-hold", 0));
         assert!(queued.transport.calls().is_empty());
-        assert_eq!(
+        assert!(
             queued
                 .service
                 .claim_inbox(&SeatId::from("pij-hold"), false)
                 .await
-                .expect("queued inbox")
-                .len(),
-            1
+                .expect("operator-held inbox")
+                .is_empty(),
+            "semantic Hold must also veto inbox consumption, not only push delivery"
         );
+        assert_eq!(queued.queue.live_len(), 1, "held message remains durable");
 
         // BUSY is now the transport's judgement, not the policy's. A pty-shaped
         // transport declines a working seat, because typing races a live
@@ -3264,7 +3233,7 @@ mod tests {
                 } else {
                     assert!(
                         retry_after_ms > 0,
-                        "a recent nonblank draft retains typing protection"
+                        "a recent nonblank draft retains informational recency evidence"
                     );
                 }
                 assert_eq!(snapshot.semantic_hold, held);
@@ -3324,7 +3293,7 @@ mod tests {
         assert_eq!(
             claim.claims.len(),
             1,
-            "typing is gated by receiver, not claim"
+            "plan 137: native delivery never touches the draft, so typing is not a gate"
         );
         assert_eq!(
             fixture.tmux.calls(),
@@ -3375,7 +3344,7 @@ mod tests {
                     ..
                 }
             ),
-            "clearing a human draft releases native delivery immediately"
+            "clearing a human draft resets the informational recency snapshot"
         );
         assert_eq!(
             fixture
@@ -3398,7 +3367,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn native_typing_paneless_requires_explicit_zero_grace_and_retains_hold() {
+    async fn native_typing_paneless_snapshot_is_informational_and_retains_hold() {
         let fixture = fixture(FakeTransport::unreachable());
         let mut seat = native_seat(None);
         seat.semantic_state = Some(SemanticState::Hold);

@@ -1,7 +1,9 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use pij_core::delivery::{DeliveryRung, MAX_TYPED_FRAME_BYTES, delivery_kind, select_rung};
+use pij_core::delivery::{
+    DeliveryDeferralReason, DeliveryRung, MAX_TYPED_FRAME_BYTES, delivery_kind, select_rung,
+};
 use pij_core::error::{PijError, Result};
 use pij_core::framing::frame_message;
 use pij_core::model::{
@@ -11,7 +13,7 @@ use pij_core::model::{
 use pij_core::ports::{Queue, Registry, SeatFilter, TmuxPort, Transport};
 use pij_harnesses::{InteractionGate, StagedSubmission};
 
-use crate::delivery::{publish_delivery_outcome, publish_socket_held, publish_socket_released};
+use crate::delivery::{publish_delivery_held, publish_delivery_outcome, publish_socket_released};
 use crate::events::EventBus;
 
 use super::{
@@ -252,28 +254,9 @@ impl DrainWorker {
         let Some(socket_available) = socket_available else {
             return self.release_body(job_id).await;
         };
-        let composer_idle = if socket_available && !pane_absent {
-            let verdict = match self.interaction.fresh_injection_verdict(pane).await {
-                Ok(verdict) => verdict,
-                Err(error) => {
-                    self.backoff_unobservable(job_id, job.attempt).await?;
-                    return Err(error);
-                }
-            };
-            if !verdict.permitted {
-                let at = self.keep_body_pullable(job_id, (self.clock)()).await?;
-                self.keep_body_pullable(
-                    job_id,
-                    publish_socket_held(&self.event_bus, &msg, &verdict, at).await,
-                )
-                .await?;
-                return self.release_body(job_id).await;
-            }
-            verdict.composer_idle
-        } else {
-            true
-        };
-        match select_rung(&recipient, &msg, socket_available, false, composer_idle) {
+        // Socket bodies never touch the composer. Send-keys fallbacks acquire
+        // input ownership and evaluate their fresh verdict inside submission.
+        match select_rung(&recipient, &msg, socket_available, false, true) {
             DeliveryRung::Socket => match self.transport.deliver(&recipient, &msg).await {
                 Ok(DeliveryOutcome::Delivered { origin }) => {
                     self.ack_delivered_claim(job_id, &msg, origin).await
@@ -408,7 +391,10 @@ impl DrainWorker {
                 self.ack_delivered_claim(job_id, msg, DeliveryOrigin::TypedToPane)
                     .await
             }
-            Ok(StagedSubmission::Deferred { .. }) => self.release_body(job_id).await,
+            Ok(StagedSubmission::Deferred { reason, draft_sha }) => {
+                self.release_held_body(job_id, msg, reason, draft_sha.as_deref())
+                    .await
+            }
             Err(error) => {
                 self.backoff_command(job_id, attempt).await?;
                 Err(error)
@@ -483,7 +469,10 @@ impl DrainWorker {
                 .await?;
                 self.release_body(job_id).await
             }
-            Ok(StagedSubmission::Deferred { .. }) => self.release_body(job_id).await,
+            Ok(StagedSubmission::Deferred { reason, draft_sha }) => {
+                self.release_held_body(job_id, msg, reason, draft_sha.as_deref())
+                    .await
+            }
             Err(error) => self.keep_body_pullable(job_id, Err(error)).await,
         }
     }
@@ -521,6 +510,22 @@ impl DrainWorker {
         self.queue.retry(job_id, Duration::ZERO).await
     }
 
+    async fn release_held_body(
+        &self,
+        job_id: JobId,
+        msg: &Msg,
+        reason: DeliveryDeferralReason,
+        draft_sha: Option<&str>,
+    ) -> Result<()> {
+        let at = self.keep_body_pullable(job_id, (self.clock)()).await?;
+        self.keep_body_pullable(
+            job_id,
+            publish_delivery_held(&self.event_bus, msg, reason, draft_sha, at).await,
+        )
+        .await?;
+        self.release_body(job_id).await
+    }
+
     async fn keep_body_pullable<T>(&self, job_id: JobId, result: Result<T>) -> Result<T> {
         match result {
             Ok(value) => Ok(value),
@@ -536,12 +541,8 @@ impl DrainWorker {
         }
     }
 
-    /// Back off a body whose recipient could not be observed.
-    ///
-    /// An authorization veto is immediately retryable because the next tick may
-    /// observe an idle composer. A capture error says the recipient itself could
-    /// not be observed, so it uses the durable shared backoff curve instead of
-    /// spinning on the same vanished pane every tick.
+    /// Back off a command whose pane could not be observed, rather than spinning
+    /// on the same capture failure every tick. Socket bodies never use this gate.
     async fn backoff_unobservable(&self, job_id: JobId, attempt: u32) -> Result<()> {
         self.queue.retry(job_id, retry_delay(attempt)).await
     }
@@ -667,10 +668,8 @@ mod tests {
         )
     }
 
-    /// Compose-time addition (plan 136): a fixture whose TYPING GRACE the test
-    /// chooses. What vetoes a pane-bound delivery is now the grace, not the mere
-    /// presence of a draft — so a test that wants to observe the veto and one
-    /// that wants to observe its absence differ only in this number.
+    /// Plan 136 fixture with configurable edit recency. Send-keys still requires
+    /// an empty composer independently of grace; sockets ignore both facts.
     fn fixture_with_grace(transport: FakeTransport, tmux: FakeTmux, grace_ms: u64) -> Fixture {
         fixture_inner_with_idle_and_grace(
             transport,
@@ -1249,7 +1248,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unknown_or_human_typing_gate_releases_body_without_delivery() {
+    async fn unknown_or_human_typing_does_not_gate_socket_delivery() {
         for (label, tmux, observe) in [
             ("unknown", FakeTmux::new(), false),
             ("human", FakeTmux::new().with_user_typing(), true),
@@ -1257,29 +1256,25 @@ mod tests {
             let fixture = fixture_unarranged(FakeTransport::reachable(), tmux);
             register(&fixture, seat("pij-gated", Some("%9"))).await;
             if observe {
-                fixture.interaction.observe_composer("%9", "");
+                fixture.interaction.observe_composer("%9", "human draft");
             }
-            let id = enqueue(&fixture, &message("pij-gated", "hello", None)).await;
+            let msg = message("pij-gated", "hello", None);
+            let id = enqueue(&fixture, &msg).await;
 
             assert_eq!(fixture.worker.drain_once().await.expect(label), 1);
-            assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)], "{label}");
-            assert!(
-                fixture.transport.delivered().is_empty(),
-                "{label}: capability may be read, but no socket delivery occurs"
-            );
-            assert!(
-                fixture
-                    .tmux
-                    .calls()
-                    .iter()
-                    .all(|call| !call.starts_with("submit:")),
-                "{label}: no pointer"
+            assert!(fixture.queue.retried().is_empty(), "{label}");
+            assert_eq!(fixture.queue.acked(), [(id, Outcome::Done)], "{label}");
+            assert_eq!(fixture.transport.delivered(), [msg], "{label}");
+            assert_eq!(
+                fixture.tmux.calls(),
+                ["list_panes"],
+                "{label}: socket only permits the worker's inventory, never composer IO"
             );
         }
     }
 
     #[tokio::test]
-    async fn socket_gate_hold_then_typed_fallback_closes_only_after_successful_submit() {
+    async fn typed_hold_closes_only_after_successful_submit() {
         for fail_submit in [false, true] {
             let pane = "%socket-to-typed";
             let mut tmux = FakeTmux::new()
@@ -1296,7 +1291,7 @@ mod tests {
             if fail_submit {
                 tmux = tmux.script_stage_error("typed fallback failed");
             }
-            let mut fixture = fixture_with_grace(FakeTransport::reachable(), tmux, 60_000);
+            let fixture = fixture_with_grace(FakeTransport::unreachable(), tmux, 60_000);
             register(&fixture, seat("pij-socket-to-typed", Some(pane))).await;
             let msg = message(
                 "pij-socket-to-typed",
@@ -1305,12 +1300,14 @@ mod tests {
             );
             let id = enqueue(&fixture, &msg).await;
 
-            assert_eq!(fixture.worker.drain_once().await.expect("socket veto"), 1);
+            assert_eq!(
+                fixture.worker.drain_once().await.expect("send-keys veto"),
+                1
+            );
             assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)]);
             assert!(fixture.queue.acked().is_empty());
             assert!(fixture.transport.delivered().is_empty());
 
-            fixture.worker.transport = Arc::new(FakeTransport::unreachable());
             fixture.tmux.arrange_clear_composer(pane);
             let result = fixture.worker.drain_once().await;
             let events = fixture
@@ -1325,7 +1322,7 @@ mod tests {
                 assert_eq!(
                     events.len(),
                     1,
-                    "failed typing cannot close the socket hold"
+                    "failed typing cannot close the send-keys hold"
                 );
                 assert_eq!(events[0].kind, "delivery.held");
                 continue;
@@ -1345,7 +1342,7 @@ mod tests {
                     .map(|event| event.kind.as_str())
                     .collect::<Vec<_>>(),
                 ["delivery.held", "delivery.released", "delivery.outcome"],
-                "successful fallback closes the original socket hold"
+                "successful submission closes the send-keys hold"
             );
             let released: serde_json::Value =
                 serde_json::from_str(&events[1].payload).expect("released");
@@ -1362,7 +1359,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn socket_gate_worker_veto_then_clear_publishes_held_released_and_outcome() {
+    async fn typed_worker_veto_then_clear_publishes_held_released_and_outcome() {
         let pane = "%typing-clears";
         let tmux = FakeTmux::new()
             .with_pane(Pane {
@@ -1376,7 +1373,7 @@ mod tests {
             .with_attached_tap(pane)
             .script_capture("╰──── hello ─╯")
             .script_capture("╰────       ─╯");
-        let mut fixture = fixture_with_grace(FakeTransport::reachable(), tmux, 60_000);
+        let mut fixture = fixture_with_grace(FakeTransport::unreachable(), tmux, 60_000);
         fixture.worker.clock = || Ok(1_788_600_000_000);
         register(&fixture, seat("pij-typing-clears", Some(pane))).await;
         let msg = message("pij-typing-clears", "deliver after clear", None);
@@ -1413,14 +1410,12 @@ mod tests {
         assert_eq!(held["seat"], msg.to.as_str());
         assert_eq!(held["reason"], "human-typing");
         assert_eq!(held["draft_sha"], "2cf24dba5fb0");
-        assert_eq!(held["since_ms"], held["last_edit_at"]);
-        let last_edit_at = held["last_edit_at"].as_u64().expect("last edit timestamp");
-        let remaining_ms = held["remaining_ms"].as_u64().expect("remaining grace");
-        assert!(remaining_ms > 0 && remaining_ms <= 60_000);
-        assert!((events[0].at - last_edit_at + remaining_ms).abs_diff(60_000) <= 1);
+        assert_eq!(held["since_ms"], 0);
+        assert!(held["last_edit_at"].is_null());
+        assert!(held["remaining_ms"].is_null());
 
         assert_eq!(fixture.worker.drain_once().await.expect("clear tick"), 1);
-        assert_eq!(fixture.transport.delivered(), std::slice::from_ref(&msg));
+        assert!(fixture.transport.delivered().is_empty());
         assert_eq!(fixture.queue.acked(), [(id, Outcome::Done)]);
         assert_eq!(fixture.queue.retried(), [(id, Duration::ZERO)]);
         assert_eq!(fixture.queue.live_len(), 0);
@@ -1456,12 +1451,12 @@ mod tests {
             serde_json::from_str(&events[2].payload).expect("outcome payload");
         assert_eq!(outcome["msg_id"], msg.msg_id);
         assert_eq!(outcome["outcome"]["outcome"], "delivered");
-        assert_eq!(outcome["outcome"]["origin"], "injected-to-transport");
-        assert_eq!(outcome["transport"], "fake");
+        assert_eq!(outcome["outcome"]["origin"], "typed-to-pane");
+        assert_eq!(outcome["transport"], "tmux");
     }
 
     #[tokio::test]
-    async fn socket_gate_clear_does_not_publish_release_for_unsuccessful_transport() {
+    async fn typed_hold_does_not_release_for_unsuccessful_socket_transport() {
         for (label, transport) in [
             ("failure", FakeTransport::reachable().script_deliver_error()),
             (
@@ -1486,8 +1481,8 @@ mod tests {
             ),
         ] {
             let pane = "%unsuccessful";
-            let fixture = fixture_with_grace(
-                transport,
+            let mut fixture = fixture_with_grace(
+                FakeTransport::unreachable(),
                 FakeTmux::new()
                     .with_pane(Pane {
                         id: pane.into(),
@@ -1506,9 +1501,11 @@ mod tests {
             let msg = message("pij-unsuccessful", "not delivered", None);
             enqueue(&fixture, &msg).await;
             fixture.worker.drain_once().await.expect("draft tick");
+            let transport = Arc::new(transport);
+            fixture.worker.transport = transport.clone();
             let result = fixture.worker.drain_once().await;
             assert_eq!(result.is_err(), label == "failure", "{label}");
-            assert!(fixture.transport.delivered().is_empty(), "{label}");
+            assert!(transport.delivered().is_empty(), "{label}");
             let events = fixture
                 .spine
                 .tail(Some(&msg.to), pij_core::model::Seq(0))
@@ -1720,18 +1717,8 @@ mod tests {
             fixture.queue.acked().as_slice(),
             [(_, Outcome::Done)]
         ));
-        // A recognized blank composer is authoritative under u3, so socket
-        // delivery does not consult tmux mode after the fresh capture.
-        assert_eq!(
-            fixture.tmux.calls(),
-            [
-                "list_panes",
-                "pane_tap_sink:%10",
-                "drain_pane_tap:%10",
-                "list_panes",
-                "capture:%10:4294967295"
-            ]
-        );
+        // Plan 136: socket delivery needs only inventory, never composer permission or IO.
+        assert_eq!(fixture.tmux.calls(), ["list_panes"]);
     }
 
     #[tokio::test]
@@ -2372,10 +2359,10 @@ mod tests {
     /// path and would have made a worker-side fault delay the recipient's own
     /// `pij inbox` — removing the fallback that exists for when push is broken.
     #[tokio::test]
-    async fn an_unobservable_recipient_backs_off_while_a_vetoed_one_stays_immediate() {
-        // UNOBSERVABLE: the pane is gone, so the capture ERRORS.
+    async fn send_keys_unobservable_recipient_backs_off_while_a_veto_stays_immediate() {
+        // Plan 136: only send-keys needs pane observation; sockets never wait on it.
         let vanished = fixture(
-            FakeTransport::reachable(),
+            FakeTransport::unreachable(),
             FakeTmux::new().with_vanished_pane("%1861"),
         );
         register(&vanished, seat("pij-vanished", Some("%1861"))).await;
@@ -2401,7 +2388,7 @@ mod tests {
         // VETOED: the pane captures fine, the gate simply says no. Unchanged —
         // the worker chose this release, and the next tick may find a different
         // world.
-        let vetoed = fixture_unarranged(FakeTransport::reachable(), FakeTmux::new());
+        let vetoed = fixture_unarranged(FakeTransport::unreachable(), FakeTmux::new());
         register(&vetoed, seat("pij-vetoed", Some("%77"))).await;
         enqueue(&vetoed, &message("pij-vetoed", "waits politely", None)).await;
         let _ = vetoed.worker.drain_once().await;

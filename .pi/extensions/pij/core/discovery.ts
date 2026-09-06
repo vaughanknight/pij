@@ -58,7 +58,7 @@ export function detectPiRuntime(input: {
 
 /** True when this pi process was spawned as a SUBAGENT CHILD by pi-subagents.
  *  Such children run `pi --mode json -p "<task>"`, so pij MUST NOT activate:
- *  its session_start announce is a `sendUserMessage` (a turn-triggering prompt)
+ *  its session_start announce is a turn-triggering runtime message
  *  that races the child's `-p` task prompt and throws
  *  "Agent is already processing" in the pi SDK (agent-session.ts) — which is
  *  exactly what breaks the subagent tool. A throwaway child is also never a

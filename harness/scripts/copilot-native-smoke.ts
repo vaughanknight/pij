@@ -52,7 +52,6 @@ interface NativeEvent {
 }
 
 interface TypingSample {
-	sensor: unknown;
 	jobs: Record<string, unknown>[];
 	acknowledgements: Record<string, unknown>[];
 	nativeEvents: NativeEvent[];
@@ -1041,7 +1040,7 @@ export function verifyNativeContextHeld(
 	);
 }
 
-/** Observe product hold/release; never release a job or clear the draft to make it pass. */
+/** 136/137: native delivery bypasses typing, not semantic Hold, consent or native-target isolation. */
 export async function driveSmokeTypingWitness(
 	io: {
 		tmux: (args: string[], preserveOutput?: boolean) => string;
@@ -1057,9 +1056,19 @@ export async function driveSmokeTypingWitness(
 	function check(condition: unknown, message: string): asserts condition {
 		assert(condition, `PIJ_NATIVE_TYPING_PROOF: ${message}`);
 	}
-	Object.assign(witness, { seat, draft, nonce, msgId, status: "running", keys: [] });
-	let grace: number | undefined;
-	let lastObserved = 0;
+	const keys: string[][] = [];
+	Object.assign(witness, { seat, draft, nonce, msgId, status: "running", keys });
+	const type = (...input: string[]) => {
+		const command = ["send-keys", "-t", seat.pane, ...input];
+		keys.push(command);
+		io.tmux(command);
+	};
+	const visible = (text: string) =>
+		until("exact owned draft visible", timeout, () => {
+			const terminal = capture();
+			witness.staged = terminal;
+			return nativeComposer(terminal) === text ? terminal : undefined;
+		});
 	const sample = async () => {
 		const value = await io.observe();
 		const pane_capture = captureSmokePaneViewport(io.tmux, seat.pane);
@@ -1067,44 +1076,23 @@ export async function driveSmokeTypingWitness(
 		const terminal = capture();
 		witness.after = terminal;
 		check(nativeComposer(terminal) === draft, "same nonempty composer must remain intact");
-		const sensor = object(value.sensor);
-		check(sensor.state === "observed", "typing observation unavailable or unknown");
-		assert.deepEqual(
-			sensor.native_consumer,
-			{ native_session: seat.session, ...seat.proc },
-			"PIJ_NATIVE_TYPING_PROOF: current native owner echo required",
-		);
-		check(sensor.source === "pane-observed-edit-recency", "unexpected typing sensor source");
-		check(sensor.semantic_hold === false, "operator Hold must not be cleared by this proof");
-		for (const field of ["typing_grace_ms", "observed_at_ms", "retry_after_ms"]) {
-			check(Number.isSafeInteger(sensor[field]) && Number(sensor[field]) >= 0, `invalid ${field}`);
-		}
-		const observedAt = Number(sensor.observed_at_ms);
-		const retry = Number(sensor.retry_after_ms);
-		const currentGrace = Number(sensor.typing_grace_ms);
 		check(
-			currentGrace > 0 && retry <= currentGrace,
-			"positive daemon grace and bounded retry required",
+			nativeMessages(value.nativeEvents, draft).length === 0,
+			"human draft must not be submitted",
 		);
-		check(grace === undefined || currentGrace === grace, "daemon grace changed during proof");
-		check(observedAt >= lastObserved && observedAt > 0, "sensor observation clock moved backwards");
-		grace = currentGrace;
-		lastObserved = observedAt;
-		return { ...value, pane_capture, sensor, terminal, observedAt, retry, grace: currentGrace };
+		const native = nativeMessages(value.nativeEvents, nonce);
+		check(
+			native.length <= 1 && value.acknowledgements.length <= 1,
+			"duplicate native acceptance or ACK",
+		);
+		const holds = value.deliveryEvents.filter((row) => {
+			if (row.kind !== "delivery.held" || row.seat !== seat.id) return false;
+			const payload = object(JSON.parse(String(row.payload)));
+			return payload.msg_id === msgId && payload.reason === "human-typing";
+		});
+		check(holds.length === 0, "native delivery must not hold for human typing");
+		return { ...value, pane_capture, terminal, native };
 	};
-	const receipts = (value: TypingSample, kind: string) =>
-		value.deliveryEvents
-			.filter((row) => row.kind === kind)
-			.map((row) => ({
-				...row,
-				seq: Number(row.seq),
-				seat: row.seat,
-				payload: object(JSON.parse(String(row.payload))),
-			}))
-			.filter(
-				(row) =>
-					row.seat === seat.id && row.payload.seat === seat.id && row.payload.msg_id === msgId,
-			);
 	try {
 		check(
 			/^HUMAN_DRAFT_[a-zA-Z0-9-]+$/.test(draft),
@@ -1112,50 +1100,50 @@ export async function driveSmokeTypingWitness(
 		);
 		witness.before = capture();
 		check(nativeComposer(String(witness.before)) === "", "refusing to overwrite existing composer");
-		const keys = ["send-keys", "-t", seat.pane, "-l", "--", draft];
-		witness.keys = [keys];
-		io.tmux(keys);
-		await until("exact human draft visible", timeout, () => {
-			const terminal = capture();
-			witness.staged = terminal;
-			const composer = nativeComposer(terminal);
-			if (composer === draft) return true;
-			check(composer === undefined || composer === "", "unexpected staged draft");
-			return undefined;
-		});
+		type("-l", "--", draft);
+		witness.draft_before = await visible(draft);
 		const initial = await sample();
 		witness.typing_observed = initial;
-		check(initial.retry > 0, "recent typing must be observed before sending");
+		check(
+			initial.native.length === 0 &&
+				initial.acknowledgements.length === 0 &&
+				initial.jobs.length === 0,
+			"message identity must be unused before sending",
+		);
+		const started = Date.now();
+		const deliveryBudget = Math.min(timeout, 5000);
 		witness.send = await io.send();
-		const held = await until(
-			"durable delivery.held while same draft remains",
-			timeout,
+		const accepted = await until(
+			"native acceptance while actively editing an intact draft",
+			deliveryBudget,
 			async () => {
+				// Real composer edits keep the witness active; no daemon typing sensor or release control.
+				check(nativeComposer(capture()) === draft, "refusing to edit changed composer");
+				type("-l", "--", "x");
+				await visible(`${draft}x`);
+				type("BSpace");
+				await visible(draft);
 				const value = await sample();
+				const elapsed = Date.now() - started;
+				witness.delivered_within_ms = elapsed;
+				check(elapsed <= deliveryBudget, "native delivery exceeded one sweep (5 seconds)");
+				if (!value.native.length || !value.acknowledgements.length) return undefined;
+				const native = value.native[0];
 				check(
-					nativeMessages(value.nativeEvents, nonce).length === 0 &&
-						value.acknowledgements.length === 0,
-					"held work must not be accepted or acknowledged",
+					typeof native?.id === "string" &&
+						native.id.length > 0 &&
+						typeof native.data.messageId === "string" &&
+						native.data.messageId.length > 0,
+					"real native event and message ids required",
 				);
-				check(value.retry > 0, "typing expired before durable hold was witnessed");
-				const evidence = receipts(value, "delivery.held");
-				if (!evidence.length) return undefined;
+				const ack = value.acknowledgements[0];
 				check(
-					evidence.every((row) => row.payload.reason === "human-typing"),
-					"wrong hold reason",
-				);
-				check(
-					evidence.every(
-						(row) =>
-							Number.isSafeInteger(row.payload.since_ms) &&
-							Number(row.payload.since_ms) >= initial.observedAt + initial.retry - initial.grace &&
-							Number(row.payload.since_ms) <= value.observedAt,
-					),
-					"hold timestamp must match the witnessed edit window",
+					ack?.recipient === seat.id && ack.msg_id === msgId && ack.origin === "reader-read",
+					"wrong native ACK identity or origin",
 				);
 				check(
-					value.jobs.length === 1 && value.jobs[0]?.state === "pending",
-					"held job must remain pending and unclaimed",
+					value.jobs.length === 1 && value.jobs[0]?.state === "done",
+					"one completed delivery job required",
 				);
 				const job = value.jobs[0] as Record<string, unknown>;
 				check(Number.isSafeInteger(job.id) && Number(job.id) > 0, "real durable job id required");
@@ -1165,99 +1153,22 @@ export async function driveSmokeTypingWitness(
 						payload.msg_id === msgId &&
 						payload.body === nonce &&
 						payload.native_target_session === seat.session,
-					"held job identity or native context changed",
-				);
-				return { ...value, held_events: evidence, job_id: job.id };
-			},
-		);
-		witness.held = held;
-		const deadline = Math.max(initial.observedAt + initial.retry, held.observedAt + held.retry);
-		witness.observed_expiry_ms = deadline;
-		const expired = await until(
-			"typing recency expires with unchanged nonempty draft",
-			timeout,
-			async () => {
-				let value = await sample();
-				if (
-					value.retry > 0 &&
-					(nativeMessages(value.nativeEvents, nonce).length > 0 ||
-						value.acknowledgements.length > 0)
-				) {
-					// Sensor is read before files/SQLite: those later reads can cross the expiry boundary.
-					witness.expiry_boundary_before = value;
-					value = await sample();
-					witness.expiry_boundary_after = value;
-					check(value.retry === 0, "native acceptance occurred before typing grace expired");
-				}
-				return value.retry === 0 ? value : undefined;
-			},
-		);
-		witness.expired = expired;
-		check(expired.observedAt >= deadline, "sensor expired before observed grace elapsed");
-		const accepted = await until(
-			"released job reclaimed and accepted once with intact draft",
-			timeout,
-			async () => {
-				const value = await sample();
-				check(value.retry === 0, "typing observation renewed without a human edit");
-				const released = receipts(value, "delivery.released");
-				if (!released.length) return undefined;
-				const holds = receipts(value, "delivery.held");
-				check(holds.length > 0, "held evidence disappeared");
-				for (const hold of holds) {
-					check(Number.isSafeInteger(hold.payload.since_ms), "hold lacks observed edit timestamp");
-					check(
-						released.every(
-							(row) =>
-								Number(row.seq) > Number(hold.seq) &&
-								Number.isSafeInteger(row.payload.at_ms) &&
-								Number(row.payload.at_ms) >=
-									Math.max(deadline, Number(hold.payload.since_ms) + value.grace),
-						),
-						"release must follow hold and its full observed typing grace",
-					);
-				}
-				const native = nativeMessages(value.nativeEvents, nonce);
-				check(
-					native.length <= 1 && value.acknowledgements.length <= 1,
-					"duplicate native acceptance or ACK",
-				);
-				if (!native.length || !value.acknowledgements.length) return undefined;
-				check(
-					typeof native[0]?.data.messageId === "string" && native[0].data.messageId.length > 0,
-					"real native message id required",
-				);
-				const ack = value.acknowledgements[0];
-				check(
-					ack?.recipient === seat.id && ack.msg_id === msgId && ack.origin === "reader-read",
-					"wrong native ACK identity or origin",
-				);
-				check(
-					value.jobs.length === 1 &&
-						value.jobs[0]?.id === held.job_id &&
-						value.jobs[0]?.state === "done",
-					"original held job must be the completed delivery",
+					"job identity or native context changed",
 				);
 				const ackEvents = value.deliveryEvents
 					.filter((row) => row.kind === "delivery.inbox-ack" && row.seat === seat.id)
-					.map((row) => ({
-						...row,
-						seq: Number(row.seq),
-						payload: object(JSON.parse(String(row.payload))),
-					}))
-					.filter(
-						(row) => row.payload.job_id === held.job_id && row.payload.outcome === "reader-read",
-					);
+					.map((row) => ({ ...row, payload: object(JSON.parse(String(row.payload))) }))
+					.filter((row) => row.payload.job_id === job.id && row.payload.outcome === "reader-read");
 				if (!ackEvents.length) return undefined;
-				check(
-					ackEvents.length === 1 && released.every((row) => row.seq < Number(ackEvents[0]?.seq)),
-					"release declaration must precede the original job ACK",
-				);
-				return { ...value, released_events: released, ack_events: ackEvents, native: native[0] };
+				check(ackEvents.length === 1, "duplicate original job ACK");
+				return { ...value, ack_events: ackEvents, native };
 			},
 		);
 		Object.assign(witness, {
 			accepted,
+			draft_intact:
+				nativeComposer(String(witness.draft_before)) === nativeComposer(String(witness.after)),
+			draft_submitted: false,
 			status: "passed",
 			grade: "native-accepted-not-model-complete",
 		});
@@ -1954,33 +1865,24 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 			});
 			await waitTurnEnd(target, nonce);
 			const draft = `HUMAN_DRAFT_${randomUUID()}`;
-			const heldNonce = `PIJ_HELD_${randomUUID()}`;
-			const heldId = randomUUID();
-			const typingQuery = new URLSearchParams({
-				seat: target.id,
-				native_session: target.session,
-				pid: String(target.proc.pid),
-				proc_start: String(target.proc.proc_start),
-			});
-			const sensorPath = `/v1/inbox/typing?${typingQuery}`;
+			const typingNonce = `PIJ_TYPING_${randomUUID()}`;
+			const typingId = randomUUID();
 			const typing: Record<string, unknown> = {
-				kind: `${mode}-typing-held-then-aged-draft-admitted`,
-				sensor_request: sensorPath,
+				kind: `${mode}-native-delivery-while-typing`,
 			};
 			witnesses.push(typing);
 			await driveSmokeTypingWitness(
 				{
 					tmux,
 					observe: async () => ({
-						sensor: await api(sensorPath),
 						nativeEvents: events(target),
-						acknowledgements: delivered(target, heldId),
-						deliveryEvents: typingEvents(target, heldId),
-						jobs: jobs(target, heldId),
+						acknowledgements: delivered(target, typingId),
+						deliveryEvents: typingEvents(target, typingId),
+						jobs: jobs(target, typingId),
 					}),
-					send: () => send(sender, target, heldNonce, heldId),
+					send: () => send(sender, target, typingNonce, typingId),
 				},
-				{ seat: target, draft, nonce: heldNonce, msgId: heldId },
+				{ seat: target, draft, nonce: typingNonce, msgId: typingId },
 				options.timeoutMs,
 				typing,
 			);

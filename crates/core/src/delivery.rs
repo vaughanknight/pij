@@ -8,7 +8,7 @@ use crate::error::{PijError, Result};
 use crate::model::{Msg, SeatDescriptor, SeatId, SemanticState};
 use serde::{Deserialize, Serialize};
 
-/// Quiet interval after the last human keystroke before ordinary delivery resumes.
+/// Quiet interval after the last human keystroke before send-keys delivery resumes.
 /// The daemon alone applies the environment override and publishes the value.
 pub const DEFAULT_TYPING_GRACE_MS: u64 = 60_000;
 
@@ -147,8 +147,8 @@ pub enum DeliveryRung {
 
 /// Select the delivery ladder rung from already-observed facts.
 ///
-/// `human_typing` is a veto on every pane-facing mechanism, including a socket:
-/// sockets do not corrupt composers, but interrupting a person remains rude.
+/// `human_typing` vetoes send-keys mechanisms only. Socket bodies bypass composer
+/// permission because their transport never modifies or submits the human draft.
 /// A command is identified only by [`Msg::command`]; a body beginning with `/`
 /// remains a body. Typed-body delivery and the named control-body pull exception
 /// are available only when the composer is idle.
@@ -163,14 +163,14 @@ pub fn select_rung(
     if recipient.pane.is_none() {
         return DeliveryRung::Observe;
     }
+    if msg.command.is_none() && socket_available {
+        return DeliveryRung::Socket;
+    }
     if human_typing {
         return DeliveryRung::Queue;
     }
     if msg.command.is_some() {
         return DeliveryRung::Pty;
-    }
-    if socket_available {
-        return DeliveryRung::Socket;
     }
     if !composer_idle {
         return DeliveryRung::Queue;
@@ -410,15 +410,37 @@ mod tests {
     }
 
     #[test]
-    fn human_typing_vetoes_socket_and_typed_body_delivery() {
+    fn human_typing_only_vetoes_send_keys_delivery() {
         let mut recipient = bound_recipient();
         recipient.pane = Some("%7".to_string());
         let body = message("hello", None);
-        for socket_available in [false, true] {
+        for composer_idle in [false, true] {
             assert_eq!(
-                select_rung(&recipient, &body, socket_available, true, true),
+                select_rung(&recipient, &body, true, true, composer_idle),
+                DeliveryRung::Socket,
+                "socket delivery cannot overwrite the human's composer"
+            );
+            for msg in [
+                &body,
+                &message("control\u{1b}", None),
+                &message("", Some("compact")),
+            ] {
+                assert_eq!(
+                    select_rung(&recipient, msg, false, true, composer_idle),
+                    DeliveryRung::Queue,
+                    "every send-keys rung retains the typing veto"
+                );
+            }
+            assert_eq!(
+                select_rung(
+                    &recipient,
+                    &message("", Some("compact")),
+                    true,
+                    true,
+                    composer_idle
+                ),
                 DeliveryRung::Queue,
-                "human typing must leave the row queued; socket_available={socket_available}"
+                "an available socket does not bypass command typing safety"
             );
         }
     }
