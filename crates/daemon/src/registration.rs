@@ -1253,14 +1253,26 @@ mod tests {
     async fn real_shell_process_is_not_an_actual_copilot_host() {
         // A test-owned child only: no fleet inspection, signal, or environment mutation.
         // A forged argv[0] must not outrank the observed kernel executable name.
+        // The shell prints one line once it has exec'd: observing it before that
+        // reads a transiently empty /proc/<pid>/cmdline on Linux (seen on CI, PR
+        // #371) and fails for the wrong reason.
         let mut shell = Command::new("/bin/sh")
             .arg0("copilot")
-            .args(["-c", "read line"])
+            .args(["-c", "echo ready; read line"])
             .stdin(Stdio::piped())
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
             .expect("private shell witness");
+        {
+            use std::io::BufRead;
+            let stdout = shell.stdout.take().expect("witness stdout");
+            let mut ready = String::new();
+            std::io::BufReader::new(stdout)
+                .read_line(&mut ready)
+                .expect("witness readiness line");
+            assert_eq!(ready.trim(), "ready");
+        }
         let (service, registry) = native_service(
             Vec::new(),
             Arc::new(FakeLiveness::new().with_proc(ProcIdentity {
