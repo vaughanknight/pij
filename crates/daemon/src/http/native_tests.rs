@@ -1321,6 +1321,7 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
 
     seat.semantic_state = None;
     registry.put(seat.clone()).await.unwrap();
+    // Plan 137: a native message never touches the composer, so even a fresh draft permits claims.
     let claims = native_http_claims(&client, addr, &seat.id, &identity).await;
     assert_eq!(
         claims.len(),
@@ -1350,6 +1351,7 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
         .as_u64()
         .unwrap()
         .saturating_sub(grace - remaining);
+    // Plan 136's explicit hold/release wire stays valid; native delivery no longer creates typing holds.
     let deferred = native_http_response(
         client.post(format!("http://{addr}/v1/hold")).json(&json!({
             "seat": seat.id, "job_id": job, "msg_id": "poc-137",
@@ -1381,7 +1383,7 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
         );
     }
 
-    // A recognized blank releases typing protection; the receiver still owns release.
+    // Snapshot evidence is informational; only the explicit release below clears this legacy hold.
     tmux.arrange_clear_composer("%137");
     let clearing = native_http_response(
         client.get(typing_url(addr, &seat.id, &identity)),
@@ -2381,7 +2383,7 @@ async fn native_typing_http_snapshot_is_authenticated_read_only_and_echoes_owner
 }
 
 #[tokio::test]
-async fn native_typing_aged_nonempty_draft_does_not_gate_native_claim() {
+async fn native_typing_recent_nonempty_draft_does_not_gate_native_claim() {
     let store = FreshStore::new();
     let mut services = sqlite_services(&store).await;
     let (mut seat, identity) = contract_identity();
@@ -2403,7 +2405,7 @@ async fn native_typing_aged_nonempty_draft_does_not_gate_native_claim() {
     services.interaction = Arc::new(pij_harnesses::InteractionGate::with_typing_grace(
         tmux.clone(),
         Duration::from_secs(60),
-        10,
+        60_000,
     ));
     services.delivery = Arc::new(
         DeliveryService::new(
@@ -2421,14 +2423,9 @@ async fn native_typing_aged_nonempty_draft_does_not_gate_native_claim() {
         .await
         .unwrap();
     assert!(!recent.permitted);
-    tokio::time::sleep(Duration::from_millis(20)).await;
-    let aged = services
-        .interaction
-        .fresh_injection_verdict("%137")
-        .await
-        .unwrap();
-    assert!(aged.permitted);
-    assert!(!aged.composer_idle, "draft was NOT cleared");
+    assert!(!recent.composer_idle, "the draft is still present");
+    // Plan 137: native delivery ignores typing immediately, not only after grace expiry.
+    let calls_before = tmux.calls();
     services
         .delivery
         .send("pij-peer".into(), seat.id.clone(), "native body")
@@ -2442,9 +2439,14 @@ async fn native_typing_aged_nonempty_draft_does_not_gate_native_claim() {
     assert_eq!(
         claims.claims.len(),
         1,
-        "an aged draft cannot block native claim: {claims:?}"
+        "a recent draft cannot block native claim: {claims:?}"
     );
     assert_eq!(claims.claims[0].native_consumer.as_ref(), Some(&identity));
+    assert_eq!(
+        tmux.calls(),
+        calls_before,
+        "native claim neither reads nor mutates the draft"
+    );
 }
 
 #[tokio::test]

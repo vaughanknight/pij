@@ -1,7 +1,7 @@
 // pij-control-plane — the pi delivery-ownership seam (pure, Plan 019).
 //
 // The ONE immovable seam: a pi session keeps its in-process inbox receiver
-// (`pi.sendUserMessage`). The daemon NEVER injects into pi — for a pi target it
+// (runtime message API). The daemon NEVER injects into pi — for a pi target it
 // only OBSERVES the inbox (for the TUI); the thin in-process receiver
 // (`index.ts`) is the SOLE consumer of pi inboxes (finding 01/06, AC-08).
 

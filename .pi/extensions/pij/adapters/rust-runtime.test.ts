@@ -11,21 +11,6 @@ function envelope(command: string, data: unknown): Response {
 	return new Response(JSON.stringify({ ok: true, command, v: 2, data }));
 }
 
-function releaseEnvelope(init?: RequestInit): Response {
-	const body = JSON.parse(String(init?.body)) as { msg_id: string };
-	return envelope("pij release", {
-		msg_id: body.msg_id,
-		released: false,
-		noop: true,
-		reason: "not-deferred",
-	});
-}
-
-function isRecoveryPeek(url: string | URL | Request): boolean {
-	const parsed = new URL(String(url));
-	return parsed.pathname === "/v1/inbox" && parsed.searchParams.get("peek") === "true";
-}
-
 function eventResponse(text: string, keepOpen = true): Response {
 	const encoder = new TextEncoder();
 	return new Response(
@@ -86,7 +71,6 @@ async function bootPushedEvent(
 	let eventStreams = 0;
 	const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 		const path = new URL(String(url)).pathname;
-		if (isRecoveryPeek(url)) return envelope("pij inbox", []);
 		if (path === "/v1/seats") return envelope("pij seats", { seats: [], unavailable: [] });
 		if (path === "/v1/register") {
 			const claim = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -112,10 +96,12 @@ async function bootPushedEvent(
 			);
 		}
 		if (path === "/v1/inbox") {
+			// The pushed row appears only after stream attachment; a claimed row
+			// cannot be handed out again, including during a replacement boot.
+			if (eventStreams === 0 || claimRequests.length > 0) return envelope("pij inbox", []);
 			claimRequests.push(String(url));
 			return envelope("pij inbox", await claimResponse);
 		}
-		if (path === "/v1/release") return releaseEnvelope(init);
 		if (path === "/v1/inbox/ack") {
 			const acknowledgement = JSON.parse(String(init?.body)) as Record<string, unknown>;
 			acknowledgements.push(acknowledgement);
@@ -159,7 +145,7 @@ function announceRuntime(
 	const registrations: Registration[] = [];
 	const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 		const path = new URL(String(url)).pathname;
-		if (isRecoveryPeek(url)) return envelope("pij inbox", []);
+		if (path === "/v1/inbox") return envelope("pij inbox", []);
 		if (path === "/v1/seats") return envelope("pij seats", { seats, unavailable: [] });
 		if (path === "/v1/register") {
 			const response = responses[registrations.length];
@@ -209,7 +195,7 @@ describe("RustRuntimeSession", () => {
 		const seats = new Map([[incumbent.id, incumbent]]);
 		const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 			const path = new URL(String(url)).pathname;
-			if (isRecoveryPeek(url)) return envelope("pij inbox", []);
+			if (path === "/v1/inbox") return envelope("pij inbox", []);
 			if (path === "/v1/seats") {
 				return envelope("pij seats", { seats: [...seats.values()], unavailable: [] });
 			}
@@ -409,9 +395,9 @@ describe("RustRuntimeSession", () => {
 		const sends: Array<Record<string, unknown>> = [];
 		const acknowledgements: Array<Record<string, unknown>> = [];
 		const claimRequests: string[] = [];
+		let streamStarted = false;
 		const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 			const path = new URL(String(url)).pathname;
-			if (isRecoveryPeek(url)) return envelope("pij inbox", []);
 			if (path === "/v1/seats") return envelope("pij seats", { seats: [], unavailable: [] });
 			if (path === "/v1/register") {
 				const claim = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -429,6 +415,7 @@ describe("RustRuntimeSession", () => {
 				});
 			}
 			if (path === "/v1/events") {
+				streamStarted = true;
 				return eventResponse(
 					`${JSON.stringify({ hello: true, v: 1, build: "pij-rs test" })}\n` +
 						`${JSON.stringify({ machine: "test", cursor: 1, event: { v: 1, at: 1, kind: "future.kind", seat: registeredId, payload: '{"opaque":true}' } })}\n` +
@@ -436,13 +423,13 @@ describe("RustRuntimeSession", () => {
 				);
 			}
 			if (path === "/v1/inbox") {
+				if (!streamStarted || acknowledgements.length > 0) return envelope("pij inbox", []);
 				expect(pi.injects.some((item) => item.text === frame("pij-from", "before bind"))).toBe(
 					false,
 				);
 				claimRequests.push(String(url));
 				return envelope("pij inbox", inboxClaimFixture());
 			}
-			if (path === "/v1/release") return releaseEnvelope(init);
 			if (path === "/v1/inbox/ack") {
 				expect(pi.injects.some((item) => item.text === frame("pij-from", "before bind"))).toBe(
 					true,
@@ -546,7 +533,7 @@ describe("RustRuntimeSession", () => {
 		const registrations: Array<Record<string, unknown>> = [];
 		const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 			const path = new URL(String(url)).pathname;
-			if (isRecoveryPeek(url)) return envelope("pij inbox", []);
+			if (path === "/v1/inbox") return envelope("pij inbox", []);
 			if (path === "/v1/seats") {
 				return envelope("pij seats", {
 					seats: [
@@ -723,7 +710,6 @@ describe("RustRuntimeSession", () => {
 		const notices: string[] = [];
 		const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 			const parsed = new URL(String(url));
-			if (isRecoveryPeek(url)) return envelope("pij inbox", []);
 			if (parsed.pathname === "/v1/seats") {
 				seatReads += 1;
 				const seats =
@@ -774,8 +760,12 @@ describe("RustRuntimeSession", () => {
 						`${JSON.stringify({ machine: "test", cursor: 2, event: { v: 1, at: 2, kind: "message.pushed", seat: registeredId, payload: PUSHED_EVENT_WIRE } })}\n`,
 				);
 			}
-			if (parsed.pathname === "/v1/inbox") return envelope("pij inbox", inboxClaimFixture());
-			if (parsed.pathname === "/v1/release") return releaseEnvelope(init);
+			if (parsed.pathname === "/v1/inbox") {
+				return envelope(
+					"pij inbox",
+					eventAttach < 2 || acknowledgements.length > 0 ? [] : inboxClaimFixture(),
+				);
+			}
 			if (parsed.pathname === "/v1/inbox/ack") {
 				const acknowledgement = JSON.parse(String(init?.body)) as Record<string, unknown>;
 				acknowledgements.push(acknowledgement);
@@ -919,6 +909,7 @@ class GraceClient extends PijDaemonClient {
 	readonly releases: Array<Record<string, unknown>> = [];
 	readonly acks: number[] = [];
 	readonly operations: string[] = [];
+	semanticHold = false;
 
 	constructor(private readonly graceMs: number | undefined = HOLD_CONTRACT.grace.default_ms) {
 		super({ addr: "127.0.0.1:1", stateDir: "/unused" }, "fake", {
@@ -944,12 +935,6 @@ class GraceClient extends PijDaemonClient {
 			...(this.graceMs === undefined ? {} : { typing_grace_ms: this.graceMs }),
 		};
 	}
-	recoveryPeeks = 0;
-	override async peekInbox(): Promise<unknown> {
-		this.recoveryPeeks += 1;
-		const job = this.jobs.find((candidate) => !candidate.acked);
-		return job ? [{ job_id: job.job_id, message: job.message }] : [];
-	}
 	override async watchEvents(listener: (frame: EventFrame) => unknown): Promise<() => void> {
 		this.listener = listener;
 		return () => {
@@ -957,6 +942,7 @@ class GraceClient extends PijDaemonClient {
 		};
 	}
 	override async claimInbox(): Promise<unknown> {
+		if (this.semanticHold) return [];
 		if (this.jobs.some((job) => job.claimed && !job.acked)) return [];
 		const job = this.jobs.find(
 			(candidate) => !candidate.claimed && !candidate.acked && candidate.not_before <= Date.now(),
@@ -965,15 +951,14 @@ class GraceClient extends PijDaemonClient {
 		job.claimed = true;
 		return [{ job_id: job.job_id, message: job.message }];
 	}
+	override async peekInbox(): Promise<unknown> {
+		const job = this.jobs.find((candidate) => !candidate.acked);
+		return job ? [{ job_id: job.job_id, message: job.message }] : [];
+	}
 	override async ackInbox(_seat: string, jobId: number): Promise<number> {
 		const job = this.jobs.find((candidate) => candidate.job_id === jobId);
 		if (!job) throw new Error("unknown fake inbox job");
 		expect(job.claimed, "ack must follow an authoritative reclaim").toBe(true);
-		const releaseIndex = this.operations.lastIndexOf(`release:${job.message.msg_id}`);
-		const holdIndex = this.operations.lastIndexOf(`hold:${job.message.msg_id}`);
-		expect(releaseIndex, "this hold cycle must declare release before ack").toBeGreaterThan(
-			holdIndex,
-		);
 		job.acked = true;
 		this.acks.push(jobId);
 		this.operations.push(`ack:${job.message.msg_id}`);
@@ -1044,7 +1029,7 @@ class GraceClient extends PijDaemonClient {
 	}
 }
 
-describe("typing grace delivery", () => {
+describe("extension-stream delivery", () => {
 	const runtimes: RustRuntimeSession[] = [];
 	const message = (msg_id: string, extra: Partial<GraceMessage> = {}): GraceMessage => ({
 		msg_id,
@@ -1090,6 +1075,64 @@ describe("typing grace delivery", () => {
 		vi.useRealTimers();
 	});
 
+	// Plan 136 changed: extension streams never type into the human's composer.
+	it.each([
+		false,
+		true,
+	])("extension stream delivers while a draft is actively typed (busy=%s)", async (busy) => {
+		const { pi, client } = await start();
+		pi.setBusy(busy);
+		pi.edit("Unsubmitted human draft\nwith Unicode 你好");
+		await client.push(message("incoming while typing"));
+		expect(pi.injects).toEqual([
+			{ text: frame("pij-sender", "incoming while typing"), mode: busy ? "steer" : "immediate" },
+		]);
+		expect(pi.draft).toBe("Unsubmitted human draft\nwith Unicode 你好");
+		expect(client.holdRequests).toEqual([]);
+		expect(client.acks).toEqual([1]);
+		expect(pi.notices.map((row) => row.text)).toEqual([
+			"📨 pij from pij-sender: incoming while typing",
+		]);
+		expect(pi.statuses.some((status) => status?.includes("typing"))).toBe(false);
+		expect(pi.statuses.at(-1)).toBe(busy ? "📨 1 pending" : undefined);
+	});
+
+	it("delivers through the OMP adapter without clearing or submitting a human draft", async () => {
+		let editorText = "draft in progress";
+		const modelMessages: string[] = [];
+		const { client, pi } = await start(new GraceClient(), (sink) => {
+			const api = {
+				sendUserMessage: (text: unknown) => {
+					editorText = ""; // OMP message_start for an external user message.
+					modelMessages.push(String(text));
+					sink.inject(String(text), "immediate");
+				},
+				sendMessage: (value: { content: unknown }) => {
+					modelMessages.push(String(value.content));
+					sink.inject(String(value.content), "immediate");
+				},
+			};
+			return new PiRuntimeAdapter(
+				api,
+				{
+					isIdle: () => true,
+					compact: () => {},
+					ui: {
+						setStatus: (_key, text) => sink.setStatus(text),
+						notify: (text, level) => sink.notify(text, level),
+					},
+				},
+				"omp",
+			);
+		});
+		modelMessages.length = 0;
+		await client.push(message("incoming"));
+		expect(editorText).toBe("draft in progress");
+		expect(modelMessages).toEqual([frame("pij-sender", "incoming")]);
+		expect(pi.notices.map((row) => row.text)).toEqual(["📨 pij from pij-sender: incoming"]);
+		expect(client.acks).toEqual([1]);
+	});
+
 	it("delivers immediately after spawn input has left an empty editor", async () => {
 		const { pi, client } = await start();
 		pi.edit("");
@@ -1099,38 +1142,14 @@ describe("typing grace delivery", () => {
 		expect(client.acks).toEqual([1]);
 	});
 
-	it("samples a cleared editor on the next tick without another input event", async () => {
+	it("announces busy arrivals and clears the pending count when idle", async () => {
 		const { pi, client } = await start();
-		pi.edit();
-		await client.push(message("clear-to-release"));
-		expect(pi.injects).toEqual([]);
-		pi.draft = "";
-		await vi.advanceTimersByTimeAsync(1_000);
-		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "clear-to-release")]);
-		expect(client.operations).toEqual([
-			"hold:clear-to-release",
-			"release:clear-to-release",
-			"ack:clear-to-release",
-		]);
-		expect(pi.statuses.at(-1)).toBeUndefined();
-	});
-
-	it("announces arrival immediately and counts what a busy seat cannot yet see", async () => {
-		const { pi, client } = await start();
-		// A seat mid-generation: delivery still happens at once, but the runtime
-		// shows a steered message only at the step boundary — minutes on a slow
-		// model. Jordan's report: "the message is there, I just cannot see it".
 		pi.setBusy(true);
-		await client.push(message("mid-generation arrival that must be announced"));
-
-		expect(
-			pi.notices.map((row) => row.text),
-			"arrival is announced on claim, before anything waits on the runtime",
-		).toEqual(["📨 pij from pij-sender: mid-generation arrival that must be announced"]);
-		expect(pi.notices.at(-1)?.level).toBe("info");
-		expect(pi.statuses.at(-1), "a steered message stays counted while unseen").toBe("📨 1 pending");
-
-		// The turn ends; the seat can see it, so the count clears on the next tick.
+		await client.push(message("mid-generation arrival"));
+		expect(pi.notices).toEqual([
+			{ text: "📨 pij from pij-sender: mid-generation arrival", level: "info" },
+		]);
+		expect(pi.statuses.at(-1)).toBe("📨 1 pending");
 		pi.setBusy(false);
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(pi.statuses.at(-1)).toBeUndefined();
@@ -1138,323 +1157,209 @@ describe("typing grace delivery", () => {
 
 	it("truncates a long announcement to 80 characters", async () => {
 		const { pi, client } = await start();
-		pi.setBusy(true);
 		await client.push(message("x".repeat(200)));
-		const text = pi.notices.at(-1)?.text ?? "";
-		expect(text.startsWith("📨 pij from pij-sender: ")).toBe(true);
-		expect(text.slice("📨 pij from pij-sender: ".length)).toBe(`${"x".repeat(80)}…`);
+		expect(pi.notices.at(-1)?.text).toBe(`📨 pij from pij-sender: ${"x".repeat(80)}…`);
 	});
 
-	it("counts a held message as held, never as pending twice", async () => {
+	it("does not deliver or announce an acknowledged replay twice", async () => {
 		const { pi, client } = await start();
 		pi.edit();
-		await client.push(message("held-not-double-counted"));
-		expect(pi.statuses.at(-1)).toBe("⏸ 1 held · typing");
-		expect(
-			pi.notices.map((row) => row.text),
-			"a held message is still ANNOUNCED — the human should know it arrived",
-		).toEqual(["📨 pij from pij-sender: held-not-double-counted"]);
-
-		// PAST THE GRACE, because the property is about the SECOND pass: a held row
-		// re-enters routeClaim when releaseHeld re-claims it, and announcing again
-		// would put two identical toasts a minute apart on screen for one delivery
-		// — "counted twice reads as two" on the louder surface (reviewer f12).
-		await vi.advanceTimersByTimeAsync(HOLD_CONTRACT.grace.default_ms + 1_000);
-		expect(pi.injects.map((row) => row.text)).toEqual([
-			frame("pij-sender", "held-not-double-counted"),
-		]);
-		expect(
-			pi.notices.map((row) => row.text),
-			"one message, one delivery, ONE announcement",
-		).toEqual(["📨 pij from pij-sender: held-not-double-counted"]);
+		await client.push(message("repeat"));
+		pi.edit("another keystroke");
+		await client.repeat("repeat");
+		await vi.advanceTimersByTimeAsync(HOLD_CONTRACT.grace.default_ms);
+		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "repeat")]);
+		expect(pi.notices).toHaveLength(1);
+		expect(client.holdRequests).toEqual([]);
+		expect(client.acks).toEqual([1]);
 	});
 
-	it("holds at 59 seconds and releases at 60 with exact hold/release payloads", async () => {
-		const { pi, client } = await start();
-		pi.edit();
-		const since = Date.now();
-		await vi.advanceTimersByTimeAsync(59_000);
-		await client.push(message("boundary"));
-		expect(pi.injects).toEqual([]);
-		expect(client.holds).toEqual([
-			{
-				seat: "pij-grace-test",
-				job_id: 1,
-				msg_id: "boundary",
-				reason: "human-typing",
-				since_ms: since,
-			},
-		]);
-		expect(pi.statuses.at(-1)).toBe("⏸ 1 held · typing");
-		await vi.advanceTimersByTimeAsync(1_000);
-		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "boundary")]);
-		const releaseBody = {
-			seat: "pij-grace-test",
-			job_id: 1,
-			msg_id: "boundary",
-			at_ms: since + HOLD_CONTRACT.grace.default_ms,
-		};
-		expect(
-			client.releases.filter((row) => row.msg_id === "boundary"),
-			"exactly one delivery.released row per hold/release/ack cycle",
-		).toHaveLength(1);
-		expect(client.releases).toEqual([releaseBody]);
-		expect(client.operations).toEqual(["hold:boundary", "release:boundary", "ack:boundary"]);
-		expect(pi.statuses.at(-1)).toBeUndefined();
-	});
-
-	it("preserves claim order across two holds", async () => {
-		const { pi, client } = await start();
+	it("preserves claim order during sustained typing regardless of daemon grace", async () => {
+		const { pi, client } = await start(new GraceClient(75_000));
 		pi.edit();
 		await client.push(message("first"));
 		await vi.advanceTimersByTimeAsync(1_000);
+		pi.edit("still typing");
 		await client.push(message("second"));
-		expect(pi.injects).toEqual([]);
-		expect(pi.statuses.at(-1)).toBe("⏸ 2 held · typing");
-		await vi.advanceTimersByTimeAsync(59_000);
 		expect(pi.injects.map((row) => row.text)).toEqual([
 			frame("pij-sender", "first"),
 			frame("pij-sender", "second"),
 		]);
 		expect(client.acks).toEqual([1, 2]);
+		expect(client.holdRequests).toEqual([]);
 	});
 
-	it("bypasses compact, new, reload and urgent while ordinary rows stay held", async () => {
+	it("keeps commands and urgent delivery without a typing bypass", async () => {
 		const { pi, client } = await start();
 		pi.edit();
 		await client.push(message("ordinary"));
 		for (const command of ["compact", "new", "reload"])
 			await client.push(message(command, { command }));
 		await client.push(message("urgent", { urgent: true }));
-		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "urgent")]);
+		expect(pi.injects.map((row) => row.text)).toEqual([
+			frame("pij-sender", "ordinary"),
+			frame("pij-sender", "urgent"),
+		]);
 		expect(pi.compactCount).toBe(1);
 		expect(pi.controlCalls).toEqual(["new", "reload"]);
-		expect(client.acks).toEqual([2, 3, 4, 5]);
-		expect(client.holds).toHaveLength(1);
+		expect(client.acks).toEqual([1, 2, 3, 4, 5]);
+		expect(client.holdRequests).toEqual([]);
 	});
 
-	it("returns held claims to pending without acknowledging them", async () => {
-		const { pi, client } = await start();
-		pi.edit();
-		await client.push(message("unacked"));
-		expect(client.acks).toEqual([]);
-		expect(client.jobs[0]).toMatchObject({ claimed: false, acked: false, held: true });
-		await vi.advanceTimersByTimeAsync(59_000);
-		expect(client.acks).toEqual([]);
-	});
-
-	it("redelivers after restart and clears sender held evidence despite losing local notes", async () => {
-		const { runtime, pi, client } = await start();
-		pi.edit();
-		await client.push(message("first"));
-		await client.push(message("second"));
-		expect(client.acks).toEqual([]);
-		runtime.shutdown("quit");
-		await vi.advanceTimersByTimeAsync(HOLD_CONTRACT.grace.default_ms);
-		const restarted = await start(client);
-		await client.replay();
-		expect(restarted.pi.injects.map((row) => row.text)).toEqual([
-			frame("pij-sender", "first"),
-			frame("pij-sender", "second"),
-		]);
-		expect(client.acks).toEqual([1, 2]);
-		expect(
-			client.jobs.map((job) => job.held),
-			"sender held evidence must be cleared",
-		).toEqual([false, false]);
-		expect(client.operations.slice(-4)).toEqual([
-			"release:first",
-			"ack:first",
-			"release:second",
-			"ack:second",
-		]);
-		await vi.advanceTimersByTimeAsync(HOLD_CONTRACT.grace.default_ms);
-		expect(pi.injects).toEqual([]);
-	});
-
-	it("uses the daemon grace rather than the fallback", async () => {
-		const { pi, client } = await start(new GraceClient(75_000));
-		pi.edit();
-		await vi.advanceTimersByTimeAsync(65_000);
-		await client.push(message("wire-grace"));
-		expect(pi.injects).toEqual([]);
-		await vi.advanceTimersByTimeAsync(10_000);
-		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "wire-grace")]);
-	});
-
-	it("programmatic injection does not postpone a terminal-input grace", async () => {
-		const { pi, client } = await start();
-		pi.edit();
-		await client.push(message("ordinary"));
-		expect(pi.injects).toEqual([]);
-		await vi.advanceTimersByTimeAsync(59_000);
-		await client.push(message("urgent", { urgent: true }));
-		await vi.advanceTimersByTimeAsync(1_000);
-		expect(pi.injects.map((row) => row.text)).toEqual([
-			frame("pij-sender", "urgent"),
-			frame("pij-sender", "ordinary"),
-		]);
-		expect(client.acks).toEqual([2, 1]);
-	});
-
-	it("the real adapter observes terminal keys, not programmatic editor writes", async () => {
-		let onInput: ((data: string) => void) | undefined;
-		let editorText = "draft";
-		const ui = {
-			onTerminalInput(handler: (data: string) => void) {
-				onInput = handler;
-				return () => {
-					onInput = undefined;
-				};
-			},
-			setStatus: (_key: string, _text: string | undefined) => {},
-			// The real OMP surface (types.d.ts:163). Modelled rather than guarded:
-			// a production fallback for a missing notify would silently stop
-			// announcing arrivals on any runtime that lacks it.
-			notify: (_message: string, _type?: "info" | "warning" | "error") => {},
-			getEditorText: () => editorText,
-			setEditorText: (text: string) => {
-				editorText = text;
-			},
-		};
-		const { runtime, pi, client } = await start(
-			new GraceClient(),
-			(sink) =>
-				new PiRuntimeAdapter(
-					{
-						sendUserMessage: (text: string) => {
-							ui.setEditorText("");
-							sink.inject(text, "immediate");
-						},
-					},
-					{ isIdle: () => true, compact: () => {}, ui },
-				),
-		);
-		// Cursor movement no longer counts; this witness requires a text edit.
-		onInput?.("x");
-		ui.setEditorText("draftx"); // The focused editor runs after input listeners.
-		await Promise.resolve();
-		await client.push(message("terminal-held"));
-		expect(pi.injects).toEqual([]);
-		await vi.advanceTimersByTimeAsync(59_000);
-		await client.push(message("urgent", { urgent: true }));
-		ui.setEditorText("programmatic draft");
-		expect(editorText).toBe("programmatic draft");
-		await vi.advanceTimersByTimeAsync(1_000);
-		expect(pi.injects.map((row) => row.text)).toEqual([
-			frame("pij-sender", "urgent"),
-			frame("pij-sender", "terminal-held"),
-		]);
-		expect(client.acks).toEqual([2, 1]);
-		runtime.shutdown("quit");
-		expect(onInput).toBeUndefined();
-	});
-
-	it("re-holds a repeated push without another held event or duplicate delivery", async () => {
-		const { pi, client } = await start();
-		pi.edit();
-		await client.push(message("repeat"));
-		await vi.advanceTimersByTimeAsync(1_000);
-		pi.edit();
-		await client.repeat("repeat");
-		expect(client.holdRequests).toHaveLength(2);
-		expect(client.holds).toHaveLength(1);
-		expect(client.jobs[0]).toMatchObject({
-			claimed: false,
-			acked: false,
-			not_before: Date.now() + HOLD_CONTRACT.grace.default_ms,
+	it("recovers an older deferred row before newer eligible rows without another send", async () => {
+		const client = new GraceClient();
+		await client.push(message("older"), false);
+		await client.push(message("newer"), false);
+		for (const job of client.jobs) {
+			if (job.message.msg_id !== "older") continue;
+			job.held = true;
+			job.not_before = Date.now() + 60_000;
+		}
+		const { pi } = await start(client, (runtime) => {
+			runtime.edit("draft survives restart");
+			return runtime;
 		});
-		expect(pi.injects).toEqual([]);
-		await vi.advanceTimersByTimeAsync(HOLD_CONTRACT.grace.default_ms);
-		expect(client.acks).toEqual([1]);
-		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "repeat")]);
-	});
-
-	it("polls eligible claims while held and bypasses a deferred head without a pushed frame", async () => {
-		const { pi, client } = await start();
-		const peeksAtBoot = client.recoveryPeeks;
-		pi.edit();
-		await client.push(message("ordinary"));
-		await client.push(message("compact", { command: "compact" }), false);
-		await vi.advanceTimersByTimeAsync(1_000);
-		expect(pi.compactCount).toBe(1);
-		expect(client.acks).toEqual([2]);
-		expect(pi.injects).toEqual([]);
-		expect(client.holds).toHaveLength(1);
-		expect(client.recoveryPeeks).toBe(peeksAtBoot);
-	});
-
-	it("does not ack when the release declaration fails", async () => {
-		const { pi, client, runtime } = await start();
-		vi.spyOn(client, "release").mockRejectedValueOnce(new Error("release unavailable"));
-		await client.push(message("declare-first"));
-		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "declare-first")]);
-		expect(client.acks).toEqual([]);
-		expect(runtime.eventCount("daemon_event_ack_error")).toBe(1);
-	});
-
-	it("recovers oldest-first when the older held job is deferred later than the newer job", async () => {
-		const { runtime, pi, client } = await start();
-		const t0 = Date.now();
-		pi.edit();
-		await client.push(message("older"));
-		await vi.advanceTimersByTimeAsync(1_000);
-		pi.edit();
-		await client.push(message("newer"));
-		// At t0+60s the older row is re-offered while the human's t0+1s
-		// keystroke is still inside grace, extending only that row to t0+120s.
-		await vi.advanceTimersByTimeAsync(59_000);
-		expect(client.jobs.map((job) => job.not_before)).toEqual([
-			t0 + HOLD_CONTRACT.grace.default_ms * 2,
-			t0 + HOLD_CONTRACT.grace.default_ms + 1_000,
-		]);
-		runtime.shutdown("quit");
-		await vi.advanceTimersByTimeAsync(1_000);
-		const restarted = await start(client);
-		await client.replay();
-		await vi.advanceTimersByTimeAsync(59_000);
-		await client.replay();
-		expect(restarted.pi.injects).toHaveLength(2);
-		expect(restarted.pi.injects.map((row) => row.text)).toEqual([
+		expect(pi.injects.map((row) => row.text)).toEqual([
 			frame("pij-sender", "older"),
 			frame("pij-sender", "newer"),
 		]);
-		expect(client.acks).toEqual([1, 2]);
+		expect(pi.draft).toBe("draft survives restart");
+		expect(client.jobs.map((job) => job.held)).toEqual([false, false]);
+		expect(client.operations).toEqual(["release:older", "ack:older", "release:newer", "ack:newer"]);
+		expect(client.releases).toHaveLength(2);
+		await client.push(message("ordinary-after-recovery"));
+		expect(client.acks).toEqual([1, 2, 3]);
+		expect(client.releases).toHaveLength(2); // New arrivals never inherit startup migration.
 	});
 
-	it("re-holds the oldest recovery row during active grace and stops instead of spinning", async () => {
-		const { runtime, pi, client } = await start();
-		pi.edit();
-		await client.push(message("still-typing"));
-		await vi.advanceTimersByTimeAsync(1_000);
-		const peek = client.peekInbox.bind(client);
-		let recoveryPeeks = 0;
-		vi.spyOn(client, "peekInbox").mockImplementation(async () => {
-			expect(++recoveryPeeks, "recovery must stop on a re-held head").toBeLessThan(3);
-			return peek();
-		});
-		await runtime.boot({
-			folder: "/abs/tree",
-			dataDir: "",
-			eventsPath: "",
-			harness: "pi",
-			harnessSessionId: "native-grace",
-			piSessionId: "native-grace",
-			runtimeBin: "omp",
-			paneId: "%42",
-			resetRuntimeState: false,
-			reason: "reload",
-		});
-		expect(client.jobs[0]?.not_before).toBe(Date.now() + HOLD_CONTRACT.grace.default_ms);
-		expect(client.holdRequests).toHaveLength(2);
-		expect(recoveryPeeks).toBe(1);
-		expect(pi.injects.filter((row) => parseFrame(row.text) !== null)).toEqual([]);
-		await vi.advanceTimersByTimeAsync(58_000);
+	it("resumes startup semantic Hold after ready without a second send", async () => {
+		const client = new GraceClient();
+		client.semanticHold = true;
+		await client.push(message("semantic hold"), false);
+		const { pi } = await start(client);
+		expect(pi.injects).toEqual([]);
 		expect(client.acks).toEqual([]);
+		expect(client.releases).toHaveLength(1); // Startup-only un-deferral does not bypass semantic Hold.
+		client.semanticHold = false;
 		await vi.advanceTimersByTimeAsync(1_000);
+		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "semantic hold")]);
 		expect(client.acks).toEqual([1]);
-		// Recovery closed the original hold, then active grace opened a new
-		// hold cycle; each cycle must declare exactly once, not once per site.
-		expect(client.releases.filter((row) => row.msg_id === "still-typing")).toHaveLength(2);
+		expect(client.releases).toHaveLength(1); // The same startup head reuses its declaration.
+	});
+
+	it("resumes an initially held startup backlog in A B C order across deferred rows", async () => {
+		const client = new GraceClient();
+		client.semanticHold = true;
+		for (const id of ["A", "B", "C"]) await client.push(message(id), false);
+		for (const job of client.jobs) {
+			if (job.message.msg_id === "C") continue;
+			job.held = true;
+			job.not_before = Date.now() + 60_000;
+		}
+		const { pi } = await start(client);
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(client.releases).toHaveLength(1); // Held ticks must not redeclare the same head.
+		expect(pi.injects).toEqual([]);
+		client.semanticHold = false;
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(pi.injects.map((row) => row.text)).toEqual([
+			frame("pij-sender", "A"),
+			frame("pij-sender", "B"),
+			frame("pij-sender", "C"),
+		]);
+		expect(client.acks).toEqual([1, 2, 3]);
+		expect(client.releases).toHaveLength(3);
+		await client.push(message("ordinary-after-held-startup"));
+		expect(client.acks).toEqual([1, 2, 3, 4]);
+		expect(client.releases).toHaveLength(3);
+	});
+
+	it("resumes a pushed semantic Hold backlog after ready and then stops polling", async () => {
+		const { pi, client } = await start();
+		client.semanticHold = true;
+		pi.edit("unsubmitted draft");
+		await client.push(message("held-first"));
+		await client.push(message("held-second"));
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(pi.injects).toEqual([]);
+		expect(client.acks).toEqual([]);
+		client.semanticHold = false; // report ready updates the registry, not the live stream.
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(pi.injects.map((row) => row.text)).toEqual([
+			frame("pij-sender", "held-first"),
+			frame("pij-sender", "held-second"),
+		]);
+		expect(pi.draft).toBe("unsubmitted draft");
+		expect(client.acks).toEqual([1, 2]);
+		expect(client.releases).toEqual([]);
+		const claims = vi.spyOn(client, "claimInbox");
+		const peeks = vi.spyOn(client, "peekInbox");
+		await vi.advanceTimersByTimeAsync(3_000);
+		expect(claims).not.toHaveBeenCalled();
+		expect(peeks).not.toHaveBeenCalled();
+	});
+
+	it("does not poll an empty inbox", async () => {
+		const { client } = await start();
+		const claims = vi.spyOn(client, "claimInbox");
+		const peeks = vi.spyOn(client, "peekInbox");
+		await vi.advanceTimersByTimeAsync(3_000);
+		expect(claims).not.toHaveBeenCalled();
+		expect(peeks).not.toHaveBeenCalled();
+	});
+
+	it("cancels pending semantic recovery on shutdown", async () => {
+		const { runtime, pi, client } = await start();
+		client.semanticHold = true;
+		await client.push(message("held-at-shutdown"));
+		const claims = vi.spyOn(client, "claimInbox");
+		runtime.shutdown("quit");
+		client.semanticHold = false;
+		await vi.advanceTimersByTimeAsync(3_000);
+		expect(claims).not.toHaveBeenCalled();
+		expect(pi.injects).toEqual([]);
+		expect(client.acks).toEqual([]);
+	});
+
+	it("queues at most one pending-inbox retry and ignores its stale result", async () => {
+		const { runtime, pi, client } = await start();
+		client.semanticHold = true;
+		await client.push(message("slow-recovery"));
+		let resolveClaim!: (value: unknown) => void;
+		const response = new Promise<unknown>((resolve) => {
+			resolveClaim = resolve;
+		});
+		const claims = vi.spyOn(client, "claimInbox").mockReturnValueOnce(response);
+		const peeks = vi.spyOn(client, "peekInbox");
+		await vi.advanceTimersByTimeAsync(3_000);
+		expect(claims).toHaveBeenCalledTimes(1);
+		runtime.shutdown("quit");
+		resolveClaim([]);
+		await vi.advanceTimersByTimeAsync(3_000);
+		expect(claims).toHaveBeenCalledTimes(1);
+		expect(peeks).not.toHaveBeenCalled();
+		expect(pi.injects).toEqual([]);
+	});
+
+	it("does not carry an unseen count across a new lifecycle", async () => {
+		const { runtime, pi, client } = await start();
+		pi.setBusy(true);
+		await client.push(message("before restart"));
+		expect(pi.statuses.at(-1)).toBe("📨 1 pending");
+		runtime.shutdown("quit");
+		const restarted = await start(client);
+		restarted.pi.setBusy(true);
+		await client.push(message("after restart"));
+		expect(restarted.pi.statuses.at(-1)).toBe("📨 1 pending");
+	});
+
+	it("acknowledges ordinary claims without calling the release endpoint", async () => {
+		const { pi, client, runtime } = await start();
+		vi.spyOn(client, "release").mockRejectedValue(new Error("release must not be called"));
+		await client.push(message("no-spurious-release"));
+		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "no-spurious-release")]);
+		expect(client.acks).toEqual([1]);
+		expect(client.release).not.toHaveBeenCalled();
+		expect(runtime.eventCount("daemon_event_ack_error")).toBe(0);
 	});
 });

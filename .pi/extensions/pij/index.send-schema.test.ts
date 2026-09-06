@@ -40,6 +40,7 @@ function captureTools(): Map<string, Captured> {
 		registerCommand: () => {},
 		events: { on: () => {}, emit: () => {} },
 		sendUserMessage: () => {},
+		sendMessage: () => {},
 		setSessionName: async () => {},
 	} as unknown as ExtensionAPI;
 	activate(pi);

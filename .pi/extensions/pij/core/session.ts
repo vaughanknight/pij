@@ -576,7 +576,7 @@ export class PijSession {
 				return { kind: "command-executed", command: v.value };
 			}
 			// Not armed: queue it, and wake the peer. NB the wake lands in the peer's
-			// LLM (sendUserMessage), and an agent cannot run a slash command itself, so
+			// LLM, and an agent cannot run a slash command itself, so
 			// the message must ask it to RELAY to its human operator (D-042).
 			this.pendingControl.push(v.value);
 			this.ports.pi.inject(

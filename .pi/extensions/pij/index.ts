@@ -49,7 +49,7 @@ import type { Role, SessionDescriptor } from "./core/types.js";
 
 export default function (pi: ExtensionAPI): void {
 	// A pi process spawned as a subagent child (pi-subagents: `pi --mode json -p`)
-	// must NOT activate pij: the session_start announce is a sendUserMessage that
+	// must NOT activate pij: the session_start announce triggers a model turn that
 	// collides with the child's `-p` task prompt ("Agent is already processing"),
 	// and a throwaway child should never register as a peer. Skip ALL wiring.
 	if (isSubagentChild(process.env)) return;
@@ -361,7 +361,7 @@ export default function (pi: ExtensionAPI): void {
 			} else {
 				rustRuntime.setClient(generation.client);
 			}
-			rustRuntime.setPi(new PiRuntimeAdapter(pi, ctx, () => commandControl));
+			rustRuntime.setPi(new PiRuntimeAdapter(pi, ctx, runtimeBin, () => commandControl));
 			const boot = await rustRuntime.boot({
 				role,
 				folder,
@@ -449,7 +449,7 @@ export default function (pi: ExtensionAPI): void {
 			registry,
 			eventLog,
 			delivery: channel,
-			pi: new PiRuntimeAdapter(pi, ctx, () => commandControl),
+			pi: new PiRuntimeAdapter(pi, ctx, runtimeBin, () => commandControl),
 			process: new NodeProcess(),
 			tmux: new TmuxAdapter(),
 			watchdog: new FsWatchdogStore(pijHome),
@@ -504,7 +504,7 @@ export default function (pi: ExtensionAPI): void {
 		disposeWatch?.(); // reload: drop the prior watcher before opening a new one
 		// Delivery ownership (Plan 019, finding 01/06, AC-08): this in-process
 		// receiver watches ONLY its OWN inbox (`self`) and is the SOLE consumer of
-		// a pi session's inbox — `pi.sendUserMessage` is the one immovable seam. The
+		// a pi session's inbox — runtime message injection is the immovable seam. The
 		// daemon never injects into pi (it `observe`s pi inboxes for the TUI and
 		// consumes only tmux harnesses' inboxes), so there is no double-processing.
 		const receiver = legacySession;

@@ -1,0 +1,79 @@
+{
+  "receiver": "pij-prickly-emhyr",
+  "pane": "%3838",
+  "daemon": "127.0.0.1:17461",
+  "scratch": "/private/tmp/pij-claude-gate.IF1p3h",
+  "static_baseline": {
+    "samples": 146,
+    "duration_seconds": 90.344,
+    "capture_sha256": "578f27fce64c2ade2acfb1ee2203240ebe118ccfefb60d37f523b49122516f07",
+    "cursor": "43,36"
+  },
+  "baseline_redraw": {
+    "last_edit_before_ms": 1788688424215,
+    "false_edit_after_restore_ms": 1788688550823,
+    "draft_sha": "ac2ab069f9b5"
+  },
+  "fixed_redraw": {
+    "last_edit_ms": 1788688707323,
+    "redraw_at_ms": 1788688720433,
+    "capture_unchanged": true,
+    "draft_sha": "45de5cde2c13"
+  },
+  "deliveries": [
+    {
+      "case": "blank",
+      "msg_id": "b409968d-ea62-4fb0-bd17-cc1d939285c6",
+      "seqs": [
+        2,
+        3
+      ],
+      "delivered_at_ms": 1788688673458,
+      "path": "claude-uds",
+      "origin": "injected-to-transport"
+    },
+    {
+      "case": "static",
+      "msg_id": "53adbf6a-fd7f-43ef-8267-cc6f37aece0b",
+      "held_seqs": [
+        4,
+        7,
+        8,
+        9
+      ],
+      "released_seq": 10,
+      "delivered_seq": 11,
+      "last_edit_ms": 1788688707323,
+      "delivered_at_ms": 1788688772297,
+      "delay_ms": 64974,
+      "sweep_tolerance": "5s accepted by pij-minor-unicorn; changing sweep out of scope"
+    },
+    {
+      "case": "submit_then_idle",
+      "msg_id": "a9854ffc-dfd4-465d-bd87-f73a23cc090c",
+      "seqs": [
+        12,
+        13
+      ],
+      "delivered_at_ms": 1788688996534,
+      "origin": "injected-to-transport"
+    }
+  ],
+  "final_rebuilt_smoke": {
+    "msg_id": "d583b5e0-cb62-48e7-82da-33171c864b7f",
+    "receipt": {
+      "msg_id": "d583b5e0-cb62-48e7-82da-33171c864b7f",
+      "outcome": {
+        "outcome": "delivered",
+        "origin": "injected-to-transport"
+      },
+      "at": 1788689451773
+    },
+    "request_started_at_ms": 1788689451759,
+    "elapsed_ms": 200,
+    "seqs": [
+      14,
+      15
+    ]
+  }
+}

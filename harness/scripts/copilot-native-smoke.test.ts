@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	fixtureReply,
 	object,
@@ -1620,7 +1620,8 @@ describe("native lifecycle assertion boundaries, not live CLI proof", () => {
 	});
 });
 
-describe("AC6 unchanged-draft witness boundaries, not live CLI proof", () => {
+// 136/137: native typing no longer holds; semantic Hold, consent and native-target isolation still do.
+describe("AC6 delivery-while-typing witness boundaries, not live CLI proof", () => {
 	const seat = {
 		id: "pij-target",
 		session: "00000000-0000-4000-8000-000000000137",
@@ -1629,17 +1630,8 @@ describe("AC6 unchanged-draft witness boundaries, not live CLI proof", () => {
 		proc: { pid: 137, proc_start: 1370 },
 		native_extension_delivery: true,
 	};
-	const expected = { seat, draft: "HUMAN_DRAFT_137", nonce: "PIJ_HELD_137", msgId: "msg-137" };
+	const expected = { seat, draft: "HUMAN_DRAFT_137", nonce: "PIJ_TYPING_137", msgId: "msg-137" };
 	const composer = (draft: string) => `Transcript\n╻▄▄▄▄▄▄\n┃ ${draft}\n╹▀▀▀▀▀▀`;
-	const sensor = (retry: number, at = 100000) => ({
-		state: "observed",
-		native_consumer: { native_session: seat.session, ...seat.proc },
-		typing_grace_ms: 60000,
-		observed_at_ms: at,
-		retry_after_ms: retry,
-		semantic_hold: false,
-		source: "pane-observed-edit-recency",
-	});
 	const event = (seq: number, kind: string, payload: Record<string, unknown>) => ({
 		seq,
 		at: 100000 + seq,
@@ -1647,61 +1639,46 @@ describe("AC6 unchanged-draft witness boundaries, not live CLI proof", () => {
 		seat: seat.id,
 		payload: JSON.stringify({ seat: seat.id, msg_id: expected.msgId, ...payload }),
 	});
-	const heldEvent = event(1, "delivery.held", { reason: "human-typing", since_ms: 99000 });
-	const releasedEvent = event(2, "delivery.released", { at_ms: 159000 });
-	const ackEvent = {
-		seq: 3,
-		at: 159001,
-		kind: "delivery.inbox-ack",
-		seat: seat.id,
-		payload: JSON.stringify({
-			job_id: 137,
-			authenticated_machine: "local",
-			evidence_grade: "machine",
-			outcome: "reader-read",
-		}),
+	const ackEvent = event(1, "delivery.inbox-ack", {
+		job_id: 137,
+		authenticated_machine: "local",
+		evidence_grade: "machine",
+		outcome: "reader-read",
+	});
+	const payload = {
+		to: seat.id,
+		msg_id: expected.msgId,
+		body: expected.nonce,
+		native_target_session: seat.session,
 	};
-	const job = {
-		id: 137,
-		state: "pending",
-		payload: JSON.stringify({
-			to: seat.id,
-			msg_id: expected.msgId,
-			body: expected.nonce,
-			native_target_session: seat.session,
-		}),
-	};
+	const job = { id: 137, state: "done", payload: JSON.stringify(payload) };
 	const acceptedEvent = {
 		id: "native-event",
 		type: "user.message",
-		data: {
-			content: expected.nonce,
-			messageId: "native-message",
-		},
+		data: { content: expected.nonce, messageId: "native-message" },
 	};
 	const ack = { recipient: seat.id, msg_id: expected.msgId, origin: "reader-read" };
 	type Sample = Awaited<ReturnType<Parameters<typeof driveSmokeTypingWitness>[0]["observe"]>>;
 	const sample = (overrides: Partial<Sample> = {}): Sample => ({
-		sensor: sensor(59000),
 		jobs: [job],
-		acknowledgements: [],
-		nativeEvents: [],
-		deliveryEvents: [heldEvent],
+		acknowledgements: [ack],
+		nativeEvents: [acceptedEvent],
+		deliveryEvents: [ackEvent],
 		...overrides,
 	});
-	const samples = () => [
-		sample({ jobs: [], deliveryEvents: [] }),
-		sample(),
-		sample({ sensor: sensor(0, 159000), deliveryEvents: [heldEvent, releasedEvent] }),
-		sample({
-			sensor: sensor(0, 159001),
-			jobs: [{ ...job, state: "done" }],
-			nativeEvents: [acceptedEvent],
-			acknowledgements: [ack],
-			deliveryEvents: [heldEvent, releasedEvent, ackEvent],
-		}),
-	];
-	async function run(observations = samples(), changedDraft?: string) {
+	const initial = (): Sample => ({
+		jobs: [],
+		acknowledgements: [],
+		nativeEvents: [],
+		deliveryEvents: [],
+	});
+	const samples = () => [initial(), sample()];
+	async function run(
+		observations = samples(),
+		changedDraft?: string,
+		beforeObservation?: () => void,
+		timeout = 100,
+	) {
 		let draft = "";
 		let sends = 0;
 		const keys: string[][] = [];
@@ -1713,10 +1690,11 @@ describe("AC6 unchanged-draft witness boundaries, not live CLI proof", () => {
 						return `7\t2\t80\t24\n${composer(draft)}\n@ files · # issues\n`;
 					if (args[0] === "capture-pane") return composer(draft);
 					keys.push(args);
-					draft = args.at(-1) === "C-u" ? "" : String(args.at(-1));
+					draft = args.at(-1) === "BSpace" ? draft.slice(0, -1) : draft + String(args.at(-1));
 					return "";
 				},
 				async observe() {
+					beforeObservation?.();
 					const next = observations.shift();
 					if (!next) throw new Error("proof snapshots exhausted");
 					if (changedDraft !== undefined && observations.length === 0) draft = changedDraft;
@@ -1728,27 +1706,37 @@ describe("AC6 unchanged-draft witness boundaries, not live CLI proof", () => {
 				},
 			},
 			expected,
-			1,
+			timeout,
 			witness,
 		);
 		return { result, keys, witness, sends: () => sends };
 	}
-	it("observes hold then expiry/release and one acceptance without clearing the draft", async () => {
+	it("accepts native delivery while editing without a typing hold or clearing the draft", async () => {
 		const proof = await run();
 		await proof.result;
 		expect(proof.sends()).toBe(1);
-		expect(proof.keys).toEqual([["send-keys", "-t", seat.pane, "-l", "--", expected.draft]]);
+		expect(proof.keys).toEqual([
+			["send-keys", "-t", seat.pane, "-l", "--", expected.draft],
+			["send-keys", "-t", seat.pane, "-l", "--", "x"],
+			["send-keys", "-t", seat.pane, "BSpace"],
+		]);
 		expect(proof.witness).toMatchObject({
 			status: "passed",
 			draft: expected.draft,
+			draft_intact: true,
+			draft_submitted: false,
 			grade: "native-accepted-not-model-complete",
+			draft_before: composer(expected.draft),
 			after: composer(expected.draft),
 		});
+		expect(proof.witness.delivered_within_ms).toBeLessThanOrEqual(5000);
+		expect(proof.witness).not.toHaveProperty("held");
+		expect(proof.witness).not.toHaveProperty("expired");
 	});
-	it("retains paired cursor evidence on every successful typing observation", async () => {
+	it("retains paired cursor evidence without substituting a typing sensor", async () => {
 		const proof = await run();
 		await proof.result;
-		for (const field of ["typing_observed", "held", "expired", "accepted", "last_observation"]) {
+		for (const field of ["typing_observed", "accepted", "last_observation"]) {
 			expect(object(proof.witness[field]).pane_capture).toMatchObject({
 				pane: seat.pane,
 				cursor_x: 7,
@@ -1757,22 +1745,8 @@ describe("AC6 unchanged-draft witness boundaries, not live CLI proof", () => {
 				pane_height: 24,
 				terminal: `${composer(expected.draft)}\n@ files · # issues\n`,
 			});
+			expect(object(proof.witness[field])).not.toHaveProperty("sensor");
 		}
-	});
-	it("retains failed unavailable typing frame and real cursor without sending", async () => {
-		const observations = [sample({ sensor: { ...sensor(59000), state: "unavailable" } })];
-		const proof = await run(observations);
-		await expect(proof.result).rejects.toThrow("typing observation unavailable or unknown");
-		expect(proof.sends()).toBe(0);
-		expect(object(proof.witness.last_observation)).toMatchObject({
-			sensor: { state: "unavailable" },
-			pane_capture: {
-				pane: seat.pane,
-				cursor_x: 7,
-				cursor_y: 2,
-				terminal: `${composer(expected.draft)}\n@ files · # issues\n`,
-			},
-		});
 	});
 	it.each([
 		"",
@@ -1780,145 +1754,94 @@ describe("AC6 unchanged-draft witness boundaries, not live CLI proof", () => {
 		`${expected.draft}${expected.nonce}`,
 	])("rejects cleared or corrupted composer even after native acceptance: %s", async (draft) => {
 		const proof = await run(samples(), draft);
-		await expect(proof.result).rejects.toThrow(/PIJ_NATIVE_TYPING_PROOF/);
-		expect(proof.keys).toHaveLength(1);
+		await expect(proof.result).rejects.toThrow("same nonempty composer must remain intact");
+		expect(proof.keys).toHaveLength(3);
+	});
+	it("rejects submission of a draft even if the editor was restored", async () => {
+		const proof = await run([
+			initial(),
+			sample({
+				nativeEvents: [
+					acceptedEvent,
+					{
+						id: "submitted-draft",
+						type: "user.message",
+						data: { content: `${expected.draft}x` },
+					},
+				],
+			}),
+		]);
+		await expect(proof.result).rejects.toThrow("human draft must not be submitted");
+	});
+	it("rejects a human-typing hold instead of waiting for release", async () => {
+		const proof = await run([
+			initial(),
+			sample({ deliveryEvents: [ackEvent, event(2, "delivery.held", { reason: "human-typing" })] }),
+		]);
+		await expect(proof.result).rejects.toThrow("native delivery must not hold for human typing");
 	});
 	it.each([
-		{ state: "unavailable" },
-		{ state: "unknown" },
-		{ semantic_hold: true },
-		{ native_consumer: { native_session: "stale", ...seat.proc } },
-		{ native_consumer: { native_session: seat.session, pid: 138, proc_start: 1370 } },
-		{ native_consumer: { native_session: seat.session, pid: 137, proc_start: 1371 } },
-		{ typing_grace_ms: 0 },
-		{ retry_after_ms: -1 },
-		{ retry_after_ms: 60001 },
-		{ retry_after_ms: 0 },
-		{ source: "invented-native-api" },
-	])("rejects unavailable, stale, unheld or malformed initial sensor %j", async (changed) => {
-		const observations = samples();
-		observations[0] = sample({ sensor: { ...sensor(59000), ...changed } });
-		const proof = await run(observations);
-		await expect(proof.result).rejects.toThrow(/PIJ_NATIVE_TYPING_PROOF/);
+		{ nativeEvents: [acceptedEvent] },
+		{ acknowledgements: [ack] },
+		{ jobs: [job] },
+	])("rejects reused message identity before sending %j", async (changed) => {
+		const proof = await run([{ ...initial(), ...changed }]);
+		await expect(proof.result).rejects.toThrow("message identity must be unused before sending");
 		expect(proof.sends()).toBe(0);
 	});
 	it.each([
-		{ deliveryEvents: [] },
-		{ jobs: [] },
-		{ jobs: [{ ...job, state: "done" }] },
-		{ acknowledgements: [ack] },
-		{ nativeEvents: [acceptedEvent] },
-		{
-			deliveryEvents: [
-				event(1, "delivery.held", { msg_id: "wrong", reason: "human-typing", since_ms: 99000 }),
-			],
-		},
-		{ deliveryEvents: [event(1, "delivery.held", { reason: "semantic-hold", since_ms: 99000 })] },
-	])("rejects missing hold evidence, lost work or premature acceptance %j", async (changed) => {
-		const observations = samples();
-		observations[1] = sample(changed);
-		const proof = await run(observations);
-		await expect(proof.result).rejects.toThrow(/PIJ_NATIVE_(?:TYPING_PROOF|TIMEOUT)/);
-	});
-	it.each([
+		{ nativeEvents: [] },
+		{ nativeEvents: [{ ...acceptedEvent, type: "assistant.message" }] },
+		{ nativeEvents: [{ ...acceptedEvent, id: "" }] },
+		{ nativeEvents: [{ ...acceptedEvent, data: { content: expected.nonce, messageId: "" } }] },
 		{ nativeEvents: [acceptedEvent, { ...acceptedEvent, id: "duplicate-event" }] },
+		{ acknowledgements: [] },
 		{ acknowledgements: [ack, ack] },
 		{ acknowledgements: [{ ...ack, origin: "tmux" }] },
-		{ deliveryEvents: [heldEvent, releasedEvent] },
-		{ deliveryEvents: [heldEvent, releasedEvent, { ...ackEvent, seq: 1 }] },
-		{
-			deliveryEvents: [
-				heldEvent,
-				releasedEvent,
-				{ ...ackEvent, payload: JSON.stringify({ job_id: 138, outcome: "reader-read" }) },
-			],
-		},
-		{ deliveryEvents: [heldEvent, releasedEvent, ackEvent, { ...ackEvent, seq: 4 }] },
-		{ deliveryEvents: [heldEvent] },
-		{ deliveryEvents: [heldEvent, event(0, "delivery.released", { at_ms: 159000 })] },
-		{ deliveryEvents: [heldEvent, event(2, "delivery.released", { at_ms: 100001 })] },
-		{
-			deliveryEvents: [
-				heldEvent,
-				event(2, "delivery.released", { msg_id: "wrong", at_ms: 159000 }),
-			],
-		},
-	])("rejects duplicate acceptance or uncorrelated/premature release %j", async (changed) => {
-		const observations = samples();
-		observations[3] = { ...sample(), ...observations[3], ...changed };
-		const proof = await run(observations);
+		{ acknowledgements: [{ ...ack, recipient: "wrong-seat" }] },
+		{ acknowledgements: [{ ...ack, msg_id: "wrong-message" }] },
+		{ jobs: [] },
+		{ jobs: [{ ...job, state: "pending" }] },
+		{ jobs: [{ ...job, id: 0 }] },
+		{ deliveryEvents: [] },
+		{ deliveryEvents: [{ ...ackEvent, seat: "wrong-seat" }] },
+		{ deliveryEvents: [event(1, "delivery.inbox-ack", { job_id: 138, outcome: "reader-read" })] },
+		{ deliveryEvents: [event(1, "delivery.inbox-ack", { job_id: 137, outcome: "tmux" })] },
+		{ deliveryEvents: [ackEvent, { ...ackEvent, seq: 2 }] },
+	])("rejects missing, duplicate or uncorrelated native acceptance %j", async (changed) => {
+		const proof = await run([initial(), sample(changed)]);
 		await expect(proof.result).rejects.toThrow(/PIJ_NATIVE_(?:TYPING_PROOF|TIMEOUT)/);
 	});
-	it("rejects an early release hidden by an unrelated old hold timestamp", async () => {
-		const observations = samples().map((value) => ({
-			...value,
-			deliveryEvents: value.deliveryEvents.map((row) =>
-				row.kind === "delivery.held"
-					? event(1, "delivery.held", { reason: "human-typing", since_ms: 0 })
-					: row.kind === "delivery.released"
-						? event(2, "delivery.released", { at_ms: 100001 })
-						: row,
-			),
-		}));
-		const proof = await run(observations);
-		await expect(proof.result).rejects.toThrow(/PIJ_NATIVE_TYPING_PROOF/);
-	});
-	it("rechecks a positive sensor when later receipt reads cross the expiry boundary", async () => {
-		const observations = samples();
-		observations[2] = sample({
-			sensor: sensor(1, 158999),
-			nativeEvents: [acceptedEvent],
-			acknowledgements: [ack],
-			deliveryEvents: [heldEvent, releasedEvent, ackEvent],
-			jobs: [{ ...job, state: "done" }],
-		});
-		observations.push({ ...sample(), ...observations[3] });
-		const proof = await run(observations);
-		await proof.result;
-		expect(proof.witness).toMatchObject({ status: "passed" });
-		expect(proof.sends()).toBe(1);
-	});
-	it("rejects an early release even when a later release satisfies the deadline", async () => {
-		const observations = samples();
-		observations[3] = {
-			...sample(),
-			...observations[3],
-			deliveryEvents: [
-				heldEvent,
-				event(2, "delivery.released", { at_ms: 100001 }),
-				event(3, "delivery.released", { at_ms: 159000 }),
-				{ ...ackEvent, seq: 4 },
-			],
-		};
-		const proof = await run(observations);
-		await expect(proof.result).rejects.toThrow(/PIJ_NATIVE_TYPING_PROOF/);
-	});
-	it("uses a nondefault daemon grace rather than a second policy constant", async () => {
-		const observations = samples().map((value, index) => ({
-			...value,
-			sensor: {
-				...sensor(index < 2 ? 234 : 0, index < 2 ? 100000 : 100234 + index - 2),
-				typing_grace_ms: 1234,
-			},
-			deliveryEvents: value.deliveryEvents.map((row) =>
-				row.kind === "delivery.released" ? event(2, "delivery.released", { at_ms: 100234 }) : row,
-			),
-		}));
-		const proof = await run(observations);
-		await proof.result;
-		expect(proof.sends()).toBe(1);
-	});
 	it.each([
-		{ sensor: sensor(0, 100001) },
-		{ sensor: { ...sensor(0, 159000), typing_grace_ms: 60001 } },
-		{ sensor: { ...sensor(0, 159000), state: "unavailable" } },
-		{ sensor: sensor(1, 158999), nativeEvents: [acceptedEvent] },
-	])("rejects early expiry, changed grace, unavailable sensor or pre-expiry acceptance %j", async (changed) => {
-		const observations = samples();
-		observations[2] = sample(changed);
-		if ("nativeEvents" in changed) observations.splice(3, 0, sample(changed));
-		const proof = await run(observations);
-		await expect(proof.result).rejects.toThrow(/PIJ_NATIVE_TYPING_PROOF/);
+		"to",
+		"native_target_session",
+		"msg_id",
+		"body",
+	] as const)("rejects changed delivery job %s", async (field) => {
+		const proof = await run([
+			initial(),
+			sample({ jobs: [{ ...job, payload: JSON.stringify({ ...payload, [field]: "changed" }) }] }),
+		]);
+		await expect(proof.result).rejects.toThrow("job identity or native context changed");
+	});
+	it("rejects delivery beyond one sweep even with a longer smoke timeout", async () => {
+		let clock = 100000;
+		let count = 0;
+		const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+		try {
+			const proof = await run(
+				samples(),
+				undefined,
+				() => {
+					if (++count === 2) clock += 5001;
+				},
+				90000,
+			);
+			await expect(proof.result).rejects.toThrow("native delivery exceeded one sweep");
+			expect(proof.witness.delivered_within_ms).toBe(5001);
+		} finally {
+			now.mockRestore();
+		}
 	});
 });
 
