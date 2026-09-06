@@ -1381,7 +1381,7 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
         );
     }
 
-    // Clearing is still an edit, but only the receiver's hold owns the defer.
+    // A recognized blank releases typing protection; the receiver still owns release.
     tmux.arrange_clear_composer("%137");
     let clearing = native_http_response(
         client.get(typing_url(addr, &seat.id, &identity)),
@@ -1389,9 +1389,7 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
     )
     .await;
     assert_eq!(clearing["data"]["state"], "observed");
-    if grace > 0 {
-        assert!(clearing["data"]["retry_after_ms"].as_u64().unwrap() > 0);
-    }
+    assert_eq!(clearing["data"]["retry_after_ms"], 0);
     assert!(queue.claimed_delivery(job).await.unwrap().is_none());
 
     // Exercise the existing release declaration; sensor aging is proved separately.

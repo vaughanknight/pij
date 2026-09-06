@@ -948,6 +948,21 @@ fn unix_millis() -> u128 {
 
 #[cfg(test)]
 mod tests {
+    /// Exec of a script this test just wrote can fail with ETXTBSY on Linux when
+    /// a sibling test's forked child still holds the write fd between fork and
+    /// exec (CLOEXEC closes it only at exec). Seen on CI (PR #371). The window is
+    /// microseconds; retry briefly. Production never execs a file it just wrote.
+    fn retry_etxtbsy<T>(mut run: impl FnMut() -> std::io::Result<T>) -> T {
+        for _ in 0..100 {
+            match run() {
+                Err(error) if error.raw_os_error() == Some(26) => {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                other => return other.expect("run hook"),
+            }
+        }
+        panic!("run hook: ETXTBSY persisted");
+    }
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -1622,16 +1637,15 @@ mod tests {
                 .expect("project serialization")
         );
         let run = || {
-            let mut child = std::process::Command::new(&script)
-                .env("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()))
+            let mut hook = std::process::Command::new(&script);
+            hook.env("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()))
                 .env("HOME", root.path())
                 .env("TMUX_PANE", "%42")
                 .env("PIJ_SESSION_ID", "pij-other-seat")
                 .env("LEGACY_MARKER", &legacy_marker)
                 .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .spawn()
-                .expect("run statusline");
+                .stdout(Stdio::piped());
+            let mut child = retry_etxtbsy(|| hook.spawn());
             child
                 .stdin
                 .take()
@@ -1687,11 +1701,10 @@ mod tests {
             "owner execute bit"
         );
 
-        let output = std::process::Command::new(&script)
-            .env("PIJ_RS_STATE_DIR", &state_dir)
-            .env_remove("TMUX_PANE")
-            .output()
-            .expect("run hook");
+        let mut hook = std::process::Command::new(&script);
+        hook.env("PIJ_RS_STATE_DIR", &state_dir)
+            .env_remove("TMUX_PANE");
+        let output = retry_etxtbsy(|| hook.output());
 
         assert!(output.status.success());
         assert!(output.stdout.is_empty());
@@ -1726,12 +1739,11 @@ mod tests {
         fs::set_permissions(&path, permissions).expect("executable fake");
         let script = install_claude_session_start_script(&state_dir).expect("install script");
 
-        let output = std::process::Command::new(&script)
-            .env("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()))
+        let mut hook = std::process::Command::new(&script);
+        hook.env("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()))
             .env("PIJ_RS_STATE_DIR", &state_dir)
-            .env("TMUX_PANE", "%42")
-            .output()
-            .expect("run hook");
+            .env("TMUX_PANE", "%42");
+        let output = retry_etxtbsy(|| hook.output());
 
         assert!(output.status.success());
         assert_eq!(
@@ -1765,12 +1777,11 @@ mod tests {
         fs::set_permissions(&path, permissions).expect("executable fake");
         let script = install_claude_session_start_script(&state_dir).expect("install script");
 
-        let output = std::process::Command::new(&script)
-            .env("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()))
+        let mut hook = std::process::Command::new(&script);
+        hook.env("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()))
             .env("PIJ_RS_STATE_DIR", &state_dir)
-            .env("TMUX_PANE", "%42")
-            .output()
-            .expect("run hook");
+            .env("TMUX_PANE", "%42");
+        let output = retry_etxtbsy(|| hook.output());
 
         assert!(output.status.success());
         assert!(output.stdout.is_empty());

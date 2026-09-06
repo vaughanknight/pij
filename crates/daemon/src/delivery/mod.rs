@@ -645,6 +645,10 @@ impl DeliveryService {
         };
         let remaining = match observed.pane.as_deref() {
             Some(pane) => match self.interaction.fresh_injection_verdict(pane).await {
+                // Copilot native delivery cannot overwrite a recognized blank composer.
+                // Submission/clearing may be a recent edit, but there is no draft to protect.
+                // Semantic Hold and owner/pane revalidation still apply below.
+                Ok(verdict) if verdict.composer_idle => Some(0),
                 Ok(verdict) if verdict.reason == Some(DeliveryDeferralReason::HumanTyping) => {
                     verdict.next_retry_at.map(|remaining| {
                         // Never round a positive sub-millisecond veto down to quiet.
@@ -2707,6 +2711,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn native_typing_snapshot_captured_blank_releases_recent_edit_but_preserves_hold() {
+        let blank: Value = serde_json::from_str(include_str!(
+            "../../../harnesses/tests/fixtures/2026-09-05-copilot-v1.0.84-smoke03.json"
+        ))
+        .unwrap();
+        let draft: Value = serde_json::from_str(include_str!(
+            "../../../harnesses/tests/fixtures/2026-09-05-copilot-v1.0.84-live06-draft.json"
+        ))
+        .unwrap();
+        let draft_capture = &draft["follow_up"]["pane_capture"];
+        // The blank fixture's cursor is decoded from retained terminal output,
+        // not a paired live observation; this is offline policy replay only.
+        for (capture, cursor_x, cursor_y, is_blank) in [
+            (blank["terminal"].as_str().unwrap(), 2, 45, true),
+            (draft_capture["terminal"].as_str().unwrap(), 50, 45, false),
+        ] {
+            let fixture = fixture_with_gate(
+                FakeTransport::unreachable(),
+                FakeTmux::new()
+                    .with_pane(Pane {
+                        id: "%137".into(),
+                        session: "s".into(),
+                        window: "w".into(),
+                        title: "Copilot".into(),
+                        cursor_x: Some(cursor_x),
+                        cursor_y: Some(cursor_y),
+                    })
+                    .with_attached_tap("%137")
+                    .with_standing_capture(capture),
+            );
+            fixture
+                .interaction
+                .observe_composer("%137", "just submitted prompt");
+            for held in [false, true] {
+                let mut seat = native_seat(Some("%137"));
+                seat.semantic_state = held.then_some(SemanticState::Hold);
+                register(&fixture, seat.clone()).await;
+                let snapshot = fixture
+                    .service
+                    .native_typing_snapshot(&seat.id, &native_identity(), 60_000)
+                    .await
+                    .unwrap();
+                let super::NativeTypingObservation::Observed { retry_after_ms, .. } =
+                    snapshot.observation
+                else {
+                    panic!("captured composer must be recognized");
+                };
+                if is_blank {
+                    assert_eq!(
+                        retry_after_ms, 0,
+                        "submitted prompt must not delay a blank composer"
+                    );
+                } else {
+                    assert!(
+                        retry_after_ms > 0,
+                        "a recent nonblank draft retains typing protection"
+                    );
+                }
+                assert_eq!(snapshot.semantic_hold, held);
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn native_typing_snapshot_expires_static_draft_and_renews_only_on_edit() {
         let mut fixture = fixture_with_gate(
             FakeTransport::unreachable(),
@@ -2805,11 +2873,11 @@ mod tests {
             matches!(
                 edited.observation,
                 super::NativeTypingObservation::Observed {
-                    retry_after_ms: 1..=100,
+                    retry_after_ms: 0,
                     ..
                 }
             ),
-            "clearing a human draft is a newly observed edit"
+            "clearing a human draft releases native delivery immediately"
         );
         assert_eq!(
             fixture
