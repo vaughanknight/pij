@@ -14,7 +14,7 @@
 | ordinal | 138 |
 | status | draft |
 | complexity | — |
-| summary | — |
+| summary | Four rs gaps that all bite UI consumers (chainglass, plan 093 reader), measured live 2026-09-06: (1) the spine has three writers so seat.put/tombstone/report.* never fan out on /v1/events and a live cursor burns past them; (2) registry rows carry at=0 and seat.put an empty payload; (3) nothing can set a seat's role, so every card reads ROLE UNKNOWN; (4) no close verb and no reaper, ~716 idle corpses. Make the bus the only spine writer with stamped descriptor payloads; add a role writer/setter/join; add close + reap. |
 | backpressure | — |
 | log | — |
 | mode | — |
@@ -27,25 +27,35 @@
 
 ## Summary
 
-_Empty._
+Four rs gaps that all bite UI consumers (chainglass, plan 093 reader), measured live 2026-09-06: (1) the spine has three writers so seat.put/tombstone/report.* never fan out on /v1/events and a live cursor burns past them; (2) registry rows carry at=0 and seat.put an empty payload; (3) nothing can set a seat's role, so every card reads ROLE UNKNOWN; (4) no close verb and no reaper, ~716 idle corpses. Make the bus the only spine writer with stamped descriptor payloads; add a role writer/setter/join; add close + reap.
 
 <a id="goals"></a>
 
 ## Goals
 
-_No entries._
+- Every spine row is published through EventBus (store append then broadcast): seat.put, seat.tombstone, report.now, report.state reach a live /v1/events subscriber; no live cursor can advance past an unemitted row.
+- Descriptor events carry a real `at` and the descriptor as payload (seat.put) / reason (seat.tombstone).
+- A seat's role is settable (register/adopt --role; a role verb for existing seats), persisted (seat_roles), and joined onto /v1/seats.role and StateCard.role.
+- A supported teardown: `pij-rs close <id>` tombstones a seat the caller owns; a reaper tombstones rows whose proc{pid,proc_start} is provably dead and whose pane is gone, with a spine event naming the evidence.
 
 <a id="non-goals"></a>
 
 ## Non-goals
 
-_No entries._
+- No change to delivery semantics (136/137 hold rules) or to the /v1/events frame shape beyond additive fields; payload stays a JSON string.
+- No migration of the 1456 historical seat.put rows; consumers replay from now.
+- No role INFERENCE from names or window titles — role is asserted by the owner, not derived.
 
 <a id="acceptance-criteria"></a>
 
 ## Acceptance criteria
 
-_No entries._
+| id | claim | state | note | receipt | pressure | proven_by | text |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| AC1 | one spine writer | [ ] unchecked | — | — | — | — | Two live /v1/events subscribers (one with `since`, one live-only) both receive a `report now` frame and an `adopt` seat.put frame written while open; measured with chainglass's 4-command control (findings/live-push-recheck-2026-09-06.md). Grep: no `INSERT INTO spine_events` outside crates/store/src/spine.rs. |
+| AC2 | stamped descriptor events | [ ] unchecked | — | — | — | — | A fresh adopt's seat.put row has `at` within 1 s of wall clock and a payload that decodes to the SeatDescriptor; seat.tombstone has `at` and reason. Live sqlite proof on the production store after deploy. |
+| AC3 | role round-trip | [ ] unchecked | — | — | — | — | `pij-rs adopt %N --harness claude --role prime` then `/v1/seats` shows role=prime; `pij-rs role &lt;id&gt; reviewer` (or the chosen verb) updates it; StateCard.role follows; chainglass renders it without a banner. Ownership: only the seat itself or its parent may set it. |
+| AC4 | close + reap | [ ] unchecked | — | — | — | — | `pij-rs close &lt;id&gt;` on an owned seat writes seat.tombstone with at+reason and the row leaves /v1/seats; the reaper run on the production store tombstones corpses whose pid is dead or whose proc_start no longer matches, and refuses a recycled-pid live process (plan 095 evidence). Count before/after cited. |
 
 <a id="phases"></a>
 
@@ -53,6 +63,14 @@ _No entries._
 
 | id | title | brief | state | note | receipt | depends_on | tasks | objective | delivers | key_risks |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ph-99b8 | Spine: one writer, stamped descriptor events | — | [ ] unchecked | — | — | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
-| ph-2cc3 | Role: writer, setter verb, row join | — | [ ] unchecked | — | — | ph-99b8 | [tasks](assets/tasks/phase-2/tasks.dd.md#tasks) | — | — | — |
-| ph-1f72 | Lifecycle: close verb + reaper | — | [ ] unchecked | — | — | ph-2cc3 | [tasks](assets/tasks/phase-3/tasks.dd.md#tasks) | — | — | — |
+| ph-99b8 | Spine: one writer, stamped descriptor events | Route ReportService and Registry::put/tombstone through EventBus::publish (or make the bus the Spine impl every writer receives); stamp at; carry the descriptor payload. RED: chainglass's positive control fails on main. | [ ] unchecked | — | — | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | — | — | — |
+| ph-2cc3 | Role: writer, setter verb, row join | `--role` on register/adopt, a setter verb, seat_roles persisted and joined onto /v1/seats + StateCard; ownership check (self or parent). | [ ] unchecked | — | — |  | [tasks](assets/tasks/phase-2/tasks.dd.md#tasks) | — | — | — |
+| ph-1f72 | Lifecycle: close verb + reaper | `pij-rs close &lt;id&gt;` (owner-only tombstone) and a reaper over proc{pid,proc_start}+pane; never trusts pid alone (recycled-identifiers). | [ ] unchecked | — | — | ph-99b8 | [tasks](assets/tasks/phase-3/tasks.dd.md#tasks) | — | — | — |
+
+<a id="references"></a>
+
+## References
+
+| path | sha | mode |
+| --- | --- | --- |
+| ../archive/misc/prime-ledger-2026-09.md | sha256:f2c403d6bcc7003b648775164bd4abd94ef04dd94d5f43f91f27bd052e33ea0a | pinned |
