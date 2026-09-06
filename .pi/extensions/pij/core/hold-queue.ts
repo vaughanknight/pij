@@ -24,16 +24,16 @@ export class HoldQueue {
 		this.lastEditAt = at;
 	}
 
-	shouldHold(at: number): boolean {
-		return at - this.lastEditAt < this.graceMs;
+	shouldHold(at: number, draft: string): boolean {
+		return draft.trim().length > 0 && at - this.lastEditAt < this.graceMs;
 	}
 
 	push(row: HeldRow): void {
 		if (!this.rows.has(row.message.messageId)) this.rows.set(row.message.messageId, row);
 	}
 
-	drain(at: number): HeldRow[] {
-		if (this.shouldHold(at) || this.rows.size === 0) return [];
+	drain(at: number, draft: string): HeldRow[] {
+		if (this.shouldHold(at, draft) || this.rows.size === 0) return [];
 		const ready = [...this.rows.values()];
 		this.rows.clear();
 		return ready;

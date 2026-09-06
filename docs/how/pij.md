@@ -285,6 +285,14 @@ neither current nor old prime. See [pij prime](./pij-prime.md#registry-designati
   `{"from":"…","results":[…]}` with independent message ids, receipt/liveness
   metadata, or per-target errors. A later target is still attempted after a
   delivery-port failure.
+- **Pi/OMP draft protection.** Ordinary pushed messages wait only while the editor
+  contains a nonblank draft and edit-capable input occurred within the configured
+  typing grace (60 seconds by default). Mouse, focus, and navigation input do not
+  refresh that grace. An empty editor permits delivery immediately, including
+  after a spawn prompt was submitted; clearing a held draft releases messages on
+  the next one-second tick. An abandoned nonempty draft ages out normally.
+  Arrival still produces a toast; the recipient shows `⏸ N held · typing` while
+  held. A draft is sampled at delivery time, not cached from the last keystroke.
 - **Idle vs busy.** An idle peer receives the message immediately (triggers a turn);
   a busy/streaming peer receives it via *steer* after its current turn (never a
   mid-stream interrupt).

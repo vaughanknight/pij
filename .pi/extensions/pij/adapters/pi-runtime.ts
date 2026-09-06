@@ -15,6 +15,13 @@
 // ctx; here the contract shape is what matters (Phase-2 typecheck target).
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+	decodeKittyPrintable,
+	getKeybindings,
+	isKeyRelease,
+	matchesKey,
+	parseKey,
+} from "@earendil-works/pi-tui";
 import type { PiRuntimePort } from "../core/ports.js";
 
 /** The command-context-only session-control ops, captured from pi's
@@ -26,7 +33,10 @@ export interface CommandControl {
 }
 
 type RuntimeContext = Pick<ExtensionContext, "isIdle" | "compact"> & {
-	readonly ui: Pick<ExtensionContext["ui"], "onTerminalInput" | "setStatus" | "notify">;
+	readonly ui: Pick<
+		ExtensionContext["ui"],
+		"onTerminalInput" | "getEditorText" | "setStatus" | "notify"
+	>;
 };
 
 export class PiRuntimeAdapter implements PiRuntimePort {
@@ -43,11 +53,38 @@ export class PiRuntimeAdapter implements PiRuntimePort {
 		return this.ctx.isIdle();
 	}
 
-	/** Public pi/OMP UI hook. All terminal keys count, including cursor/menu
-	 * keys. inject/setEditorText never enter this path: no suppression timer. */
+	getEditorText(): string {
+		return this.ctx.ui.getEditorText();
+	}
+
+	/** Count edit-capable input, not activity. Clipboard/external-editor actions
+	 * can finish asynchronously, so a same-turn text comparison would miss them.
+	 * The hold decision independently samples the current draft. */
 	onEditorChange(cb: (at: number) => void): () => void {
-		return this.ctx.ui.onTerminalInput(() => {
-			cb(this.clock());
+		const editKeys = Object.entries(getKeybindings().getResolvedBindings()).flatMap(
+			([action, keys]) =>
+				/^(?:tui\.editor\.(?:delete|yank|undo)|tui\.input\.(?:newLine|submit|tab)$|app\.(?:clipboard\.paste|editor\.external$))/.test(
+					action,
+				)
+					? typeof keys === "string"
+						? [keys]
+						: (keys ?? [])
+					: [],
+		);
+		return this.ctx.ui.onTerminalInput((data) => {
+			if (isKeyRelease(data)) return undefined;
+			const key = parseKey(data);
+			// Pi's public decoder only accepts CSI-u; OMP also accepts modifyOtherKeys.
+			const legacy = data.startsWith("\u001b[27;") ? /^(\d+);(\d+)~$/.exec(data.slice(5)) : null;
+			const printable = decodeKittyPrintable(legacy ? `\u001b[${legacy[2]};${legacy[1]}u` : data);
+			if (
+				data.startsWith("\u001b[200~") ||
+				(!data.includes("\u001b") && /[^\p{Cc}]/u.test(data)) ||
+				(printable !== undefined && !/[\p{Cc}\p{Co}]/u.test(printable)) ||
+				/^(?:shift\+)?(?:.|space)$/u.test(key ?? "") ||
+				editKeys.some((binding) => matchesKey(data, binding))
+			)
+				cb(this.clock());
 			return undefined;
 		});
 	}
