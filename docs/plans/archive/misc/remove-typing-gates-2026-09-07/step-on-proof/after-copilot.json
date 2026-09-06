@@ -1,0 +1,630 @@
+{
+  "harness": "copilot",
+  "run": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-GAkyjv",
+  "source_root": "/Users/jordanknight/pi-hacking/pij-remove-typing-gates",
+  "source_commit": "a04124a600a9126d932f264856085a203ad16c3d",
+  "binary_sha256": "65f916ab73cd8748521263ebf508eeee13e4376414ed9e30b2e6873c78a53f0c",
+  "isolation": {
+    "state": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-GAkyjv/daemon",
+    "addr": "127.0.0.1:54987",
+    "socket": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-GAkyjv/tmux.sock",
+    "cwd": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-GAkyjv/workspace"
+  },
+  "started": "2026-09-06T22:44:42.777Z",
+  "socket_discovery_home": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-GAkyjv/home",
+  "install": [
+    "Copilot extension: linked; experimental enabled"
+  ],
+  "pane": "%1",
+  "seat": {
+    "id": "pij-scattered-feran",
+    "machine": "JordansacStudio.localdomain",
+    "harness": "copilot",
+    "session": "8dd15b4e-e3eb-4808-baf0-a830a8dcbcb3",
+    "pane": "%1",
+    "proc": {
+      "pid": 58747,
+      "proc_start": 20260907084443
+    },
+    "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-GAkyjv/workspace",
+    "state": "idle",
+    "semantic_state": null,
+    "role": null,
+    "parent": null,
+    "relay": false,
+    "native_extension_delivery": true,
+    "generation": "rs"
+  },
+  "before": {
+    "draft": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+    "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+    "viewport": "  Current   Sessions   Issues   Pull requests   Gists                                     \n\n╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮  \n│                                                                                                                                                                                │  \n│  ╭──╮╭╮                              │  Getting started                                                                                                                        │  \n│  ╰──╯╰╯  Copilot v1.0.84-1 uses AI.  │  Use the tabs above to explore your sessions and pull requests                                                                          │  \n│  ██ ▘▝▐  /experimental               │  /init — Initialize Copilot instructions for this repository                                                                            │  \n│    ▔▔▔                               │  /model — Switch models across providers, or use Auto                                                                                   │  \n│                                                                                                                                                                                │  \n╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯  \n\n ● Tip: /app                                 \n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app                    \n      https://github.com/features/ai/github-app                                           \n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄  \n  ❯ Reply exactly BOOT_bad66bc3-4786-4327-9bca-f4f756be87e6. Do not call tools. This is an isolated delivery probe.                                                        08:44    \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  \n ● BOOT_bad66bc3-4786-4327-9bca-f4f756be87e6 \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-GAkyjv/workspace                                                                       Session: 8.27 AIC used \n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃  UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly                                                                                                            \n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                                                 Claude Sonnet 5 \n",
+    "cursor": {
+      "x": 73,
+      "y": 47
+    },
+    "text": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly "
+  },
+  "send": {
+    "msg_id": "a3dc575a-3ae9-4c67-8187-feb415509bbb",
+    "outcome": {
+      "outcome": "queued",
+      "reason": "extension-stream",
+      "next_retry_at": 0
+    },
+    "at": 1788734697535
+  },
+  "model_replies": [
+    "BOOT_bad66bc3-4786-4327-9bca-f4f756be87e6",
+    "MESSAGE_53aa0826-422e-4b97-906e-e0386ce02ab0"
+  ],
+  "spine": [
+    {
+      "seq": 4,
+      "at": 0,
+      "kind": "seat.put",
+      "seat": "pij-scattered-feran",
+      "payload": ""
+    },
+    {
+      "seq": 5,
+      "at": 0,
+      "kind": "seat.put",
+      "seat": "pij-scattered-feran",
+      "payload": ""
+    },
+    {
+      "seq": 6,
+      "at": 1788734697535,
+      "kind": "message.pushed",
+      "seat": "pij-scattered-feran",
+      "payload": "{\"msg_id\":\"a3dc575a-3ae9-4c67-8187-feb415509bbb\",\"from\":\"pij-step-on-probe\",\"body\":\"Reply exactly MESSAGE_53aa0826-422e-4b97-906e-e0386ce02ab0. Do not call tools.\"}"
+    },
+    {
+      "seq": 7,
+      "at": 1788734697535,
+      "kind": "delivery.outcome",
+      "seat": "pij-scattered-feran",
+      "payload": "{\"msg_id\":\"a3dc575a-3ae9-4c67-8187-feb415509bbb\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 8,
+      "at": 1788734698176,
+      "kind": "delivery.outcome",
+      "seat": "pij-scattered-feran",
+      "payload": "{\"msg_id\":\"a3dc575a-3ae9-4c67-8187-feb415509bbb\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    },
+    {
+      "seq": 9,
+      "at": 1788734698177,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-scattered-feran",
+      "payload": "{\"job_id\":1,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    }
+  ],
+  "jobs": [
+    {
+      "id": 1,
+      "state": "done",
+      "payload": "{\"from\":\"pij-step-on-probe\",\"to\":\"pij-scattered-feran\",\"body\":\"Reply exactly MESSAGE_53aa0826-422e-4b97-906e-e0386ce02ab0. Do not call tools.\",\"msg_id\":\"a3dc575a-3ae9-4c67-8187-feb415509bbb\",\"native_target_session\":\"8dd15b4e-e3eb-4808-baf0-a830a8dcbcb3\"}"
+    }
+  ],
+  "samples": [
+    {
+      "elapsed_ms": 33,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 276,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 503,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 840,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1056,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1309,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1518,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1751,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1994,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2219,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2427,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2680,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3290,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3513,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3895,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4162,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4377,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4597,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4942,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5248,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5480,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5688,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5910,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6135,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6349,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6558,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6768,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6978,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7189,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7447,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7658,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7868,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8108,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8337,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8632,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8917,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9142,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9352,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9561,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9769,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9992,
+      "composer": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 47
+      },
+      "sha256": "5b2c89a15e449cc2d5479ea1491651f7383cab43e6e076fd4bea0c2b74e5485f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    }
+  ],
+  "after": {
+    "viewport": "  Current   Sessions   Issues   Pull requests   Gists                                     \n\n╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮  \n│                                                                                                                                                                                │  \n│  ╭─╮╭─╮                              │  Getting started                                                                                                                        │  \n│  ╰─╯╰─╯  Copilot v1.0.84-1 uses AI.  │  Use the tabs above to explore your sessions and pull requests                                                                          │  \n│  █ ▘▝ █  /experimental               │  /init — Initialize Copilot instructions for this repository                                                                            │  \n│   ▔▔▔▔                               │  /model — Switch models across providers, or use Auto                                                                                   │  \n│                                                                                                                                                                                │  \n╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯  \n\n ● Tip: /app                                 \n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app                    \n      https://github.com/features/ai/github-app                                           \n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄  \n  ❯ Reply exactly BOOT_bad66bc3-4786-4327-9bca-f4f756be87e6. Do not call tools. This is an isolated delivery probe.                                                        08:44    \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  \n ● BOOT_bad66bc3-4786-4327-9bca-f4f756be87e6 \n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄  \n  ❯ [pij from \"pij-step-on-probe\"; msg_id=\"a3dc575a-3ae9-4c67-8187-feb415509bbb\"]                                                                                          08:44    \n    Reply exactly MESSAGE_53aa0826-422e-4b97-906e-e0386ce02ab0. Do not call tools.                                                                                                  \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  \n ● MESSAGE_53aa0826-422e-4b97-906e-e0386ce02ab0                                           \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-GAkyjv/workspace                                                                          Session: 9 AIC used \n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃  UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly                                                                                                            \n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                                                 Claude Sonnet 5 \n",
+    "cursor": {
+      "x": 73,
+      "y": 47
+    },
+    "text": " UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly "
+  },
+  "transcripts": [
+    "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-GAkyjv/home/.copilot/session-state/8dd15b4e-e3eb-4808-baf0-a830a8dcbcb3/events.jsonl"
+  ],
+  "delivery_timing_basis": "native transcript context acceptance; model reply independently required",
+  "verdict": {
+    "harness": "copilot",
+    "transport_rung": "native",
+    "draft_intact": true,
+    "message_reached_model": true,
+    "draft_submitted": false,
+    "delivered_within_ms": 840
+  },
+  "final_panes": "%0 sleep\n%1 node\n",
+  "final_viewport": "  Current   Sessions   Issues   Pull requests   Gists\n\n╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│                                                                                                                                                                                │\n│  ╭─╮╭─╮                              │  Getting started                                                                                                                        │\n│  ╰─╯╰─╯  Copilot v1.0.84-1 uses AI.  │  Use the tabs above to explore your sessions and pull requests                                                                          │\n│  █ ▘▝ █  /experimental               │  /init — Initialize Copilot instructions for this repository                                                                            │\n│   ▔▔▔▔                               │  /model — Switch models across providers, or use Auto                                                                                   │\n│                                                                                                                                                                                │\n╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n ● Tip: /app\n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app\n      https://github.com/features/ai/github-app \n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ Reply exactly BOOT_bad66bc3-4786-4327-9bca-f4f756be87e6. Do not call tools. This is an isolated delivery probe.                                                        08:44\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● BOOT_bad66bc3-4786-4327-9bca-f4f756be87e6\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ [pij from \"pij-step-on-probe\"; msg_id=\"a3dc575a-3ae9-4c67-8187-feb415509bbb\"]                                                                                          08:44\n    Reply exactly MESSAGE_53aa0826-422e-4b97-906e-e0386ce02ab0. Do not call tools.\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● MESSAGE_53aa0826-422e-4b97-906e-e0386ce02ab0\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-GAkyjv/workspace                                                                          Session: 9 AIC used\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃  UNSUBMITTED_cedbb6e6-c859-444a-9ecb-61cb2eba4d8d_keep spaces  exactly\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                                                 Claude Sonnet 5\n",
+  "daemon_log": "pij-rs claude inbound: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-GAkyjv/home/.claude=touched\npij-rs claude hook: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-GAkyjv/home/.claude=touched\npij-rs claude statusline: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-GAkyjv/home/.claude=touched\npij-rs daemon: listening on 127.0.0.1:54987 · key /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-GAkyjv/daemon/daemon.key (0600) · offline=false\n",
+  "exit_code": 0
+}

@@ -1,0 +1,554 @@
+{
+  "harness": "claude",
+  "run": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-JBg0dE",
+  "source_root": "/Users/jordanknight/pi-hacking/pij-remove-typing-gates",
+  "source_commit": "a04124a600a9126d932f264856085a203ad16c3d",
+  "binary_sha256": "65f916ab73cd8748521263ebf508eeee13e4376414ed9e30b2e6873c78a53f0c",
+  "isolation": {
+    "state": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-JBg0dE/daemon",
+    "addr": "127.0.0.1:54990",
+    "socket": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-JBg0dE/tmux.sock",
+    "cwd": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-JBg0dE/workspace"
+  },
+  "started": "2026-09-06T22:44:42.778Z",
+  "socket_discovery_home": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-JBg0dE/home",
+  "pane": "%1",
+  "workspace_trust": "accepted-owned-scratch-only",
+  "seat": {
+    "id": "pij-registered-bedbug",
+    "machine": "JordansacStudio.localdomain",
+    "harness": "claude",
+    "session": "a6ce2cb6-3083-4849-bd8a-bd6fa852dad4",
+    "pane": "%1",
+    "proc": {
+      "pid": 58571,
+      "proc_start": 20260907084443
+    },
+    "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-JBg0dE/workspace",
+    "state": "idle",
+    "semantic_state": null,
+    "role": null,
+    "parent": null,
+    "relay": false,
+    "cross_session_inbound_accept": true,
+    "native_extension_delivery": false,
+    "generation": "rs"
+  },
+  "before": {
+    "draft": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+    "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+    "viewport": " ▐▛███▛█   Claude Code v2.1.263              \n▝▜██████▀  Opus 5 (1M context) · Claude Max  \n  ▝▝ ▝▝    /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-JBg0dE/workspace                                                                                    \n\n\n❯ Reply exactly BOOT_bb855e9c-5e17-4580-b1b9-34ee0fffc534. Do not call tools. This is an isolated delivery probe.                                                                   \n\n⏺ BOOT_bb855e9c-5e17-4580-b1b9-34ee0fffc534                                                                                                                                         \n                                                                                                                                                                                    \n✻ Baked for 1s · done 8:44 am                                                                                                                                                       \n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly                                                                                                            \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ auto mode on (shift+tab to cycle)                                                                                                                            ● high · /effort  \n                                                                                                                                                                               /rc  \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor": {
+      "x": 73,
+      "y": 12
+    },
+    "text": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly "
+  },
+  "send": {
+    "msg_id": "ea87d387-4743-4675-88b4-4612d390ce23",
+    "outcome": {
+      "outcome": "delivered",
+      "origin": "injected-to-transport"
+    },
+    "at": 1788734689582
+  },
+  "model_replies": [
+    "BOOT_bb855e9c-5e17-4580-b1b9-34ee0fffc534",
+    "",
+    "MESSAGE_556f83fb-f267-4703-b3bf-6d07cc1c0b87"
+  ],
+  "spine": [
+    {
+      "seq": 4,
+      "at": 0,
+      "kind": "seat.put",
+      "seat": "pij-registered-bedbug",
+      "payload": ""
+    },
+    {
+      "seq": 5,
+      "at": 1788734689582,
+      "kind": "message.pushed",
+      "seat": "pij-registered-bedbug",
+      "payload": "{\"msg_id\":\"ea87d387-4743-4675-88b4-4612d390ce23\",\"from\":\"pij-step-on-probe\",\"body\":\"Reply exactly MESSAGE_556f83fb-f267-4703-b3bf-6d07cc1c0b87. Do not call tools.\"}"
+    },
+    {
+      "seq": 6,
+      "at": 1788734689582,
+      "kind": "delivery.outcome",
+      "seat": "pij-registered-bedbug",
+      "payload": "{\"msg_id\":\"ea87d387-4743-4675-88b4-4612d390ce23\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"injected-to-transport\"},\"transport\":\"claude-uds\"}"
+    }
+  ],
+  "jobs": [],
+  "samples": [
+    {
+      "elapsed_ms": 401,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 17
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 628,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 17
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 901,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 17
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1117,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 17
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1346,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 17
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1557,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 17
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1767,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 17
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2178,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2398,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2639,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2850,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3206,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3459,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3678,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3910,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4410,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4645,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4867,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5074,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5632,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5840,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6126,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6365,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6590,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6827,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7066,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7274,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7577,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7948,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8227,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8512,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8893,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9102,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9324,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9531,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9751,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9959,
+      "composer": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 18
+      },
+      "sha256": "a1ef7e03156e53abe8337b81cd54ecd7443c26777a5d5078b76a87df279c6aef",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    }
+  ],
+  "after": {
+    "viewport": " ▐▛███▛█   Claude Code v2.1.263              \n▝▜██████▀  Opus 5 (1M context) · Claude Max  \n  ▝▝ ▝▝    /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-JBg0dE/workspace                                                                                    \n\n\n❯ Reply exactly BOOT_bb855e9c-5e17-4580-b1b9-34ee0fffc534. Do not call tools. This is an isolated delivery probe.                                                                   \n\n⏺ BOOT_bb855e9c-5e17-4580-b1b9-34ee0fffc534                                                                                                                                         \n                                                                                                                                                                                    \n✻ Baked for 1s · done 8:44 am                                                                                                                                                       \n\n› Message from @pij-step-on-probe: [pij-rs from pij-step-on-probe] (ctrl+o to expand)                                                                                               \n\n⏺ MESSAGE_556f83fb-f267-4703-b3bf-6d07cc1c0b87                                            \n\n✻ Brewed for 1s · done 8:44 am               \n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly                                                                                                            \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ auto mode on (shift+tab to cycle)                                        tmux focus-events off · add 'set -g focus-events on' to ~/.tmux.conf and reattach for focus tracking  \n                                                                                                                                                                               /rc  \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "cursor": {
+      "x": 73,
+      "y": 18
+    },
+    "text": " UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly "
+  },
+  "transcripts": [
+    "/Users/jordanknight/.claude/projects/-private-var-folders-mv-9mcvlzg504b158ctlswmgwph0000gn-T-pij-step-on-JBg0dE-workspace/a6ce2cb6-3083-4849-bd8a-bd6fa852dad4.jsonl"
+  ],
+  "delivery_timing_basis": "native transcript context acceptance; model reply independently required",
+  "verdict": {
+    "harness": "claude",
+    "transport_rung": "socket",
+    "draft_intact": true,
+    "message_reached_model": true,
+    "draft_submitted": false,
+    "delivered_within_ms": 401
+  },
+  "final_panes": "%0 sleep\n%1 2.1.263\n",
+  "final_viewport": " ▐▛███▛█   Claude Code v2.1.263\n▝▜██████▀  Opus 5 (1M context) · Claude Max\n  ▝▝ ▝▝    /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-JBg0dE/workspace\n\n\n❯ Reply exactly BOOT_bb855e9c-5e17-4580-b1b9-34ee0fffc534. Do not call tools. This is an isolated delivery probe.\n\n⏺ BOOT_bb855e9c-5e17-4580-b1b9-34ee0fffc534\n\n✻ Baked for 1s · done 8:44 am\n\n› Message from @pij-step-on-probe: [pij-rs from pij-step-on-probe] (ctrl+o to expand)\n\n⏺ MESSAGE_556f83fb-f267-4703-b3bf-6d07cc1c0b87\n\n✻ Brewed for 1s · done 8:44 am\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  UNSUBMITTED_5929c18d-aa19-4266-8bdb-354c7bdd5eb1_keep spaces  exactly\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ auto mode on (shift+tab to cycle)                                        tmux focus-events off · add 'set -g focus-events on' to ~/.tmux.conf and reattach for focus tracking\n                                                                                                                                                                               /rc\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+  "daemon_log": "pij-rs claude inbound: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-JBg0dE/home/.claude=touched\npij-rs claude hook: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-JBg0dE/home/.claude=touched\npij-rs claude statusline: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-JBg0dE/home/.claude=touched\npij-rs daemon: listening on 127.0.0.1:54990 · key /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-JBg0dE/daemon/daemon.key (0600) · offline=false\n",
+  "exit_code": 0
+}
