@@ -285,14 +285,16 @@ neither current nor old prime. See [pij prime](./pij-prime.md#registry-designati
   `{"from":"…","results":[…]}` with independent message ids, receipt/liveness
   metadata, or per-target errors. A later target is still attempted after a
   delivery-port failure.
-- **Pi/OMP draft protection.** Ordinary pushed messages wait only while the editor
-  contains a nonblank draft and edit-capable input occurred within the configured
-  typing grace (60 seconds by default). Mouse, focus, and navigation input do not
-  refresh that grace. An empty editor permits delivery immediately, including
-  after a spawn prompt was submitted; clearing a held draft releases messages on
-  the next one-second tick. An abandoned nonempty draft ages out normally.
-  Arrival still produces a toast; the recipient shows `⏸ N held · typing` while
-  held. A draft is sampled at delivery time, not cached from the last keystroke.
+- **Pi/OMP draft protection.** Extension-stream messages reach the model while a
+  human is typing, without clearing or submitting the draft. Arrival still produces
+  a toast and busy recipients retain `📨 N pending`; there is no typing-held status.
+  Semantic `Hold` still applies, and send-keys-only delivery keeps its typing gate.
+  OMP uses the public `sendMessage` API (`customType: "pij"`, `display: true`,
+  `triggerTurn: true`, `deliverAs: "steer"`) instead of `sendUserMessage`, whose
+  incoming-user UI event clears the composer. The `[pij-rs from <id>] … [/pij]`
+  envelope is unchanged, but OMP supplies it to the model as **developer** context
+  rather than a user message. Pi retains its existing **user**-message API and role.
+  This is an explicit semantic choice, not an editor snapshot/restore workaround.
 - **Idle vs busy.** An idle peer receives the message immediately (triggers a turn);
   a busy/streaming peer receives it via *steer* after its current turn (never a
   mid-stream interrupt).

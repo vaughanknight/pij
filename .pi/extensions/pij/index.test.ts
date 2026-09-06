@@ -28,13 +28,13 @@ import pijExtension from "./index.js";
 // ---------------------------------------------------------------------------
 
 /** Minimal fake ExtensionAPI — captures only what index.ts needs at wiring
- *  time + what session_start triggers (sendUserMessage for the boot announce). */
+ *  time + the runtime-specific message API used for the boot announce. */
 function makeFakePi(
-	onSendUserMessage: (message: string) => void = () => {},
+	onSendMessage: (message: string) => void = () => {},
 	sessionNameTakesAfter = 1,
 ) {
 	const handlers = new Map<string, (...args: unknown[]) => unknown>();
-	const sentUserMessages: string[] = [];
+	const sentMessages: string[] = [];
 	const sessionNames: string[] = [];
 	let currentSessionName: string | undefined;
 	const pi = {
@@ -45,8 +45,12 @@ function makeFakePi(
 		registerCommand: () => {},
 		events: { on: () => {}, emit: () => {} },
 		sendUserMessage: (message: string) => {
-			sentUserMessages.push(message);
-			onSendUserMessage(message);
+			sentMessages.push(message);
+			onSendMessage(message);
+		},
+		sendMessage: (message: { content: string }) => {
+			sentMessages.push(message.content);
+			onSendMessage(message.content);
 		},
 		setSessionName: async (name: string) => {
 			sessionNames.push(name);
@@ -54,26 +58,19 @@ function makeFakePi(
 		},
 		getSessionName: () => currentSessionName,
 	} as unknown as ExtensionAPI;
-	return { pi, handlers, sentUserMessages, sessionNames };
+	return { pi, handlers, sentMessages, sessionNames };
 }
 
 /** Minimal fake ExtensionContext — captures setStatus calls. */
 function makeFakeCtx(initialSessionId: string | undefined = "test-session-statusbar-018") {
 	const statuses: Array<{ key: string; value: string | undefined }> = [];
 	const notices: string[] = [];
-	const terminalInputHandlers = new Set<Parameters<ExtensionContext["ui"]["onTerminalInput"]>[0]>();
 	let sessionId = initialSessionId;
 	const ctx = {
 		sessionManager: { getSessionId: () => sessionId },
 		isIdle: () => true,
 		compact: () => {},
 		ui: {
-			onTerminalInput: (handler: Parameters<ExtensionContext["ui"]["onTerminalInput"]>[0]) => {
-				terminalInputHandlers.add(handler);
-				return () => {
-					terminalInputHandlers.delete(handler);
-				};
-			},
 			setStatus: (key: string, value: string | undefined) => statuses.push({ key, value }),
 			notify: (message: string) => notices.push(message),
 		},
@@ -103,7 +100,7 @@ function rustEnvelope(command: string, data: unknown): Response {
 function fakeRustGeneration(): daemonHttp.DaemonGeneration {
 	const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 		const path = new URL(String(url)).pathname;
-		if (path === "/v1/inbox" && new URL(String(url)).searchParams.get("peek") === "true") {
+		if (path === "/v1/inbox") {
 			return rustEnvelope("pij inbox", []);
 		}
 		if (path === "/v1/seats") {
@@ -499,7 +496,7 @@ describe("pij index — footer status bar", () => {
 		const marker = inboxPath(pijHome, id, `read-${delivered.value.messageId}.json`);
 		const message = inboxPath(pijHome, id, `msg-${delivered.value.messageId}.json`);
 		const markerStateDuringInbound: boolean[] = [];
-		const { pi, handlers, sentUserMessages } = makeFakePi((text) => {
+		const { pi, handlers, sentMessages } = makeFakePi((text) => {
 			if (text.includes("post-outcome message")) {
 				markerStateDuringInbound.push(existsSync(marker));
 			}
@@ -513,14 +510,10 @@ describe("pij index — footer status bar", () => {
 		expect(existsSync(message)).toBe(true);
 		expect(existsSync(marker)).toBe(true);
 		expect(channel.listUnread(id)).toEqual({ ok: true, value: [] });
-		expect(sentUserMessages.filter((text) => text.includes("post-outcome message"))).toHaveLength(
-			1,
-		);
+		expect(sentMessages.filter((text) => text.includes("post-outcome message"))).toHaveLength(1);
 
 		await handlers.get("session_start")?.({ type: "session_start", reason: "reload" }, ctx);
-		expect(sentUserMessages.filter((text) => text.includes("post-outcome message"))).toHaveLength(
-			1,
-		);
+		expect(sentMessages.filter((text) => text.includes("post-outcome message"))).toHaveLength(1);
 		await handlers.get("session_shutdown")?.({}, ctx);
 	});
 
@@ -537,13 +530,13 @@ describe("pij index — footer status bar", () => {
 		});
 		if (!delivered.ok) throw new Error(delivered.message);
 		const marker = inboxPath(pijHome, id, `read-${delivered.value.messageId}.json`);
-		const { pi, handlers, sentUserMessages } = makeFakePi();
+		const { pi, handlers, sentMessages } = makeFakePi();
 		const { ctx } = makeFakeCtx(nativeSessionId);
 		pijExtension(pi);
 
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 
-		expect(sentUserMessages.some((text) => text.includes(body))).toBe(false);
+		expect(sentMessages.some((text) => text.includes(body))).toBe(false);
 		expect(existsSync(marker)).toBe(true);
 		expect(new FsEventLog(pijHome, id).read({ type: "receipt" })).toHaveLength(1);
 		expect(
