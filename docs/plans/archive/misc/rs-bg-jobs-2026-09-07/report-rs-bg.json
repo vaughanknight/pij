@@ -1,0 +1,184 @@
+{
+  "commit": "a634c4fda2ae9b0aaee75584fce90312908348d6",
+  "branch": "rs-bg-jobs",
+  "worktree": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs",
+  "migration": {
+    "number": "0017_background_jobs",
+    "why": "Main was at 0013 on inspection; plan 139 owns 0014/0015 and reserves 0016 (prime ruling). No governance files or allowlist changes."
+  },
+  "delivery": {
+    "files": 32,
+    "routes": [
+      "POST /v1/bg",
+      "GET /v1/bg",
+      "GET /v1/bg/{job}/tail",
+      "POST /v1/bg/{job}/kill"
+    ],
+    "wire_types": "pij_core::background::{BackgroundJob,BackgroundState}",
+    "store": "pij_store::background::SqliteBackground",
+    "runtime": "pij_daemon::background::BackgroundService",
+    "docs": [
+      "docs/how/pij.md",
+      "skills/pij/references/00-routing.md C7"
+    ],
+    "identity_brakes": "Before SIGTERM, pid + process-start and process-group must still match. These checks only veto signaling (one-directional safety interlocks), not retention policies."
+  },
+  "red": [
+    {
+      "command": "cargo test -p pij-store --test background",
+      "observed": "E0432 unresolved pij_store::background before implementation",
+      "receipt": "artifact://20"
+    },
+    {
+      "tests": [
+        "bg_create_list_tail_and_completion_are_owned_and_durable",
+        "bg_restart_preserves_runner_exit_code_and_delivers_completion",
+        "bg_kill_requires_owner_or_recorded_parent_and_notifies",
+        "bg_virtual_actor_cannot_be_addressed_or_impersonated"
+      ],
+      "observed": "404 missing routes / missing explicit virtual-target refusal",
+      "receipt": "artifact://15"
+    },
+    {
+      "tests": [
+        "bg_create_forwards_caller_and_matches_envelope_golden",
+        "bg_list_forwards_all_and_matches_envelope_golden",
+        "bg_tail_forwards_lines_and_matches_envelope_golden",
+        "bg_kill_forwards_job_and_matches_envelope_golden"
+      ],
+      "observed": "unrecognized subcommand bg",
+      "receipt": "artifact://22"
+    },
+    {
+      "tests": [
+        "bg create/list/tail/kill is daemon-owned and never legacy-unrouted",
+        "bg create/list/tail/kill forwards caller and passes through shared native envelope golden",
+        "bg preserves a decodable refusal envelope without legacy fallback"
+      ],
+      "observed": "9 tests failed legacy-unrouted",
+      "receipt": "artifact://19"
+    },
+    {
+      "test": "bg leaves title values alone instead of treating them as send body-file flags",
+      "observed": "rs-error instead of rs",
+      "receipt": "artifact://25"
+    },
+    {
+      "test": "runner_announces_installed_handlers_before_waiting_for_launch_gate",
+      "observed": "missing ready announcement before installed TERM handler"
+    },
+    {
+      "test": "bg_relative_daemon_state_still_writes_receipt_beside_log",
+      "observed": "LOST/null exit instead of DONE/7",
+      "receipt": "artifact://49"
+    },
+    {
+      "test": "source_receipt_survives_wall_clock_moving_backwards",
+      "observed": "LOST instead of DONE; removed unrequested receipt clock policy"
+    },
+    {
+      "test": "bg_create_list_tail_and_completion_are_owned_and_durable terminal kill assertion",
+      "observed": "200 claimed kill requested for done job instead of 400 refusal",
+      "receipt": "artifact://98"
+    }
+  ],
+  "gates": [
+    {
+      "command": "harness checks",
+      "exit": 0,
+      "observed": "2026-09-07T05:48:09.081Z status ok; 10 sensors, skipped []"
+    },
+    {
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "exit": 0,
+      "receipt": "artifact://106"
+    },
+    {
+      "command": "cargo test --workspace",
+      "exit": 0,
+      "observed": "819 passed (70 suites, 8 ignored, 93 filtered)",
+      "receipt": "artifact://106"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "exit": 0
+    },
+    {
+      "command": "touched Vitest generation-routing + generation-router + generation-seam + cli.background.integration",
+      "exit": 0,
+      "observed": "166 tests passed across 4 files; actual subprocess shim included"
+    },
+    {
+      "command": "just typecheck",
+      "exit": 0
+    }
+  ],
+  "live": {
+    "proof": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/proof.json",
+    "native_transcript": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/sessions/2026-09-07T05-35-30-502Z_01a07a5d-4ec6-7000-8fc6-4ac39825e4e4.jsonl",
+    "terminal": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/final-terminal.txt",
+    "owner": "pij-yammering-jackal",
+    "isolation": {
+      "addr": "127.0.0.1:58379",
+      "tmux": "pij-bg-cicada-proof",
+      "home": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/home"
+    },
+    "sleep": {
+      "job": "bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123",
+      "bg_finished_seq": 6,
+      "pushed_seq": 7,
+      "inbox_ack_seq": 10,
+      "exit": 0,
+      "native_ack": "BG-ACK sleep OK"
+    },
+    "kill": {
+      "job": "bg-1788759432578-f0cc848457451cd2de28731804d03018",
+      "bg_killed_seq": 11,
+      "pushed_seq": 12,
+      "inbox_ack_seq": 15,
+      "exit": 143,
+      "native_ack": "BG-ACK kill KILLED"
+    },
+    "restart": {
+      "job": "bg-1788759544852-7cc07d152b8c391b47ec2d9a42eb964b",
+      "observed_running_after_new_daemon": true,
+      "bg_finished_seq": 21,
+      "pushed_seq": 22,
+      "inbox_ack_seq": 25,
+      "exit": 0,
+      "native_ack": "BG-ACK restart-survives OK"
+    },
+    "parity": "All four native leaves and all four actual private pij leaves matched corresponding live daemon response bytes. Shared four goldens independently prove equality across frontends for identical response payloads; independent creates naturally mint distinct IDs.",
+    "final_binary_sha256": "0a554ecbd7e16d6c2dedc3e6a3bb4de1a9ee85c79ad76db28544518d175c0f8a",
+    "final_binary_smoke": "FINAL-BG delivered and acknowledged; killing already-done job refused through actual CLI."
+  },
+  "review": {
+    "independent_reviewer": "BgReview",
+    "material_findings_fixed": [
+      "TERM handler readiness race",
+      "relative state directory receipt loss"
+    ],
+    "additional_contract_fixes": [
+      "clock changes do not invalidate source exit receipts",
+      "completed jobs refuse kill instead of fabricating a new request"
+    ],
+    "preexisting_scope_limit": "Existing direct Socket/TypedBody claim-before-injection crash window was not changed; live OMP proof uses the durable native extension queue."
+  },
+  "friction": {
+    "buffer": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/agent/session-buffer.md",
+    "observations": [
+      "Baseline file-watch-notify smoke failed once; final full checks passed.",
+      "Supervised tmux inherited stale PIJ_SPAWN_TASK; cleared private server env and relaunched clean seat.",
+      "Supervisor tree signal killed detached runner too; retained failed exit143 witness and used verified daemon-PID-only signal for genuine restart proof."
+    ],
+    "encoded": "Ready-before-kill and source-receipt recovery tests, relative path and clock regressions, bounded pending-job index, cross-language envelope fixtures, send-only body-file preprocessing metadata.",
+    "offer": "Highest-leverage follow-on: a private live-proof launcher that clears tmux server spawn intent and exposes verified daemon-only restart separately from tree teardown."
+  },
+  "not_run": [
+    "8 ignored and 93 filtered Rust cases reported by the workspace runner were not forced.",
+    "No public remote push, PR, merge, live daemon bounce, global linking, or OMP update."
+  ],
+  "cleanup": {
+    "status": "complete: owned daemon and proxy stopped; private tmux server absent; copied credential HOME and daemon key removed; proof artifacts retained"
+  }
+}
