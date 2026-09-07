@@ -364,7 +364,7 @@ impl DaemonClient {
                     ));
                 }
             };
-            return Err(decode_response("pij tail", &body));
+            return Err(decode_response("pij tail", body));
         }
         Ok(TailStream {
             response,
@@ -427,7 +427,7 @@ impl DaemonClient {
                 );
             }
         };
-        decode_response(command, &body)
+        decode_response(command, body)
     }
 }
 
@@ -570,8 +570,8 @@ impl std::fmt::Display for TailError {
 
 impl std::error::Error for TailError {}
 
-fn decode_response<T: DeserializeOwned>(command: &str, body: &str) -> Envelope<T> {
-    let untyped = match pij_core::wire::decode_envelope::<Value>(body) {
+fn decode_response<T: DeserializeOwned>(command: &str, body: String) -> Envelope<T> {
+    let untyped = match pij_core::wire::decode_envelope::<Value>(&body) {
         Ok(envelope) => envelope,
         Err(error) => {
             let kind = match error {
@@ -592,8 +592,12 @@ fn decode_response<T: DeserializeOwned>(command: &str, body: &str) -> Envelope<T
         );
     }
 
-    match serde_json::from_str(body) {
-        Ok(envelope) => envelope,
+    match serde_json::from_str::<Envelope<T>>(&body) {
+        Ok(mut envelope) => {
+            // Move the exact buffer that passed both version and payload checks.
+            envelope.raw_json = Some(body);
+            envelope
+        }
         Err(error) => refusal(
             command,
             ErrorKind::Adapter,
@@ -611,6 +615,7 @@ fn retype_envelope<T, U>(envelope: Envelope<T>) -> Envelope<U> {
         meta: envelope.meta,
         error: envelope.error,
         details: envelope.details,
+        raw_json: envelope.raw_json,
     }
 }
 
@@ -694,7 +699,8 @@ mod tests {
     fn unsupported_envelope_version_is_refused_before_payload_typing() {
         let body = r#"{"ok":true,"command":"pij list","v":99,"data":"not a seat list"}"#;
 
-        let envelope = decode_response::<Vec<pij_core::model::SeatDescriptor>>("pij list", body);
+        let envelope =
+            decode_response::<Vec<pij_core::model::SeatDescriptor>>("pij list", body.to_owned());
 
         assert!(!envelope.ok);
         assert_eq!(envelope.error, Some(ErrorKind::Skew));
@@ -710,7 +716,7 @@ mod tests {
     fn every_unrecognised_version_is_skew_not_only_future_versions() {
         let body = r#"{"ok":true,"command":"pij ping","v":0,"data":"unknown old shape"}"#;
 
-        let envelope = decode_response::<serde_json::Value>("pij ping", body);
+        let envelope = decode_response::<serde_json::Value>("pij ping", body.to_owned());
 
         assert!(!envelope.ok);
         assert_eq!(envelope.error, Some(ErrorKind::Skew));

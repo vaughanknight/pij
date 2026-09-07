@@ -8,12 +8,8 @@ use tokio_stream::StreamExt;
 
 use super::*;
 
-const ROUTES: &str = include_str!(
-    "../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
-);
-const EVENTS: &str = include_str!(
-    "../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
-);
+const ROUTES: &str = include_str!("../../../testkit/fixtures/golden/api/governance-routes.json");
+const EVENTS: &str = include_str!("../../../testkit/fixtures/golden/api/governance-events.json");
 
 fn routes() -> Value {
     serde_json::from_str(ROUTES).expect("u0 routes")

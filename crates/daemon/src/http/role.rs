@@ -224,6 +224,18 @@ impl RoleService {
             .map(|assignment| assignment.role))
     }
 
+    /// Project one response descriptor with its authoritative role, without a roster read.
+    ///
+    /// Consume only a response value: registry/CAS inputs and identity resolution
+    /// must retain the raw descriptor. An absent assignment clears a stale role.
+    ///
+    /// # Errors
+    /// Store/schema failures refuse the projection; never fall back to the raw role.
+    pub async fn project_seat(&self, mut seat: SeatDescriptor) -> Result<SeatDescriptor> {
+        seat.role = self.read_role(&seat.id).await?;
+        Ok(seat)
+    }
+
     /// Join all local roster roles with one store read; absent rows clear stale copies.
     ///
     /// # Errors

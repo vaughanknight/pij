@@ -1,0 +1,211 @@
+         27 │ + → ),
+     25  28 │   ) as Array<{ command: string; error: string; meta: string }>;
+     26  29 │   const roots: string[] = [];
+  
+
+.pi/extensions/pij/adapters/generation-router.ts:2:1 assist/source/organizeImports  FIXABLE  ━━━━━━━━━━
+
+  × The imports and exports are not sorted.
+  
+    1 │ /** I/O for the closed rs routing inventory. No legacy registry is consulted. */
+  > 2 │ import { spawn } from "node:child_process";
+      │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    3 │ import { constants as osConstants, homedir } from "node:os";
+    4 │ import { readFile as readFd } from "node:fs";
+  
+  i Safe fix: Organize Imports (Biome)
+  
+      1   1 │   /** I/O for the closed rs routing inventory. No legacy registry is consulted. */
+      2   2 │   import { spawn } from "node:child_process";
+      3     │ - import·{·constants·as·osConstants,·homedir·}·from·"node:os";
+      4     │ - import·{·readFile·as·readFd·}·from·"node:fs";
+      5     │ - import·{·readFile·as·fsReadFile·}·from·"node:fs/promises";
+          3 │ + import·{·readFile·as·readFd·}·from·"node:fs";
+          4 │ + import·{·readFile·as·fsReadFile·}·from·"node:fs/promises";
+          5 │ + import·{·homedir,·constants·as·osConstants·}·from·"node:os";
+      6   6 │   import { join } from "node:path";
+      7   7 │   import { DaemonRefusalError, decodeEnvelope, PijNoDaemonError, PijWireSkewError } from "../core/daemon-wire.js";
+      8   8 │   import {
+      9   9 │     buildCallerContext, classifyRsResponse, decidePreCall, describeOutcome,
+     10     │ - → findRoute,·resolveGenerationForce,·routingRefusalEnvelope,·RS_ROUTE_TABLE,
+     11     │ - → type·RouteOutcome,·type·RsHttpRoute,·type·RsRouteRow,·unported,
+         10 │ + → findRoute,·
+         11 │ + → type·RouteOutcome,·RS_ROUTE_TABLE,type·RsHttpRoute,·type·RsRouteRow,·resolveGenerationForce,·routingRefusalEnvelope,·unported,
+     12  12 │   } from "../core/generation-routing.js";
+     13  13 │   import { type DaemonLocation, daemonLocation, detectDaemonGeneration, observedProcessStart } from "./daemon-http.js";
+  
+
+.pi/extensions/pij/adapters/generation-router.ts format ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × Formatter would have printed the following content:
+  
+      5   5 │   import { readFile as fsReadFile } from "node:fs/promises";
+      6   6 │   import { join } from "node:path";
+      7     │ - import·{·DaemonRefusalError,·decodeEnvelope,·PijNoDaemonError,·PijWireSkewError·}·from·"../core/daemon-wire.js";
+          7 │ + import·{
+          8 │ + → DaemonRefusalError,
+          9 │ + → decodeEnvelope,
+         10 │ + → PijNoDaemonError,
+         11 │ + → PijWireSkewError,
+         12 │ + }·from·"../core/daemon-wire.js";
+      8  13 │   import {
+      9     │ - → buildCallerContext,·classifyRsResponse,·decidePreCall,·describeOutcome,
+     10     │ - → findRoute,·resolveGenerationForce,·routingRefusalEnvelope,·RS_ROUTE_TABLE,
+     11     │ - → type·RouteOutcome,·type·RsHttpRoute,·type·RsRouteRow,·unported,
+         14 │ + → buildCallerContext,
+         15 │ + → classifyRsResponse,
+         16 │ + → decidePreCall,
+         17 │ + → describeOutcome,
+         18 │ + → findRoute,
+         19 │ + → resolveGenerationForce,
+         20 │ + → routingRefusalEnvelope,
+         21 │ + → RS_ROUTE_TABLE,
+         22 │ + → type·RouteOutcome,
+         23 │ + → type·RsHttpRoute,
+         24 │ + → type·RsRouteRow,
+         25 │ + → unported,
+     12  26 │   } from "../core/generation-routing.js";
+     13     │ - import·{·type·DaemonLocation,·daemonLocation,·detectDaemonGeneration,·observedProcessStart·}·from·"./daemon-http.js";
+         27 │ + import·{
+         28 │ + → type·DaemonLocation,
+         29 │ + → daemonLocation,
+         30 │ + → detectDaemonGeneration,
+         31 │ + → observedProcessStart,
+         32 │ + }·from·"./daemon-http.js";
+     14  33 │   
+     15  34 │   export interface GenerationRouterDeps {
+    ······· │ 
+     32  51 │   export function defaultRouterDeps(): GenerationRouterDeps {
+     33  52 │     return {
+     34     │ - → → fetch,·readFile:·fsReadFile,
+     35     │ - → → readBody:·(path)·=>·path·===·"-"
+     36     │ - → → → ?·new·Promise((resolve,·reject)·=>·readFd(0,·"utf8",·(error,·body)·=>·error·?·reject(error)·:·resolve(body)))
+     37     │ - → → → :·fsReadFile(path,·"utf8"),
+     38     │ - → → env:·process.env,·home:·homedir(),·cwd:·()·=>·process.cwd(),
+     39     │ - → → pid:·()·=>·process.pid,·procStart:·observedProcessStart,
+         53 │ + → → fetch,
+         54 │ + → → readFile:·fsReadFile,
+         55 │ + → → readBody:·(path)·=>
+         56 │ + → → → path·===·"-"
+         57 │ + → → → → ?·new·Promise((resolve,·reject)·=>
+         58 │ + → → → → → → readFd(0,·"utf8",·(error,·body)·=>·(error·?·reject(error)·:·resolve(body))),
+         59 │ + → → → → → )
+         60 │ + → → → → :·fsReadFile(path,·"utf8"),
+         61 │ + → → env:·process.env,
+         62 │ + → → home:·homedir(),
+         63 │ + → → cwd:·()·=>·process.cwd(),
+         64 │ + → → pid:·()·=>·process.pid,
+         65 │ + → → procStart:·observedProcessStart,
+     40  66 │     };
+     41  67 │   }
+    ······· │ 
+     52  78 │   
+     53  79 │   export type RsProbe = (
+     54     │ - → |·{·readonly·kind:·"live"·|·"absent"·|·"auth-rejected"·|·"no-credentials";·readonly·location:·DaemonLocation·}
+         80 │ + → |·{
+         81 │ + → → → readonly·kind:·"live"·|·"absent"·|·"auth-rejected"·|·"no-credentials";
+         82 │ + → → → readonly·location:·DaemonLocation;
+         83 │ + → ··}
+     55  84 │     | { readonly kind: "unreadable"; readonly location: DaemonLocation; readonly detail: string }
+     56  85 │   ) & { readonly rawEnvelope?: string };
+    ······· │ 
+     60  89 │     try {
+     61  90 │       const generation = await detectDaemonGeneration(location, "rs", {
+     62     │ - → → → fetch:·deps.fetch,·readFile:·deps.readFile,·processStart:·()·=>·0,
+         91 │ + → → → fetch:·deps.fetch,
+         92 │ + → → → readFile:·deps.readFile,
+         93 │ + → → → processStart:·()·=>·0,
+     63  94 │       });
+     64  95 │       return { kind: generation.kind === "rust" ? "live" : "absent", location };
+     65  96 │     } catch (error) {
+     66  97 │       if (error instanceof PijNoDaemonError) return { kind: "absent", location };
+     67     │ - → → if·(error·instanceof·PijWireSkewError)·return·{·kind:·"unreadable",·location,·detail:·error.message·};
+         98 │ + → → if·(error·instanceof·PijWireSkewError)
+         99 │ + → → → return·{·kind:·"unreadable",·location,·detail:·error.message·};
+     68 100 │       if (error instanceof DaemonRefusalError && error.kind === "auth") {
+     69 101 │         let hasKey = false;
+     70     │ - → → → try·{·hasKey·=·(await·deps.readFile(join(location.stateDir,·"daemon.key"),·"utf8")).trim()·!==·"";·}·catch·{·/*·Absence·never·authorizes·another·store.·*/·}
+     71     │ - → → → return·{·kind:·hasKey·?·"auth-rejected"·:·"no-credentials",·location,·...(error.rawEnvelope·===·undefined·?·{}·:·{·rawEnvelope:·error.rawEnvelope·})·};
+        102 │ + → → → try·{
+        103 │ + → → → → hasKey·=·(await·deps.readFile(join(location.stateDir,·"daemon.key"),·"utf8")).trim()·!==·"";
+        104 │ + → → → }·catch·{
+        105 │ + → → → → /*·Absence·never·authorizes·another·store.·*/
+        106 │ + → → → }
+        107 │ + → → → return·{
+        108 │ + → → → → kind:·hasKey·?·"auth-rejected"·:·"no-credentials",
+        109 │ + → → → → location,
+        110 │ + → → → → ...(error.rawEnvelope·===·undefined·?·{}·:·{·rawEnvelope:·error.rawEnvelope·}),
+        111 │ + → → → };
+     72 112 │       }
+     73 113 │       return {
+     74     │ - → → → kind:·"unreadable",·location,·detail:·error·instanceof·Error·?·error.message·:·String(error),
+     75     │ - → → → ...(error·instanceof·DaemonRefusalError·&&·error.rawEnvelope·!==·undefined·?·{·rawEnvelope:·error.rawEnvelope·}·:·{}),
+        114 │ + → → → kind:·"unreadable",
+        115 │ + → → → location,
+        116 │ + → → → detail:·error·instanceof·Error·?·error.message·:·String(error),
+        117 │ + → → → ...(error·instanceof·DaemonRefusalError·&&·error.rawEnvelope·!==·undefined
+        118 │ + → → → → ?·{·rawEnvelope:·error.rawEnvelope·}
+        119 │ + → → → → :·{}),
+     76 120 │       };
+     77 121 │     }
+     78 122 │   }
+     79 123 │   
+     80     │ - function·callerProcessFacts(deps:·GenerationRouterDeps):·{·readonly·cwd?:·string;·readonly·pid?:·number;·readonly·procStart?:·number·}·{
+        124 │ + function·callerProcessFacts(deps:·GenerationRouterDeps):·{
+        125 │ + → readonly·cwd?:·string;
+        126 │ + → readonly·pid?:·number;
+        127 │ + → readonly·procStart?:·number;
+        128 │ + }·{
+     81 129 │     const pid = deps.pid?.();
+     82 130 │     let procStart: number | undefined;
+     83 131 │     if (pid !== undefined && deps.procStart !== undefined) {
+     84     │ - → → try·{·procStart·=·deps.procStart(pid);·}·catch·{·/*·Do·not·invent·an·incarnation.·*/·}
+        132 │ + → → try·{
+        133 │ + → → → procStart·=·deps.procStart(pid);
+        134 │ + → → }·catch·{
+        135 │ + → → → /*·Do·not·invent·an·incarnation.·*/
+        136 │ + → → }
+     85 137 │     }
+     86 138 │     return {
+    ······· │ 
+     92 144 │   
+     93 145 │   function refused(outcome: RouteOutcome, row?: RsRouteRow): RouteResult {
+     94     │ - → return·{·outcome,·...(row·===·undefined·?·{}·:·{·row·}),·rawEnvelope:·routingRefusalEnvelope(outcome)·};
+        146 │ + → return·{
+        147 │ + → → outcome,
+        148 │ + → → ...(row·===·undefined·?·{}·:·{·row·}),
+        149 │ + → → rawEnvelope:·routingRefusalEnvelope(outcome),
+        150 │ + → };
+     95 151 │   }
+     96 152 │   
+    ······· │ 
+     98 154 │     const { addr, stateDir } = probe.location;
+     99 155 │     switch (probe.kind) {
+    100     │ - → → case·"live":·return·undefined;
+    101     │ - → → case·"absent":·return·unported(verb,·addr,·`no·rs·daemon·answered·at·${addr}`);
+    102     │ - → → case·"no-credentials":·return·unported(verb,·addr,·`no·rs·credential·at·${stateDir}/daemon.key`);
+    103     │ - → → case·"auth-rejected":·return·{·kind:·"rs-auth-rejected",·verb,·addr,·stateDir·};
+    104     │ - → → case·"unreadable":·return·{·kind:·"rs-unreadable",·verb,·addr,·detail:·probe.detail·};
+        156 │ + → → case·"live":
+        157 │ + → → → return·undefined;
+        158 │ + → → case·"absent":
+        159 │ + → → → return·unported(verb,·addr,·`no·rs·daemon·answered·at·${addr}`);
+        160 │ + → → case·"no-credentials":
+        161 │ + → → → return·unported(verb,·addr,·`no·rs·credential·at·${stateDir}/daemon.key`);
+        162 │ + → → case·"auth-rejected":
+        163 │ + → → → return·{·kind:·"rs-auth-rejected",·verb,·addr,·stateDir·};
+  282 more lines truncated
+  
+
+The number of diagnostics exceeds the limit allowed. Use --max-diagnostics to increase it.
+Diagnostics not shown: 21.
+Checked 535 files in 350ms. No fixes applied.
+Found 19 errors.
+Found 20 warnings.
+Found 2 infos.
+check ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × Some errors were emitted while running checks.
+  
+
+error: Recipe `lint` failed on line 84 with exit code 1

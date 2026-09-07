@@ -694,7 +694,10 @@ mod tests {
                 EventBus::new(Arc::new(SqliteSpine::new(pool.clone())), 128).expect("bus"),
             );
             let registry = Arc::new(SqliteRegistry::new(pool.clone(), bus.clone()));
-            let fixtures: Value = serde_json::from_str(include_str!("../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json")).expect("contract");
+            let fixtures: Value = serde_json::from_str(include_str!(
+                "../../../testkit/fixtures/golden/api/governance-routes.json"
+            ))
+            .expect("contract");
             let worker = SeatId::from(
                 fixtures["fixture_context"]["worker"]
                     .as_str()
@@ -1033,11 +1036,11 @@ mod tests {
     async fn delivered_dispatch_projection_consumes_the_canonical_event_literal() {
         let f = Fixture::new(FakeTransport::reachable()).await;
         let routes: Value = serde_json::from_str(include_str!(
-            "../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+            "../../../testkit/fixtures/golden/api/governance-routes.json"
         ))
         .expect("routes");
         let events: Value = serde_json::from_str(include_str!(
-            "../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
+            "../../../testkit/fixtures/golden/api/governance-events.json"
         ))
         .expect("events");
         let mut dispatch: pij_core::orchestration::Dispatch =
@@ -1349,7 +1352,7 @@ mod tests {
     #[test]
     fn supersede_parser_consumes_canonical_typed_and_argv_requests() {
         let fixtures: Value = serde_json::from_str(include_str!(
-            "../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+            "../../../testkit/fixtures/golden/api/governance-routes.json"
         ))
         .expect("routes");
         let route = fixtures["routes"]
@@ -1515,7 +1518,7 @@ mod tests {
         .await
         .expect("composed backends");
         let contract: Value = serde_json::from_str(include_str!(
-            "../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+            "../../../testkit/fixtures/golden/api/governance-routes.json"
         ))
         .expect("contract");
         let worker = SeatId::from(
@@ -1678,7 +1681,7 @@ mod tests {
         let (_file, _config, services, worker, parent) =
             authority_fixture(queue_backend, spine_backend).await;
         let contract: Value = serde_json::from_str(include_str!(
-            "../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+            "../../../testkit/fixtures/golden/api/governance-routes.json"
         ))
         .expect("contract");
         let expected = &contract["refusals"][fixture_key];

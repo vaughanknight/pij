@@ -95,11 +95,11 @@ async fn dispatch_event(
 #[tokio::test]
 async fn fake_host_http_canary_requires_real_pointer_sha_ack_and_streams_fresh_observer_pass() {
     let routes: Value = serde_json::from_str(include_str!(
-        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+        "../../testkit/fixtures/golden/api/governance-routes.json"
     ))
     .expect("canonical routes");
     let events: Value = serde_json::from_str(include_str!(
-        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
+        "../../testkit/fixtures/golden/api/governance-events.json"
     ))
     .expect("canonical events");
     let dir = StateDir(fresh_dir("pij-governance-canary"));

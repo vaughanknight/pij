@@ -45,7 +45,7 @@ impl RegistryPublisher for PauseAfterCommit {
 async fn cancelled_registry_caller_cannot_lose_a_committed_row_before_later_publication() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
+        "/../testkit/fixtures/golden/api/governance-events.json"
     )))
     .unwrap();
     let cases = fixture["events"].as_array().unwrap();
@@ -150,7 +150,7 @@ impl Spine for PauseAfterAppend {
 fn report_fixture() -> Event {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
+        "/../testkit/fixtures/golden/api/governance-events.json"
     )))
     .unwrap();
     serde_json::from_value(

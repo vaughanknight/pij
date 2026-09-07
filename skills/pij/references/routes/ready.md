@@ -22,25 +22,15 @@ prime or operator will push the next turn.
      Carry the parent whenever the env has one — it is a self-declaration of who
      governs you, validated and persisted, and it is the ONLY moment it can be
      recorded without someone later remembering. Never discover or guess another pane.
-   - With no `$TMUX_PANE`, run exactly `pij inbox register --json`; never adopt a
-     pane in external pull mode.
-2. **Verify the write, never the print.** "Succeeds" means `pij whoami` names
-   you and `pij phonehome` says `(bound)` — not that the previous command printed
-   a success line. `adopt` on a dissolved descriptor prints a correct-looking
-   `adopted <id> … (pane %N, bound)` and persists NOTHING; the remedy is
-   `pij revive <id> --attach "$TMUX_PANE"` (see peer route § Failure modes).
-   Resuming after a reboot or long gap? Treat every pane id, pid, and prior
-   finding as stale and re-derive before reusing it.
+   - With no `$TMUX_PANE`, do not invent a pane or run shim inbox registration: rs cannot derive paneless bind evidence that way. Report the named admission prerequisite and stop; a verified native register/extension channel is required, never legacy fallback.
+2. **Verify the write, never the print.** Read `pij whoami --json` and `pij phonehome --json`: the complete v2 data must name this seat and corroborate its binding. A tombstoned identity refuses even if an old pid is live. No `revive --attach` repair is ported; native revive requires an explicit tombstoned seat and relaunches it. After reboot/long gaps, every old pane/pid conclusion is stale.
 3. Once verified, reply with exactly:
 
 ```text
 Ready.
 ```
 
-4. **STOP.** In push mode, ending the turn is the wait: the next message is
-injected automatically. Do not run `pij inbox --wait` in push mode. In external
-pull mode, use `pij inbox --wait` only when the host can continue waiting after
-the readiness reply.
+4. **STOP.** In push mode, ending the turn is the wait. Never start a competing inbox receiver. Only an already verified pull-owned native seat may use `pij-rs inbox --wait`; shim `inbox --wait` and auto-registration are unsupported. See the stable [Unsupported status](../../../../docs/how/pij-rs-api.md#unsupported-status), not a legacy workaround.
 
 ## Hard boundary
 

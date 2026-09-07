@@ -394,7 +394,7 @@ async fn batons_roles_prime_and_dispatch_ack_are_durable_governance() {
     assert_eq!(designated, "pij-prime");
 
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+        "../../testkit/fixtures/golden/api/governance-routes.json"
     ))
     .expect("canonical contract");
     let sha = fixture["fixture_context"]["records"]["dispatch"]["packet_sha256"]
@@ -449,7 +449,7 @@ async fn batons_roles_prime_and_dispatch_ack_are_durable_governance() {
 
 fn contract_role_assignment() -> RoleAssignment {
     let fixtures: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
+        "../../testkit/fixtures/golden/api/governance-events.json"
     ))
     .expect("governance event fixtures");
     let record = &fixtures["events"]

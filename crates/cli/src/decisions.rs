@@ -78,7 +78,7 @@ mod tests {
     #[tokio::test]
     async fn anomaly_decision_answer_commands_preserve_canonical_argv_and_envelopes() {
         let fixtures: Value = serde_json::from_str(include_str!(
-            "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+            "../../testkit/fixtures/golden/api/governance-routes.json"
         ))
         .expect("contracts");
         let router = axum::Router::new()

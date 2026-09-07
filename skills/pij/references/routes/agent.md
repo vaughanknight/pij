@@ -1,55 +1,11 @@
-# agent — run packaged agent packs
+# agent — packaged agent jobs (rs CLI gap)
 
-> Route module — sibling-blind. Knows only this job; composition is the dispatch's job.
-> Conventions cited as § C*n* live in `00-routing.md` § Shared conventions (pull lazily).
+> Route module — sibling-blind. Conventions cited as § C*n* live in `00-routing.md` § Shared conventions (pull lazily).
 
-**Job**: run a declarative agent pack (e.g. `flowspace-search`) — either **in-place** (`run`: blocking, result printed) or **as a live peer** (`spawn`: its own pane, reports back to you, can stay resident for follow-ups).
+**Job**: run a named agent pack. The `pij agent` CLI family (`list`, `show`, `run`, `spawn`, `new`, `check`, `eject`, `report`) is **unported** at the rs cutover and returns `E-RS-UNPORTED`. See [Unsupported status](../../../../docs/how/pij-rs-api.md#unsupported-status). Explicit legacy forcing is no escape; do not run a TS pack runner after this refusal.
 
-## Discover
+No native `agent` wrapper, automatic `--once` dissolution, pack-schema validation, permission preset or agent-report transport is implied by native spawn. Do not represent a plain peer as an equivalent pack execution or fabricate pack/report receipts.
 
-```bash
-pij agent list [--json]   # merged inventory: project → user → built-in (nearer tier shadows)
-pij agent show <slug>     # a pack's prompt, params, model/harness pins
-```
+If the user instead authorizes an ordinary peer task, use the actually available host spawn capability or explicit `pij-rs spawn` grammar (§ C1), a persisted bounded packet, `pij dispatch` and supported `pij send` for its report. The packet must name the task, exact worktree, write fence, real validation obligations and report target. Canary the actual model/runtime (§ C2); observe pushed completion (§ C7), verify its claims and compact a reusable peer (§ C3). That is a distinct ordinary delegation, not a silent implementation of this missing pack verb.
 
-Packs pin `model:`/`harness:`/`reasoning:` in frontmatter; `pij agent check <slug>` validates a pack. Model pins follow § C4 (discover ids, don't invent) and § C2 (wrong pins surface at first inference, not at spawn).
-
-## Run in place (blocking, scoped)
-
-```bash
-pij agent run <slug> -p key=value [--json]      # named pack; params fill its prompt template
-pij agent run --prompt "one-off task" [--json]  # inline zero-setup run, nothing recorded
-pij agent run <slug> --ephemeral …              # named pack, run not recorded
-```
-
-`run` executes inside your process — pack permission presets (e.g. read-only) apply here.
-
-## Spawn as a peer (reports back, optionally resident)
-
-```bash
-pij agent spawn <slug> -p key=value [--once] [--json]
-pij agent spawn --prompt "<text>" [--once]   # inline: no pack — your prompt + an auto-appended report contract
-```
-
-- Your session id is stamped as `spawnedBy` — you are the **report target** (resolve yourself first: `pij whoami`; unregistered → the report round-trip can't complete).
-- The peer boots, gets its packet injected, works, then `pij agent report`s: the report lands in **your** pane as a `[pij-rs from <id>] … [/pij]` turn, and `reportedAt` is stamped on the peer's descriptor (the durable proof it completed). Report bodies follow § C10 (wire discipline): result/verdict first, raw data over narrative.
-- `--once`: the daemon auto-closes the peer right after its report. Without it the peer stays **resident** — `pij send <id> "follow-up question"` keeps working, and you close it when done (`pij close <id>`).
-- **Permissions warning** (plan 029 finding 09): a spawned/resident agent peer always runs **fully permissioned** — blanket flags, no human at the pane to approve tool prompts. Pack permission presets bind `run` mode only; `spawn` prints a stderr advisory and proceeds. Don't spawn a pack you'd only trust read-only.
-- Placement/cap and liveness follow § C5 / § C7 (the report is pushed; don't poll).
-
-## Author
-
-```bash
-pij agent new <slug>     # scaffold a pack (prompt.md + frontmatter) in the user tier
-pij agent check <slug>   # validate frontmatter/params (AJV, fail-fast)
-pij agent eject <slug>   # copy a built-in into the project tier to customise
-```
-
-## Failure modes
-
-| Symptom | Meaning / move |
-|---|---|
-| Report never arrives | check `pij whoami` resolved at spawn time (spawnedBy unset = no target); then `pij tail <id>` |
-| `E-NOREPORTTARGET` in the peer | same cause — respawn from a registered session |
-| Pack rejected at spawn | `pij agent check <slug>` names the invalid field |
-| Model warning at spawn | non-blocking (§ C4); verify via the peer's first turn (§ C2) |
+Do independent authorized work while this pack-specific prerequisite is unresolved. Record the named refusal and tell the context owner; never create global links/settings or install a package to bypass it without authorization. Production/chainglass acceptance is prime-owned, and canonical fixture examples are not runtime proof.

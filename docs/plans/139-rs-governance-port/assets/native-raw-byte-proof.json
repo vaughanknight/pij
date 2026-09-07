@@ -1,0 +1,43 @@
+{
+  "schema": "pij/native-raw-byte-proof/v1",
+  "red": "assets/native-parity-red.json",
+  "green": {
+    "command": "cargo test --locked -p pij-cli --test render_golden --test control_commands --test spawn -- --nocapture",
+    "artifact": "artifact://432",
+    "passed": 9,
+    "suites": 3
+  },
+  "actual_original_reproduction": {
+    "argv": [
+      "role",
+      "pij-worker",
+      "reviewer"
+    ],
+    "native_exit": 0,
+    "shim_exit": 0,
+    "stdout": "{\"ok\":true,\"command\":\"pij role\",\"v\":2,\"data\":{\"seat\":\"pij-worker\",\"role\":\"reviewer\",\"assigned_by\":\"pij-parent\",\"assigned_at\":1788739200000,\"seq\":101}}\n",
+    "stdout_sha256": "418590c0cdb0699a95867a8c405e7c9bff7e431cbf8a6678bd243885c3a9f89f",
+    "equal": true
+  },
+  "buffer_contract": "Version and payload validation consume the same owned response buffer retained for JSON; no re-fetch",
+  "negative_guards": [
+    "future v99 produces local v2 skew refusal",
+    "malformed JSON produces local v2 adapter refusal"
+  ],
+  "output_guards": [
+    "key order",
+    "whitespace",
+    "unknown future fields",
+    "original string/number spelling",
+    "newline appended only when absent",
+    "one HTTP request per response"
+  ],
+  "derived_response_compatibility": [
+    "spawn dispatched/bound/pid",
+    "send origin/msg_id receipt",
+    "compact-self command alias",
+    "aggregated inbox and acknowledgement warning"
+  ],
+  "retained_regression": "artifact://425: original send derived receipt assertion failed before explicit computed-response preservation; unchanged assertion recovered in432",
+  "scope": "Targeted proof, not final merged gate or production acceptance"
+}

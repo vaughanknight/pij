@@ -1,15 +1,15 @@
 # Bootstrap — stand up an o-prime
 
 **Store-native is the ruled default**: load [`store-native.md`](./store-native.md) first. It replaces prose portfolio/roster facts, NOT §3's document branch; existing prose stays live until its prime self-migrates.
-Use the seating ritual only when unscoped `pij list --prime --json` finds no current prime for this repo AND `pij project list` finds no project. A missing local `.harness/government/` proves nothing. Existing primes may use §3 to establish or restore document storage without reseating.
+Use the seating ritual only after authoritative rs designation/event receipts and government/human evidence establish no current prime for this repo, and `pij project list --json` names no project here. `pij list --json` is unfiltered; `--prime`/`--here`/`--archived` refuse, and display role is not designation. The absence of a dedicated prime getter is a named gap: never infer permission from it. A missing local `.harness/government/` proves nothing. Existing primes may use §3 without reseating.
 Preconditions: git repo, tmux, `pij`, ambient `harness`, one o-prime session, and human-named work; never invent portfolio items.
 
 ## 1. Seat and prove the o-prime
 
 1. Load [`../orient-oprime.md`](../orient-oprime.md); if governed from above, run [`kickoff.md#canary`](./kickoff.md#canary)'s three-leg canary.
 2. Run the orient's boot audit: channel, dead descriptors, inherited government, human status channel. Pi/OMP registers at boot; external seats adopt as the orient directs.
-3. **Refuse to seat over a living prime**: inspect unscoped `pij list --prime --json` and `pij project list`; a current prime for THIS repo means STOP and escalate. Another repo's prime does not block. `prime:true` proves assertion, not authority.
-4. Persist with `pij orchestration prime set --json`; confirm your exact id in **unscoped** `pij list --prime --json`. Ambiguous self is failure, never permission to target `"operator"`. A `--here` confirmation repeats the scope error that once hid a living prime.
+3. **Refuse to seat over a living prime**: inspect unfiltered rs roster, current designation receipts/events, project records and authoritative government. If absence cannot be established, ask the owning prime/human rather than bootstrap by inference. An asserted `role: prime` is not designation authority.
+4. Resolve your exact id with `pij whoami --json`, then persist `pij orchestration prime set <resolved-seat-id> --json`. Check the returned designation and seq, plus `pij spine events --peer <resolved-seat-id> --json`; do not invent `prime:true`/`oldPrime` list fields. Ambiguous self is failure, never permission to target `operator`.
 
 ## 2. Derive the per-repo contract
 
@@ -56,9 +56,9 @@ Inspect the repo; derive these answers, never copy a worked example:
 **A cheap PA is a bootstrap deliverable, not optional context** (Jordan, 2026-08-01; vrell's first bootstrap omitted it). Follow the maintained recipe: `<government-root>/briefs/pa-standup-recipe.md`, resolving the **pij repo's** government root per §3, not the consuming repo's. Do not substitute this summary for that recipe.
 
 1. Cheap tier is the design intent (`gemini-3.6-flash` Copilot seats); whether cheap models hold the rules during chores is still an **open experiment**.
-2. **Register WITH BOUNDS before stamping `pa`**: from the PA's OWN seat run `pij watchdog watch <your-prime-id> --capture always --max-lines 12`; THEN `pij link <pa-id> --parent <your-prime-id> --role pa`. Role `pa` cannot invoke the watchdog family; `watch` subscribes only its caller, so neither the stamped PA nor the prime can add its bounds later. Five such stuck subscriptions were measured 2026-08-04, three created within 100 minutes.
-3. **Leave `--max-bytes` unset unless you measured the pane**; bound lines only. Both cuts are tail-anchored and the bottom is chrome. A box rule costs `3 × pane_width` bytes (U+2500), so no small constant is safe across widths. At width 125, 1023 bytes captured only chrome; one prose line needed roughly 1150. The 4096 default reaches roughly 445 columns versus the old 1024 floor's ~125; 25 measured panes ranged 49–202 columns. Recover width as `rule_bytes / 3` before overriding. A blind capture reads like a dead seat: at 256 B, 19/26 subscriptions yielded 92% content-free files (2026-08-04). Do not reintroduce that "careful" failure.
-4. **Close the graph; a PA is not required for watching**: any watchdog-eligible non-`pa` child works and can re-subscribe. De-topple with a peer; add the PA for chores. Verify `jq '.watchers' ~/.pij/<prime-id>/watchdog.json` (no pij verb projects capture mode).
+2. **Name the rs supervision gap before declaring the PA ready**: `pij watchdog` and `pij link` are unported; no old watch/bounds/sidecar command is a fallback. Do not claim a subscription or inspect legacy watchdog files as rs authority. Escalate the unavailable mechanism to the prime while continuing independent authorized work.
+3. Create/adopt the PA with its supported recorded parent, then the parent asserts `pij role <pa-id> pa --json`. Role alone does not create supervision or grant control authority. Existing-seat reparenting remains unsupported.
+4. Keep any separately authorized capture bounded and verify its actual content at the receiver; no claimed watchdog bounds unless the real capability exists. Model and supervision assumptions remain explicit, not production proof.
 5. **Prove delivery at the receiving end**, not just configuration.
 
 ## 6. Open intake and govern
@@ -74,6 +74,6 @@ Inspect the repo; derive these answers, never copy a worked example:
 |---|---|
 | Seat death/restart | Fresh seat loads lever 0 + government; audit dead holders, stale roster, orphan descriptors; record new identity |
 | Ruled rotation | Outgoing writes [`../templates/seat-handover.md`](../templates/seat-handover.md) BEFORE contact; incoming transfers writers/reconciliation owner, checks spine Seq, retires outgoing after final send |
-| Queued sends never deliver | Check daemon ticks/dead descriptors; one corpse once wedged the fabric |
-| Stream dies / dissolves | Adopt fresh orchestrator onto plan; for dissolution follow kickoff close/drain/verify/strike/tombstone/transplant |
+| Queued sends never deliver | Inspect actual rs receipt/outcome and daemon health; do not sweep legacy descriptors or withdraw in-transit answers |
+| Stream dies / is retired | Use current rs binding/tombstone evidence and explicit native revive/spawn; kickoff owns record retirement and separately authorized preservation/teardown |
 | Fence gap in verified worktree | Stream persists and notifies; o-prime records overlap; continue unless hard ownership or convergence boundary |

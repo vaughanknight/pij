@@ -20,6 +20,12 @@ const envelopeFixture = (name: string): string => {
 	const envelope = JSON.parse(fixture(name)) as Record<string, unknown>;
 	return JSON.stringify({ ...envelope, v: 2 });
 };
+const ERROR_ENVELOPES = JSON.parse(
+	readFileSync(
+		resolve(HERE, "../../../../crates/testkit/fixtures/golden/api/error-envelopes.json"),
+		"utf8",
+	),
+) as Array<{ command: string; error: string; meta: string }>;
 const roots: string[] = [];
 
 function root(): string {
@@ -128,6 +134,20 @@ describe("daemon generation controls", () => {
 		);
 
 		expect(generation.kind).toBe("rust");
+	});
+
+	it("preserves validated health auth refusal bytes when the daemon key is absent", async () => {
+		const auth = ERROR_ENVELOPES.find((envelope) => envelope.error === "auth");
+		expect(auth).toBeDefined();
+		const rawEnvelope = ` \n${JSON.stringify(auth, null, "\t")}\n`;
+		const fetchMock = vi.fn(async () => new Response(rawEnvelope, { status: 401 }));
+		await expect(
+			detectDaemonGeneration(
+				{ addr: "127.0.0.1:7999", stateDir: root() },
+				"rs",
+				deps(fetchMock as typeof fetch),
+			),
+		).rejects.toMatchObject({ kind: "auth", rawEnvelope });
 	});
 
 	it("selects legacy explicitly without probing Rust", async () => {

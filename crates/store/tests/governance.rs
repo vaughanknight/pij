@@ -15,7 +15,7 @@ use serde_json::Value;
 
 fn fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+        "../../testkit/fixtures/golden/api/governance-routes.json"
     ))
     .expect("canonical governance fixture")
 }
@@ -38,7 +38,7 @@ fn response(case_id: &str, field: &str) -> Value {
 
 fn event_record(case_id: &str) -> Value {
     let events: Value = serde_json::from_str(include_str!(
-        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
+        "../../testkit/fixtures/golden/api/governance-events.json"
     ))
     .expect("canonical event fixture");
     events["events"]

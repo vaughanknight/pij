@@ -33,9 +33,7 @@ mod tests {
 
     use super::*;
 
-    const ROUTES: &str = include_str!(
-        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
-    );
+    const ROUTES: &str = include_str!("../../testkit/fixtures/golden/api/governance-routes.json");
 
     #[derive(Clone)]
     struct FixtureState {

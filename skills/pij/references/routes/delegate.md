@@ -10,8 +10,7 @@ different, heavier job (a reviewed coder+reviewer fleet) — not this route. If 
 to stand up or chat with a peer with no work product, that's the raw colleague seam. This
 route is the thin **"one task → one peer → one result"** path between the two.
 
-**Preconditions**: mode detected once (§ C1 — control-plane mode also needs the one-time
-self-adopt so the peer's reply can reach you); a `pij daemon` (auto-starts on first spawn).
+**Preconditions**: delivery ownership/identity per § C1, and the intended rs daemon answers `pij-rs ping --json`. Do not assume shim spawn auto-starts it; unported grammar refuses rather than running legacy.
 
 ## The single invariant that makes delegation safe: pointer + bounds
 
@@ -34,7 +33,7 @@ Persist the packet (e.g. under a `scratch/` or task dir), then send the **path p
 
 ```bash
 # 1. acquire — provided-or-spawn ONE peer (§ C1 transport, § C5 placement)
-pij spawn --harness <h> --model <m>      # discover ids with `pij models` (§ C4)
+pij-rs spawn --harness <h> --model <m> --cwd <absolute-worktree> --parent <your-seat> --json
 #    canary-verify the footer + no-400 before trusting it (§ C2) — provided peers too
 
 # 2. deliver — write the packet to disk, send the POINTER (never the body)
@@ -43,8 +42,8 @@ pij send <id> "Packet at: <rel-path> — read it fully, then implement + report.
 # 3. collect — the daemon PUSHES the done-report back as an injected turn (§ C7);
 #    do NOT poll or nudge. Do independent work while the peer runs.
 
-# 4. teardown — close ONLY a peer you spawned (ownership-aware, § C1 verb)
-pij close <id>
+# 4. retire an owned seat only when no longer reusable; no process/pane kill:
+pij close <id> --json
 ```
 
 - **One task, one run** — the packet authorizes the whole bounded task; the peer finishes it
@@ -74,6 +73,6 @@ read `notes`, then either re-delegate a narrowed packet or take it over.
 
 | Symptom | Move |
 |---|---|
-| Ready but 400 on first message | wrong model id — close, re-spawn with a `pij models` id (§ C2/C4) |
-| No done-report for a long time | trust the push (§ C7); only spot-check with `pij tail <id>` if the transport is known-broken |
-| `pij close` refuses | you don't own that peer — leave it (only `--force` on the owner's explicit ask) |
+| Ready but inference fails | corroborate the exact model with the host catalog/footer and real canary (§ C2/C4); models shim is unported |
+| No done-report for a long time | trust push (§ C7); inspect the actual host transcript/pane only for a known-broken transport, never native event tail as a transcript |
+| Close refuses | only self/current recorded parent may tombstone; no `--force` escape, terminal teardown is separate |

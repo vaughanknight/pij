@@ -33,7 +33,7 @@ async fn reply(
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shipped_lifecycle_cli_forwards_canonical_argv_and_preserves_entire_envelope() {
     let contract: Value = serde_json::from_str(include_str!(
-        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+        "../../testkit/fixtures/golden/api/governance-routes.json"
     ))
     .expect("canonical routes");
     for path in ["/v1/close", "/v1/reap"] {

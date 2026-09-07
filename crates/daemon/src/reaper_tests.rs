@@ -15,7 +15,7 @@ use super::reap;
 
 fn seat() -> SeatDescriptor {
     let events: Value = serde_json::from_str(include_str!(
-        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
+        "../../testkit/fixtures/golden/api/governance-events.json"
     ))
     .expect("canonical events");
     serde_json::from_value(
@@ -80,7 +80,7 @@ async fn reap_dry_run_matches_canonical_candidate_and_run_commits_one_event() {
         .await
         .expect("dry-run");
     let contract: Value = serde_json::from_str(include_str!(
-        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+        "../../testkit/fixtures/golden/api/governance-routes.json"
     ))
     .expect("canonical routes");
     let fixture = &contract["routes"]

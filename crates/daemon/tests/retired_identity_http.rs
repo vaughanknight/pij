@@ -11,12 +11,8 @@ use pij_testkit::FreshStore;
 use pij_testkit::fakes::FakeSpine;
 use serde_json::{Value, json};
 
-const ROUTES: &str = include_str!(
-    "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
-);
-const EVENTS: &str = include_str!(
-    "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
-);
+const ROUTES: &str = include_str!("../../testkit/fixtures/golden/api/governance-routes.json");
+const EVENTS: &str = include_str!("../../testkit/fixtures/golden/api/governance-events.json");
 const KEY: &str = "retired-identity-fixture-key";
 
 fn context() -> Value {

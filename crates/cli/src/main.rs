@@ -867,6 +867,8 @@ async fn run(cli: Cli) -> ExitCode {
             };
             if response.ok {
                 response.meta = Some(format!("from {}; msg_id {}", request.from, request.msg_id));
+                // This is a CLI-derived receipt, not an unchanged daemon reply.
+                response.raw_json = None;
             }
             emit(&response, cli.json)
         }
@@ -887,6 +889,7 @@ async fn run(cli: Cli) -> ExitCode {
             };
             let mut response = client.send_control(&request, &caller_context()).await;
             response.command = "pij compact-self".to_string();
+            response.raw_json = None;
             emit(&response, cli.json)
         }
         Command::Inbox { seat, wait, peek } => {
@@ -1033,8 +1036,12 @@ async fn run(cli: Cli) -> ExitCode {
         Command::List => emit(&client.list().await, cli.json),
         Command::State { id } => {
             let response = client.state(&id).await;
-            println!("{}", render_state(&response, cli.json));
-            ExitCode::from(exit_code(&response))
+            if cli.json {
+                emit(&response, true)
+            } else {
+                println!("{}", render_state(&response, false));
+                ExitCode::from(exit_code(&response))
+            }
         }
         Command::Tail { since } => {
             let since = match cursor_map(since) {
@@ -1603,7 +1610,14 @@ fn system_time_ms() -> Result<u64, PijError> {
 }
 
 fn emit<T: serde::Serialize>(envelope: &Envelope<T>, json: bool) -> ExitCode {
-    println!("{}", render(envelope, json));
+    if json && let Some(raw) = &envelope.raw_json {
+        print!("{raw}");
+        if !raw.ends_with('\n') {
+            println!();
+        }
+    } else {
+        println!("{}", render(envelope, json));
+    }
     ExitCode::from(exit_code(envelope))
 }
 
@@ -1857,6 +1871,8 @@ fn spawn_cli_response(response: Envelope<SeatDescriptor>) -> Envelope<SpawnCliRe
         meta: response.meta,
         error: response.error,
         details: response.details,
+        // Successful spawn output is an established CLI-derived payload.
+        raw_json: if response.ok { None } else { response.raw_json },
     }
 }
 

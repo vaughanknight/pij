@@ -1,0 +1,20 @@
+{
+  "at": "2026-09-07T07:47:47Z",
+  "source_base": "e22833b0d0caf00d95346008dab1587005d0173d",
+  "scope": "u2 shared role projection plus PM StateCard and authoritative trailer fixture",
+  "proofs": [
+    {
+      "command": "cargo test --locked -p pij-daemon --test role_http --test retired_identity_http --test lifecycle_http -- --nocapture",
+      "passed": 22,
+      "suites": 3,
+      "raw": "artifact://375"
+    },
+    {
+      "command": "cargo test --locked -p pij-cli --test commit_trailers -- --nocapture",
+      "passed": 1,
+      "scope": "role-derived prime and separate role-less parent-chain root; unchanged derivation algorithm"
+    }
+  ],
+  "behavior": "whoami GET/POST, seats, StateCard and phonehome agree across assert/update/unset, no stale fallback; role read faults refuse projection but raw report/CAS authority remains usable",
+  "remaining": "Final full merged gate/review still required"
+}

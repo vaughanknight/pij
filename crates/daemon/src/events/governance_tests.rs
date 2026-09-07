@@ -17,7 +17,7 @@ use super::{EventBus, Subscription};
 fn contract() -> Value {
     serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
+        "/../testkit/fixtures/golden/api/governance-events.json"
     )))
     .expect("canonical governance event fixture")
 }

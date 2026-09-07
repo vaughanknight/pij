@@ -5,19 +5,15 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use pij_core::config::{AdapterChoice, Adapters, Config};
-use pij_core::model::{Event, PaneProcess, ProcIdentity, SeatDescriptor, Seq};
-use pij_core::ports::Spine;
+use pij_core::model::{Event, PaneProcess, ProcIdentity, SeatDescriptor, SeatId, Seq};
+use pij_core::ports::{Registry, Spine};
 use pij_daemon::http::{HttpConfig, router_with_config};
 use pij_testkit::FreshStore;
 use pij_testkit::fakes::{FakeLiveness, FakeTmux};
 use serde_json::{Value, json};
 
-const ROUTES: &str = include_str!(
-    "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
-);
-const EVENTS: &str = include_str!(
-    "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
-);
+const ROUTES: &str = include_str!("../../testkit/fixtures/golden/api/governance-routes.json");
+const EVENTS: &str = include_str!("../../testkit/fixtures/golden/api/governance-events.json");
 const KEY: &str = "role-contract-key";
 
 fn routes() -> Value {
@@ -47,6 +43,7 @@ struct Fixture {
     addr: SocketAddr,
     server: tokio::task::JoinHandle<()>,
     spine: Arc<dyn Spine>,
+    registry: Arc<dyn Registry>,
     _store: FreshStore,
 }
 impl Drop for Fixture {
@@ -113,6 +110,7 @@ impl Fixture {
         services.tmux = Arc::new(tmux);
         services.liveness = Arc::new(liveness);
         let spine = services.spine.clone();
+        let registry = services.registry.clone();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("private bind");
@@ -125,6 +123,7 @@ impl Fixture {
             addr,
             server,
             spine,
+            registry,
             _store: store,
         }
     }
@@ -141,6 +140,19 @@ impl Fixture {
         let body = serde_json::from_str(&text).unwrap_or_else(|_| json!({"undecodable":text}));
         (status, body)
     }
+    async fn get(&self, path: &str, query: &[(&str, &str)]) -> (u16, Value) {
+        let response = reqwest::Client::new()
+            .get(format!("http://{}{path}", self.addr))
+            .query(query)
+            .bearer_auth(KEY)
+            .send()
+            .await
+            .expect("HTTP GET");
+        let status = response.status().as_u16();
+        let text = response.text().await.expect("body");
+        let body = serde_json::from_str(&text).unwrap_or_else(|_| json!({"undecodable":text}));
+        (status, body)
+    }
     async fn events(&self) -> Vec<Event> {
         self.spine
             .tail(None, Seq(0))
@@ -152,29 +164,99 @@ impl Fixture {
     }
     async fn assert_read_role(&self, expected: Value) {
         let context = routes()["fixture_context"].clone();
-        let response: Value = reqwest::Client::new()
-            .get(format!("http://{}/v1/seats?scope=local", self.addr))
-            .bearer_auth(KEY)
-            .send()
+        let worker = SeatId::from(context["worker"].as_str().expect("worker id"));
+        let raw = self
+            .registry
+            .get(&worker)
             .await
-            .expect("seats")
-            .json()
+            .expect("registry")
+            .expect("worker");
+        let before = self
+            .spine
+            .tail(None, Seq(0))
             .await
-            .expect("roster JSON");
+            .expect("events before projections");
+        let (status, response) = self.get("/v1/seats", &[("scope", "local")]).await;
+        assert_eq!(status, 200, "{response}");
         let seat = response["data"]["seats"]
             .as_array()
             .expect("roster rows")
             .iter()
             .find(|seat| seat["id"] == context["worker"])
             .expect("worker row");
-        assert_eq!(seat["role"], expected, "seats must join seat_roles");
+        assert_eq!(
+            seat.get("role"),
+            Some(&expected),
+            "seats must join seat_roles"
+        );
         let (status, card) = self
             .post("/v1/state", &json!({"id":context["worker"]}))
             .await;
         assert_eq!(status, 200, "{card}");
         assert_eq!(
-            card["data"]["role"], expected,
+            card["data"].get("role"),
+            Some(&expected),
             "StateCard must join seat_roles"
+        );
+        let mut projected = serde_json::to_value(&raw).expect("descriptor JSON");
+        projected["role"] = expected.clone();
+        let pane = raw.pane.as_deref().expect("worker pane");
+        for query in [[("seat", worker.as_str())], [("pane", pane)]] {
+            let (status, response) = self.get("/v1/whoami", &query).await;
+            assert_eq!(status, 200, "{response}");
+            assert_eq!(
+                response["data"], projected,
+                "GET whoami changes only the projected role"
+            );
+            assert_eq!(
+                response["data"].get("role"),
+                seat.get("role"),
+                "whoami.role == seats.role"
+            );
+        }
+        for caller in [json!({"PIJ_SESSION_ID":worker}), json!({"TMUX_PANE":pane})] {
+            let request = json!({"caller":caller});
+            let (status, identity) = self.post("/v1/whoami", &request).await;
+            assert_eq!(status, 200, "{identity}");
+            assert_eq!(
+                identity["data"], projected,
+                "POST whoami changes only the projected role"
+            );
+            let (status, home) = self.post("/v1/phonehome", &request).await;
+            assert_eq!(status, 200, "{home}");
+            assert_eq!(
+                home["data"].get("role"),
+                seat.get("role"),
+                "phonehome.role == seats.role"
+            );
+            assert_eq!(
+                home["data"].get("role"),
+                card["data"].get("role"),
+                "phonehome.role == StateCard.role"
+            );
+            assert_eq!(home["data"]["seat"], json!(worker));
+            assert_eq!(
+                home["data"]["bound"], true,
+                "role projection must not change binding truth"
+            );
+            assert_eq!(home["data"]["pid"], json!(raw.proc.map(|proc| proc.pid)));
+            assert_eq!(
+                home["data"]["proc_start"],
+                json!(raw.proc.map(|proc| proc.proc_start))
+            );
+        }
+        assert_eq!(
+            self.registry.get(&worker).await.expect("raw registry"),
+            Some(raw),
+            "projection must not write its joined role back to the descriptor"
+        );
+        assert_eq!(
+            self.spine
+                .tail(None, Seq(0))
+                .await
+                .expect("events after projections"),
+            before,
+            "identity projections must not publish events"
         );
     }
 }
@@ -389,4 +471,146 @@ async fn typed_adopt_role_rejects_null_and_duplicate_assertions_without_publicat
         .extend([json!("--role"), template["role"].clone()]);
     assert!(fixture.post("/v1/adopt", &request).await.0 >= 400);
     assert_eq!(fixture.events().await.len(), 1);
+}
+
+#[tokio::test]
+async fn all_identity_projections_agree_across_role_assert_update_and_unset_with_stale_descriptor()
+{
+    let fixture = Fixture::start().await;
+    let context = routes()["fixture_context"].clone();
+    let worker = SeatId::from(context["worker"].as_str().expect("worker id"));
+    let mut raw = fixture
+        .registry
+        .get(&worker)
+        .await
+        .expect("registry")
+        .expect("worker");
+    raw.role = Some("descriptor-only-stale-role".to_string());
+    fixture
+        .registry
+        .put(raw.clone())
+        .await
+        .expect("seed stale descriptor role");
+    fixture.assert_read_role(Value::Null).await;
+
+    let mut request = role_case()["request"].clone();
+    let assigned = request["role"].clone();
+    let updated = json!("projection-updated-role");
+    assert_ne!(assigned, updated);
+    for role in [assigned, updated, Value::Null] {
+        request["role"] = role.clone();
+        let (status, response) = fixture.post("/v1/role", &request).await;
+        assert_eq!(status, 200, "{response}");
+        assert_eq!(response["data"].get("role"), Some(&role));
+        fixture.assert_read_role(role).await;
+        assert_eq!(
+            fixture.registry.get(&worker).await.expect("raw registry"),
+            Some(raw.clone()),
+            "authoritative assignment must remain independent from the stale descriptor"
+        );
+    }
+    let events = fixture.events().await;
+    assert_eq!(events.len(), 3, "only explicit role writes publish");
+    assert!(events.windows(2).all(|pair| pair[0].seq < pair[1].seq));
+}
+
+#[tokio::test]
+async fn role_projection_store_failure_refuses_every_identity_surface_without_stale_fallback() {
+    let fixture = Fixture::start().await;
+    let context = routes()["fixture_context"].clone();
+    let worker = SeatId::from(context["worker"].as_str().expect("worker id"));
+    let mut raw = fixture
+        .registry
+        .get(&worker)
+        .await
+        .expect("registry")
+        .expect("worker");
+    raw.role = Some("descriptor-only-stale-role".to_string());
+    fixture
+        .registry
+        .put(raw.clone())
+        .await
+        .expect("seed stale descriptor role");
+    let before = fixture.spine.tail(None, Seq(0)).await.expect("events");
+    let pool = pij_store::open(&fixture._store.path())
+        .await
+        .expect("private store pool");
+    sqlx::query("DROP TABLE seat_roles")
+        .execute(&pool)
+        .await
+        .expect("inject role read failure");
+    let pane = raw.pane.as_deref().expect("worker pane");
+    let mut responses = Vec::new();
+    responses.push(fixture.get("/v1/seats", &[("scope", "local")]).await);
+    for query in [[("seat", worker.as_str())], [("pane", pane)]] {
+        responses.push(fixture.get("/v1/whoami", &query).await);
+    }
+    responses.push(fixture.post("/v1/state", &json!({"id":worker})).await);
+    for caller in [json!({"PIJ_SESSION_ID":worker}), json!({"TMUX_PANE":pane})] {
+        for path in ["/v1/whoami", "/v1/phonehome"] {
+            responses.push(fixture.post(path, &json!({"caller":caller})).await);
+        }
+    }
+    for (status, response) in responses {
+        assert_eq!(status, 500, "{response}");
+        assert_eq!(response["ok"], false, "{response}");
+        assert_eq!(response["error"], "adapter", "{response}");
+        assert!(
+            response["data"].is_null(),
+            "no successful stale role projection: {response}"
+        );
+        assert!(
+            response["meta"]
+                .as_str()
+                .expect("diagnostic")
+                .contains("seat_roles"),
+            "{response}"
+        );
+    }
+    assert_eq!(
+        fixture.registry.get(&worker).await.expect("raw registry"),
+        Some(raw.clone())
+    );
+    assert_eq!(
+        fixture.spine.tail(None, Seq(0)).await.expect("events"),
+        before
+    );
+
+    // Role storage is required for response projections, not for raw identity
+    // authority. Reports and the lifecycle CAS must still use the real row.
+    for caller in [json!({"PIJ_SESSION_ID":worker}), json!({"TMUX_PANE":pane})] {
+        let (status, report) = fixture.post("/v1/report", &json!({
+            "caller": caller,
+            "argv": ["report", "now", "projection reads refused", "raw identity remains usable"]
+        })).await;
+        assert_eq!(
+            status, 200,
+            "raw identity must not require role storage: {report}"
+        );
+        assert_eq!(report["data"]["seat"], json!(worker));
+    }
+    let (status, closed) = fixture
+        .post(
+            "/v1/close",
+            &json!({
+                "caller": {"TMUX_PANE": pane}, "seat": worker, "reason": "role-projection-proof"
+            }),
+        )
+        .await;
+    assert_eq!(
+        status, 200,
+        "raw descriptor CAS must not require role storage: {closed}"
+    );
+    assert!(closed["data"]["seq"].as_u64().is_some_and(|seq| seq > 0));
+    let retired = fixture
+        .registry
+        .get(&worker)
+        .await
+        .expect("registry")
+        .expect("retired worker");
+    assert!(retired.tombstoned_at.is_some());
+    assert_eq!(
+        retired.role, raw.role,
+        "CAS must preserve the raw descriptor role"
+    );
 }

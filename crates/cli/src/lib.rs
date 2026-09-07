@@ -43,6 +43,9 @@ pub fn default_state_dir() -> PathBuf {
 /// Render an envelope for a human, or as the JSON it already is.
 pub fn render<T: serde::Serialize>(envelope: &Envelope<T>, as_json: bool) -> String {
     if as_json {
+        if let Some(raw) = &envelope.raw_json {
+            return raw.clone();
+        }
         return serde_json::to_string(envelope).unwrap_or_else(|error| error.to_string());
     }
     if !envelope.ok {

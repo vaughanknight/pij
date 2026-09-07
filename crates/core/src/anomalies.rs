@@ -642,7 +642,7 @@ mod tests {
         let rows = StatusStaleDetector.scan(&view);
         assert_eq!(rows.len(), 1);
         let fixtures: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+            "../../testkit/fixtures/golden/api/governance-routes.json"
         ))
         .expect("canonical contract");
         assert_eq!(
@@ -867,7 +867,7 @@ mod tests {
     #[test]
     fn five_governance_kinds_match_canonical_rows_and_real_sequences() {
         let fixtures: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+            "../../testkit/fixtures/golden/api/governance-routes.json"
         ))
         .expect("contract");
         let seats = [seat("pij-worker", None)];

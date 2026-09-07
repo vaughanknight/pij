@@ -1,0 +1,12 @@
+{
+  "address": "127.0.0.1:53448",
+  "path": "/Users/jordanknight/.npm-global/bin:/Users/jordanknight/github/tools/scripts:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/opt/X11/bin:/Library/Apple/usr/bin:/usr/local/share/dotnet:~/.dotnet/tools:/Users/jordanknight/Library/pnpm:/Users/jordanknight/.npm-global/bin:/Users/jordanknight/github/tools/scripts:/Users/jordanknight/.local/bin:/Applications/Ghostty.app/Contents/MacOS:/Users/jordanknight/.orbstack/bin:/Users/jordanknight/.lmstudio/bin:/Users/jordanknight/github/flowspace/build/release:/Users/jordanknight/.orbstack/bin:/Users/jordanknight/.lmstudio/bin:/Users/jordanknight/github/flowspace/build/release:/Users/jordanknight/.claude/plugins/cache/claude-plugins-official/frontend-design/e18ff5086423/bin",
+  "socket_label": "p139-live-parity.jkhclJ",
+  "tmux_binary": "/opt/homebrew/bin/tmux",
+  "node_binary": "/opt/homebrew/bin/node",
+  "tsx_loader": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/node_modules/tsx/dist/loader.mjs",
+  "shim_source": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/.pi/extensions/pij/cli.ts",
+  "TMUX": "/private/tmp/tmux-501/p139-live-parity.jkhclJ,1103,0",
+  "TMUX_PANE": "%0",
+  "actor_pid": 1821
+}

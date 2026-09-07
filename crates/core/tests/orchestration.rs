@@ -195,7 +195,7 @@ fn ordinal_minting_unions_clone_worktrees_and_branch_heads() {
 #[test]
 fn explicit_stream_ordinal_preserves_existing_names_and_does_not_mutate_inventory() {
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+        "../../testkit/fixtures/golden/api/governance-routes.json"
     ))
     .unwrap();
     let stream = &fixture["fixture_context"]["records"]["stream"];
@@ -232,7 +232,7 @@ fn explicit_stream_ordinal_preserves_existing_names_and_does_not_mutate_inventor
 #[test]
 fn explicit_stream_ordinal_refuses_collisions_in_each_git_namespace() {
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+        "../../testkit/fixtures/golden/api/governance-routes.json"
     ))
     .unwrap();
     let stream = &fixture["fixture_context"]["records"]["stream"];

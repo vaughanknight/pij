@@ -96,7 +96,7 @@ mod tests {
     #[tokio::test]
     async fn governance_forwards_all_canonical_argv_and_preserves_full_envelope_bytes() {
         let fixtures: Value = serde_json::from_str(include_str!(
-            "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+            "../../testkit/fixtures/golden/api/governance-routes.json"
         ))
         .expect("contracts");
         let mut router = axum::Router::new();

@@ -21,7 +21,7 @@ fn contract() -> &'static Value {
     static CONTRACT: OnceLock<Value> = OnceLock::new();
     CONTRACT.get_or_init(|| {
         serde_json::from_str(include_str!(
-            "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+            "../../testkit/fixtures/golden/api/governance-routes.json"
         ))
         .expect("canonical route contract")
     })

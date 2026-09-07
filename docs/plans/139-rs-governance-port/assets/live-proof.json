@@ -1,0 +1,263 @@
+{
+  "schema": "pij/plan139-live-proof/v1",
+  "at": "2026-09-07T09:52:27Z",
+  "source_base": "e22833b0d0caf00d95346008dab1587005d0173d",
+  "native_binary_sha256": "a292c174965721db806c9f82c23b8bdc12de58696715ab5485524b5ee3e0dd41",
+  "parity_corpus_repo_path": "crates/testkit/fixtures/golden/api/governance-client-parity.json",
+  "corpus_sha256": "acc298253130983221f5995a459ec8406cef0e9c50fe9d635aad873be6469370",
+  "counts": {
+    "shared_mutations": 29,
+    "named_refusals": 9,
+    "same_daemon_cli_pairs": 18,
+    "live_http_pairs": 4,
+    "shared_error_exit_pairs": 6,
+    "matched_pairs": 66,
+    "non_shared_capability_probes": 2
+  },
+  "methods": {
+    "same_daemon_native_cli": [
+      "project-list",
+      "project-show",
+      "stream-list",
+      "stream-show",
+      "fence-show",
+      "node-show",
+      "baton-list",
+      "baton-show",
+      "anomalies-argv",
+      "decisions-argv",
+      "spine-events",
+      "spine-render",
+      "list-live",
+      "whoami-live",
+      "state-live",
+      "commit-trailers-live",
+      "spine-events-live-success",
+      "reap-dry-run-live"
+    ],
+    "same_daemon_http": [
+      "sessions-live-http",
+      "list-live-filters",
+      "anomalies-live-get",
+      "decisions-live-get"
+    ],
+    "identical_scripted_http": [
+      "project-create",
+      "project-set",
+      "stream-create",
+      "stream-close",
+      "fence-set",
+      "dispatch-create",
+      "dispatch-ack",
+      "canary-verified",
+      "attest-plan",
+      "task-set",
+      "task-close",
+      "baton-define",
+      "baton-request",
+      "baton-grant",
+      "baton-return",
+      "baton-reclaim",
+      "prime-set",
+      "prime-retire",
+      "prime-unset",
+      "orchestration-role-set",
+      "role-unset",
+      "role-set",
+      "report-question",
+      "report-verify",
+      "decision-answer",
+      "decision-answer-supersede",
+      "seat-close",
+      "spine-append",
+      "adopt-with-role",
+      "refusal-ownership",
+      "refusal-lease_stale",
+      "refusal-packet_sha",
+      "refusal-answer_in_transit_pending",
+      "refusal-answer_in_transit_claimed",
+      "refusal-answer_delivered",
+      "refusal-answer_authority_split_real_fake",
+      "refusal-answer_authority_split_fake_real",
+      "refusal-answer_authority_split_fake_fake"
+    ],
+    "shared_error_policy": [
+      "exit-refused",
+      "exit-not_found",
+      "exit-auth",
+      "exit-skew",
+      "exit-cursor_reset",
+      "exit-adapter"
+    ]
+  },
+  "scope": {
+    "mutations": "Scripted HTTP responses test actual client byte preservation, not domain execution.",
+    "read_only": "Private real daemon, state-dir, HOME, CLAUDE_CONFIG_DIR, XDG_CONFIG_HOME, and observed foreground tmux socket. Empty anomalies/decisions are explicit.",
+    "sessions": "Compared against live /v1/shim/sessions; no native CLI subcommand exists.",
+    "register": "Native/HTTP-only registration success and named shim E-RS-UNPORTED retained as capability probes.",
+    "refusal_exit_codes": "Prime retained native policy (refused2/not_found3/auth4/cursor_reset5/skew-or-adapter1) versus shim4; AC4 is JSON bytes.",
+    "production": "Unclaimed. Prime owns deployment and production/chainglass AC2/AC3/AC7/AC9 arms."
+  },
+  "domain_did_receipts": [
+    "native-cli-workflow-proof.json",
+    "actual-omp-canary-proof.json",
+    "role-projection-proof.json",
+    "red-proof-wave2.json"
+  ],
+  "seed": {
+    "actor": "pij-forthcoming-dove",
+    "adopt": {
+      "ok": true,
+      "command": "pij adopt",
+      "v": 2,
+      "data": {
+        "id": "pij-forthcoming-dove",
+        "harness": "omp",
+        "session": null,
+        "pane": "%0",
+        "proc": {
+          "pid": 1821,
+          "proc_start": 20260907190207
+        },
+        "folder": "/private/tmp/p139-live-parity.jkhclJ/work",
+        "state": "idle",
+        "semantic_state": null,
+        "role": "prime",
+        "parent": null,
+        "relay": false,
+        "native_extension_delivery": false,
+        "proc_source": "pane",
+        "typing_grace_ms": 60000
+      },
+      "meta": "adopted pij-forthcoming-dove; identity resolves from pane %0 on each command \u2014 no PIJ_SESSION_ID export is required for this harness"
+    },
+    "commands": [
+      {
+        "argv": [
+          "project",
+          "create",
+          "Governance port"
+        ],
+        "exit": 0,
+        "stdout": "{\"ok\":true,\"command\":\"pij project\",\"v\":2,\"data\":{\"project\":{\"created_at\":1788772095266,\"created_by\":\"pij-forthcoming-dove\",\"description\":\"Governance port\",\"plan_path\":null,\"prime_id\":null,\"repo\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"slug\":\"governance-port\"},\"seq\":6}}\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "stream",
+          "create",
+          "--project",
+          "governance-port",
+          "--slug",
+          "contracts",
+          "--base",
+          "main",
+          "--ordinal",
+          "139"
+        ],
+        "exit": 1,
+        "stdout": "{\"ok\":false,\"command\":\"pij stream\",\"v\":2,\"meta\":\"E-RS-STORE daemon/orchestration/repo: git symbolic-ref --quiet --short HEAD failed (exit status: 128): fatal: not a git repository (or any of the parent directories): .git\",\"error\":\"adapter\",\"details\":{\"code\":\"E-RS-STORE\"}}\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "stream",
+          "create",
+          "--project",
+          "governance-port",
+          "--slug",
+          "contracts",
+          "--base",
+          "main",
+          "--ordinal",
+          "139"
+        ],
+        "exit": 0,
+        "stdout": "{\"ok\":true,\"command\":\"pij stream\",\"v\":2,\"data\":{\"seq\":7,\"stream\":{\"base_ref\":\"main\",\"branch\":\"s139/contracts\",\"created_at\":1788772768962,\"created_by\":\"pij-forthcoming-dove\",\"id\":\"governance-port:contracts\",\"ordinal\":139,\"project\":\"governance-port\",\"slug\":\"contracts\",\"state\":\"created\",\"worktree\":\"/private/tmp/p139-live-parity.jkhclJ/work/s139-contracts\"}}}\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "fence",
+          "set",
+          "governance-port:contracts",
+          "--paths",
+          "crates/core/**",
+          "--shared",
+          "crates/core/src/lib.rs"
+        ],
+        "exit": 0,
+        "stdout": "{\"ok\":true,\"command\":\"pij fence\",\"v\":2,\"data\":{\"fence\":{\"declared_at\":1788772769055,\"declared_by\":\"pij-forthcoming-dove\",\"id\":\"fence-5e26764d650ec05813a840f3521829b5\",\"paths\":[\"crates/core/**\"],\"shared\":[\"crates/core/src/lib.rs\"],\"stream\":\"governance-port:contracts\"},\"seq\":8}}\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "orchestration",
+          "baton",
+          "define",
+          "merge",
+          "--resource",
+          "branch:main",
+          "--repo",
+          "/private/tmp/p139-live-parity.jkhclJ/work"
+        ],
+        "exit": 0,
+        "stdout": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"baton\":{\"created_at\":1788772769097,\"created_by\":\"pij-forthcoming-dove\",\"description\":\"branch:main\",\"name\":\"merge\",\"probe\":null,\"repo\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"resource\":\"branch:main\"},\"seq\":9}}\n",
+        "stderr": ""
+      }
+    ],
+    "git": "Private main branch initialized with empty base commit2570908 after actual stream-create refused missing Git repo. No source handler or expectation weakened."
+  },
+  "teardown": {
+    "services": {
+      "live-daemon": "hub exited143",
+      "scripted-http": "hub exited143",
+      "private-tmux": "hub exited0"
+    },
+    "observations": [
+      {
+        "name": "scripted-http",
+        "pid": 69674,
+        "exit": 1,
+        "stdout": "PIJ_LSTART\n",
+        "stderr": "",
+        "absent": true
+      },
+      {
+        "name": "live-daemon",
+        "pid": 72961,
+        "exit": 1,
+        "stdout": "PIJ_LSTART\n",
+        "stderr": "",
+        "absent": true
+      },
+      {
+        "name": "private-tmux",
+        "pid": 1103,
+        "exit": 1,
+        "stdout": "PIJ_LSTART\n",
+        "stderr": "",
+        "absent": true
+      },
+      {
+        "name": "inert-pane",
+        "pid": 1821,
+        "exit": 1,
+        "stdout": "PIJ_LSTART\n",
+        "stderr": "",
+        "absent": true
+      }
+    ],
+    "stale_socket_probe": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "no server running on /private/tmp/tmux-501/p139-live-parity.jkhclJ\n"
+    },
+    "socket_removed_after_absence": "/private/tmp/tmux-501/p139-live-parity.jkhclJ",
+    "removed_roots": [
+      "/private/tmp/p139-live-parity.jkhclJ",
+      "/private/tmp/p139-parity.5Lo3L1"
+    ],
+    "authority": "Exact directories/processes created by this run; ownership-based cleanup, not age-based retention. No shared daemon or default tmux touched."
+  }
+}

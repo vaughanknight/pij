@@ -1,47 +1,18 @@
-// pij — the LITERAL body channel, proven through the real bin (plan 093, pij#128).
-//
-// `--body-file` is unwrapped in `cli.ts` BEFORE `parseArgs` ever runs, so the
-// pure core specs cannot see it: the one channel the fleet uses for relayed or
-// untrusted text had no test at all. These are deliberately real-process tests
-// (`spawnSync` on the wrapper) for that reason.
-//
-// What is asserted, and what is NOT: pij cannot stop the CALLER's shell from
-// expanding a double-quoted body — expansion completes before pij's process
-// exists (dossier F-06). Nothing here claims otherwise. What is provable, and
-// what these tests hold, is that the safe path is actually safe: the file's
-// bytes arrive unchanged, and they are never lexed as argv.
-
-import { spawnSync } from "node:child_process";
-import {
-	mkdirSync,
-	mkdtempSync,
-	readdirSync,
-	readFileSync,
-	realpathSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+// The literal text boundary through the real CLI and shipped generation adapter.
+// A private HTTP fixture observes argv/body_literal; daemon grammar remains daemon-owned.
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseArgs } from "./core/cli.js";
-import type { DeliveredMessage, SessionDescriptor } from "./core/types.js";
 
-const nodeRequire = createRequire(import.meta.url);
-const TSX_CLI = nodeRequire.resolve("tsx/cli");
+const TSX = createRequire(import.meta.url).resolve("tsx/cli");
 const CLI = join(import.meta.dirname, "cli.ts");
-
-/** Everything a quoted body would mangle, plus everything the argv lexer would
- *  steal. The first line begins `--wait` on purpose: `--wait` takes an optional
- *  value on `send`, so a body re-appended as an argv token gets swallowed by it
- *  and vanishes entirely (KF-8). Trailing spaces AND trailing newlines are the
- *  `trimEnd()` case (KF-7). */
 const HOSTILE_BODY = [
 	"--wait 500 this line must arrive as TEXT, not as a flag value",
-	// The `${HOME}` below is hostile ON PURPOSE: it is a SHELL expansion of the
-	// kind a caller relays, not a JS template placeholder. Rewriting it to
-	// satisfy the lint would delete the thing under test.
 	// biome-ignore lint/suspicious/noTemplateCurlyInString: shell-expansion fixture, not a JS template
 	"backticks: `echo pwned` and substitution: $(echo pwned) and ${HOME}",
 	`quotes: 'single' "double" and a semicolon ; here`,
@@ -50,344 +21,313 @@ const HOSTILE_BODY = [
 	"",
 	"",
 ].join("\n");
+const SUCCESS =
+	' { "ok":true, "command":"send", "v":2, "data":{"msg_id":"fixture","outcome":"queued"}, "details":{"retained":true} }\n';
+const REFUSAL =
+	'{"ok":false,"command":"send","v":2,"error":"refused","meta":"daemon rejected the body","details":{"code":"E-EMPTY","original":true}}\n';
 
 interface CliRun {
-	readonly code: number;
-	readonly stdout: string;
-	readonly stderr: string;
+	code: number;
+	stdout: string;
+	stderr: string;
+}
+interface Received {
+	path: string;
+	method: string;
+	authorization: string | undefined;
+	body: string;
+}
+let root: string;
+let home: string;
+let legacyHome: string;
+let stateDir: string;
+let addr: string;
+let server: Server;
+let received: Received[];
+let responseBody: string;
+let responseStatus: number;
+const children = new Set<ChildProcessWithoutNullStreams>();
+
+beforeEach(async () => {
+	root = realpathSync(mkdtempSync(join(tmpdir(), "pij-bodyfile-rs-")));
+	home = join(root, "home");
+	legacyHome = join(home, ".pij");
+	stateDir = join(root, "rs");
+	mkdirSync(home);
+	mkdirSync(stateDir);
+	writeFileSync(join(stateDir, "daemon.key"), "body-file-private-key");
+	received = [];
+	responseBody = SUCCESS;
+	responseStatus = 200;
+	server = createServer((request, response) => {
+		void (async () => {
+			const chunks: Buffer[] = [];
+			for await (const chunk of request) chunks.push(Buffer.from(chunk));
+			const record = {
+				path: request.url ?? "",
+				method: request.method ?? "",
+				authorization: request.headers.authorization,
+				body: Buffer.concat(chunks).toString("utf8"),
+			};
+			received.push(record);
+			response.writeHead(record.path === "/health" ? 200 : responseStatus, {
+				"Content-Type": "application/json",
+			});
+			response.end(
+				record.path === "/health"
+					? JSON.stringify({
+							ok: true,
+							command: "health",
+							v: 2,
+							data: { status: "ok", build: "fixture", offline: true, machine: "private" },
+						})
+					: responseBody,
+			);
+		})().catch((error: Error) => response.destroy(error));
+	});
+	await new Promise<void>((resolve, reject) => {
+		server.once("error", reject);
+		server.listen(0, "127.0.0.1", resolve);
+	});
+	const address = server.address();
+	if (address === null || typeof address === "string")
+		throw new Error("fixture did not bind a private TCP port");
+	addr = `127.0.0.1:${address.port}`;
+});
+
+afterEach(async () => {
+	await Promise.all(
+		[...children].map(
+			(child) =>
+				new Promise<void>((resolve) => {
+					child.once("close", () => resolve());
+					child.kill("SIGKILL");
+				}),
+		),
+	);
+	await new Promise<void>((resolve, reject) => {
+		server.close((error) => (error ? reject(error) : resolve()));
+		server.closeAllConnections();
+	});
+	rmSync(root, { recursive: true, force: true });
+});
+
+function runPij(argv: readonly string[], stdin = ""): Promise<CliRun> {
+	return new Promise((resolve, reject) => {
+		const child = spawn(process.execPath, [TSX, CLI, ...argv], {
+			cwd: root,
+			env: {
+				PATH: process.env.PATH,
+				HOME: home,
+				USERPROFILE: home,
+				TMPDIR: root,
+				PIJ_HOME: legacyHome,
+				PIJ_RS_ADDR: addr,
+				PIJ_RS_STATE_DIR: stateDir,
+				NODE_NO_WARNINGS: "1",
+				PIJ_SESSION_ID: "body-file-caller",
+				TMUX_PANE: "%501",
+			},
+			stdio: "pipe",
+			timeout: 20_000,
+			killSignal: "SIGKILL",
+		});
+		children.add(child);
+		const stdout: Buffer[] = [];
+		const stderr: Buffer[] = [];
+		child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+		child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+		child.once("error", reject);
+		child.stdin.once("error", reject);
+		child.once("close", (code, signal) => {
+			children.delete(child);
+			if (signal !== null) {
+				reject(new Error(`CLI terminated by ${signal}`));
+				return;
+			}
+			resolve({
+				code: code ?? 1,
+				stdout: Buffer.concat(stdout).toString("utf8"),
+				stderr: Buffer.concat(stderr).toString("utf8"),
+			});
+		});
+		child.stdin.end(stdin);
+	});
 }
 
-describe("pij send --body-file (the literal body channel)", () => {
-	let pijHome: string;
-	let folder: string;
-	let agentHome: string;
+function sendRequest(): { argv: string[]; body_literal?: string; caller: Record<string, unknown> } {
+	const sent = received.filter((request) => request.path !== "/health");
+	expect(sent).toHaveLength(1);
+	const request = sent[0] as Received;
+	expect(request).toMatchObject({
+		path: "/v1/shim/send",
+		method: "POST",
+		authorization: "Bearer body-file-private-key",
+	});
+	return JSON.parse(request.body);
+}
 
-	beforeEach(() => {
-		pijHome = mkdtempSync(join(tmpdir(), "pij-bodyfile-home-"));
-		folder = realpathSync(mkdtempSync(join(tmpdir(), "pij-bodyfile-cwd-")));
-		agentHome = realpathSync(mkdtempSync(join(tmpdir(), "pij-bodyfile-agent-home-")));
+describe("pij send --body-file through the shipped rs adapter", () => {
+	it.each([
+		HOSTILE_BODY,
+		"   hello   \n\n",
+		"",
+		"  \n\n",
+	])("forwards file text literally, leaving body admission to the daemon: %j", async (body) => {
+		const path = join(root, "literal body ; not a shell.txt");
+		writeFileSync(path, body);
+		const args = ["send", "pij-target", "--body-file", path, "--json"];
+		expect(await runPij(args)).toEqual({ code: 0, stdout: SUCCESS, stderr: "" });
+		expect(sendRequest()).toMatchObject({
+			argv: args,
+			body_literal: body,
+			caller: { pijSessionId: "body-file-caller", tmuxPane: "%501", cwd: root },
+		});
+		expect(sendRequest().argv).not.toContain(body);
+		expect(existsSync(legacyHome)).toBe(false);
 	});
 
-	afterEach(() => {
-		rmSync(pijHome, { recursive: true, force: true });
-		rmSync(folder, { recursive: true, force: true });
-		rmSync(agentHome, { recursive: true, force: true });
+	it("reads stdin as one literal body, preserving hostile text and final newlines", async () => {
+		const args = ["send", "pij-target", "--body-file", "-", "--json"];
+		expect(await runPij(args, HOSTILE_BODY)).toEqual({ code: 0, stdout: SUCCESS, stderr: "" });
+		expect(sendRequest()).toMatchObject({ argv: args, body_literal: HOSTILE_BODY });
+		expect(existsSync(legacyHome)).toBe(false);
 	});
 
-	function writeDescriptor(id: string): SessionDescriptor {
-		const dataDir = join(pijHome, id);
-		const descriptor: SessionDescriptor = {
-			id,
-			folder,
-			dataDir,
-			eventsPath: join(dataDir, "events.ndjson"),
-			pid: process.pid,
-			startedAt: "2026-08-08T00:00:00.000Z",
-			state: "idle",
-		};
-		mkdirSync(join(dataDir, "inbox"), { recursive: true });
-		writeFileSync(join(pijHome, `${id}.json`), JSON.stringify(descriptor));
-		return descriptor;
-	}
+	it("reads relative body paths from the actual invocation cwd", async () => {
+		writeFileSync(join(root, "relative.txt"), HOSTILE_BODY);
+		const args = ["send", "pij-target", "--body-file", "relative.txt", "--json"];
+		expect((await runPij(args)).code).toBe(0);
+		expect(sendRequest()).toMatchObject({ argv: args, body_literal: HOSTILE_BODY });
+	});
 
-	function runPij(
-		args: readonly string[],
-		envOverrides: Record<string, string> = {},
-		stdin?: string,
-	): CliRun {
-		const result = spawnSync(process.execPath, [TSX_CLI, CLI, ...args], {
-			cwd: folder,
-			env: {
-				...process.env,
-				HOME: agentHome,
-				USERPROFILE: agentHome,
-				PIJ_HOME: pijHome,
-				PIJ_DAEMON_GENERATION: "legacy",
-				PIJ_SESSION_ID: "",
-				TMUX: "",
-				TMUX_PANE: "",
-				CLAUDE_CODE_SESSION_ID: "",
-				COPILOT_AGENT_SESSION_ID: "",
-				CODEX_THREAD_ID: "",
-				...envOverrides,
-			},
-			encoding: "utf8",
-			timeout: 20_000,
-			...(stdin !== undefined ? { input: stdin } : {}),
+	it.each([
+		["send", "pij-target", "--wait", "1"],
+		["send", "pij-target", "--wait"],
+		["send", "--to", "pij-first", "--to", "pij-second"],
+	])("does not re-lex body text or mirror flag valence for %j", async (...prefix) => {
+		const path = join(root, "body.txt");
+		writeFileSync(path, HOSTILE_BODY);
+		const args = [...prefix, "--body-file", path, "--json"];
+		expect((await runPij(args)).code).toBe(0);
+		expect(sendRequest()).toMatchObject({ argv: args, body_literal: HOSTILE_BODY });
+	});
+
+	it.each([
+		["send", "pij-target", "inline body"],
+		["send", "pij-target", "--command", "compact"],
+		["send", "pij-target", "--command=compact"],
+	])("preserves daemon refusal for body conflicts rather than adding a CLI parser: %j", async (...prefix) => {
+		const path = join(root, "body.txt");
+		writeFileSync(path, HOSTILE_BODY);
+		responseStatus = 400;
+		responseBody = REFUSAL;
+		const args = [...prefix, "--body-file", path, "--json"];
+		expect(await runPij(args)).toEqual({ code: 4, stdout: REFUSAL, stderr: "" });
+		expect(sendRequest()).toMatchObject({ argv: args, body_literal: HOSTILE_BODY });
+		expect(existsSync(legacyHome)).toBe(false);
+	});
+
+	it.each([
+		false,
+		true,
+	])("preserves daemon empty-body refusal for broadcast=%s without legacy writes", async (broadcast) => {
+		const path = join(root, "blank.txt");
+		writeFileSync(path, "  \n\n");
+		responseStatus = 422;
+		responseBody = REFUSAL;
+		const args = [
+			"send",
+			...(broadcast ? ["--to", "pij-first", "--to", "pij-second"] : ["pij-target"]),
+			"--body-file",
+			path,
+			"--json",
+		];
+		expect(await runPij(args)).toEqual({ code: 4, stdout: REFUSAL, stderr: "" });
+		expect(sendRequest()).toMatchObject({ argv: args, body_literal: "  \n\n" });
+		expect(existsSync(legacyHome)).toBe(false);
+	});
+
+	it.each([
+		["--body-file"],
+		["--body-file", "--json"],
+		["--body-file", "missing-file.txt"],
+	])("refuses unreadable or missing body-file values before sending: %j", async (...flags) => {
+		const result = await runPij(["send", "pij-target", ...flags, "--json"]);
+		expect(result.code).not.toBe(0);
+		expect(JSON.parse(result.stdout)).toMatchObject({
+			ok: false,
+			v: 2,
+			error: "refused",
+			details: { code: "E-RS-REQUEST" },
 		});
-		if (result.error) throw result.error;
-		return { code: result.status ?? 1, stdout: result.stdout, stderr: result.stderr };
-	}
+		expect(JSON.parse(result.stdout).meta).toContain("--body-file");
+		expect(received.filter((request) => request.path !== "/health")).toEqual([]);
+		expect(existsSync(legacyHome)).toBe(false);
+	});
 
-	function deliveredTo(receiver: SessionDescriptor): DeliveredMessage {
-		const inboxDir = join(receiver.dataDir, "inbox");
-		const names = readdirSync(inboxDir).filter(
-			(name) => name.startsWith("msg-") && name.endsWith(".json"),
-		);
-		expect(names).toHaveLength(1);
-		return JSON.parse(readFileSync(join(inboxDir, names[0] as string), "utf8")) as DeliveredMessage;
-	}
+	it("leaves inline message bodies in argv and does not invent body_literal", async () => {
+		const args = ["send", "pij-target", HOSTILE_BODY, "--json"];
+		expect((await runPij(args)).code).toBe(0);
+		expect(sendRequest().argv).toEqual(args);
+		expect(sendRequest()).not.toHaveProperty("body_literal");
+	});
 
-	/** How many messages actually landed. The refusal cases below assert on THIS
-	 *  rather than on the exit code: a process that delivered and then complained
-	 *  passes an exit-code check and fails this one. */
-	function inboxCount(receiver: SessionDescriptor): number {
-		return readdirSync(join(receiver.dataDir, "inbox")).filter(
-			(name) => name.startsWith("msg-") && name.endsWith(".json"),
-		).length;
-	}
-
-	it("AC-08/09: a hostile body from a file arrives byte-for-byte and is never lexed as argv", {
-		timeout: 30_000,
-	}, () => {
-		const sender = writeDescriptor("pij-bodyfile-a");
-		const receiver = writeDescriptor("pij-bodyfile-b");
-		const bodyPath = join(folder, "body.txt");
-		writeFileSync(bodyPath, HOSTILE_BODY);
-
-		const result = runPij(["send", receiver.id, "--body-file", bodyPath, "--json"], {
-			PIJ_SESSION_ID: sender.id,
-		});
-
+	it("shows literal-body safety on the actual send help surface without requiring a daemon", async () => {
+		const result = await runPij(["send", "--help"]);
 		expect(result).toMatchObject({ code: 0, stderr: "" });
-		// Byte-for-byte. `trimEnd()` makes this RED on the trailing spaces and
-		// the two trailing newlines; argv re-lexing makes it RED on line 1.
-		expect(deliveredTo(receiver).body).toBe(HOSTILE_BODY);
-	});
-
-	it("AC-09: --wait BEFORE --body-file cannot swallow the file's contents", {
-		timeout: 30_000,
-	}, () => {
-		const sender = writeDescriptor("pij-bodyfile-a");
-		const receiver = writeDescriptor("pij-bodyfile-b");
-		const bodyPath = join(folder, "body.txt");
-		writeFileSync(bodyPath, HOSTILE_BODY);
-
-		// `pij send <id> --wait --body-file <path>`: `--wait` is valued on send,
-		// so the body used to be consumed as its milliseconds value — the send
-		// then failed E-ARG, or worse, delivered nothing while looking fine.
-		const result = runPij(["send", receiver.id, "--wait", "1", "--body-file", bodyPath], {
-			PIJ_SESSION_ID: sender.id,
-		});
-
-		expect(result.code).toBe(0);
-		expect(deliveredTo(receiver).body).toBe(HOSTILE_BODY);
-	});
-
-	it("AC-10: --body-file - reads stdin, so a heredoc is a single literal command", {
-		timeout: 30_000,
-	}, () => {
-		const sender = writeDescriptor("pij-bodyfile-a");
-		const receiver = writeDescriptor("pij-bodyfile-b");
-
-		const result = runPij(
-			["send", receiver.id, "--body-file", "-", "--json"],
-			{ PIJ_SESSION_ID: sender.id },
-			HOSTILE_BODY,
-		);
-
-		expect(result).toMatchObject({ code: 0, stderr: "" });
-		expect(deliveredTo(receiver).body).toBe(HOSTILE_BODY);
-	});
-
-	it("AC-08: --body-file combined with --command is an explicit error", { timeout: 30_000 }, () => {
-		const sender = writeDescriptor("pij-bodyfile-a");
-		const receiver = writeDescriptor("pij-bodyfile-b");
-		const bodyPath = join(folder, "body.txt");
-		writeFileSync(bodyPath, "some text\n");
-
-		const result = runPij(["send", receiver.id, "--command", "compact", "--body-file", bodyPath], {
-			PIJ_SESSION_ID: sender.id,
-		});
-
-		expect(result.code).toBe(64);
-		expect(result.stderr).toContain("--body-file");
-		expect(result.stderr).toContain("--command");
-	});
-
-	it("AC-11: `pij send --help` shows the safety guidance it documents", { timeout: 30_000 }, () => {
-		writeDescriptor("pij-bodyfile-a");
-
-		const result = runPij(["send", "--help"]);
-
-		expect(result.code).toBe(0);
-		// The USAGE line itself (already shown today) …
-		expect(result.stdout).toContain("pij send <id>");
-		// … and the indented continuation lines under it, which the verb filter
-		// silently dropped — including the ONLY shell-safety note pij prints.
-		expect(result.stdout).toContain("--body-file");
-		expect(result.stdout).toContain("substitute in YOUR shell");
-		expect(result.stdout).toContain("UNSAFE");
-		// `--file` is documented distinctly from `--body-file` (they are one
-		// letter apart with opposite semantics — the #132 misuse).
-		expect(result.stdout).toContain("--file <path>");
-		// The heredoc form a caller can copy.
-		expect(result.stdout).toContain("<<'PIJ'");
-		// Still only the send block.
+		for (const text of [
+			"pij send <id>",
+			"--body-file",
+			"substitute in YOUR shell",
+			"UNSAFE",
+			"--file <path>",
+			"<<'PIJ'",
+		])
+			expect(result.stdout).toContain(text);
 		expect(result.stdout).not.toContain("pij spawn");
-	});
-
-	// ── F1 (cross-model review): the guard must reach the body-file route ──────
-	//
-	// The bytes are attached to the PARSED command, after `parseArgs` and before
-	// `dispatch`, so the empty-payload guard SHOULD cover them for free. "Should
-	// inherit it" is exactly the kind of claim that turns out to be false, so it
-	// is asserted through the real bin rather than reasoned about.
-	it("F1: a whitespace-only --body-file is refused, and nothing lands in the inbox", {
-		timeout: 30_000,
-	}, () => {
-		const sender = writeDescriptor("pij-bodyfile-a");
-		const receiver = writeDescriptor("pij-bodyfile-b");
-		const bodyPath = join(folder, "blank.txt");
-		// What `cat` of an "empty" notes file actually yields.
-		writeFileSync(bodyPath, "  \n\n");
-
-		const result = runPij(["send", receiver.id, "--body-file", bodyPath], {
-			PIJ_SESSION_ID: sender.id,
-		});
-
-		expect(inboxCount(receiver)).toBe(0);
-		expect(result.code).toBe(2);
-		expect(result.stderr).toContain("E-EMPTY");
-	});
-
-	it("F1 preserved: a padded but non-empty --body-file keeps every pad byte", {
-		timeout: 30_000,
-	}, () => {
-		const sender = writeDescriptor("pij-bodyfile-a");
-		const receiver = writeDescriptor("pij-bodyfile-b");
-		const bodyPath = join(folder, "padded.txt");
-		const padded = "   hello   \n\n";
-		writeFileSync(bodyPath, padded);
-
-		const result = runPij(["send", receiver.id, "--body-file", bodyPath], {
-			PIJ_SESSION_ID: sender.id,
-		});
-
-		expect(result.code).toBe(0);
-		// The emptiness test trims; the body does not. If a `.trim()` ever leaks
-		// into the delivered value, this is the test that says so.
-		expect(deliveredTo(receiver).body).toBe(padded);
-	});
-
-	// ── F2 (cross-model review): broadcast through the literal channel ─────────
-	//
-	// Everything above is single-target. Broadcast takes a different argv shape
-	// (`--to a --to b`, no target-id positional) and a different dispatch branch,
-	// and `cli.ts` keeps its own copy of which send flags are valued in order to
-	// place the body placeholder correctly. A drift in that mirror makes either
-	// target id look like a competing positional, or makes the literal body
-	// lexable again — the exact class of bug this plan removed.
-	it("F2: a two-target broadcast --body-file delivers the hostile body byte-for-byte to BOTH", {
-		timeout: 30_000,
-	}, () => {
-		const sender = writeDescriptor("pij-bodyfile-a");
-		const first = writeDescriptor("pij-bodyfile-b");
-		const second = writeDescriptor("pij-bodyfile-c");
-		const bodyPath = join(folder, "body.txt");
-		writeFileSync(bodyPath, HOSTILE_BODY);
-
-		const result = runPij(
-			["send", "--to", first.id, "--to", second.id, "--body-file", bodyPath, "--json"],
-			{ PIJ_SESSION_ID: sender.id },
-		);
-
-		expect(result.code).toBe(0);
-		expect(deliveredTo(first).body).toBe(HOSTILE_BODY);
-		expect(deliveredTo(second).body).toBe(HOSTILE_BODY);
-	});
-
-	it("F2: a whitespace-only broadcast --body-file is refused for EVERY target", {
-		timeout: 30_000,
-	}, () => {
-		const sender = writeDescriptor("pij-bodyfile-a");
-		const first = writeDescriptor("pij-bodyfile-b");
-		const second = writeDescriptor("pij-bodyfile-c");
-		const bodyPath = join(folder, "blank.txt");
-		writeFileSync(bodyPath, "\n");
-
-		const result = runPij(["send", "--to", first.id, "--to", second.id, "--body-file", bodyPath], {
-			PIJ_SESSION_ID: sender.id,
-		});
-
-		expect(inboxCount(first)).toBe(0);
-		expect(inboxCount(second)).toBe(0);
-		expect(result.code).toBe(2);
-		expect(result.stderr).toContain("E-EMPTY");
+		expect(received).toEqual([]);
+		expect(existsSync(legacyHome)).toBe(false);
 	});
 });
 
-// ── F2: the mirror, pinned ───────────────────────────────────────────────────
-//
-// `cli.ts` cannot import core's flag tables (they are module-private) and must
-// know send's flag VALENCE to place the body placeholder, so it keeps a copy:
-// `json` boolean, everything else valued. That copy is correct today and has no
-// way of noticing if core changes.
-//
-// HOW THIS PINS IT — and why the obvious version pinned nothing. The first
-// attempt passed a lone SENTINEL after each flag and asserted the parsed body
-// was NOT the sentinel. That assertion cannot fail. A parse ERROR produces no
-// body either, so "the flag consumed the sentinel" and "the whole argv was
-// rejected" are the same observation. `send --to SENTINEL` is invalid today
-// (broadcast needs two targets) and would be just as invalid if `to` flipped to
-// boolean ("--to needs a session id") — the test held in both worlds. It was
-// caught by mutation, not by reading: adding "to" to core's BOOLEAN_FLAGS left
-// it green.
-//
-// So every case below parses SUCCESSFULLY today, and asserts WHICH SLOT the
-// sentinel landed in. Flipping a flag's valence moves the sentinel to a
-// different slot, and an assertion that names its slot has no way to survive
-// that. Never assert "not the sentinel"; assert where the sentinel went.
-//
-// Residual gap, stated rather than hidden: this pins the valence of the flags
-// send has TODAY. A brand-new valued send flag would still need the mirror
-// updated by hand, and no test can see it without core exporting its tables.
-describe("F2: cli.ts's send flag-valence mirror agrees with core", () => {
+// Independent legacy library parser proofs remain valid. The rs-only executable
+// no longer mirrors these tables or uses this parser for body-file requests.
+describe("core send parser flag valence", () => {
 	const SENTINEL = "pij-valence-sentinel";
-
-	/** Parse and demand a successful `send`. Throwing here is the whole point:
-	 *  a rejected argv must never be mistaken for a consumed sentinel. */
 	const parseSend = (argv: readonly string[]) => {
 		const parsed = parseArgs(argv);
-		if (!parsed.ok) {
+		if (!parsed.ok)
 			throw new Error(`expected a successful parse, got ${parsed.code}: ${parsed.message}`);
-		}
-		if (parsed.value.verb !== "send") {
+		if (parsed.value.verb !== "send")
 			throw new Error(`expected verb "send", got "${parsed.value.verb}"`);
-		}
 		return parsed.value;
 	};
-
 	it("--json is BOOLEAN: it consumes nothing, so the sentinel becomes the body", () => {
 		const cmd = parseSend(["send", "tgt", "--json", SENTINEL]);
 		expect(cmd.json).toBe(true);
 		expect(cmd.text).toBe(SENTINEL);
 	});
-
-	it("--to is VALUED: both targets land in `targets`, the sentinel stays the body", () => {
+	it("--to is VALUED: both targets land in targets, the sentinel stays the body", () => {
 		const cmd = parseSend(["send", "--to", "pij-valence-a", "--to", "pij-valence-b", SENTINEL]);
 		expect(cmd.targets).toEqual(["pij-valence-a", "pij-valence-b"]);
 		expect(cmd.broadcast).toBe(true);
 		expect(cmd.text).toBe(SENTINEL);
 	});
-
-	it("--command is VALUED: the name lands in `command`", () => {
+	it("--command is VALUED: the name lands in command", () => {
 		const cmd = parseSend(["send", "tgt", "--command", "compact"]);
 		expect(cmd.command).toBe("compact");
 		expect(cmd.text).toBeUndefined();
 	});
-
-	it("--file and --caption are VALUED: the path and the sentinel land in their own slots", () => {
+	it("--file and --caption are VALUED: the path and sentinel land in their own slots", () => {
 		const path = "/tmp/pij-valence-fixture.txt";
 		const cmd = parseSend(["send", "tgt", "--file", path, "--caption", SENTINEL]);
 		expect(cmd.file).toBe(path);
 		expect(cmd.caption).toBe(SENTINEL);
-		// If `--file` were boolean the path would slide into `--caption`'s slot.
 		expect(cmd.caption).not.toBe(cmd.file);
 		expect(cmd.text).toBeUndefined();
 	});
-
-	it("--wait is VALUED: the milliseconds land in `waitMs`, not in the body", () => {
+	it("--wait is VALUED: milliseconds land in waitMs, not in body", () => {
 		const cmd = parseSend(["send", "tgt", SENTINEL, "--wait", "500"]);
 		expect(cmd.wait).toBe(true);
 		expect(cmd.waitMs).toBe(500);

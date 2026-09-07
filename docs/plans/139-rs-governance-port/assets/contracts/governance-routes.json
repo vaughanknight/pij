@@ -137,7 +137,7 @@
     }
   },
   "wire_invariants": [
-    "Envelope<T> v=2, error is the existing kebab-case ErrorKind string; structured refusal code is details.code, human line in meta. Never introduce a different nested error envelope.",
+    "Envelope<T> v=2, error is the existing snake_case ErrorKind string; structured refusal code is details.code, human line in meta. Never introduce a different nested error envelope or change v2 spellings without a versioned cutover.",
     "Every /v1 route is bearer-authenticated. Bearer proves machine access, not seat identity; resolve CallerContext through daemon identity service.",
     "Use argv+caller family parser already established by /v1/report. Native CLI and legacy shim must not implement independent semantic parsers. Typed role/close/answer/reap shapes and shim argv converge on same operation.",
     "CLI --json of each ported governance command is byte-identical between pij and pij-rs when run against equivalent fixture state; forward original v2 envelope intact, no data-only unwrap or rewrapping.",

@@ -51,12 +51,12 @@ impl Lines {
 fn fixtures() -> (Value, Value) {
     let events = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
+        "/../testkit/fixtures/golden/api/governance-events.json"
     )))
     .unwrap();
     let routes = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+        "/../testkit/fixtures/golden/api/governance-routes.json"
     )))
     .unwrap();
     (events, routes)

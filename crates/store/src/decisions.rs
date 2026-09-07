@@ -509,7 +509,7 @@ mod tests {
         let store = SqliteOrchestration::new(pool.clone());
         let spine = SqliteSpine::new(pool.clone());
         let fixtures: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+            "../../testkit/fixtures/golden/api/governance-routes.json"
         ))
         .expect("contract");
         let mut task: pij_core::orchestration::TaskAssignment =
@@ -592,7 +592,7 @@ mod tests {
         let pool = crate::open(&fresh.path()).await.expect("open");
         let store = SqliteOrchestration::new(pool.clone());
         let fixtures: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
+            "../../testkit/fixtures/golden/api/governance-events.json"
         ))
         .expect("events");
         let fixture = fixtures["events"]

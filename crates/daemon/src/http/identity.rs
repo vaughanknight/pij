@@ -200,6 +200,8 @@ pub struct Phonehome {
     pub harness: String,
     /// Its pane, when it has one.
     pub pane: Option<String>,
+    /// Its current seat_roles assignment, never a descriptor's stale copy.
+    pub role: Option<String>,
     /// Is the process this seat was bound to still the process that is running?
     ///
     /// NOT "did something answer". The pair `(pid, proc_start)` is re-observed:
@@ -603,9 +605,9 @@ pub(crate) async fn adopt(
     // store actually holds. A success line that persists nothing cannot be
     // expressed from here.
     match state.services.registry.get(&seat_id).await {
-        Ok(Some(mut persisted)) => {
-            persisted.role = match state.services.roles.read_role(&seat_id).await {
-                Ok(role) => role,
+        Ok(Some(persisted)) => {
+            let persisted = match state.services.roles.project_seat(persisted).await {
+                Ok(persisted) => persisted,
                 Err(error) => return internal(ADOPT, error),
             };
             let mut answer = Envelope::ok(
@@ -668,6 +670,10 @@ async fn whoami_resolved(
 ) -> Response {
     match resolve_seat(&state, WHOAMI, asserted, pane).await {
         Resolved::Seat(descriptor, _) => {
+            let descriptor = match state.services.roles.project_seat(descriptor).await {
+                Ok(descriptor) => descriptor,
+                Err(error) => return internal(WHOAMI, error),
+            };
             envelope(StatusCode::OK, &Envelope::ok(WHOAMI, descriptor))
         }
         Resolved::Refusal(response) => response,
@@ -723,12 +729,17 @@ pub(crate) async fn phonehome(
         .or(caller.codex_session.as_deref())
         .map(str::trim)
         .filter(|session| !session.is_empty());
+    let descriptor = match state.services.roles.project_seat(descriptor).await {
+        Ok(descriptor) => descriptor,
+        Err(error) => return internal(PHONEHOME, error),
+    };
     let mut answer = Envelope::ok(
         PHONEHOME,
         Phonehome {
             seat: descriptor.id.clone(),
             harness: descriptor.harness.to_string(),
             pane: descriptor.pane.clone(),
+            role: descriptor.role,
             bound,
             pid: descriptor.proc.map(|proc| proc.pid),
             proc_start: descriptor.proc.map(|proc| proc.proc_start),

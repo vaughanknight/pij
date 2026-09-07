@@ -2018,7 +2018,7 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
             ),
         );
     };
-    let mut seat = match state.services.registry.get(&id).await {
+    let seat = match state.services.registry.get(&id).await {
         Ok(Some(seat)) => seat,
         Ok(None) => {
             return envelope(
@@ -2032,8 +2032,8 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
         }
         Err(error) => return internal("pij state", error),
     };
-    seat.role = match state.services.roles.read_role(&id).await {
-        Ok(role) => role,
+    let seat = match state.services.roles.project_seat(seat).await {
+        Ok(seat) => seat,
         Err(error) => return internal("pij state", error),
     };
 

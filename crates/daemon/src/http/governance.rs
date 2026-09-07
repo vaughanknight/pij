@@ -1991,14 +1991,14 @@ mod tests {
 
     fn routes() -> Value {
         serde_json::from_str(include_str!(
-            "../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+            "../../../testkit/fixtures/golden/api/governance-routes.json"
         ))
         .expect("routes")
     }
 
     fn event_record(id: &str) -> Value {
         let events: Value = serde_json::from_str(include_str!(
-            "../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
+            "../../../testkit/fixtures/golden/api/governance-events.json"
         ))
         .expect("events");
         events["events"]

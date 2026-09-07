@@ -1141,7 +1141,7 @@ async fn shipped_all_real_daemon_boots_and_streams_on_fully_private_resources() 
     .await;
     let contract: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
+        "/../testkit/fixtures/golden/api/governance-events.json"
     )))
     .unwrap();
     let card = &contract["events"]

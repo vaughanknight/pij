@@ -10,7 +10,7 @@ const KEY: &str = "governance-u3-test-key";
 
 pub(crate) fn contracts() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+        "../../../testkit/fixtures/golden/api/governance-routes.json"
     ))
     .expect("canonical route fixtures")
 }
