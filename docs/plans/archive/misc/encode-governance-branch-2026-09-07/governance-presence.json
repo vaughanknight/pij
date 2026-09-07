@@ -1,0 +1,391 @@
+{
+  "branch": "prime-governance",
+  "tip": "54101b087efdb3f91b29d952bb772f70554d0625",
+  "count": 96,
+  "paths": [
+    {
+      "path": ".harness/government/baton-book.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/chore-primitive-2026-08-02.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/chore-primitive-rollout-2026-08-02.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/feature-round-2026-07-19.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/fleet-outstanding-checkin-2026-07-13.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/interview-agent-teams-2026-08-04.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/no-honest-idle-available-state-2026-08-01.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/omp-launcher-experiments.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/pa-efficient-bug-2026-08-09.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/pa-lastEventAt-frozen-2026-08-01.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/pa-missing-anaconda-2026-07-31.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/pa-standup-recipe.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/pa-value-survey-2026-08-02.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/pm-unwilling-butterfly-2026-07-29.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/pr14-reconcile.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/prime-feedback-triage-2026-07-18.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/retired-ruling-audience-2026-08-03.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/round-mandate-detection-state.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/round-mandate-identity.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s036-adoption.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s037-adoption.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s038-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s039-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s040-adoption.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s041-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s042-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s043-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s044-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s045-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s046-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s047-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s048-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s048-build.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s048-pi-mono-hardening-note.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s050-focus-agents.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s051-pij-identity-integrity.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s052-update-pi-reliability.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s053-focus-sqlite-backend.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s054-pij-grown-up.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s055-pij-watchdog.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s074-pij-rail-v2-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s075-denorm-clearing-ratification-ask.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s075-task-asymmetry-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s076-watchdog-parked-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s077-fallback-resurrection-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s077-fix-authorization.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s078-pa-role-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s078-pa-role-ratification-ask.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s082-chore-primitive-stream-brief.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s091-pa-gate-repair.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s101-daemon-tick-cost.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/s102-stall-notice-discriminator.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/seat-handover-3vetx8-to-primary-carp.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/seat-handover-primary-carp-to-reasonable-dove.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/seat-name-generator-bias-2026-08-01.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/subscriptions-outlive-seats-2026-08-01.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/tmux-smarts-poc-2026-07-19.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/briefs/watchdog-pa-ineligible-2026-08-01.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/canaries/s036.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/canaries/s037.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/canaries/s038.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/canaries/s039.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/canaries/s040.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/canaries/s044.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/canaries/s045.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/canaries/s046.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/canaries/s047.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/canaries/s048.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/canaries/s054.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/canaries/s055.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/canaries/s102.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/collision-evidence-2026-07-18.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/doctrine/a-baseline-stores-a-point-not-a-path.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/doctrine/a-constraint-outlives-the-fix-that-retires-it.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/doctrine/a-coupled-instrument-cannot-report-its-subject.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/doctrine/an-instrument-that-punishes-diligence-is-inverted.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/doctrine/ask-what-else-satisfies-the-shape.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/doctrine/preconditions-travel-with-remedies.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/doctrine/rigour-follows-the-claim-you-want.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/handover/2026-07-28-inherited-open-handles.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/handover/2026-07-28-reasonable-dove-to-wee-albatross.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/handover/2026-07-30-butterfly-read-prime-cards.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/handover/2026-08-10-wee-albatross-to-continuing-ermine.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/handover/2026-08-12-continuing-ermine-live-state.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/incidents/INC-001.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/incidents/INC-002.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/observations/pa-context-cost-experiment.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/observations/s102-pm-compliance.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/observations/s102-stall-prereg.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/orient-local.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/prime-flow.json",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/prime-flow.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/rulings/2026-07-31-primes-owe-status-cards.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/rulings/2026-08-02-s082-chore-primitive-kickoff.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/rulings/2026-08-05-prime-succession-ermine.md",
+      "present_on_branch": true
+    },
+    {
+      "path": ".harness/government/spine.md",
+      "present_on_branch": true
+    }
+  ]
+}

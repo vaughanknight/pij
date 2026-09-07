@@ -1,0 +1,6 @@
+COMMAND: harness/scripts/government-root.sh
+EXIT: 0
+STDOUT:
+/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance/.harness/government
+
+STDERR:

@@ -1,0 +1,11 @@
+{
+  "reviewer": "GovernanceSafetyReview",
+  "scope": [
+    "harness/scripts/government-root.sh",
+    "harness/scripts/reroot-governance.sh",
+    "harness/scripts/governance-branch.test.ts"
+  ],
+  "verdict": "no_material_findings",
+  "proof_level": "source-only; independent tests are separate receipts",
+  "notes": "Final bootstrap and configured post-checkout hook cases reviewed; exclusive prime ownership required during final multi-command handoff."
+}

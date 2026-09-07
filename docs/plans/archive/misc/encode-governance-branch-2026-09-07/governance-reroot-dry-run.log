@@ -1,0 +1,75 @@
+COMMAND: harness/scripts/reroot-governance.sh --dry-run
+EXIT: 0
+STDOUT:
+Mode: --dry-run
+Standing worktree: /Users/jordanknight/pi-hacking/pij-worktrees/pij-governance
+Source tip: 54101b087efdb3f91b29d952bb772f70554d0625
+Source tree: 8711a46a952fd0010116bdc091d0aaf22ce785f7
+Backup tag: prime-governance-pre-orphan-2026-09-07 -> 54101b087efdb3f91b29d952bb772f70554d0625
+Candidate orphan: refs/heads/prime-governance-orphan-2026-09-07
+Root commit message: governance: orphan re-root, history at tag prime-governance-pre-orphan-2026-09-07
+Attribution command (invoked only by --prepare): (cd /Users/jordanknight/pi-hacking/pij-encode-governance-branch && pij-rs commit-trailers)
+Preparation creates one parentless commit from the source TREE and atomically creates the two new refs, verifying the unchanged source tip.
+
+PRIME ONLY — pause every governance writer and hold exclusive ownership through handoff.
+Run --prepare first if this was a dry-run. Then review and run this Bash block.
+No push, reset, worktree removal, or automatic recovery is performed. If interrupted, STOP and inspect HEAD and refs.
+# BEGIN PRIME HANDOFF
+(
+set -euo pipefail
+export GIT_OPTIONAL_LOCKS=0 GIT_NO_REPLACE_OBJECTS=1
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE
+repo=/Users/jordanknight/pi-hacking/pij-encode-governance-branch
+standing=/Users/jordanknight/pi-hacking/pij-worktrees/pij-governance
+source=54101b087efdb3f91b29d952bb772f70554d0625
+tree=8711a46a952fd0010116bdc091d0aaf22ce785f7
+source_ref=refs/heads/prime-governance
+candidate_ref=refs/heads/prime-governance-orphan-2026-09-07
+tag=prime-governance-pre-orphan-2026-09-07
+stop () 
+{ 
+    printf 'reroot-governance: %s\n' "$*" 1>&2;
+    exit 1
+}
+check_clean () 
+{ 
+    local state path dirty;
+    dirty=$(git -C "$standing" status --porcelain=v1 --untracked-files=all --ignore-submodules=none) || stop 'cannot inspect standing worktree';
+    [[ -z $dirty ]] || stop 'standing worktree is dirty; prime must commit or preserve all changes before proceeding';
+    for state in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD rebase-merge rebase-apply sequencer BISECT_LOG;
+    do
+        path=$(git -C "$standing" rev-parse --path-format=absolute --git-path "$state");
+        [[ ! -e $path ]] || stop "standing worktree has an operation in progress: $state";
+    done
+}
+candidate=$(git -C "$repo" rev-parse --verify "$candidate_ref^{commit}")
+[[ $(git -C "$standing" rev-parse --path-format=absolute --git-common-dir) == $(git -C "$repo" rev-parse --path-format=absolute --git-common-dir) ]] || stop 'standing worktree repository changed'
+[[ $(git -C "$standing" symbolic-ref --quiet HEAD) == "$source_ref" ]] || stop 'standing worktree is not on prime-governance'
+[[ $(git -C "$repo" rev-parse --verify "$source_ref^{commit}") == "$source" ]] || stop 'source advanced; do not use this handoff'
+[[ $(git -C "$repo" rev-parse --verify "refs/tags/$tag^{commit}") == "$source" ]] || stop 'backup tag changed'
+[[ $(git -C "$repo" rev-parse --verify "$candidate_ref^{commit}") == "$candidate" ]] || stop 'candidate ref changed'
+[[ $(git -C "$repo" rev-parse --verify "$candidate^{tree}") == "$tree" ]] || stop 'candidate tree differs'
+[[ $(git -C "$repo" rev-list --parents -n 1 "$candidate") == "$candidate" ]] || stop 'candidate is not parentless'
+check_clean
+# Detach at the OLD tip, not the candidate: this cannot silently replace a different tree.
+git -C "$standing" switch --detach "$source"
+check_clean
+if git -C "$standing" symbolic-ref --quiet HEAD >/dev/null; then stop 'expected detached HEAD'; fi
+[[ $(git -C "$standing" rev-parse HEAD) == "$source" ]] || stop 'detached HEAD changed'
+[[ $(git -C "$repo" rev-parse --verify "$source_ref^{commit}") == "$source" ]] || stop 'source advanced while detaching'
+# Git refuses if another worktree has checked out prime-governance. Never bypass that guard.
+git -C "$repo" branch -f prime-governance "$candidate"
+check_clean
+[[ $(git -C "$standing" rev-parse HEAD) == "$source" ]] || stop 'detached HEAD changed before reattachment'
+[[ $(git -C "$repo" rev-parse --verify "$source_ref^{commit}") == "$candidate" ]] || stop 'source changed before reattachment'
+git -C "$standing" switch prime-governance
+[[ $(git -C "$standing" symbolic-ref --quiet HEAD) == "$source_ref" ]] || stop 'reattachment failed'
+[[ $(git -C "$standing" rev-parse HEAD) == "$candidate" ]] || stop 'unexpected final tip'
+check_clean
+printf 'Re-root complete locally. Keep backup tag and candidate; remote publication is a separate prime decision.\n'
+)
+# END PRIME HANDOFF
+
+Dry-run complete: no objects, refs, index, worktree, or attribution service were changed or invoked.
+
+STDERR:

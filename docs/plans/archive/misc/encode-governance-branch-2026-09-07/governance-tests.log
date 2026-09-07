@@ -1,0 +1,35 @@
+COMMAND: just test harness/scripts/governance-branch.test.ts
+EXIT: 0
+STDOUT:
+
+> pij@0.1.0 test
+> vitest run harness/scripts/governance-branch.test.ts
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/jordanknight/pi-hacking/pij-encode-governance-branch[39m
+
+ [32m✓[39m harness/scripts/governance-branch.test.ts [2m([22m[2m19 tests[22m[2m)[22m[33m 9746[2mms[22m[39m
+     [33m[2m✓[22m[39m resolves the exact registered worktree from cwd or explicit repo, preserving unusual paths [33m 320[2mms[22m[39m
+     [33m[2m✓[22m[39m dry-runs without changing any files or refs or contacting attribution [33m 350[2mms[22m[39m
+     [33m[2m✓[22m[39m prepares a single attributed orphan with the exact tree without touching the standing checkout or source [33m 993[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses an existing refs/tags/prime-governance-pre-orphan-2026-09-07 without clobbering any ref [33m 318[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses an existing refs/heads/prime-governance-orphan-2026-09-07 without clobbering any ref [33m 322[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a tracked dirty standing worktree before preparation [33m 370[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses an in-progress operation even if the index and worktree are clean [33m 305[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a source that advances during attribution without creating backup or candidate refs [33m 891[2mms[22m[39m
+     [33m[2m✓[22m[39m fails closed when attribution is unavailable [33m 643[2mms[22m[39m
+     [33m[2m✓[22m[39m hands off safely from a checked-out branch and preserves the standing files [33m 1888[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a dirty worktree at prime handoff without resetting it [33m 813[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a advanced worktree at prime handoff without resetting it [33m 766[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a detached worktree at prime handoff without resetting it [33m 747[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m19 passed[39m[22m[90m (19)[39m
+[2m   Start at [22m 15:16:42
+[2m   Duration [22m 9.86s[2m (transform 20ms, setup 0ms, import 28ms, tests 9.75s, environment 0ms)[22m
+
+
+STDERR:
+npm run test -- "$@"
+(node:6414) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
