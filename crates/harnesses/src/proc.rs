@@ -6,7 +6,7 @@
 //! one-directional safety interlock (a brake), not policy.
 
 use std::io;
-use std::process::Command;
+use std::process::{Command, ExitStatus};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -77,7 +77,7 @@ impl LivenessPort for ProcLiveness {
 }
 
 struct CommandOutput {
-    success: bool,
+    status: ExitStatus,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
 }
@@ -91,11 +91,11 @@ struct PsRunner;
 impl CommandRunner for PsRunner {
     fn run(&self, pid: u32) -> io::Result<CommandOutput> {
         let output = Command::new("ps")
-            .args(["-o", "lstart=", "-p", &pid.to_string()])
+            .args(["-o", "lstart=PIJ_LSTART", "-p", &pid.to_string()])
             .env("LC_ALL", "C")
             .output()?;
         Ok(CommandOutput {
-            success: output.status.success(),
+            status: output.status,
             stdout: output.stdout,
             stderr: output.stderr,
         })
@@ -103,39 +103,40 @@ impl CommandRunner for PsRunner {
 }
 
 fn classify(pid: u32, output: CommandOutput) -> Result<Option<u64>> {
+    if !matches!(output.status.code(), Some(0) | Some(1)) || !output.stderr.is_empty() {
+        return Err(PijError::Adapter {
+            adapter: ADAPTER.to_string(),
+            message: format!(
+                "could not inspect pid {pid}: ps {}; {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            ),
+        });
+    }
     let stdout = std::str::from_utf8(&output.stdout).map_err(|error| PijError::Adapter {
         adapter: ADAPTER.to_string(),
         message: format!("pid {pid} produced non-UTF-8 stdout: {error}"),
     })?;
-    let row = stdout.trim();
-    if !row.is_empty() {
-        if !output.success {
-            return Err(PijError::Adapter {
-                adapter: ADAPTER.to_string(),
-                message: format!("ps failed for pid {pid} after returning a process row"),
-            });
-        }
-        return parse_process_start(row).map(Some);
+    let mut lines = stdout.lines();
+    if lines.next().map(str::trim) != Some("PIJ_LSTART") {
+        return Err(PijError::Adapter {
+            adapter: ADAPTER.to_string(),
+            message: format!("pid {pid} produced no recognizable ps header: {stdout:?}"),
+        });
     }
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let reason = stderr.trim();
-    if reason.is_empty() || means_no_process(reason) {
-        return Ok(None);
+    match (output.status.code(), lines.next(), lines.next()) {
+        // The explicit header proves ps ran its selection; an empty failed
+        // command, diagnostic, or additional row is not this absence protocol.
+        (Some(1), None, None) => Ok(None),
+        (Some(0), Some(row), None) => parse_process_start(row.trim()).map(Some),
+        _ => Err(PijError::Adapter {
+            adapter: ADAPTER.to_string(),
+            message: format!(
+                "pid {pid} produced unexpected ps {} output: {stdout:?}; expected exit 0 with header and process row, or exit 1 with header only",
+                output.status
+            ),
+        }),
     }
-
-    Err(PijError::Adapter {
-        adapter: ADAPTER.to_string(),
-        message: format!("could not inspect pid {pid}: {reason}"),
-    })
-}
-
-fn means_no_process(stderr: &str) -> bool {
-    let stderr = stderr.to_ascii_lowercase();
-    stderr.contains("no such process")
-        || stderr.contains("process id too large")
-        || stderr.contains("process id out of range")
-        || stderr.contains("process id list syntax error")
 }
 
 /// Read the host's current UTC offset in minutes from the platform clock.
@@ -259,6 +260,8 @@ fn parse_error(row: &str) -> PijError {
 mod tests {
     use std::collections::VecDeque;
     use std::io;
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::ExitStatus;
     use std::sync::Mutex;
 
     use pij_core::ports::LivenessPort;
@@ -296,7 +299,7 @@ mod tests {
 
     fn output(success: bool, stdout: &[u8], stderr: &[u8]) -> CommandOutput {
         CommandOutput {
-            success,
+            status: ExitStatus::from_raw(i32::from(!success) << 8),
             stdout: stdout.to_vec(),
             stderr: stderr.to_vec(),
         }
@@ -334,12 +337,111 @@ mod tests {
     }
 
     #[test]
-    fn an_absent_exact_pid_is_none() {
-        let adapter = ProcLiveness::with_runner(ScriptedRunner::one(7272, output(false, b"", b"")));
+    fn exit_one_with_header_only_and_empty_stderr_is_absent() {
+        let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
+            7272,
+            output(false, b"PIJ_LSTART\n", b""),
+        ));
         assert_eq!(
             block_on(adapter.proc_start(7272)).expect("absence is observable"),
             None
         );
+    }
+
+    #[test]
+    fn successful_probe_without_process_row_is_unknown() {
+        for stdout in [b"".as_slice(), b"PIJ_LSTART\n"] {
+            let adapter =
+                ProcLiveness::with_runner(ScriptedRunner::one(7272, output(true, stdout, b"")));
+            assert!(block_on(adapter.proc_start(7272)).is_err());
+        }
+    }
+
+    #[test]
+    fn failed_probe_requires_exact_header_only_output() {
+        for stdout in [
+            b"STARTED\n".as_slice(),
+            b"PIJ_LSTART\n\n",
+            b"PIJ_LSTART\nnot a start time\n",
+            b"\xff",
+        ] {
+            let adapter =
+                ProcLiveness::with_runner(ScriptedRunner::one(7272, output(false, stdout, b"")));
+            assert!(block_on(adapter.proc_start(7272)).is_err());
+        }
+    }
+
+    #[test]
+    fn any_stderr_vetoes_both_absent_and_live_protocols() {
+        let live = include_bytes!("../tests/fixtures/ps-macos-lstart.txt");
+        for (success, stdout) in [(false, b"PIJ_LSTART\n".as_slice()), (true, live.as_slice())] {
+            for stderr in [b"\n".as_slice(), b"Operation not permitted"] {
+                let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
+                    7272,
+                    output(success, stdout, stderr),
+                ));
+                assert!(block_on(adapter.proc_start(7272)).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn other_exits_and_signals_with_header_only_are_unknown() {
+        for raw_status in [2 << 8, 127 << 8, 9] {
+            let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
+                7272,
+                CommandOutput {
+                    status: ExitStatus::from_raw(raw_status),
+                    ..output(false, b"PIJ_LSTART\n", b"")
+                },
+            ));
+            assert!(block_on(adapter.proc_start(7272)).is_err());
+        }
+    }
+
+    #[test]
+    fn failed_empty_probe_is_unknown_not_dead() {
+        let adapter = ProcLiveness::with_runner(ScriptedRunner::one(7272, output(false, b"", b"")));
+        assert!(block_on(adapter.proc_start(7272)).is_err());
+    }
+
+    #[test]
+    fn failed_no_such_process_probe_is_unknown_not_dead() {
+        let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
+            7272,
+            output(false, b"", b"No such process"),
+        ));
+        assert!(block_on(adapter.proc_start(7272)).is_err());
+    }
+
+    #[test]
+    fn successful_empty_probe_with_error_text_is_unknown() {
+        let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
+            7272,
+            output(true, b"", b"Operation not permitted"),
+        ));
+        assert!(block_on(adapter.proc_start(7272)).is_err());
+    }
+
+    #[test]
+    fn signalled_empty_probe_is_unknown_not_dead() {
+        let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
+            7272,
+            CommandOutput {
+                status: ExitStatus::from_raw(9),
+                ..output(false, b"", b"")
+            },
+        ));
+        let error = block_on(adapter.proc_start(7272)).expect_err("signal is not absence proof");
+        assert!(error.to_string().contains("signal"));
+    }
+
+    #[test]
+    fn failed_probe_with_a_process_row_is_unknown() {
+        let fixture = include_bytes!("../tests/fixtures/ps-macos-lstart.txt");
+        let adapter =
+            ProcLiveness::with_runner(ScriptedRunner::one(7272, output(false, fixture, b"")));
+        assert!(block_on(adapter.proc_start(7272)).is_err());
     }
 
     #[test]
@@ -358,7 +460,7 @@ mod tests {
     fn malformed_process_output_is_an_adapter_error() {
         let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
             8282,
-            output(true, b"not a start time\n", b""),
+            output(true, b"PIJ_LSTART\nnot a start time\n", b""),
         ));
         let error =
             block_on(adapter.proc_start(8282)).expect_err("malformed output must not mean dead");

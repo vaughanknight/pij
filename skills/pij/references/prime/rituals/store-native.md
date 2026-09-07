@@ -11,16 +11,16 @@ Documents still follow [Governance branch — the rules](./bootstrap.md#governan
 
 | Prose (legacy) | Store verb (attributed, append-only) |
 |---|---|
-| spine.md Event paragraph | `pij spine append --kind <kind> [--project <slug>] [--refs <seq,seq>] [--actor <label>]` |
+| spine.md Event paragraph | `pij spine append --kind <kind> [--project <slug>] [--refs <seq,seq>]`; optional `--actor` must match the daemon-resolved caller |
 | prime-flow.json portfolio node | `pij project create "<description>"` then `pij project set <slug> [--plan <path>] [--prime <id>]` |
 | roster / assignment rows | `pij task set <id> "<task>" --project <slug>` · the assigned seat runs `pij report state <state>` |
 
 **Always pass `--project` on `task set`**: the assignment carries the slug and
 every later state-set/state-verified event inherits it — omit it and the
 claim/verify lifecycle is silently orphaned from the project's filtered spine.
-| verification of done | a different registered seat runs `pij report verify <id>` — done is a CLAIM until independently verified |
-| seat/liveness truth | `pij tree --json` · `pij node show <id> --json` · `pij anomalies --json` (surface, never act) |
-| human-readable spine | `pij spine render` (deterministic md from the store) |
+| verification of done | the current recorded parent runs `pij report verify <id>`; receipt binds the latest done sequence, never self-verification |
+| seat/liveness truth | `pij list --json` · `pij node show <id> --json` · `pij anomalies --json` (rs only; list supports exact harness/folder/parent/scope=local forwarding, not legacy role/here/prime/archive filters; tree/link are unported) |
+| human-readable spine | `pij spine render` returns `{text,cursor}`; it never writes a legacy spine file |
 
 Read-back: `pij spine events [--since <seq>] [--project <slug>] [--peer <id>]`,
 `pij project list|show <slug>`.
@@ -32,14 +32,12 @@ Read-back: `pij spine events [--since <seq>] [--project <slug>] [--peer <id>]`,
   record via `--project` and `--refs`. Refs take free-form pointer strings —
   convention: prior event seqs, `commit:<sha>`, `pr:<n>`, `path:<repo-relative>`
   — so a ruling/ship event CAN carry its on-disk pointer.
-- **Append is immediate and irreversible** — no dry-run. A kind-only append
-  with no `--refs`/`--project`/`--peer` now REFUSES (probe-safety; two stray
-  junk events earned this guard) — link the event, or pass `--bare` for a
-  deliberate bare append. A mistaken event is never deleted: append a
-  correcting event that `--refs` it.
+- **Append is immediate and irreversible** — no dry-run. The rs grammar accepts a literal kind with optional refs/project; `--bare` and append `--peer` are not supported. Prefer linked, meaningful events by protocol rather than claiming a nonexistent kind-only guard. Correct a mistaken event with a referenced event, never deletion.
 - **Attribution is mandatory and honest** — omit `--actor` and the store records
   your seat id; never write as `"operator"`.
 - Platform `seq` is store-allocated. Never encode your own ordering into it.
+- Canonical wire fixtures live in `crates/testkit/fixtures/golden/api/`; they are not new live captures. Event payload is a JSON string; Hello is `{build,hello:true,v:1}` and replay cursors are machine maps. [Stable API / gaps](../../../../../docs/how/pij-rs-api.md) owns these consumer contracts.
+- Roles are joined assertions, not authority. Prime designation and baton leases are separate rs records; no legacy fallback or direct filesystem mutation repairs them.
 
 ## Event-kind palette (recommended, not enforced — o-prime ruling 2026-07-18)
 

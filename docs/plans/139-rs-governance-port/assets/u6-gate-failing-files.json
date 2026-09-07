@@ -1,0 +1,13 @@
+{
+  "source": "Vitest results cache retained after failed engineering/windows checks",
+  "files": [
+    ":.pi/extensions/pij/core/chores/drive.test.ts",
+    ":.pi/extensions/pij/core/cli.test.ts",
+    ":.pi/extensions/pij/acceptance-sweep.test.ts",
+    ":.pi/extensions/pij/cli.inbox.integration.test.ts",
+    ":.pi/extensions/pij/core/liveness-cost.test.ts",
+    ":.pi/extensions/pij/daemon.bootstrap.test.ts",
+    ":.pi/extensions/pij/orchestration-notice.integration.test.ts"
+  ],
+  "gate": "engineering-gate-78531a0-red.json"
+}

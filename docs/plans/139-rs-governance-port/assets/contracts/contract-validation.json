@@ -1,0 +1,20 @@
+{
+  "at": "2026-09-07T05:33:20Z",
+  "verdict": "contract-consistency-pass",
+  "routes": 22,
+  "request_response_cases": 45,
+  "event_cases": 31,
+  "refusal_envelopes": 10,
+  "checks": [
+    "unique method/path",
+    "unique route case ids",
+    "v2 successful response envelopes",
+    "JSON-string event payloads decode to exact fixture object",
+    "all sample events timestamped; internal seq absent"
+  ],
+  "sha256": {
+    "governance-routes.json": "5839f7303eab7207365ac61c0d12345599ff43599ae195ed797fbc8859228c14",
+    "governance-events.json": "15b95759b8297a84a9667bd8c3e4bb6e8a3ac163911139188376449319bacb8f"
+  },
+  "implementation_status": "Contract consistency only. Immutable wave-one source 5a8a25013e0bffdabfbcd05438ed19febc26b891 has full gate receipts; current wave-two source has separate behavioral receipts. Final authority matrix, merged-main parity and production acceptance remain independent obligations."
+}

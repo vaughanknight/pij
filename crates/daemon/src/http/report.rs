@@ -14,12 +14,10 @@
 //!
 //! # Two rules that shape every refusal here
 //!
-//! 1. **A shape rs cannot honour refuses BY NAME.** rs has no assignment model
-//!    and no project model, and its `SemanticState` is six words where the
-//!    TypeScript vocabulary is eight. Every one of those gaps had an available
-//!    near-fit that would have compiled — `--project` dropped on the floor,
-//!    `failed` mapped to `Done`. A near-fit that type-checks is the worst
-//!    outcome available here, because the caller cannot see it.
+//! 1. **A shape rs cannot honour refuses BY NAME.** Reports retain their
+//!    established grammar; task assignment is accepted specifically by verify,
+//!    where it is checked against real task and done evidence. Unsupported
+//!    state words and scoping flags never disappear into a near-fit behavior.
 //! 2. **No refusal may be a bare 404.** Wave 1's shim classifies "404 or 405
 //!    with a body that does not decode as a pij envelope" as ROUTE ABSENCE and
 //!    falls back to legacy. A refusal wearing that shape would not be a refusal
@@ -44,7 +42,7 @@ const TS_ONLY_STATES: [&str; 2] = ["failed", "cancelled"];
 /// refusal, so a caller who typed a word rs lacks learns what it does have.
 const RS_STATE_WORDS: &str = "ready|waiting|hold|blocked|question|done";
 
-/// One parsed report invocation — the six leaves of the family.
+/// One parsed report invocation, including sequence-bound parent verification.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ReportCall {
     /// `report now "<did>" "<next>" [--state <word>] [--note <text>]`.
@@ -63,6 +61,11 @@ pub(crate) enum ReportCall {
     Blocked(String),
     /// `report question "<text>"` — `core/cli.ts:1689`.
     Question(String),
+    /// Parent verifies an actual done event, optionally for its named task.
+    Verify {
+        target: String,
+        assignment: Option<String>,
+    },
     /// `report clear` — `core/cli.ts:1746`.
     Clear,
 }
@@ -94,11 +97,13 @@ pub(crate) fn parse_report(argv: &[String]) -> Result<ReportCall, Refusal> {
     match tokens.next() {
         Some("report") => {}
         Some(other) => return Err(format!("'{other}' is not the report verb")),
-        None => return Err("usage: pij report <now|state|blocked|question|clear>".to_string()),
+        None => {
+            return Err("usage: pij report <now|state|blocked|question|clear|verify>".to_string());
+        }
     }
     let leaf = tokens
         .next()
-        .ok_or_else(|| "usage: pij report <now|state|blocked|question|clear>".to_string())?;
+        .ok_or_else(|| "usage: pij report <now|state|blocked|question|clear|verify>".to_string())?;
 
     let Arguments { positionals, flags } = split_arguments(tokens)?;
 
@@ -106,6 +111,9 @@ pub(crate) fn parse_report(argv: &[String]) -> Result<ReportCall, Refusal> {
     // dispatched so the answer is the same wherever the flag was typed — the
     // caller's mistake is the flag, not the verb they attached it to.
     for (name, _) in &flags {
+        if leaf == "verify" && *name == "assignment" {
+            continue;
+        }
         if let Some(why) = unsupported_flag(name) {
             return Err(why);
         }
@@ -120,25 +128,41 @@ pub(crate) fn parse_report(argv: &[String]) -> Result<ReportCall, Refusal> {
             reject_unknown_flags("report clear", &flags, &[])?;
             Ok(ReportCall::Clear)
         }
-        // `verify` is deliberately here rather than in `unsupported_flag`: it is
-        // a whole verb rs cannot serve, not a flag on one it can. It should not
-        // reach us at all — the route table holds it back so it keeps working on
-        // legacy, where the assignment it verifies actually lives — but if the
-        // table ever changes, this refuses by name instead of half-serving it.
-        "verify" => Err(
-            "rs cannot serve `report verify`: it stamps verifiedBy on an ASSIGNMENT record \
-             (.pi/extensions/pij/core/cli.ts:1733) and rs has no assignment model, so there is \
-             nothing here to verify. It is deliberately left unrouted and served by legacy."
-                .to_string(),
-        ),
+        "verify" => {
+            expect_positionals(
+                "report verify",
+                &positionals,
+                1,
+                "usage: pij report verify <seat> [--assignment <id>]",
+            )?;
+            reject_unknown_flags("report verify", &flags, &["assignment"])?;
+            let assignment = flag_value(&flags, "assignment")?;
+            if flags
+                .iter()
+                .filter(|(name, _)| *name == "assignment")
+                .count()
+                > 1
+                || (flags.iter().any(|(name, _)| *name == "assignment")
+                    && assignment.is_none_or(str::is_empty))
+            {
+                return Err("--assignment requires one nonempty task id".into());
+            }
+            if positionals[0].trim().is_empty() {
+                return Err("report verify requires a seat".into());
+            }
+            Ok(ReportCall::Verify {
+                target: positionals[0].to_string(),
+                assignment: assignment.map(str::to_string),
+            })
+        }
         other => Err(format!(
-            "unknown report subcommand '{other}' (now|state|blocked|question|clear)"
+            "unknown report subcommand '{other}' (now|state|blocked|question|clear|verify)"
         )),
     }
 }
 
-/// `--assignment`, `--refs`, `--project` and `--for` each address an object that
-/// exists in the TypeScript generation and nowhere in rs.
+/// Scoping semantics unavailable on the selected leaf must refuse explicitly.
+/// Verify handles its supported assignment flag before this fallback.
 ///
 /// Accepting and ignoring them was the tempting failure: the report would have
 /// succeeded, the caller would have seen success, and the scoping they asked for
@@ -554,10 +578,42 @@ mod tests {
     }
 
     #[test]
-    fn verify_refuses_by_name_and_says_where_it_still_works() {
-        let refusal =
-            parse_report(&argv(&["report", "verify", "nd-1"])).expect_err("rs cannot verify");
-        assert!(refusal.contains("verify"), "{refusal}");
-        assert!(refusal.contains("legacy"), "{refusal}");
+    fn verify_accepts_seat_only_and_explicit_assignment_but_not_ignored_filters() {
+        assert_eq!(
+            parse_report(&argv(&["report", "verify", "worker"])),
+            Ok(ReportCall::Verify {
+                target: "worker".into(),
+                assignment: None
+            })
+        );
+        assert_eq!(
+            parse_report(&argv(&[
+                "report",
+                "verify",
+                "worker",
+                "--assignment",
+                "task-1",
+                "--json"
+            ])),
+            Ok(ReportCall::Verify {
+                target: "worker".into(),
+                assignment: Some("task-1".into())
+            })
+        );
+        for tokens in [
+            vec!["report", "verify", "worker", "--assignment"],
+            vec!["report", "verify", "worker", "--project", "p"],
+            vec![
+                "report",
+                "verify",
+                "worker",
+                "--assignment",
+                "a",
+                "--assignment",
+                "b",
+            ],
+        ] {
+            assert!(parse_report(&argv(&tokens)).is_err());
+        }
     }
 }

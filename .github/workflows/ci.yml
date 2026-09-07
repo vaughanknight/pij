@@ -45,10 +45,19 @@ jobs:
       - run: node_modules/.bin/tsx harness/scripts/lockfile-allowlist.ts
       - run: npm run typecheck
       - run: npm run lint
+      # Integration suites that drive a private Rust daemon (cli.inbox.integration,
+      # the watchdog smoke) need the debug pij-rs binary; build it here and make
+      # its presence REQUIRED so a missing binary fails loud instead of skipping.
+      - name: Install pinned Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --locked -p pij-cli --bin pij-rs
       # npm test now includes the two-peer integration smoke
       # (.pi/extensions/pij/cli.integration.test.ts) — AC-1..11 + AC-13 end-to-end
       # against the real cli.ts over a sandboxed PIJ_HOME, deterministic + in-CI.
       - run: npm test
+        env:
+          PIJ_RS_BIN_REQUIRED: '1'
       # Native extension contracts use node:test, outside Vitest's TS include.
       - run: just copilot-native-test
       # npm audit runs REPORT-ONLY (`|| true`) — the repo's Plan-009 security

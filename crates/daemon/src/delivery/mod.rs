@@ -16,7 +16,7 @@ use pij_core::model::{
     DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, Receipt,
     SeatDescriptor, SeatId, SemanticState,
 };
-use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, Transport};
+use pij_core::ports::{DeliveryAck, DeliveryEnqueue, LivenessPort, Queue, Registry, Transport};
 use pij_harnesses::{InteractionGate, StagedSubmission};
 use serde::{Deserialize, Serialize};
 use tokio_stream::StreamExt;
@@ -46,14 +46,14 @@ pub struct InboxClaim {
     pub native_consumer: Option<NativeInboxIdentity>,
 }
 
-/// Runtime identity supplied on native Copilot claims and acknowledgements.
-/// Optional wire fields preserve existing non-Copilot clients; Copilot requires all three.
+/// Runtime identity supplied by native extensions and verified external pull readers.
+/// Optional wire fields preserve existing machine-grade non-Copilot clients.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NativeInboxIdentity {
-    /// Native session supplied by the attached Copilot runtime.
+    /// Exact harness-native session registered for the current host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_session: Option<String>,
-    /// Actual Copilot host PID, never the extension child or pane shell.
+    /// Actual harness host PID, never an extension child or transient CLI.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pid: Option<u32>,
     /// Observed start stamp of that host process.
@@ -66,13 +66,28 @@ impl NativeInboxIdentity {
         self.native_session.is_some() || self.pid.is_some() || self.proc_start.is_some()
     }
 
-    fn matches(&self, seat: &SeatDescriptor) -> bool {
+    pub(crate) fn matches(&self, seat: &SeatDescriptor) -> bool {
         seat.proc.is_some_and(|identity| {
             self.pid == Some(identity.pid) && self.proc_start == Some(identity.proc_start)
         }) && self.native_session.as_deref().is_some_and(|session| {
             !session.is_empty() && seat.harness_session.as_deref() == Some(session)
         })
     }
+}
+
+/// A registered external pull seat, never an extension, relay, or pane consumer.
+pub(crate) fn paneless_pull(seat: &SeatDescriptor) -> bool {
+    matches!(
+        seat.harness,
+        Harness::Claude | Harness::Copilot | Harness::Codex
+    ) && seat.pane.is_none()
+        && !seat.relay
+        && !seat.native_extension_delivery
+        && seat.proc.is_some()
+        && seat
+            .harness_session
+            .as_deref()
+            .is_some_and(|session| !session.is_empty())
 }
 
 fn native_refusal(reason: impl Into<String>) -> PijError {
@@ -535,7 +550,9 @@ impl DeliveryService {
                             .await?
                         {
                             DeliveryEnqueue::Queued { not_before_ms, .. } => {
-                                let reason = if extension_stream {
+                                let reason = if paneless_pull(&recipient) {
+                                    None
+                                } else if extension_stream {
                                     Some(
                                         if recipient.harness == Harness::Copilot
                                             && !recipient.native_extension_delivery
@@ -618,7 +635,7 @@ impl DeliveryService {
     /// Queue failures or a corrupt/misdirected delivery payload.
     pub async fn claim_inbox(&self, seat: &SeatId, wait: bool) -> Result<Vec<InboxClaim>> {
         Ok(self
-            .claim_inbox_inner(seat, wait, &NativeInboxIdentity::default())
+            .claim_inbox_inner(seat, wait, &NativeInboxIdentity::default(), None)
             .await?
             .claims)
     }
@@ -630,7 +647,65 @@ impl DeliveryService {
         wait: bool,
         identity: &NativeInboxIdentity,
     ) -> Result<NativeInboxPage> {
-        self.claim_inbox_inner(seat, wait, identity).await
+        self.claim_inbox_inner(seat, wait, identity, None).await
+    }
+
+    /// Pull only from a verified paneless host. Subscribe before claiming and
+    /// cancel only the idle wait on timeout; never abandon an in-flight claim.
+    pub(crate) async fn claim_pull_inbox(
+        &self,
+        seat: &SeatId,
+        wait: bool,
+        timeout: Option<Duration>,
+        identity: &NativeInboxIdentity,
+        liveness: &dyn LivenessPort,
+    ) -> Result<NativeInboxPage> {
+        if !wait {
+            return self
+                .claim_inbox_inner(seat, false, identity, Some(liveness))
+                .await;
+        }
+        let mut wake = self.event_bus.subscribe_live(
+            EventFilter::kinds([
+                OUTCOME_EVENT_KIND,
+                "delivery.released",
+                "report.state",
+                "report.now",
+            ])
+            .for_seat(seat.clone()),
+        );
+        let deadline = timeout
+            .map(|timeout| {
+                tokio::time::Instant::now()
+                    .checked_add(timeout)
+                    .ok_or_else(|| {
+                        native_refusal("inbox wait duration exceeds the supported clock range")
+                    })
+            })
+            .transpose()?;
+        loop {
+            let page = self
+                .claim_inbox_inner(seat, false, identity, Some(liveness))
+                .await?;
+            if !page.claims.is_empty() {
+                return Ok(page);
+            }
+            if deadline.is_some_and(|deadline| tokio::time::Instant::now() >= deadline) {
+                return Ok(NativeInboxPage::default());
+            }
+            let event = match deadline {
+                Some(deadline) => match tokio::time::timeout_at(deadline, wake.next()).await {
+                    Ok(event) => event,
+                    Err(_) => return Ok(NativeInboxPage::default()),
+                },
+                None => wake.next().await,
+            };
+            if event.is_none() {
+                return Err(native_refusal(
+                    "inbox event stream closed before a message arrived",
+                ));
+            }
+        }
     }
 
     async fn inbox_recipient(
@@ -641,7 +716,9 @@ impl DeliveryService {
         let recipient = self.registry.get(seat).await?;
         match recipient {
             Some(recipient) if recipient.harness == Harness::Copilot => {
-                if recipient.tombstoned_at.is_some() || !recipient.native_extension_delivery {
+                if recipient.tombstoned_at.is_some()
+                    || (!recipient.native_extension_delivery && !paneless_pull(&recipient))
+                {
                     return Err(native_refusal(
                         "native-extension-unavailable: Copilot requires current native registration",
                     ));
@@ -653,11 +730,19 @@ impl DeliveryService {
                 }
                 Ok(Some(recipient))
             }
+            Some(recipient)
+                if identity.supplied()
+                    && recipient.tombstoned_at.is_none()
+                    && paneless_pull(&recipient)
+                    && identity.matches(&recipient) =>
+            {
+                Ok(Some(recipient))
+            }
             None if identity.supplied() => Err(native_refusal(
                 "native-extension-unavailable: Copilot requires current native registration",
             )),
             _ if identity.supplied() => Err(native_refusal(
-                "native incarnation no longer belongs to a current Copilot seat",
+                "native incarnation does not match a current external pull seat",
             )),
             recipient => Ok(recipient),
         }
@@ -675,7 +760,9 @@ impl DeliveryService {
         let observed = self
             .inbox_recipient(seat, identity)
             .await?
-            .filter(|recipient| recipient.harness == Harness::Copilot)
+            .filter(|recipient| {
+                recipient.harness == Harness::Copilot && recipient.native_extension_delivery
+            })
             .ok_or_else(|| {
                 native_refusal("native typing observation requires current native registration")
             })?;
@@ -704,7 +791,9 @@ impl DeliveryService {
         let current = self
             .inbox_recipient(seat, identity)
             .await?
-            .filter(|recipient| recipient.harness == Harness::Copilot)
+            .filter(|recipient| {
+                recipient.harness == Harness::Copilot && recipient.native_extension_delivery
+            })
             .ok_or_else(|| {
                 native_refusal("native typing observation requires current native registration")
             })?;
@@ -757,6 +846,7 @@ impl DeliveryService {
         seat: &SeatId,
         wait: bool,
         identity: &NativeInboxIdentity,
+        pull_liveness: Option<&dyn LivenessPort>,
     ) -> Result<NativeInboxPage> {
         let kinds = [delivery_kind(seat)];
         let mut wake = wait.then(|| {
@@ -769,9 +859,25 @@ impl DeliveryService {
             // Keep mutation excluded through handoff; no pane IO occurs here.
             let native_guard = self.native_lock.lock().await;
             let observed = self.inbox_recipient(seat, identity).await?;
+            if let Some(liveness) = pull_liveness {
+                let recipient = observed.as_ref().filter(|seat| paneless_pull(seat))
+                    .ok_or_else(|| native_refusal("inbox --wait requires a verified paneless pull seat; pushed seats cannot wait"))?;
+                if !identity.matches(recipient) {
+                    return Err(native_refusal(
+                        "native incarnation mismatch for paneless pull",
+                    ));
+                }
+                let proc = recipient.proc.expect("paneless pull has a host identity");
+                if liveness.proc_start(proc.pid).await? != Some(proc.proc_start) {
+                    return Err(native_refusal(
+                        "paneless pull host is no longer live at its registered process start",
+                    ));
+                }
+            }
             let native = observed
                 .as_ref()
                 .is_some_and(|seat| seat.harness == Harness::Copilot);
+            let tuple_bound = native || identity.supplied();
             if let Some(reason) = self
                 .revalidate_inbox_observation(seat, identity, observed.as_ref())
                 .await?
@@ -782,10 +888,7 @@ impl DeliveryService {
                 });
             }
             if let Some((job_id, job)) = self.queue.claim(&kinds, seat.as_str()).await? {
-                if let Some(recipient) = observed
-                    .as_ref()
-                    .filter(|seat| seat.harness == Harness::Copilot)
-                {
+                if let Some(recipient) = observed.as_ref().filter(|_| tuple_bound) {
                     // Lease expiry may invalidate a running attempt independently
                     // of registration. Never hand out or retry its successor.
                     if self
@@ -844,7 +947,7 @@ impl DeliveryService {
                     });
                 }
                 let payload = payload.expect("validated delivery payload");
-                if native
+                if tuple_bound
                     && let Some(reason) =
                         native_target_mismatch(payload.native_target_session.as_deref(), identity)
                 {
@@ -876,7 +979,7 @@ impl DeliveryService {
                     claims: vec![InboxClaim {
                         job_id,
                         message,
-                        native_consumer: native.then(|| identity.clone()),
+                        native_consumer: tuple_bound.then(|| identity.clone()),
                     }],
                     held_reason: None,
                 });
@@ -973,7 +1076,7 @@ impl DeliveryService {
         if self
             .inbox_recipient(&recipient, identity)
             .await?
-            .is_some_and(|seat| seat.harness == Harness::Copilot)
+            .is_some_and(|seat| seat.harness == Harness::Copilot || identity.supplied())
         {
             if seat != &recipient {
                 return Err(native_refusal(
@@ -1278,7 +1381,10 @@ fn native_target_mismatch(target: Option<&str>, identity: &NativeInboxIdentity) 
 
 fn delivery_job(msg: &Msg, recipient: Option<&SeatDescriptor>) -> Result<Job> {
     let native_target_session = recipient
-        .filter(|seat| seat.harness == Harness::Copilot && seat.native_extension_delivery)
+        .filter(|seat| {
+            (seat.harness == Harness::Copilot && seat.native_extension_delivery)
+                || paneless_pull(seat)
+        })
         .and_then(|seat| seat.harness_session.as_deref());
     let payload = serde_json::to_string(&DeliveryPayload {
         message: msg,
@@ -1398,7 +1504,7 @@ mod tests {
     };
     use pij_harnesses::InteractionGate;
     use pij_testkit::fakes::{
-        CountingSpine, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
+        CountingSpine, FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
     };
     use serde_json::Value;
     use tokio::sync::Notify;
@@ -3438,6 +3544,309 @@ mod tests {
             pid: Some(137),
             proc_start: Some(1370),
         }
+    }
+
+    #[tokio::test]
+    async fn external_pull_claim_and_ack_preserve_native_tuple_without_extension_attestation() {
+        for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
+            let fixture = fixture(FakeTransport::unreachable());
+            let mut seat = native_seat(None);
+            seat.harness = harness;
+            seat.native_extension_delivery = false;
+            let liveness = FakeLiveness::new().with_proc(seat.proc.unwrap());
+            register(&fixture, seat.clone()).await;
+            let sent = fixture
+                .service
+                .send("sender".into(), seat.id.clone(), "exact body\n")
+                .await
+                .unwrap();
+            assert!(
+                !matches!(&sent.outcome, DeliveryOutcome::Queued { reason: Some(reason), .. } if reason == "native-extension-unavailable" || reason == "extension-stream")
+            );
+            let identity = native_identity();
+            for wrong in [
+                NativeInboxIdentity::default(),
+                NativeInboxIdentity {
+                    native_session: Some("other".into()),
+                    ..identity.clone()
+                },
+                NativeInboxIdentity {
+                    pid: Some(138),
+                    ..identity.clone()
+                },
+                NativeInboxIdentity {
+                    proc_start: Some(1371),
+                    ..identity.clone()
+                },
+            ] {
+                assert!(
+                    fixture
+                        .service
+                        .claim_pull_inbox(&seat.id, false, None, &wrong, &liveness)
+                        .await
+                        .is_err()
+                );
+                assert_eq!(fixture.queue.live_len(), 1);
+            }
+            assert!(
+                fixture
+                    .service
+                    .claim_pull_inbox(&seat.id, false, None, &identity, &FakeLiveness::new())
+                    .await
+                    .is_err()
+            );
+            let page = fixture
+                .service
+                .claim_pull_inbox(&seat.id, false, None, &identity, &liveness)
+                .await
+                .unwrap();
+            assert_eq!(page.claims.len(), 1);
+            let claim = &page.claims[0];
+            assert_eq!(claim.message.msg_id, sent.msg_id);
+            assert_eq!(claim.message.body, "exact body\n");
+            assert_eq!(claim.native_consumer.as_ref(), Some(&identity));
+            assert!(
+                fixture
+                    .service
+                    .acknowledge_inbox(&"other-seat".into(), claim.job_id, &identity, None)
+                    .await
+                    .is_err()
+            );
+            let wrong = NativeInboxIdentity {
+                proc_start: Some(1371),
+                ..identity.clone()
+            };
+            assert!(
+                fixture
+                    .service
+                    .acknowledge_inbox(&seat.id, claim.job_id, &wrong, None)
+                    .await
+                    .is_err()
+            );
+            if harness == Harness::Copilot {
+                assert!(
+                    fixture
+                        .service
+                        .acknowledge_inbox(&seat.id, claim.job_id, &Default::default(), None)
+                        .await
+                        .is_err()
+                );
+                assert!(
+                    fixture
+                        .service
+                        .native_typing_snapshot(&seat.id, &identity, 0)
+                        .await
+                        .is_err(),
+                    "pull does not attest an extension"
+                );
+            }
+            assert!(
+                fixture
+                    .queue
+                    .claimed_delivery(claim.job_id)
+                    .await
+                    .unwrap()
+                    .is_some()
+            );
+            fixture
+                .service
+                .acknowledge_inbox(&seat.id, claim.job_id, &identity, None)
+                .await
+                .unwrap();
+            assert!(
+                fixture
+                    .service
+                    .claim_pull_inbox(&seat.id, false, None, &identity, &liveness)
+                    .await
+                    .unwrap()
+                    .claims
+                    .is_empty()
+            );
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn paneless_wait_times_out_or_wakes_for_real_work_and_can_be_cancelled() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let mut seat = native_seat(None);
+        seat.native_extension_delivery = false;
+        let liveness = FakeLiveness::new().with_proc(seat.proc.unwrap());
+        register(&fixture, seat.clone()).await;
+        let identity = native_identity();
+        let started = tokio::time::Instant::now();
+        let page = fixture
+            .service
+            .claim_pull_inbox(
+                &seat.id,
+                true,
+                Some(Duration::from_millis(25)),
+                &identity,
+                &liveness,
+            )
+            .await
+            .unwrap();
+        assert!(page.claims.is_empty());
+        assert!(tokio::time::Instant::now() - started >= Duration::from_millis(25));
+
+        // Poll until subscribed, then cancel. No detached consumer may steal later work.
+        {
+            let waiting = fixture
+                .service
+                .claim_pull_inbox(&seat.id, true, None, &identity, &liveness);
+            tokio::pin!(waiting);
+            tokio::select! {
+                biased;
+                result = &mut waiting => panic!("infinite wait completed without work: {result:?}"),
+                () = tokio::task::yield_now() => {}
+            }
+        }
+        let waiting = fixture
+            .service
+            .claim_pull_inbox(&seat.id, true, None, &identity, &liveness);
+        tokio::pin!(waiting);
+        tokio::select! {
+            biased;
+            result = &mut waiting => panic!("infinite wait completed without work: {result:?}"),
+            () = tokio::task::yield_now() => {}
+        }
+        let sent = fixture
+            .service
+            .send("sender".into(), seat.id.clone(), "wake")
+            .await
+            .unwrap();
+        let page = waiting.await.unwrap();
+        assert_eq!(page.claims.len(), 1);
+        assert_eq!(page.claims[0].message.msg_id, sent.msg_id);
+    }
+
+    #[tokio::test]
+    async fn paneless_wait_refuses_pushed_modes_and_rechecks_owner_after_wake() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let identity = native_identity();
+        for (pane, extension, relay) in [
+            (Some("%137"), false, false),
+            (None, true, false),
+            (None, false, true),
+        ] {
+            let mut seat = native_seat(pane);
+            seat.native_extension_delivery = extension;
+            seat.relay = relay;
+            let liveness = FakeLiveness::new().with_proc(seat.proc.unwrap());
+            register(&fixture, seat.clone()).await;
+            assert!(
+                fixture
+                    .service
+                    .claim_pull_inbox(&seat.id, true, None, &identity, &liveness)
+                    .await
+                    .is_err()
+            );
+            if pane.is_some() && !extension {
+                assert!(
+                    fixture
+                        .service
+                        .claim_native_inbox(&seat.id, false, &identity)
+                        .await
+                        .is_err(),
+                    "paned Copilot still needs native attestation"
+                );
+            }
+        }
+        let mut seat = native_seat(None);
+        seat.native_extension_delivery = false;
+        let liveness = FakeLiveness::new().with_proc(seat.proc.unwrap());
+        register(&fixture, seat.clone()).await;
+        let waiting = fixture
+            .service
+            .claim_pull_inbox(&seat.id, true, None, &identity, &liveness);
+        tokio::pin!(waiting);
+        tokio::select! {
+            biased;
+            result = &mut waiting => panic!("empty wait completed: {result:?}"),
+            () = tokio::task::yield_now() => {}
+        }
+        seat.proc.as_mut().unwrap().proc_start += 1;
+        register(&fixture, seat.clone()).await;
+        fixture
+            .service
+            .send("sender".into(), seat.id.clone(), "new owner only")
+            .await
+            .unwrap();
+        assert!(waiting.await.is_err());
+        assert_eq!(fixture.queue.live_len(), 1);
+    }
+
+    #[tokio::test]
+    async fn paneless_wait_holds_until_release_and_never_rehomes_old_native_work() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let mut seat = native_seat(None);
+        seat.native_extension_delivery = false;
+        seat.semantic_state = Some(SemanticState::Hold);
+        let liveness = FakeLiveness::new().with_proc(seat.proc.unwrap());
+        let identity = native_identity();
+        register(&fixture, seat.clone()).await;
+        fixture
+            .service
+            .send("sender".into(), seat.id.clone(), "held body")
+            .await
+            .unwrap();
+        let waiting = fixture
+            .service
+            .claim_pull_inbox(&seat.id, true, None, &identity, &liveness);
+        tokio::pin!(waiting);
+        tokio::select! {
+            biased;
+            result = &mut waiting => panic!("hold is not successful empty completion: {result:?}"),
+            () = tokio::task::yield_now() => {}
+        }
+        seat.semantic_state = None;
+        register(&fixture, seat.clone()).await;
+        fixture
+            .service
+            .event_bus
+            .publish(Event {
+                seq: None,
+                v: 1,
+                at: 1_235,
+                kind: "report.state".into(),
+                seat: Some(seat.id.clone()),
+                payload: "{}".into(),
+            })
+            .await
+            .unwrap();
+        let page = waiting.await.unwrap();
+        assert_eq!(page.claims[0].message.body, "held body");
+        fixture
+            .service
+            .acknowledge_inbox(&seat.id, page.claims[0].job_id, &identity, None)
+            .await
+            .unwrap();
+        fixture
+            .service
+            .send("sender".into(), seat.id.clone(), "original session only")
+            .await
+            .unwrap();
+        seat.harness_session = Some("replacement-native-session".into());
+        register(&fixture, seat.clone()).await;
+        let replacement = NativeInboxIdentity {
+            native_session: seat.harness_session.clone(),
+            ..identity
+        };
+        let held = fixture
+            .service
+            .claim_pull_inbox(&seat.id, false, None, &replacement, &liveness)
+            .await
+            .unwrap();
+        assert!(held.claims.is_empty());
+        assert!(
+            held.held_reason
+                .unwrap()
+                .starts_with("native-target-session:native-137")
+        );
+        assert_eq!(
+            fixture.queue.live_len(),
+            1,
+            "old native context retains its queued body"
+        );
     }
 
     #[tokio::test]

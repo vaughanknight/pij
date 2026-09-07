@@ -9,17 +9,18 @@ import {
 	describeOutcome,
 	findRoute,
 	LEAF_CLOSED_VERBS,
-	NEVER_ROUTED,
+	type RouteOutcome,
 	RS_ROUTE_TABLE,
-	type RsRouteRow,
+	type RsHttpRoute,
+	type RsResponseFacts,
 	renderRsAnswer,
 	resolveGenerationForce,
-	servedByLegacy,
+	routingRefusalEnvelope,
 } from "./generation-routing.js";
 
-const ADDR = "127.0.0.1:7461";
-const STATE_DIR = "/tmp/pij-rs-test";
-const ROW: RsRouteRow = {
+const ADDR = "127.0.0.1:18741";
+const STATE_DIR = "/tmp/pij-routing-core-fixture";
+const ROW: RsHttpRoute = {
 	verb: "adopt",
 	rsPath: "/v1/adopt",
 	method: "POST",
@@ -43,308 +44,221 @@ describe("Copilot native control boundary", () => {
 	});
 });
 
-describe("route table is data", () => {
-	it.each([
-		"create",
-		"list",
-		"tail",
-		"kill",
-	])("bg %s is daemon-owned and never legacy-unrouted", (leaf) => {
-		expect(findRoute("bg", leaf)).toMatchObject({
-			rsPath: "/v1/bg",
-			method: "POST",
-			humanOutput: "rs-line",
-			jsonOutput: "passthrough",
-		});
+describe("the explicit rs routing inventory", () => {
+	it.each(["create", "list", "tail", "kill"])("bg %s remains daemon-owned", (leaf) => {
+		expect(findRoute("bg", leaf)).toMatchObject({ rsPath: "/v1/bg", method: "POST" });
 		expect(pre({ verb: "bg", leaf })).toMatchObject({ kind: "try-rs" });
 	});
 
-	it("routes a verb only when the table lists it", () => {
-		expect(findRoute("adopt", undefined)).toBeDefined();
-		// A verb nobody has moved: no row, therefore legacy. This is the default
-		// that carries every unmigrated verb.
-		expect(findRoute("spawn", undefined)).toBeUndefined();
-		expect(pre({ verb: "spawn" })).toEqual({ kind: "legacy-unrouted", verb: "spawn" });
+	it("unknown verbs and declared unported verbs are both named refusals", () => {
+		expect(findRoute("unknown-command", undefined)).toBeUndefined();
+		expect(findRoute("spawn", undefined)).toHaveProperty("unported");
+		for (const verb of ["unknown-command", "spawn"]) {
+			expect(pre({ verb })).toMatchObject({ kind: "rs-error", verb, code: "E-RS-UNPORTED" });
+		}
 	});
 
-	it("adding an rs verb is adding a row — the decision function is untouched", () => {
-		const extended = [...RS_ROUTE_TABLE, { ...ROW, verb: "close", rsPath: "/v1/close" }];
+	it("adding an HTTP row needs no decision-function change", () => {
+		const extended = [...RS_ROUTE_TABLE, { ...ROW, verb: "fixture-command" }];
 		expect(
-			decidePreCall({ verb: "close", force: undefined, addr: ADDR, rsLive: true }, extended),
-		).toMatchObject({ kind: "try-rs" });
-	});
-
-	it("a leaf row wins over its family row", () => {
-		const table: RsRouteRow[] = [
-			{ verb: "report", rsPath: "/v1/report", method: "POST", why: "family" },
-			{ verb: "report", leaf: "verify", rsPath: "/v1/report/verify", method: "POST", why: "leaf" },
-		];
-		expect(findRoute("report", "verify", table)?.rsPath).toBe("/v1/report/verify");
-		expect(findRoute("report", "now", table)?.rsPath).toBe("/v1/report");
-	});
-
-	it("routes sessions to the exact rs shim endpoint", () => {
-		expect(findRoute("sessions", undefined)).toMatchObject({
-			rsPath: "/v1/shim/sessions",
-			method: "GET",
-			jsonOutput: "project",
-		});
-	});
-
-	it("projects rs whoami JSON with an explicit absent capability gate", () => {
-		const row = findRoute("whoami", undefined);
-		expect(
-			renderRsAnswer(
-				row,
-				{
-					id: "pij-rs-seat",
-					harness: "omp",
-					pane: "%42",
-					folder: "/repo",
-					session: "omp-native-session",
-				},
-				["whoami", "--json"],
+			decidePreCall(
+				{ verb: "fixture-command", force: undefined, addr: ADDR, rsLive: true },
+				extended,
 			),
-		).toEqual({
-			kind: "json",
-			text: JSON.stringify({
-				id: "pij-rs-seat",
-				harness: "omp",
-				pane: "%42",
-				folder: "/repo",
-				session: "omp-native-session",
-				generation: "rs",
-				capabilityGate: "absent",
-			}),
-		});
-	});
-});
-
-describe("the tail false friend (ac-1145)", () => {
-	it("tail is on the deny list", () => {
-		expect(NEVER_ROUTED.map((entry) => entry.verb)).toContain("tail");
+		).toMatchObject({ kind: "try-rs", row: { verb: "fixture-command" } });
 	});
 
-	it("tail has no route-table row", () => {
-		expect(findRoute("tail", undefined)).toBeUndefined();
+	it("an exact leaf wins over the family regardless of row ordering", () => {
+		const family: RsHttpRoute = { ...ROW, verb: "report", why: "family" };
+		const leaf: RsHttpRoute = { ...family, leaf: "verify", why: "leaf" };
+		for (const table of [
+			[family, leaf],
+			[leaf, family],
+		]) {
+			expect(findRoute("report", "verify", table)).toBe(leaf);
+			expect(findRoute("report", "now", table)).toBe(family);
+		}
 	});
 
-	// THE ARM THAT MATTERS. The two assertions above both pass with the deny
-	// list deleted, so neither of them is guarding anything. This one simulates
-	// exactly the future that would otherwise arrive by itself: rs starts
-	// serving `tail`, someone adds the row, and every caller expecting the TS
-	// PEER TRANSCRIPT would receive rs's daemon EVENT frames instead. Deleting
-	// the deny list fails HERE and only here.
-	it("tail stays in legacy EVEN IF rs advertises it and a row is added", () => {
-		const tableThatRoutesTail = [
-			...RS_ROUTE_TABLE,
-			{ verb: "tail", rsPath: "/v1/tail", method: "GET", why: "rs advertised it" } as RsRouteRow,
-		];
-		const outcome = decidePreCall(
-			{ verb: "tail", force: undefined, addr: ADDR, rsLive: true },
-			tableThatRoutesTail,
+	it.each([
+		["list", "/v1/seats"],
+		["sessions", "/v1/shim/sessions"],
+	])("%s uses the shipped GET endpoint", (verb, rsPath) => {
+		expect(findRoute(verb, undefined)).toMatchObject({ rsPath, method: "GET" });
+	});
+
+	it("whoami --json preserves the complete original envelope, not a projection", () => {
+		const payload = { id: "pij-rs-seat", harness: "omp", extension: { retained: true } };
+		const rawEnvelope = ` {"ok":true,"command":"pij whoami","v":2,"data":${JSON.stringify(payload)},"meta":"keep me"}\n`;
+		expect(
+			renderRsAnswer(findRoute("whoami", undefined), payload, ["whoami", "--json"], rawEnvelope),
+		).toEqual({ kind: "json", text: rawEnvelope });
+		expect(renderRsAnswer(findRoute("whoami", undefined), payload, ["whoami", "--json"]).kind).toBe(
+			"json-refused",
 		);
-		expect(outcome).toMatchObject({ kind: "legacy-denied", verb: "tail" });
-		expect(describeOutcome(outcome as never)).toMatch(/DENIED from rs routing on purpose/);
-	});
-
-	it("not even forced rs overrides the deny list", () => {
-		const outcome = decidePreCall({ verb: "tail", force: "rs", addr: ADDR, rsLive: true }, [
-			...RS_ROUTE_TABLE,
-			{ verb: "tail", rsPath: "/v1/tail", method: "GET", why: "x" },
-		]);
-		expect(outcome).toMatchObject({ kind: "legacy-denied" });
 	});
 });
 
-describe("forceback, both directions", () => {
-	it("reads both values and rejects anything else", () => {
+describe("the tail false friend remains refused", () => {
+	it.each([
+		undefined,
+		"rs",
+	] as const)("does not alias peer transcripts to daemon events (force %s)", (force) => {
+		expect(findRoute("tail", undefined)).toMatchObject({
+			unported: expect.stringContaining("not the native daemon event tail"),
+		});
+		expect(pre({ verb: "tail", force })).toMatchObject({ kind: "rs-error", code: "E-RS-UNPORTED" });
+	});
+});
+
+describe("explicit generation forcing", () => {
+	it("recognizes the retired legacy value so it can refuse it by name", () => {
 		expect(resolveGenerationForce({ PIJ_DAEMON_GENERATION: "legacy" })).toBe("legacy");
 		expect(resolveGenerationForce({ PIJ_DAEMON_GENERATION: "rs" })).toBe("rs");
 		expect(resolveGenerationForce({})).toBeUndefined();
-		expect(() => resolveGenerationForce({ PIJ_DAEMON_GENERATION: "rust" })).toThrow(/malformed/);
+		expect(resolveGenerationForce({ PIJ_DAEMON_GENERATION: "" })).toBeUndefined();
+		for (const value of ["rust", "RS", " rs "]) {
+			expect(() => resolveGenerationForce({ PIJ_DAEMON_GENERATION: value })).toThrow(/malformed/);
+		}
 	});
 
-	it("forced legacy wins even when rs is live and the verb is routed", () => {
-		expect(pre({ force: "legacy" })).toEqual({ kind: "legacy-forced", verb: "adopt" });
+	it("forced legacy refuses even a supported live route", () => {
+		expect(pre({ force: "legacy" })).toMatchObject({
+			kind: "rs-error",
+			code: "E-RS-UNPORTED",
+			detail: expect.stringContaining("legacy is retired"),
+		});
 	});
 
-	it("forced rs reaches rs even when the seat lives in legacy", () => {
-		expect(
-			pre({ force: "rs", seatId: "pij-x", seatInRs: false, seatInLegacy: true }),
-		).toMatchObject({ kind: "try-rs" });
+	it("forced rs still needs an HTTP daemon", () => {
+		expect(pre({ force: "rs" })).toMatchObject({ kind: "try-rs" });
+		expect(pre({ force: "rs", rsLive: false })).toMatchObject({
+			kind: "rs-error",
+			code: "E-RS-UNPORTED",
+		});
 	});
 
-	it("forced rs with no rs daemon is an ERROR, never a quiet fallback", () => {
-		const outcome = pre({ force: "rs", rsLive: false });
-		expect(outcome).toMatchObject({ kind: "rs-error" });
-		expect(servedByLegacy(outcome as never)).toBe(false);
+	it("native trailers do not require an HTTP health probe", () => {
+		expect(pre({ verb: "commit-trailers", rsLive: false })).toMatchObject({
+			kind: "try-rs",
+			row: { nativeCommand: "commit-trailers" },
+		});
 	});
 });
 
-describe("the three fallback outcomes stay distinguishable (ac-1143, F-1128)", () => {
-	it("rs-does-not-implement and seat-lives-in-legacy are different kinds", () => {
-		const notImplemented = classifyRsResponse(
-			"adopt",
-			ADDR,
-			ROW,
-			{ status: 404, envelopeDecoded: false },
-			false,
-			STATE_DIR,
-		);
-		const seatFollowed = pre({ seatId: "pij-x", seatInRs: false, seatInLegacy: true });
-		expect(notImplemented.kind).toBe("legacy-rs-not-implemented");
-		expect(seatFollowed).toMatchObject({ kind: "legacy-seat-followed", seatId: "pij-x" });
-		expect(notImplemented.kind).not.toBe((seatFollowed as { kind: string }).kind);
-		// …and they say different things, not the same sentence twice.
-		expect(describeOutcome(notImplemented)).not.toBe(describeOutcome(seatFollowed as never));
-	});
-
-	it("all five legacy reasons are distinct kinds AND distinct sentences", () => {
+describe("local refusals use named v2 envelopes", () => {
+	it("unknown, unported, forced-legacy and absent-daemon reasons stay distinguishable", () => {
 		const outcomes = [
-			pre({ force: "legacy" }),
+			pre({ verb: "unknown-command" }),
 			pre({ verb: "spawn" }),
+			pre({ force: "legacy" }),
 			pre({ rsLive: false }),
-			pre({ seatId: "pij-x", seatInRs: false, seatInLegacy: true }),
-			classifyRsResponse(
-				"adopt",
-				ADDR,
-				ROW,
-				{ status: 404, envelopeDecoded: false },
-				false,
-				STATE_DIR,
-			),
-		] as const;
-		const kinds = new Set(outcomes.map((o) => (o as { kind: string }).kind));
-		expect(kinds.size).toBe(5);
-		const sentences = new Set(outcomes.map((o) => describeOutcome(o as never)));
-		expect(sentences.size).toBe(5);
-		for (const outcome of outcomes) expect(servedByLegacy(outcome as never)).toBe(true);
+		];
+		const details = new Set<string>();
+		for (const outcome of outcomes) {
+			expect(outcome.kind).toBe("rs-error");
+			if (outcome.kind !== "rs-error") throw new Error("expected a local refusal");
+			details.add(outcome.detail);
+			expect(JSON.parse(routingRefusalEnvelope(outcome))).toMatchObject({
+				ok: false,
+				command: `pij ${outcome.verb}`,
+				v: 2,
+				error: "refused",
+				details: {
+					code: "E-RS-UNPORTED",
+					verb: outcome.verb,
+					ledger_item: expect.stringContaining("unsupported-status"),
+				},
+			});
+		}
+		expect(details.size).toBe(outcomes.length);
 	});
 
-	it("a seat is followed only when BOTH stores have been asked", () => {
-		// Unknown is not evidence. Re-homing a seat on a question we never asked
-		// is the split-brain this plan exists to prevent.
-		expect(pre({ seatId: "pij-x", seatInRs: undefined, seatInLegacy: true })).toMatchObject({
-			kind: "try-rs",
-		});
-		expect(pre({ seatId: "pij-x", seatInRs: false, seatInLegacy: undefined })).toMatchObject({
-			kind: "try-rs",
-		});
-	});
-});
-
-describe("an rs ERROR never falls back", () => {
-	// The four arms below are the ones the live daemon can actually produce.
-	// Verified against pij-rs at 127.0.0.1:7461 on 2026-09-01.
-	it("bodiless 404 = route absent = not implemented = falls back", () => {
-		const outcome = classifyRsResponse(
-			"adopt",
-			ADDR,
-			ROW,
-			{ status: 404, envelopeDecoded: false },
-			false,
-			STATE_DIR,
-		);
-		expect(outcome.kind).toBe("legacy-rs-not-implemented");
-		expect(servedByLegacy(outcome)).toBe(true);
-	});
-
-	it("envelope-bearing 404 = rs ANSWERED no = does NOT fall back", () => {
-		// crates/daemon/src/http/mod.rs:650 — send to an unknown seat. Same
-		// status code as the arm above, opposite handling. Status alone cannot
-		// tell these apart, which is why the discriminator is the body.
-		const outcome = classifyRsResponse(
-			"adopt",
-			ADDR,
-			ROW,
-			{ status: 404, envelopeDecoded: true, detail: "seat not found" },
-			false,
-			STATE_DIR,
-		);
-		expect(outcome.kind).toBe("rs-error");
-		expect(servedByLegacy(outcome)).toBe(false);
-	});
-
-	it("405 = the route exists, we called it wrong = does NOT fall back", () => {
-		expect(
-			classifyRsResponse(
-				"adopt",
-				ADDR,
-				ROW,
-				{ status: 405, envelopeDecoded: true },
-				false,
-				STATE_DIR,
-			).kind,
-		).toBe("rs-error");
-	});
-
-	it("500 does NOT fall back", () => {
-		const outcome = classifyRsResponse(
-			"adopt",
-			ADDR,
-			ROW,
-			{ status: 500, envelopeDecoded: true, detail: "boom" },
-			false,
-			STATE_DIR,
-		);
-		expect(outcome).toMatchObject({ kind: "rs-error", detail: "boom" });
-		expect(servedByLegacy(outcome)).toBe(false);
-	});
-
-	it("401 is its OWN named outcome — a wrong key must never read as not-implemented", () => {
-		// rs checks auth in a LAYER above the route match (mod.rs:215-218), so a
-		// 401 says nothing about whether the route exists. Reading it as
-		// not-implemented would silently re-home EVERY routed verb to legacy the
-		// moment the key went missing, and it would look like a working fallback
-		// forever.
-		const outcome = classifyRsResponse(
-			"adopt",
-			ADDR,
-			ROW,
-			{ status: 401, envelopeDecoded: true },
-			false,
-			STATE_DIR,
-		);
-		expect(outcome.kind).toBe("rs-auth-rejected");
-		expect(servedByLegacy(outcome)).toBe(false);
-		const line = describeOutcome(outcome);
-		expect(line).toMatch(/REJECTED THE KEY/);
-		expect(line).toContain(STATE_DIR);
-		// It must also warn that auth masks route-absence, or the operator will
-		// read it as "rs does not have this verb".
-		expect(line).toMatch(/before matching the route/i);
-	});
-
-	it("a 200 is served by rs", () => {
-		const outcome = classifyRsResponse(
-			"adopt",
-			ADDR,
-			ROW,
-			{ status: 200, envelopeDecoded: true },
-			false,
-			STATE_DIR,
-		);
-		expect(outcome).toMatchObject({ kind: "rs", addr: ADDR });
-		expect(servedByLegacy(outcome)).toBe(false);
-	});
-
-	it("under forced rs, not-implemented is an error rather than a fallback", () => {
-		const outcome = classifyRsResponse(
-			"adopt",
-			ADDR,
-			ROW,
-			{ status: 404, envelopeDecoded: false },
-			true,
-			STATE_DIR,
-		);
-		expect(outcome.kind).toBe("rs-error");
+	it("authentication and unreadable-wire refusals have different codes", () => {
+		for (const [outcome, code, error] of [
+			[
+				{ kind: "rs-auth-rejected", verb: "adopt", addr: ADDR, stateDir: STATE_DIR },
+				"E-RS-AUTH",
+				"auth",
+			],
+			[
+				{ kind: "rs-unreadable", verb: "adopt", addr: ADDR, detail: "invalid JSON" },
+				"E-RS-WIRE",
+				"refused",
+			],
+		] satisfies [RouteOutcome, string, string][]) {
+			expect(JSON.parse(routingRefusalEnvelope(outcome))).toMatchObject({
+				ok: false,
+				v: 2,
+				error,
+				details: { code },
+			});
+		}
 	});
 });
 
-describe("the diagnostic names the ADDR, not only the generation (ac-1143, PM O4)", () => {
-	it("every outcome that involves rs names the addr it means", () => {
-		const withAddr = [
+describe("HTTP responses never authorize another store", () => {
+	const classify = (facts: RsResponseFacts, forced = false) =>
+		classifyRsResponse("adopt", ADDR, ROW, facts, forced, STATE_DIR);
+
+	it.each([404, 405])("bodiless %s is named unported, not a daemon business refusal", (status) => {
+		expect(classify({ status, envelopeDecoded: false })).toMatchObject({
+			kind: "rs-error",
+			code: "E-RS-UNPORTED",
+			detail: expect.stringContaining("/v1/adopt"),
+		});
+	});
+
+	it.each([
+		400, 403, 404, 405, 500,
+	])("a decoded %s refusal remains the daemon's error", (status) => {
+		const outcome = classify({
+			status,
+			envelopeDecoded: true,
+			refused: true,
+			detail: "daemon refused",
+		});
+		expect(outcome).toMatchObject({ kind: "rs-error", detail: "daemon refused" });
+		expect(outcome).not.toHaveProperty("code", "E-RS-UNPORTED");
+	});
+
+	it("a refusal carried over HTTP 200 is still an error", () => {
+		expect(classify({ status: 200, envelopeDecoded: true, refused: true }).kind).toBe("rs-error");
+	});
+
+	it.each([
+		{ status: 401, envelopeDecoded: true },
+		{ status: 401, envelopeDecoded: false },
+		{ status: 403, envelopeDecoded: false },
+	])("authentication rejection remains distinct ($status, decoded $envelopeDecoded)", (facts) => {
+		const outcome = classify(facts);
+		expect(outcome).toMatchObject({ kind: "rs-auth-rejected", stateDir: STATE_DIR });
+		expect(describeOutcome(outcome)).toMatch(/rejected the key/i);
+		expect(describeOutcome(outcome)).toContain(`${STATE_DIR}/daemon.key`);
+	});
+
+	it.each([200, 500])("undecodable HTTP %s is unreadable, not success", (status) => {
+		expect(classify({ status, envelopeDecoded: false, detail: "wire skew" })).toMatchObject({
+			kind: "rs-unreadable",
+			detail: "wire skew",
+		});
+	});
+
+	it("valid success preserves the explicit force marker", () => {
+		for (const forced of [false, true]) {
+			expect(classify({ status: 200, envelopeDecoded: true }, forced)).toEqual({
+				kind: "rs",
+				verb: "adopt",
+				addr: ADDR,
+				forced,
+			});
+		}
+	});
+});
+
+describe("route diagnostics name the selected daemon", () => {
+	it("success, absence, auth and HTTP failures name the address", () => {
+		const outcomes = [
 			classifyRsResponse(
 				"adopt",
 				ADDR,
@@ -378,49 +292,19 @@ describe("the diagnostic names the ADDR, not only the generation (ac-1143, PM O4
 				STATE_DIR,
 			),
 			pre({ rsLive: false }),
-			pre({ seatId: "pij-x", seatInRs: false, seatInLegacy: true }),
-		] as const;
-		for (const outcome of withAddr) expect(describeOutcome(outcome as never)).toContain(ADDR);
+		];
+		for (const outcome of outcomes) {
+			if (outcome.kind === "try-rs") throw new Error("expected a routing outcome");
+			expect(describeOutcome(outcome)).toContain(ADDR);
+		}
 	});
 
-	it("a different addr produces a different line — the field is real, not a constant", () => {
-		// Two rs daemons with separate state dirs have coexisted on this machine.
-		// "an rs daemon is live" is not the claim; "THIS one served it" is.
-		const other = "127.0.0.1:17610";
-		const a = classifyRsResponse(
-			"adopt",
-			ADDR,
-			ROW,
-			{ status: 200, envelopeDecoded: true },
-			false,
-			STATE_DIR,
-		);
-		const b = classifyRsResponse(
-			"adopt",
-			other,
-			ROW,
-			{ status: 200, envelopeDecoded: true },
-			false,
-			STATE_DIR,
-		);
-		expect(describeOutcome(a)).not.toBe(describeOutcome(b));
-		expect(describeOutcome(b)).toContain(other);
-	});
-
-	it("names the forceback when one was used, so a forced run is never mistaken for a detected one", () => {
-		expect(
-			describeOutcome(
-				classifyRsResponse(
-					"adopt",
-					ADDR,
-					ROW,
-					{ status: 200, envelopeDecoded: true },
-					true,
-					STATE_DIR,
-				),
-			),
-		).toMatch(/forced/);
-		expect(describeOutcome(pre({ force: "legacy" }) as never)).toMatch(/forced/);
+	it("a different address changes the line", () => {
+		const other = "127.0.0.1:18742";
+		const outcome = { kind: "rs", verb: "adopt", addr: ADDR, forced: false } as const;
+		expect(describeOutcome({ ...outcome, addr: other })).not.toBe(describeOutcome(outcome));
+		expect(describeOutcome({ ...outcome, addr: other })).toContain(other);
+		expect(describeOutcome({ ...outcome, forced: true })).toContain("PIJ_DAEMON_GENERATION=rs");
 	});
 });
 
@@ -479,166 +363,46 @@ describe("the shim has no minter (ac-1147)", () => {
 	});
 });
 
-describe("the mailbox verbs (plan 119)", () => {
-	const shimRow = (verb: string, leaf: string | undefined): RsRouteRow =>
-		({
-			verb,
-			leaf,
-			rsPath: "/v1/shim/x",
+describe("mailbox leaf boundaries", () => {
+	it("registration uses native HTTP admission without changing read siblings", () => {
+		expect(findRoute("inbox", "register")).toMatchObject({
+			rsPath: "/v1/register",
 			method: "POST",
-			humanOutput: "render",
-			render: () => "",
-			jsonOutput: "refuse",
-			jsonRefusal: "x",
-			why: "test row",
-		}) as RsRouteRow;
-
-	it("`inbox register` keeps its denial, and the denial still names its reason", () => {
-		const denial = NEVER_ROUTED.find(
-			(entry) => entry.verb === "inbox" && entry.leaf === "register",
-		);
-		expect(denial).toBeDefined();
-		// The reason is not decoration: it is the thing s120 must replace before
-		// this denial may be lifted. If someone shortens it away, the next reader
-		// loses why the leaf is denied and lifts it for free.
-		expect(denial?.why).toContain("BIND EVIDENCE");
-		expect(denial?.why).toContain("never falls back");
+		});
+		expect(pre({ verb: "inbox", leaf: "register" })).toMatchObject({
+			kind: "try-rs",
+		});
+		for (const leaf of [undefined, "check"]) {
+			expect(findRoute("inbox", leaf)).toMatchObject({
+				rsPath: "/v1/shim/inbox",
+				acknowledgePath: "/v1/shim/inbox/ack",
+			});
+			expect(pre({ verb: "inbox", leaf })).toMatchObject({ kind: "try-rs" });
+		}
 	});
 
-	it("a denied LEAF does not deny its siblings", () => {
-		expect(
-			decidePreCall({
-				verb: "inbox",
-				leaf: "register",
-				force: undefined,
-				addr: ADDR,
-				rsLive: true,
-			}),
-		).toMatchObject({ kind: "legacy-denied", verb: "inbox" });
-		// `check` is enumerated, so it is NOT swept up by its sibling's denial.
-		expect(findRoute("inbox", "check")).toBeDefined();
-	});
-
-	// THE POINT OF THE CLOSED DEFAULT, pinned the only way that means anything.
-	//
-	// Written in the `tail` test's shape deliberately: the made-up leaf is put IN
-	// the route table — with a whole-verb row beside it, which is the exact thing
-	// that would make it route — and asserted unrouted ANYWAY. A test that merely
-	// checked "there is no row for `frobnicate`" would pass just as happily with
-	// LEAF_CLOSED_VERBS deleted, which is the change it exists to catch.
-	//
-	// Narrowing `inbox` from verb granularity to leaf granularity spends "safety
-	// with no author": while the whole verb was denied, a leaf nobody had imagined
-	// was denied by construction. The closed default is what buys that back, and
-	// the failure it prevents arrives months from now in a commit that never
-	// mentions registration, written by someone adding a mailbox leaf.
-	it("an unenumerated inbox leaf stays unrouted EVEN IF a whole-verb row exists", () => {
+	it("an unknown inbox leaf cannot fall through to the bare read row", () => {
 		expect(LEAF_CLOSED_VERBS).toContain("inbox");
-		const table: RsRouteRow[] = [
-			shimRow("inbox", "check"),
-			// The trap: a family row that a leaf-open verb would fall back to.
-			shimRow("inbox", undefined),
+		const table: RsHttpRoute[] = [
+			{ ...ROW, verb: "inbox" },
+			{ ...ROW, verb: "inbox", leaf: "check" },
 		];
 		expect(findRoute("inbox", "frobnicate", table)).toBeUndefined();
-		// And against the SHIPPED table, which now really does carry a bare row —
-		// the case the trap above was simulating.
 		expect(findRoute("inbox", "frobnicate")).toBeUndefined();
 		expect(
 			decidePreCall(
 				{ verb: "inbox", leaf: "frobnicate", force: undefined, addr: ADDR, rsLive: true },
 				table,
 			),
-		).toEqual({ kind: "legacy-unrouted", verb: "inbox" });
-		// And the enumerated one still routes, or the guard is just "deny inbox".
+		).toMatchObject({ kind: "rs-error", code: "E-RS-UNPORTED" });
 		expect(findRoute("inbox", "check", table)).toBeDefined();
 	});
 
-	// `requiresSeatInRs` — KNOWN PRESENT, never merely not-known-absent.
-	//
-	// The hazard: every `pij inbox` leaf calls ensureCurrentRegistration
-	// (cli.ts:939), so auto-registration is a property of the VERB. A seat in
-	// NEITHER store has no ambient id, so follow-the-seat cannot fire (it needs
-	// seatInRs === false AND seatInLegacy === true), the call reaches rs, rs
-	// refuses because no rs seat owns the pane, and an rs refusal NEVER falls
-	// back. That seat would then register nowhere.
-	it.each([
-		["absent", false as const],
-		["unknown", undefined],
-	])("a seat whose rs presence is %s goes to legacy, not rs", (_label, seatInRs) => {
-		const table = [shimRow("send", undefined)].map((row) => ({
-			...row,
-			requiresSeatInRs: true,
-		})) as RsRouteRow[];
-		expect(
-			decidePreCall(
-				{ verb: "send", force: undefined, addr: ADDR, rsLive: true, seatId: "pij-x", seatInRs },
-				table,
-			),
-		).toMatchObject({ kind: "legacy-seat-not-in-rs", verb: "send" });
-	});
-
-	it("a seat KNOWN PRESENT in rs routes", () => {
-		const table = [{ ...shimRow("send", undefined), requiresSeatInRs: true }] as RsRouteRow[];
-		expect(
-			decidePreCall(
-				{
-					verb: "send",
-					force: undefined,
-					addr: ADDR,
-					rsLive: true,
-					seatId: "pij-x",
-					seatInRs: true,
-				},
-				table,
-			),
-		).toMatchObject({ kind: "try-rs" });
-	});
-
-	it("bare `pij inbox` routes — it is the public alias of `check` (F3)", () => {
-		// Routing runs BEFORE the alias parser, so an unrouted bare form means an
-		// rs-only seat must type the noncanonical `inbox check` or fall to legacy
-		// and get E-NOID: this unit's own defect, preserved in the one spelling
-		// everybody uses.
-		expect(findRoute("inbox", undefined)?.rsPath).toBe("/v1/shim/inbox");
-	});
-
-	it("the shipped mailbox rows carry the precondition", () => {
-		for (const [verb, leaf] of [
-			["send", undefined],
-			["inbox", "check"],
-			["inbox", undefined],
-		] as const) {
-			expect(findRoute(verb, leaf)?.requiresSeatInRs).toBe(true);
-		}
-	});
-
-	// A row is a CLAIM that the far side speaks the shim's language, and nothing
-	// checks that claim: `callRs` posts {argv, caller} for every routed row, and
-	// a handler that cannot deserialize it answers 422 -> rs-error -> NEVER falls
-	// back, taking the verb out fleet-wide. So the mailbox rows must point at the
-	// shim-originated paths and never at the pij-rs CLI's own.
-	it("the mailbox rows point at the shim paths, not at /v1/send or /v1/inbox", () => {
-		expect(findRoute("send", undefined)?.rsPath).toBe("/v1/shim/send");
-		expect(findRoute("inbox", "check")?.rsPath).toBe("/v1/shim/inbox");
-	});
-
-	it("the outcome tells `not known to be in rs` apart from `known to be in legacy`", () => {
-		// Two different claims, and collapsing them is how a seat gets re-homed on
-		// an unknown rather than on a fact.
-		const notInRs = describeOutcome({
-			kind: "legacy-seat-not-in-rs",
-			verb: "send",
-			addr: ADDR,
-			seatId: "pij-x",
+	it("send uses the shim caller-evidence endpoint and needs no acknowledgement", () => {
+		expect(findRoute("send", undefined)).toMatchObject({
+			rsPath: "/v1/shim/send",
+			readsBodyFile: true,
 		});
-		const followed = describeOutcome({
-			kind: "legacy-seat-followed",
-			verb: "send",
-			addr: ADDR,
-			seatId: "pij-x",
-		});
-		expect(notInRs).not.toEqual(followed);
-		expect(notInRs).toContain("KNOWN PRESENT");
-		expect(followed).toContain("lives in legacy");
+		expect(findRoute("send", undefined)).not.toHaveProperty("acknowledgePath");
 	});
 });

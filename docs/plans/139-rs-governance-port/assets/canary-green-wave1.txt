@@ -1,0 +1,15 @@
+Command: /Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --test governance_canary -- --nocapture
+Working directory: /Users/jordanknight/pi-hacking/fs3-rs-governance-port
+Scope: real SQL/HTTP/queue/packet/SHA acknowledgement/publication; scripted host ports. Not a live OMP canary.
+Source: checkpoint 0a7a26737d08701bddac6ccc0b6d7b040873e4f9 plus the uncommitted governance_canary.rs witness and ruled contract fixture value correction. Formatting ran after this targeted execution; the final checkpoint gate is separate.
+
+Observed output:
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.43s
+     Running tests/governance_canary.rs (target/debug/deps/governance_canary-07f5f40fa2469634)
+
+running 1 test
+test fake_host_http_canary_requires_real_pointer_sha_ack_and_streams_fresh_observer_pass ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+Wall time: 3.69 seconds

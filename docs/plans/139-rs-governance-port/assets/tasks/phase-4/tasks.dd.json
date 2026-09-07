@@ -1,0 +1,87 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Re-point shim, skills, API doc",
+        "slug": "phase-4",
+        "status": "draft",
+        "summary": "Re-point shim, skills, API doc",
+        "log": "../../execution-log.dd.json#entries"
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Re-point shim, skills, API doc"
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "tk-40a4",
+          "title": "u6 — RS_ROUTE_TABLE serve-or-refuse for every verb + enforcement test over the skill verb table",
+          "domain": "ts",
+          "phase": "p4",
+          "state": "checked",
+          "done": "#done_when/tk-40a4",
+          "receipt": "../../execution-log.dd.json#entries/lg-0014"
+        },
+        {
+          "id": "tk-41a4",
+          "title": "u6 — skills/pij routes cite rs verbs; docs/how/pij-rs-api.md + pinned fixtures",
+          "domain": "docs",
+          "phase": "p4",
+          "state": "checked",
+          "done": "#done_when/tk-41a4",
+          "receipt": "../../execution-log.dd.json#entries/lg-0014",
+          "note": "Documentation half only. Executed fixture/real-skill-table coverage has pre-fix behavioral RED at e22833b0 (u6-red-green-proof.json:77 failures, including incomplete skill coverage) and composed GREEN in lg-0014. Route-document completeness is separate independent cross-model inspection: DocsCutover critic zero legacy-verb scan and required-element checklist, accepted by reviewer at85% inspection confidence in lg-0015, not a runtime execution. bp-0009 and AC9 deliberately remain unchecked for prime-owned consumer confirmation; tk-42a4 carries the separate chainglass task. This local check is not whole-AC or production acceptance."
+        },
+        {
+          "id": "tk-42a4",
+          "title": "u6 — chainglass confirmation (roles, tree, no banner) recorded as evidence",
+          "domain": "proof",
+          "phase": "p4",
+          "state": "blocked",
+          "note": "Prime-owned chainglass/production confirmation pending; no local test substitutes for this receipt.",
+          "receipt": "../../execution-log.dd.json#entries/lg-0010"
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {
+        "tk-40a4": [
+          {
+            "id": "dw-40a4",
+            "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0008",
+            "proven_by": "../../execution-log.dd.json#entries/lg-0014"
+          }
+        ],
+        "tk-41a4": [
+          {
+            "id": "dw-41a4",
+            "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0009",
+            "proven_by": "../../execution-log.dd.json#entries/lg-0014",
+            "note": "The generic RED/GREEN assertion applies to executable stable-fixture and real-skill-table coverage (u6-red-green-proof.json plus lg-0014). Document completeness is separately graded cross-model inspection in lg-0015, not execution. Checked scopes only this documentation task; aggregate bp-0009/AC9 remain open for prime-owned confirmation."
+          }
+        ],
+        "tk-42a4": [
+          {
+            "id": "dw-42a4",
+            "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
+            "state": "blocked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0003",
+            "note": "Prime-owned chainglass/production receipt is pending; isolated proof cannot satisfy this external confirmation."
+          }
+        ]
+      }
+    }
+  ]
+}

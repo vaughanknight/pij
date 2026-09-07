@@ -1,0 +1,213 @@
+{
+  "unit": "u2-paneless-gate",
+  "seat": "pij-written-lansra",
+  "status": "READY_TO_VALIDATE",
+  "source_only": true,
+  "accepted_or_validated": false,
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u2-gate",
+  "branch": "139-rs-governance-port-u2-gate",
+  "base": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
+  "authorization": {
+    "task": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/u2-paneless-gate-task.json",
+    "shared_contract": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/gate-repair-contract.json",
+    "rulings": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/gate-repair-rulings.json",
+    "docs_expansion": "PM custom_message e254b82b, 2026-09-07T11:02:20.771Z; ready.md, 00-routing external registration, API paneless paragraph/examples only. Recovered after native PM turn arrived in a read-only scout; siblings notified."
+  },
+  "patch": {
+    "path": "docs/plans/139-rs-governance-port/assets/u2-paneless-source.patch",
+    "sha256": "525938883e80d61f629d76970ff59e6e59860da46b08ba2b54ffd979940803ad",
+    "bytes": 177374,
+    "files": 16
+  },
+  "path_hashes": {
+    ".pi/extensions/pij/adapters/generation-router.ts": {
+      "base_sha256": "c82315b427a0326c50be7ce622651150331af326df1c0f3b371df8c5239b6a22",
+      "sha256": "12f7e3562d9e9c5ef76574e9f015c6de0157144044de262e4c543856518d1398",
+      "bytes": 20836
+    },
+    ".pi/extensions/pij/core/generation-routing.ts": {
+      "base_sha256": "fbc832fdce1b805b2b89e46f71340c8d5328dadcb1077db3e6a228abd3c47c8f",
+      "sha256": "a27a9b6a470bba411f3841821c5489b5e1ee7def208e2ac4b349aa93f487c105",
+      "bytes": 16227
+    },
+    ".pi/extensions/pij/core/daemon-wire.ts": {
+      "base_sha256": "ab2b3fbbb7bf071da96c85e1cb8fc69c92de178fbfb0c764559d6f4d20200366",
+      "sha256": "795ffd8c814cbedc5586592d847b2c44e2b2ccbc1acbdc128f43e26cce0d507a",
+      "bytes": 8630
+    },
+    ".pi/extensions/pij/cli.ts": {
+      "base_sha256": "478b092ee31f290136076742d649c228437e584dc13555f27c51d2f48d5bb039",
+      "sha256": "e609fc7c863a8348b95136be8750ba16ee66d79e927e977db45646d0551ee040",
+      "bytes": 7101
+    },
+    ".pi/extensions/pij/adapters/generation-router.test.ts": {
+      "base_sha256": "8fd24d69084dda6736100456cce50976d8bb6586c41bf02f4c4c84309edbf8ce",
+      "sha256": "4e4b4b8b4683063ef2fc57be68f3cad8910e8883a99e594e9a4c67f271af495e",
+      "bytes": 30095
+    },
+    ".pi/extensions/pij/adapters/generation-seam.test.ts": {
+      "base_sha256": "1e5e00e9970e5684e2336c56de62548a1c3ac906db4848a8a869afb950284627",
+      "sha256": "85e9a07439f1e1339ec1c098420069ac1dd3caf479e0f8c34bf926395b9c3a45",
+      "bytes": 19606
+    },
+    ".pi/extensions/pij/core/generation-routing.test.ts": {
+      "base_sha256": "ed23f38543f06f4328c43abe996eb6a6f37d8e09111f09874a8dc62f4b1a2456",
+      "sha256": "033c6acae2c5ea241becbbad3f5ecf0e4236a3646ca452115a3c749ec8e6ac6a",
+      "bytes": 14038
+    },
+    ".pi/extensions/pij/cli.inbox.integration.test.ts": {
+      "base_sha256": "72fba1ef9d9c9c6f44a54901f20ed4f4a88a6621254c1f590476f7d6609de6a2",
+      "sha256": "23de3d008eb60a2e3a716e7c6d6473ae07732c3e29933b727fdc499888cf3bdd",
+      "bytes": 31945
+    },
+    "crates/daemon/src/registration.rs": {
+      "base_sha256": "ee6ed85a7503aed51fff89c0ddd264563cb4fbed17177ae6e03ccd2c75927b64",
+      "sha256": "6c2ee442114f4c826ee1bd5fd0ca9b7d58f356a16fb719e4f2e0108a26b5350b",
+      "bytes": 128336
+    },
+    "crates/daemon/src/http/types.rs": {
+      "base_sha256": "9f380a833a36375bc9fdf0e44aa598da726f41a86fad527baea1299bc637b91f",
+      "sha256": "6faf7624d02935310240311c7a1e7bb735859e0386df230f3dfb955e58bd14e0",
+      "bytes": 21515
+    },
+    "crates/daemon/src/http/shim.rs": {
+      "base_sha256": "3fcef925b8b4ee212d95d932b35856ecda41920c60ec209114497f02ec078303",
+      "sha256": "b38d9c5b67bd27f51ec3851f84ecb2ffcb41b4ad7bae5f71eac640d2ba3ae5fa",
+      "bytes": 29592
+    },
+    "crates/daemon/src/delivery/mod.rs": {
+      "base_sha256": "c28d7caf5f887ce6e5ba710ae25b263d97db492c718ed21639a72abf1ba0479b",
+      "sha256": "a8115ed3e57eb8b8d64813be500254bf8db037d339a343e9390d3e2879201092",
+      "bytes": 159205
+    },
+    "crates/daemon/tests/shim_http.rs": {
+      "base_sha256": "d59cb575470e574362f16bb53472dac38bbf1f0760c9e8f952ca041995349289",
+      "sha256": "48f100165d772d16cb2b5d70ba881e404cda9dfcacd1a2825ac4f87abdd3a1c5",
+      "bytes": 28488
+    },
+    "skills/pij/references/routes/ready.md": {
+      "base_sha256": "4351f6d09ed075e912ff3877792bbc506c24be080d7eb02a743dd2632d3c4073",
+      "sha256": "3a4ecfde7ff97658097f59a386a588a3a74bdede2d3e1c74b7fdf5286146234f",
+      "bytes": 3870
+    },
+    "skills/pij/references/00-routing.md": {
+      "base_sha256": "e109e66a6f881f20e7de87ae3f8616a88fb14c9aa0af22c439bf76c31e089510",
+      "sha256": "5dd6cfa657ea40c9f618dc922524c3891a789969302b663be53f6c651ed05dc9",
+      "bytes": 22920
+    },
+    "docs/how/pij-rs-api.md": {
+      "base_sha256": "3bd34a2482e566c383ed3b1a66df8fbc53f72efde9eadd4c3132e02bc2ed5250",
+      "sha256": "e6bfd19405378aaab0bcf4e222ec90d4def0f9e9a7509ebf0f4312bc49d3217b",
+      "bytes": 32633
+    }
+  },
+  "artifacts": {
+    "docs/plans/139-rs-governance-port/assets/u2-paneless-prerequisites.json": "7979517aebb4831f807af2bc4e94ab3e74a7acdc094af327a84177025b708a3d",
+    "docs/plans/139-rs-governance-port/assets/u2-paneless-pm-wiring.json": "4dec1d47cc240a5a30c7a1278e38199e2e885b2b153acc6d01cc300aa4531513"
+  },
+  "changes": [
+    {
+      "paths": [
+        ".pi/extensions/pij/adapters/generation-router.ts",
+        ".pi/extensions/pij/core/generation-routing.ts",
+        ".pi/extensions/pij/core/daemon-wire.ts",
+        ".pi/extensions/pij/cli.ts"
+      ],
+      "behavior": "Reuse existing ambient identity/Copilot/Codex evidence helpers. Native HTTP /v1/register empty-ID bridge for external inbox register; before external whoami/phonehome/send/inbox, native admission resolves actual host/current canonical seat. Preserve original v2 response bytes, argv/body, process/session evidence and post-output acknowledgement; repaired id+host tuple persists through ack without changing process environment. Existing panes register via pure whoami. Generic register/unported/admin/legacy-force refusal remains."
+    },
+    {
+      "paths": [
+        "crates/daemon/src/registration.rs",
+        "crates/daemon/src/http/types.rs"
+      ],
+      "behavior": "Ordinary, NativeExtension and Paneless modes keep verified pull separate from extension attestation. Observe nearest matching external host ancestry, reject conflicting nearer harness/session, sandwich/recheck incarnation under existing lock, allocate/reuse with canonical memorable allocator and native-session/process collision guards. Unchanged repeats do not write registry/config/roles/spine. Pi/OMP/unknown empty-ID ordinary behavior and native Copilot handoff remain unchanged. Claude --continue/-c are boolean, not session evidence."
+    },
+    {
+      "paths": [
+        "crates/daemon/src/http/shim.rs",
+        "crates/daemon/src/delivery/mod.rs"
+      ],
+      "behavior": "Subscribed/cancellable finite and infinite pull waits; exact native host tuple/session forwarded and checked with liveness. Pushed waits refuse. Context-pinned queued work cannot be rehomed by native consumers. Copy existing non-Copilot asserted-ID machine-grade behavior, rather than requiring native fields from old callers. Copilot pull accepts matching tuple without false push attestation. --in-reply-to uses existing Msg/accept delivery path, text and self-send refusal preserved."
+    },
+    {
+      "paths": [
+        ".pi/extensions/pij/cli.inbox.integration.test.ts",
+        ".pi/extensions/pij/adapters/generation-router.test.ts",
+        ".pi/extensions/pij/adapters/generation-seam.test.ts",
+        ".pi/extensions/pij/core/generation-routing.test.ts",
+        "crates/daemon/tests/shim_http.rs"
+      ],
+      "behavior": "Preserve required external successes; add native authority/process/wait/correlation/ack proofs. Replace legacy CLI fixtures with private real RS daemon and active native-shaped host processes executing actual public CLI descendants. Preserve pure FsEventLog appendOnce race. No skip/only/suppression or hidden legacy bin."
+    },
+    {
+      "paths": [
+        "skills/pij/references/routes/ready.md",
+        "skills/pij/references/00-routing.md",
+        "docs/how/pij-rs-api.md"
+      ],
+      "behavior": "Correct false inbox-register-unported guidance. Describe complete v2 data.id, established native file/env evidence, host versus wrapper identity, idempotence, register/wait/send/receive/ack, output-before-ack and pull versus extension ownership. API exit/corpus sections and PM-owned pij-platform.md unchanged."
+    }
+  ],
+  "proof_authored": {
+    "registration": "All three external harnesses; actual host not wrapper/shell; strict executable/package match; nearer different-harness parent protection; exact session argv (including fork/continue semantics); missing/partial tuple, role, shape and ambiguity refusal; incarnation sandwich; duplicate/collision allocation and idempotent no-write repeats.",
+    "service_and_http": "External native tuple claim/ack without extension flag; finite timeout/infinite later work/cancellation; pushed/relay/attested wait refusal; owner/liveness recheck; hold release and native-target session preservation; raw body/reply metadata; existing bare non-Copilot compatibility.",
+    "cli": "Private explicit worktree Rust binary, isolated HOME/config/state/address/tmux socket, active IPC package-entry hosts that spawn public TS CLI children. Each harness registers/repeats/waits successfully; whoami preserves host identity; stale PIJ_SESSION_ID repairs only after admitted native evidence; missing/multiple/no-host/conflicting session refuses; self-send refuses; raw text/correlated replies, concurrent wait/read/ack and one reader-read outcome per message through native NDJSON event barrier.",
+    "routing": "Three harness registration DTO/envelope cases; native admitted host tuple carried into claims/acks despite stale env; whoami/phonehome/send argv unchanged; admission refusals terminal/byte-preserved; paned registration is read-only whoami; generic shim register remains refused; diagnostic inventory includes supported external register.",
+    "not_executed": true
+  },
+  "pm_required": [
+    "Apply 16-file patch against baseline78531 or reconcile only declared scope; do not replay earlier u2 role/retired deltas.",
+    "Apply u2-paneless-pm-wiring.json to HTTP register meta and its exact existing metadata assertion. Those two shared files were intentionally not edited by u2.",
+    "Build worktree-local binary with cargo build -p pij-cli --bin pij-rs before direct TS integration tests; CARGO_TARGET_DIR is honored. Never use production PATH binary as fixture.",
+    "At shared edit barrier, run formatter/typecheck/lint, focused routing/direct CLI/native registration/shim/delivery suites, then canonical full gate and u1 actual smoke. No pass is asserted by this receipt."
+  ],
+  "findings_and_assumptions": [
+    {
+      "kind": "existing-boundary",
+      "detail": "Direct /v1/inbox and /v1/inbox/ack still check current registry/native tuple without observing live process. New shim external claim/send/ack checks liveness. No broader direct-native liveness change was made."
+    },
+    {
+      "kind": "intentional-refusal",
+      "detail": "External host must be actual claude/copilot/codex binary or node with matching first package entry. Host Node options before entrypoint are not recognized; CLI child loader flags are fine. No arbitrary runner/node -e/forged argv0 registration."
+    },
+    {
+      "kind": "intentional-refusal",
+      "detail": "Paneless path does not transfer a live/retained native session address to another host incarnation, even if old process died; extension handoff remains a separate guarded path."
+    },
+    {
+      "kind": "trust-boundary",
+      "detail": "Machine bearer is still machine-grade. If actual host argv contains no native session, observed harness ancestry plus validated ambient request/files supply binding; not cryptographic per-seat session authentication."
+    },
+    {
+      "kind": "unexecuted-fixture-assumption",
+      "detail": "Private missing-pane ordinary HTTP registration compatibility and foreground private tmux teardown have source coverage but no execution evidence. Node+tsx+tmux and explicit built Rust binary required. Deterministic IPC hosts are not model canaries."
+    },
+    {
+      "kind": "source-corrected",
+      "detail": "Direct CLI fixture initially expected health status ok; parent grounded native health at http/mod.rs:560 and corrected expected status to healthy before packaging."
+    },
+    {
+      "kind": "navigation-friction",
+      "detail": "Read-only scouts initially supplied stale CLI source offsets from outside assigned tree; parent rejected and grounded absolute assigned source before implementation. Empty LSP test references were not treated as absence proof."
+    },
+    {
+      "kind": "delivery-friction",
+      "detail": "Native PM turns landed inside task subagent histories rather than Main; scoped doc authorization was recovered from actual retained pij custom_message and durable rulings, then synchronized. A harness should keep PM pushes on the owning seat, not a read-only child."
+    }
+  ],
+  "verification": {
+    "builds": false,
+    "tests": false,
+    "typecheck": false,
+    "lint": false,
+    "formatters": false,
+    "harness_boot_or_checks": false,
+    "commits": false,
+    "daemon_restarts": false,
+    "fixture_execution": false,
+    "global_changes": false,
+    "teardown": false,
+    "notes": "Only identity/HEAD/source reads, code/doc writes, artifact hashing/packaging and requested native coordination/status reports. Incidental editor LSP output is not validation evidence. Prior worktrees and all observation buffers preserved."
+  },
+  "harness_improvement": "Permanent direct CLI regression now fails with the exact worktree binary prerequisite instead of silently selecting production authority; real native-host/queue fixtures replace legacy filesystem CLI expectations and preserve pure library proof separately."
+}

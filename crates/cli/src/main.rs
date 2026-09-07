@@ -129,6 +129,9 @@ enum Command {
         /// Governing seat.
         #[arg(long)]
         parent: Option<String>,
+        /// Explicit role assertion; omission preserves the assignment.
+        #[arg(long)]
+        role: Option<String>,
         /// Delivery uses a relay.
         #[arg(long)]
         relay: bool,
@@ -147,6 +150,9 @@ enum Command {
         /// Governing seat. Omitted means UNSAID — an existing parent survives.
         #[arg(long)]
         parent: Option<String>,
+        /// Explicit role assertion; omission preserves the assignment.
+        #[arg(long)]
+        role: Option<String>,
     },
     /// Name the seat this caller is, from the store it registered into.
     Whoami {
@@ -291,6 +297,7 @@ enum Command {
     ///   pij-rs report state <ready|waiting|hold|blocked|question|done>
     ///   pij-rs report blocked|question "<text>"
     ///   pij-rs report clear
+    ///   pij-rs report verify <seat> [--assignment <id>]
     Report {
         /// Assert the derived reporting seat. Omit to use the observable pane,
         /// or PIJ_SESSION_ID when no pane exists; contradictions are refused.
@@ -298,6 +305,91 @@ enum Command {
         #[arg(long)]
         seat: Option<String>,
         /// The report arguments, exactly as they would be typed.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Assert or unset a seat role through daemon ownership checks.
+    Role {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Tombstone a seat owned by this caller without killing its process or pane.
+    Close {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Reconcile only positively stale process and pane bindings.
+    Reap {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Read current governance anomalies without changing their evidence.
+    Anomalies {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Read durable decisions under current-parent responsibility.
+    Decisions {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Answer a durable question as its asker or current parent.
+    Answer {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Create, list, read or update governed projects.
+    Project {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Create, inspect or close a governed stream.
+    Stream {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Declare or inspect descriptive write fences.
+    Fence {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Send a hash-bound packet and inspect its receipt.
+    Dispatch {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Acknowledge a dispatch as its actual recipient.
+    Ack {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Verify a nonce-correlated live peer acknowledgement.
+    Canary {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Attach plan identity to a seat.
+    Attest {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Open or close a task assignment.
+    Task {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Read a seat and its governed work tree.
+    Node {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Manage batons, prime designation and role assertions.
+    Orchestration {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Append, read or render the Rust event spine.
+    Spine {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -661,6 +753,7 @@ async fn run(cli: Cli) -> ExitCode {
             provider,
             effort,
             parent,
+            role,
             relay,
         } => {
             let registration = Registration {
@@ -676,15 +769,22 @@ async fn run(cli: Cli) -> ExitCode {
                 provider,
                 effort,
                 parent: parent.map(Into::into),
+                role,
                 relay,
             };
-            debug_assert!(registration.validate().is_ok());
+            if let Err(reason) = registration.validate() {
+                return emit(
+                    &Envelope::<Value>::refused("pij register", ErrorKind::Refused, reason),
+                    cli.json,
+                );
+            }
             emit(&client.register(&registration).await, cli.json)
         }
         Command::Adopt {
             pane,
             harness,
             parent,
+            role,
         } => {
             warn_caller_claude_home(&harness);
             let argv = adopt_argv(
@@ -697,6 +797,7 @@ async fn run(cli: Cli) -> ExitCode {
             let request = IdentityRequest {
                 argv,
                 caller: Some(caller_context()),
+                role,
                 ..IdentityRequest::default()
             };
             emit(&client.adopt(&request).await, cli.json)
@@ -766,6 +867,8 @@ async fn run(cli: Cli) -> ExitCode {
             };
             if response.ok {
                 response.meta = Some(format!("from {}; msg_id {}", request.from, request.msg_id));
+                // This is a CLI-derived receipt, not an unchanged daemon reply.
+                response.raw_json = None;
             }
             emit(&response, cli.json)
         }
@@ -786,6 +889,7 @@ async fn run(cli: Cli) -> ExitCode {
             };
             let mut response = client.send_control(&request, &caller_context()).await;
             response.command = "pij compact-self".to_string();
+            response.raw_json = None;
             emit(&response, cli.json)
         }
         Command::Inbox { seat, wait, peek } => {
@@ -842,21 +946,102 @@ async fn run(cli: Cli) -> ExitCode {
             emit(&response, cli.json)
         }
         Command::Report { seat, args } => {
-            let acting = match resolve_command_seat(&client, "pij report", seat.as_deref()).await {
-                Ok(seat) => seat,
-                Err(error) => return emit(&setup_refusal::<Value>("pij report", error), cli.json),
+            let as_json = cli.json || args.iter().any(|arg| arg == "--json");
+            let identity = match identity::request_from_environment(
+                std::env::var_os("PIJ_SESSION_ID"),
+                std::env::var_os("TMUX_PANE"),
+            ) {
+                Ok(identity) => identity,
+                Err(error) => {
+                    return emit(
+                        &setup_refusal::<Value>(
+                            "pij report",
+                            PijError::Adapter {
+                                adapter: "pij report".to_string(),
+                                message: error.to_string(),
+                            },
+                        ),
+                        as_json,
+                    );
+                }
             };
+            let caller = CallerContext {
+                session_id: identity.seat,
+                pane: identity.pane,
+                ..CallerContext::default()
+            };
+            let asserted = seat.map(SeatId::from);
             // The verb the caller typed is re-attached, because the daemon's
             // grammar parses the same argv the TypeScript CLI receives.
             let mut argv = vec!["report".to_string()];
             argv.extend(args);
-            emit(&client.report(&acting, &argv).await, cli.json)
+            emit(
+                &client.report(asserted.as_ref(), &argv, &caller).await,
+                as_json,
+            )
+        }
+        Command::Role { args } => {
+            let as_json = cli.json || args.iter().any(|arg| arg == "--json");
+            emit(&client.role(&args, &caller_context()).await, as_json)
+        }
+        Command::Close { args } => {
+            let as_json = cli.json || args.iter().any(|arg| arg == "--json");
+            emit(&client.close(&args, &caller_context()).await, as_json)
+        }
+        Command::Reap { args } => {
+            let as_json = cli.json || args.iter().any(|arg| arg == "--json");
+            emit(&client.reap(&args, &caller_context()).await, as_json)
+        }
+        Command::Anomalies { args } => {
+            let as_json = cli.json || args.iter().any(|arg| arg == "--json");
+            emit(
+                &pij_cli::anomalies::anomalies(&client, &args, &caller_context()).await,
+                as_json,
+            )
+        }
+        Command::Decisions { args } => {
+            let as_json = cli.json || args.iter().any(|arg| arg == "--json");
+            emit(
+                &pij_cli::decisions::decisions(&client, &args, &caller_context()).await,
+                as_json,
+            )
+        }
+        Command::Answer { args } => {
+            let as_json = cli.json || args.iter().any(|arg| arg == "--json");
+            emit(
+                &pij_cli::decisions::answer(&client, &args, &caller_context()).await,
+                as_json,
+            )
+        }
+        Command::Project { args }
+        | Command::Stream { args }
+        | Command::Fence { args }
+        | Command::Dispatch { args }
+        | Command::Ack { args }
+        | Command::Canary { args }
+        | Command::Attest { args }
+        | Command::Task { args }
+        | Command::Node { args }
+        | Command::Orchestration { args }
+        | Command::Spine { args } => {
+            let as_json = cli.json || args.iter().any(|arg| arg == "--json");
+            let family = command_name
+                .strip_prefix("pij ")
+                .expect("governance command prefix");
+            emit(
+                &pij_cli::governance::governance(&client, family, &args, &caller_context()).await,
+                as_json,
+            )
         }
         Command::List => emit(&client.list().await, cli.json),
         Command::State { id } => {
             let response = client.state(&id).await;
-            println!("{}", render_state(&response, cli.json));
-            ExitCode::from(exit_code(&response))
+            if cli.json {
+                emit(&response, true)
+            } else {
+                println!("{}", render_state(&response, false));
+                ExitCode::from(exit_code(&response))
+            }
         }
         Command::Tail { since } => {
             let since = match cursor_map(since) {
@@ -1425,7 +1610,14 @@ fn system_time_ms() -> Result<u64, PijError> {
 }
 
 fn emit<T: serde::Serialize>(envelope: &Envelope<T>, json: bool) -> ExitCode {
-    println!("{}", render(envelope, json));
+    if json && let Some(raw) = &envelope.raw_json {
+        print!("{raw}");
+        if !raw.ends_with('\n') {
+            println!();
+        }
+    } else {
+        println!("{}", render(envelope, json));
+    }
     ExitCode::from(exit_code(envelope))
 }
 
@@ -1679,6 +1871,8 @@ fn spawn_cli_response(response: Envelope<SeatDescriptor>) -> Envelope<SpawnCliRe
         meta: response.meta,
         error: response.error,
         details: response.details,
+        // Successful spawn output is an established CLI-derived payload.
+        raw_json: if response.ok { None } else { response.raw_json },
     }
 }
 
@@ -1758,6 +1952,23 @@ impl Command {
             Command::Inbox { .. } => "pij inbox",
             Command::Bg { .. } => "pij bg",
             Command::Report { .. } => "pij report",
+            Command::Role { .. } => "pij role",
+            Command::Close { .. } => "pij close",
+            Command::Reap { .. } => "pij reap",
+            Command::Anomalies { .. } => "pij anomalies",
+            Command::Decisions { .. } => "pij decisions",
+            Command::Answer { .. } => "pij answer",
+            Command::Project { .. } => "pij project",
+            Command::Stream { .. } => "pij stream",
+            Command::Fence { .. } => "pij fence",
+            Command::Dispatch { .. } => "pij dispatch",
+            Command::Ack { .. } => "pij ack",
+            Command::Canary { .. } => "pij canary",
+            Command::Attest { .. } => "pij attest",
+            Command::Task { .. } => "pij task",
+            Command::Node { .. } => "pij node",
+            Command::Orchestration { .. } => "pij orchestration",
+            Command::Spine { .. } => "pij spine",
             Command::List => "pij list",
             Command::State { .. } => "pij state",
             Command::Tail { .. } => "pij tail",
@@ -1859,6 +2070,23 @@ mod tests {
                 "bg",
                 "sidecar",
                 "report",
+                "role",
+                "close",
+                "reap",
+                "anomalies",
+                "decisions",
+                "answer",
+                "project",
+                "stream",
+                "fence",
+                "dispatch",
+                "ack",
+                "canary",
+                "attest",
+                "task",
+                "node",
+                "orchestration",
+                "spine",
                 "list",
                 "state",
                 "tail"

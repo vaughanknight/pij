@@ -355,7 +355,7 @@ fn run_omp_command() -> std::io::Result<CommandResult> {
     })
 }
 
-fn omp_rows_with(run: impl FnOnce() -> std::io::Result<CommandResult>) -> Result<Vec<ModelRow>> {
+fn omp_inventory_with(run: impl FnOnce() -> std::io::Result<CommandResult>) -> Result<Value> {
     let result = run().map_err(|cause| {
         error(
             "omp model catalog",
@@ -394,6 +394,14 @@ fn omp_rows_with(run: impl FnOnce() -> std::io::Result<CommandResult>) -> Result
             "inventory contained no models — update or reconfigure OMP",
         ));
     }
+    Ok(value)
+}
+
+fn omp_rows_with(run: impl FnOnce() -> std::io::Result<CommandResult>) -> Result<Vec<ModelRow>> {
+    let value = omp_inventory_with(run)?;
+    let models = value["models"]
+        .as_array()
+        .expect("validated OMP model array");
     models
         .iter()
         .map(|value| {
@@ -424,6 +432,52 @@ fn omp_rows_with(run: impl FnOnce() -> std::io::Result<CommandResult>) -> Result
             })
         })
         .collect()
+}
+
+/// Resolve an observed OMP label from the same inventory used by model discovery.
+/// A claimed descriptor is deliberately not an input: it cannot disambiguate evidence.
+pub(crate) fn resolve_omp_model(observed: &str) -> Result<String> {
+    resolve_omp_model_with(observed, run_omp_command)
+}
+
+fn resolve_omp_model_with(
+    observed: &str,
+    run: impl FnOnce() -> std::io::Result<CommandResult>,
+) -> Result<String> {
+    let value = omp_inventory_with(run)?;
+    let mut matched = None;
+    for value in value["models"]
+        .as_array()
+        .expect("validated OMP model array")
+    {
+        let source = value
+            .as_object()
+            .ok_or_else(|| error("omp model catalog", "malformed model row"))?;
+        required_string(source, "provider")?;
+        let id = required_string(source, "id")?;
+        let selector = required_string(source, "selector")?;
+        let name = source.get("name").and_then(Value::as_str);
+        if observed != selector && observed != id && name != Some(observed) {
+            continue;
+        }
+        if let Some(previous) = matched
+            && previous != selector
+        {
+            return Err(error(
+                "omp model catalog",
+                format!(
+                    "observed model {observed:?} is ambiguous between {previous} and {selector}"
+                ),
+            ));
+        }
+        matched = Some(selector);
+    }
+    matched.map(str::to_string).ok_or_else(|| {
+        error(
+            "omp model catalog",
+            format!("observed model {observed:?} is absent from the OMP inventory; refusing to infer its selector"),
+        )
+    })
 }
 
 pub(crate) fn models_for_harness(kind: Harness) -> Result<Vec<ModelRow>> {
@@ -718,6 +772,70 @@ mod tests {
                     "placeholder survived: {error}"
                 ),
             }
+        }
+    }
+
+    #[test]
+    fn omp_observed_names_resolve_through_catalog_without_model_specific_aliases() {
+        let inventory = r#"{"models":[{"provider":"github-copilot","id":"gpt-6-astra-1m","selector":"github-copilot/gpt-6-astra-1m","name":"GPT-6 Astra (1M)"},{"provider":"local","id":"private-model","selector":"local/private-model","name":"Personal Model"}]}"#;
+        for (observed, expected) in [
+            ("GPT-6 Astra (1M)", "github-copilot/gpt-6-astra-1m"),
+            ("gpt-6-astra-1m", "github-copilot/gpt-6-astra-1m"),
+            (
+                "github-copilot/gpt-6-astra-1m",
+                "github-copilot/gpt-6-astra-1m",
+            ),
+            ("Personal Model", "local/private-model"),
+        ] {
+            let actual = super::resolve_omp_model_with(observed, || {
+                Ok(CommandResult {
+                    status: Some(0),
+                    stdout: inventory.to_string(),
+                    stderr: String::new(),
+                })
+            })
+            .expect("unique observed catalog identity");
+            assert_eq!(actual, expected);
+        }
+    }
+
+    #[test]
+    fn omp_observed_aliases_refuse_ambiguity_instead_of_believing_a_claim() {
+        let result = super::resolve_omp_model_with("Shared Name", || {
+            Ok(CommandResult {
+            status: Some(0),
+            stdout: r#"{"models":[{"provider":"one","id":"first","selector":"one/first","name":"Shared Name"},{"provider":"two","id":"second","selector":"two/second","name":"Shared Name"}]}"#.to_string(),
+            stderr: String::new(),
+        })
+        });
+        assert!(
+            result
+                .expect_err("ambiguous labels are not evidence")
+                .to_string()
+                .contains("ambiguous")
+        );
+    }
+
+    #[test]
+    fn omp_observed_aliases_reject_unknown_labels_and_partial_catalogs() {
+        for (label, inventory) in [
+            (
+                "invented alias",
+                r#"{"models":[{"provider":"local","id":"real","selector":"local/real","name":"Real Model"}]}"#,
+            ),
+            (
+                "Real Model",
+                r#"{"models":[{"provider":"local","id":"real","selector":"local/real","name":"Real Model"},{"provider":"broken"}]}"#,
+            ),
+        ] {
+            assert!(
+                super::resolve_omp_model_with(label, || Ok(CommandResult {
+                    status: Some(0),
+                    stdout: inventory.to_string(),
+                    stderr: String::new(),
+                }))
+                .is_err()
+            );
         }
     }
 }

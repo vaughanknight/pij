@@ -1,0 +1,48 @@
+{
+  "status": "READY_TO_VALIDATE; source/tests authored, no validators run",
+  "patch": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/docs/plans/139-rs-governance-port/assets/u1-incarnation-guard.patch",
+  "sha256": "5185fbf2c94b5855cd3a52e1686c1c48e3746a747096baabb441a94717576e52",
+  "file_sections": 5,
+  "delta_base": "Previously handed u1-source-amended.patch SHA2566954968c55c6930304cbed163097a5e1386d44bfab64b08140c3685fb8d43f4f applied to original u1 HEAD in a temporary index. Only the five listed source paths are diffed; previous patches, boot test, shared error/lib/HTTP/CLI wiring are excluded.",
+  "changed_paths": [
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/core/src/ports.rs",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/store/src/registry.rs",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/testkit/src/fakes.rs",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/daemon/src/events/fake_registry.rs",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/daemon/src/events/governance_tests.rs"
+  ],
+  "signature": "Registry::tombstone_if_unchanged(&self, expected: SeatDescriptor, reason: String) -> Result<Seq>",
+  "refusal": "PijError::GovernanceRefused { code: \"E-RS-INCARNATION-CHANGED\".to_string(), record: expected.id.to_string() }",
+  "error_dependency": "Consumes PM-composed core/error.rs GovernanceRefused{code:String,record:String}, confirmed read-only at checkpoint0a7a267. Does not add another variant; isolated worker tree intentionally lacks this composed prerequisite, so PM validates only after applying to composed tree.",
+  "behavior": [
+    "Whole raw SeatDescriptor equality, including metadata, optional fields and machine; never normalize a joined/stamped expected value into acceptance.",
+    "SQLite: lazy owned callback acquires shared bus order, then BEGIN IMMEDIATE, SELECT current seats row, decode raw descriptor, compare; changed/missing explicitly rollback and refuse before spine insertion. Matching snapshot uses same transaction for existing sole append helper and tombstone update; append/update failure rolls both back.",
+    "PublishedFakeRegistry: compare raw descriptor inside same shared bus publication boundary used by every composed fake writer; refuse before append, append before infallible raw mutation, broadcast after. Same event timestamp/reason semantics as existing unconditional path.",
+    "Raw FakeRegistry: compare and mutate under one RegistryState mutex; refused calls do not advance fake sequence. Guarded tombstone clears native-delivery attestation. Deterministic raw fake timestamp remains its sequence, as with existing raw fake contract.",
+    "Ordinary tombstone remains separate unconditional intent; no alias, no synthetic snapshot and no default get-then-tombstone implementation on the trait.",
+    "Guard is explicitly a one-directional safety brake: removing it permits more requested tombstones; it does not decide liveness, retention or which seat should be reaped."
+  ],
+  "tests_authored": [
+    "sqlite_guarded_tombstone_requires_whole_raw_snapshot_and_publishes_only_success",
+    "published_fake_guarded_tombstone_matches_sqlite_snapshot_and_event_contract",
+    "raw_fake_guarded_tombstone_refusal_does_not_mutate_or_consume_sequence",
+    "guarded_sqlite_tombstone_publication_failure_rolls_back_matching_snapshot",
+    "guarded_published_fake_append_failure_preserves_matching_snapshot",
+    "guarded_sqlite_tombstone_reads_snapshot_after_publication_admission",
+    "concurrent_guarded_tombstones_accept_exactly_one_snapshot"
+  ],
+  "test_command": "cargo test --locked -p pij-daemon --lib events::governance_tests -- --nocapture",
+  "pm_forwarding_recipe": {
+    "target": "crates/daemon/src/pane_observer.rs::FailFirstListRegistry test wrapper (original lines461-487)",
+    "method": "async fn tombstone_if_unchanged(&self, expected: SeatDescriptor, reason: String) -> Result<pij_core::model::Seq> { self.inner.tombstone_if_unchanged(expected, reason).await }",
+    "inventory": "LSP references/implementation returned no matches; exact source inventory found only SqliteRegistry, FakeRegistry, PublishedFakeRegistry and FailFirstListRegistry. First three implemented here, fourth PM-owned."
+  },
+  "assumptions": [
+    "u5 receives expected directly from raw Registry::get and handles named changed/missing refusal as no close/reap. API row joins and machine-stamped descriptors are not accepted substitutes.",
+    "All production writes to the fake backing store enter through PublishedFakeRegistry on the same EventBus; raw FakeRegistry handle is fixture setup/read, not a concurrent alternative production writer. Raw FakeRegistry standalone compare/update is mutex-atomic.",
+    "Existing owned publication task and flush lifecycle remain unchanged; guard inherits cancellation protection.",
+    "PM formatter/other composed changes may require three-way integration against the handed amended-source blob; no parent fixes were copied back or overwritten.",
+    "No source change to shared lib, HTTP, CLI wiring or core/error.rs. PM forwards the additional test-wrapper method and supplies the composed refusal variant."
+  ],
+  "harness_buffer": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/.harness/temp/agent/session-buffer.md"
+}

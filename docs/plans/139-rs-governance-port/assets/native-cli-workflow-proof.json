@@ -1,0 +1,33 @@
+{
+  "source_merge": "d0cd734c0c1575881e6a334fdf8cacf01930688b",
+  "source_status": "merged source plus uncommitted real CLI witness and report envelope fix",
+  "command": "cargo test --locked --no-fail-fast -p pij-cli --test governance_boot --test spawn -- --nocapture",
+  "raw": "artifact://358",
+  "passed": 4,
+  "report_http": {
+    "passed": 26,
+    "raw": "artifact://357"
+  },
+  "red": {
+    "raw": "artifact://353",
+    "failure": "retired report CLI preflight discarded daemon refusal details"
+  },
+  "observed": {
+    "parent": "pij-complicated-fly",
+    "worker": "pij-comfortable-primate",
+    "adopt_seq": 7,
+    "report_seq": 9,
+    "adopt_at": 1788763518313,
+    "report_at": 1788763518340,
+    "project_seq": 10,
+    "stream_seq": 11,
+    "ack_seq": 19,
+    "question_seq": 28,
+    "answer_seq": 33,
+    "done_seq": 37,
+    "verify_seq": 38,
+    "reopened_done_seq": 40,
+    "tombstone_seq": 41
+  },
+  "scope": "Actual shipped CLI, all-real private daemon, private homes/state/port/tmux. Real packet read and SHA ack; two Hello-confirmed streams before child adopt/report. Inert panes are not live models: positive model canary remains separate."
+}

@@ -1,0 +1,15 @@
+{
+  "fixture": "/private/tmp/p139-model-canary.F3t5Uz",
+  "first_target": "pij-organisational-alva",
+  "first_native_session": "01a07ace-b878-7000-a64f-16bdac4249d1",
+  "observed": "Assistant Ready07:39; first CLI prompt delayed until07:45 by private onboarding; later nonce delivered but no assistant/ack",
+  "cause": "Installed OMP max-time is an absolute deadline set before initialization; expired interactive loops record inputs then return without invoking model",
+  "source": [
+    "@oh-my-pi/pi-coding-agent/src/main.ts:1093-1095",
+    "@oh-my-pi/pi-agent-core/src/agent-loop.ts:1037-1061"
+  ],
+  "repair": "Completed private onboarding; fresh native session with a runtime guard that does not expire during setup. No daemon/identity/canary policy changed.",
+  "first_canary": "E-RS-CANARY-PENDING state=delivered; not success",
+  "current_target": "pij-entire-zakalwe",
+  "current_session": "01a07adf-437a-7000-8fd7-7d7db6852ad0"
+}

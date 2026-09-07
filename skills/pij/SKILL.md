@@ -29,7 +29,7 @@ description: Route pij platform jobs — adopt a seat and wait (/pij ready), spa
 | `ops` | daemon health, registry & tmux hygiene — and **recovering a prime after a reboot** ("revive our prime") | `references/routes/ops.md` |
 | `node` | work durable project/stream/dispatch truth, node states, adoption repair, and anomaly queries | `references/routes/node.md` |
 | `prime` | govern many agents in one repo: one o-prime seat, streams below, platform-store facts and single-writer documents | `references/routes/prime.md` |
-| `watch` | subscribe a non-pi peer to file-change notices — `pij watch`/`pij unwatch` (self-serve) | *(shipped, plan 033 — CLI verbs; see `docs/how/pij-peer-watch.md`; no route module)* |
+| `watch` | file-change subscription intent | *no route module — rs CLI unported: named refusal; see Unsupported status below* |
 
 Module missing at its path → say so and stop. Never improvise a route from memory.
 
@@ -37,22 +37,26 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 
 | CLI verb | lives in |
 |---|---|
-| `spawn` `send` `tail` `close` `adopt` `whoami` `list` `state` `inbox` `tree` `link` | peer route |
-| `revive` (`--print` / `--attach [%pane]` / `--assume-dead`) | peer route — bring a seat back after a reboot or re-bind a live-but-orphaned session; `--print` mutates nothing |
-| `agent` (`list/run/spawn/show/new/check/eject/report`) | agent route |
-| `daemon` `phonehome` `path` `telegram` | ops route |
-| `compact-self` `models` | § Shared conventions (00-routing.md) |
-| `commit-trailers` | § Shared conventions C11 — Commit attribution (00-routing.md) |
-| `bg` (`create/list/tail/kill`) | § Shared conventions C7 — run a slow command detached; its result arrives as an injected turn from `pij-bg` |
-| `watch` `unwatch` | peer file-watch (shipped plan 033 — `docs/how/pij-peer-watch.md`) |
-| `chore` (`add/run/list/ack/remove`) | durable change detection — a named probe roster whose delta the TOOL computes, so a cheap seat relays what it cannot have invented. `run` NEVER advances a baseline; only `ack` does, so an un-relayed delta re-surfaces instead of vanishing. Definitions scope `seat`/`repo`/`fleet` and **union** (never shadow); fingerprints are ALWAYS per-seat. A failing probe reports `NOT-PROBEABLE` and stays in the roster. Deep reference `docs/how/pij-chore.md` (shipped plan 076) |
-| `watchdog` (`status/pause/resume/exempt/reset/interval/watch/unwatch/list/disable-all/enable-all`) | peer supervision — etiquette + intent in § Shared conventions C9 (00-routing.md); deep reference `docs/how/pij-watchdog.md` |
-| `focus` (`save/list/launch`) `sessions` | peer route (focus = immutable native-session checkpoints; launch forks pending-canary — canary-verify applies. sessions = telemetry join table) |
-| `orchestration` (`baton`/`prime`) | prime route + orchestration CLI (`pij orchestration …`) |
-| `project` `stream` `fence` `dispatch` `ack` `canary` `attest` `spine` `task` (`set`) `report` (`now/question/blocked/state/clear/verify`) `node` (`show`) `anomalies` | node route (platform governance + team-scaffold records) |
+| `spawn` `revive` | peer route — shim refuses `E-RS-UNPORTED`; use explicit native rs grammar, never legacy flags |
+| `send` `compact-self` `adopt` `whoami` `state` `inbox` | peer route — rs; verified external inbox register/wait supported, extension-owned receivers unchanged |
+| `list` `sessions` | peer route — rs-only; list forwards exact harness/folder/parent/scope=local filters; sessions has no filters or legacy union; native CLI List remains bare |
+| `tail` `tree` `link` | peer route — `E-RS-UNPORTED`; native tail is daemon events, not a transcript |
+| `agent` (`list/run/spawn/show/new/check/eject/report`) | agent route — `E-RS-UNPORTED` |
+| `daemon` `path` `telegram` | ops route — shim `E-RS-UNPORTED`; use documented native daemon lifecycle |
+| `phonehome` `reap` `close` | ops / peer routes — rs binding, conservative reconciliation, self-or-parent tombstone |
+| `models` | § Shared conventions C4 — `E-RS-UNPORTED` |
+| `commit-trailers` | § Shared conventions C11 — narrow native CLI forwarding; trailer-only stdout, native stderr and exit status |
+| `bg` (`create/list/tail/kill`) | § Shared conventions C7 — shipped rs detached jobs; result injected from `pij-bg` |
+| `watch` `unwatch` `chore` `watchdog` `focus` | § Shared conventions / peer route — named `E-RS-UNPORTED`; no legacy escape |
+| `orchestration` (`baton`/`prime`/`role`) | prime route — rs; destructive baton return/reclaim require observed `--lease-id` |
+| `role` | node route — rs explicit assertion/unset, joined through RoleService |
+| `project` `stream` `fence` `dispatch` `ack` `canary` `attest` `spine` `task` (`set/close`) `report` (`now/question/blocked/state/clear/verify`) `node` (`show`) `anomalies` | node route — rs governance records, receipts and projections |
+| `decisions` `answer` | node route — rs durable questions/current-parent authority; terminal-only supersede |
 
 `/pij prime` selects the skill route; `pij orchestration prime` invokes its CLI
 primitive. `baton` is the other orchestration subcommand.
+
+**Serve or refuse, never another generation.** The [stable API and Unsupported status](../../docs/how/pij-rs-api.md#unsupported-status) names every shim/native gap. Explicit `PIJ_DAEMON_GENERATION=legacy`, missing credentials or an absent daemon never enables fallback. Examples use rs contracts; unsupported leaves/flags refuse, not approximate. Raw `--json` preserves the original complete v2 success/refusal envelope. Canonical fixtures live under `crates/testkit/fixtures/golden/api/`; they are not fresh runtime or production/chainglass proof. The actual table above is the routing-enforcement input, not a second inventory copied into tests.
 
 ## Global invariants (every route)
 
@@ -60,14 +64,14 @@ primitive. `baton` is the other orchestration subcommand.
 2. **Pointer delivery**: persist packets/large bodies to disk first; `pij send` carries a short path pointer, never a full body.
 3. **Forbidden paths in every packet**: enumerate at minimum the three files above, plus any ledger dirs the route names.
 4. **Persist before mutate**: roster/ledger records are written before the state they describe changes.
-5. **Delivery-owned waiting**: tmux/pi peers receive pushed turns; non-tmux external peers block on `pij inbox --wait`. Never sit in a `pij state` wait loop.
+5. **Delivery-owned waiting**: native extensions receive pushed turns; verified non-tmux external peers block on `pij inbox --wait` after native admission (C1). Never start a competing extension receiver. Never sit in a `pij state` wait loop.
 6. **Completion interrupt**: when a reusable/live coder completes or a reviewer returns a verdict, compact that peer as the first tool action, then continue immediately. § C3 owns the lifecycle boundary and command contract.
-7. **Ownership-aware teardown**: close only what you spawned; `--force` only on the owner's explicit ask.
+7. **Ownership-aware retirement**: `pij close <id>` requires self or current recorded parent and tombstones only; it never kills a process/pane and has no `--force` bypass. Separate teardown remains owner-authorized.
 8. **Token-lean output & wire discipline**: cite conventions instead of restating them; say only what's needed. Every agent-to-agent message follows **C10 — Wire discipline** (`references/00-routing.md` § Shared conventions) — cite it, never restate it.
 9. **Non-blocking questions**: never `ask_user_question` or any modal question UI — ask inline through the active delivery channel, persist the pending decision, block only dependent work.
 10. **Questions stay with their context owner**: whoever needs the answer asks the human directly; parents receive a pointer and never proxy. Doctrine for 9–10: `references/prime/protocol.md` § Human rulings.
 11. **Isolation removes edit-time serialization, not convergence-time serialization**: work confined to a verified stream worktree/branch is notify-only under a recorded descriptive fence; synchronize at converging histories or shared mutable resources. Trigger matrix: `references/prime/rituals/batons.md`.
-12. **Report at both edges of work — if you owe a card**: `pij report now "<did>" "<next>"` when you START a unit of work and again when you FINISH it. **Who owes one: PMs, stream orchestrators, AND PRIMES.** Primes were added by Jordan's ruling of **2026-07-31**, which REVERSED the 2026-07-30 position that a prime owed none (`<government-root>/rulings/2026-07-31-primes-owe-status-cards.md`; resolve via [Governance branch — the rules](./references/prime/rituals/bootstrap.md#governance-branch--the-rules)) — a prime's card is now **non-optional**. A worker's card renders nowhere. A nudge is the **backstop** for a cadence you should already be keeping, never the trigger for it. A stale card is worse than no card: consumers render it as current, so a seat that shipped an hour ago still reads as waiting. Long units get a line at each visible boundary (dispatch, verdict, merge), not a running commentary. Once your card is >10min old **every pij command warns you on stderr** — that line is an instruction, not decoration. **A prime's card must be at ITS OWN ALTITUDE** — its governance work, never a restatement of what a stream already reported, which double-renders the same fact in the rail. And **if you supervise seats, their cards are your accountability too**: subordinates forget, and the layer above is answerable that they do not stay forgotten. `pij anomalies` (run it **unscoped** — `status-stale` is node-keyed, so `--project` filters it out and `--here` hides worktree-resident seats) lists every `status-stale` row with the exact line to relay; chasing each one until the card actually moves is the supervisor's job, not the subordinate's. A row against a **prime** is **self-service BY DEFAULT** — nobody supervises a prime, so it exists so the seat can see its own rot. **Where a PA exists, chasing it is that PA's chore** (see `references/prime/orient-oprime.md` duty 7) — and **a prime is expected to STAND ONE UP** (Jordan, 2026-08-01): see `references/prime/rituals/bootstrap.md` § 5, which routes to the maintained recipe. A PA is a bootstrap deliverable, not optional context.
+12. **Report at both edges of work — if you owe a card**: run `pij report now "<did>" "<next>"` at the start and finish of each unit. PMs, stream orchestrators and primes owe this cadence (2026-07-31 ruling at the resolved government root); a prime reports its own governance altitude, not copied stream work. Long units report meaningful boundaries, not running commentary. Supervisors own subordinate freshness: query `pij anomalies --json` **unscoped**, because `status-stale` is node-keyed and project/here filters can hide it, then follow the actual remediation until the card changes. A nudge is a backstop, never the trigger. PA supervision remains a bootstrap obligation, but its unported watchdog/link mechanisms must be reported honestly (bootstrap §5), not declared active through legacy sidecars or assumed production UI behavior.
 
 ## Aliases (read-time — never a second implementation)
 

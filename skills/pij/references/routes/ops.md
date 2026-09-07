@@ -1,130 +1,75 @@
-# ops — daemon health, registry & tmux hygiene
+# ops — Rust daemon, binding and record hygiene
 
-> Route module — sibling-blind. Knows only this job; composition is the dispatch's job.
-> Conventions cited as § C*n* live in `00-routing.md` § Shared conventions (pull lazily).
+> Route module — sibling-blind. Conventions cited as § C*n* live in `00-routing.md` § Shared conventions (pull lazily).
 
-**Job**: keep the control plane healthy — the daemon, the session registry (`~/.pij/`), the tmux panes it manages, and the bridges around them.
+**Job**: inspect the rs control plane and reconcile stale records without treating uncertainty as death. [Unsupported status](../../../../docs/how/pij-rs-api.md#unsupported-status) distinguishes the shim from native CLI. `pij daemon`, `path` and `telegram` refuse `E-RS-UNPORTED`; there is no legacy-force escape.
 
 ## Daemon
 
 ```bash
-pij daemon status   # is it up, pid, tick health
-pij daemon start    # idempotent; `pij spawn` also auto-starts it
-pij daemon stop     # graceful
-pij daemon kill     # last resort
+pij-rs ping --json
+pij-rs daemon --bind <host:port>           # foreground service; use an owned supervisor
 ```
 
-**Restart rule (§ C6)**: after ANY edit to daemon/core extension code, `pij daemon stop && pij daemon start` — tsx loads source at start, no hot-reload; a stale daemon silently ignores your fix. Bound peers survive a restart (descriptors are on disk); in-flight sends may need re-sending.
+Use native `pij-rs daemon --help` for the installed lifecycle grammar. Do not substitute the former `pij daemon start/stop/kill` commands or assume spawn auto-starts a daemon. Rust changes require a rebuilt binary and an **authorized** restart (§ C6), not tsx hot-reload. Production rebuild/bounce and acceptance are prime-owned. An unavailable daemon or bearer credential is a real error, never permission to inspect/mutate a legacy store.
 
-## Registry hygiene
+Every fixture daemon **and client** must use the same private port, state directory, HOME, CLAUDE_CONFIG_DIR, XDG_CONFIG_HOME and private tmux socket. Canonical isolation recipe: `crates/testkit/fixtures/golden/api/governance-routes.json#isolation`. Never use production port 7461 or a shared tmux tap for a fixture. Canonical examples are not new runtime captures.
 
-The registry has **THREE tiers**, and only the first is visible to `pij list`, `pij state`
-and `pij revive`:
-
-| Tier | Where | Visible to |
-|---|---|---|
-| hot | `~/.pij/<id>.json` + `~/.pij/<id>/` data dir | `pij list`, `pij state`, `pij revive` |
-| archived | `~/.pij/archive/<id>.json` + `~/.pij/archive/<id>/` | **the FILE is the authority**; `pij list --archived` is a FILTERED BROWSE AID, not an existence check |
-| — | *(the platform moves a seat here once terminal >48h)* | |
-
-> **A descriptor missing from `~/.pij/` is NOT evidence the seat never existed, and NOT
-> data loss — CHECK `~/.pij/archive` FIRST.** This cost a real round-trip on 2026-08-01: a
-> repo's o-prime was reported UNREVIVABLE with "neither descriptor nor data dir exists",
-> and both were sitting in the archive tier with full terminal evidence. **2,423 archived
-> seats** on this box at time of writing.
->
-> **AND `pij list --archived` IS NOT THE EXISTENCE CHECK** — it is a filtered view and it
-> hides most of the tier. Measured 2026-08-01: **437 rows listed out of 2,423 descriptors
-> on disk (18%)**, and for one folder, **2 shown out of 33** — the hidden 31 included that
-> repo's own PREDECESSOR PRIME, dissolved and present on disk. `dissolved` is necessary
-> but not sufficient to appear; the additional filter is uncharacterised. So an agent that
-> runs `--archived`, does not find its id, and concludes "genuinely gone" reaches the same
-> wrong answer one tier deeper, now with an authoritative-feeling command behind it.
->
-> **Use the filesystem as the authority:**
-> ```bash
-> ls ~/.pij/archive/<id>.json                                   # existence check
-> grep -l '"folder": *"<repo-path>"' ~/.pij/archive/*.json      # every archived seat for a repo
-> pij list --archived                                            # browse aid only — incomplete
-> ```
-
-Sessions that died without `pij close` leave **corpses** (descriptor present, process gone).
+## Read the rs store, not legacy descriptors
 
 ```bash
-pij list                      # every known session
-pij state <id>                # dead|alive + working/idle for one id
-pij path <id> [--events|--state|--dir]   # resolve a session's on-disk paths
+pij list --json                    # active rs seats; complete v2 envelope
+pij sessions --json                # rs-only session rows, no legacy union
+pij state <seat> --json
+pij node show <seat> --json
+pij phonehome --json               # from that seat's own context
+pij anomalies --json
 ```
 
-**The platform archives terminal seats for you** (terminal >48h → the archive tier), so
-routine corpse-clearing is NOT your job and NOT a manual delete. Inspect with
-`pij list --archived`; archived seats stay reachable by id.
+Shim `pij list` forwards exact `--harness <h>`, `--folder <path>`, `--parent <seat>` and `--scope local` to `/v1/seats`. Sessions and native `pij-rs list` remain bare/`--json` only. Legacy `--here`, `--role`, `--prime` and `--archived` filters refuse rather than disappear. `~/.pij/<id>.json`, archive directories and filesystem ledgers are **not rs authority**. Absence from the active roster does not prove a seat never existed: inspect tombstone evidence through supported rs views. Never restore, delete or patch legacy descriptors to repair rs identity.
 
-> **Do not hand-delete descriptors as housekeeping.** Hand-editing `~/.pij/**` is
-> store-internals surgery and **operator-authorised only** — never routine. A bulk sweep
-> on 2026-07-31 found three descriptors whose recorded panes were LIVE, one of them the
-> operator's own `%0`; a naive delete would have killed it. If a genuine sweep is ever
-> authorised, re-verify liveness against the live system at execution time (never from the
-> descriptor), never bulk-mutate, and pipe ids through `while read -r id` (zsh
-> `for id in $VAR` does NOT word-split).
+Phonehome re-observes process identity; `bound` is not merely presence of a pid. The optional role is joined through RoleService like whoami/seats/StateCard: string assertion or null, never an inferred default. A tombstoned seat cannot authenticate as a live identity even if its old process still exists.
 
-## Tmux hygiene
-
-Orphan panes/windows (peer closed but pane lingered, or vice versa): match `pij list` pane ids against `tmux list-panes -a -F '#{pane_id} #{pane_current_command}'`; kill panes that no live descriptor owns (`tmux kill-pane -t %N`). Ownership rule applies — don't kill panes belonging to sessions you didn't spawn without the owner's ask.
-
-## Binding repair
+## Close versus reaping
 
 ```bash
-pij phonehome [--json]   # run INSIDE a peer's pane: confirms a pending binding
+pij close <seat> --reason 'owner-approved retirement' --json
+pij reap --dry-run --json
+# After authorized review of the candidates and unverifiable rows:
+pij reap --json
 ```
 
-Use when a spawned peer booted but never bound (daemon log shows pending): the peer confirms its own identity deterministically instead of waiting on transcript discovery.
+Close requires self or the target's current recorded parent. It atomically records a tombstone and event; it **does not kill a process or pane**. There is no `--force` escape. A parent repeat-close returns the existing tombstone; retired self still receives an identity refusal with that evidence. Keep healthy peers across work items; compact/reuse instead of retirement (§ C3).
 
-## Recover a prime after a reboot
+Reap is stale-record reconciliation, not process termination or age-based retention. A candidate needs confirmed dead/recycled process identity **and** confirmed absence of its recorded pane. Paneless seats need confirmed dead/recycled process identity alone. Live process/pane evidence retains the seat; unknown process/pane evidence is `unverifiable` and brakes retirement. Removing an unknown-evidence check can only permit the same set or more reaps: a **brake**, not product policy. Dry-run changes no store/spine rows. Execution re-observes the binding before conditional atomic retirement, protecting a concurrently revived incarnation. Never signal a recycled pid.
 
-The human asks "revive our prime". A reboot kills the tmux server, so every seat
-is dead and every recorded pane id belongs to a dead epoch.
+**Exact ps absence protocol**: `LC_ALL=C ps -o lstart=PIJ_LSTART -p <pid>` returns exit 1, empty stderr, and one UTF-8 header line trimming to `PIJ_LSTART`, with no subsequent line. Empty stdout is not absence. Exit 0 needs header + exactly one parseable process row. Extra blank/data rows, any stderr (including whitespace), wrong header, other exits, signals and parse failures are unknown. Source and named existing tests: [`crates/harnesses/src/proc.rs`](../../../../crates/harnesses/src/proc.rs), especially `exit_one_with_header_only_and_empty_stderr_is_absent` and `failed_probe_requires_exact_header_only_output`. These names are not a claim of a new validation run.
+
+## Recover after a reboot
+
+Re-derive every process/pane observation; old numbers belong to a previous epoch. Start with native ping and rs records. Native revive is explicit:
 
 ```bash
-cd /path/to/the/repo && pij daemon status   # daemon dies with its tmux server
-pij revive --print                          # NO id — resolves the prime FOR THIS FOLDER
+pij-rs revive <tombstoned-seat> [--session <tmux-session>] [--name <window-name>] --json
 ```
 
-`--print` mutates nothing (read-only tmux/ps probes) and prints a paste-able
-launch line. **Hand that line to the human — do not run it yourself.** The prime
-must come back in the pane the human will drive, and `--print` records the
-printer as `PIJ_PARENT_ID` when run from inside a pij seat, so a helper that
-prints and is then closed leaves the prime parented to a corpse.
+It relaunches from stored identity/launch intent. It is **not** the former `--print`, `--attach` or `--assume-dead` workflow, and requires a known tombstoned id. A refusal is not permission to copy an archived TS descriptor into rs, guess a prime, or start a fresh session wearing an old identity. In-place reattachment and folder-based prime revival remain named gaps. Human choice of successor/launch is still required where ownership or identity cannot be established. A revived peer is pending canary until the real recall/runtime/round-trip evidence is observed (§ C2).
 
-| Result | Meaning / move |
+## Tmux and control hygiene
+
+Retiring a record and closing an owned terminal are separate actions. Match live rs pane/process evidence to the actual terminal before any separately authorized teardown. Never kill an unowned pane or turn a failed probe into absence.
+
+Shipped controls, compact-self and `pij bg` remain available; this cutover does not remove or reimplement them. Remote controls use structured command admission, target arming and acknowledged outcomes, never literal slash/sendkeys fallback. bg owns detached process groups, durable completion injection and bounded log reads; its kill operation is not answer queue withdrawal. See § C3/C7 and the peer route.
+
+## Diagnosis
+
+| Observation | Action |
 |---|---|
-| Prints a line naming a seat | Human pastes it into the target pane. claude/copilot/codex lines carry a `pij revive <id> --attach "$TMUX_PANE" &&` prefix — those harnesses do not self-adopt, and without it the seat returns unaddressable |
-| `E-AMBIG: … has 2 prime seats` | Two current primes for one folder. Pass the explicit id; then have the human retire the wrong one (`pij orchestration prime retire <id>`) — never guess which is real |
-| `E-AMBIG: … N seats and none is prime` | **The OPPOSITE condition sharing one error code** — ZERO primes, not two. The remedy above is unactionable: there is no id to pass. It usually means the recorded prime is **dissolved and archived**, and the error names the candidate set rather than that fact. **Check `~/.pij/archive/<id>.json` and `pij list --archived` before concluding anything**, then read § Registry hygiene. Verified case, 2026-08-01 |
-| `E-NOID`, naming the folder | No seat recorded there. Not a bootstrapper signal on its own — see prime route § Role triage |
-| Refuses: native transcript missing | **Not revivable.** `pij revive` requires it and correctly refuses rather than starting a fresh session wearing a dead seat's name. The data dir is inheritance material; the human seats a successor |
-| **The two checks fail INDEPENDENTLY** | A present descriptor does not imply a present transcript, and vice versa. A reader who learns about the archive tier will reasonably try to restore a descriptor — **and still be refused at the transcript check.** Confirm both: `~/.pij/archive/<id>.json` for the record, and the `harnessSessionId` it names under the transcript store |
-| **THERE IS MORE THAN ONE TRANSCRIPT STORE — search ALL of them** | `CLAUDE_CONFIG_DIR` can point elsewhere (e.g. a `cc-alt` shell function using `~/.claude-alt`), and **`pij revive`'s transcript lookup is hardcoded to `~/.claude/projects` and is `CLAUDE_CONFIG_DIR`-blind** — setting the env var does not help. So `E-NOREG: claude native session artifact is missing` can mean **"not where I looked"**, not "absent". Measured 2026-08-01 on one repo's 32 archived seats: **13 transcripts in `~/.claude`, 4 in `~/.claude-alt`, 15 genuinely absent.** A prime declared unrevivable was recovered from the second store with full context. **Never conclude a transcript is missing until every config dir has been searched.** (Defect filed; the fix is config-dir awareness in general, never a special case for one shell function.) |
+| Native ping/auth fails | Repair the intended rs address/credential or escalate to its operator; never fall back |
+| Phonehome cannot resolve self | Respect extension-owned registration; otherwise adopt only the exact observed current pane (§ C1) |
+| Active roster lacks an id | Inspect rs history/node evidence; no legacy file restoration |
+| Process/pane probe is unknown | Retain the record and report the unverifiable evidence |
+| Pending answer cannot supersede | Wait for a recorded terminal outcome; no queue withdrawal |
+| Government files unavailable | Resolve standing `prime-governance` worktree per bootstrap; never substitute main |
 
-The revived seat is **PENDING CANARY**: ask it a golden-recall question before
-assigning work. A session that lost its context looks identical to one that kept
-it. A live-but-orphaned session re-bound with `--attach` in the pane it is
-already running in is satisfied by continuity instead — the printed "now launch
-the harness in it" does not apply there.
-
-## Telegram bridge
-
-```bash
-pij telegram init    # one-time bot token setup
-pij telegram start   # bridge pij sessions ↔ the bot
-pij telegram stop
-```
-
-## Diagnosing a sick control plane
-
-| Symptom | Probe | Move |
-|---|---|---|
-| Spawns hang at "booting" | `pij daemon status`; daemon log | restart daemon (§ C6); re-spawn |
-| Peer never binds | daemon log shows discovery pending | `pij phonehome` inside the pane |
-| Sends land nowhere | `pij state <id>` dead? | corpse — sweep it; re-spawn |
-| Registry bloated with dead ids | `pij list` count vs live panes | **Nothing to do** — the platform archives terminal seats (>48h) itself; inspect with `pij list --archived`. Never hand-delete (see § Registry hygiene) |
+Government documents remain at the resolved standing orphan worktree. The current pij example is `$HOME/pi-hacking/pij-worktrees/pij-governance`, resolved by `harness/scripts/government-root.sh`; it is not a product/stream write target. Production and chainglass confirmation remain prime-owned.

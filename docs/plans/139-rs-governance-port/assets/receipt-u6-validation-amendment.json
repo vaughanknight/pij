@@ -1,0 +1,120 @@
+{
+  "status": "READY_TO_VALIDATE",
+  "acceptance": "SOURCE_ONLY_NOT_ACCEPTED",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6",
+  "task": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/u6-validation-task.json",
+  "basis": "Captured byte-exact preimages of previous 61-file handoff, verified against that receipt. This patch does not replay the original source patch or diff against repository HEAD.",
+  "previous_handoff_patch_sha256": "012ff2af9d48cd6d2818135b426d64a7c249b9f1138279e0b96720d67c88c041",
+  "patch": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6/docs/plans/139-rs-governance-port/assets/u6-validation-amendment.patch",
+    "sha256": "ebd1d551b062a0fe636300f4a566577e25b69ca96fafe838a42c213d319a96f5",
+    "bytes": 9498,
+    "changed_source_files": 4
+  },
+  "changed_paths": {
+    ".pi/extensions/pij/cli.ts": {
+      "preimage_sha256": "7ab024f8b4b132e75f3ef9e00c1e9f56905d13ff9be1b439531ba0f34b5cfb54",
+      "postimage_sha256": "fbdbdaf9cb86eede3542cc3399e67119c95e2887306df33a043a8164a5194d9f",
+      "preimage_path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6/docs/plans/139-rs-governance-port/assets/u6-validation-preimages/cli.ts.preimage"
+    },
+    ".pi/extensions/pij/adapters/generation-cutover.test.ts": {
+      "preimage_sha256": "ddb869a8034b70b33e884042bd55afc68e5350fe8b01214c7b3a6b6f185672a2",
+      "postimage_sha256": "fa482e57711be68215d42e44ef0b740f7b7c775692027f92ca708f614be4bece",
+      "preimage_path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6/docs/plans/139-rs-governance-port/assets/u6-validation-preimages/generation-cutover.test.ts.preimage"
+    },
+    ".pi/extensions/pij/adapters/generation-router.ts": {
+      "preimage_sha256": "4c3fc48c60c18d8cd3c96a06e59dfca59a942cd66fec4154b52de274d0d0e285",
+      "postimage_sha256": "cf1df0d198bf565e3f96e5137c084e91176153c4258dff0d100ebc2f334fe94b",
+      "preimage_path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6/docs/plans/139-rs-governance-port/assets/u6-validation-preimages/generation-router.ts.preimage"
+    },
+    ".pi/extensions/pij/adapters/generation-seam.test.ts": {
+      "preimage_sha256": "ed4bbf8f34e86d662c51f9e7215e50d56cec834d0785b8ca1db8a20dccc53e71",
+      "postimage_sha256": "23399e2b4a68a1e5ad6fcd2ac24199eb0b7d95da3c5d28a68195431de769f87c",
+      "preimage_path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6/docs/plans/139-rs-governance-port/assets/u6-validation-preimages/generation-seam.test.ts.preimage"
+    }
+  },
+  "findings": [
+    {
+      "path": ".pi/extensions/pij/cli.ts",
+      "original_lines": [
+        143,
+        148
+      ],
+      "rule": "TS2339",
+      "repair": "Switch over all four render result kinds. JSON/rendered branches write original rendered.text; no-renderer/json-refused branches emit the same refusal and return. Inbox acknowledgement remains after successful output. No cast, suppression, response normalization, or type/API changes."
+    },
+    {
+      "path": ".pi/extensions/pij/adapters/generation-cutover.test.ts",
+      "original_lines": [
+        180,
+        223,
+        238,
+        251,
+        252,
+        254,
+        255,
+        258,
+        272,
+        276,
+        286,
+        296,
+        360,
+        418,
+        434
+      ],
+      "rule": "lint/style/noNonNullAssertion",
+      "repair": "Throw on missing canonical refusal/command/event fixtures, missing original fixture verbs, missing request bodies, or missing GET request before reading fields. Keep exact response-byte, payload, method, caller, count, and query assertions. Guard matching body assertions in the same file for control and bg as well. No fixture defaults, optional-skips, casts, or weaker expected values."
+    },
+    {
+      "path": ".pi/extensions/pij/adapters/generation-router.ts",
+      "original_lines": [
+        141
+      ],
+      "rule": "lint/style/noNonNullAssertion",
+      "repair": "Guard the indexed token before parsing, returning the existing tagged refusal shape with the missing position instead of assuming a value. Valid argv/query forwarding and raw envelopes are unchanged."
+    },
+    {
+      "path": ".pi/extensions/pij/adapters/generation-seam.test.ts",
+      "original_lines": [
+        266
+      ],
+      "rule": "lint/complexity/noUselessEscapeInRegex",
+      "repair": "Remove only the redundant double-quote escape inside the negated character class; endpoint matching language and assertions are unchanged."
+    },
+    {
+      "path": ".pi/extensions/pij/adapters/daemon-http.test.ts",
+      "rule": "format",
+      "disposition": "PM formatter after barrier; no manual restyling or worker formatter run."
+    },
+    {
+      "path": ".pi/extensions/pij/adapters/generation-router.ts",
+      "rules": ["assist/source/organizeImports", "format"],
+      "disposition": "PM-owned just format after barrier. package.json format is biome check --write ., which covers both imports and formatting. Import-only LSP code action unavailable; no manual restyling or formatter run."
+    },
+    {
+      "path": "biome.json",
+      "rule": "schema-version informational diagnostic",
+      "disposition": "Explicitly excluded by release task; unchanged."
+    }
+  ],
+  "validation": {
+    "worker_executed": false,
+    "note": "No tests, builds, typecheck, lint, formatters, diagnostics requests, commits or Rust edits. Only source edits, read-only navigation/code-action lookup, preimage capture and artifact hash measurements. PM owns validation and formatting."
+  },
+  "evidence": {
+    "lint_output_paths": [
+      "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/u6-lint-failure.txt",
+      "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/u6-lint-failure-rest.txt"
+    ],
+    "original_lint_summary": { "errors": 19, "warnings": 20, "infos": 2, "diagnostics_not_shown": 21 },
+    "ceiling": "Both files read completely. Visible semantic diagnostics repaired in source; formatter/import-order findings remain for the explicitly PM-owned autofix. Biome suppressed 21 diagnostics in the original command, so their paths/rules cannot be classified from this evidence. No claim that all gate failures are cleared."
+  },
+  "pm_next": [
+    "Apply this four-file amendment after the previous handoff; do not replay u6-source.patch. Exact preimage/postimage hashes and captured originals are above.",
+    "After the source barrier run just format, then just typecheck and just lint; obtain complete diagnostics if the limit still hides findings.",
+    "Run the changed-contract suites: just test .pi/extensions/pij/adapters/generation-cutover.test.ts .pi/extensions/pij/adapters/generation-seam.test.ts .pi/extensions/pij/adapters/generation-router.test.ts .pi/extensions/pij/cli.integration.test.ts --maxWorkers=1. Then continue your composed/full gate.",
+    "Retain new formatted/composed source hashes with actual validation receipts; this amendment hashes unformatted worker source."
+  ],
+  "pm_native_findings": "Retain shim bytes unchanged. Native raw-response retention and explicit native CLI-computed send origin metadata are PM-owned; no TS changes made for those findings.",
+  "friction": "Artifact IDs are session-local; exporting a rendered page reproduced the truncation footer instead of full evidence. Encodable improvement: peer handoffs should persist complete raw validator output at shared paths, including the final diagnostic summary. No harness changes made outside the release fence."
+}

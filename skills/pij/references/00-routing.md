@@ -2,6 +2,8 @@
 
 Loaded by the dispatch (`../SKILL.md`) in **guided mode**, together with the chosen route module only. Direct jumps don't load this up front — a route module may cite a `§ Shared conventions` block below and pull it lazily; that is still progressive disclosure.
 
+**rs serve-or-refuse is the machine contract.** Read [Unsupported status](../../../docs/how/pij-rs-api.md#unsupported-status) for named shim/native gaps. Explicit `PIJ_DAEMON_GENERATION=legacy`, missing credentials and daemon absence never enable fallback. Raw `--json` preserves the complete original v2 envelope. Shim list forwards exact `--harness`, `--folder`, `--parent`, `--scope local` query values; sessions has no filters or legacy union, and native `pij-rs list` remains bare/`--json`. Canonical fixtures live in `crates/testkit/fixtures/golden/api/`, not new live captures or production acceptance.
+
 ## Detection signals (guided `/pij`, re-derived every call — survives /compact)
 
 All probes are deterministic files/commands; remember nothing between calls.
@@ -9,11 +11,11 @@ All probes are deterministic files/commands; remember nothing between calls.
 | # | Signal | Exact probe | Route offered |
 |---|--------|-------------|---------------|
 | A | Open delegation run | newest `.flow-pair/runs/*/run.json` has `"status": "open"` (schema enum is `open\|closed` — `skills/flow-pair/schemas/run.schema.json`; missing file/status = no signal) | **offer** resume `pair` — never auto-resume; stale-open runs are common |
-| B | Live fleet roster | that same newest `run.json` → `roster.<role>.{pijId, spawnedByUs}`; liveness per id via `pij state <id>` or presence of `~/.pij/<id>.json` | `pair` reattach (live) or `ops` heal/teardown (dead, spawnedByUs) |
+| B | Live fleet roster | newest run roster ids, corroborated through `pij state <id> --json`; legacy descriptor files are not rs liveness evidence | `pair` reattach or `ops` inspect owned retirement |
 | C | Active the-flow mid-build | newest `docs/plans/*/the-flow.json` → `harness flow nav show --path <it>`; `data.nav.now`/`next` on a phase/review node | offer `pair` dispatch for that phase |
-| D | Daemon alive | `pij daemon status` | down + any spawn intent → `ops` boot first (spawn also auto-starts it) |
+| D | Daemon alive | `pij-rs ping --json` | unavailable + spawn intent → operator-owned `ops` readiness; no automatic legacy daemon start |
 | E | Delivery owner | Copilot's native `pij_send` callable → native Copilot; else in-process `pij_spawn` callable → pi/omp push; else exact non-empty `$TMUX_PANE` → tmux push; otherwise external pull where supported | detect before self-registration advice; native Copilot never falls back to CLI pull or sendkeys |
-| F | Self registration | after E: native extensions already own registration; remaining tmux peers may probe `pij whoami`; supported external peers register their inbox first | external registration repairs stale push attachment before any other identity/view action (C1); never re-adopt an extension-owned seat to repair delivery |
+| F | Self registration | after E: extensions own registration; non-extension tmux peers may probe `pij whoami`; paneless claims require verified native admission | verify native evidence before external inbox registration; never re-adopt an extension-owned seat |
 
 **Precedence**: A > B > C > D/F (D/F are preconditions folded into whichever route wins, not destinations). Nothing matches → ask the job in one line, listing the registry.
 
@@ -31,41 +33,63 @@ For the remaining modes, detect once per run: callable in-process `pij_spawn` �
 
 | Intent | pi push | tmux control-plane push | external pull |
 |---|---|---|---|
-| prereq | **You are a pi/omp seat: the extension registered you at boot. Run NO pij identity command (no adopt, no inbox register).** | daemon (spawn auto-starts it) + self-adopt once using only the exact non-empty current-process pane: `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}` | `pij inbox register` or first `pij inbox --wait` — auto-registers the ambient session as pull-owned |
-| spawn | `pij_spawn({model, layout})` | `pij spawn --harness claude\|copilot\|codex\|pi …` | unavailable without tmux; converse with existing peers |
-| message | `pij_send({to, message})` | `pij send <id> "<text>"` | register/inbox first, then `pij send <id> "<text>"` |
-| receive | automatic injected turn | automatic daemon-injected turn | `pij inbox --wait [ms]` |
-| compact peer | `pij_send({to, command:"compact"})` | `pij send <id> "/compact"` | `pij send <id> "/compact"` |
-| peek | `pij tail <id>` | `pij tail <id> [--follow]` | `pij tail <id>` |
-| close | `pij_close({to})` | `pij close <id> [--force]` | ownership-aware CLI close only |
+| prereq | **Extension-owned registration: no adopt/inbox register.** | running rs daemon + exact-pane adoption: `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}` | `pij inbox register --json` from a verified Claude/Copilot/Codex tool shell; accepted id is `data.id` |
+| spawn | explicitly available in-process host tool, or native CLI | `pij-rs spawn --harness <h> --cwd <absolute-path> --parent <id> …` | no tmux launch without an available tmux context |
+| message | `pij_send({to, message})` | `pij send <id> '<text>'` | `pij send <id> '<text>' --json` from the same native host/session |
+| receive | automatic injected turn | automatic daemon-injected turn | `pij inbox --wait [ms] [--json]`; never a competing extension receiver |
+| compact peer | `pij_send({to, command:"compact"})` | `pij send <id> --command compact` | same structured command, subject to target support |
+| peek | host transcript or owner-scoped tmux capture | host transcript or owner-scoped tmux capture | supported host transcript only; shim tail refuses |
+| retire | owner-authorized host teardown is distinct from rs tombstone | `pij close <id>` tombstones only, self/current-parent | same rs ownership, no force bypass |
 
-Tmux self-adopt may use only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}`. **Always carry the parent when the env has one** — `--parent` is a SELF-DECLARATION of who governs you, it is validated and persisted, and a seat that self-adopts without it can only be linked later by someone who remembers. 185 of 215 rows machine-wide carry `unadopted` because every runnable recipe omitted this. Without that exact self-adopt in tmux mode, replies have nowhere to land.
+Tmux self-adopt uses only the exact nonempty `$TMUX_PANE` of the current process. Carry the supported `--parent` claim when the environment names the true governor; omitted parent is unsaid and preserves an existing value. Existing-seat structural repair through `link` is unported, so never omit parent assuming that command can fix it later. Native extensions retain ownership of their own registration.
 
-Empty or absent `TMUX_PANE` means external pull mode. In external pull mode, never run `tmux list-panes`, `tmux display-message`, or any other pane-discovery command. Never infer, guess, select, or adopt any pane id. Redirect `/pij adopt` intent to `pij inbox register` (or the first `pij inbox --wait`, which auto-registers). That registration creates the durable address without a daemon or pane.
+Empty or absent `TMUX_PANE` is not permission to discover or guess another pane.
+Paneless adopt still refuses; **`pij inbox register --json` is the supported
+external pull bridge to native `/v1/register`**, not a generic shim `register`
+verb or a legacy store. Prerequisites are the current `CLAUDE_CODE_SESSION_ID`,
+or a UUID `COPILOT_AGENT_SESSION_ID` with its matching `~/.copilot/session-state/<id>`
+directory, or a UUID `CODEX_THREAD_ID` with its matching readable date-nested
+rollout under `~/.codex/sessions`. Multiple valid identities refuse.
 
-In external pull mode, `pij inbox register --json` is the first identity action — before `pij whoami`, `pij list`, `pij state`, `pij tail`, or any manual acknowledgement path. It repairs an exact durable ambient identity to paneless pull ownership; after it succeeds, `pij whoami` is a valid confirmation.
+The CLI must descend from the matching live harness host. rs observes process
+ancestry and start stamps, rejects a nearer conflicting harness/session, and
+binds the **host** incarnation rather than the transient CLI/shell. Repeated
+registration of the same host/session returns the same `data.id`; an inherited
+or stale `PIJ_SESSION_ID` is replaced only after that native admission succeeds.
+Subsequent shim whoami/phonehome/send/inbox resolve the same native identity
+without a manual export. Missing evidence is a named refusal, never permission
+to fabricate a process or fall back to FsRegistry/FsChannel.
 
-Model names differ per harness; `pij spawn` auto-applies each harness's blanket-permission flag.
+Pull seats have `pane:null` and `native_extension_delivery:false`. `inbox --wait`
+blocks for mail; a positive millisecond argument bounds the wait. JSON remains a
+complete v2 envelope whose `data` is a claims array (empty on finite timeout),
+not an unwrapped `messages` object. The CLI prints before acknowledging; claim
+acceptance is not model completion. Native-extension-owned Copilot/Pi/OMP seats
+keep their automatic receiver and must not start this pull consumer.
+
+Model names and permission/launch behavior belong to the selected native harness and installed rs source, not legacy spawn defaults.
 
 ### C2 — Canary-verify (a ready-ping is NOT proof)
 
-A wrong `--model` is accepted **silently** at startup; the child boots, registers, ready-pings — then 400s on its first real inference. After any spawn (and before first use of a **provided** peer), run `pij canary <id> --expect-model <m>`: its nonce dispatch proves a real turn and its ack compares declared runtime with the descriptor pin. An UNPINNED result is an honest caveat, not proof of the actual default; capture the pane footer (`pij tail <id>` / tmux capture) then. Only mark the peer healthy after the canary passes and no 400 is present. Full operator flow: [`../../../docs/how/pij-team-scaffold.md`](../../../docs/how/pij-team-scaffold.md).
+A ready-ping is not proof of a working model. Run `pij canary <id> --expect-model <m>` after spawn and before trusting a provided peer: nonce-correlated dispatch/ack and observed process/session/model evidence are required. Capture the actual host footer or owner-scoped tmux pane when a model cannot be corroborated; `pij tail` is unported and native tail is events, not a transcript. Do not mark an unpinned or unacknowledged peer healthy.
 
 ### C3 — Compact discipline (early, not late)
 
 The instant a reusable/live coder reports completion or a reviewer returns a verdict, send compact as the **first tool action** — before reading, synthesising, or acting on the report. Trigger only on a terminal completion/verdict, never while the peer is still responding. The 30–90s compact latency overlaps report/review/fix work that must happen anyway; compacting late has caused post-dispatch stalls.
 
-Dispatch compact **fire-and-forget** with `pij_send({to, command:"compact"})` or `pij send <id> "/compact"` without `--wait`. **Continue immediately** with report/review/fix work; `executed:true`, receipt delivery, and compact completion are observe-only diagnostics, never progress gates. A one-shot `--once` peer auto-dissolves when its report lands, so an immediate `E-DEAD` is the expected boundary: it has no reusable context left to compact.
+Dispatch compact **fire-and-forget** with `pij_send({to, command:"compact"})` or `pij send <id> --command compact`, without `--wait`. **Continue immediately** with independent report/review work; never wait for compact receipts or execution. Acceptance, receipt and executed/refused outcome remain distinct. Copilot/paneless controls refuse; never replace a refusal with literal slash text or sendkeys.
 
-Between phases: compact, keep, reuse — never close-and-respawn a healthy peer. For your own context: `pij compact-self [instruction]` (queues a follow-up so work continues after the compact). A peer **cannot** compact itself by messaging its own id — `pij send <self-id>` returns **E-SELF**; self-compaction runs only through `compact-self`. `compact-self` also accepts `[--pane %N]`, so an orchestrator can keystroke-inject `/compact` into a specific pane it drives directly (the reliable path when a text `/compact` send may land as a literal turn rather than firing the harness command).
+The former one-shot `--once` state flag is unported; use the already one-shot `pij state <seat> --json` snapshot ([Unsupported status](../../../docs/how/pij-rs-api.md#unsupported-status)). State snapshots and a host's `E-DEAD` refusal are observe-only diagnostics, never progress gates. Do not poll for recovery or gate report/review work on a compact acknowledgement.
+
+Between phases: compact, keep, reuse — never close-and-respawn a healthy peer. `pij compact-self` is the shipped daemon-resolved operation, with no legacy instruction argument or `--pane` override. Remote new/reload retain target arming and self/recorded-parent authorization; role/prime display grants none. See peer route for the unchanged complete control contract.
 
 ### C4 — Model discovery
 
-`pij models [--json]` lists model ids + providers per harness (claude/copilot/codex/openrouter incl. pi presets). Never grep config files or hardcode model strings. Rows are a best-effort alias list — new families may be missing (spawn then warns "unknown model" but continues); the live truth is the canary (C2).
+`pij models` is unported and returns `E-RS-UNPORTED`. Use the host's actual installed model catalog, then corroborate the selection with canary/runtime evidence (C2). Do not substitute a stale legacy model list or invent a selector.
 
 ### C5 — Placement & split-cap
 
-Default = the **side stack**: the first peer opens a ~1/3-width column on YOUR right; every later peer appends below it and the stack evens itself — **uncapped** (panes just get shorter). Explicit `--layout stack|right|below|window` (spawn + agent spawn, FX001-3): `stack` names the default; right/below split YOUR pane once (main+2 cap, E-FULL beyond); `window` opens a background window **in your session**, named after the peer. `headless` is not built. Prefer the default stack — `window` hides peers from the operator's view (use it only when asked, or for swarms too big to stack).
+Native `pij-rs spawn` accepts `--session`, `--name`, `--cwd` and `--parent`, not the legacy `--layout stack|right|below|window` flags. Use explicitly supported host spawn tools where available, or place the native reported pane using owner-controlled tmux operations. A tool's side-stack/layout support is not a claim about native CLI grammar. Keep new peers visible and grouped by stream; no invented split-cap or headless contract.
 
 **MANDATE — name every pane and window you create.** A tmux surface is a *human*
 interface: the operator scans it to see what the fleet is doing, and a wall of
@@ -125,23 +149,21 @@ tmux join-pane -v -s <reviewer-pane> -t <coder-pane>
 tmux select-layout -t <coder-pane> even-vertical
 ```
 
-`pij spawn --layout window` always opens a *new* window, so every teammate is spawned then
-**moved in** — spawning is not finished until the peer is in its team window and titled.
+When native spawn creates a window, move its reported pane into the intended owned team window and title it. Spawning is not finished until placement and identity are verified; do not pass an unported layout flag to the shim.
 
 **When the PM is a central orchestrator** driving several streams at once, it cannot sit in
 every team window. Then the left half holds that stream's operator view — a shell in the
-stream's worktree, or a `pij tail` on the seat the human most needs to watch — and the slot is
-still reserved so a per-stream orchestrator can take it later without re-laying-out the window.
+stream's worktree or its host's supported transcript view — and the slot is reserved so a per-stream orchestrator can take it later without re-laying-out the window. Native rs tail is not a peer transcript.
 
 Split a team across windows only when panes get too small to read — and say so when you do.
 
 ### C6 — Daemon restart rule
 
-The daemon runs `tsx` off source with **no hot-reload**: after ANY edit to daemon/core extension code, restart it (`pij daemon stop && pij daemon start`) or the change silently doesn't take effect. Freshly-spawned peers are unaffected; the daemon process itself is what goes stale.
+The rs daemon executes a built Rust binary, not tsx source. Changes need the appropriate rebuild and an operator-authorized native lifecycle action; never bounce production as an incidental edit step. `pij daemon` is a named shim refusal. Check the installed `pij-rs daemon --help`; PM/prime own composed validation and production restart. Peer extension/skill reload is a separate host capability, not daemon restart or the remote OMP reload control.
 
 ### C7 — Push when owned; block on inbox when pull-owned
 
-In pi/tmux push modes, done/stalled/dead notices arrive as injected turns that re-invoke you. After dispatch: do independent prep and let the push wake you; never poll `pij state`. In external pull mode there is deliberately no injector: use `pij inbox --wait` (first use auto-registers; optional milliseconds make it finite). This blocking inbox read is the delivery primitive, not a liveness poll. A known-broken push transport may use one slow `pij tail <id>` spot-check.
+In pi/tmux push modes (including OMP and native Copilot), injected turns re-invoke you. After dispatch, do independent prep and let delivery wake you; never poll `pij state`. In verified external pull mode, register through C1 and use `pij inbox --wait` (native `pij-rs inbox --wait` is also available). This blocking inbox read is the delivery primitive, not a competing extension receiver or a state poll. A broken transport justifies bounded host-transcript/pane inspection, not substituting native event tail for a transcript.
 
 **The same rule applies to SLOW LOCAL COMMANDS — use `pij bg`.** A command you sit and wait on holds your turn open for its whole duration; you are idle-but-not-done, which is the shape the watchdog derives as a stall, and the human cannot talk to you meanwhile. For rs-hosted seats, `pij bg` and `pij-rs bg` both ask the Rust daemon to run it detached and deliver the result as an injected turn from `pij-bg`, so your turn ends now and the completion is what wakes you. Both spellings return the same complete v2 envelope with `--json` before or after the leaf.
 
@@ -178,19 +200,9 @@ owner for either observation.
 
 ### C9 — Watchdog etiquette (you may be watched; some peers must never be)
 
-**What it is.** Every session gets a daemon-owned watchdog, **on by default at a 20-minute interval, no setup**. When a watched peer has been silent past the interval, the daemon injects a self-teaching nudge turn — *"Keep going if working. Report in one call with `pij report now "<what I just did>" "<what's next>"`. If done, run `pij report state done`."* Two silent nudges in a row with no new output ⇒ the session is derived **stalled**. The premise is that idleness *might* be a stall — so the whole design turns on one distinction: **whose silence is deliberate.**
+The `pij watchdog` administrative family is unported and returns `E-RS-UNPORTED`; do not execute its former watch/pause/exempt/reset/interval controls or manipulate legacy sidecars. This does not remove already-shipped daemon mechanisms. Do not claim the old universal 20-minute setup, pause tiers or PA subscription grammar as rs contracts.
 
-**If a nudge re-invokes you** (you are the watched peer): still working → report real now/next and keep going. Done → `pij report state done`. Need a human answer → `pij report question "<what I need from you>"`. Waiting on an external dependency → `pij report blocked "<what I am waiting on>"`. Actively working has no semantic state word; absence is honest by design. Never self-pause merely because work ended or blocked: declared state is visible, correctable, and independently verifiable.
-
-**A nudge is a BACKSTOP, not the trigger.** Invariant 12 already requires a report at the start and the end of every unit of work, so a well-behaved seat is usually current before the watchdog ever fires — being nudged at all is a mild signal you left your card stale. Reporting only when nudged is the failure mode this catches: the card then describes whatever you were doing up to 20 minutes ago, and every consumer renders that as NOW.
-
-**"I was waiting on a slow command" is no longer a reason to look stalled** — that is what `pij bg` (§ C7) is for. Blocking on a long build or test run makes you indistinguishable from a wedged seat, to the watchdog and to the human. Queue it, report what you just did, and let the result wake you.
-
-**Deliberate-silence class — some peers are born exempt and must stay so.** A **relay/bridge/control-plane** peer forwards its inbox to an external sink (the `pij-telegram` bridge → the operator's phone). Its idleness is *correct by design*; a watchdog nudge into it becomes a real-world message. Such peers carry `relay: true` on their descriptor and are **never watched** — set it at registration for any new bridge/relay you build; never watch, pause, or resume a seat that isn't yours (descriptor identity can collide — a nudge addressed to another id is registry evidence, not a command).
-
-**Tiers, strongest wins:** `exempt` (`pij watchdog exempt <id> [duration]` or spawn `--no-watchdog`; default duration 1h, never fires only until its persisted deadline, then re-arms automatically; `pause` cannot downgrade an active exemption) > `compact` (auto-set around `/compact`, auto-resumes on the next real working transition) > `self` (explicit resume, or a newly delivered dispatch/committed assignment re-arms it). `pij watchdog status|list [--json]` reports the effective state and any live exemption deadline.
-
-**Operator controls.** Per peer: `pij watchdog interval <id> <30s|20m|1h|ms>` sets the timeout (default 20m); `pij watchdog exempt <id> [duration]` creates the bounded exemption; `pij watchdog reset <id>` restores defaults and clears an active exemption early (`resume` won't). Machine-wide: `pij watchdog disable-all` / `enable-all` is the fleet kill switch — one command, honored for every session including ones spawned while off (no per-sidecar edits), re-anchoring cleanly on re-enable. The daemon picks up any of these on its next tick (no restart; C6 is only for code edits).
+If a real nudge arrives, report actual now/next or the truthful question/blocked state and continue independent work. If done, run `pij report state done`. Reporting at both work edges remains the primary cadence; a nudge is only a backstop. Use shipped `pij bg` (C7) for slow commands rather than keeping a coordinating seat blocked. An unavailable PA watchdog subscription is a named operational gap, never a fabricated supervision graph.
 
 ### C10 — Wire discipline (A2A messages)
 
@@ -208,12 +220,12 @@ Pre-send check, two questions: could the receiver act on line 1 alone? Did I res
 
 ### C11 — Commit attribution
 
-Every commit created by a pij seat carries its attribution **at commit time**. Run `pij-rs commit-trailers` (no arguments) in the committing worktree immediately before committing; append its emitted `Key: value` lines after a blank line alongside, never replacing, the harness's own trailers. Values are derived, never hand-typed:
+Every commit created by a pij seat carries attribution **at commit time**. Run `pij commit-trailers` (no arguments) in the committing worktree immediately before committing. This is narrow forwarding to native `pij-rs commit-trailers`: trailer-only stdout, native stderr derivation-tier note and exit status are preserved; no HTTP or JSON wrapper. Append emitted `Key: value` lines after a blank line alongside, never replacing, the harness's own trailers. Values are derived, never hand-typed:
 
 | Key | Derived value / omission |
 |---|---|
 | `Pij-Seat` | Committing seat from `pij-rs whoami`; omitted when the derived `Pij-Prime` is that same seat. |
-| `Pij-Prime` | From `pij-rs list --json` rows, in order: nearest `role == prime` seat (self or ancestor), repository's designated prime, then root of the recorded-parent chain. A prime committer or fallback root (`parent: null`) uses its own id. This root fallback is the interim ruling until plan 139. |
-| `Pij-Plan` | Current plan ordinal, optionally `-slug`, from the worktree path/branch (`NNN-slug`), harness flow state, or current assignment; omitted when there is no plan. |
+| `Pij-Prime` | Nearest explicit `role == prime` on rs self/ancestor rows, else the complete recorded-parent root (explicit interim fallback). The native helper currently supplies no repository-designation lookup; do not claim that tier was consulted. Its stderr names the tier used. |
+| `Pij-Plan` | Worktree path, branch, then local flow context. The helper does not currently query current assignment; missing evidence is omission, not a guessed plan. |
 
 The helper prints only applicable trailers to stdout and unresolved-value diagnostics to stderr. If an expected value cannot be derived, omit that trailer and explain the omission in the commit body; never guess or emit a placeholder. Current context is not evidence of a historical commit's identity.

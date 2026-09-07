@@ -1,0 +1,78 @@
+{
+  "unit": "u4",
+  "amendment": "supersede-shared-sql-authority",
+  "depends_on": "contracts-delta-u4-supersede.json",
+  "apply_to": "docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json",
+  "route": {
+    "method": "POST",
+    "path": "/v1/answer",
+    "append_invariants": [
+      "Explicit supersede requires queue=real and spine=real with the composition root guaranteeing that queue, decision store and event bus use the same SQLite pool (persistent in production). Adapter labels alone are not proof of shared authority.",
+      "After current-parent authorization and before any replacement, mixed/fake backends refuse HTTP409 E-RS-ANSWER-AUTHORITY-SPLIT, naming both queue_backend and spine_backend. They do not append a supersession event, mutate the old decision, cancel old work, or admit a replacement.",
+      "Ordinary question, answer, identical retry and self-answer behavior remains available for all supported queue/spine configurations."
+    ]
+  },
+  "merge_refusals": {
+    "answer_authority_split_real_fake": {
+      "http_status": 409,
+      "cli_exit_nonzero": true,
+      "response": {
+        "ok": false,
+        "command": "pij answer",
+        "v": 2,
+        "error": "refused",
+        "meta": "E-RS-ANSWER-AUTHORITY-SPLIT answer supersession requires shared SQLite queue and spine authority: {\"decision\":\"decision-139-proof\",\"queue_backend\":\"real\",\"spine_backend\":\"fake\"}",
+        "details": {
+          "decision": "decision-139-proof",
+          "queue_backend": "real",
+          "spine_backend": "fake",
+          "code": "E-RS-ANSWER-AUTHORITY-SPLIT"
+        }
+      }
+    },
+    "answer_authority_split_fake_real": {
+      "http_status": 409,
+      "cli_exit_nonzero": true,
+      "response": {
+        "ok": false,
+        "command": "pij answer",
+        "v": 2,
+        "error": "refused",
+        "meta": "E-RS-ANSWER-AUTHORITY-SPLIT answer supersession requires shared SQLite queue and spine authority: {\"decision\":\"decision-139-proof\",\"queue_backend\":\"fake\",\"spine_backend\":\"real\"}",
+        "details": {
+          "decision": "decision-139-proof",
+          "queue_backend": "fake",
+          "spine_backend": "real",
+          "code": "E-RS-ANSWER-AUTHORITY-SPLIT"
+        }
+      }
+    },
+    "answer_authority_split_fake_fake": {
+      "http_status": 409,
+      "cli_exit_nonzero": true,
+      "response": {
+        "ok": false,
+        "command": "pij answer",
+        "v": 2,
+        "error": "refused",
+        "meta": "E-RS-ANSWER-AUTHORITY-SPLIT answer supersession requires shared SQLite queue and spine authority: {\"decision\":\"decision-139-proof\",\"queue_backend\":\"fake\",\"spine_backend\":\"fake\"}",
+        "details": {
+          "decision": "decision-139-proof",
+          "queue_backend": "fake",
+          "spine_backend": "fake",
+          "code": "E-RS-ANSWER-AUTHORITY-SPLIT"
+        }
+      }
+    }
+  },
+  "events": {
+    "append": [],
+    "note": "Backend refusal appends no supersession event."
+  },
+  "docs_text": "answer --supersede is available only with real queue and real spine sharing the daemon's persistent SQLite pool. Mixed/fake combinations refuse E-RS-ANSWER-AUTHORITY-SPLIT and name both backends, because governance SQL cannot prove the active queue's terminal delivery state. Ordinary question and answer remain supported. This is a one-directional safety interlock, not queue cancellation.",
+  "composition_guarantee": {
+    "owner": "PM",
+    "constructor": "DecisionService::new(store,registry,bus,delivery,queue_backend:AdapterChoice,spine_backend:AdapterChoice)",
+    "required": "Pass actual configured adapter choices, not hardcoded Real/Real. build_services must construct the real queue, governance store and event spine from clones of the same persistent_pool. Keep RealQueue+FakeSpine split and FakeQueue configurations supported, but disable only explicit supersede."
+  }
+}

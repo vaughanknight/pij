@@ -2,10 +2,10 @@
 //
 // The brief asked for batched liveness — "one `tmux list-panes -a` + one ps
 // snapshot per call, never per-row subprocesses". Investigation found there is no
-// per-row subprocess to batch: `pij list`/`state` resolve liveness through
+// per-row subprocess to batch: the pure CLI library resolves liveness through
 // `ProcessPort.isAlive`, whose real adapter is `process.kill(pid, 0)` — a
-// syscall, not a fork. Measured cost of `pij list --json` on the live machine is
-// ~0.54s wall, effectively all node/tsx startup.
+// syscall, not a fork. The public executable now delegates to Rust; these
+// guards defend the retained library and its process adapter, not that shim.
 //
 // So the honest deliverable is not an optimisation that changes nothing; it is a
 // guard that keeps the property true. These tests fail the moment someone
@@ -14,7 +14,11 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { FakeDelivery, FakeEventLog, FakeProcess, FakeRegistry } from "../adapters/fakes.js";
+import { NodeProcess } from "../adapters/process.js";
+import { type CliDeps, dispatch } from "./cli.js";
+import type { SessionDescriptor } from "./types.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -31,13 +35,70 @@ function stripComments(source: string): string {
 	return source.replaceAll(/\/\*[\s\S]*?\*\//g, "").replaceAll(/\/\/[^\n]*/g, "");
 }
 
-describe("the list/state read path spawns no subprocesses", () => {
-	// Structural, not behavioural: a mocked probe could hide a fork, but an import
-	// cannot hide. `core/cli.ts` is where `list`, `state`, and `send` render.
-	it("core/cli.ts imports nothing from node:child_process", () => {
-		const source = readFileSync(join(HERE, "cli.ts"), "utf8");
-		expect(source).not.toMatch(/from\s+"node:child_process"/);
-		expect(source).not.toMatch(/require\(\s*["']child_process["']\s*\)/);
+describe("the pure CLI library read-path liveness cost", () => {
+	function fixture(count: number) {
+		const now = Date.parse("2026-06-16T12:00:00.000Z");
+		const descriptors: SessionDescriptor[] = Array.from({ length: count }, (_, index) => ({
+			id: `peer-${index}`,
+			folder: index % 2 === 0 ? "/repo" : "/other",
+			dataDir: `/pij/peer-${index}`,
+			eventsPath: `/pij/peer-${index}/events.ndjson`,
+			pid: 100 + index,
+			startedAt: new Date(now - 1000).toISOString(),
+			lastEventAt: new Date(now - 1000).toISOString(),
+			state: "idle",
+		}));
+		const process = new FakeProcess(999, now, { PIJ_SESSION_ID: "peer-0" }, [100]);
+		const probe = vi.spyOn(process, "isAlive");
+		const deps: CliDeps = {
+			registry: new FakeRegistry(descriptors),
+			process,
+			delivery: new FakeDelivery(),
+			eventLogFor: () => new FakeEventLog([]),
+			cwd: "/repo",
+			pijHome: "/pij",
+		};
+		return { deps, descriptors, probe };
+	}
+
+	it.each([false, true])("list json=%s probes exactly once per selected row", (json) => {
+		for (const count of [1, 32]) {
+			for (const here of [false, true]) {
+				const { deps, descriptors, probe } = fixture(count);
+				const selected = descriptors.filter((descriptor) => !here || descriptor.folder === "/repo");
+				const result = dispatch({ verb: "list", here, prime: false, json }, deps);
+				expect(result.exitCode).toBe(0);
+				expect(probe.mock.calls).toEqual(selected.map((descriptor) => [descriptor.pid]));
+				if (json) {
+					expect(JSON.parse(result.stdout)).toEqual(
+						selected.map((descriptor) =>
+							expect.objectContaining({
+								id: descriptor.id,
+								liveness: descriptor.pid === 100 ? "active" : "dead",
+							}),
+						),
+					);
+				} else {
+					expect(result.stdout).toContain(`${selected.length} session(s)`);
+				}
+			}
+		}
+	});
+
+	it.each([
+		false,
+		true,
+	])("state json=%s probes only its target, independent of registry size", (json) => {
+		for (const count of [1, 32]) {
+			const { deps, probe } = fixture(count);
+			const result = dispatch({ verb: "state", id: "peer-0", json }, deps);
+			expect(result.exitCode).toBe(0);
+			// Existing library cost: one liveness verdict and one alive/bind-detail probe.
+			expect(probe.mock.calls).toEqual([[100], [100]]);
+			if (json)
+				expect(JSON.parse(result.stdout)).toMatchObject({ id: "peer-0", liveness: "active" });
+			else expect(result.stdout).toContain("active");
+		}
 	});
 
 	it("the modules the read path leans on are subprocess-free too", () => {
@@ -52,8 +113,14 @@ describe("the list/state read path spawns no subprocesses", () => {
 	// The real ProcessPort adapter must stay a syscall probe. If someone swaps it
 	// for `ps`/`tmux`, liveness silently becomes N forks per listing.
 	it("the real ProcessPort probes liveness with a signal, not a command", () => {
+		const kill = vi.spyOn(process, "kill").mockReturnValue(true);
+		try {
+			expect(new NodeProcess().isAlive(123)).toBe(true);
+			expect(kill.mock.calls).toEqual([[123, 0]]);
+		} finally {
+			kill.mockRestore();
+		}
 		const source = readFileSync(join(HERE, "..", "adapters", "process.ts"), "utf8");
-		expect(source).toMatch(/process\.kill\(pid, 0\)/);
 		expect(source).not.toMatch(/from\s+"node:child_process"/);
 	});
 });
@@ -201,11 +268,11 @@ describe("no module in the daemon tick path probes the process table PER PID", (
 	// EXACTLY this set, asserted as a list rather than a count, so a failure NAMES
 	// the file instead of only disagreeing about a number.
 	//
-	// `cli.ts` probes once during revive. `adapters/daemon-http.ts` probes once
-	// during pi/OMP registration so its claimed `(pid, proc_start)` is byte-equal
-	// to pij-rs ProcLiveness. Neither sits in a per-descriptor or daemon-tick loop.
+	// `adapters/daemon-http.ts` probes once during pi/OMP registration so its
+	// claimed `(pid, proc_start)` is byte-equal to pij-rs ProcLiveness. It never
+	// sits in a per-descriptor or daemon-tick loop. The retired revive bin is gone.
 	it("only reviewed one-shot boundaries may ask `ps` about a single pid", () => {
-		expect(perPidProcessProbes()).toEqual(["adapters/daemon-http.ts", "cli.ts"]);
+		expect(perPidProcessProbes()).toEqual(["adapters/daemon-http.ts"]);
 	});
 
 	// The scope repair, asserted directly: the recursive walk must actually reach

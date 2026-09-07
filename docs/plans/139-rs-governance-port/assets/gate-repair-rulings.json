@@ -1,0 +1,19 @@
+{
+  "peers": {"u1": "pij-electoral-orlandine", "u2": "pij-written-lansra", "u6": "pij-general-miriam", "pm": "pij-lonely-ikrie", "prime": "pij-minor-unicorn"},
+  "core_four_drives": {
+    "status": "PM_APPROVED_BOUNDARY",
+    "decision": "Existing store/core APIs may retain honestly labeled legacy-library behavior tests. Do not create or expose a new hidden legacy CLI entry or preserve obsolete bin claims. Public stream/fence/dispatch/ack success remains defended by current v2 routing, Rust domain/CLI suites and the u1 actual smoke. Modern canary no-model refusal replaces any public claim that legacy unobservable-tier pass is valid; a retained library test must not count as RS/model proof."
+  },
+  "baton_keeper_notice": {
+    "status": "PRIME_REQUIRED_HONEST_RECEIPTS",
+    "owner": "u4 native sender/persistence proof; u6 caller-wire cases; PM integration",
+    "decision": "Persist and publish request before DeliveryService.send(requester, definition.created_by, legacy text). Notice reflects actual receipt: Pi/OMP extension-stream queued until ReaderRead, transport-confirmed socket/native delivered; unverified only existing Dead/Recycled liveness evidence, not a new age threshold. Missing/dissolved keeper is null with no send. All eight message/no-write counts retained; idle Pi expected value is explicitly amended delivered to queued by prime."
+  },
+  "paneless": {
+    "status": "PRIME_REQUIRED",
+    "decision": "inbox register is SERVED by Rust. Preserve verified Claude/Copilot/Codex ambient identity, real host incarnation, complete v2 envelope data.id and register -> inbox --wait -> send/receive/ack. No TMUX/PANE requirement; no wrapper-PID registration or legacy authority. u2 owns production/direct tests, u1 owns actual smoke."
+  },
+  "platform_doc": {"owner": "PM", "path": "docs/how/pij-platform.md"},
+  "u2_docs": {"owner": "pij-written-lansra", "paths": ["skills/pij/references/routes/ready.md", "skills/pij/references/00-routing.md external-registration subsection", "docs/how/pij-rs-api.md paneless paragraph/examples"], "pm_only": "HTTP mod.rs and tests.rs paneless metadata wording; source/platform guide remains PM-owned"},
+  "diagnostic_ceiling": "Full Vitest per-test diagnostics were discarded by checks'25-line failure tail. Only retained7-file cache inventory and tail are observed; label further static classifications source-inferred. Do not rerun validators in workers."
+}

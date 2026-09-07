@@ -1,0 +1,15 @@
+{
+  "unit": "u1-cli-workflow",
+  "owner": "pij-electoral-orlandine",
+  "parent": "pij-lonely-ikrie",
+  "target": "Extend ONLY crates/cli/tests/governance_boot.rs in your own u1 worktree, using the CURRENT PM file at /Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/cli/tests/governance_boot.rs as immutable delta base. Preserve all PM fixture fixes. Do not touch product code, canonical fixtures, other tests, main checkout, globals, buffers, or flow files.",
+  "change": [
+    "Reuse Environment/Process/PrivateTmux and the shipped real daemon/CLI path. Every process/client retains private HOME, CLAUDE_CONFIG_DIR, XDG_CONFIG_HOME, state-dir, random bind port and actual private TMUX socket; no process-global env edits. No shared server/production port7461.",
+    "Extend the actual CLI scenario with two owned inert panes adopted as parent/worker (worker records parent). Assert roles and current /v1/seats list via CLI. Initialize a private git repo with local per-command identity if project/stream paths require it; no global git config.",
+    "Exercise native project create -> stream create -> fence show -> dispatch actual packet -> recipient CLI inbox/read ack -> recipient packet SHA ack -> attest -> task set -> node show, taking returned IDs rather than fabricating rows. Use canonical argv conventions read from current governance-routes.json; all effects go through CLI/HTTP, never seed domain rows by SQL.",
+    "Exercise worker report question -> parent decisions/answer -> recipient actual inbox read, then done -> parent verify -> new done reopens anomaly. Exercise parent close and list exclusion, retired self refusal naming tombstone seq, and reap dry-run without writes where supported. Preserve cursor/event proof already present.",
+    "An inert pane is NOT an actual OMP model. Do not synthesize a positive canary or model footer. Existing positive canary witness remains explicitly scripted-host; this scenario may prove the honest no-model canary refusal, but never claim live-model proof.",
+    "Any assertion waits on actual effect/receipt with a bounded deadline, never fixed sleep treated as proof. Own and tear down all daemon/client/tmux processes and directories, including git worktrees beneath the private run root. Keep stdout diagnostic evidence concise and cite actual seqs/IDs for the exercised chain."
+  ],
+  "acceptance": "Return a separate bounded patch against the exact current PM governance_boot.rs, SHA256 and recipe/receipt listing precise exercised CLI contracts and proof ceilings. No build, test, formatter, linter, commit, production daemon action or credential/config writes. PM executes validation after the edit barrier. Existing source and buffer are preserved. Stay waiting, not semantic HOLD, so parent messages remain deliverable."
+}

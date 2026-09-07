@@ -1,0 +1,304 @@
+   Compiling pij-core v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/core)
+   Compiling pij-testkit v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/testkit)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.48s
+     Running `target/debug/pij-gate`
+pij-gate: /Users/jordanknight/pi-hacking/fs3-rs-governance-port · cargo /Users/jordanknight/.rustup/toolchains/1.98.0-aarch64-apple-darwin/bin/cargo
+    Checking pij-core v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/core)
+   Compiling ring v0.17.14
+    Checking pij-testkit v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/testkit)
+    Checking pij-transport v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/transport)
+    Checking pij-tmux v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/tmux)
+    Checking pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/harnesses)
+   Compiling rustls v0.23.43
+    Checking rustls-webpki v0.103.15
+    Checking sqlx-core v0.8.6
+    Checking tokio-rustls v0.26.4
+    Checking hyper-rustls v0.27.9
+    Checking reqwest v0.12.28
+    Checking pij-sidecars v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/sidecars)
+    Checking sqlx-sqlite v0.8.6
+   Compiling sqlx-macros-core v0.8.6
+   Compiling sqlx-macros v0.8.6
+    Checking sqlx v0.8.6
+    Checking pij-store v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/store)
+    Checking pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/daemon)
+    Checking pij-cli v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 14.56s
+   Compiling pij-core v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/core)
+   Compiling ring v0.17.14
+   Compiling rustls-webpki v0.103.15
+   Compiling rustls v0.23.43
+   Compiling pij-testkit v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/testkit)
+   Compiling pij-harnesses v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/harnesses)
+   Compiling pij-tmux v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/tmux)
+   Compiling pij-transport v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/transport)
+   Compiling sqlx-core v0.8.6
+   Compiling tokio-rustls v0.26.4
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.12.28
+   Compiling sqlx-sqlite v0.8.6
+   Compiling pij-sidecars v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/sidecars)
+   Compiling sqlx-macros-core v0.8.6
+   Compiling sqlx-macros v0.8.6
+   Compiling sqlx v0.8.6
+   Compiling pij-store v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/store)
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/daemon)
+   Compiling pij-cli v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 23.84s
+     Running unittests src/lib.rs (target/debug/deps/pij_cli-fa0481462d11fd13)
+
+running 16 tests
+test address::tests::an_unqualified_address_always_means_local ... ok
+test tests::exit_code_contract_is_an_explicit_table ... ok
+test address::tests::every_rendered_address_parses_back_to_the_same_destination ... ok
+test client::tests::registration_requires_pid_and_start_time_together ... ok
+test address::tests::address_parse_table_covers_degenerate_and_escaped_cases ... ok
+test client::tests::send_serializes_destination_as_an_object_and_keeps_reply_correlation ... ok
+test client::tests::unsupported_envelope_version_is_refused_before_payload_typing ... ok
+test tests::human_rendering_does_not_hide_a_success_warning ... ok
+test client::tests::every_unrecognised_version_is_skew_not_only_future_versions ... ok
+test client::tests::tail_reads_hello_then_frames_and_keeps_unknown_event_kinds ... ok
+test bounce::tests::unauthenticated_401_is_distinct_from_no_listener_and_wrong_status ... ok
+test decisions::tests::anomaly_decision_answer_commands_preserve_canonical_argv_and_envelopes ... ok
+test role::tests::native_role_forwards_u0_argv_and_preserves_success_and_refusal_envelopes ... ok
+test governance::tests::governance_forwards_all_canonical_argv_and_preserves_full_envelope_bytes ... ok
+test bounce::tests::clean_head_equal_to_origin_main_is_reproducible ... ok
+test bounce::tests::dirty_and_divergent_are_named_as_different_refusals ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running unittests src/main.rs (target/debug/deps/pij_rs-8bf3799a63f79bc2)
+
+running 28 tests
+test identity_cli_tests::the_pane_form_is_the_ready_gestures_command_line ... ok
+test identity_cli_tests::an_omitted_parent_is_absent_from_the_wire ... ok
+test identity_cli_tests::no_pane_builds_the_paneless_form ... ok
+test tests::linked_worktree_detection_names_the_git_dir_shape ... ok
+test tests::malformed_environment_values_name_the_variable_and_value ... ok
+test tests::clap_exposes_every_ruled_verb ... ok
+test tests::rendered_pointer_advertises_a_verb_the_real_cli_exposes ... ok
+test tests::editorial_help_is_shape_checked_not_frozen ... ok
+test tests::runtime_controls_resolve_flag_then_environment_then_default ... ok
+test tests::missing_send_body_reaches_the_named_runtime_refusal ... ok
+test tests::no_accept_inbound_withdraws_the_claude_default ... ok
+test tests::non_claude_spawn_defaults_to_no_inbound_setting ... ok
+test tests::inbox_peek_is_an_explicit_non_destructive_mode ... ok
+test tests::claude_spawn_accepts_inbound_by_default ... ok
+test tests::register_requires_a_complete_process_identity ... ok
+test tests::help_leads_with_short_send_and_destructive_inbox_forms ... ok
+test tests::clap_leaves_runtime_defaults_unresolved ... ok
+test tests::explicit_accept_inbound_still_works_for_claude ... ok
+test tests::daemon_bounce_is_real_while_bare_daemon_still_runs_foreground ... ok
+test tests::accept_inbound_and_no_accept_inbound_conflict ... ok
+test tests::typing_state_renders_count_and_since_without_corrupting_json ... ok
+test tests::doctor_exposes_claude_hook_state ... ok
+test tests::revive_carries_only_identity_and_placement ... ok
+test tests::spawn_without_an_id_parses_and_leaves_allocation_to_the_daemon ... ok
+test tests::telegram_short_form_leaves_identity_and_message_id_for_runtime_resolution ... ok
+test tests::send_short_forms_leave_identity_and_message_id_for_runtime_resolution ... ok
+test tests::spawn_waits_thirty_seconds_by_default_and_no_wait_disables_it ... ok
+test tests::claude_adopt_warns_for_unaccepted_caller_config_dir ... ok
+
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/claude_inbound.rs (target/debug/deps/claude_inbound-c87c28c84e698608)
+
+running 2 tests
+test doctor_reports_each_home_without_writing_settings ... ok
+test daemon_boot_repairs_once_and_publishes_one_change_event ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.28s
+
+     Running tests/governance_boot.rs (target/debug/deps/governance_boot-1b3a3824665ca445)
+
+running 1 test
+test shipped_all_real_daemon_boots_and_streams_on_fully_private_resources ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s
+
+     Running tests/lifecycle.rs (target/debug/deps/lifecycle-59999d37a71d0fdd)
+
+running 1 test
+test shipped_lifecycle_cli_forwards_canonical_argv_and_preserves_entire_envelope ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/render_golden.rs (target/debug/deps/render_golden-ad1a0e13b3cbcd67)
+
+running 3 tests
+test register_computed_payload_matches_the_committed_golden ... ok
+test list_computed_payload_matches_the_committed_golden ... ok
+test send_computed_payload_matches_the_committed_golden ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/revive.rs (target/debug/deps/revive-954591eddbaceda5)
+
+running 2 tests
+test shipped_revive_refuses_absent_and_live_ids_without_launching ... ok
+test shipped_revive_derives_identity_and_launches_one_prebind_incarnation ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/shipped_daemon_config.rs (target/debug/deps/shipped_daemon_config-8dce002898411bba)
+
+running 2 tests
+test the_offline_flag_selects_a_daemon_that_touches_nothing ... ok
+test the_shipped_config_boots_real_adapters_and_leaves_a_store_on_disk ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/sidecar_producer.rs (target/debug/deps/sidecar_producer-08cde72e43e876df)
+
+running 1 test
+test the_shipped_client_can_complete_one_sidecar_call ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/spawn.rs (target/debug/deps/spawn-befb623e5ab794ed)
+
+running 3 tests
+test shipped_cli_reads_one_seat_state_back_from_the_real_store ... ok
+test shipped_spawn_revive_and_registration_do_not_attest_native_delivery ... ok
+test shipped_cli_registers_sends_reads_acks_and_does_not_read_twice ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+     Running unittests src/lib.rs (target/debug/deps/pij_core-1bbdc1b0269eb024)
+
+running 27 tests
+test decisions::tests::answer_authority_follows_reparenting_not_historical_parent_or_role ... ok
+test delivery::tests::self_delivery_is_refused_by_address_not_by_name ... ok
+test delivery::tests::receipt_honesty_table_selects_only_recoverable_queue_routes ... ok
+test anomalies::tests::delivered_unacked_uses_the_ts_kind_and_emits_the_exact_ack_command ... ok
+test delivery::tests::delivery_ladder_enumerates_every_rung_in_order ... ok
+test anomalies::tests::every_emitted_row_has_an_observable_and_runnable_remediation ... ok
+test delivery::tests::only_the_command_field_selects_the_pty ... ok
+test delivery::tests::human_typing_only_vetoes_send_keys_delivery ... ok
+test anomalies::tests::verification_of_another_done_does_not_close_latest_claim ... ok
+test anomalies::tests::unverified_done_requires_a_verification_later_than_the_done_claim ... ok
+test anomalies::tests::open_decision_stales_responsible_parent_despite_fresh_card ... ok
+test delivery::tests::socketless_idle_pane_selects_typed_body ... ok
+test anomalies::tests::disposition_events_are_appendable_spine_facts_for_the_exact_occurrence ... ok
+test delivery::tests::terminal_control_body_uses_socket_or_named_pull_never_typing ... ok
+test anomalies::tests::cleared_occurrence_stays_cleared_until_source_evidence_changes ... ok
+test error::tests::audit_failure_names_the_effect_that_landed_and_forbids_blind_resend ... ok
+test error::tests::tombstoned_refusal_says_why_nothing_was_queued ... ok
+test events::tests::all_forwards_additive_kinds_but_explicit_filters_stay_exact ... ok
+test events::tests::kind_and_seat_constraints_are_both_required ... ok
+test framing::tests::frame_names_local_and_machine_qualified_senders ... ok
+test framing::tests::generation_transition_matches_only_the_same_message ... ok
+test model::process_start_tests::supplied_wall_time_is_encoded_without_timezone_conversion ... ok
+test model::process_start_tests::malformed_dates_times_and_rows_keep_the_adapter_error ... ok
+test model::process_start_tests::valid_dates_preserve_the_packed_identity ... ok
+test model::process_start_tests::whitespace_and_existing_field_flexibility_are_preserved ... ok
+test anomalies::tests::status_staleness_uses_thirty_minutes_and_suppresses_parked_states ... ok
+test anomalies::tests::five_governance_kinds_match_canonical_rows_and_real_sequences ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/core_unit_exemplar.rs (target/debug/deps/core_unit_exemplar-5d45540736e3da7e)
+
+running 7 tests
+test a_harness_that_is_not_recognised_is_reported_not_guessed ... ok
+test the_default_config_is_offline ... ok
+test errors_separate_the_states_they_observe_and_name_the_fix ... ok
+test watchdog_eligibility_is_a_decision_table_not_a_timeout ... ok
+test a_delivery_claim_cannot_exist_without_saying_what_was_observed ... ok
+test the_envelope_round_trips_and_omits_absent_data_rather_than_nulling_it ... ok
+test a_seat_descriptor_round_trips_with_its_optional_facts_intact ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/liveness_table.rs (target/debug/deps/liveness_table-431d73c9894f6fc3)
+
+running 5 tests
+test matching_identity_is_active ... ok
+test boot_reset_reads_as_a_mismatch ... ok
+test later_start_at_the_same_pid_is_recycled ... ok
+test missing_pid_is_dead_with_evidence ... ok
+test permission_denied_is_unknown_not_dead ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/memorable_ids.rs (target/debug/deps/memorable_ids-c182fe1a0db79c75)
+
+running 6 tests
+test rust_matches_the_typescript_oracle ... ok
+test collision_probes_leave_the_starting_adjective_row ... ok
+test curated_corpus_is_pinned_and_clean ... ok
+test realistic_collision_allocation_does_not_funnel_into_adjectives ... ok
+test realistic_spawn_seeds_hit_the_designed_ship_share ... ok
+test candidate_sequence_is_complete_without_repeats ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+     Running tests/orchestration.rs (target/debug/deps/orchestration-1c0ca42c98cbe8dd)
+
+running 7 tests
+test read_only_capability_is_enforced_at_one_exhaustive_chokepoint ... ok
+test reconciliation_uses_explicit_freshness_and_records_secondary_mismatches ... ok
+test ordinal_minting_unions_clone_worktrees_and_branch_heads ... ok
+test parent_attribution_names_each_evidence_path_and_each_absence ... ok
+test equivalence_merge_is_the_complete_five_row_table ... ok
+test explicit_stream_ordinal_preserves_existing_names_and_does_not_mutate_inventory ... ok
+test explicit_stream_ordinal_refuses_collisions_in_each_git_namespace ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/report.rs (target/debug/deps/report-cfd47080e05f8340)
+
+running 7 tests
+test absent_card_and_present_empty_card_are_different_facts ... ok
+test spine_failure_reports_that_state_landed_but_note_did_not ... ok
+test malformed_latest_card_is_an_error_not_a_disappearing_card ... ok
+test stale_is_strictly_past_the_configured_threshold_and_ignores_clock_reversal ... ok
+test state_verbs_are_visible_correctable_clearable_and_independently_recorded ... ok
+test declare_reaches_the_states_the_named_helpers_never_exposed ... ok
+test card_fields_enforce_279_280_281_after_whitespace_collapse ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/watchdog.rs (target/debug/deps/watchdog-a35ac21fca7235fb)
+
+running 7 tests
+test exemption_rearms_at_its_deadline_without_erasing_weaker_tiers ... ok
+test configured_threshold_and_derived_reason_are_exact ... ok
+test healthy_long_tool_call_is_not_the_ts_false_stall ... ok
+test pause_precedence_is_exempt_then_compact_then_self ... ok
+test real_working_transition_clears_only_the_compact_tier ... ok
+test tombstoned_relay_and_future_activity_are_never_nudged ... ok
+test every_pause_tier_and_declared_state_has_one_nudge_decision ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/wire_over_corpus.rs (target/debug/deps/wire_over_corpus-a5144f2211578da8)
+
+running 10 tests
+test an_envelope_round_trips_and_a_current_version_is_accepted ... ok
+test the_hello_line_comes_first_and_declares_the_version ... ok
+test a_sequenced_event_never_carries_its_cursor_onto_the_wire ... ok
+test a_known_event_round_trips_through_the_wire ... ok
+test an_empty_stream_is_empty_not_broken ... ok
+test an_envelope_from_the_future_is_refused_whole ... ok
+test an_event_without_a_kind_is_a_shape_error_not_an_unknown_kind ... ok
+test a_stray_human_line_costs_that_line_and_nothing_else ... ok
+test a_truncated_line_is_reported_with_its_line_number ... ok
+test an_unknown_event_kind_is_forwarded_not_dropped ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-4d21b1d12e793a7e)
+
+running 309 tests
+test delivery::tests::copilot_programmatic_controls_refuse_without_enqueue_or_tmux ... ok
+test delivery::tests::a_direct_delivery_is_claimed_before_injection_and_a_retry_is_suppressed ... ok
+test delivery::tests::a_failed_injection_releases_its_claim_so_the_retry_still_delivers ... ok
+test delivery::tests::a_paneless_seat_is_never_gated_and_never_captured ... ok
+test delivery::tests::a_stale_clear_tick_cannot_authorize_send_keys_a_fresh_capture_vetoes ... ok
+test delivery::tests::first_attempt_socketless_pane_types_the_full_shared_frame ... ok
+test delivery::tests::copilot_first_arrival_is_native_only_even_without_capability ... ok
+
+[Artifact storage: ~/.omp/agent/sessions/-pi-hacking-pij/2026-09-07T00-07-52-105Z_01a07931-5829-7000-9336-5ad1324f937e/337.bash-original.log (90.5KB). Use artifact://337:N-M to page, artifact://337:raw:N-M for verbatim chunks, and the artifact file path for search/copy workflows.]
+
+[Showing lines 1-300 of 1431. Use :301 to continue]

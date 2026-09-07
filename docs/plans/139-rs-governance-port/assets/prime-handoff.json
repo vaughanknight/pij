@@ -1,0 +1,67 @@
+{
+  "source_sha": "4751923e6625e53ed3955b4587fdea58dd4eb0fe",
+  "runtime_review_subject": "335d20981c37c868f6039724f4a78b621c8bb7e2",
+  "branch": "139-rs-governance-port",
+  "workspace": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port",
+  "owner": "pij-lonely-ikrie",
+  "recipient": "pij-minor-unicorn",
+  "scope": "Plan139 Rust governance port including folded138; local composition accepted, external acceptance blocked",
+  "gate_proof": "assets/final-gates-4751923e-proof.json",
+  "review_report": "assets/reviews/review.final-composed.md",
+  "machine_review_receipt": "assets/reviews/team-review-receipt.dd.json",
+  "native_cli_workflow": "assets/native-cli-workflow-proof.json",
+  "actual_omp_canary": "assets/actual-omp-canary-proof.json",
+  "paneless_roundtrip": "assets/paneless-smoke-proof.json",
+  "keeper_notice": "assets/native-notice-proof.json",
+  "parity": "assets/parity-final-proof.json",
+  "parity_corpus_sha256": "8ac162852e0da1858029190386f75984cbdfafc0147b113de217b215525af9c7",
+  "original_capture_sha256": "a9311375da6623bbbd9aa4e4e1520353cd543b6b069ad857b365af2017a12f51",
+  "buffers": {
+    "manifest": "assets/buffers/manifest.json",
+    "copies": 8,
+    "distinct_existing_source_buffers": 7,
+    "originals_drained_or_deleted": false,
+    "worktrees_retired": false,
+    "latest_pm_sha256": "c0fdef33a2102d9fa74f0818862700d16a92a21ff59b092d26693f785d0ca575"
+  },
+  "external_acceptance": {
+    "owner": "pij-minor-unicorn",
+    "acceptance_criteria": [
+      "AC2",
+      "AC3",
+      "AC7",
+      "AC9"
+    ],
+    "task": "tk-42a4",
+    "open_review_finding": "EXT-001",
+    "required": "Capture production stamped descriptor/tombstone events, role/StateCard/tree/no-banner consumer rendering, and conservative close/reap receipts; then update canonical proof rows and complete/archive from those receipts, never isolated evidence."
+  },
+  "operations": {
+    "production_deployed": false,
+    "production_restarted": false,
+    "global_config_modified": false,
+    "worktrees_removed": false,
+    "plan_archived": false
+  },
+  "remaining_notes": [
+    "F004 is an accepted latent relay-rendering discrepancy for zero/multiple evidence seqs; current detectors each emit one.",
+    "Original900s gate timeout cause remains unproven; later complete supervised gates passed.",
+    "Historical missing commit-attribution warnings remain advisory; no commit-time identity fabricated.",
+    "Modern builder importer/advance assumes assets/impl-guide.dd.json; prime requires the existing root pij-team guide. Preserve that ruling; schema conformance is not importer success."
+  ],
+  "encodable_harness_lesson": "Before review receipt release, distinguish builder/team machine receipts from builder/review reports and verify identity fields against native instruments; schema validity cannot distinguish a review workspace from the registration root.",
+  "review_receipt_sha256": "cdd28343c3f6b0e6648d63495869036e76da1d3ae740c5991695e40f7bca5c69",
+  "review_schema_validation": {
+    "receipt": "assets/reviews/team-review-validation.json",
+    "cwd": "/Users/jordanknight/substrate/harness-engineering",
+    "depth": 0,
+    "errors": 0,
+    "warnings": 0,
+    "scope": "Native schema conformance only; real file digests checked separately. Default plan-repo schema lookup and modern builder importer compatibility remain unsupported for retained legacy guide.",
+    "generated_machine_markdown": "Not generated: native cross-repository build refuses E429 and set refuses E433; generic review report retains its generated Markdown. Machine JSON schema conformity succeeded via read-only depth0 validation.",
+    "validation_sha256": "34556ca99234e1a00aa71d642e6d695749f71f84dfda2da35d2a9dcec9bf5605"
+  },
+  "reviewer_registry_root": "/Users/jordanknight/pi-hacking/pij",
+  "review_workspace": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port",
+  "recorded_at": "2026-09-07T15:54:27Z"
+}

@@ -132,6 +132,15 @@ pub enum PijError {
         seat: SeatId,
     },
 
+    /// A governance transaction refused before committing any row or event.
+    #[error("{code}: {record}")]
+    GovernanceRefused {
+        /// Stable machine-readable refusal code, not parsed from display text.
+        code: String,
+        /// Record identity observed at refusal, such as the current lease id.
+        record: String,
+    },
+
     /// An adapter failed at its boundary. Carries the adapter's own words: a
     /// rewritten cause is a lost cause.
     #[error("{adapter}: {message}")]

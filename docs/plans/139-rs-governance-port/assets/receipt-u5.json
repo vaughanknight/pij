@@ -1,0 +1,172 @@
+{
+  "unit": "u5",
+  "status": "READY_TO_VALIDATE",
+  "not_done": true,
+  "created_at": "2026-09-07T03:51:48.194560+00:00",
+  "seat": "pij-peaceful-genar",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u5",
+  "branch": "139-rs-governance-port-u5",
+  "runtime": {
+    "harness": "OMP",
+    "version": "18.0.10",
+    "model": "github-copilot/gpt-6-astra-1m",
+    "effort": "high",
+    "pane": "%3998"
+  },
+  "authorization": {
+    "pm": "pij-lonely-ikrie",
+    "scope": "ACK1-5 accepted; source/tests only; skip validators/formatters/commits; PM composes shared wiring"
+  },
+  "changed_source_paths": [
+    {
+      "path": "crates/harnesses/src/proc.rs",
+      "sha256": "0ba2f2031454117144407ad83d5c0f64ebee2248e3446eeb997b14237511bbf1"
+    },
+    {
+      "path": "crates/daemon/src/reaper.rs",
+      "sha256": "0addeca3f07ecaa467c687f6dff9109a9b2fc82d1179902f47d174c3a249efcd"
+    },
+    {
+      "path": "crates/daemon/src/reaper_tests.rs",
+      "sha256": "fe07d0c2b73177f739971b19b32f5ce260a755ab8710de85abca0d62a6c93465"
+    },
+    {
+      "path": "crates/daemon/src/http/lifecycle.rs",
+      "sha256": "753d65c527d905b6ba59d3497c3eae07e7c6eb8302fd4f3cf6fb55e8ee5f46f1"
+    },
+    {
+      "path": "crates/daemon/tests/lifecycle_http.rs",
+      "sha256": "1c7d8ef627600218d0e2172d50e114a5140268e6a8fb9120c81cd117c21031ef"
+    },
+    {
+      "path": "crates/cli/src/lifecycle.rs",
+      "sha256": "8877f43910edbb84cc6e2965ede0e1aed48a9b664b92813a0d88a638f5782ca5"
+    },
+    {
+      "path": "crates/cli/tests/lifecycle.rs",
+      "sha256": "13a4b9f78f2108d14b859966e94d7ff9cd0802197d54613b39b8df10f17b783d"
+    }
+  ],
+  "other_authored_paths": [
+    "docs/plans/139-rs-governance-port/assets/receipt-u5.json",
+    ".harness/temp/agent/session-buffer.md"
+  ],
+  "implementation": {
+    "close": "Shared daemon caller resolution; self or raw recorded parent; Registry::tombstone_if_unchanged; durable tombstone event readback; parent retries return existing receipt without publication; no process/pane termination.",
+    "reap": "Known process dead or mismatched proc_start AND recorded pane absent; paneless process only. UNKNOWN is a brake, never deletion policy. Reobserve before conditional commit; raw Registry::get snapshot compared atomically by u1/PM seam; conflicts reported unverifiable. Dry-run no row/event writes, actual before/after/candidate/reaped rows.",
+    "proc": "CommandOutput retains actual std::process::ExitStatus from PsRunner. Every nonzero status including1 and signalled termination is Adapter/UNKNOWN, with status in diagnostic. Only successful empty stdout+stderr proves absence. Removed stderr-based absence inference.",
+    "new_dependencies": [],
+    "migrations": [],
+    "recycled_fixture_origin": ".pi/extensions/pij/core/daemon/death-reconciler.snapshot.test.ts:70 (plan095 pij-weak-gurgeh pid952); Rust test preserves id/pid and checks both earlier/later proc_start mismatch plus pane-presence veto."
+  },
+  "snap_in": {
+    "constructors": "None. Functional reaper consumes existing Registry, LivenessPort, TmuxPort; HTTP uses existing AppState.services and Spine.",
+    "frozen_dependency": "async fn Registry::tombstone_if_unchanged(&self, expected: SeatDescriptor, reason: String) -> Result<Seq>; u1/PM implements exact raw-descriptor comparison inside same ordered transaction as state+event. E-RS-INCARNATION-CHANGED means no writes/events.",
+    "call_order": [
+      "read caller via identity::resolve_seat",
+      "get exact raw target descriptor",
+      "check resolved actor self/current raw parent for close; observe liveness/pane for reap",
+      "recheck liveness/pane before actual reap",
+      "Registry::tombstone_if_unchanged atomically compares snapshot and publishes tombstone",
+      "close reads bounded latest_matching seat.tombstone and verifies seq/time/reason; reap reports committed seq and active after count"
+    ],
+    "daemon_lib": "Add pub mod reaper; no Services fields/constructor/dependency edits.",
+    "http_mod": "Add mod lifecycle; Endpoint::{Close,Reap}; add both to Endpoint::ALL and increase its array count by2, path /v1/close and /v1/reap, Method::POST, existing peer POST exposure allowlist beside Role, and route(endpoint.path(),post(lifecycle::close/reap)) arms under the existing bearer ring.",
+    "cli_lib": "Add pub mod lifecycle; (private mod also exposes inherent DaemonClient methods; match current pub mod role convention).",
+    "cli_main": "Add Command::{Close,Reap} each with #[arg(trailing_var_arg = true, allow_hyphen_values = true)] args: Vec<String>. Arms compute as_json = cli.json || args.iter().any(|arg| arg == \"--json\") then emit(&client.close/reap(&args, &caller_context()).await, as_json). Add command labels pij close/reap and root help verb roster entries beside role.",
+    "test_module": "reaper.rs already attaches #[cfg(test)] #[path=\"reaper_tests.rs\"] mod tests; no PM test-module wiring needed.",
+    "shared_helper": "daemon/tests/lifecycle_http.rs reuses existing support/governance_http.rs unchanged.",
+    "shared_identity_requirement": "PM owns http/identity.rs enrichment: universal retired-identity refusal remains HTTP400/ok:false, details.tombstone_seq equals the committed close event sequence and meta names it. Both pane-only and asserted-id retired callers must receive the receipt-bearing refusal without gaining authentication. u5 lifecycle self-close regression asserts both; no worker edit to shared identity."
+  },
+  "tests_authored": {
+    "crates/harnesses/src/proc.rs": [
+      "exact_pid_command_and_macos_parser_are_fixture_backed",
+      "linux_spacing_is_fixture_backed",
+      "permission_denied_is_not_dead",
+      "successful_empty_exact_pid_probe_is_none",
+      "failed_empty_probe_is_unknown_not_dead",
+      "failed_no_such_process_probe_is_unknown_not_dead",
+      "successful_empty_probe_with_error_text_is_unknown",
+      "signalled_empty_probe_is_unknown_not_dead",
+      "failed_probe_with_a_process_row_is_unknown",
+      "utc_record_matches_the_same_local_start_and_rejects_recycled_pid_time",
+      "malformed_process_output_is_an_adapter_error"
+    ],
+    "crates/daemon/src/reaper_tests.rs": [
+      "reap_dry_run_matches_canonical_candidate_and_run_commits_one_event",
+      "reap_failed_and_signalled_process_observations_are_unverifiable_without_events",
+      "reap_unknown_recorded_pane_vetoes_but_paneless_needs_no_tmux_probe",
+      "reap_recycled_pid_requires_recorded_pane_absence_and_never_signals_replacement",
+      "reap_concurrent_revive_between_observation_and_commit_is_preserved",
+      "reap_recheck_unknown_or_matching_live_process_cancels_candidate",
+      "reap_matching_live_process_is_retained_without_any_pane_probe_or_event"
+    ],
+    "crates/daemon/tests/lifecycle_http.rs": [
+      "close_parent_tombstones_once_with_canonical_receipt",
+      "close_outsider_and_unknown_target_refuse_without_retiring_a_seat",
+      "close_self_uses_resolved_caller_without_parent_privilege",
+      "lifecycle_unknown_flags_and_forged_actor_are_not_silently_accepted",
+      "reap_missing_process_identity_is_unverifiable_in_dry_run_and_run"
+    ],
+    "crates/cli/tests/lifecycle.rs": [
+      "shipped_lifecycle_cli_forwards_canonical_argv_and_preserves_entire_envelope"
+    ]
+  },
+  "baseline_red_strategy": {
+    "owner": "PM only, after edit barrier; no RED or GREEN executed by worker",
+    "http": "Copy daemon/tests/lifecycle_http.rs and support/governance_http.rs plus canonical governance routes fixture to isolated pre-fix worktree. Existing build_services/router public APIs are used; /v1/close and /v1/reap route absence causes behavioral status assertion failures, not unresolved new symbols.",
+    "cli": "Copy cli/tests/lifecycle.rs plus canonical routes fixture to isolated pre-fix worktree; it runs CARGO_BIN_EXE_pij-rs against its own ephemeral mock HTTP listener. Pre-fix unknown close/reap exits instead of matching the pinned success envelope; no new client API is imported.",
+    "proc": "Add ONLY failed_empty_probe_is_unknown_not_dead and failed_no_such_process_probe_is_unknown_not_dead tests to baseline proc.rs tests module, unchanged bodies. Both use existing output(false,...) helper. Run selected tests on unchanged classifier; old classifier returns None and assertions fail. Do not copy new ExitStatus struct/helper for this RED proof.",
+    "commands": [
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-harnesses --lib proc::tests::failed_empty_probe_is_unknown_not_dead -- --exact",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-harnesses --lib proc::tests::failed_no_such_process_probe_is_unknown_not_dead -- --exact",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --test lifecycle_http",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-cli --test lifecycle"
+    ]
+  },
+  "validation": {
+    "executed": false,
+    "reason": "Explicit PM concurrent-edit barrier: no build/test/formatter/linter/harness boot/check or commit.",
+    "after_composition_commands": [
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-harnesses --lib proc::tests",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --lib reaper::tests",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --test lifecycle_http",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-cli --test lifecycle",
+      "harness checks"
+    ],
+    "environment": "Run in PM composed worktree with CARGO_TARGET_DIR private to that worktree. Production smoke forbidden; any actual daemon proof follows full canonical isolation recipe (port17466 for u5/private state/HOME/Claude/XDG homes/private TMUX socket for daemon AND clients). Test HTTP peers bind127.0.0.1:0; no production daemon.",
+    "proof_ceiling": "Authored source and tests, no compile/runtime/test/format/lint success claimed. PM owns RED/GREEN and composed proof."
+  },
+  "toolchain_observed": {
+    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "cargo 1.98.0 (797e8a9bc 2026-08-05)",
+    "omp": "omp/18.0.10",
+    "harness": "0.14.0"
+  },
+  "ASSUMPTIONS": [
+    "u1/PM supplies frozen conditional Registry method to all concrete/fake implementations before compilation; ordinary tombstone is never used by new close/reap.",
+    "Registry::get is raw; published registry uses one shared EventBus; same commit stamps tombstone timestamp/reason and event at/payload/seq.",
+    "Bounded Spine::latest_matching returns assigned Event.seq; an absent/inconsistent receipt refuses rather than invents a timestamp or seq.",
+    "PM owns all common module/Endpoint/CLI wiring and imports all seven source paths before validation.",
+    "Unknown host evidence vetoes mutation; a confirmed matching live process already vetoes reap and does not require an unused pane probe.",
+    "Actual reaper preserves initial candidates even when a subsequent observation/CAS vetoes commit; unverifiable names the changed or missing evidence; reaped names only commits.",
+    "No age threshold, PID signal, or pane-kill side effect is authorized.",
+    "PM will implement the shared retired-identity refusal receipt enrichment before GREEN; new self-close test deliberately remains unproven until that composition work lands."
+  ],
+  "acceptance_distinctions": [
+    "Successful-empty ps alone proves absence; absent-pid ps implementations returning1 now reduce automatic reap eligibility deliberately.",
+    "Prime confirmed universal retired-identity refusal. Live parent retry returns exact existing close receipt. Retired-self retries (pane-only and asserted-id) must receive decodable identity refusal naming tombstone seq, not lost-close ambiguity. Auth remains revoked. Test authored against PM-owned enrichment; current u5 checkout shared identity lacks it.",
+    "Simultaneous close/snapshot mutation can return E-RS-INCARNATION-CHANGED; no hidden retry or get-then-unconditional mutation was added."
+  ],
+  "friction": {
+    "buffer": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u5/.harness/temp/agent/session-buffer.md",
+    "records": [
+      "DL-001 failed ps/atomic revive safety",
+      "DL-002 LSP no-reference/no-definition gap on exact worktree symbol",
+      "DL-003 slow scout partial handoff"
+    ],
+    "drained": false,
+    "encoded_improvement": "Authored failed/signalled ps and actual-store concurrent-revive regression sensors; PM executes them after the edit barrier."
+  },
+  "holding": "All owned source editing paused once this receipt is sent. No commit/merge/deploy performed."
+}

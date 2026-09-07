@@ -1,8 +1,9 @@
-// plan 054 — ACCEPTANCE SWEEP (P4 T007, V-04): all 12 ACs demonstrated in ONE
-// isolated harness. R3 fence: temp PIJ_HOME + real fs adapters, FAKE process/
+// plan 054 — retained legacy-library acceptance sweep (P4 T007, V-04).
+// These store/domain proofs are not current public rs CLI acceptance. R3 fence:
+// temp PIJ_HOME + real fs adapters, FAKE process/
 // clock/tmux-liveness, daemon logic driven ONLY by single-step tick() (no live
-// daemon, no real ~/.pij, no global state). The one subprocess is the real bin
-// running `spine render` against the SAME temp home (bin-owned verb, AC-10).
+// daemon, no real ~/.pij, no global state). Step 11 separately drives the real
+// shim against a scripted HTTP fixture: caller-wire proof, not Rust handler proof.
 //
 // AC → generating step → assertion map (each `it` carries its AC in the name):
 //   AC-01 project create/list/set …… step 2 — record file, attribution, collision slug, list, set-links
@@ -14,14 +15,25 @@
 //   AC-07 anomalies + parent latch … step 7 — all three kinds w/ evidence; sweep alerts once, re-tick alerts 0
 //   AC-08 adoption + link …………… step 9 — unadopted projection, evented re-parent, cycle rejection, spawnedBy immutable
 //   AC-09 full node card ……………… step 10 — field-by-field incl. axes, gauges, windowId
-//   AC-10 spine render ……………… step 11 — real bin writes spine/spine.md byte-identical to the pure render
+//   AC-10 spine render ……………… step 11 — rs text/cursor envelope forwarded; legacy log/render remains untouched
 //   AC-11 legacy round-trip ………… step 1 — pre-054 descriptor loads, lists, round-trips byte-stably
-//   AC-12 public contract shipped … step 12 — platform doc + README pointer + skill node route present
+//   AC-12 historical artifacts …… step 12 — platform doc + README pointer + current skill node route present
 
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFile } from "node:child_process";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import { createServer } from "node:http";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FsAllocationStore } from "./adapters/allocation-store.js";
 import { FsAssignmentStore } from "./adapters/assignment-store.js";
@@ -45,7 +57,8 @@ const ISO_RECENT = new Date(NOW - 30_000).toISOString();
 const ACTOR = "pij-prime-seat";
 const REPO_DOCS = join(import.meta.dirname, "..", "..", "..");
 const CLI = join(import.meta.dirname, "cli.ts");
-const TSX = join(import.meta.dirname, "..", "..", "..", "node_modules", ".bin", "tsx");
+const TSX = createRequire(import.meta.url).resolve("tsx");
+const execute = promisify(execFile);
 
 let HOME: string;
 let registry: FsRegistry;
@@ -58,7 +71,7 @@ let spineLog: FsSpineLog;
 let opJournal: FsOpJournal;
 let platformWriteLock: FsPlatformWriteLock;
 
-/** Real-fs CliDeps over the temp home; identity + clock faked (R3). */
+/** Retained library CliDeps over the temp home; identity + clock faked (R3). */
 function deps(self = ACTOR): CliDeps {
 	return {
 		registry,
@@ -204,7 +217,7 @@ afterAll(() => {
 	rmSync(HOME, { recursive: true, force: true });
 });
 
-describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fenced)", () => {
+describe("plan 054 retained library acceptance sweep — isolated store roundtrip (R3-fenced)", () => {
 	it("step 1 · AC-11 — a pre-054 descriptor loads, lists, and round-trips unchanged", () => {
 		const loaded = registry.read("pij-legacy");
 		expect(loaded).not.toBeNull();
@@ -549,28 +562,128 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		});
 	});
 
-	it("step 11 · AC-10 (+AC-03 immutability) — the real bin renders spine.md byte-identical to the pure render", () => {
-		const out = execFileSync(TSX, [CLI, "spine", "render", "--json"], {
-			env: { ...process.env, PIJ_HOME: HOME, PIJ_SESSION_ID: "", TMUX_PANE: "" },
-			encoding: "utf8",
-			timeout: 15_000,
+	it("step 11 · AC-10 (+AC-03 immutability) — forwards rs text/cursor without writing a legacy projection", async () => {
+		const fixtures: {
+			routes: { path: string; cases: { id: string; response: unknown }[] }[];
+		} = JSON.parse(
+			readFileSync(
+				join(REPO_DOCS, "crates/testkit/fixtures/golden/api/governance-routes.json"),
+				"utf8",
+			),
+		);
+		const renderCase = fixtures.routes
+			.find((route) => route.path === "/v1/spine")
+			?.cases.find((entry) => entry.id === "spine-render");
+		if (renderCase === undefined) throw new Error("missing canonical spine-render fixture");
+		expect(renderCase.response).toMatchObject({
+			ok: true,
+			command: "pij spine",
+			v: 2,
+			data: { text: "101 plan139.control pij-parent", cursor: 101 },
 		});
-		const envelope = JSON.parse(out) as { path: string; bytes: number; events: number };
+		const rawEnvelope = ` ${JSON.stringify(renderCase.response)}\n`;
 		const events = spineLog.read();
-		const written = readFileSync(join(HOME, "spine", "spine.md"), "utf8");
-		expect(written).toBe(renderSpineMd(events));
-		expect(envelope.events).toBe(events.length);
-		expect(written).toContain("node-linked");
-		expect(written).toContain("system-state");
-		// AC-03 across the WHOLE sweep: everything appended since step 4 only
-		// ever extended the log — the step-4 prefix is untouched.
+		const legacyBytes = readFileSync(join(HOME, "spine", "events.ndjson"));
+		expect(existsSync(join(HOME, "spine", "spine.md"))).toBe(false);
+		// Keep the historical renderer and whole-sweep append-only proof at their
+		// actual library boundary; the rs endpoint deliberately returns text only.
+		const rendered = renderSpineMd(events);
+		expect(rendered).toContain("node-linked");
+		expect(rendered).toContain("system-state");
 		expect(events.slice(0, logSnapshotAtStep4.length)).toEqual(logSnapshotAtStep4);
-	});
+		const clientHome = join(HOME, "spine-shim-client");
+		mkdirSync(clientHome);
+		writeFileSync(join(clientHome, "daemon.key"), "private-spine-key");
+		const requests: { method?: string; authorization?: string; body: unknown }[] = [];
+		const server = createServer((request, response) => {
+			void (async () => {
+				response.setHeader("Content-Type", "application/json");
+				if (request.url === "/health") {
+					response.end(
+						JSON.stringify({
+							ok: true,
+							command: "health",
+							v: 2,
+							data: { status: "ok", build: "fixture", offline: true, machine: "private" },
+						}),
+					);
+					return;
+				}
+				if (request.url !== "/v1/spine") {
+					response.writeHead(404).end();
+					return;
+				}
+				let body = "";
+				for await (const chunk of request) body += String(chunk);
+				requests.push({
+					method: request.method,
+					authorization: request.headers.authorization,
+					body: JSON.parse(body),
+				});
+				response.end(rawEnvelope);
+			})().catch((error: Error) => response.destroy(error));
+		});
+		try {
+			await new Promise<void>((resolve, reject) => {
+				server.once("error", reject);
+				server.listen(0, "127.0.0.1", resolve);
+			});
+			const address = server.address();
+			if (address === null || typeof address === "string") throw new Error("missing private port");
+			const { stdout, stderr } = await execute(
+				process.execPath,
+				["--import", TSX, CLI, "spine", "render", "--json"],
+				{
+					cwd: HOME,
+					timeout: 15_000,
+					killSignal: "SIGKILL",
+					env: {
+						PATH: process.env.PATH,
+						HOME: clientHome,
+						USERPROFILE: clientHome,
+						CLAUDE_CONFIG_DIR: join(clientHome, "claude"),
+						XDG_CONFIG_HOME: join(clientHome, "config"),
+						TSX_DISABLE_CACHE: "1",
+						PIJ_HOME: HOME,
+						PIJ_SESSION_ID: ACTOR,
+						PIJ_RS_STATE_DIR: clientHome,
+						PIJ_RS_ADDR: `127.0.0.1:${address.port}`,
+					},
+				},
+			);
+			expect(stderr).toBe("");
+			expect(stdout).toBe(rawEnvelope);
+			expect(requests).toEqual([
+				{
+					method: "POST",
+					authorization: "Bearer private-spine-key",
+					body: {
+						argv: ["spine", "render", "--json"],
+						caller: expect.objectContaining({
+							pijSessionId: ACTOR,
+							cwd: realpathSync(HOME),
+						}),
+					},
+				},
+			]);
+			expect(existsSync(join(HOME, "spine", "spine.md"))).toBe(false);
+			expect(readFileSync(join(HOME, "spine", "events.ndjson"))).toEqual(legacyBytes);
+			expect(spineLog.read()).toEqual(events);
+		} finally {
+			if (server.listening)
+				await new Promise<void>((resolve, reject) => {
+					server.close((error) => (error ? reject(error) : resolve()));
+					server.closeAllConnections();
+				});
+			rmSync(clientHome, { recursive: true, force: true });
+		}
+	}, 30_000);
 
-	it("step 12 · AC-12 — the public contract is shipped: platform doc, README pointer, skill route", () => {
+	it("step 12 · AC-12 — current Rust authority guide and skill route remain available", () => {
 		const platformDoc = readFileSync(join(REPO_DOCS, "docs", "how", "pij-platform.md"), "utf8");
-		expect(platformDoc).toContain("on-disk public contract");
-		expect(platformDoc).toContain("projects/<slug>/project.json");
+		expect(platformDoc).toContain("Rust authority and consumer boundaries");
+		expect(platformDoc).toContain("[pij-rs API](pij-rs-api.md)");
+		expect(platformDoc).not.toContain("the files are the API");
 		expect(readFileSync(join(REPO_DOCS, "README.md"), "utf8")).toContain(
 			"docs/how/pij-platform.md",
 		);
@@ -603,7 +716,9 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		);
 
 		expect(ready).not.toMatch(/--role|orchestration role set/);
-		expect(kickoff).toContain("pij link <id> --parent <o-prime-id> --role pm --json");
+		expect(kickoff).toContain("pij role <id> pm --json");
+		expect(kickoff).not.toContain("pij link <id> --parent <o-prime-id> --role pm --json");
+		expect(kickoff).toContain("after verifying the recorded parent");
 		for (const route of [pair, orchestrator]) {
 			expect(route).toContain("Start-of-work report");
 			expect(route).toContain("Stop-of-work report");

@@ -1,0 +1,44 @@
+{
+  "at": "2026-09-07T12:15:43Z",
+  "baseline": {
+    "base": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
+    "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-gate-red",
+    "overlay": [
+      "crates/daemon/tests/governance_notices.rs",
+      "crates/testkit/fixtures/golden/api/governance-routes.json"
+    ],
+    "production_source": "Unchanged78531 governance.rs; no sender fix or paneless source overlaid",
+    "intent": "Behavioral RED of required native keeper notice; missing fixture or compiler failure is not RED"
+  },
+  "red": {
+    "process": "p139-notice-red",
+    "exit": 101,
+    "passed": 1,
+    "failed": 12,
+    "output": "native-notice-red-output.txt",
+    "classification": "Behavioral missing notice/send/partial evidence; test compiled and ran"
+  },
+  "green": {
+    "process": "p139-native-gate-targets",
+    "test_binary": "governance_notices",
+    "passed": 13,
+    "failed": 0,
+    "output": "native-gate-targets-output.txt",
+    "scope": "Native Rust HTTP + real shared SQL and delivery service, scripted host/transport; no model/production claim"
+  },
+  "other_suites": {
+    "governance_composition": 4,
+    "role_http": 10,
+    "shim_http": "13 passed3 failed; separate pull fixture correction under validation"
+  },
+  "rulings": [
+    "baton.request persists its request and publishes baton.requested before using the existing DeliveryService.send once, from requester to definition.created_by, with the legacy request notice body.",
+    "Missing or dissolved keeper returns notice:null without a delivery admission; the committed request and event remain.",
+    "Use actual receipt strength: idle or working Pi/Omp extension-stream admission is queued until ReaderRead (#374 honest-receipt rule); confirmed socket/native injection may report delivered.",
+    "Unverified uses only existing core::liveness::alive Dead/Recycled process-incarnation evidence; native stale-external witness is a recycled binding, never a restored heartbeat-age threshold.",
+    "Send error, Held or Refused does not erase the committed request; E-RS-PARTIAL carries committed=true, event_published=true, request and seq. Publication failure occurs before any send.",
+    "Self-send still goes through existing delivery refusal; no special self-send bypass or second sender."
+  ],
+  "fixture_sha256": "80e53d87286c56637fd3ac0693e990c472cdabbe99d00d7fa1bcbd9e92e01269",
+  "source_pin": "Composed changes over78531; final source commit/gates still pending"
+}

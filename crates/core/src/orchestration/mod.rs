@@ -18,8 +18,11 @@ pub use descriptor::{
     plan_descriptor_reconciliation,
 };
 pub use governance::{
-    BatonDefinition, Dispatch, DispatchState, PrimeDesignation, Project, RoleAssignment,
+    BatonDefinition, BatonRequest, BatonRequestState, Dispatch, DispatchAcknowledgement,
+    DispatchCanary, DispatchState, Fence, PlanAttestation, PrimeDesignation, PrimeState, Project,
+    ProjectUpdate, RoleAssignment, Stream, StreamState, TaskAssignment, TaskCloseReason,
 };
 pub use inventory::{
     RepoInventory, StreamPlan, StreamPlanError, mint_ordinal, plan_stream_creation,
+    plan_stream_creation_at_ordinal,
 };

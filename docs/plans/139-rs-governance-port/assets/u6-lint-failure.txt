@@ -1,0 +1,302 @@
+npm run lint
+
+> pij@0.1.0 lint
+> biome check .
+
+.pi/extensions/pij/adapters/generation-seam.test.ts:266:65 lint/complexity/noUselessEscapeInRegex  FIXABLE  ━━━━━━━━━━
+
+  i The character doesn't need to be escaped.
+  
+    264 │ 	const registeredPaths = (rust: string): ReadonlySet<string> => {
+    265 │ 		const paths = new Set<string>();
+  > 266 │ 		for (const match of rust.matchAll(/Self::\w+\s*=>\s*"(\/v1\/[^\"]*|\/health)"/g)) paths.add(match[1] as string);
+        │ 		                                                              ^^
+    267 │ 		if (paths.size === 0) throw new Error("no endpoint paths found — did Endpoint::path move?");
+    268 │ 		return paths;
+  
+  i Safe fix: Unescape the character.
+  
+    266 │ → → for·(const·match·of·rust.matchAll(/Self::\w+\s*=>\s*"(\/v1\/[^\"]*|\/health)"/g))·paths.add(match[1]·as·string);
+        │                                                                   -                                                 
+
+biome.json:2:13 deserialize ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i The configuration schema version does not match the CLI version 2.4.14
+  
+    1 │ {
+  > 2 │ 	"$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+      │ 	           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    3 │ 	"files": {
+    4 │ 		"includes": [
+  
+  i   Expected:                     2.4.14
+      Found:                        2.0.0
+  
+  
+  i Run the command biome migrate to migrate the configuration file.
+  
+
+.pi/extensions/pij/adapters/generation-cutover.test.ts:180:19 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    179 │ 	it.each(["inbox", "report", "project"])("an unlisted %s leaf never falls through to legacy", async (verb) => {
+  > 180 │ 		const refusal = contracts.refusals.unported!;
+        │ 		                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    181 │ 		const host = replying(canonicalBytes(refusal.response), refusal.http_status);
+    182 │ 		const result = await routeVerb(verb, "synthetic-leaf", [verb, "synthetic-leaf"], host.deps);
+  
+
+.pi/extensions/pij/adapters/generation-cutover.test.ts:223:16 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    221 │ 	it.each(postCases)("$id POST preserves argv, caller and complete v2 success bytes", async (fixture) => {
+    222 │ 		const argv = [...fixture.argv, "--json"];
+  > 223 │ 		const verb = argv[0]!;
+        │ 		             ^^^^^^^^
+    224 │ 		const leaf = leafOf(fixture.argv);
+    225 │ 		const raw = canonicalBytes(fixture.response);
+  
+
+.pi/extensions/pij/adapters/generation-cutover.test.ts:238:21 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    236 │ 			},
+    237 │ 		]);
+  > 238 │ 		expect(JSON.parse(host.requests.at(-1)!.body!)).toEqual({
+        │ 		                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    239 │ 			argv,
+    240 │ 			caller: { tmuxPane: fixture.request?.caller?.TMUX_PANE, cwd: fixture.request?.caller?.cwd },
+  
+
+.pi/extensions/pij/adapters/generation-cutover.test.ts:238:21 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    236 │ 			},
+    237 │ 		]);
+  > 238 │ 		expect(JSON.parse(host.requests.at(-1)!.body!)).toEqual({
+        │ 		                  ^^^^^^^^^^^^^^^^^^^^^
+    239 │ 			argv,
+    240 │ 			caller: { tmuxPane: fixture.request?.caller?.TMUX_PANE, cwd: fixture.request?.caller?.cwd },
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    236 236 │         },
+    237 237 │       ]);
+    238     │ - → → expect(JSON.parse(host.requests.at(-1)!.body!)).toEqual({
+        238 │ + → → expect(JSON.parse(host.requests.at(-1)?.body!)).toEqual({
+    239 239 │         argv,
+    240 240 │         caller: { tmuxPane: fixture.request?.caller?.TMUX_PANE, cwd: fixture.request?.caller?.cwd },
+  
+
+.pi/extensions/pij/adapters/generation-cutover.test.ts:252:21 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    250 │ 			const fixture = postCases.find((entry) => entry.response.command === refusal.response.command);
+    251 │ 			expect(fixture).toBeDefined();
+  > 252 │ 			const argv = [...fixture!.argv, "--json"];
+        │ 			                 ^^^^^^^^
+    253 │ 			const raw = canonicalBytes(refusal.response);
+    254 │ 			const host = replying(raw, refusal.http_status, callerDeps(fixture!.request));
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    250 250 │         const fixture = postCases.find((entry) => entry.response.command === refusal.response.command);
+    251 251 │         expect(fixture).toBeDefined();
+    252     │ - → → → const·argv·=·[...fixture!.argv,·"--json"];
+        252 │ + → → → const·argv·=·[...fixture?.argv,·"--json"];
+    253 253 │         const raw = canonicalBytes(refusal.response);
+    254 254 │         const host = replying(raw, refusal.http_status, callerDeps(fixture!.request));
+  
+
+.pi/extensions/pij/adapters/generation-cutover.test.ts:254:63 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    252 │ 			const argv = [...fixture!.argv, "--json"];
+    253 │ 			const raw = canonicalBytes(refusal.response);
+  > 254 │ 			const host = replying(raw, refusal.http_status, callerDeps(fixture!.request));
+        │ 			                                                           ^^^^^^^^
+    255 │ 			const result = await routeVerb(argv[0]!, leafOf(fixture!.argv), argv, host.deps);
+    256 │ 			expect(result.outcome.kind.startsWith("legacy-")).toBe(false);
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    252 252 │         const argv = [...fixture!.argv, "--json"];
+    253 253 │         const raw = canonicalBytes(refusal.response);
+    254     │ - → → → const·host·=·replying(raw,·refusal.http_status,·callerDeps(fixture!.request));
+        254 │ + → → → const·host·=·replying(raw,·refusal.http_status,·callerDeps(fixture?.request));
+    255 255 │         const result = await routeVerb(argv[0]!, leafOf(fixture!.argv), argv, host.deps);
+    256 256 │         expect(result.outcome.kind.startsWith("legacy-")).toBe(false);
+  
+
+.pi/extensions/pij/adapters/generation-cutover.test.ts:255:35 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    253 │ 			const raw = canonicalBytes(refusal.response);
+    254 │ 			const host = replying(raw, refusal.http_status, callerDeps(fixture!.request));
+  > 255 │ 			const result = await routeVerb(argv[0]!, leafOf(fixture!.argv), argv, host.deps);
+        │ 			                               ^^^^^^^^
+    256 │ 			expect(result.outcome.kind.startsWith("legacy-")).toBe(false);
+    257 │ 			expect(result.outcome.kind).not.toBe("rs");
+  
+
+.pi/extensions/pij/adapters/generation-cutover.test.ts:255:52 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    253 │ 			const raw = canonicalBytes(refusal.response);
+    254 │ 			const host = replying(raw, refusal.http_status, callerDeps(fixture!.request));
+  > 255 │ 			const result = await routeVerb(argv[0]!, leafOf(fixture!.argv), argv, host.deps);
+        │ 			                                                ^^^^^^^^
+    256 │ 			expect(result.outcome.kind.startsWith("legacy-")).toBe(false);
+    257 │ 			expect(result.outcome.kind).not.toBe("rs");
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    253 253 │         const raw = canonicalBytes(refusal.response);
+    254 254 │         const host = replying(raw, refusal.http_status, callerDeps(fixture!.request));
+    255     │ - → → → const·result·=·await·routeVerb(argv[0]!,·leafOf(fixture!.argv),·argv,·host.deps);
+        255 │ + → → → const·result·=·await·routeVerb(argv[0]!,·leafOf(fixture?.argv),·argv,·host.deps);
+    256 256 │         expect(result.outcome.kind.startsWith("legacy-")).toBe(false);
+    257 257 │         expect(result.outcome.kind).not.toBe("rs");
+  
+
+.pi/extensions/pij/adapters/generation-cutover.test.ts:258:44 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    256 │ 			expect(result.outcome.kind.startsWith("legacy-")).toBe(false);
+    257 │ 			expect(result.outcome.kind).not.toBe("rs");
+  > 258 │ 			expect(host.requests.at(-1)?.path).toBe(fixture!.path);
+        │ 			                                        ^^^^^^^^
+    259 │ 			expect(result.rawEnvelope).toBe(raw);
+    260 │ 			expect(renderRsAnswer(result.row, result.payload, argv, result.rawEnvelope)).toEqual({ kind: "json", text: raw });
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    256 256 │         expect(result.outcome.kind.startsWith("legacy-")).toBe(false);
+    257 257 │         expect(result.outcome.kind).not.toBe("rs");
+    258     │ - → → → expect(host.requests.at(-1)?.path).toBe(fixture!.path);
+        258 │ + → → → expect(host.requests.at(-1)?.path).toBe(fixture?.path);
+    259 259 │         expect(result.rawEnvelope).toBe(raw);
+    260 260 │         expect(renderRsAnswer(result.row, result.payload, argv, result.rawEnvelope)).toEqual({ kind: "json", text: raw });
+  
+
+.pi/extensions/pij/adapters/generation-cutover.test.ts:272:34 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    270 │ 		const raw = canonicalBytes(fixture.response);
+    271 │ 		const host = replying(raw, 200, callerDeps(fixture.request));
+  > 272 │ 		const result = await routeVerb(argv[0]!, undefined, argv, host.deps);
+        │ 		                               ^^^^^^^^
+    273 │ 		expect(result.outcome.kind).toBe("rs");
+    274 │ 		expect(host.requests.at(-1)?.method).toBe("POST");
+  
+
+.pi/extensions/pij/adapters/generation-cutover.test.ts:276:21 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    274 │ 		expect(host.requests.at(-1)?.method).toBe("POST");
+    275 │ 		expect(host.requests.at(-1)?.path).toBe(fixture.path);
+  > 276 │ 		expect(JSON.parse(host.requests.at(-1)!.body!)).toEqual({
+        │ 		                  ^^^^^^^^^^^^^^^^^^^^^
+    277 │ 			argv,
+    278 │ 			caller: { tmuxPane: fixture.request?.caller?.TMUX_PANE, cwd: fixture.request?.caller?.cwd },
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    274 274 │       expect(host.requests.at(-1)?.method).toBe("POST");
+    275 275 │       expect(host.requests.at(-1)?.path).toBe(fixture.path);
+    276     │ - → → expect(JSON.parse(host.requests.at(-1)!.body!)).toEqual({
+        276 │ + → → expect(JSON.parse(host.requests.at(-1)?.body!)).toEqual({
+    277 277 │         argv,
+    278 278 │         caller: { tmuxPane: fixture.request?.caller?.TMUX_PANE, cwd: fixture.request?.caller?.cwd },
+  
+
+.pi/extensions/pij/adapters/generation-cutover.test.ts:276:21 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    274 │ 		expect(host.requests.at(-1)?.method).toBe("POST");
+    275 │ 		expect(host.requests.at(-1)?.path).toBe(fixture.path);
+  > 276 │ 		expect(JSON.parse(host.requests.at(-1)!.body!)).toEqual({
+        │ 		                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    277 │ 			argv,
+    278 │ 			caller: { tmuxPane: fixture.request?.caller?.TMUX_PANE, cwd: fixture.request?.caller?.cwd },
+  
+
+.pi/extensions/pij/adapters/generation-cutover.test.ts:296:39 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    294 │ 		const payload = JSON.parse(rendered.text).data.event.payload;
+    295 │ 		expect(typeof payload).toBe("string");
+  > 296 │ 		expect(JSON.parse(payload)).toEqual(event!.decoded_payload);
+        │ 		                                    ^^^^^^
+    297 │ 	});
+    298 │ });
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    294 294 │       const payload = JSON.parse(rendered.text).data.event.payload;
+    295 295 │       expect(typeof payload).toBe("string");
+    296     │ - → → expect(JSON.parse(payload)).toEqual(event!.decoded_payload);
+        296 │ + → → expect(JSON.parse(payload)).toEqual(event?.decoded_payload);
+    297 297 │     });
+    298 298 │   });
+  
+
+.pi/extensions/pij/adapters/generation-cutover.test.ts:360:23 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    358 │ 		expect(requests).toHaveLength(1);
+    359 │ 		expect(requests[0]).toMatchObject({ method: "GET", body: undefined, authorization: `Bearer ${KEY}` });
+  > 360 │ 		const url = new URL(requests[0]!.path, `http://${ADDR}`);
+        │ 		                    ^^^^^^^^^^^^
+    361 │ 		expect(url.pathname).toBe("/v1/seats");
+    362 │ 		expect(url.hash).toBe("");
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    358 358 │       expect(requests).toHaveLength(1);
+    359 359 │       expect(requests[0]).toMatchObject({ method: "GET", body: undefined, authorization: `Bearer ${KEY}` });
+    360     │ - → → const·url·=·new·URL(requests[0]!.path,·`http://${ADDR}`);
+        360 │ + → → const·url·=·new·URL(requests[0]?.path,·`http://${ADDR}`);
+    361 361 │       expect(url.pathname).toBe("/v1/seats");
+    362 362 │       expect(url.hash).toBe("");
+  
+
+.pi/extensions/pij/adapters/generation-router.ts:141:17 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    139 │ 	const query = new URLSearchParams();
+    140 │ 	for (let index = 1; index < argv.length; index++) {
+  > 141 │ 		const token = argv[index]!;
+        │ 		              ^^^^^^^^^^^^
+    142 │ 		if (token === "--json") continue;
+    143 │ 		const matched = /^--([^=]+)(?:=(.*))?$/.exec(token);
+  
+
+.pi/extensions/pij/adapters/daemon-http.test.ts format ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × Formatter would have printed the following content:
+  
+     22  22 │   };
+     23  23 │   const ERROR_ENVELOPES = JSON.parse(
+     24     │ - → readFileSync(resolve(HERE,·"../../../../crates/testkit/fixtures/golden/api/error-envelopes.json"),·"utf8"),
+         24 │ + → readFileSync(
+         25 │ + → → resolve(HERE,·"../../../../crates/testkit/fixtures/golden/api/error-envelopes.json"),
+         26 │ + → → "utf8",
+         27 │ + → ),
+
+[Showing lines 1-300 of 511. Use :301 to continue]

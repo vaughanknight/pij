@@ -1,14 +1,19 @@
-import type { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type * as DriverModule from "../driver/index.js";
 import { loadScenario, runScenario } from "../driver/index.js";
-import { findProjectExtensionEntries, resolveSmokeCommand, runWatchdogSmoke } from "./smoke.js";
+import {
+	findProjectExtensionEntries,
+	parseSmokeEnvelope,
+	resolveSmokeCommand,
+	runWatchdogSmoke,
+} from "./smoke.js";
 
 vi.mock("../driver/index.js", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("../driver/index.js")>();
+	const actual = await importOriginal<typeof DriverModule>();
 	return {
 		...actual,
 		loadScenario: vi.fn(),
@@ -26,25 +31,80 @@ afterEach(() => {
 });
 
 describe("runWatchdogSmoke", () => {
-	it("passes scrubbed identity and safe routing to the watchdog subprocess", () => {
-		vi.stubEnv("PIJ_SESSION_ID", "pij-real-worker");
-		vi.stubEnv("CLAUDE_CODE_SESSION_ID", "real-claude-session");
-		delete process.env.PIJ_DAEMON_GENERATION;
-		let childEnv: NodeJS.ProcessEnv | undefined;
-		const spawn = ((
-			_file: string,
-			_args: readonly string[],
-			options: { readonly env?: NodeJS.ProcessEnv },
-		) => {
-			childEnv = options.env;
-			return { status: 0, stdout: '{"verdict":"PASS"}', stderr: "" };
-		}) as unknown as typeof spawnSync;
+	it("refuses real watchdog mutation under both routing modes without changing private authority", async () => {
+		const result = await runWatchdogSmoke();
+		expect(result, result.reason).toEqual({ verdict: "PASS" });
+	}, 600_000);
+});
 
-		expect(runWatchdogSmoke(spawn)).toEqual({ verdict: "PASS" });
-		expect(childEnv?.PIJ_SESSION_ID).toBe("");
-		expect(childEnv?.CLAUDE_CODE_SESSION_ID).toBe("");
-		expect(childEnv?.PIJ_DAEMON_GENERATION).toBe("legacy");
-		expect(childEnv?.PATH).toBe(process.env.PATH);
+describe("parseSmokeEnvelope", () => {
+	it("preserves the complete successful wire envelope and added fields", () => {
+		const envelope = {
+			ok: true,
+			command: "pij task",
+			v: 2,
+			data: { seq: 41, task: { id: "assignment" } },
+			meta: "native receipt",
+			extension: { value: "kept" },
+		};
+		expect(parseSmokeEnvelope({ status: 0, stdout: JSON.stringify(envelope), stderr: "" })).toEqual(
+			envelope,
+		);
+	});
+
+	it("preserves a named refusal instead of rebuilding it from its code", () => {
+		const envelope = {
+			ok: false,
+			command: "pij watchdog",
+			v: 2,
+			error: "refused",
+			details: { code: "E-RS-UNPORTED", verb: "watchdog", ledger_item: "native-only" },
+			meta: "no fallback",
+		};
+		expect(
+			parseSmokeEnvelope(
+				{ status: 4, stdout: JSON.stringify(envelope), stderr: "" },
+				false,
+				"E-RS-UNPORTED",
+			),
+		).toEqual(envelope);
+	});
+
+	it("rejects flattened data, wrong versions and mismatched process status", () => {
+		for (const envelope of [
+			{ id: "flattened" },
+			{ ok: true, command: "pij task", v: 1, data: {} },
+			{ ok: false, command: "pij task", v: 2, data: {} },
+		]) {
+			expect(() =>
+				parseSmokeEnvelope({ status: 0, stdout: JSON.stringify(envelope), stderr: "" }),
+			).toThrow();
+		}
+		expect(() =>
+			parseSmokeEnvelope({
+				status: 2,
+				stdout: JSON.stringify({ ok: true, command: "pij task", v: 2, data: {} }),
+				stderr: "failed",
+			}),
+		).toThrow();
+	});
+
+	it("does not accept any failure as the requested named refusal", () => {
+		const stdout = JSON.stringify({
+			ok: false,
+			command: "pij watchdog",
+			v: 2,
+			details: { code: "E-RS-AUTH" },
+		});
+		expect(() =>
+			parseSmokeEnvelope({ status: 4, stdout, stderr: "" }, false, "E-RS-UNPORTED"),
+		).toThrow();
+		expect(() =>
+			parseSmokeEnvelope({ status: 0, stdout, stderr: "" }, false, "E-RS-AUTH"),
+		).toThrow();
+		expect(() =>
+			parseSmokeEnvelope({ status: null, stdout, stderr: "signal" }, false, "E-RS-AUTH"),
+		).toThrow();
 	});
 });
 

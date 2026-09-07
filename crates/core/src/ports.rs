@@ -81,6 +81,17 @@ pub trait Registry: Send + Sync {
     /// Mark a seat dead, keeping the row and the reason. Rows are tombstoned,
     /// never deleted: a seat that vanishes takes its own post-mortem with it.
     async fn tombstone(&self, seat: &SeatId, reason: &str) -> Result<Seq>;
+
+    /// Tombstone only if the complete current raw descriptor still equals `expected`.
+    ///
+    /// Compare and mutate under the same serialization/transaction boundary.
+    /// Missing or changed snapshots refuse with `E-RS-INCARNATION-CHANGED`,
+    /// without changing the descriptor or recording an event. Callers must use
+    /// a raw Registry snapshot, never a joined or machine-stamped API view.
+    /// This is a safety brake, not a liveness policy: it can only veto a mutation
+    /// the caller already requested. There is deliberately no read-then-write default.
+    async fn tombstone_if_unchanged(&self, expected: SeatDescriptor, reason: String)
+    -> Result<Seq>;
 }
 
 /// The append-only history: reports, events, receipts.

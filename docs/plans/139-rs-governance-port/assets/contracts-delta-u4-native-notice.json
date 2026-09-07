@@ -1,0 +1,109 @@
+{
+  "owner": "u4-native-notice",
+  "base": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
+  "apply_owner": "pij-lonely-ikrie",
+  "apply_to": "crates/testkit/fixtures/golden/api/governance-routes.json",
+  "mirror_if_canonical": "docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json",
+  "amend_case": {
+    "id": "baton-request",
+    "merge_response_data": {
+      "notice": "queued"
+    }
+  },
+  "merge_top_level": {
+    "baton_notice_cases": [
+      {
+        "id": "idle-live-pi",
+        "harness": "pi",
+        "state": "idle",
+        "evidence": "active",
+        "notice": "queued",
+        "send_calls": 1,
+        "persisted_messages": 1
+      },
+      {
+        "id": "working-live-pi",
+        "harness": "pi",
+        "state": "working",
+        "evidence": "active",
+        "notice": "queued",
+        "send_calls": 1,
+        "persisted_messages": 1
+      },
+      {
+        "id": "fresh-live-control-plane",
+        "harness": "codex",
+        "state": "idle",
+        "evidence": "active",
+        "notice": "queued",
+        "send_calls": 1,
+        "persisted_messages": 1
+      },
+      {
+        "id": "stale-live-control-plane",
+        "harness": "copilot",
+        "state": "idle",
+        "evidence": "recycled",
+        "notice": "unverified",
+        "send_calls": 1,
+        "persisted_messages": 1
+      },
+      {
+        "id": "dead-keeper",
+        "harness": "pi",
+        "state": "idle",
+        "evidence": "dead",
+        "notice": "unverified",
+        "send_calls": 1,
+        "persisted_messages": 1
+      },
+      {
+        "id": "missing-keeper",
+        "harness": "pi",
+        "state": "idle",
+        "evidence": "missing",
+        "notice": null,
+        "send_calls": 0,
+        "persisted_messages": 0
+      },
+      {
+        "id": "dissolved-pull-keeper",
+        "harness": "copilot",
+        "state": "idle",
+        "evidence": "dissolved",
+        "notice": null,
+        "send_calls": 0,
+        "persisted_messages": 0
+      },
+      {
+        "id": "live-bound-pull-keeper",
+        "harness": "copilot",
+        "state": "idle",
+        "evidence": "active",
+        "notice": "queued",
+        "send_calls": 1,
+        "persisted_messages": 1
+      }
+    ],
+    "baton_notice_body_template": "[pij orchestration] baton '{baton}' requested by {requester}: {purpose} (request {request_id})"
+  },
+  "events_change": null,
+  "route_invariants": [
+    "baton.request persists its request and publishes baton.requested before using the existing DeliveryService.send once, from requester to definition.created_by, with the legacy request notice body.",
+    "Missing or dissolved keeper returns notice:null without a delivery admission; the committed request and event remain.",
+    "Use actual receipt strength: idle or working Pi/Omp extension-stream admission is queued until ReaderRead (#374 honest-receipt rule); confirmed socket/native injection may report delivered.",
+    "Unverified uses only existing core::liveness::alive Dead/Recycled process-incarnation evidence; native stale-external witness is a recycled binding, never a restored heartbeat-age threshold.",
+    "Send error, Held or Refused does not erase the committed request; E-RS-PARTIAL carries committed=true, event_published=true, request and seq. Publication failure occurs before any send.",
+    "Self-send still goes through existing delivery refusal; no special self-send bypass or second sender."
+  ],
+  "docs_recipe": "PM removes the unsupported automatic keeper-notice claim after native proof, documents notice values plus durable E-RS-PARTIAL evidence, and explicitly names idle Pi queued and stale incarnation mapping. Worker does not edit shared fixtures/MANIFEST/docs.",
+  "ruling": "Prime explicitly authorized idle live Pi delivered\u2192queued and legacy stale-heartbeat\u2192native Recycled witness. Eight cases and all message/no-write counts unchanged.",
+  "additional_native_witnesses": [
+    "idle Pi ReaderRead later produces Delivered without a second message",
+    "transport-confirmed socket delivery",
+    "transport fault preserves committed request",
+    "held/refused transport preserves honest partial outcome",
+    "self-send refusal preserved",
+    "publication fault prevents delivery"
+  ]
+}

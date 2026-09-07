@@ -1,0 +1,1785 @@
+diff --git a/crates/core/src/anomalies.rs b/crates/core/src/anomalies.rs
+--- a/crates/core/src/anomalies.rs
++++ b/crates/core/src/anomalies.rs
+@@ -10,12 +10,16 @@
+ 
+ use serde::{Deserialize, Serialize};
+ 
+-use crate::model::{Card, Event, SeatDescriptor, SeatId, Seq};
++use crate::decisions::{Decision, DecisionState};
++use crate::model::{Card, Event, SeatDescriptor, SeatId, SemanticState, Seq};
+ 
+ /// Durable Spine kind written when an anomaly occurrence is acknowledged.
+ pub const ANOMALY_ACK_KIND: &str = "anomaly.ack";
+ /// Durable Spine kind written when an anomaly occurrence is cleared.
+ pub const ANOMALY_CLEAR_KIND: &str = "anomaly.clear";
++
++/// Status anomaly policy; the separate command stderr nudge stays ten minutes.
++pub const STATUS_STALE_MS: u64 = 30 * 60 * 1_000;
+ 
+ /// The three anomaly kinds with existing or explicitly named consumers.
+ #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+@@ -27,6 +31,10 @@
+     DeliveredUnackedStale,
+     /// A done declaration has no later verification.
+     UnverifiedDone,
++    /// An unanswered durable question belongs to its current responsible seat.
++    OpenQuestion,
++    /// The recorded process incarnation is no longer alive.
++    DeadSeat,
+ }
+ 
+ impl AnomalyKind {
+@@ -36,6 +44,8 @@
+             Self::StatusStale => "status-stale",
+             Self::DeliveredUnackedStale => "delivered-unacked-stale",
+             Self::UnverifiedDone => "unverified-done",
++            Self::OpenQuestion => "open-question",
++            Self::DeadSeat => "dead-seat",
+         }
+     }
+ }
+@@ -74,6 +84,65 @@
+     pub occurrence: String,
+     /// Current acknowledgement state. Cleared rows are omitted entirely.
+     pub status: AnomalyStatus,
++    /// Human detail, preserving the established relay vocabulary.
++    pub detail: String,
++    /// Real committed sequences that prove the condition.
++    pub evidence: Vec<Seq>,
++    /// Present only when the done event actually names an assignment.
++    pub assignment_id: Option<String>,
++    /// Stable referenced governance record.
++    pub record_ref: Option<String>,
++    /// Measured elapsed milliseconds, when the condition is age-based.
++    pub age_ms: Option<u64>,
++}
++
++/// Frozen governance wire shape, borrowing detector evidence rather than copying it.
++#[derive(Debug, Serialize)]
++#[serde(rename_all = "camelCase")]
++pub struct AnomalyWire<'a> {
++    /// Existing kind literal.
++    pub kind: AnomalyKind,
++    /// Seat responsible for this row.
++    pub node_id: &'a SeatId,
++    /// Optional actual assignment.
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub assignment_id: Option<&'a str>,
++    /// Human detail.
++    pub detail: &'a str,
++    /// Source evidence.
++    pub evidence: &'a [Seq],
++    /// Referenced governance record.
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub record_ref: Option<&'a str>,
++    /// Measured age.
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub age_ms: Option<u64>,
++    /// Exact established relay wrapper.
++    pub relay: String,
++}
++
++impl Anomaly {
++    /// Render only the public governance fields from this detector occurrence.
++    pub fn wire(&self) -> AnomalyWire<'_> {
++        let assignment_suffix = self.assignment_id.as_ref().map_or_else(String::new, |id| format!(" (assignment {id})"));
++        let evidence = if self.evidence.is_empty() { "none".to_string() } else {
++            self.evidence.iter().map(|seq| seq.0.to_string()).collect::<Vec<_>>().join(",")
++        };
++        AnomalyWire {
++            kind: self.kind, node_id: &self.seat, assignment_id: self.assignment_id.as_deref(),
++            detail: &self.detail, evidence: &self.evidence, record_ref: self.record_ref.as_deref(), age_ms: self.age_ms,
++            relay: format!("\u{26a0}\u{fe0f} anomaly {} on {}{}: {} — evidence: spine {}", self.kind, self.seat, assignment_suffix, self.detail, evidence),
++        }
++    }
++}
++
++/// A confirmed dead/recycled process together with its registry source event.
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub struct DeadSeatFact {
++    /// The affected seat.
++    pub seat: SeatId,
++    /// Real seat.put sequence for this incarnation.
++    pub seq: Seq,
+ }
+ 
+ /// A Spine-derived activity observation for one seat.
+@@ -110,11 +179,13 @@
+     /// Seat that declared the assignment done.
+     pub seat: SeatId,
+     /// Assignment whose done claim needs verification.
+-    pub assignment_id: String,
++    pub assignment_id: Option<String>,
+     /// Spine sequence of the done declaration.
+     pub done_seq: Seq,
+     /// Latest verification sequence, when one exists.
+     pub verified_seq: Option<Seq>,
++    /// Exact done event referenced by the verification, never inferred by time.
++    pub verified_done_seq: Option<Seq>,
+ }
+ 
+ /// Configured detector thresholds.
+@@ -132,7 +203,7 @@
+ impl Default for AnomalyThresholds {
+     fn default() -> Self {
+         Self {
+-            status_stale_ms: 10 * 60 * 1_000,
++            status_stale_ms: STATUS_STALE_MS,
+             delivered_unacked_stale_ms: 15 * 60 * 1_000,
+         }
+     }
+@@ -161,6 +232,10 @@
+     pub done: &'a [DoneFact],
+     /// Durable acknowledgement and clear events.
+     pub dispositions: &'a [Event],
++    /// Open decisions with current responsibility projected by the composition edge.
++    pub decisions: &'a [Decision],
++    /// Positive liveness evidence; probe errors are never dead facts.
++    pub dead: &'a [DeadSeatFact],
+ }
+ 
+ /// A pure synchronous detector over an immutable store snapshot.
+@@ -179,6 +254,7 @@
+             .seats
+             .iter()
+             .filter(|seat| seat.tombstoned_at.is_none())
++            .filter(|seat| !matches!(seat.semantic_state, Some(SemanticState::Waiting | SemanticState::Hold | SemanticState::Blocked | SemanticState::Question)))
+         {
+             let Some(card) = view
+                 .cards
+@@ -198,9 +274,8 @@
+                 continue;
+             }
+ 
+-            // Activity is a Spine fact or it is absent; observed SystemState is
+-            // never promoted into activity evidence. Parking affects watchdog
+-            // nudging, not whether an old card can mislead its readers.
++            // Activity remains explicit spine evidence. Parked declarations
++            // suppress card drift by ruling, independently of the stderr nudge.
+             let latest_activity = view
+                 .activity
+                 .iter()
+@@ -233,6 +308,8 @@
+                 ),
+                 occurrence: occurrence(AnomalyKind::StatusStale, &seat.id, source_seq),
+                 status: AnomalyStatus::Open,
++                detail: format!("'{}' has been working for {}min since its card was last updated (threshold {}min) — consumers render now/next as CURRENT, so a stale card actively misinforms. If '{}' is waiting on something with no known end, it should declare a parked state: pij report state waiting|hold|blocked|question (parked seats never flag). Otherwise it should update its card: pij report now \"<what I just did>\" \"<what's next>\" — note that refreshing a card resets this timer WITHOUT changing the wait, so a parked seat that reports instead of declaring will be asked again every threshold.", seat.id, age_ms / 60_000, view.thresholds.status_stale_ms / 60_000, seat.id),
++                evidence: vec![source_seq], assignment_id: None, record_ref: None, age_ms: Some(age_ms),
+             });
+         }
+         apply_dispositions(rows, view.dispositions)
+@@ -272,6 +349,9 @@
+                         fact.delivered_seq,
+                     ),
+                     status: AnomalyStatus::Open,
++                    detail: format!("dispatch:{} remains delivered-unacked — delivery landed but no durable brief ack followed", fact.dispatch_id),
++                    evidence: vec![fact.delivered_seq], assignment_id: None,
++                    record_ref: Some(format!("dispatch:{}", fact.dispatch_id)), age_ms: Some(age_ms),
+                 })
+             })
+             .collect();
+@@ -287,35 +367,87 @@
+         let rows = view
+             .done
+             .iter()
+-            .filter(|fact| fact.verified_seq.is_none_or(|seq| seq <= fact.done_seq))
++            .filter(|fact| fact.verified_done_seq != Some(fact.done_seq) || fact.verified_seq.is_none_or(|seq| seq <= fact.done_seq))
+             .map(|fact| Anomaly {
+                 kind: AnomalyKind::UnverifiedDone,
+                 seat: fact.seat.clone(),
+                 observable: format!(
+                     "assignment={} done_seq={} verified_seq={}",
+-                    fact.assignment_id,
++                    fact.assignment_id.as_deref().unwrap_or("absent"),
+                     fact.done_seq.0,
+                     fact.verified_seq
+                         .map_or_else(|| "absent".to_string(), |seq| seq.0.to_string())
+                 ),
+-                remediation_line: format!(
+-                    "pij report verify {} --assignment {}",
+-                    fact.seat, fact.assignment_id
++                remediation_line: fact.assignment_id.as_ref().map_or_else(
++                    || format!("pij report verify {}", fact.seat),
++                    |id| format!("pij report verify {} --assignment {}", fact.seat, id),
+                 ),
+                 occurrence: occurrence(AnomalyKind::UnverifiedDone, &fact.seat, fact.done_seq),
+                 status: AnomalyStatus::Open,
++                detail: fact.assignment_id.as_ref().map_or_else(
++                    || format!("{} declared done with no verify — done is a claim until verified", fact.seat),
++                    |id| format!("assignment '{id}' declared done by {} with no verify — done is a claim until verified", fact.seat),
++                ),
++                evidence: vec![fact.done_seq], assignment_id: fact.assignment_id.clone(), record_ref: None, age_ms: None,
+             })
+             .collect();
+         apply_dispositions(rows, view.dispositions)
+     }
+ }
+ 
+-/// Run the three detectors whose outputs already have named consumers.
++/// Run the existing detectors and the two governance detectors on one snapshot.
+ pub fn scan_all(view: &AnomalyView<'_>) -> Vec<Anomaly> {
+     let mut rows = StatusStaleDetector.scan(view);
+     rows.extend(DeliveredUnackedDetector.scan(view));
+     rows.extend(UnverifiedDoneDetector.scan(view));
++    rows.extend(OpenQuestionDetector.scan(view));
++    rows.extend(DeadSeatDetector.scan(view));
+     rows
++}
++
++/// Questions stay visible independently of card or semantic state changes.
++pub struct OpenQuestionDetector;
++
++impl Detector for OpenQuestionDetector {
++    fn scan(&self, view: &AnomalyView<'_>) -> Vec<Anomaly> {
++        let mut rows = Vec::new();
++        for decision in view.decisions.iter().filter(|row| row.state == DecisionState::Open) {
++            let seat = decision.parent.as_ref().unwrap_or(&decision.asked_by);
++            let age_ms = view.now_ms.saturating_sub(decision.asked_at);
++            for kind in [AnomalyKind::OpenQuestion, AnomalyKind::StatusStale] {
++                if kind == AnomalyKind::StatusStale && age_ms <= view.thresholds.status_stale_ms { continue; }
++                let detail = if kind == AnomalyKind::OpenQuestion {
++                    format!("decision '{}' asked by {} is unanswered", decision.id, decision.asked_by)
++                } else {
++                    format!("decision '{}' asked by {} has awaited {} for {}min (threshold {}min) — answer with pij answer {} \"<ruling>\"", decision.id, decision.asked_by, seat, age_ms / 60_000, view.thresholds.status_stale_ms / 60_000, decision.id)
++                };
++                rows.push(Anomaly {
++                    kind, seat: seat.clone(), observable: format!("decision={} question_seq={} age_ms={age_ms}", decision.id, decision.question_seq.0),
++                    remediation_line: format!("pij answer {} \"<ruling>\"", decision.id),
++                    occurrence: occurrence(kind, seat, decision.question_seq), status: AnomalyStatus::Open,
++                    detail, evidence: vec![decision.question_seq], assignment_id: None,
++                    record_ref: Some(format!("decision:{}", decision.id)), age_ms: Some(age_ms),
++                });
++            }
++        }
++        apply_dispositions(rows, view.dispositions)
++    }
++}
++
++/// Only positively observed dead/recycled incarnations become anomaly rows.
++pub struct DeadSeatDetector;
++
++impl Detector for DeadSeatDetector {
++    fn scan(&self, view: &AnomalyView<'_>) -> Vec<Anomaly> {
++        apply_dispositions(view.dead.iter().map(|fact| Anomaly {
++            kind: AnomalyKind::DeadSeat, seat: fact.seat.clone(),
++            observable: format!("seat={} registry_seq={} process_incarnation=dead", fact.seat, fact.seq.0),
++            remediation_line: "pij-rs reap --dry-run".to_string(),
++            occurrence: occurrence(AnomalyKind::DeadSeat, &fact.seat, fact.seq), status: AnomalyStatus::Open,
++            detail: "recorded process incarnation is dead; inspect with pij-rs reap --dry-run".to_string(),
++            evidence: vec![fact.seq], assignment_id: None, record_ref: None, age_ms: None,
++        }).collect(), view.dispositions)
++    }
+ }
+ 
+ /// Build the durable acknowledgement event for one exact occurrence.
+@@ -427,33 +559,32 @@
+             dispatches,
+             done,
+             dispositions,
++            decisions: &[],
++            dead: &[],
+         }
+     }
+ 
+     #[test]
+-    fn status_staleness_is_clock_only_and_parking_suspends_nudging_not_detection() {
+-        let seats = [seat("pij-parked", Some(SemanticState::Waiting))];
+-        let cards = [card("pij-parked", NOW - 10 * 60 * 1_000 - 1, 41)];
+-        let activity = [ActivityFact {
+-            seat: SeatId::from("pij-parked"),
+-            at: NOW - 1,
+-            seq: Seq(42),
+-        }];
+-        let view = empty_view(&seats, &cards, &activity, &[], &[], &[]);
+-
++    fn status_staleness_uses_thirty_minutes_and_suppresses_parked_states() {
++        let seats = [seat("pij-worker", None)];
++        let cards = [card("pij-worker", NOW - 1_800_001, 100)];
++        let mut view = empty_view(&seats, &cards, &[], &[], &[], &[]);
++        view.thresholds = AnomalyThresholds::default();
+         let rows = StatusStaleDetector.scan(&view);
+         assert_eq!(rows.len(), 1);
+-        assert_eq!(rows[0].kind, AnomalyKind::StatusStale);
+-        assert!(rows[0].observable.contains("card_seq=41"));
+-        assert!(rows[0].observable.contains("latest_activity_seq=42"));
+-        assert!(rows[0].remediation_line.contains("pij-parked"));
+-
+-        let boundary_cards = [card("pij-parked", NOW - 10 * 60 * 1_000, 43)];
+-        let boundary = empty_view(&seats, &boundary_cards, &activity, &[], &[], &[]);
+-        assert!(
+-            StatusStaleDetector.scan(&boundary).is_empty(),
+-            "the contract is older than ten minutes, not ten minutes old"
+-        );
++        let fixtures: serde_json::Value = serde_json::from_str(include_str!(
++            "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
++        )).expect("canonical contract");
++        assert_eq!(serde_json::to_value(rows[0].wire()).expect("wire row"), fixtures["rows"]["anomalies"][0]);
++        let boundary_cards = [card("pij-worker", NOW - 1_800_000, 101)];
++        view.cards = &boundary_cards;
++        assert!(StatusStaleDetector.scan(&view).is_empty());
++        for state in [SemanticState::Waiting, SemanticState::Hold, SemanticState::Blocked, SemanticState::Question] {
++            let parked = [seat("pij-worker", Some(state))];
++            let mut view = empty_view(&parked, &cards, &[], &[], &[], &[]);
++            view.thresholds = AnomalyThresholds::default();
++            assert!(StatusStaleDetector.scan(&view).is_empty(), "{state:?}");
++        }
+     }
+ 
+     #[test]
+@@ -487,9 +618,10 @@
+     fn unverified_done_requires_a_verification_later_than_the_done_claim() {
+         let before = DoneFact {
+             seat: SeatId::from("pij-coder"),
+-            assignment_id: "asg-9".to_string(),
++            assignment_id: Some("asg-9".to_string()),
+             done_seq: Seq(70),
+             verified_seq: Some(Seq(69)),
++            verified_done_seq: Some(Seq(70)),
+         };
+         let facts = [before];
+         let view = empty_view(&[], &[], &[], &[], &facts, &[]);
+@@ -511,8 +643,8 @@
+ 
+     #[test]
+     fn cleared_occurrence_stays_cleared_until_source_evidence_changes() {
++        let seats = [seat("pij-coder", None)];
+         let actor = SeatId::from("pij-pm");
+-        let seats = [seat("pij-coder", Some(SemanticState::Hold))];
+         let cards = [card("pij-coder", NOW - 700_000, 80)];
+         let initial = empty_view(&seats, &cards, &[], &[], &[], &[]);
+         let row = StatusStaleDetector.scan(&initial).remove(0);
+@@ -546,9 +678,10 @@
+     fn disposition_events_are_appendable_spine_facts_for_the_exact_occurrence() {
+         let fact = DoneFact {
+             seat: SeatId::from("pij-coder"),
+-            assignment_id: "asg-10".to_string(),
++            assignment_id: Some("asg-10".to_string()),
+             done_seq: Seq(90),
+             verified_seq: None,
++            verified_done_seq: None,
+         };
+         let facts = [fact];
+         let view = empty_view(&[], &[], &[], &[], &facts, &[]);
+@@ -576,9 +709,10 @@
+         }];
+         let done = [DoneFact {
+             seat: SeatId::from("pij-done"),
+-            assignment_id: "asg-22".to_string(),
++            assignment_id: Some("asg-22".to_string()),
+             done_seq: Seq(103),
+             verified_seq: None,
++            verified_done_seq: None,
+         }];
+         let view = empty_view(&seats, &cards, &[], &dispatches, &done, &[]);
+ 
+@@ -601,4 +735,69 @@
+             }
+         }
+     }
+-}
++
++    #[test]
++    fn verification_of_another_done_does_not_close_latest_claim() {
++        let done = [DoneFact {
++            seat: SeatId::from("pij-worker"),
++            assignment_id: None,
++            done_seq: Seq(102),
++            verified_seq: Some(Seq(103)),
++            verified_done_seq: Some(Seq(100)),
++        }];
++        let view = empty_view(&[], &[], &[], &[], &done, &[]);
++        let rows = UnverifiedDoneDetector.scan(&view);
++        assert_eq!(rows.len(), 1);
++        assert_eq!(rows[0].remediation_line, "pij report verify pij-worker");
++        assert!(rows[0].wire().assignment_id.is_none());
++    }
++
++    #[test]
++    fn open_decision_stales_responsible_parent_despite_fresh_card() {
++        let parent = seat("pij-parent", None);
++        let mut worker = seat("pij-worker", None);
++        worker.parent = Some(parent.id.clone());
++        let seats = [parent, worker];
++        let cards = [card("pij-parent", NOW, 105)];
++        let decisions = [crate::decisions::Decision {
++            id: "d1".to_string(), asked_by: SeatId::from("pij-worker"),
++            parent: Some(SeatId::from("pij-parent")), question: "which branch?".to_string(),
++            state: crate::decisions::DecisionState::Open, asked_at: NOW - 1_800_001,
++            question_seq: Seq(100), answer: None, answered_by: None, answered_at: None, answer_msg_id: None,
++        }];
++        let mut view = empty_view(&seats, &cards, &[], &[], &[], &[]);
++        view.decisions = &decisions;
++        let rows = scan_all(&view);
++        assert_eq!(rows.len(), 2);
++        assert!(rows.iter().any(|row| row.kind == AnomalyKind::OpenQuestion));
++        let stale = rows.iter().find(|row| row.kind == AnomalyKind::StatusStale).expect("overdue parent");
++        assert_eq!(stale.seat.as_str(), "pij-parent");
++        assert_eq!(stale.wire().record_ref.as_deref(), Some("decision:d1"));
++        assert_eq!(stale.wire().evidence, vec![Seq(100)]);
++    }
++
++    #[test]
++    fn five_governance_kinds_match_canonical_rows_and_real_sequences() {
++        let fixtures: serde_json::Value = serde_json::from_str(include_str!(
++            "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
++        )).expect("contract");
++        let seats = [seat("pij-worker", None)];
++        let cards = [card("pij-worker", NOW - 1_800_001, 100)];
++        let dispatches = [DispatchFact { seat: SeatId::from("pij-worker"), dispatch_id: "dispatch-139-proof".into(), packet_sha256: "a".repeat(64), delivered_at: NOW - 900_001, delivered_seq: Seq(100), acknowledged: false }];
++        let done = [DoneFact { seat: SeatId::from("pij-worker"), assignment_id: Some("assignment-139-proof".into()), done_seq: Seq(100), verified_seq: None, verified_done_seq: None }];
++        let mut decision: Decision = serde_json::from_value(fixtures["rows"]["decision"].clone()).expect("decision");
++        decision.asked_at = NOW - 1;
++        let decisions = [decision];
++        let dead = [DeadSeatFact { seat: SeatId::from("pij-worker"), seq: Seq(100) }];
++        let mut view = empty_view(&seats, &cards, &[], &dispatches, &done, &[]);
++        view.thresholds = AnomalyThresholds::default();
++        view.decisions = &decisions;
++        view.dead = &dead;
++        let rows = scan_all(&view);
++        assert_eq!(rows.len(), 5);
++        for expected in fixtures["rows"]["anomalies"].as_array().expect("rows") {
++            let row = rows.iter().find(|row| row.kind.as_str() == expected["kind"].as_str().expect("kind")).expect("existing kind spelling");
++            assert_eq!(serde_json::to_value(row.wire()).expect("wire"), *expected);
++        }
++    }
++}
+diff --git a/crates/core/src/decisions.rs b/crates/core/src/decisions.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/core/src/decisions.rs
+@@ -0,0 +1,64 @@
++//! Durable questions and answer authority; no transport or persistence.
++use serde::{Deserialize, Serialize};
++use crate::model::{SeatDescriptor, SeatId, Seq};
++
++/// Whether a question has an accepted answer.
++#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(rename_all = "lowercase")]
++pub enum DecisionState {
++    /// Awaiting an authorized answer.
++    Open,
++    /// Answer committed after acceptance, or self-ruling without delivery.
++    Answered,
++}
++
++/// Persisted question. At rest `parent` is the parent at creation; live views
++/// replace it with current responsibility without rewriting history.
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub struct Decision {
++    /// Stable question identity.
++    pub id: String,
++    /// Seat that owns the question.
++    pub asked_by: SeatId,
++    /// Historical parent at rest, current responsible parent in live views.
++    pub parent: Option<SeatId>,
++    /// Original question text.
++    pub question: String,
++    /// Durable answer lifecycle.
++    pub state: DecisionState,
++    /// Creation epoch milliseconds.
++    pub asked_at: u64,
++    /// Real decision.opened spine sequence.
++    pub question_seq: Seq,
++    /// Prepared answer may exist while delivery refusal keeps state open.
++    pub answer: Option<String>,
++    /// Resolved actor of the prepared/accepted answer.
++    pub answered_by: Option<SeatId>,
++    /// Accepted answer epoch milliseconds, absent while open.
++    pub answered_at: Option<u64>,
++    /// Stable delivery id; self-answers deliberately have no message.
++    pub answer_msg_id: Option<String>,
++}
++
++/// Current parent alone grants parent authority; role/prime visibility does not.
++pub fn may_answer(actor: &SeatId, asker: &SeatDescriptor) -> bool {
++    actor == &asker.id || asker.parent.as_ref() == Some(actor)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::model::Harness;
++
++    #[test]
++    fn answer_authority_follows_reparenting_not_historical_parent_or_role() {
++        let mut asker = SeatDescriptor::new("worker", Harness::Omp, "/work");
++        asker.parent = Some(SeatId::from("old"));
++        assert!(may_answer(&SeatId::from("old"), &asker));
++        asker.parent = Some(SeatId::from("new"));
++        assert!(!may_answer(&SeatId::from("old"), &asker));
++        assert!(may_answer(&SeatId::from("new"), &asker));
++        assert!(may_answer(&asker.id, &asker));
++        assert!(!may_answer(&SeatId::from("prime"), &asker));
++    }
++}
+diff --git a/crates/store/migrations/0015_decisions.sql b/crates/store/migrations/0015_decisions.sql
+new file mode 100644
+--- /dev/null
++++ b/crates/store/migrations/0015_decisions.sql
+@@ -0,0 +1,21 @@
++-- A prepared outbound answer remains open until delivery is durably accepted.
++CREATE TABLE decisions (
++    id TEXT PRIMARY KEY NOT NULL,
++    asked_by TEXT NOT NULL,
++    parent TEXT,
++    question TEXT NOT NULL,
++    state TEXT NOT NULL CHECK (state IN ('open', 'answered')),
++    asked_at INTEGER NOT NULL CHECK (asked_at >= 0),
++    question_seq INTEGER NOT NULL REFERENCES spine_events(seq),
++    answer TEXT,
++    answered_by TEXT,
++    answered_at INTEGER,
++    answer_msg_id TEXT UNIQUE,
++    answer_seq INTEGER REFERENCES spine_events(seq),
++    CHECK ((answer IS NULL) = (answered_by IS NULL)),
++    CHECK ((state = 'answered') = (answered_at IS NOT NULL)),
++    CHECK ((state = 'answered') = (answer_seq IS NOT NULL)),
++    CHECK (state != 'answered' OR answer IS NOT NULL)
++);
++CREATE INDEX decisions_open_asked ON decisions(state, asked_at, id);
++CREATE INDEX decisions_asker ON decisions(asked_by);
+diff --git a/crates/store/src/decisions.rs b/crates/store/src/decisions.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/store/src/decisions.rs
+@@ -0,0 +1,253 @@
++//! Durable decision lifecycle on the existing shared orchestration pool.
++use pij_core::decisions::{Decision, DecisionState};
++use pij_core::error::{PijError, Result};
++use pij_core::model::{Event, SeatId, Seq};
++use serde_json::json;
++use sqlx::{Row, SqliteConnection};
++use crate::migrate::{begin_write, require_current_schema};
++use crate::orchestration::{SqliteOrchestration, adapter_error, sql_i64, sql_u64};
++use crate::spine::{append_generated_in_transaction, append_in_transaction};
++
++/// A decision plus its persisted answer receipt, absent before completion.
++#[derive(Clone, Debug)]
++pub struct StoredDecision {
++    /// Historical parent is retained here; live views project responsibility.
++    pub decision: Decision,
++    /// Stable receipt for idempotent answered readback.
++    pub answer_seq: Option<Seq>,
++}
++
++impl SqliteOrchestration {
++    /// Commit the question row and its opened event atomically under the bus.
++    pub async fn open_decision_committed(&self, id: &str, asker: &SeatId, parent: Option<&SeatId>, question: &str, at: u64) -> Result<(Event, Decision)> {
++        require_current_schema(&self.pool).await?;
++        if id.trim().is_empty() || question.trim().is_empty() { return Err(refusal("E-RS-ARG", id)); }
++        let mut tx = begin_write(&self.pool).await?;
++        let mut decision = Decision { id: id.to_string(), asked_by: asker.clone(), parent: parent.cloned(), question: question.to_string(), state: DecisionState::Open, asked_at: at, question_seq: Seq(0), answer: None, answered_by: None, answered_at: None, answer_msg_id: None };
++        let draft = decision_event(&decision, asker, "opened", at);
++        let event = append_generated_in_transaction(&mut tx, draft, |seq| {
++            decision.question_seq = seq;
++            decision_event(&decision, asker, "opened", at).payload
++        }).await?;
++        sqlx::query("INSERT INTO decisions (id,asked_by,parent,question,state,asked_at,question_seq) VALUES (?1,?2,?3,?4,'open',?5,?6)")
++            .bind(id).bind(asker.as_str()).bind(parent.map(SeatId::as_str)).bind(question)
++            .bind(sql_i64(at,"asked_at")?).bind(sql_i64(decision.question_seq.0,"question_seq")?)
++            .execute(&mut *tx).await.map_err(adapter_error)?;
++        tx.commit().await.map_err(adapter_error)?;
++        Ok((event, decision))
++    }
++
++    /// Read a durable question without fabricating a missing receipt.
++    pub async fn get_decision(&self, id: &str) -> Result<Option<StoredDecision>> {
++        require_current_schema(&self.pool).await?;
++        let row = sqlx::query("SELECT * FROM decisions WHERE id=?1").bind(id).fetch_optional(&self.pool).await.map_err(adapter_error)?;
++        row.map(decode).transpose()
++    }
++
++    /// Bulk query for fleet projection; caller applies current-parent filters.
++    pub async fn list_decisions(&self) -> Result<Vec<Decision>> {
++        require_current_schema(&self.pool).await?;
++        sqlx::query("SELECT * FROM decisions ORDER BY asked_at,id").fetch_all(&self.pool).await.map_err(adapter_error)?
++            .into_iter().map(|row| decode(row).map(|stored| stored.decision)).collect()
++    }
++
++    /// Persist immutable outbound linkage BEFORE transport admission. A rejected
++    /// delivery leaves this open prepared row visible and safely repeatable.
++    pub async fn prepare_decision_answer(&self, id: &str, actor: &SeatId, answer: &str, msg_id: Option<&str>) -> Result<StoredDecision> {
++        require_current_schema(&self.pool).await?;
++        if answer.trim().is_empty() { return Err(refusal("E-RS-ARG", id)); }
++        let mut tx = begin_write(&self.pool).await?;
++        let mut stored = read_in_transaction(&mut tx,id).await?;
++        if stored.decision.answer.is_some() {
++            if stored.decision.answer.as_deref() != Some(answer) || stored.decision.answered_by.as_ref() != Some(actor) || stored.decision.answer_msg_id.as_deref() != msg_id {
++                return Err(refusal("E-RS-ANSWER-CONFLICT",id));
++            }
++        } else {
++            sqlx::query("UPDATE decisions SET answer=?2,answered_by=?3,answer_msg_id=?4 WHERE id=?1 AND state='open'")
++                .bind(id).bind(answer).bind(actor.as_str()).bind(msg_id).execute(&mut *tx).await.map_err(adapter_error)?;
++            stored.decision.answer = Some(answer.to_string());
++            stored.decision.answered_by = Some(actor.clone());
++            stored.decision.answer_msg_id = msg_id.map(str::to_string);
++        }
++        tx.commit().await.map_err(adapter_error)?;
++        Ok(stored)
++    }
++
++    /// Close only after durable transport acceptance (or an authorized self
++    /// ruling). State and decision.answered are all-or-nothing under the bus.
++    pub async fn answer_decision_committed(&self, id: &str, actor: &SeatId, at: u64) -> Result<(Event, Decision)> {
++        require_current_schema(&self.pool).await?;
++        let mut tx = begin_write(&self.pool).await?;
++        let stored = read_in_transaction(&mut tx,id).await?;
++        let mut decision = stored.decision;
++        if decision.state != DecisionState::Open || decision.answer.is_none() || decision.answered_by.as_ref() != Some(actor) {
++            return Err(refusal("E-RS-ANSWER-CONFLICT",id));
++        }
++        decision.state = DecisionState::Answered;
++        decision.answered_at = Some(at);
++        let mut event = decision_event(&decision, actor,"answered",at);
++        let seq = append_in_transaction(&mut tx,&event).await?;
++        sqlx::query("UPDATE decisions SET state='answered',answered_at=?2,answer_seq=?3 WHERE id=?1")
++            .bind(id).bind(sql_i64(at,"answered_at")?).bind(sql_i64(seq.0,"answer_seq")?)
++            .execute(&mut *tx).await.map_err(adapter_error)?;
++        tx.commit().await.map_err(adapter_error)?;
++        event.seq = Some(seq);
++        Ok((event,decision))
++    }
++
++    /// Append a receipt for the latest actual done event, never for a guessed
++    /// assignment. Caller resolves current-parent authority under the bus lock.
++    pub async fn verify_done_committed(&self, actor: &SeatId, target: &SeatId, assignment: Option<&str>, at: u64) -> Result<(Event, serde_json::Value)> {
++        require_current_schema(&self.pool).await?;
++        let mut tx = begin_write(&self.pool).await?;
++        let history = sqlx::query("SELECT seq,at,payload FROM spine_events WHERE seat=?1 AND kind='report.state' ORDER BY seq DESC")
++            .bind(target.as_str()).fetch_all(&mut *tx).await.map_err(adapter_error)?;
++        let mut latest = None;
++        for row in history {
++            let payload: String = row.try_get("payload").map_err(adapter_error)?;
++            let Ok(payload) = serde_json::from_str::<serde_json::Value>(&payload) else { continue; };
++            if payload["state"] == "done" {
++                latest = Some((sql_u64(row.try_get("seq").map_err(adapter_error)?,"done_seq")?,sql_u64(row.try_get("at").map_err(adapter_error)?,"done_at")?,payload));
++                break;
++            }
++        }
++        let (done_seq,done_at,payload) = latest.ok_or_else(||refusal("E-RS-NO-DONE",target.as_str()))?;
++        if let Some(assignment) = assignment {
++            if payload.get("assignment_id").and_then(serde_json::Value::as_str) != Some(assignment) {
++                return Err(refusal("E-RS-DONE-ASSIGNMENT",assignment));
++            }
++            let task = sqlx::query("SELECT node_id,opened_at,closed_at FROM task_assignments WHERE id=?1")
++                .bind(assignment).fetch_optional(&mut *tx).await.map_err(adapter_error)?.ok_or_else(||refusal("E-RS-DONE-ASSIGNMENT",assignment))?;
++            let node:String = task.try_get("node_id").map_err(adapter_error)?;
++            let opened = sql_u64(task.try_get("opened_at").map_err(adapter_error)?,"opened_at")?;
++            let closed:Option<i64> = task.try_get("closed_at").map_err(adapter_error)?;
++            if node != target.as_str() || opened > done_at || closed.map(|value|sql_u64(value,"closed_at")).transpose()?.is_some_and(|closed|closed < done_at) {
++                return Err(refusal("E-RS-DONE-ASSIGNMENT",assignment));
++            }
++        }
++        let mut receipt = json!({"seat":target,"verified_by":actor,"done_seq":done_seq});
++        if let Some(assignment)=assignment { receipt["assignment_id"] = json!(assignment); }
++        let mut event = Event {seq:None,v:1,at,kind:"state-verified".into(),seat:Some(target.clone()),payload:receipt.to_string()};
++        let seq = append_in_transaction(&mut tx,&event).await?;
++        tx.commit().await.map_err(adapter_error)?;
++        event.seq = Some(seq);
++        Ok((event,receipt))
++    }
++}
++
++async fn read_in_transaction(connection: &mut SqliteConnection, id: &str) -> Result<StoredDecision> {
++    let row = sqlx::query("SELECT * FROM decisions WHERE id=?1").bind(id).fetch_optional(connection).await.map_err(adapter_error)?
++        .ok_or_else(|| refusal("E-RS-NO-DECISION",id))?;
++    decode(row)
++}
++
++fn decision_event(row: &Decision, actor: &SeatId, action: &str, at: u64) -> Event {
++    Event { seq: None, v: 1, at, kind: format!("decision.{action}"), seat: Some(row.asked_by.clone()),
++        payload: json!({"actor":actor,"action":action,"record":row}).to_string() }
++}
++
++fn refusal(code: &str, id: &str) -> PijError {
++    PijError::GovernanceRefused { code: code.to_string(), record: id.to_string() }
++}
++
++fn decode(row: sqlx::sqlite::SqliteRow) -> Result<StoredDecision> {
++    let state: String = row.try_get("state").map_err(adapter_error)?;
++    let optional_at: Option<i64> = row.try_get("answered_at").map_err(adapter_error)?;
++    let answer_seq: Option<i64> = row.try_get("answer_seq").map_err(adapter_error)?;
++    Ok(StoredDecision {
++        decision: Decision {
++            id: row.try_get("id").map_err(adapter_error)?,
++            asked_by: SeatId::from(row.try_get::<String,_>("asked_by").map_err(adapter_error)?),
++            parent: row.try_get::<Option<String>,_>("parent").map_err(adapter_error)?.map(SeatId::from),
++            question: row.try_get("question").map_err(adapter_error)?,
++            state: match state.as_str() { "open"=>DecisionState::Open,"answered"=>DecisionState::Answered,_=>return Err(refusal("E-RS-DECISION-STATE",&state)) },
++            asked_at: sql_u64(row.try_get("asked_at").map_err(adapter_error)?,"asked_at")?,
++            question_seq: Seq(sql_u64(row.try_get("question_seq").map_err(adapter_error)?,"question_seq")?),
++            answer: row.try_get("answer").map_err(adapter_error)?,
++            answered_by: row.try_get::<Option<String>,_>("answered_by").map_err(adapter_error)?.map(SeatId::from),
++            answered_at: optional_at.map(|at|sql_u64(at,"answered_at")).transpose()?,
++            answer_msg_id: row.try_get("answer_msg_id").map_err(adapter_error)?,
++        },
++        answer_seq: answer_seq.map(|seq|sql_u64(seq,"answer_seq").map(Seq)).transpose()?,
++    })
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use pij_core::ports::Spine;
++    use crate::SqliteSpine;
++    use pij_testkit::FreshStore;
++
++    #[tokio::test]
++    async fn decision_survives_reopen_and_prepared_answer_remains_open() {
++        let fresh = FreshStore::new();
++        let pool = crate::open(&fresh.path()).await.expect("open");
++        let store = SqliteOrchestration::new(pool.clone());
++        let asker = SeatId::from("worker");
++        let parent = SeatId::from("parent");
++        let (event, decision) = store.open_decision_committed("d1",&asker,Some(&parent),"which branch?",100).await.expect("open question");
++        assert_eq!(event.seq,Some(decision.question_seq));
++        let payload: serde_json::Value = serde_json::from_str(&event.payload).expect("event");
++        assert_eq!(payload["record"]["question_seq"],decision.question_seq.0);
++        store.prepare_decision_answer("d1",&parent,"main",Some("d1-answer")).await.expect("prepare");
++        pool.close().await;
++        let pool = crate::open(&fresh.path()).await.expect("reopen");
++        let store = SqliteOrchestration::new(pool.clone());
++        let pending = store.get_decision("d1").await.expect("read").expect("row");
++        assert_eq!(pending.decision.state,DecisionState::Open);
++        assert_eq!(pending.decision.answer_msg_id.as_deref(),Some("d1-answer"));
++        assert!(store.prepare_decision_answer("d1",&parent,"other",Some("d1-answer")).await.is_err());
++        let (answered, row) = store.answer_decision_committed("d1",&parent,101).await.expect("accepted");
++        assert_eq!(row.state,DecisionState::Answered);
++        assert_eq!(store.get_decision("d1").await.expect("read").expect("row").answer_seq,answered.seq);
++        let events = SqliteSpine::new(pool.clone()).tail(None,Seq(0)).await.expect("events");
++        assert_eq!(events,vec![event,answered]);
++        pool.close().await;
++    }
++
++    #[tokio::test]
++    async fn failed_answer_event_rolls_back_decision_closure() {
++        let pool = crate::open("").await.expect("memory");
++        let store = SqliteOrchestration::new(pool.clone());
++        let actor = SeatId::from("worker");
++        store.open_decision_committed("d1",&actor,None,"which branch?",100).await.expect("question");
++        store.prepare_decision_answer("d1",&actor,"main",None).await.expect("prepare");
++        sqlx::query("CREATE TRIGGER reject_answer BEFORE INSERT ON spine_events WHEN NEW.kind='decision.answered' BEGIN SELECT RAISE(ABORT,'injected event failure'); END").execute(&pool).await.expect("inject");
++        assert!(store.answer_decision_committed("d1",&actor,101).await.is_err());
++        let row = store.get_decision("d1").await.expect("read").expect("row");
++        assert_eq!(row.decision.state,DecisionState::Open);
++        assert!(row.answer_seq.is_none());
++    }
++
++    #[tokio::test]
++    async fn verification_checks_explicit_assignment_node_and_done_association() {
++        let pool = crate::open("").await.expect("memory");
++        let store = SqliteOrchestration::new(pool.clone());
++        let spine = SqliteSpine::new(pool.clone());
++        let fixtures:serde_json::Value = serde_json::from_str(include_str!("../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json")).expect("contract");
++        let mut task:pij_core::orchestration::TaskAssignment = serde_json::from_value(fixtures["fixture_context"]["records"]["task"].clone()).expect("task");
++        task.opened_at = 1;
++        task.project = None;
++        store.open_task(&task).await.expect("task");
++        let actor = SeatId::from("parent");
++        let done = spine.append(Event {seq:None,v:1,at:2,kind:"report.state".into(),seat:Some(task.node_id.clone()),payload:json!({"state":"done"}).to_string()}).await.expect("unscoped done");
++        assert!(store.verify_done_committed(&actor,&task.node_id,Some(&task.id),3).await.is_err());
++        let (_,verified) = store.verify_done_committed(&actor,&task.node_id,None,3).await.expect("seat-only");
++        assert_eq!(verified["done_seq"],done.0);
++        let scoped = spine.append(Event {seq:None,v:1,at:4,kind:"report.state".into(),seat:Some(task.node_id.clone()),payload:json!({"state":"done","assignment_id":task.id}).to_string()}).await.expect("associated done");
++        let (_,verified) = store.verify_done_committed(&actor,&task.node_id,Some(&task.id),5).await.expect("scoped verify");
++        assert_eq!(verified["done_seq"],scoped.0);
++        assert!(store.verify_done_committed(&actor,&task.node_id,Some("different-task"),5).await.is_err());
++    }
++
++    #[tokio::test]
++    async fn generated_payload_failure_rolls_back_draft_and_decision() {
++        let pool = crate::open("").await.expect("memory");
++        let store = SqliteOrchestration::new(pool.clone());
++        sqlx::query("CREATE TRIGGER reject_payload BEFORE UPDATE OF payload ON spine_events BEGIN SELECT RAISE(ABORT,'injected finalization failure'); END").execute(&pool).await.expect("inject");
++        assert!(store.open_decision_committed("d1",&SeatId::from("worker"),None,"which branch?",100).await.is_err());
++        assert!(store.get_decision("d1").await.expect("read").is_none());
++        assert!(SqliteSpine::new(pool).tail(None,Seq(0)).await.expect("events").is_empty());
++    }
++}
+diff --git a/crates/store/src/spine.rs b/crates/store/src/spine.rs
+--- a/crates/store/src/spine.rs
++++ b/crates/store/src/spine.rs
+@@ -56,6 +56,26 @@
+     .await
+     .map_err(adapter_error)?;
+     Ok(Seq(seq as u64))
++}
++
++/// Allocate through the sole insertion authority, then finalize a self-referential
++/// payload before the caller commits its transaction. The draft is never visible
++/// outside that transaction; any failure must roll back the enclosing operation.
++pub(crate) async fn append_generated_in_transaction(
++    connection: &mut SqliteConnection,
++    mut draft: Event,
++    finalize_payload: impl FnOnce(Seq) -> String,
++) -> Result<Event> {
++    let seq = append_in_transaction(connection, &draft).await?;
++    draft.payload = finalize_payload(seq);
++    sqlx::query("UPDATE spine_events SET payload = ?1 WHERE seq = ?2")
++        .bind(&draft.payload)
++        .bind(seq.0 as i64)
++        .execute(connection)
++        .await
++        .map_err(adapter_error)?;
++    draft.seq = Some(seq);
++    Ok(draft)
+ }
+ 
+ /// A [`Spine`] backed by the SQLite store.
+diff --git a/crates/store/tests/anomaly_dispositions.rs b/crates/store/tests/anomaly_dispositions.rs
+--- a/crates/store/tests/anomaly_dispositions.rs
++++ b/crates/store/tests/anomaly_dispositions.rs
+@@ -8,7 +8,7 @@
+     AnomalyStatus, AnomalyThresholds, AnomalyView, Detector, StatusStaleDetector,
+     acknowledge_event, clear_event,
+ };
+-use pij_core::model::{Card, Harness, SeatDescriptor, SeatId, SemanticState, Seq};
++use pij_core::model::{Card, Harness, SeatDescriptor, SeatId, Seq};
+ use pij_core::ports::Spine;
+ use pij_store::SqliteSpine;
+ use pij_testkit::FreshStore;
+@@ -29,20 +29,21 @@
+         dispatches: &[],
+         done: &[],
+         dispositions,
++        decisions: &[],
++        dead: &[],
+     })
+ }
+ 
+ #[tokio::test]
+ async fn dispositions_survive_reopen_and_clear_holds_until_source_evidence_changes() {
+     let fresh = FreshStore::new();
+-    let mut descriptor = SeatDescriptor::new("pij-coder", Harness::Omp, "/abs/worktree");
+-    descriptor.semantic_state = Some(SemanticState::Waiting);
++    let descriptor = SeatDescriptor::new("pij-coder", Harness::Omp, "/abs/worktree");
+     let seats = [descriptor];
+     let cards = [Card {
+         seat: SeatId::from("pij-coder"),
+         did: "implemented anomaly detector".to_string(),
+         next: "awaiting review".to_string(),
+-        at: NOW - 700_000,
++        at: NOW - 1_900_000,
+         seq: Some(Seq(80)),
+     }];
+     let row = scan(&seats, &cards, &[]).remove(0);
+diff --git a/crates/daemon/src/http/anomalies.rs b/crates/daemon/src/http/anomalies.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/daemon/src/http/anomalies.rs
+@@ -0,0 +1,149 @@
++//! One bulk rs snapshot projected by the existing pure anomaly detectors.
++use std::collections::BTreeMap;
++use std::sync::Arc;
++use axum::extract::{Json, Query, State};
++use axum::response::Response;
++use pij_core::anomalies::{ActivityFact, AnomalyThresholds, AnomalyView, DeadSeatFact, DispatchFact, DoneFact, scan_all};
++use pij_core::decisions::Decision;
++use pij_core::error::Result;
++use pij_core::liveness::alive;
++use pij_core::model::{Card, Liveness, SeatDescriptor, Seq};
++use pij_core::orchestration::PrimeState;
++use pij_core::ports::{LivenessPort, Registry, SeatFilter, Spine};
++use pij_core::report::CardRecord;
++use pij_store::SqliteOrchestration;
++use serde_json::{Value, json};
++use crate::events::EventBus;
++use super::decisions::{DecisionError, ReadRequest, parse_filters, project_parents, query_argv, respond};
++use super::identity::{Resolved, resolve_seat};
++use super::{AppState, system_time_ms};
++
++/// Read-only anomaly service. Clones the existing SQL adapter, never a second pool.
++pub struct AnomalyService {
++    store: SqliteOrchestration,
++    registry: Arc<dyn Registry>,
++    bus: Arc<EventBus>,
++    liveness: Arc<dyn LivenessPort>,
++}
++
++impl AnomalyService {
++    /// Compose from the same persistence and host observations as governance/reap.
++    pub fn new(store: SqliteOrchestration, registry: Arc<dyn Registry>, bus: Arc<EventBus>, liveness: Arc<dyn LivenessPort>) -> Self {
++        Self {store,registry,bus,liveness}
++    }
++
++    /// Derive rows from real records and source seqs in bounded bulk reads.
++    pub async fn list(&self, filters: &BTreeMap<String,String>, here: Option<&str>) -> Result<Value> {
++        let seats = self.registry.list(SeatFilter::default()).await?;
++        let tasks = self.store.list_tasks(None).await?;
++        let dispatches = self.store.list_dispatches(None).await?;
++        let mut decisions:Vec<Decision> = self.store.list_decisions().await?;
++        let prime = self.store.prime().await?.filter(|row|row.state == PrimeState::Current).map(|row|row.seat);
++        project_parents(&mut decisions,&seats,prime.as_ref());
++        let events = self.bus.tail(None,Seq(0)).await?;
++        let cursor = events.last().and_then(|event|event.seq).unwrap_or(Seq(0));
++        let now = system_time_ms()?;
++        let mut cards = Vec::new();
++        let mut activity = Vec::new();
++        let mut done = BTreeMap::new();
++        let mut verified = BTreeMap::new();
++        let mut delivered = BTreeMap::new();
++        let mut registry_events = BTreeMap::new();
++        for event in &events {
++            let Some(seq)=event.seq else {continue;};
++            let Some(seat)=event.seat.as_ref() else {continue;};
++            activity.push(ActivityFact {seat:seat.clone(),at:event.at,seq});
++            match event.kind.as_str() {
++                "report.now"=>{
++                    if let Ok(record)=serde_json::from_str::<CardRecord>(&event.payload) {
++                        cards.push(Card {seat:seat.clone(),did:record.did,next:record.next,at:event.at,seq:Some(seq)});
++                    }
++                }
++                "report.state"=>{
++                    if let Ok(payload)=serde_json::from_str::<Value>(&event.payload) {
++                        if payload["state"]=="done" {
++                            let assignment = payload.get("assignment_id").and_then(Value::as_str).map(str::to_string);
++                            done.insert((seat.clone(),assignment.clone()),DoneFact {seat:seat.clone(),assignment_id:assignment,done_seq:seq,verified_seq:None,verified_done_seq:None});
++                        }
++                    }
++                }
++                "state-verified"=>{
++                    if let Ok(payload)=serde_json::from_str::<Value>(&event.payload) {
++                        if let Some(done_seq)=payload["done_seq"].as_u64() {
++                            verified.insert((seat.clone(),Seq(done_seq)),seq);
++                        }
++                    }
++                }
++                "dispatch"=>{
++                    if let Ok(payload)=serde_json::from_str::<Value>(&event.payload) {
++                        if payload["action"] == "delivered" {
++                            if let Some(id)=payload["record"]["id"].as_str() {delivered.insert(id.to_string(),seq);}
++                        }
++                    }
++                }
++                "seat.put"=>{
++                    if let Ok(record)=serde_json::from_str::<SeatDescriptor>(&event.payload) {registry_events.insert(seat.clone(),(record.proc,seq));}
++                }
++                _=>{}
++            }
++        }
++        let mut done:Vec<_> = done.into_values().collect();
++        for fact in &mut done {
++            if let Some(seq)=verified.get(&(fact.seat.clone(),fact.done_seq)) {
++                fact.verified_seq=Some(*seq);
++                fact.verified_done_seq=Some(fact.done_seq);
++            }
++        }
++        let dispatch_facts:Vec<_> = dispatches.into_iter().filter_map(|row| {
++            Some(DispatchFact {seat:row.to,dispatch_id:row.id.clone(),packet_sha256:row.packet_sha256?,delivered_at:row.delivered_at?,delivered_seq:*delivered.get(&row.id)?,acknowledged:row.acknowledged_at.is_some()})
++        }).collect();
++        let mut dead = Vec::new();
++        for seat in &seats {
++            if seat.tombstoned_at.is_some() {continue;}
++            let Some(proc)=seat.proc else {continue;};
++            let Some((recorded,seq))=registry_events.get(&seat.id) else {continue;};
++            if *recorded != Some(proc) {continue;}
++            if matches!(alive(proc,self.liveness.as_ref()).await?,Liveness::Dead {..}|Liveness::Recycled {..}) {
++                dead.push(DeadSeatFact {seat:seat.id.clone(),seq:*seq});
++            }
++        }
++        let view = AnomalyView {now_ms:now,thresholds:AnomalyThresholds::default(),seats:&seats,cards:&cards,activity:&activity,dispatches:&dispatch_facts,done:&done,dispositions:&events,decisions:&decisions,dead:&dead};
++        let rows = scan_all(&view);
++        let by_id:BTreeMap<_,_> = seats.iter().map(|seat|(&seat.id,seat)).collect();
++        let task_by_id:BTreeMap<_,_> = tasks.iter().map(|task|(task.id.as_str(),task)).collect();
++        let filtered:Vec<_> = rows.iter().filter(|row| {
++            filters.get("seat").is_none_or(|id|row.seat.as_str()==id)
++            && here.is_none_or(|folder|by_id.get(&row.seat).is_some_and(|seat|seat.folder==folder))
++            && filters.get("project").is_none_or(|project| row.assignment_id.as_deref().and_then(|id|task_by_id.get(id)).is_some_and(|task|task.node_id==row.seat && task.project.as_ref()==Some(project)))
++        }).map(|row|row.wire()).collect();
++        Ok(json!({"anomalies":filtered,"cursor":cursor}))
++    }
++}
++
++pub(crate) async fn list_post(State(state):State<AppState>,Json(request):Json<ReadRequest>)->Response {
++    let actor = match resolve_seat(&state,"pij anomalies",request.caller.session_id,request.caller.pane).await {
++        Resolved::Seat(seat,_)=>seat,Resolved::Refusal(response)=>return response,
++    };
++    let filters = match parse_filters(&request.argv,"anomalies",&["here","project","seat"],&["here"]) {
++        Ok(filters)=>filters,Err(error)=>return error.anomaly_scope().response("pij anomalies"),
++    };
++    let here = match filters.get("here").map(String::as_str) {
++        None|Some("false")=>None,
++        Some("true")=>Some(request.caller.cwd.as_deref().unwrap_or(&actor.folder)),
++        _=>return DecisionError::argument("--here is a boolean; scope comes from caller cwd").anomaly_scope().response("pij anomalies"),
++    };
++    respond("pij anomalies",state.services.anomalies.list(&filters,here).await.map_err(DecisionError::from))
++}
++
++pub(crate) async fn list_get(State(state):State<AppState>,Query(query):Query<BTreeMap<String,String>>)->Response {
++    let argv = query_argv("anomalies",query);
++    let filters = match parse_filters(&argv,"anomalies",&["here","project","seat"],&["here"]) {
++        Ok(filters)=>filters,Err(error)=>return error.anomaly_scope().response("pij anomalies"),
++    };
++    let here = match filters.get("here").map(String::as_str) {
++        None=>None,
++        Some(path) if std::path::Path::new(path).is_absolute()=>Some(path),
++        _=>return DecisionError::argument("GET here requires an absolute path, never bare true or daemon cwd").anomaly_scope().response("pij anomalies"),
++    };
++    respond("pij anomalies",state.services.anomalies.list(&filters,here).await.map_err(DecisionError::from))
++}
+diff --git a/crates/daemon/src/http/decisions.rs b/crates/daemon/src/http/decisions.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/daemon/src/http/decisions.rs
+@@ -0,0 +1,415 @@
++//! Durable questions, current-parent authority, and existing delivery admission.
++use std::collections::BTreeMap;
++use std::fmt::Write;
++use std::sync::Arc;
++use axum::extract::{Json, Query, State};
++use axum::http::StatusCode;
++use axum::response::Response;
++use pij_core::decisions::{Decision, DecisionState, may_answer};
++use pij_core::error::{PijError, Result};
++use pij_core::model::{DeliveryOutcome, Envelope, ErrorKind, Msg, SeatDescriptor, SeatId, SemanticState, Seq};
++use pij_core::orchestration::PrimeState;
++use pij_core::ports::{Registry, SeatFilter, Spine};
++use pij_core::report::{ReportConfig, ReportService};
++use pij_store::SqliteOrchestration;
++use serde::Deserialize;
++use serde_json::{Value, json};
++use tokio::sync::Mutex;
++use crate::delivery::DeliveryService;
++use crate::events::EventBus;
++use super::identity::{CallerContext, Resolved, resolve_seat};
++use super::{AppState, envelope, system_time_ms};
++
++/// Question/answer service over resources already composed by the daemon.
++pub struct DecisionService {
++    store: SqliteOrchestration,
++    registry: Arc<dyn Registry>,
++    bus: Arc<EventBus>,
++    delivery: Arc<DeliveryService>,
++    answer_lock: Mutex<()>,
++}
++
++impl DecisionService {
++    /// All resources share the daemon's existing registry/spine sequence domain.
++    pub fn new(store: SqliteOrchestration, registry: Arc<dyn Registry>, bus: Arc<EventBus>, delivery: Arc<DeliveryService>) -> Self {
++        Self { store, registry, bus, delivery, answer_lock: Mutex::new(()) }
++    }
++
++    /// Persist first, then publish the existing question state OUTSIDE the bus
++    /// lock. A second-step failure returns the durable decision as partial proof.
++    pub async fn question(&self, asker: &SeatId, question: &str) -> std::result::Result<Value, DecisionError> {
++        let mut bytes = [0u8;16];
++        getrandom::fill(&mut bytes).map_err(|error| DecisionError::internal(error.to_string()))?;
++        let mut id = String::from("decision-");
++        for byte in bytes { write!(id,"{byte:02x}").expect("String write"); }
++        let at = system_time_ms()?;
++        let store = self.store.clone();
++        let registry = self.registry.clone();
++        let asker = asker.clone();
++        let note = question.to_string();
++        let (seq, decision) = self.bus.publish_committed(async move {
++            let seat = live_seat(registry.as_ref(),&asker).await?;
++            store.open_decision_committed(&id,&asker,seat.parent.as_ref(),&note,at).await
++        }).await?;
++        let reports = ReportService::new(self.registry.as_ref(),self.bus.as_ref(),move || at,ReportConfig::default());
++        if let Err(error) = reports.declare(&decision.asked_by,Some(SemanticState::Question),Some(question)).await {
++            return Err(DecisionError { status: StatusCode::INTERNAL_SERVER_ERROR, code: "E-RS-QUESTION-PARTIAL".into(), message: format!("decision {} is durable at spine {}; question state publication failed: {error}",decision.id,seq.0), details: json!({"decision":decision,"seq":seq,"state_published":false}) });
++        }
++        Ok(json!({"seat":decision.asked_by,"seq":seq,"line":format!("question recorded: {}",decision.id),"decision":decision}))
++    }
++
++    /// Read live responsibility in bulk. Historical opened events are untouched.
++    pub async fn list(&self, filters: &BTreeMap<String,String>) -> std::result::Result<Value, DecisionError> {
++        let mut rows = self.store.list_decisions().await?;
++        let seats = self.registry.list(SeatFilter::default()).await?;
++        let prime = self.store.prime().await?.filter(|row|row.state == PrimeState::Current).map(|row|row.seat);
++        project_parents(&mut rows,&seats,prime.as_ref());
++        let events = self.bus.tail(None,Seq(0)).await?;
++        let cursor = events.last().and_then(|event|event.seq).unwrap_or(Seq(0));
++        let state = filters.get("state").map(String::as_str).unwrap_or("open");
++        if !matches!(state,"open"|"answered"|"all") { return Err(DecisionError::argument("state must be open|answered|all")); }
++        rows.retain(|row| (state == "all" || (row.state == DecisionState::Open) == (state == "open"))
++            && filters.get("asked_by").is_none_or(|id|row.asked_by.as_str() == id)
++            && filters.get("parent").is_none_or(|id|row.parent.as_ref().is_some_and(|parent|parent.as_str() == id)));
++        Ok(json!({"decisions":rows,"cursor":cursor}))
++    }
++
++    /// Durable linkage precedes admission; only an accepted delivery closes a
++    /// non-self answer. Retries retain both message id and answer event sequence.
++    pub async fn answer(&self, actor: &SeatId, id: &str, answer: &str) -> std::result::Result<Value, DecisionError> {
++        let _guard = self.answer_lock.lock().await;
++        let stored = self.store.get_decision(id).await?.ok_or_else(|| DecisionError::argument(format!("unknown decision {id}")))?;
++        let asker = live_seat(self.registry.as_ref(),&stored.decision.asked_by).await?;
++        if !may_answer(actor,&asker) { return Err(DecisionError::ownership("answer",actor,&asker)); }
++        let msg_id = (actor != &asker.id).then(||format!("{id}-answer"));
++        let prepared = self.store.prepare_decision_answer(id,actor,answer,msg_id.as_deref()).await?;
++        if prepared.decision.state == DecisionState::Answered {
++            let seq = prepared.answer_seq.ok_or_else(||DecisionError::internal("answered decision has no receipt"))?;
++            return Ok(json!({"decision":prepared.decision,"seq":seq}));
++        }
++        if let Some(msg_id) = msg_id {
++            let receipt = self.delivery.accept(Msg { from: actor.clone(),to:asker.id.clone(),body:answer.to_string(),msg_id,
++                from_machine:None,in_reply_to:None,command:None }).await.map_err(|error|DecisionError {
++                    status:StatusCode::CONFLICT,code:"E-RS-ANSWER-DELIVERY".into(),message:error.to_string(),details:json!({"decision":prepared.decision,"state":"open"})
++                })?;
++            if !matches!(receipt.outcome,DeliveryOutcome::Queued { .. }|DeliveryOutcome::Delivered { .. }) {
++                return Err(DecisionError { status:StatusCode::CONFLICT,code:"E-RS-ANSWER-DELIVERY".into(),message:"answer was not durably accepted; decision remains open".into(),details:json!({"decision":prepared.decision,"receipt":receipt}) });
++            }
++        }
++        let store = self.store.clone();
++        let registry = self.registry.clone();
++        let actor = actor.clone();
++        let asker_id = asker.id;
++        let id = id.to_string();
++        let at = system_time_ms()?;
++        let (seq,decision) = self.bus.publish_committed(async move {
++            let current = live_seat(registry.as_ref(),&asker_id).await?;
++            if !may_answer(&actor,&current) { return Err(PijError::GovernanceRefused { code:"E-RS-OWNERSHIP".into(),record:current.id.to_string() }); }
++            store.answer_decision_committed(&id,&actor,at).await
++        }).await?;
++        Ok(json!({"decision":decision,"seq":seq}))
++    }
++
++    /// Verify the exact latest done event, with authority read inside the common
++    /// publication lock so reparenting cannot overtake the receipt.
++    pub async fn verify(&self, actor: &SeatId, target: &SeatId, assignment: Option<String>) -> std::result::Result<Value, DecisionError> {
++        let store = self.store.clone();
++        let registry = self.registry.clone();
++        let actor = actor.clone();
++        let target = target.clone();
++        let at = system_time_ms()?;
++        let (seq,mut receipt) = self.bus.publish_committed(async move {
++            let seat = live_seat(registry.as_ref(),&target).await?;
++            if seat.parent.as_ref() != Some(&actor) || target == actor {
++                return Err(PijError::GovernanceRefused {code:"E-RS-OWNERSHIP".into(),record:target.to_string()});
++            }
++            store.verify_done_committed(&actor,&target,assignment.as_deref(),at).await
++        }).await?;
++        receipt["seq"] = json!(seq);
++        receipt["line"] = json!(format!("verified {} done at spine {}",receipt["seat"].as_str().unwrap_or_default(),receipt["done_seq"]));
++        Ok(receipt)
++    }
++}
++
++pub(crate) async fn live_seat(registry: &dyn Registry,id: &SeatId) -> Result<SeatDescriptor> {
++    registry.get(id).await?.filter(|seat|seat.tombstoned_at.is_none()).ok_or_else(||PijError::NoRegistryEntry {seat:id.clone(),store:"the daemon registry".into()})
++}
++
++/// Read projection only. Prime fallback exposes root questions but grants no authority.
++pub(crate) fn project_parents(rows: &mut [Decision], seats: &[SeatDescriptor], prime: Option<&SeatId>) {
++    let parents: BTreeMap<_,_> = seats.iter().map(|seat|(&seat.id,seat.parent.as_ref())).collect();
++    for row in rows { row.parent = parents.get(&row.asked_by).copied().flatten().or(prime).cloned(); }
++}
++
++/// Decodable failure, including a durable partial question or answer linkage.
++#[derive(Debug)]
++pub struct DecisionError {
++    status: StatusCode,
++    code: String,
++    message: String,
++    details: Value,
++}
++impl DecisionError {
++    pub(crate) fn argument(message: impl Into<String>) -> Self { Self {status:StatusCode::BAD_REQUEST,code:"E-RS-ARG".into(),message:message.into(),details:json!({})} }
++    pub(crate) fn anomaly_scope(mut self) -> Self {
++        self.message.push_str(". status-stale is node-keyed; --project excludes it and --here can hide worktree-resident seats. Run pij anomalies unscoped for the complete fleet view.");
++        self
++    }
++    fn internal(message: impl Into<String>) -> Self { Self {status:StatusCode::INTERNAL_SERVER_ERROR,code:"E-RS-STORE".into(),message:message.into(),details:json!({})} }
++    fn ownership(operation: &str,actor: &SeatId,target: &SeatDescriptor) -> Self { Self {status:StatusCode::FORBIDDEN,code:"E-RS-OWNERSHIP".into(),message:format!("{operation}: {actor} is neither {} nor its recorded parent",target.id),details:json!({"operation":operation,"caller":actor,"seat":target.id,"parent":target.parent})} }
++    /// Return the existing v2 envelope, not an independent error schema.
++    pub fn response(mut self, command: &str) -> Response {
++        self.details["code"] = json!(self.code);
++        let mut body = Envelope::<Value>::refused(command,if self.status.is_server_error(){ErrorKind::Adapter}else{ErrorKind::Refused},format!("{} {}",self.code,self.message));
++        body.details = Some(self.details);
++        envelope(self.status,&body)
++    }
++}
++impl From<PijError> for DecisionError {
++    fn from(error: PijError) -> Self {
++        match error {
++            PijError::GovernanceRefused {code,record} => Self {status:if code == "E-RS-OWNERSHIP" {StatusCode::FORBIDDEN}else{StatusCode::CONFLICT},code,message:format!("transition refused for {record}"),details:json!({"record":record})},
++            PijError::NoRegistryEntry {seat,store} => Self {status:StatusCode::BAD_REQUEST,code:"E-RS-NO-SEAT".into(),message:format!("{seat} is not an active seat in {store}"),details:json!({"seat":seat})},
++            error=>Self::internal(error.to_string()),
++        }
++    }
++}
++
++/// Shared argv/caller body for the new read families.
++#[derive(Deserialize)]
++pub struct ReadRequest {
++    /// Full original argv.
++    pub argv: Vec<String>,
++    /// Caller identity evidence.
++    #[serde(default)]
++    pub caller: CallerContext,
++}
++
++/// Parse the supported filters once for GET and argv readers. Unknown and
++/// duplicate options refuse; flags are never silently discarded.
++pub(crate) fn parse_filters(argv: &[String],family: &str,allowed: &[&str],boolean: &[&str]) -> std::result::Result<BTreeMap<String,String>,DecisionError> {
++    if argv.first().map(String::as_str) != Some(family) { return Err(DecisionError::argument("argv family does not match route")); }
++    let mut filters = BTreeMap::new();
++    let mut tokens = argv[1..].iter();
++    while let Some(token) = tokens.next() {
++        if token == "--json" { continue; }
++        let option = token.strip_prefix("--").ok_or_else(||DecisionError::argument(format!("unexpected argument {token}")))?;
++        let (name,inline) = option.split_once('=').map_or((option,None),|(name,value)|(name,Some(value)));
++        if !allowed.contains(&name) { return Err(DecisionError::argument(format!("unknown flag --{name}"))); }
++        let value = if let Some(value)=inline { value.to_string() } else if boolean.contains(&name) {"true".into()} else {
++            tokens.next().filter(|value|!value.starts_with("--")).ok_or_else(||DecisionError::argument(format!("--{name} requires a value")))?.clone()
++        };
++        if value.is_empty() || filters.insert(name.to_string(),value).is_some() { return Err(DecisionError::argument(format!("empty or duplicate --{name}"))); }
++    }
++    Ok(filters)
++}
++
++pub(crate) fn query_argv(family: &str,query: BTreeMap<String,String>) -> Vec<String> {
++    std::iter::once(family.to_string()).chain(query.into_iter().map(|(key,value)|format!("--{key}={value}"))).collect()
++}
++
++pub(crate) async fn list_get(State(state):State<AppState>,Query(query):Query<BTreeMap<String,String>>) -> Response {
++    list(&state,&query_argv("decisions",query)).await
++}
++pub(crate) async fn list_post(State(state):State<AppState>,Json(request):Json<ReadRequest>) -> Response {
++    match resolve_seat(&state,"pij decisions",request.caller.session_id,request.caller.pane).await {
++        Resolved::Refusal(response)=>response,
++        Resolved::Seat(_,_)=>list(&state,&request.argv).await,
++    }
++}
++async fn list(state:&AppState,argv:&[String]) -> Response {
++    match parse_filters(argv,"decisions",&["state","asked_by","parent"],&[]) {
++        Err(error)=>error.response("pij decisions"),
++        Ok(filters)=>respond("pij decisions",state.services.decisions.list(&filters).await),
++    }
++}
++
++/// Typed native answers and shim argv converge on the same operation.
++#[derive(Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct AnswerRequest {
++    /// Typed decision identity.
++    pub decision: Option<String>,
++    /// Typed answer text.
++    pub answer: Option<String>,
++    /// Shim command tokens.
++    #[serde(default)]
++    pub argv: Vec<String>,
++    /// Resolved by the shared identity ladder.
++    #[serde(default)]
++    pub caller: CallerContext,
++}
++
++pub(crate) async fn answer_post(State(state):State<AppState>,Json(request):Json<AnswerRequest>) -> Response {
++    let command = "pij answer";
++    let actor = match resolve_seat(&state,command,request.caller.session_id,request.caller.pane).await { Resolved::Seat(seat,_)=>seat,Resolved::Refusal(response)=>return response };
++    let (id,answer) = if request.argv.is_empty() {
++        match (request.decision,request.answer) { (Some(id),Some(answer))=>(id,answer),_=>return DecisionError::argument("answer requires decision and answer").response(command) }
++    } else {
++        if request.decision.is_some() || request.answer.is_some() { return DecisionError::argument("do not mix typed answer fields and argv").response(command); }
++        let args:Vec<_> = request.argv.iter().filter(|arg|arg.as_str()!="--json").collect();
++        if args.len()!=3 || args[0]!="answer" || args[1].starts_with("--") || args[2].starts_with("--") { return DecisionError::argument("usage: pij answer <decision> <answer> [--json]").response(command); }
++        (args[1].to_string(),args[2].to_string())
++    };
++    if id.trim().is_empty() || answer.trim().is_empty() { return DecisionError::argument("decision and answer must not be empty").response(command); }
++    respond(command,state.services.decisions.answer(&actor.id,&id,&answer).await)
++}
++
++pub(crate) fn respond(command:&str,result:std::result::Result<Value,DecisionError>) -> Response {
++    match result { Ok(data)=>envelope(StatusCode::OK,&Envelope::ok(command,data)),Err(error)=>error.response(command) }
++}
++
++pub(crate) async fn question(state:&AppState,seat:&SeatId,note:&str)->Response {
++    respond("pij report",state.services.decisions.question(seat,note).await)
++}
++pub(crate) async fn verify(state:&AppState,actor:&SeatId,target:&str,assignment:Option<String>)->Response {
++    respond("pij report",state.services.decisions.verify(actor,&SeatId::from(target),assignment).await)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use pij_core::model::{Harness, ProcIdentity};
++    use pij_harnesses::InteractionGate;
++    use pij_store::{SqliteQueue, SqliteRegistry, SqliteSpine, StorePool};
++    use pij_testkit::{FakeTmux, FakeTransport};
++
++    struct Fixture {
++        service: DecisionService,
++        registry: Arc<SqliteRegistry>,
++        bus: Arc<EventBus>,
++        store: SqliteOrchestration,
++        pool: StorePool,
++        worker: SeatId,
++        parent: SeatId,
++    }
++    impl Fixture {
++        async fn new(transport: FakeTransport) -> Self {
++            let pool = pij_store::open("").await.expect("shared memory SQL");
++            let store = SqliteOrchestration::new(pool.clone());
++            let bus = Arc::new(EventBus::new(Arc::new(SqliteSpine::new(pool.clone())),128).expect("bus"));
++            let registry = Arc::new(SqliteRegistry::new(pool.clone(),bus.clone()));
++            let fixtures: Value = serde_json::from_str(include_str!("../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json")).expect("contract");
++            let worker = SeatId::from(fixtures["fixture_context"]["worker"].as_str().expect("worker"));
++            let parent = SeatId::from(fixtures["fixture_context"]["parent"].as_str().expect("parent"));
++            let mut seat = SeatDescriptor::new(worker.clone(),Harness::Omp,"/work");
++            seat.parent = Some(parent.clone());
++            registry.put(seat).await.expect("worker");
++            registry.put(SeatDescriptor::new(parent.clone(),Harness::Omp,"/work")).await.expect("parent");
++            let queue = Arc::new(SqliteQueue::new(pool.clone(),30,128).expect("queue"));
++            let interaction = Arc::new(InteractionGate::new(Arc::new(FakeTmux::new())));
++            let delivery = Arc::new(DeliveryService::new(registry.clone(),queue,Arc::new(transport),interaction,bus.clone()).expect("delivery"));
++            let service = DecisionService::new(store.clone(),registry.clone(),bus.clone(),delivery);
++            Self {service,registry,bus,store,pool,worker,parent}
++        }
++        async fn ask(&self)->String {
++            let opened = self.service.question(&self.worker,"which branch owns this?").await.expect("question");
++            opened["decision"]["id"].as_str().expect("id").to_string()
++        }
++    }
++
++    #[tokio::test]
++    async fn reparenting_moves_live_question_and_revokes_old_answer_authority() {
++        let f = Fixture::new(FakeTransport::reachable()).await;
++        let id = f.ask().await;
++        let new_parent = SeatId::from("new-parent");
++        f.registry.put(SeatDescriptor::new(new_parent.clone(),Harness::Omp,"/work")).await.expect("new parent");
++        let mut worker = f.registry.get(&f.worker).await.expect("get").expect("worker");
++        worker.parent = Some(new_parent.clone());
++        f.registry.put(worker).await.expect("reparent");
++        let old = f.service.list(&BTreeMap::from([("parent".into(),f.parent.to_string())])).await.expect("old view");
++        assert!(old["decisions"].as_array().expect("rows").is_empty());
++        let current = f.service.list(&BTreeMap::from([("parent".into(),new_parent.to_string())])).await.expect("new view");
++        assert_eq!(current["decisions"][0]["parent"],new_parent.as_str());
++        assert_eq!(f.store.get_decision(&id).await.expect("stored").expect("row").decision.parent,Some(f.parent.clone()));
++        assert_eq!(f.service.answer(&f.parent,&id,"main").await.expect_err("old parent refused").status,StatusCode::FORBIDDEN);
++        let accepted = f.service.answer(&new_parent,&id,"main").await.expect("new parent answer");
++        let again = f.service.answer(&new_parent,&id,"main").await.expect("idempotent");
++        assert_eq!(accepted,again);
++        let inbox = f.service.delivery.claim_inbox(&f.worker,false).await.expect("actual inbox");
++        assert_eq!(inbox.len(),1);
++        assert_eq!(inbox[0].message.from,new_parent);
++        assert_eq!(inbox[0].message.to,f.worker);
++        assert_eq!(inbox[0].message.body,"main");
++        assert_eq!(inbox[0].message.msg_id,format!("{id}-answer"));
++        assert!(f.service.answer(&new_parent,&id,"other").await.is_err());
++    }
++
++    #[tokio::test]
++    async fn self_answer_closes_without_any_delivery_push_or_queue_row() {
++        let f = Fixture::new(FakeTransport::reachable()).await;
++        let id = f.ask().await;
++        let answered = f.service.answer(&f.worker,&id,"self ruling").await.expect("self answer");
++        assert!(answered["decision"]["answer_msg_id"].is_null());
++        assert_eq!(answered["decision"]["answered_by"],f.worker.as_str());
++        let events = f.bus.tail(None,Seq(0)).await.expect("events");
++        assert!(!events.iter().any(|event|event.kind=="message.pushed" || event.kind=="delivery.outcome"));
++        assert_eq!(events.iter().filter(|event|event.kind=="decision.answered").count(),1);
++        assert!(f.service.delivery.claim_inbox(&f.worker,false).await.expect("inbox").is_empty());
++    }
++
++    #[tokio::test]
++    async fn question_second_step_failure_exposes_durable_decision_and_does_not_deadlock() {
++        let f = Fixture::new(FakeTransport::reachable()).await;
++        sqlx::query("CREATE TRIGGER reject_question_state BEFORE INSERT ON spine_events WHEN NEW.kind='seat.put' BEGIN SELECT RAISE(ABORT,'injected second-step failure'); END").execute(&f.pool).await.expect("inject");
++        let result = tokio::time::timeout(std::time::Duration::from_secs(2),f.service.question(&f.worker,"which branch?")).await.expect("no recursive bus lock");
++        let error = result.expect_err("partial failure");
++        assert_eq!(error.code,"E-RS-QUESTION-PARTIAL");
++        let id = error.details["decision"]["id"].as_str().expect("durable id");
++        assert_eq!(f.store.get_decision(id).await.expect("stored").expect("row").decision.state,DecisionState::Open);
++        assert!(f.registry.get(&f.worker).await.expect("registry").expect("worker").semantic_state.is_none());
++        let opened = f.bus.tail(None,Seq(0)).await.expect("events").into_iter().find(|event|event.kind=="decision.opened").expect("opened event");
++        assert_eq!(error.details["seq"],opened.seq.expect("seq").0);
++    }
++
++    #[tokio::test]
++    async fn rejected_other_answer_keeps_prepared_decision_open() {
++        let f = Fixture::new(FakeTransport::reachable().script_outcome(DeliveryOutcome::Refused {reason:"operator denied".into()})).await;
++        let id = f.ask().await;
++        let mut worker = f.registry.get(&f.worker).await.expect("read").expect("worker");
++        worker.harness = Harness::Claude;
++        worker.proc = Some(ProcIdentity {pid:123,proc_start:456});
++        worker.semantic_state = None;
++        f.registry.put(worker).await.expect("socket fixture");
++        assert!(f.service.answer(&f.parent,&id,"main").await.is_err());
++        let row = f.store.get_decision(&id).await.expect("stored").expect("row");
++        assert_eq!(row.decision.state,DecisionState::Open);
++        assert_eq!(row.decision.answer_msg_id.as_deref(),Some(format!("{id}-answer").as_str()));
++        assert!(row.answer_seq.is_none());
++    }
++
++    #[tokio::test]
++    async fn verify_requires_parent_and_names_the_exact_latest_done() {
++        let f = Fixture::new(FakeTransport::reachable()).await;
++        let reports = ReportService::new(f.registry.as_ref(),f.bus.as_ref(),||100,ReportConfig::default());
++        let first = reports.declare(&f.worker,Some(SemanticState::Done),None).await.expect("done");
++        assert_eq!(f.service.verify(&f.worker,&f.worker,None).await.expect_err("self verify refused").status,StatusCode::FORBIDDEN);
++        assert_eq!(f.service.verify(&SeatId::from("outsider"),&f.worker,None).await.expect_err("outsider refused").status,StatusCode::FORBIDDEN);
++        let verified = f.service.verify(&f.parent,&f.worker,None).await.expect("parent");
++        assert_eq!(verified["done_seq"],first.0);
++        let second = reports.declare(&f.worker,Some(SemanticState::Done),None).await.expect("new done");
++        let anomalies = super::super::anomalies::AnomalyService::new(f.store.clone(),f.registry.clone(),f.bus.clone(),Arc::new(pij_testkit::FakeLiveness::new()));
++        let rows = anomalies.list(&BTreeMap::new(),None).await.expect("derived anomalies");
++        let row = rows["anomalies"].as_array().expect("rows").iter().find(|row|row["kind"]=="unverified-done").expect("new done unverified");
++        assert_eq!(row["evidence"][0],second.0);
++    }
++
++    #[tokio::test]
++    async fn delivered_dispatch_projection_consumes_the_canonical_event_literal() {
++        let f = Fixture::new(FakeTransport::reachable()).await;
++        let routes:Value = serde_json::from_str(include_str!("../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json")).expect("routes");
++        let events:Value = serde_json::from_str(include_str!("../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json")).expect("events");
++        let mut dispatch:pij_core::orchestration::Dispatch = serde_json::from_value(routes["fixture_context"]["records"]["dispatch"].clone()).expect("dispatch");
++        dispatch.created_at = 1;
++        f.store.create_dispatch(&dispatch).await.expect("create");
++        f.store.mark_dispatch_delivered(&dispatch.id,2).await.expect("delivery evidence");
++        let fixture = events["events"].as_array().expect("events").iter().find(|row|row["id"]=="dispatch-delivered").expect("event");
++        let event:pij_core::model::Event = serde_json::from_value(fixture["frame"]["event"].clone()).expect("canonical event");
++        let seq = f.bus.publish(event).await.expect("publish");
++        let anomalies = super::super::anomalies::AnomalyService::new(f.store.clone(),f.registry.clone(),f.bus.clone(),Arc::new(pij_testkit::FakeLiveness::new()));
++        let rows = anomalies.list(&BTreeMap::new(),None).await.expect("projection");
++        let row = rows["anomalies"].as_array().expect("rows").iter().find(|row|row["kind"]=="delivered-unacked-stale").expect("legacy anomaly kind");
++        assert_eq!(row["evidence"][0],seq.0);
++        assert_eq!(row["recordRef"],format!("dispatch:{}",dispatch.id));
++    }
++}
+diff --git a/crates/daemon/src/http/report.rs b/crates/daemon/src/http/report.rs
+--- a/crates/daemon/src/http/report.rs
++++ b/crates/daemon/src/http/report.rs
+@@ -14,12 +14,10 @@
+ //!
+ //! # Two rules that shape every refusal here
+ //!
+-//! 1. **A shape rs cannot honour refuses BY NAME.** rs has no assignment model
+-//!    and no project model, and its `SemanticState` is six words where the
+-//!    TypeScript vocabulary is eight. Every one of those gaps had an available
+-//!    near-fit that would have compiled — `--project` dropped on the floor,
+-//!    `failed` mapped to `Done`. A near-fit that type-checks is the worst
+-//!    outcome available here, because the caller cannot see it.
++//! 1. **A shape rs cannot honour refuses BY NAME.** Reports retain their
++//!    established grammar; task assignment is accepted specifically by verify,
++//!    where it is checked against real task and done evidence. Unsupported
++//!    state words and scoping flags never disappear into a near-fit behavior.
+ //! 2. **No refusal may be a bare 404.** Wave 1's shim classifies "404 or 405
+ //!    with a body that does not decode as a pij envelope" as ROUTE ABSENCE and
+ //!    falls back to legacy. A refusal wearing that shape would not be a refusal
+@@ -44,7 +42,7 @@
+ /// refusal, so a caller who typed a word rs lacks learns what it does have.
+ const RS_STATE_WORDS: &str = "ready|waiting|hold|blocked|question|done";
+ 
+-/// One parsed report invocation — the six leaves of the family.
++/// One parsed report invocation, including sequence-bound parent verification.
+ #[derive(Clone, Debug, PartialEq, Eq)]
+ pub(crate) enum ReportCall {
+     /// `report now "<did>" "<next>" [--state <word>] [--note <text>]`.
+@@ -63,6 +61,8 @@
+     Blocked(String),
+     /// `report question "<text>"` — `core/cli.ts:1689`.
+     Question(String),
++    /// Parent verifies an actual done event, optionally for its named task.
++    Verify { target: String, assignment: Option<String> },
+     /// `report clear` — `core/cli.ts:1746`.
+     Clear,
+ }
+@@ -94,11 +94,11 @@
+     match tokens.next() {
+         Some("report") => {}
+         Some(other) => return Err(format!("'{other}' is not the report verb")),
+-        None => return Err("usage: pij report <now|state|blocked|question|clear>".to_string()),
++        None => return Err("usage: pij report <now|state|blocked|question|clear|verify>".to_string()),
+     }
+     let leaf = tokens
+         .next()
+-        .ok_or_else(|| "usage: pij report <now|state|blocked|question|clear>".to_string())?;
++        .ok_or_else(|| "usage: pij report <now|state|blocked|question|clear|verify>".to_string())?;
+ 
+     let Arguments { positionals, flags } = split_arguments(tokens)?;
+ 
+@@ -106,6 +106,7 @@
+     // dispatched so the answer is the same wherever the flag was typed — the
+     // caller's mistake is the flag, not the verb they attached it to.
+     for (name, _) in &flags {
++        if leaf == "verify" && *name == "assignment" { continue; }
+         if let Some(why) = unsupported_flag(name) {
+             return Err(why);
+         }
+@@ -120,25 +121,25 @@
+             reject_unknown_flags("report clear", &flags, &[])?;
+             Ok(ReportCall::Clear)
+         }
+-        // `verify` is deliberately here rather than in `unsupported_flag`: it is
+-        // a whole verb rs cannot serve, not a flag on one it can. It should not
+-        // reach us at all — the route table holds it back so it keeps working on
+-        // legacy, where the assignment it verifies actually lives — but if the
+-        // table ever changes, this refuses by name instead of half-serving it.
+-        "verify" => Err(
+-            "rs cannot serve `report verify`: it stamps verifiedBy on an ASSIGNMENT record \
+-             (.pi/extensions/pij/core/cli.ts:1733) and rs has no assignment model, so there is \
+-             nothing here to verify. It is deliberately left unrouted and served by legacy."
+-                .to_string(),
+-        ),
++        "verify" => {
++            expect_positionals("report verify", &positionals, 1, "usage: pij report verify <seat> [--assignment <id>]")?;
++            reject_unknown_flags("report verify", &flags, &["assignment"])?;
++            let assignment = flag_value(&flags, "assignment")?;
++            if flags.iter().filter(|(name, _)| *name == "assignment").count() > 1
++                || (flags.iter().any(|(name, _)| *name == "assignment") && assignment.is_none_or(str::is_empty)) {
++                return Err("--assignment requires one nonempty task id".into());
++            }
++            if positionals[0].trim().is_empty() { return Err("report verify requires a seat".into()); }
++            Ok(ReportCall::Verify { target: positionals[0].to_string(), assignment: assignment.map(str::to_string) })
++        }
+         other => Err(format!(
+-            "unknown report subcommand '{other}' (now|state|blocked|question|clear)"
++            "unknown report subcommand '{other}' (now|state|blocked|question|clear|verify)"
+         )),
+     }
+ }
+ 
+-/// `--assignment`, `--refs`, `--project` and `--for` each address an object that
+-/// exists in the TypeScript generation and nowhere in rs.
++/// Scoping semantics unavailable on the selected leaf must refuse explicitly.
++/// Verify handles its supported assignment flag before this fallback.
+ ///
+ /// Accepting and ignoring them was the tempting failure: the report would have
+ /// succeeded, the caller would have seen success, and the scoping they asked for
+@@ -554,10 +555,11 @@
+     }
+ 
+     #[test]
+-    fn verify_refuses_by_name_and_says_where_it_still_works() {
+-        let refusal =
+-            parse_report(&argv(&["report", "verify", "nd-1"])).expect_err("rs cannot verify");
+-        assert!(refusal.contains("verify"), "{refusal}");
+-        assert!(refusal.contains("legacy"), "{refusal}");
+-    }
+-}
++    fn verify_accepts_seat_only_and_explicit_assignment_but_not_ignored_filters() {
++        assert_eq!(parse_report(&argv(&["report", "verify", "worker"])), Ok(ReportCall::Verify { target: "worker".into(), assignment: None }));
++        assert_eq!(parse_report(&argv(&["report", "verify", "worker", "--assignment", "task-1", "--json"])), Ok(ReportCall::Verify { target: "worker".into(), assignment: Some("task-1".into()) }));
++        for tokens in [vec!["report","verify","worker","--assignment"],vec!["report","verify","worker","--project","p"],vec!["report","verify","worker","--assignment","a","--assignment","b"]] {
++            assert!(parse_report(&argv(&tokens)).is_err());
++        }
++    }
++}
+diff --git a/crates/daemon/tests/governance_u4_baseline.rs b/crates/daemon/tests/governance_u4_baseline.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/daemon/tests/governance_u4_baseline.rs
+@@ -0,0 +1,101 @@
++//! HTTP RED witnesses: this file uses no plan139 implementation symbols.
++//! Run unchanged on the checkpoint with support/governance_http.rs and contracts.
++use serde_json::{Value, json};
++
++#[path = "support/governance_http.rs"]
++mod governance_http;
++use governance_http::{case, contracts, daemon, post};
++
++async fn value(addr: std::net::SocketAddr, path: &str, request: &Value) -> Value {
++    let response = post(addr, path, request).await;
++    assert!(response.status().is_success(), "{path}: {}", response.text().await.expect("refusal body"));
++    response.json().await.expect("envelope")
++}
++
++#[tokio::test]
++async fn u4_baseline_question_survives_clear_and_self_answer_pushes_nothing() {
++    let fixtures = contracts();
++    let (addr, server, _fresh) = daemon(&fixtures).await;
++    let request = case(&fixtures, "report-question")["request"].clone();
++    let opened = value(addr, "/v1/report", &request).await;
++    let decision = &opened["data"]["decision"];
++    assert_eq!(decision["state"], "open", "question must create a durable decision");
++    assert_eq!(decision["asked_by"], fixtures["fixture_context"]["worker"]);
++    assert_eq!(decision["question_seq"], opened["data"]["seq"]);
++    value(addr, "/v1/report", &json!({"argv":["report","clear"],"caller":request["caller"]})).await;
++    let listed = value(addr, "/v1/decisions", &case(&fixtures,"decisions-argv")["request"]).await;
++    assert!(listed["data"]["decisions"].as_array().expect("decisions").iter().any(|row| row["id"] == decision["id"]));
++    let answer = json!({"decision":decision["id"],"answer":"self ruling","caller":request["caller"]});
++    let answered = value(addr,"/v1/answer",&answer).await;
++    assert_eq!(answered["data"]["decision"]["state"], "answered");
++    assert_eq!(answered["data"]["decision"]["answered_by"], decision["asked_by"]);
++    assert!(answered["data"]["decision"]["answer_msg_id"].is_null());
++    let repeated = value(addr,"/v1/answer",&answer).await;
++    assert_eq!(repeated["data"], answered["data"], "identical retry must retain its sequence");
++    let mut conflict = answer.clone();
++    conflict["answer"] = json!("different ruling");
++    let conflicting = post(addr,"/v1/answer",&conflict).await;
++    assert!(!conflicting.status().is_success());
++    server.abort();
++}
++
++#[tokio::test]
++async fn u4_baseline_unrelated_answer_refuses_without_closing_question() {
++    let fixtures = contracts();
++    let (addr, server, _fresh) = daemon(&fixtures).await;
++    let opened = value(addr,"/v1/report",&case(&fixtures,"report-question")["request"]).await;
++    let id = &opened["data"]["decision"]["id"];
++    assert!(id.is_string(), "report question must return the decision identity");
++    let refused = post(addr,"/v1/answer",&json!({"decision":id,"answer":"unauthorized","caller":{"TMUX_PANE":"%12","cwd":"/work/project"}})).await;
++    assert_eq!(refused.status(), reqwest::StatusCode::FORBIDDEN);
++    let refused: Value = refused.json().await.expect("refusal envelope");
++    assert_eq!(refused["details"]["code"], "E-RS-OWNERSHIP");
++    let listed = value(addr,"/v1/decisions",&case(&fixtures,"decisions-argv")["request"]).await;
++    assert_eq!(listed["data"]["decisions"][0]["state"], "open");
++    server.abort();
++}
++
++#[tokio::test]
++async fn u4_baseline_parent_verify_binds_done_and_new_done_reopens_anomaly() {
++    let fixtures = contracts();
++    let (addr, server, _fresh) = daemon(&fixtures).await;
++    let worker = case(&fixtures,"report-question")["request"]["caller"].clone();
++    let done_request = json!({"argv":["report","state","done"],"caller":worker});
++    let done = value(addr,"/v1/report",&done_request).await;
++    let verified = value(addr,"/v1/report",&case(&fixtures,"report-verify")["request"]).await;
++    assert_eq!(verified["data"]["done_seq"],done["data"]["seq"]);
++    let before = value(addr,"/v1/anomalies",&case(&fixtures,"anomalies-argv")["request"]).await;
++    assert!(!before["data"]["anomalies"].as_array().expect("rows").iter().any(|row| row["kind"] == "unverified-done"));
++    let later = value(addr,"/v1/report",&done_request).await;
++    let after = value(addr,"/v1/anomalies",&case(&fixtures,"anomalies-argv")["request"]).await;
++    let row = after["data"]["anomalies"].as_array().expect("rows").iter().find(|row| row["kind"] == "unverified-done").expect("new done is not verified");
++    assert_eq!(row["evidence"][0],later["data"]["seq"]);
++    assert!(row.get("assignmentId").is_none(), "unscoped done must not invent an assignment");
++    server.abort();
++}
++
++#[tokio::test]
++async fn u4_baseline_get_and_post_scope_filters_keep_valid_rows_and_refuse_guessed_here() {
++    let fixtures = contracts();
++    let (addr, server, _fresh) = daemon(&fixtures).await;
++    let caller = case(&fixtures,"report-question")["request"]["caller"].clone();
++    value(addr,"/v1/report",&json!({"argv":["report","state","done"],"caller":caller})).await;
++    let client = reqwest::Client::new();
++    let unauth = client.get(format!("http://{addr}/v1/anomalies")).send().await.expect("unauthenticated request");
++    assert_eq!(unauth.status(),reqwest::StatusCode::UNAUTHORIZED);
++    let parent = case(&fixtures,"anomalies-argv")["request"]["caller"].clone();
++    let post_view = value(addr,"/v1/anomalies",&json!({"argv":["anomalies","--here"],"caller":parent})).await;
++    let get_view:Value = client.get(format!("http://{addr}/v1/anomalies")).query(&[("here","/work/project")]).bearer_auth("governance-u3-test-key").send().await.expect("GET").json().await.expect("envelope");
++    assert_eq!(get_view,post_view);
++    assert_eq!(get_view["data"]["anomalies"].as_array().expect("rows").len(),1);
++    let scoped:Value = client.get(format!("http://{addr}/v1/anomalies")).query(&[("here","/other")]).bearer_auth("governance-u3-test-key").send().await.expect("GET scoped").json().await.expect("envelope");
++    assert!(scoped["data"]["anomalies"].as_array().expect("rows").is_empty());
++    let project = value(addr,"/v1/anomalies",&json!({"argv":["anomalies","--project","governance-port"],"caller":parent})).await;
++    assert!(project["data"]["anomalies"].as_array().expect("rows").is_empty(),"unscoped done has no invented project");
++    let ambiguous = client.get(format!("http://{addr}/v1/anomalies")).query(&[("here","true")]).bearer_auth("governance-u3-test-key").send().await.expect("ambiguous GET");
++    assert_eq!(ambiguous.status(),reqwest::StatusCode::BAD_REQUEST);
++    let refused:Value = ambiguous.json().await.expect("refusal envelope");
++    assert_eq!(refused["details"]["code"],"E-RS-ARG");
++    assert!(refused["meta"].as_str().expect("guidance").contains("unscoped"));
++    server.abort();
++}
+diff --git a/crates/daemon/tests/report_http.rs b/crates/daemon/tests/report_http.rs
+--- a/crates/daemon/tests/report_http.rs
++++ b/crates/daemon/tests/report_http.rs
+@@ -537,24 +537,17 @@
+     server.abort();
+ }
+ 
+-/// `report verify <node>` stamps `verifiedBy` on an assignment record
+-/// (`core/cli.ts:1733`). rs has no assignment record, so the verb has nothing to
+-/// stamp. It refuses by name — and, critically, NOT with the bare 404 that would
+-/// make the shim fall back to legacy and write a supervisory act into the other
+-/// store.
+-#[tokio::test]
+-async fn verify_refuses_by_name_because_rs_has_no_assignment_to_verify() {
++/// Verification exists, but an unknown target must still return a named,
++/// decodable refusal rather than being mistaken for route absence.
++#[tokio::test]
++async fn verify_refuses_unknown_target_with_decodable_evidence() {
+     let (addr, server, _store, _config) = daemon().await;
+ 
+     let refusal = post_report(addr, Some(SEAT), &["report", "verify", "nd-1"]).await;
+     assert_eq!(refusal.status(), reqwest::StatusCode::BAD_REQUEST);
+-    let meta = refusal
+-        .json::<Envelope<serde_json::Value>>()
+-        .await
+-        .expect("envelope")
+-        .meta
+-        .unwrap_or_default();
+-    assert!(meta.contains("verify"), "{meta}");
++    let body = refusal.json::<serde_json::Value>().await.expect("envelope");
++    assert_eq!(body["details"]["code"], "E-RS-NO-SEAT");
++    assert_eq!(body["details"]["seat"], "nd-1");
+ 
+     server.abort();
+ }
+diff --git a/crates/cli/src/anomalies.rs b/crates/cli/src/anomalies.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/cli/src/anomalies.rs
+@@ -0,0 +1,10 @@
++//! Native anomaly command: semantics remain owned by the daemon parser.
++use pij_core::model::Envelope;
++use serde_json::{Value, json};
++use crate::{CallerContext, DaemonClient};
++
++/// Forward the exact filter argv and caller evidence, preserving the envelope.
++pub async fn anomalies(client: &DaemonClient, args: &[String], caller: &CallerContext) -> Envelope<Value> {
++    let argv: Vec<&str> = std::iter::once("anomalies").chain(args.iter().map(String::as_str)).collect();
++    client.post("pij anomalies","/v1/anomalies",&json!({"argv":argv,"caller":caller})).await
++}
+diff --git a/crates/cli/src/decisions.rs b/crates/cli/src/decisions.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/cli/src/decisions.rs
+@@ -0,0 +1,65 @@
++//! Native decision commands forward their original argv to the sole daemon parser.
++use pij_core::model::Envelope;
++use serde_json::{Value, json};
++use crate::{CallerContext, DaemonClient};
++
++/// Read questions without implementing independent filter semantics.
++pub async fn decisions(client: &DaemonClient, args: &[String], caller: &CallerContext) -> Envelope<Value> {
++    let argv: Vec<&str> = std::iter::once("decisions").chain(args.iter().map(String::as_str)).collect();
++    client.post("pij decisions","/v1/decisions",&json!({"argv":argv,"caller":caller})).await
++}
++
++/// Answer through the same identity, ownership and delivery path as the shim.
++pub async fn answer(client: &DaemonClient, args: &[String], caller: &CallerContext) -> Envelope<Value> {
++    let argv: Vec<&str> = std::iter::once("answer").chain(args.iter().map(String::as_str)).collect();
++    client.post("pij answer","/v1/answer",&json!({"argv":argv,"caller":caller})).await
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use axum::extract::{Json, State};
++    use axum::routing::post;
++    use std::sync::Arc;
++    use pij_testkit::fresh_dir;
++
++    async fn echo(State(fixtures):State<Arc<Value>>,Json(request):Json<Value>) -> String {
++        let case = fixtures["routes"].as_array().expect("routes").iter()
++            .filter(|route|route["owner"]=="u4")
++            .flat_map(|route|route["cases"].as_array().expect("cases"))
++            .find(|case|case["request"]["argv"]==request["argv"] || case["shim_request"]["argv"]==request["argv"]).expect("canonical argv");
++        let request_case = if case["request"]["argv"].is_array(){&case["request"]}else{&case["shim_request"]};
++        let caller:CallerContext = serde_json::from_value(request_case["caller"].clone()).expect("caller");
++        assert_eq!(request["caller"],serde_json::to_value(caller).expect("caller wire"));
++        let response:Envelope<Value> = serde_json::from_value(case["response"].clone()).expect("response");
++        serde_json::to_string(&response).expect("envelope")
++    }
++
++    #[tokio::test]
++    async fn anomaly_decision_answer_commands_preserve_canonical_argv_and_envelopes() {
++        let fixtures:Value = serde_json::from_str(include_str!("../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json")).expect("contracts");
++        let router = axum::Router::new().route("/v1/anomalies",post(echo)).route("/v1/decisions",post(echo)).route("/v1/answer",post(echo)).with_state(Arc::new(fixtures.clone()));
++        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
++        let addr = listener.local_addr().expect("address");
++        let server = tokio::spawn(async move {axum::serve(listener,router).await.expect("serve");});
++        let dir = fresh_dir("pij-u4-cli");
++        std::fs::write(dir.join("daemon.key"),"u4-cli-key").expect("fixture key");
++        let client = DaemonClient::new(&dir,&addr.to_string()).expect("client");
++        for case in fixtures["routes"].as_array().expect("routes").iter().filter(|route|route["owner"]=="u4").flat_map(|route|route["cases"].as_array().expect("cases")) {
++            let request = if case["shim_request"].is_object(){&case["shim_request"]}else{&case["request"]};
++            let Some(argv)=request["argv"].as_array() else {continue;};
++            let argv:Vec<String> = argv.iter().map(|arg|arg.as_str().expect("arg").to_string()).collect();
++            let caller:CallerContext = serde_json::from_value(request["caller"].clone()).expect("caller");
++            let actual = match argv[0].as_str() {
++                "anomalies"=>crate::anomalies::anomalies(&client,&argv[1..],&caller).await,
++                "decisions"=>decisions(&client,&argv[1..],&caller).await,
++                "answer"=>answer(&client,&argv[1..],&caller).await,
++                _=>continue,
++            };
++            let expected:Envelope<Value> = serde_json::from_value(case["response"].clone()).expect("response");
++            assert_eq!(serde_json::to_vec(&actual).expect("actual"),serde_json::to_vec(&expected).expect("expected"));
++        }
++        server.abort();
++        std::fs::remove_dir_all(dir).expect("remove owned fixture");
++    }
++}

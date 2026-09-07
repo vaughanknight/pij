@@ -1,0 +1,11 @@
+{
+  "finding": "F003",
+  "review_subject": "335d20981c37c868f6039724f4a78b621c8bb7e2",
+  "change": "Removed redundant misleading source_base; history.previous_capture_commit retains the same78531 lineage and source_snapshot remains the capture identity.",
+  "capture_corpus_sha256": "a9311375da6623bbbd9aa4e4e1520353cd543b6b069ad857b365af2017a12f51",
+  "corrected_corpus_sha256": "8ac162852e0da1858029190386f75984cbdfafc0147b113de217b215525af9c7",
+  "corrected_bytes": 112742,
+  "all_other_json_fields_equal": true,
+  "captured_stdout_and_source_snapshot_unchanged": true,
+  "runtime_source_changed": false
+}

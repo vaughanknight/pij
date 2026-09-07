@@ -3,6 +3,7 @@
 > Labeled run-01 history, not a template. Ids and nonce are intentionally
 > preserved. Use [`../templates/stream-brief.md`](../templates/stream-brief.md)
 > and [`../rituals/kickoff.md`](../rituals/kickoff.md) for current operation.
+> Its old spawn flags and session columns are historical evidence, not current rs grammar. Current native spawn has no `--layout`; shim tail/list filters do not reproduce the old transcript/registry. Runtime canon now lives under `crates/testkit/fixtures/golden/api/`; this July receipt is not new cutover proof.
 
 # Canary record — s017 (pij-1gx33y5)
 **Spawner**: the prime (pij-1bovprr) · **Date**: 2026-07-10 · **Verdict**: PASS (3/3 legs; leg c closed ~13:00Z at brief delivery after the slate hold)

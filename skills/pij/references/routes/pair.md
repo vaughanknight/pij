@@ -10,9 +10,7 @@ colleague sessions (a **coder** that implements bounded packets + a separate
 prompt-learning ledger. This is the delegation *wrapper* — never a replacement for
 `the-flow`, which stays the sole writer of its own state.
 
-**Preconditions**: mode detected once per run (§ C1 — control-plane mode also needs the
-one-time self-adopt so colleague replies can reach you); a `pij daemon` (auto-starts on
-first spawn). The **engine is already built** — the `flow-pair` CLI
+**Preconditions**: delivery ownership/identity per § C1 and a reachable rs daemon (`pij-rs ping --json`). Shim spawn/agent/tree/link/models are named refusals, not a legacy escape; use explicit native spawn grammar and supported host tools. The **engine is already built** — the `flow-pair` CLI
 (`<flow-pair skill root>/lib/cli.ts`) + the `.flow-pair/` ledger. This route *drives* that
 CLI; it never reimplements it, never imports it into pi (P2), and never writes the ledger
 by hand.
@@ -136,7 +134,7 @@ as `role → { pijId, paneId, model, spawnedByUs }`, **persisted before use (P9)
 tidy can find and close our panes even after a crash.
 
 **Roles & default models** (override per run via `--coder-model` / `--reviewer-model`; confirm
-exact ids with `pij models`, § C4):
+exact ids with the host's model catalog and real runtime canary, § C4; `pij models` is unported):
 
 | Role | Default model | Acquire when |
 |------|---------------|--------------|
@@ -149,19 +147,14 @@ exact ids with `pij models`, § C4):
   coder** — an idle-but-live peer is not free (its warm context is re-cached every
   compact/keep-alive cycle, and cache TTL forces rewrites), so a reviewer stood up a phase
   early quietly burns cache-token writes + a pane with zero reviews to show. Spawn it at the
-  *moment* of the first `REVIEW`. Spawn transport per § C1; placement per § C5 (the default
-  side-stack keeps the fleet visible — keep it unless told to hide).
+  *moment* of the first `REVIEW`. Spawn transport per § C1; explicit supported native/tool placement per § C5. Native CLI has no legacy layout flags.
 - **Canary-verify before trusting (§ C2)** — a ready-ping is NOT proof; a wrong `--model` is
   accepted silently then 400s on first inference. Verify footer + no-400 before first use —
   for *provided* peers too.
-- **Designate from above at placement.** After identity/parentage is proved, the
-  orchestrator runs `pij link <peer-id> --parent <orchestrator-id> --role worker --json`
-  for spawned and provided fleet workers. The call is idempotent when spawn
-  already recorded the parent. A seat never infers or self-declares its role.
+- **Designate from above after verifying parentage.** Native spawn/adopt records the supported parent claim. Then the current parent runs `pij role <peer-id> worker --json`. Existing-seat reparent/root placement (`link`) is unported: a role change cannot repair it; escalate mismatches rather than mutating legacy records.
 - **Reuse across phases — compact, never close (§ C3)** — the same coder + reviewer carry the
   whole run, clean-slate each phase.
-- **Heal** — a dead/stale peer, or one that fails its canary, is closed and re-spawned on next
-  need; **persist the updated roster before** re-delivering the packet (P9).
+- **Heal** — corroborate a stale/dead binding, then use authorized rs retirement and explicit native spawn/revive as appropriate. Close tombstones only; owned terminal teardown is separate. Persist the replacement roster before redelivery (P9), never infer a force bypass.
 - **Reviewer-never-binds → HALT, never self-review (control integrity).** Healing is for a peer
   that *was* working and went stale. It is **not** a licence to proceed reviewer-less. If the
   reviewer peer cannot be brought to `bound` — spawn fails, canary never passes, or `pij state`

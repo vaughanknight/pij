@@ -12,8 +12,10 @@ workspace = true
 # `pij-testkit` is NOT dev-only here — the fakes are the DEFAULT wiring, so the
 # shipped binary must contain them (offline-first, workshop 001 R2).
 [dependencies]
+async-trait = { workspace = true }
 axum = { workspace = true }
 getrandom = { workspace = true }
+globset = { workspace = true }
 hostname = { workspace = true }
 pij-core = { workspace = true }
 # Wired at wave-1 composition: the real LivenessPort adapter (u-liveness).
@@ -27,7 +29,8 @@ pij-testkit = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { workspace = true }
+sha2 = { workspace = true }
+tokio = { workspace = true, features = ["process"] }
 tokio-stream = { workspace = true }
 
 # The end-to-end tests speak HTTP to the daemon over loopback, and use FreshStore
@@ -37,7 +40,6 @@ tokio-stream = { workspace = true }
 tokio-stream = { workspace = true }
 # The review regressions drive a real store and a real socket: the findings they
 # lock in were all invisible to unit-level doubles.
-async-trait = { workspace = true }
 pij-store = { workspace = true }
 # Wired at wave-1 composition: the real TmuxPort adapter (u-tmux).
 pij-tmux = { workspace = true }

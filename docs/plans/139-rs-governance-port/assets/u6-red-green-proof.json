@@ -1,0 +1,28 @@
+{
+  "schema": "pij/u6-red-green/v1",
+  "baseline": "e22833b0d0caf00d95346008dab1587005d0173d",
+  "baseline_worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-red",
+  "overlay": "Only generation-cutover.test.ts, generation-skill-coverage.test.ts, and stable governance routes/events fixtures; production source unchanged",
+  "red": {
+    "artifact": "artifact://414",
+    "exit": 1,
+    "failed": 77,
+    "passed": 11,
+    "files_failed": 2,
+    "classification": "Assertion failures: legacy fallthrough, missing raw bytes/routes/filters, sessions union, missing native forwarding, incomplete skill coverage; no import, syntax, type or reference failure substituted for behavioral RED"
+  },
+  "green": {
+    "artifact": "artifact://411",
+    "tests_passed": 406,
+    "files_passed": 11
+  },
+  "refusal_corpus": {
+    "command": "cargo test --locked -p pij-core --test envelope_wire -- --nocapture",
+    "test": "every_error_kind_emits_the_shared_complete_refusal_envelope",
+    "passed": 1
+  },
+  "limitations": [
+    "Targeted green is not the complete merged gate",
+    "Native/shim exact byte capture independently found native reserialization; see native-parity-red.json"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "goal": "Repair actual composed TypeScript compiler/lint findings without weakening the u6 cutover contracts",
+  "target": "Own source in /Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6: .pi/extensions/pij/cli.ts and only other original u6-owned paths identified by artifact://421. PM owns Rust files and all validation. No other files.",
+  "change": [
+    "Fix tsc TS2339 at cli.ts:148: rendered.text is not narrowed after the combined no-renderer/json-refused discriminant. Preserve refusal handling and original bytes; use a properly discriminated result or exhaustive branch, no casts/suppression.",
+    "Read artifact://421 for the complete actual just lint failure. Repair new non-null assertions and any other u6-owned errors/warnings. Use ordinary runtime assertions that narrow types; do not introduce fallback fixture values or weaken assertions. Existing unrelated biome schema-version info is not your scope.",
+    "Capture preimages before editing; deliver a delta against your previously delivered 61-file source, NOT another diff against e228 and NOT the entire original patch. PM has already applied all original source.",
+    "Skip all validation: no tests, builds, typecheck, lint, formatters, or commits. PM will run formatter/gates after your new barrier. Leave exact original output contracts and preserved raw bytes intact."
+  ],
+  "acceptance": "Return u6-validation-amendment.patch plus SHA256, complete changed-path hashes, and a concise mapping of each reported finding to its repair. READY_TO_VALIDATE only; not acceptance. Remain semantic waiting afterward."
+}

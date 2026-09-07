@@ -81,8 +81,8 @@ where
     ///
     /// # Composition recipe
     ///
-    /// Report has no `AdapterChoice::Real` refusal: it composes the already-wired
-    /// registry and spine ports. The composition root adds:
+    /// The composition root must expose its EventBus as `services.spine`, not
+    /// the raw store: report writes then share registry ordering and live fanout.
     ///
     /// ```ignore
     /// use pij_core::report::{ReportConfig, ReportService};

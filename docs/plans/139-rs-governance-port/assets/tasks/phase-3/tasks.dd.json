@@ -1,0 +1,85 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Anomalies, verify, decisions, lifecycle",
+        "slug": "phase-3",
+        "status": "draft",
+        "summary": "Anomalies, verify, decisions, lifecycle",
+        "log": "../../execution-log.dd.json#entries"
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Anomalies, verify, decisions, lifecycle"
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "tk-30a3",
+          "title": "u4 — anomalies as a spine view (status-stale, unverified-done, open-question, unacked-dispatch, dead-seat)",
+          "domain": "rust",
+          "phase": "p3",
+          "state": "checked",
+          "done": "#done_when/tk-30a3",
+          "receipt": "../../execution-log.dd.json#entries/lg-0014"
+        },
+        {
+          "id": "tk-31a3",
+          "title": "u4 — report verify; decisions: question row → parent, answer routed to asker",
+          "domain": "rust",
+          "phase": "p3",
+          "state": "checked",
+          "done": "#done_when/tk-31a3",
+          "receipt": "../../execution-log.dd.json#entries/lg-0014"
+        },
+        {
+          "id": "tk-32a3",
+          "title": "u5 — close (owner-only tombstone) + reap (--dry-run, proc{pid,proc_start}+pane, recycled-pid refusal)",
+          "domain": "rust",
+          "phase": "p3",
+          "state": "checked",
+          "done": "#done_when/tk-32a3",
+          "receipt": "../../execution-log.dd.json#entries/lg-0014"
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {
+        "tk-30a3": [
+          {
+            "id": "dw-30a3",
+            "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0005",
+            "proven_by": "../../execution-log.dd.json#entries/lg-0014"
+          }
+        ],
+        "tk-31a3": [
+          {
+            "id": "dw-31a3",
+            "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0006",
+            "proven_by": "../../execution-log.dd.json#entries/lg-0014"
+          }
+        ],
+        "tk-32a3": [
+          {
+            "id": "dw-32a3",
+            "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0007",
+            "proven_by": "../../execution-log.dd.json#entries/lg-0014"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,250 @@
+{
+  "dd": {
+    "schema": "builder/execution-log"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Observed plan139 implementation evidence",
+        "plan": "../plan.dd.json#meta"
+      }
+    },
+    {
+      "name": "entries",
+      "value": [
+        {
+          "id": "lg-0001",
+          "at": "2026-09-07T03:14:05Z",
+          "text": "Wave1 observed proof: cwd /Users/jordanknight/pi-hacking/fs3-rs-governance-port; rustup cargo/rustc1.98.0. ~/.cargo/bin/cargo run --locked -p pij-testkit --bin pij-gate exited0, all6 stages PASS including workspace tests/doctests, clippy and9-crate architecture. Raw artifact://199. harness checks --json completed2026-09-07T03:03:12.259Z, exit0, all9 sensors/no skips. assets/green-proof-wave1.json and assets/red-proof.json name exercised contracts and baseline RED. Source was uncommitted worktree over base80f01745e3bca0551c3a659ff6e7294de3b26432; no immutable full-source SHA is claimed for that run. Busy OMP canonical-facts extension separately failed then passed its named test. u4/u5/u6 and positive canary witness remain pending.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC1",
+            "../plan.dd.json#acceptance_criteria/AC2",
+            "../plan.dd.json#acceptance_criteria/AC3",
+            "../plan.dd.json#acceptance_criteria/AC4"
+          ]
+        },
+        {
+          "id": "lg-0002",
+          "at": "2026-09-07T03:20:12Z",
+          "text": "Immutable wave1 source checkpoint 0a7a26737d08701bddac6ccc0b6d7b040873e4f9 created via harness commit with explicit owned paths after Rust six-stage and engineering nine-sensor GREEN, plus targeted busy-OMP RED→GREEN. cwd /Users/jordanknight/pi-hacking/fs3-rs-governance-port. Evidence: green-proof-wave1.json, red-proof.json, artifact://199. Native spine/role/project-stream-fence-baton-prime contracts verified; positive canary witness remains pending, and shim/u4/u5 are not claimed complete.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC1",
+            "tasks/phase-1/tasks.dd.json#tasks/tk-11a1",
+            "tasks/phase-1/tasks.dd.json#tasks/tk-12a1",
+            "tasks/phase-2/tasks.dd.json#tasks/tk-20a2",
+            "tasks/phase-2/tasks.dd.json#tasks/tk-21a2"
+          ]
+        },
+        {
+          "id": "lg-0003",
+          "at": "2026-09-07T03:48:28Z",
+          "text": "Positive fake-host canary witness GREEN: cargo test --locked -p pij-daemon --test governance_canary -- --nocapture; fake_host_http_canary_requires_real_pointer_sha_ack_and_streams_fresh_observer_pass passed in 0.29s. Real SQL/HTTP/queue claim/packet bytes/recipient SHA ack/fresh observer/event stream/durable reopen; scripted host ports, not live OMP. Source checkpoint0a7a267 plus new test and corrected contract fixture; exact output canary-green-wave1.txt. Two caller-only compile corrections (flush unit return and String comparison) are not behavioral RED evidence.",
+          "links": [
+            "tasks/phase-2/tasks.dd.json#tasks/tk-22a2"
+          ]
+        },
+        {
+          "id": "lg-0004",
+          "at": "2026-09-07T03:52:41Z",
+          "text": "Prime rulings received via native pij messages: decisions/anomalies live responsibility and answer authorization follow current recorded parent; decision.opened retains historical parent-at-ask; no added field/write-on-read. Required ask→reparent regression. Question ordering: atomic decision row+decision.opened first, retained report.question semantic publication second outside bus lock; second-step failure must name durable decision in explicit partial evidence, with injected-failure regression. Preserve legacy delivered-unacked-stale spelling. ps nonzero/signalled (including empty exit1) is UNKNOWN. Conditional whole-raw-descriptor tombstone is a safety brake on existing Registry port. Parent repeat-close returns prior receipt; retired self is refused with tombstone seq, no auth exception. GET anomaly here requires an absolute path; bare true refuses; POST uses caller scope and project membership is real assignment.project only. u4/u5 canaries and numbered plans accepted; implementation worktrees branched from0a7a267; worker validators/commits forbidden.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC5"
+          ]
+        },
+        {
+          "id": "lg-0005",
+          "at": "2026-09-07T04:15:51Z",
+          "text": "Pinned Rust gate at34a19dae5cc6d81088d4e2b2652d90a3b75749ea FAILED test stage: pane_observer::tests::second_observer_pass_repairs_a_vanished_os_pipe_and_keeps_growing asserted tap growth after fixed100ms (artifact://244, full raw243). Toolchain/lock/fmt/clippy/arch passed. No wave2 source was composed. Inspected TmuxAdapter::for_server: every command selects private -L server and legacy_tap_root=None. Fixture now disables user tmux config, waits for physical pipe absence before repair and actual marker bytes instead of fixed sleeps, asserts prior bytes preserved. Exact changed witness GREEN,1 passed0.22s (artifact://253). This is fixture proof repair, not a production liveness change or a rerun assumed to cure flakiness. New full gate still required.",
+          "links": [
+            "tasks/phase-1/tasks.dd.json#tasks/tk-12a1"
+          ]
+        },
+        {
+          "id": "lg-0006",
+          "at": "2026-09-07T04:55:05Z",
+          "text": "Wave2 prime refinements: ps producer must retain an explicit header. ABSENT only exit1+sole header+empty stderr; ALIVE exit0+header/process row; unknown on empty failed output, malformed/extra rows, any stderr, other exits or signals. u5 measured Darwin PIJ_LSTART protocol and delivered separate three-path refinement; six real Child kill/wait tests must remain. Initial all-nonzero rule caused six real native/adopt regressions (artifact264) and is superseded, not hidden. Answer recovery: current parent may explicitly --supersede only terminal non-delivered or no-queue failed intent; mint a new id and decision.answer-superseded retains old msg id/answerer/text. Queued/claimed old jobs refuse E-RS-ANSWER-IN-TRANSIT with old msg id/job state; no queue cancellation seam. Contract limitation: an answer in transit cannot be withdrawn; wait for its terminal outcome. Merge origin/main06281141+ after wave2 source checkpoint, before u6 parity goldens/review, retaining merge SHA.",
+          "links": [
+            "tasks/phase-3/tasks.dd.json#tasks/tk-31a3",
+            "tasks/phase-3/tasks.dd.json#tasks/tk-32a3"
+          ]
+        },
+        {
+          "id": "lg-0007",
+          "at": "2026-09-07T06:10:11Z",
+          "text": "Composed wave2 product source GREEN under full canonical Rust gate (artifact337, toolchain/lock/fmt/clippy/test/arch;9 crates0 violations). Exact changed source+fixture hashes recorded in wave2-tested-source.json relative to5a8a250 baseline. Authority/decision matrix19 tests passed (artifact319); earlier five-package774 pass receipt307 retained. Source includes u1 conditional tombstone, u2 retired-identity receipt, u4 anomalies/decisions+terminal supersede+mixed/fake refusal, u5 header-evidenced liveness/reaper/close. Initial gate failures323/329 were fixed via real language-server/compiler suggestions, no lint suppression. Extended actual CLI workflow witness remains separately in progress; no real-model canary or production acceptance claimed.",
+          "links": [
+            "tasks/phase-3/tasks.dd.json#tasks/tk-30a3",
+            "tasks/phase-3/tasks.dd.json#tasks/tk-31a3",
+            "tasks/phase-3/tasks.dd.json#tasks/tk-32a3"
+          ]
+        },
+        {
+          "id": "lg-0008",
+          "at": "2026-09-07T06:30:21Z",
+          "text": "Prime-confirmed origin/main63988ededb9a62a7e45cbd68b36e930b0631593b merged into139 after product checkpoint5eda7fc25ef2a04ce0a78ccb999a59395f5fe2cc. Merge SHA d0cd734c0c1575881e6a334fdf8cacf01930688b. Retains PR378/379/380/381, migration0017 alongside139 migrations0014/0015, control/compact-self/background endpoints, government removal/resolver, worktree-deps and native ETXTBSY handling. Six conflict files resolved by union:43 endpoints, schema17, shared RegistryPublisher, every producer joined before EventBus.flush. Two automatic misses repaired: background_pool from persistent_pool and awaited async native_service helper. cargo check --locked --workspace --all-targets passed; just lint passed. This is not full merged runtime acceptance; u6 goldens MUST be generated after this merge.",
+          "links": [
+            "tasks/phase-4/tasks.dd.json#tasks/tk-40a4"
+          ]
+        },
+        {
+          "id": "lg-0009",
+          "at": "2026-09-07T06:50:29Z",
+          "text": "Post-merge actual private CLI workflow GREEN: governance_boot+spawn4 tests (artifact358), report HTTP26 (artifact357). Two Hello-confirmed streams both observed fresh child adopt seq7 and report seq9; descriptor decoded, wall clock<=1s. Native project10/stream11/packet read+SHA ack19/attest/task/node/question28/answer33/done37/verify38/newdone40/close41 all exercised; pane survives close and retired caller retains original tombstone evidence. RED353 exposed report WHOAMI preflight flattening refusal details; fixed by pure local identity input validation plus one shared daemon report resolution, with conflicting claims still refused. See native-cli-workflow-proof.json. Positive model canary not claimed; inert no-model endpoint refusal was exercised.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC1",
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC6",
+            "../plan.dd.json#acceptance_criteria/AC7"
+          ]
+        },
+        {
+          "id": "lg-000a",
+          "at": "2026-09-07T12:54:55Z",
+          "text": "Post-merge authoritative role projection: WHOAMI, seats, StateCard, phonehome and adopt now use seat_roles projection without joining roles into raw Registry/CAS authority. Trailer fixture retained prime-role and role-less parent-root derivation. Observed role/lifecycle22 pass at artifact375 and trailer recovery; assets/role-projection-proof.json. Source included in78531a0ba2f22469ab72289ba9ff6c1635e863e7. Final full merged gate remains separate.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC3"
+          ]
+        },
+        {
+          "id": "lg-000b",
+          "at": "2026-09-07T12:54:55Z",
+          "text": "Actual authenticated OMP canary: Private all-real daemon actual OMP turn with nonce packet read, recipient SHA acknowledgement seq26 and fresh observed model pass seq27; genuine github-copilot/gpt-6-astra-1m session, not scripted host. Private reaper removed only expired inert parent atseq28. Binary e1462a73c505e4645dc23e37e1da020ec8caf621f5fbd7d9e03a943f4a3d7c1f. assets/actual-omp-canary-proof.json; raw private transcript/auth-derived state removed, exact owned processes stopped. Production remains prime-owned.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC7"
+          ]
+        },
+        {
+          "id": "lg-000c",
+          "at": "2026-09-07T12:54:55Z",
+          "text": "Executed cutover and byte parity checkpoint: Source78531a0ba2f22469ab72289ba9ff6c1635e863e7 includes stable promoted corpus and native same-validated-buffer JSON output. Original actual role bytes RED (native key sorting) became exact GREEN; shipped raw-byte/non-refetch/invalid-version tests and preserved CLI-computed receipts9 passed artifact432. TS behavioral baseline77 failures/11 passes artifact414 ->406 pass artifact411, then repaired TS2339/non-null fixtures260 pass artifact449. Permanent governance-client-parity.json acc298253130983221f5995a459ec8406cef0e9c50fe9d635aad873be6469370 has66 actual matched comparisons and2 ruled capability probes. See live-proof.json for methods and verified teardown. Exit policy is intentionally native-specific versus shim4; sessions uses live HTTP; generic register remains native-only. Later required notice/paneless additions need composed proof, not this historical capture.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC8"
+          ]
+        },
+        {
+          "id": "lg-000d",
+          "at": "2026-09-07T12:54:55Z",
+          "text": "Full checkpoint gate failure retained: harness checks --json at78531 FAILED test/windows-compat/smoke: old legacy callers, missing required paneless inbox register and unsafe default-address smoke. See engineering-gate-78531a0-red.json. Rust gate timed out900s with clipped output and Clippy result_large_err at tail; no full green claimed. Rare Err boxed without copying validated buffers, focused Clippy passed. Supervised isolated testkit suite passed; timeout was not attributed to the last visible arch test. Source-only repair slices u2 paneless, u1 smoke, u6 callers, u4 required automatic keeper notices composed after barriers.",
+          "links": [
+            "tasks/phase-4/tasks.dd.json#tasks/tk-40a4"
+          ]
+        },
+        {
+          "id": "lg-000e",
+          "at": "2026-09-07T12:54:55Z",
+          "text": "Required native keeper notices RED/GREEN: Prime required real DeliveryService notice after committed request+baton.requested. Native13-test baseline on78531 with test+fixture-only overlay:12 behavioral failures, publication-failure control already passed. Composed same suite13/13 GREEN; real shared SQL/message counts, ReaderRead/socket confirmation, exact notice text, null/no-send and durable partial errors. Prime corrected idle Pi delivered to queued and stale heartbeat to existing Recycled incarnation evidence. See native-notice-proof.json and retained full outputs. Separate shim test fixture false reachable transport caused3 failures; unreachable transport with queued assertion recovered16/16 without product policy change.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "tasks/phase-4/tasks.dd.json#tasks/tk-40a4"
+          ]
+        },
+        {
+          "id": "lg-000f",
+          "at": "2026-09-07T12:54:55Z",
+          "text": "Actual private paneless and governance smoke: Focused team-scaffold actual command exited0 in4.39s after correcting public wire field consumers (session, dispatch.ack, node collections). Two real protocol-only Claude-shaped host processes registered stable native tuples, waited, sent literal text, received, replied with correlation and acknowledged reads through Rust. Message IDs a10ae4caa6d9c655-0000000000000000/1; real governance cursor21. See paneless-smoke-proof.json. Inert/protocol hosts are not model turns. Full gate and remaining caller fixture repairs remain pending.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC8"
+          ]
+        },
+        {
+          "id": "lg-0010",
+          "at": "2026-09-07T12:54:55Z",
+          "text": "External acceptance ownership: Canonical phase4 tk-42a4 requires chainglass roles/tree/no-banner confirmation. Prime owns this receipt and production AC2/AC3/AC7/AC9 arms after deploy. PM cannot mark them checked or complete/archive the whole plan from isolated proof. Finish local code/gates/independent review, preserve buffers, and hand source/proof to prime; no production acceptance or archive claimed.",
+          "links": [
+            "tasks/phase-4/tasks.dd.json#tasks/tk-42a4"
+          ]
+        },
+        {
+          "id": "lg-0011",
+          "at": "2026-09-07T13:38:13Z",
+          "text": "Final local repair evidence: native347 unit tests passed (artifact601); thirteen notice tests and corrected sixteen shim HTTP tests passed. Typecheck and Biome errors/warnings clean. Remaining three TS failure files now129/129 passed (artifact597), including all17 actual paneless/pane lifecycle cases and98 no-mutation chore cases. Git-only experiment reproduced asynchronous .git/ai creation without pij; fixture-local GIT_TRACE2_EVENT=0 prevented it without disabling hooks or weakening tree snapshots (git-fixture-isolation-proof.json). Real pane admission replaces invented missing-pane fixtures; native bind uses reserved nonzero private port. Native oversized Subject enum replaced by standard Result to avoid unnecessary boxing; final clippy/rebuild underway.",
+          "links": [
+            "tasks/phase-4/tasks.dd.json#tasks/tk-40a4",
+            "tasks/phase-4/tasks.dd.json#tasks/tk-41a4"
+          ]
+        },
+        {
+          "id": "lg-0012",
+          "at": "2026-09-07T14:05:06Z",
+          "text": "Refreshed final composed parity: supervised p139-parity-final exited0 after66 original-byte comparisons, no normalization. Includes current baton request notice field and paneless-aware routing. Native binary 43ca12839d2db6fa8398db2a0a0d061dca2936c53fbe0a00cf65245c6135a15a; permanent corpus a9311375da6623bbbd9aa4e4e1520353cd543b6b069ad857b365af2017a12f51;18 live native/shim read pairs,4 live HTTP/shim pairs,29 controlled mutation pairs,9 named refusals,6 error policies and2 declared capability probes. Owned fixture close verified clients/daemon/tmux/socket/root/listener teardown; ephemeral capture runner removed. See parity-final-proof.json. Full immutable source gates and independent cross-model review remain separate.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC8"
+          ]
+        },
+        {
+          "id": "lg-0013",
+          "at": "2026-09-07T14:55:33Z",
+          "text": "Pinned e6a2 full gates completed, not timed out: Rust toolchain/lock/fmt/clippy/arch PASS, test failed only daemon_death_mid_stage_restores_input_within_bound; engineering all required sensors except test PASS, one old inbox-register unported expectation. Test now separately asserts health-only E-AMBIG for required registration with missing native evidence; full CLI68 passed (artifact632). Tmux recovery retained identical2s assertion, added exact input/owner/title diagnostics and strict boolean observations; isolated targeted repro passed before environmental repair, so no causal flake claim. Private test tmux now disables user config and selects /bin/sh; complete adapter suite32 plus3 helper tests passed (artifact633), no production timeout widened. Original failure remains in rust-gate-e6a2-red.txt. Reviewer genuine nonce/model/high/owned pane admission accepted after retracting untargeted prime-pane observation; no review release before new source pin.",
+          "links": [
+            "tasks/phase-4/tasks.dd.json#tasks/tk-40a4"
+          ]
+        },
+        {
+          "id": "lg-0014",
+          "at": "2026-09-07T15:08:51Z",
+          "text": "Immutable335d20981c37c868f6039724f4a78b621c8bb7e2: canonical Rust gate exit0 all6 stages,9-crate architecture0 violations; complete engineering checks exit0 all required sensors pass, no skips, timestamp2026-09-07T14:59:32.894Z. Historical attribution advisories remain explicit, no identity invented. Exact outputs in final-gates-proof.json, engineering-gate-335d-green.json and rust-gate-335d-green.txt. Prior e6a2 failures retained; private tmux fixture isolation kept original2s bound. Final cross-model review still running; no production/whole-plan acceptance implied.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC1",
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC5",
+            "../plan.dd.json#acceptance_criteria/AC6",
+            "../plan.dd.json#acceptance_criteria/AC8"
+          ]
+        },
+        {
+          "id": "lg-0015",
+          "at": "2026-09-07T15:19:38Z",
+          "text": "Independent Opus5/high review by pij-zany-reptile on335d20981c37c868f6039724f4a78b621c8bb7e2: APPROVE WITH NOTES, no HIGH/CRITICAL code defect; A-H and builder/review DD receipt in assets/reviews. Reviewer independently checked raw gate outputs and retained32/32 tmux cases; F001 evidence gap closed. F002 corrected: five early checked tasks/assertions now reference lg0014 and actual pressure rows; original logs retained. F003 corrected without changing any captured stdout/source_snapshot field: removed redundant misleading source_base, retained history.previous_capture_commit78531; original capture corpus a9311375..., corrected corpus8ac162852e0da1858029190386f75984cbdfafc0147b113de217b215525af9c7,112742bytes; full semantic equality except removed metadata key asserted. Manifest/provenance agree. F004 is unreachable multi/empty evidence formatting, no runtime change warranted; F005 refuted by reviewer. Final metadata-only pin/review addendum still pending. AC2/AC3/AC7/AC9 and tk42 production/chainglass remain prime-owned, unchecked/blocked; no archive claim.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC1",
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC5",
+            "../plan.dd.json#acceptance_criteria/AC6",
+            "../plan.dd.json#acceptance_criteria/AC8"
+          ]
+        },
+        {
+          "id": "lg-0016",
+          "at": "2026-09-07T15:24:10Z",
+          "text": "Review followup F006: computational AC proven_by now cites executed witnesses, never the review: AC1/AC5/AC6→lg0009 actual private CLI streams/question-answer/done-verify sequence; AC4→lg0012 executed66-pair capture, with separate domain workflow/model-canary evidence in its note; AC8→lg0014 canonical complete gates. lg0015 retained as corroborating judgement only. F007 scope observation accepted: final followup explicitly includes factual progress/AC/task/backpressure updates, unavailable chore receipts and buffer/gate preservation, not merely F002/F003 labels. tk41 documentation half is now review-backed checked; AC2/3/7/9, bp2/3/7/9, ph4 and tk42 remain unaccepted/blocked for prime. Private source buffer copied again including CONF003 without replacing seven prior snapshots or draining originals. Scoped phase3 gate: zero schema errors, one open-completable warning for production bp0007, retained without bypass.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC1",
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC5",
+            "../plan.dd.json#acceptance_criteria/AC6",
+            "../plan.dd.json#acceptance_criteria/AC8"
+          ]
+        },
+        {
+          "id": "lg-0017",
+          "at": "2026-09-07T15:32:10Z",
+          "text": "Exact4751923e6625e53ed3955b4587fdea58dd4eb0fe full gates completed exit0: Rust six stages and every required engineering sensor, no skips; historical attribution advisories remain explicit. Native raw log preserved completely:100423bytes/1544lines, two log slices rejoined by unique455-line exact overlap, totalbytes equal supervised cursor. Outputs: rust-gate-4751923e-green.txt, engineering-gate-4751923e-green.json; binding: final-gates-4751923e-proof.json. Opus exact-pin metadata addendum accepted unchanged runtime and F002/F003/F006 repairs; F008 doc-task notes now separate executable fixture/skill RED-GREEN (u6-red-green-proof/lg0014) from85%-confidence cross-model doc inspection, and preserve aggregate bp9/AC9/tk42 external limits. No production/whole-plan acceptance.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC1",
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC5",
+            "../plan.dd.json#acceptance_criteria/AC6",
+            "../plan.dd.json#acceptance_criteria/AC8"
+          ]
+        },
+        {
+          "id": "lg-0018",
+          "at": "2026-09-07T15:53:33Z",
+          "text": "Independent machine ReviewReceipt finalized by pij-zany-reptile: builder/team single review section, composition4751923e6625e53ed3955b4587fdea58dd4eb0fe, approved LOCAL only, F004 accepted and EXT001 open. Final receipt SHA256 cdd28343c3f6b0e6648d63495869036e76da1d3ae740c5991695e40f7bca5c69; plan/ROOT-guide/report digests all independently verified. Runtime registration root corrected to pij main, distinct from reviewed worktree, using PM public descriptor and reviewer whoami/PWD; no registry mutation/re-adopt. Native ddocs validation after correction succeeded at2026-09-07T15:43:37.874Z, depth0, errors0/warnings0 from canonical-schema source cwd /Users/jordanknight/substrate/harness-engineering. Default plan cwd lookup E401 remains unsupported, and cross-root set/build refuse E433/E429: no copied/symlinked schema, global change, or fake rendered sibling/import. Generic A-H/DD report remains separate. Builder importer/advance retains known hardcoded assets-guide incompatibility under prime legacy-root ruling; no migration. Final amendment replies reached the internal scout rather than Main; explicitly relayed, matching published spine20142/20150 and final file hashes. Handoff assets/prime-handoff.json; all original worktrees/buffers retained; production/chainglass/whole-plan/archive remain prime-owned and blocked.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC1",
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC5",
+            "../plan.dd.json#acceptance_criteria/AC6",
+            "../plan.dd.json#acceptance_criteria/AC8"
+          ]
+        }
+      ]
+    }
+  ]
+}

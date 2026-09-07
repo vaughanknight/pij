@@ -1,0 +1,39 @@
+{
+  "at": "2026-09-07T04:58:22Z",
+  "baseline_sha": "d964233d4cbf45400a6b2fc5f873de48909e7e38",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-red",
+  "production_changes": false,
+  "fixture_changes": "Only test witnesses/support and canonical contract values; original production classifier/routes/CLI remain unchanged",
+  "results": [
+    {
+      "unit": "u4",
+      "target": "pij-daemon governance_u4_baseline",
+      "failed": 4,
+      "behavior": "No durable decision; verify named unported refusal; anomalies route absent",
+      "raw": "artifact://272"
+    },
+    {
+      "unit": "u5",
+      "target": "pij-daemon lifecycle_http",
+      "failed": 5,
+      "behavior": "close/reap return bare route absence instead of successful or structured refused envelopes",
+      "raw": "artifact://272"
+    },
+    {
+      "unit": "u5",
+      "target": "pij-cli lifecycle",
+      "failed": 1,
+      "behavior": "Shipped baseline binary rejects close as unrecognized subcommand",
+      "raw": "artifact://271"
+    },
+    {
+      "unit": "u5",
+      "target": "pij-harnesses proc::tests::failed_",
+      "failed": 2,
+      "behavior": "Failed-empty and failed-No-such-process probes incorrectly return absence rather than UNKNOWN",
+      "raw": "artifact://270"
+    }
+  ],
+  "not_compile_error_red": true,
+  "refinement": "Failed-empty/stderr RED remains applicable to final explicit-header absence protocol; no headerless failed output may authorize death."
+}

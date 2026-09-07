@@ -248,6 +248,21 @@ note = "A REAL OMP pane AT REST, captured 2026-08-29 from one of the PM's own wa
 answer = "Must classify as READY. Pair it with the repo's live_omp_blank_padded.txt, which shows the same chrome carrying '\u280b Working\u2026 \u27e6esc\u27e7' and must classify as BUSY. The discriminator is the spinner row, not the footer and not the prompt \u2014 both fixtures have those."
 
 [[fixture]]
+path = "harnesses/omp-18-0-10-footer.txt"
+sha256 = "ba541cc9a2198c72c785596d35c2f2d6c42e901589ac86c53fa86e0a42bfbade"
+bytes = 59
+note = "Real OMP18.0.10 footer quoted from owned coder pij-written-lansra pane3865 during plan139 canary. Only footer bytes are captured, not a fabricated full pane."
+answer = "The model field ends before the dot-separated effort/status fields. Resolve the display label through the real model catalog; a footer alone is not a readiness or binding proof."
+
+[[fixture]]
+path = "harnesses/omp-18-1-11-no-model-footer.txt"
+sha256 = "bedcdfd1d61799dd61d39134fe78987324b14bcdbceb8f4a23b220c5cef6f22d"
+bytes = 74
+note = "Real historical OMP18.1.11 footer from rs spawn.failed spine14828 payload.last_output on2026-09-06; corroborated by14832/14838 and prime ledger. Runtime literally printed no-model."
+answer = "Treat no-model as explicit absence; never infer the requested model or fall back to an earlier quoted model. Readiness chrome does not establish valid model binding."
+
+
+[[fixture]]
 path = "uds/claude-2.1.251-session.json"
 sha256 = "8b45b273b1ccab52b4f7ecffbfc5de535c59190df73278ec5b934d7d059d78e9"
 bytes = 445
@@ -379,3 +394,31 @@ sha256 = "b95d9bfe619c950a372894328a1e2ab9dd6c73a4f31df6b9ecbe3989449eb3cb"
 bytes = 137
 note = "DESIGNED deterministic bg kill v2 response, shared by native executable and legacy shim tests; not a live process recording."
 answer = "Both CLI surfaces emit these exact complete envelope bytes with --json; human output is data.line. Caller evidence and argv travel unchanged in the request, never an asserted owner."
+
+[[fixture]]
+path = "golden/api/governance-routes.json"
+sha256 = "80e53d87286c56637fd3ac0693e990c472cdabbe99d00d7fa1bcbd9e92e01269"
+bytes = 88761
+note = "DESIGNED merged governance route contract promoted from docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json at e22833b0d0caf00d95346008dab1587005d0173d, not a runtime capture. The historical original remains unchanged. The unported refusal's meta and details.ledger_item are rebased to docs/how/pij-rs-api.md#unsupported-status so refusal guidance survives plan archival. The wire invariant corrects historical kebab-case prose to the existing snake_case ErrorKind contract; no v2 wire change is introduced. All request, response, terminal-only supersede and backend-pairing cases are retained."
+answer = "Permanent readers consume this stable contract rather than the active plan copy. Preserve complete v2 success and refusal envelopes, daemon-owned attribution and role joins, observed lease-id requirements, and terminal-only answer supersede. Pending answers stay in transit, delivered answers cannot be replaced, and mixed/fake queue-spine authority refuses E-RS-ANSWER-AUTHORITY-SPLIT. Unsupported commands point to the stable unsupported-status ledger."
+
+[[fixture]]
+path = "golden/api/governance-events.json"
+sha256 = "15b95759b8297a84a9667bd8c3e4bb6e8a3ac163911139188376449319bacb8f"
+bytes = 34010
+note = "Byte-exact merged governance event contract promoted from docs/plans/139-rs-governance-port/assets/contracts/governance-events.json at e22833b0d0caf00d95346008dab1587005d0173d. The historical original remains unchanged. This is a designed contract with retained positive-control evidence, not a new runtime capture; permanent readers use this stable path so plan archival cannot break them."
+answer = "Consume the shared Hello and event cases without restating them: NDJSON begins with Hello, StreamFrame::Event retains a JSON-string payload and machine-scoped cursor, and since is an exclusive per-machine cursor map. Commit state and governance events through the shared publication seam; replay/live handoff must not skip or duplicate its boundary. Preserve the decision.answer-superseded payload including the old answer under superseded."
+
+[[fixture]]
+path = "golden/api/error-envelopes.json"
+sha256 = "6a8de7d3aecc5a634c0786b5e79ba0bfae977fbcb992305fb5b5b2108d1a2102"
+bytes = 1056
+note = "DESIGNED complete v2 refusal envelopes covering the actual native ErrorKind vocabulary, not a runtime capture. Prime retained the existing snake_case wire after checking crates/core/src/model.rs; historical kebab-case prose is not a wire authority. Shared by crates/core/tests/envelope_wire.rs and .pi/extensions/pij/core/daemon-wire.test.ts. The exhaustive native variant match requires enum additions to update this corpus; TypeScript reads these cases instead of restating a vocabulary list."
+answer = "Every native ErrorKind emits exactly its complete shared refusal envelope, including present data/details and absent optional fields. The TypeScript decoder recognizes every case as DaemonRefusalError with the original command, error kind and human message; aliases derived by replacing underscores with hyphens remain unknown protocol values, not daemon-owned refusals. A genuine not_found envelope must not be mistaken for an unserved HTTP route."
+
+[[fixture]]
+path = "golden/api/governance-client-parity.json"
+sha256 = "8ac162852e0da1858029190386f75984cbdfafc0147b113de217b215525af9c7"
+bytes = 112742
+note = "EXECUTED actual native binary and TS CLI captures after main integration: 29 shared mutations and 9 refusals against identical scripted HTTP responses, 18 same-daemon CLI pairs, 4 live HTTP/shim pairs, and 6 shared error-policy pairs. Each record declares its method; mutation fixtures are client-boundary proof, not domain execution or production acceptance. Native binary and source snapshot hashes are retained."
+answer = "All 66 shared comparisons preserve original stdout bytes with only the declared final-newline contract and no normalization. Preserve distinct refusal exit policies. Sessions uses its real Rust HTTP baseline; native/HTTP-only register and missing native sessions remain explicit capability probes, never failed comparisons hidden by fallback. Real workflow/fanout/OMP canary receipts separately defend domain effects."

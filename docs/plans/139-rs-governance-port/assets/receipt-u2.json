@@ -1,0 +1,178 @@
+{
+  "unit": "u2",
+  "seat": "pij-written-lansra",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u2",
+  "status": "READY_TO_VALIDATE",
+  "verification": "Source authored only. No build, test, formatter, linter, harness boot/checks or commit run during concurrent wave. This is not DONE. Shared wiring and u3 store methods intentionally arrive at PM composition.",
+  "toolchain_observed": {
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21) (Homebrew)",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14) (Homebrew)",
+    "omp": "omp/18.0.10",
+    "harness": "0.14.0",
+    "canary": "pij whoami: pij-written-lansra; pane %3865 footer GPT-6 Astra (1M), high"
+  },
+  "changed_paths": [
+    "crates/daemon/src/http/types.rs",
+    "crates/daemon/src/http/identity.rs",
+    "crates/daemon/src/http/role.rs",
+    "crates/daemon/src/http/role_tests.rs",
+    "crates/daemon/src/registration.rs",
+    "crates/daemon/tests/role_http.rs",
+    "crates/cli/src/client.rs",
+    "crates/cli/src/role.rs"
+  ],
+  "contracts_consumed": [
+    "docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json#/routes (/v1/role cases + ownership refusal + fixture_context)",
+    "docs/plans/139-rs-governance-port/assets/contracts/governance-events.json#/events (seat-put seed, role-set, role-unset)"
+  ],
+  "service_api": {
+    "module": "pij_daemon::http::role",
+    "constructor": "RoleService::new(registry: Arc<dyn Registry>, roles: SqliteOrchestration, event_bus: Arc<EventBus>) -> RoleService",
+    "clock": "with_clock(self, clock: Arc<dyn Fn() -> pij_core::error::Result<u64> + Send + Sync>) -> Self",
+    "mutator": "assert_role(&self, actor: &SeatId, target: &SeatId, role: Option<String>) -> std::result::Result<RoleReceipt, RoleError> (async)",
+    "reader": "read_role(&self, seat: &SeatId) -> pij_core::error::Result<Option<String>> (async)",
+    "roster_join": "join_roles(&self, seats: &mut [SeatDescriptor]) -> pij_core::error::Result<()> (async; one list_roles SQL read, no N+1)",
+    "receipt": "RoleReceipt { seat: SeatId, role: Option<String>, assigned_by: SeatId, assigned_at: u64, seq: Seq }; Clone + Debug + PartialEq + Eq + Serialize",
+    "error": "RoleError::into_response(self, command: &str) -> axum::response::Response; E-RS-OWNERSHIP => 403/refused; invalid => 400/refused/E-RS-ARG; dependency => 500/adapter; committed assignment with missing event => 500/adapter/E-RS-PARTIAL",
+    "registration_constructor": "RegistrationService::new(registry, liveness, event_bus, claude_homes, roles: Arc<RoleService>) -> Self (roles is mandatory FINAL fifth argument)",
+    "cli_method": "DaemonClient::role(&self, args: &[String], caller: &CallerContext) -> Envelope<serde_json::Value> (async; args EXCLUDE leading role verb; original envelope preserved)"
+  },
+  "store_contract_owned_by_u3": [
+    "Existing SqliteOrchestration::assign_role(&RoleAssignment) -> Result<()> unchanged",
+    "NEW seat_role(&SeatId) -> Result<Option<RoleAssignment>>",
+    "NEW clear_role(&SeatId) -> Result<()> (idempotent targeted delete)",
+    "NEW list_roles() -> Result<Vec<RoleAssignment>> sorted by seat",
+    "No role events in store. RoleService is the sole role-set publisher. No u2 migration, role store type or orchestration.rs edit."
+  ],
+  "snap_in_recipe": [
+    {
+      "file": "crates/daemon/src/http/mod.rs",
+      "instructions": [
+        "Add `pub mod role;` so daemon composition root, registration and sibling HTTP modules can name RoleService.",
+        "Add Endpoint::Role; include it in Endpoint::ALL (adjust count), path => /v1/role, method => POST, POST debug_assert matches, router arm `Endpoint::Role => router.route(endpoint.path(), post(role::role))`. Preserve existing whole-router bearer middleware.",
+        "Append Arc::clone(&services.roles) as FINAL fifth RegistrationService::new argument in router_with_optional_federation.",
+        "In seats(), after registry.list succeeds and before stamping machine/federation, insert `if let Err(error) = state.services.roles.join_roles(&mut local).await { return internal(\"pij seats\", error); }`. Only local rows are joined; remote rows remain their authority's projection.",
+        "In seat_state(), change `let seat = match ...` to `let mut seat = match ...`; immediately after successful get insert `seat.role = match state.services.roles.read_role(&id).await { Ok(role) => role, Err(error) => return internal(\"pij state\", error) };`. Keep pure state_card unchanged: it consumes this already-joined descriptor. No descriptor fallback.",
+        "Register handler already returns RegistrationService descriptor; service now returns joined role. Adoption response read-back is already joined in u2 identity.rs."
+      ]
+    },
+    {
+      "file": "crates/daemon/src/lib.rs",
+      "instructions": [
+        "Add documented `pub roles: Arc<http::role::RoleService>` to Services.",
+        "Use the SAME existing production StorePool for SqliteOrchestration: clone the existing pool, never reopen the production database. If no store adapter is real, explicitly create ONE in-memory pool via pij_store::open(\"\").await? per PM ruling. Do not introduce Option<RoleService> or no-op storage.",
+        "After registry and EventBus composition, construct `let roles = Arc::new(http::role::RoleService::new(Arc::clone(&registry), pij_store::SqliteOrchestration::new(shared_pool.clone()), Arc::clone(&event_bus)));`; store it on Services and pass same Arc into u3 governance service.",
+        "Append Arc::clone(&services.roles) to ClaudeBinder::new in boot after extending that constructor as below."
+      ]
+    },
+    {
+      "file": "crates/daemon/src/claude_bind.rs",
+      "instructions": [
+        "Import crate::http::role::RoleService. Add roles: Arc<RoleService> final parameter to ClaudeBinder::new and from_home; forward it to RegistrationService::new as final argument. No optional writer.",
+        "In bind_seat Registration literal add `role: None` (binding is not a new role assertion).",
+        "Three from_home test callers at baseline lines 274, 308, 347: create a migrated isolated in-memory SqliteOrchestration and one RoleService using the SAME registry/event_bus passed to binder; append roles arg. Tests are already async. Preserve the existing fixture registry and bus when injecting."
+      ]
+    },
+    {
+      "file": "crates/daemon/src/http/tests.rs",
+      "instructions": [
+        "Append Arc::clone(&services.roles) to RegistrationService::new calls at baseline 227 and 744.",
+        "In test_services(), after swapping registry and event_bus, rebuild services.roles from those exact swapped objects and isolated role storage. Otherwise RoleService silently retains the old fake registry/bus, as the existing delivery helper comment warns.",
+        "Add `role: None` to every full Registration literal, but not struct-update literals. Full literals begin at baseline 1238, 1347, 1593, 1795, 1901, 1993, 2065, 2133, 2204, 2298, 2353; inspect 1273 (self_declaration) and preserve its struct-update handling. U2-owned registration.rs literals and native async fixture constructors/callers are already updated."
+      ]
+    },
+    {
+      "file": "crates/cli/src/lib.rs",
+      "instructions": ["Add `pub mod role;` to compile the native DaemonClient role leaf; no re-export needed for the inherent method."]
+    },
+    {
+      "file": "crates/cli/src/main.rs",
+      "instructions": [
+        "Add Command::Role { #[arg(trailing_var_arg = true, allow_hyphen_values = true)] args: Vec<String> } with role help; add Command::Role { .. } => \"pij role\" to Command::name.",
+        "Add match arm `Command::Role { args } => { let as_json = cli.json || args.iter().any(|arg| arg == \"--json\"); emit(&client.role(&args, &caller_context()).await, as_json) }`. No separate role semantic parser and no client-resolved target: caller context goes to daemon identity.",
+        "Add #[arg(long)] role: Option<String> to Command::Register and Command::Adopt. Thread register role through match destructuring into client::Registration.role.",
+        "Register currently has a debug_assert on validation. Since role now rejects blank strings, replace that assertion with an ordinary named refusal on Err so debug and release both refuse (or let daemon own validation and remove the assert). Never silently suppress invalid role.",
+        "For adoption, destructure role and populate IdentityRequest { argv, caller: Some(caller_context()), role, ..Default::default() }. The daemon accepts either typed role or argv --role, not both. Existing adopt_argv signature can remain unchanged, avoiding its unrelated test callers.",
+        "Every other IdentityRequest literal found in CLI uses ..Default and needs no field migration. Native register client struct literal in client.rs test is already updated."
+      ]
+    },
+    {
+      "file": "u3 orchestration role route",
+      "instructions": [
+        "Call the shared Arc<RoleService>::assert_role for set and unset. Resolve actor via the existing daemon identity service first; do not accept body attribution as author.",
+        "Wrap successful receipt as canonical orchestration response `{role:{seat,role,assigned_by,assigned_at},seq}` using RoleReceipt. On error return error.into_response(\"pij orchestration\"). Do not call assign_role/clear_role directly and do not publish another role-set."
+      ]
+    }
+  ],
+  "authored_tests": {
+    "crates/daemon/tests/role_http.rs": [
+      "role_parent_assertion_matches_u0_and_is_readable_via_seats_and_state",
+      "role_outsider_refusal_matches_u0_without_a_write_or_event",
+      "role_self_default_reassertion_and_explicit_null_publish_once_each",
+      "role_missing_empty_unknown_flags_and_forged_attribution_refuse_without_events",
+      "role_shim_argv_and_typed_requests_share_the_same_contract",
+      "adopt_role_assertion_survives_omitted_readoption_and_refused_admission",
+      "register_asserted_role_is_durable_and_null_is_not_omission",
+      "typed_adopt_role_rejects_null_and_duplicate_assertions_without_publication"
+    ],
+    "crates/daemon/src/http/role_tests.rs": [
+      "explicit_role_and_unset_publish_u0_payloads_to_live_subscribers",
+      "joining_roles_clears_stale_descriptor_values_and_preserves_real_assignments",
+      "publication_failure_is_partial_not_success_and_durable_role_is_visible",
+      "authority_is_reloaded_and_tombstoned_or_unknown_targets_emit_nothing",
+      "fallible_clock_refuses_before_persistence"
+    ],
+    "crates/cli/src/role.rs": [
+      "native_role_forwards_u0_argv_and_preserves_success_and_refusal_envelopes"
+    ]
+  },
+  "baseline_red_strategy": {
+    "baseline_compatible": "role_http.rs imports only existing baseline public APIs and consumes u0 fixture JSON. Copy this test plus contracts onto a baseline tree without product changes. Real registry/spine/queue; fake tmux/liveness; authenticated HTTP on an ephemeral private listener. No real fleet taps.",
+    "expected_failures_not_yet_measured": [
+      "role_parent_assertion_matches_u0_and_is_readable_via_seats_and_state: missing /v1/role route fails first HTTP 200 assertion",
+      "adopt_role_assertion_survives_omitted_readoption_and_refused_admission: old parser rejects --role",
+      "register_asserted_role_is_durable_and_null_is_not_omission: old registration ignores role; seats role remains null"
+    ],
+    "commands": [
+      "CARGO_TARGET_DIR=$WORKTREE/target cargo test --locked -p pij-daemon --test role_http role_parent_assertion_matches_u0_and_is_readable_via_seats_and_state -- --exact",
+      "CARGO_TARGET_DIR=$WORKTREE/target cargo test --locked -p pij-daemon --test role_http adopt_role_assertion_survives_omitted_readoption_and_refused_admission -- --exact",
+      "CARGO_TARGET_DIR=$WORKTREE/target cargo test --locked -p pij-daemon --test role_http register_asserted_role_is_durable_and_null_is_not_omission -- --exact"
+    ]
+  },
+  "green_commands_after_composition": [
+    "CARGO_TARGET_DIR=$WORKTREE/target cargo test --locked -p pij-daemon --test role_http",
+    "CARGO_TARGET_DIR=$WORKTREE/target cargo test --locked -p pij-daemon --lib http::role::tests",
+    "CARGO_TARGET_DIR=$WORKTREE/target cargo test --locked -p pij-daemon --lib registration::tests",
+    "CARGO_TARGET_DIR=$WORKTREE/target cargo test --locked -p pij-cli --lib role::tests",
+    "harness checks --json (PM composition tree, once concurrent writes are paused)"
+  ],
+  "runtime_proof": {
+    "isolation": "Copy governance-routes.json#isolation verbatim. u2 port 17463, PM 17461; private state-dir/HOME/CLAUDE_CONFIG_DIR/XDG_CONFIG_HOME/TMUX socket for daemon AND clients. Never port 7461 or live daemon restart. Unit tests use fake tmux; native CLI smoke must use the private socket.",
+    "scenario": [
+      "Adopt a private worker with --role reviewer; list/state both expose reviewer.",
+      "Re-adopt with omitted role; assignment remains, no new role-set.",
+      "From parent, native `pij-rs --json role <worker> reviewer`; compare u0 envelope, one role-set.",
+      "From outsider, same command refuses E-RS-OWNERSHIP; no store/event mutation.",
+      "From self/parent, native `pij-rs --json role <worker> --unset`; list/state role null, role-set action unassigned.",
+      "Both already-open /v1/events subscribers receive assertions live, receipt seq equals stream cursor."
+    ]
+  },
+  "ASSUMPTIONS": [
+    "PM composes u3 seat_role/clear_role/list_roles before compiling u2; these methods are absent in u2 baseline by design.",
+    "Every role producer shares exactly one RoleService and EventBus. The RoleService mutex preserves role-write/event order across callers; no unit bypasses it.",
+    "Role is assertion, not orchestration authority. Self/current recorded parent only; no spawnedBy fallback.",
+    "Every explicit successful assertion publishes, including same-role and repeated unset. Omitted register/adopt role does not publish; admission refusal happens before role mutation.",
+    "No descriptor role fallback. Absent seat_roles row means null even if an older descriptor has a role. Local roster joins occur before federation so foreign role authority remains foreign.",
+    "Registration first persists admitted descriptor, then asserts role. Failed role mutation/publication never returns success; RegistrationError::Runtime message identifies E-RS-PARTIAL registration. HTTP role publication failure has structured E-RS-PARTIAL details.",
+    "Native CLI role grammar is role [seat] <nonempty-string>, or role [seat] --unset; --actor is accepted only when matching daemon-resolved caller; --json is presentation-only. Arbitrary roles remain strings, never a role enum.",
+    "RoleService owns assert_role only. Existing raw store assign_role remains available to unrelated existing tests; production u3 routes must not use it directly.",
+    "LSP references against absolute worktree paths returned empty while exact grep found real callers; PM confirmed workspace symbols point at main. Empty LSP results are NOT proof of absent references. Enumerated source callers above are the fallback."
+  ],
+  "harness_handoff": {
+    "original_buffer": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u2/.harness/temp/agent/session-buffer.md",
+    "drained": false,
+    "observations": ["DL-001 scope/store seam mismatch", "DL-002 worktree LSP silently points at main", "WIN-001 canonical behavioral role contract coverage"],
+    "encoded_improvement": "The u0 fixture-consumer HTTP witnesses make missing role routes, ignored registration roles, stale descriptor fallback and null/omission regressions observable; PM must run RED/GREEN before accepting them.",
+    "best_next_harness_improvement": "Have LSP operations emit resolved workspace root beside zero-reference results; reject an absolute worktree query resolved against another checkout."
+  }
+}

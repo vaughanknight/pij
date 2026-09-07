@@ -1,0 +1,163 @@
+{
+  "unit": "u1",
+  "seat": "pij-electoral-orlandine",
+  "status": "READY_TO_VALIDATE",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1",
+  "validation_status": "NOT RUN: PM directed concurrent edit wave; no builds, tests, formatters, linters, harness boot/checks, or commit hooks executed",
+  "changed_paths": [
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/store/src/spine.rs",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/store/src/registry.rs",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/core/src/report.rs",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/daemon/Cargo.toml",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/daemon/src/events/mod.rs",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/daemon/src/events/fake_registry.rs",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/daemon/src/events/governance_tests.rs",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/daemon/src/events/governance_http_tests.rs",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/store/tests/support/mod.rs",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/store/tests/store_registry.rs",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/store/tests/store_integration.rs",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/store/tests/orchestration.rs",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/daemon/src/events/governance_cancellation_tests.rs"
+  ],
+  "fixture_sources": [
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/docs/plans/139-rs-governance-port/assets/contracts/governance-events.json",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/docs/plans/139-rs-governance-port/assets/contracts/baseline-fanout-red.json"
+  ],
+  "tests_authored": [
+    "events::governance_http_tests::two_hello_confirmed_http_subscribers_see_adopt_and_report_before_message_control",
+    "events::governance_tests::registry_and_report_publish_canonical_payloads_to_both_live_subscribers",
+    "events::governance_tests::rollback_and_missing_tombstone_never_publish_or_advance_the_spine",
+    "events::governance_tests::registry_event_failure_rolls_back_the_descriptor_and_binding_history",
+    "events::governance_tests::concurrent_registry_and_report_writes_have_identical_durable_and_live_order",
+    "events::governance_tests::only_store_spine_contains_direct_spine_event_inserts",
+    "events::governance_tests::fake_registry_uses_bus_sequences_and_preserves_state_when_append_fails",
+    "events::governance_tests::registry_callback_is_not_polled_until_the_common_publication_lock_is_held",
+    "events::governance_cancellation_tests::cancelled_registry_caller_cannot_lose_a_committed_row_before_later_publication",
+    "events::governance_cancellation_tests::cancelled_ordinary_publisher_retains_ordering_and_flush_waits_for_its_commit",
+    "events::governance_cancellation_tests::cancellation_before_admission_does_not_poll_or_commit_the_mutation",
+    "events::governance_cancellation_tests::generic_publication_preserves_concrete_result_and_failure_emits_nothing"
+  ],
+  "baseline_red": {
+    "prior_observed_receipt": "assets/contracts/baseline-fanout-red.json; PM observed adopt/report persisted but not live while message.pushed/delivery.outcome reached both subscribers",
+    "module": "crates/daemon/src/events/governance_http_tests.rs",
+    "method": "Copy ONLY this self-contained test module plus canonical JSON fixtures into an isolated checkout at baseline base_commit 4c191a88b7539a709bd563b854aef8dc18566af7. Add #[cfg(test)] mod governance_http_tests; to baseline events/mod.rs. Do not copy new production code or governance_tests.rs, which requires the new publisher constructor. Module uses existing build_services, HTTP routes and fixtures, so baseline failure is behavioral rather than a compile error.",
+    "expected_failure": "HTTP positive control succeeds, both streams reach delivery.outcome, and frames.len() != durable.len() because adopt/report rows were not published. No sleep/reconnect is used to make missing live rows look replayed.",
+    "exact_command": "cargo test --locked -p pij-daemon --lib events::governance_http_tests::two_hello_confirmed_http_subscribers_see_adopt_and_report_before_message_control -- --exact --nocapture",
+    "status": "Authored; PM must execute RED/GREEN after edit wave pauses."
+  },
+  "snap_in": {
+    "store_signature": "SqliteRegistry::new(pool: StorePool, publisher: Arc<dyn pij_store::spine::RegistryPublisher>) -> SqliteRegistry",
+    "callback_signature": "RegistryPublisher::publish_registry<'a>(&'a self, commit: RegistryCommit) -> RegistryPublication<'a>",
+    "callback_types": "RegistryCommit = Pin<Box<dyn Future<Output=Result<(Event, Option<PutBinding>)>> + Send + 'static>>; RegistryPublication<'a> = Pin<Box<dyn Future<Output=Result<(Seq, Option<PutBinding>)>> + Send + 'a>>",
+    "callback_order": "Shared Arc<Mutex<()>>::lock_owned BEFORE polling any callback. Once admitted, tokio::spawn owns the guard and lazy static callback through SQL commit, Event.seq validation and broadcast. Requester awaits JoinHandle; cancellation detaches rather than aborts admitted work. Ordinary publish builds its append future and uses the same generic helper. RegistryPublisher delegates to helper with T=Option<PutBinding>; no duplicate sequencing or queue.",
+    "daemon_lib_recipe": [
+      "Keep one existing StorePool. Construct raw_spine: Arc<dyn Spine> from the selected backend BEFORE registry.",
+      "let event_bus = Arc::new(events::EventBus::new(raw_spine, config.event_buffer_capacity)?);",
+      "let registry: Arc<dyn Registry> = match config.adapters.registry { AdapterChoice::Fake => Arc::new(events::PublishedFakeRegistry::new(Arc::new(FakeRegistry::new()), event_bus.clone())), AdapterChoice::Real => Arc::new(SqliteRegistry::new(pool(\"registry\")?, event_bus.clone())), };",
+      "let spine: Arc<dyn Spine> = event_bus.clone();",
+      "Remove the later duplicate EventBus construction; build DeliveryService and all other producers only after registry/spine/event_bus refer to these exact instances.",
+      "Before needs_store/open/migration, explicitly refuse AdapterChoice::Real registry + AdapterChoice::Fake spine; PM ruling forbids silent backend promotion. Other three combinations are coherent."
+    ],
+    "report_recipe": "No ReportService signature/caller changes. Existing services.spine.as_ref() now resolves to EventBus implementing Spine; tail/latest_matching/latest_matching_message delegate to raw spine, append calls publish.",
+    "fake_recipe": "PublishedFakeRegistry::new(raw_fake: Arc<FakeRegistry>, bus: Arc<EventBus>). Its callback appends to bus raw spine, updates concrete infallible fake, returns committed Event for broadcast. Exposes only bus Seq. Missing tombstone refuses before append. Append refusal leaves fake descriptor unchanged. Timestamp/payload helper shared with SQLite. Do not wrap SqliteRegistry in this fake-only adapter.",
+    "dependencies": "Already moved async-trait = { workspace = true } from daemon dev-dependencies to production dependencies. No new package/version. No store/core dependencies, migrations or core ports added.",
+    "shared_exports": "No common lib.rs exports required: store::spine and store::registry are already public. PublishedFakeRegistry is exported from owned daemon::events module. No routes, AppState, CLI verbs or match arms added by u1.",
+    "generic_signature": "pub async fn EventBus::publish_committed<T,F>(&self, commit:F) -> Result<(Seq,T)> where T:Send+'static, F:Future<Output=Result<(Event,T)>>+Send+'static",
+    "generic_store_recipe": "Owned store method/lazy async move callback creates begin_write(&pool) only when polled; writes row+event in one transaction using pub(crate) spine::append_in_transaction(&mut SqliteConnection,&Event)->Result<Seq>; commits; sets Event.seq=Some(seq); returns (event,concrete T). No borrowed transaction/self and no recursive EventBus calls.",
+    "shutdown_signature": "pub async fn EventBus::flush(&self)",
+    "shutdown_recipe": "Stop/cancel and JOIN all HTTP/background producers first. In Daemon::shutdown, insert self.event_bus.flush().await immediately AFTER tokio::join! returns and BEFORE served?/drained?/bound?/observed?/forwarded error propagation (original lib.rs185-186). Then close runtime/store. Flush waits admitted operations, including detached writes from cancelled callers; it is not an individual success receipt. Keep runtime alive until flush completes."
+  },
+  "constructor_inventory": {
+    "total_code_calls_at_inventory": 43,
+    "u1_migrated": {
+      "crates/store/tests/store_registry.rs": 8,
+      "crates/store/tests/store_integration.rs": 18,
+      "crates/store/tests/orchestration.rs": 2,
+      "crates/daemon/src/events/governance_tests.rs": 4,
+      "crates/daemon/src/events/governance_cancellation_tests.rs": 1
+    },
+    "store_migration": "All28 existing store fixture calls now pass support::publisher(); 27 AST replacements plus one inside assert_eq! that AST traversal did not enter. tests/support/mod.rs only awaits the REAL callback and returns its assigned seq; it cannot invent a sequence. Store-only tests deliberately do not instantiate the daemon or pretend to verify live fanout.",
+    "pm_owned_old_lines": {
+      "crates/daemon/src/lib.rs": [
+        236
+      ],
+      "crates/daemon/src/http/identity_tests.rs": [
+        298,
+        422
+      ],
+      "crates/daemon/tests/review_regressions.rs": [
+        456,
+        514,
+        543,
+        639
+      ],
+      "crates/cli/tests/revive.rs": [
+        96,
+        160
+      ],
+      "crates/cli/tests/spawn.rs": [
+        96
+      ]
+    },
+    "pm_store_only_fixture_replacement": "For each review_regressions pool: let bus = Arc::new(pij_daemon::events::EventBus::new(Arc::new(SqliteSpine::new(pool.clone())), 16).expect(\"bus\")); let registry = SqliteRegistry::new(pool.clone(), bus); existing separate SqliteSpine may remain for read-only assertions.",
+    "pm_http_identity_fixture_replacement": "At each identity fixture, create raw SqliteSpine from same pool then event_bus then SqliteRegistry(pool,event_bus.clone()). After test_services returns, set services.registry=registry.clone(), services.spine=event_bus.clone(), services.event_bus=event_bus.clone(), and rebuild services.delivery from the swapped registry/queue/transport/interaction/bus. Do not leave the original FakeSpine in Services.",
+    "pm_cli_revive_fixture_replacement": "At both pool constructors build the same SqliteSpine -> Arc<EventBus> -> SqliteRegistry chain. Extend local serve(key, registry, tmux, live_procs) helper with bus: Arc<EventBus>. In serve, set services.spine=bus.clone() and services.event_bus=bus, and rebuild DeliveryService after replacing registry/tmux/interaction. Pass the exact bus from each caller.",
+    "pm_cli_spawn_fixture_replacement": "Build spine from pool.clone() first, then bus, then registry=SqliteRegistry::new(pool.clone(),bus.clone()). Replace lines115-116 with services.spine=bus.clone(); services.event_bus=bus.clone(); rebuild dependent DeliveryService after all overrides.",
+    "pm_shared_http_test_services": "http/tests.rs:123 helper currently accepts Arc<FakeRegistry>, Arc<dyn Queue>, Arc<FakeSpine>. Preserve parameters; construct one EventBus from supplied raw fake spine, set registry=PublishedFakeRegistry::new(supplied fake,bus.clone()), spine=bus.clone(), event_bus=bus, then retain existing DeliveryService rebuild. This helper otherwise bypasses the new production invariants even after build_services is fixed.",
+    "reference_evidence": "LSP references attempted on constructors/types returned no references despite explicit daemon/lib.rs callers. Exact identifier grep plus source reads supplied inventory; captured as harness DL-001."
+  },
+  "validation_commands_after_pause": [
+    "cargo fmt --all",
+    "cargo test --locked -p pij-daemon --lib events::governance_tests -- --nocapture",
+    "cargo test --locked -p pij-daemon --lib events::governance_http_tests -- --nocapture",
+    "cargo test --locked -p pij-daemon --lib events::governance_cancellation_tests -- --nocapture",
+    "cargo test --locked -p pij-store --test store_registry --test store_integration --test orchestration",
+    "cargo test --locked -p pij-daemon --test events_bus --test report_http --test review_regressions",
+    "cargo test --locked -p pij-cli --test revive --test spawn",
+    "harness checks --json"
+  ],
+  "runtime_isolation": "Any actual daemon/CLI smoke MUST follow governance-routes.json#isolation: u1 port17462 / PM port17461, private state-dir/HOME/CLAUDE_CONFIG_DIR/XDG_CONFIG_HOME, private tmux socket for daemon AND clients, supervised processes; never7461. Authored HTTP tests do not boot native daemon observers or real tmux: they bind127.0.0.1:0 with isolated SQLite and explicit fakes.",
+  "toolchain_observed": {
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14) (Homebrew)",
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21) (Homebrew)",
+    "omp": "omp/18.0.10",
+    "harness": "0.14.0"
+  },
+  "assumptions": [
+    "Exactly one EventBus per composed Services, and SQLite registry callback uses the same database as its raw SqliteSpine.",
+    "The raw spine is not exposed to production producers after composition; all reports/governance/delivery callers receive bus or Services.spine.",
+    "u2 preserves current assign-role ordering without bypassing Registry writes for descriptor events; role join/writer semantics remain u2/PM-owned.",
+    "Ordinary publish and registry callback share publish_lock; subscriber replay/live join already uses store Seq and remains unchanged.",
+    "Historical zero timestamps remain untouched. New tombstone.at and descriptor.tombstoned_at use epoch milliseconds, not the old Seq placeholder.",
+    "No tests, formatters, builds or harness checks were run. READY_TO_VALIDATE is not DONE and does not certify compilation or behavioral acceptance.",
+    "PM owns final composition, other test fixture migrations, full gates, baseline RED/GREEN, and any exact golden sequence adjustments caused by newly visible registry events.",
+    "Caller cancellation before admission drops unpolled callback; after admission the task completes even if caller cancels. Runtime shutdown/process crash/task panic are not shielded; PM shutdown must stop/join producers then flush. Generic callbacks must be honest atomic store operations returning their committed Seq."
+  ],
+  "pending_decisions": [],
+  "original_harness_buffers": [
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/.harness/temp/agent/session-buffer.md"
+  ],
+  "harness_improvement": "Direct-spine-INSERT guard and positive-control live HTTP regression encode the original missing-fanout failure; lazy-callback regression pins the SQLite/EventBus lock-order contract.",
+  "cancellation_finding": {
+    "status": "FIX AUTHORED; four deterministic cancellation/generic/flush witnesses UNRUN per edit-wave instruction",
+    "source": "Pinned sqlx-sqlite 0.8.6 src/connection/worker.rs:268-272: COMMIT processed but not acknowledged means ignore rollback on Transaction drop; EventBus currently holds lock in cancellable caller future across commit.await.",
+    "witness": "crates/daemon/src/events/governance_cancellation_tests.rs",
+    "proposal": "IMPLEMENTED owned Send+static lazy callback; owned mutex guard acquired before admitted publication task; ordinary publish and RegistryPublisher delegate to generic helper. Flush recipe supplied for PM shutdown wiring.",
+    "export_warning": "Initial assets/u1-source.patch is superseded. Use full u1-source-amended.patch on baseline, OR u1-cancellation-amendment.patch after initial patch. Never apply both full and incremental exports."
+  },
+  "source_exports": {
+    "u1-source-amended.patch": {
+      "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/docs/plans/139-rs-governance-port/assets/u1-source-amended.patch",
+      "sha256": "6954968c55c6930304cbed163097a5e1386d44bfab64b08140c3685fb8d43f4f",
+      "file_sections": 13,
+      "bytes": 72179
+    },
+    "u1-cancellation-amendment.patch": {
+      "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/docs/plans/139-rs-governance-port/assets/u1-cancellation-amendment.patch",
+      "sha256": "eeb0f557acf8e8ee7433dd15e4090f89ebf6ae5813c4be9013dc0741d09212c8",
+      "file_sections": 6,
+      "bytes": 22796
+    }
+  }
+}

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use pij_core::model::SeatId;
-use pij_core::orchestration::{mint_ordinal, plan_stream_creation};
+use pij_core::orchestration::{Project, mint_ordinal, plan_stream_creation};
 use pij_store::SqliteOrchestration;
 use pij_testkit::{FreshStore, fresh_dir};
 use repo::{StreamCreation, reserve_and_create_stream, scan_repo_inventory};
@@ -102,7 +102,15 @@ async fn dirty_source_tree_does_not_block_stream_creation() {
     let actor = SeatId::from("pij-pm");
     assert!(
         store
-            .create_project("rust-port", &actor, 1)
+            .create_project(&Project {
+                slug: "rust-port".to_string(),
+                description: None,
+                repo: None,
+                plan_path: None,
+                prime_id: None,
+                created_by: actor.clone(),
+                created_at: 1,
+            })
             .await
             .expect("project")
     );

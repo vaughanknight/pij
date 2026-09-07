@@ -1,0 +1,13 @@
+{
+  "contract": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/gate-repair-contract.json",
+  "peer": "pij-general-miriam",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate",
+  "target": ".pi/extensions/pij/core/chores/drive.test.ts, core/cli.test.ts, acceptance-sweep.test.ts, core/liveness-cost.test.ts, daemon.bootstrap.test.ts, orchestration-notice.integration.test.ts. Do NOT edit cli.inbox.integration.test.ts, routing source/tests, or harness smoke (other owners).",
+  "change": [
+    "Classify each failed assumption against actual serve-or-refuse contract; preserve all pure store tests and required success behavior. Existing scoped Vitest cache lists these6 plus u2-owned inbox test.",
+    "For intentionally unported CLI surfaces (including chore/watchdog/old administration), migrate obsolete CLI success drives to named refusal + no legacy filesystem/process mutation proof. Do not manufacture a hidden legacy CLI test entry, force escape, skip or weaker equivalent.",
+    "For ported surfaces use actual v2/RS semantics. inbox register success is REQUIRED and u2-owned: fixtures that depend on it must consume data.id and the shared ambient contract, never expect E-RS-UNPORTED. Coordinate input fixture setup with u2 if necessary.",
+    "Keep OS/path/operation-count and notice semantics tests at their actual supported boundary; existing pure-library tests may remain pure rather than pretending the retired public CLI still serves them. Explicitly identify any genuine product gap instead of editing expectations to erase it."
+  ],
+  "acceptance": "READY_TO_VALIDATE source patch against78531, sha256 and complete path hashes, changes/findings map. PM runs validation once after all slices return. No code/test success inferred from source readiness."
+}

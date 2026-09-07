@@ -1,0 +1,24 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on build directory
+   Compiling pij-cli v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.53s
+     Running tests/governance_boot.rs (target/debug/deps/governance_boot-1b3a3824665ca445)
+
+running 1 test
+private dual-stream worker=pij-comfortable-primate adopt_seq=7 report_seq=9 adopt_at=1788763518313 report_at=1788763518340
+private workflow parent=pij-complicated-fly worker=pij-comfortable-primate project=private-governance-workflow project_seq=10 stream=private-governance-workflow:workflow stream_seq=11 fence=fence-94ced84229ab0223edddd3c7dd2bf3f3 dispatch=dispatch-f5bc916aa0f3a57806b4b4a9cb401151 packet_sha=94cfdb6082b90be7c4f4ecb2cd416accf95d18441393693c712f22da96bd7641 ack_seq=19 assignment=assignment-26d40a249e5b749e255c62cdf97a8fa4 canary_refused=dispatch-c62e4c3fa8d5a2d7384a6b5729193b94
+private lifecycle parent=pij-complicated-fly worker=pij-comfortable-primate decision=decision-8ae8a2187ece2e88f81323eb0931c534 question_seq=28 answer_seq=33 done_seq=37 verify_seq=38 reopened_done_seq=40 tombstone_seq=41
+test shipped_all_real_daemon_boots_and_streams_on_fully_private_resources ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.00s
+
+     Running tests/spawn.rs (target/debug/deps/spawn-befb623e5ab794ed)
+
+running 3 tests
+test shipped_cli_reads_one_seat_state_back_from_the_real_store ... ok
+test shipped_spawn_revive_and_registration_do_not_attest_native_delivery ... ok
+test shipped_cli_registers_sends_reads_acks_and_does_not_read_twice ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
