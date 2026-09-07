@@ -238,10 +238,6 @@ async fn shapes_rs_cannot_serve_refuse_by_name() {
             "broadcast",
         ),
         (
-            serde_json::json!(["send", RECIPIENT, "--command", "compact"]),
-            "control command",
-        ),
-        (
             serde_json::json!(["send", RECIPIENT, "--file", "/tmp/x"]),
             "attachment model",
         ),

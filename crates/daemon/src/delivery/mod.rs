@@ -4,9 +4,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use pij_core::control::{COPILOT_CONTROL_REFUSAL, ControlOutcome};
 use pij_core::delivery::{
     DeliveryDeferralReason, DeliveryRoute, DeliveryRung, HeldEvent, MAX_TYPED_FRAME_BYTES,
-    QueueReason, ReleasedEvent, delivery_kind, route, select_rung,
+    QueueReason, ReleasedEvent, delivery_kind, route, route_control, select_rung,
 };
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
@@ -247,6 +248,41 @@ impl DeliveryService {
         self.arrive(msg, Arrival::Local).await
     }
 
+    /// Admit an authenticated control request. The HTTP boundary owns caller
+    /// authorization; this entry permits a self-target without relaxing body routing.
+    pub(crate) async fn accept_control(&self, msg: Msg) -> Result<Receipt> {
+        // Serialize request-id replay with terminal control ACKs and keep the
+        // admission event ahead of an extension's immediate execution outcome.
+        let _delivery_order = self.event_bus.socket_delivery_order.lock().await;
+        if let Some(event) = self
+            .event_bus
+            .latest_matching_message(&msg.to, OUTCOME_EVENT_KIND, &msg.msg_id)
+            .await?
+        {
+            #[derive(Deserialize)]
+            struct RecordedOutcome {
+                outcome: DeliveryOutcome,
+                control_outcome: Option<ControlOutcome>,
+            }
+            let recorded: RecordedOutcome =
+                serde_json::from_str(&event.payload).map_err(|error| PijError::Adapter {
+                    adapter: "daemon/delivery".into(),
+                    message: format!("invalid control receipt: {error}"),
+                })?;
+            if matches!(
+                recorded.control_outcome,
+                Some(ControlOutcome::Refused { .. })
+            ) {
+                return Ok(Receipt {
+                    msg_id: msg.msg_id,
+                    outcome: recorded.outcome,
+                    at: event.at,
+                });
+            }
+        }
+        self.arrive(msg, Arrival::Control).await
+    }
+
     /// Accept a message FORWARDED from another machine.
     ///
     /// Same admission as [`Self::accept`] — the recipient must exist, must not be
@@ -267,6 +303,12 @@ impl DeliveryService {
     }
 
     async fn arrive(&self, msg: Msg, arrival: Arrival) -> Result<Receipt> {
+        if msg.to.0 == crate::background::BG_ACTOR {
+            return Err(PijError::Adapter {
+                adapter: "daemon/virtual-sender".into(),
+                message: "pij-bg is a daemon-owned sender, not a recipient".into(),
+            });
+        }
         let at = (self.clock)()?;
         let from = msg.from.clone();
         let to = msg.to.clone();
@@ -284,6 +326,7 @@ impl DeliveryService {
         // Forwarded messages never reach the transport, but tombstones dominate.
         let selected = match arrival {
             Arrival::Local => route(&from, msg.from_machine.as_deref(), &recipient, true)?,
+            Arrival::Control => route_control(&recipient, true),
             Arrival::Forwarded => {
                 match route(&from, msg.from_machine.as_deref(), &recipient, true)? {
                     DeliveryRoute::Tombstoned { reason } => DeliveryRoute::Tombstoned { reason },
@@ -298,9 +341,7 @@ impl DeliveryService {
             let receipt = Receipt {
                 msg_id: msg.msg_id,
                 outcome: DeliveryOutcome::Refused {
-                    reason:
-                        "Copilot programmatic controls are unsupported; use native user controls"
-                            .into(),
+                    reason: COPILOT_CONTROL_REFUSAL.into(),
                 },
                 at,
             };
@@ -350,7 +391,8 @@ impl DeliveryService {
                 let rung = if extension_stream {
                     DeliveryRung::Observe
                 } else {
-                    let socket_available = self.transport.can_deliver(&recipient, &msg).await?;
+                    let socket_available = msg.command.is_none()
+                        && self.transport.can_deliver(&recipient, &msg).await?;
                     // Send-keys fallbacks check permission after acquiring input
                     // ownership. Socket bodies do not touch the human composer.
                     // Paneless socket consumers remain transport-owned. The rung
@@ -507,6 +549,7 @@ impl DeliveryService {
                                     match rung {
                                         DeliveryRung::Observe => Some("unreachable"),
                                         DeliveryRung::ControlBodyPull => Some("terminal-control"),
+                                        DeliveryRung::Pty => Some("pty"),
                                         _ => None,
                                     }
                                 };
@@ -537,7 +580,18 @@ impl DeliveryService {
                 audit_error: error.to_string(),
             });
         }
-        if let Err(error) = self.publish_outcome(&msg.to, &receipt).await {
+        let transport = if msg.command.is_some() {
+            if matches!(recipient.harness, Harness::Omp | Harness::Pi) {
+                "extension-stream"
+            } else {
+                "pty"
+            }
+        } else {
+            self.transport.name()
+        };
+        if let Err(error) =
+            publish_delivery_outcome(&self.event_bus, &msg.to, &receipt, transport).await
+        {
             return Err(PijError::DeliveryAuditFailed {
                 msg_id: receipt.msg_id,
                 outcome: outcome_name(&receipt.outcome).to_string(),
@@ -878,6 +932,7 @@ impl DeliveryService {
         seat: &SeatId,
         job_id: JobId,
         identity: &NativeInboxIdentity,
+        control_outcome: Option<&ControlOutcome>,
     ) -> Result<DeliveryAck> {
         let _native_guard = self.native_lock.lock().await;
         let job = self
@@ -889,6 +944,32 @@ impl DeliveryService {
                 message: format!("job {} is not a running delivery claim", job_id.0),
             })?;
         let recipient = SeatId::from(job.serial_key);
+        let payload: ClaimedPayload =
+            serde_json::from_str(&job.payload).map_err(|error| PijError::Adapter {
+                adapter: "daemon/delivery".into(),
+                message: format!("invalid delivery claim: {error}"),
+            })?;
+        let control = payload.message.command.as_deref();
+        if control.is_some() != control_outcome.is_some() {
+            return Err(PijError::Adapter {
+                adapter: "daemon/delivery".into(),
+                message:
+                    "command claims require an execution outcome; body claims cannot carry one"
+                        .into(),
+            });
+        }
+        if control.is_some() {
+            let target = self.registry.get(&recipient).await?;
+            if seat != &recipient
+                || !target
+                    .is_some_and(|target| matches!(target.harness, Harness::Omp | Harness::Pi))
+            {
+                return Err(PijError::Adapter {
+                    adapter: "daemon/delivery".into(),
+                    message: "control outcome must name its extension-stream recipient".into(),
+                });
+            }
+        }
         if self
             .inbox_recipient(&recipient, identity)
             .await?
@@ -899,17 +980,12 @@ impl DeliveryService {
                     "native acknowledgement seat must match the claimed job recipient",
                 ));
             }
-            let payload: ClaimedPayload = serde_json::from_str(&job.payload).map_err(|error| {
-                native_refusal(format!(
-                    "malformed native claim remains unacknowledged: {error}"
-                ))
-            })?;
             if let Some(reason) =
                 native_target_mismatch(payload.native_target_session.as_deref(), identity)
             {
                 return Err(native_refusal(reason));
             }
-            let message = payload.message;
+            let message = &payload.message;
             if message.to != recipient
                 || job.kind != delivery_kind(&recipient)
                 || message.command.is_some()
@@ -920,6 +996,31 @@ impl DeliveryService {
             }
         }
         let _delivery_order = self.event_bus.socket_delivery_order.lock().await;
+        if let Some(outcome @ ControlOutcome::Refused { reason }) = control_outcome {
+            // Refusal is observed before the queue ACK. Persist that terminal
+            // answer first so an ambiguous ACK never turns an identical request
+            // into a new destructive operation after the runtime becomes armed.
+            publish_outcome_with_control(
+                &self.event_bus,
+                &recipient,
+                &Receipt {
+                    msg_id: payload.message.msg_id.clone(),
+                    outcome: DeliveryOutcome::Refused {
+                        reason: reason.clone(),
+                    },
+                    at: (self.clock)()?,
+                },
+                "extension-stream",
+                Some(outcome),
+            )
+            .await?;
+            self.queue.ack(job_id, Outcome::Done).await?;
+            return Ok(DeliveryAck {
+                recipient,
+                msg_id: payload.message.msg_id,
+                origin: DeliveryOrigin::ReaderRead,
+            });
+        }
         let ack = self
             .queue
             .ack_delivery(job_id, DeliveryOrigin::ReaderRead)
@@ -927,7 +1028,7 @@ impl DeliveryService {
         drop(_native_guard);
         let at = (self.clock)()?;
         publish_socket_released(&self.event_bus, &ack.recipient, &ack.msg_id, at).await?;
-        publish_delivery_outcome(
+        publish_outcome_with_control(
             &self.event_bus,
             &ack.recipient,
             &Receipt {
@@ -935,7 +1036,12 @@ impl DeliveryService {
                 outcome: DeliveryOutcome::Delivered { origin: ack.origin },
                 at,
             },
-            "inbox",
+            if control.is_some() {
+                "extension-stream"
+            } else {
+                "inbox"
+            },
+            control_outcome,
         )
         .await?;
         Ok(ack)
@@ -977,7 +1083,7 @@ impl DeliveryService {
         Ok(())
     }
 
-    fn next_message_id(&self) -> String {
+    pub(crate) fn next_message_id(&self) -> String {
         let sequence = self.next_id.fetch_add(1, Ordering::Relaxed);
         format!("{:016x}-{sequence:016x}", self.id_prefix)
     }
@@ -991,6 +1097,7 @@ impl DeliveryService {
             from_machine: msg.from_machine.as_deref(),
             body: &msg.body,
             in_reply_to: msg.in_reply_to.as_deref(),
+            command: msg.command.as_deref(),
         })
         .map_err(|error| PijError::Adapter {
             adapter: "daemon/delivery".to_string(),
@@ -1020,6 +1127,16 @@ pub(crate) async fn publish_delivery_outcome(
     receipt: &Receipt,
     transport: &str,
 ) -> Result<()> {
+    publish_outcome_with_control(event_bus, seat, receipt, transport, None).await
+}
+
+async fn publish_outcome_with_control(
+    event_bus: &EventBus,
+    seat: &SeatId,
+    receipt: &Receipt,
+    transport: &str,
+    control_outcome: Option<&ControlOutcome>,
+) -> Result<()> {
     let transport = match &receipt.outcome {
         DeliveryOutcome::Delivered {
             origin: DeliveryOrigin::TypedToPane,
@@ -1030,6 +1147,7 @@ pub(crate) async fn publish_delivery_outcome(
         msg_id: &receipt.msg_id,
         outcome: &receipt.outcome,
         transport,
+        control_outcome,
     })
     .map_err(|error| PijError::Adapter {
         adapter: "daemon/delivery".to_string(),
@@ -1191,6 +1309,8 @@ struct PushedEvent<'a> {
     body: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     in_reply_to: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    command: Option<&'a str>,
 }
 
 #[derive(Serialize)]
@@ -1198,6 +1318,8 @@ struct OutcomeEvent<'a> {
     msg_id: &'a str,
     outcome: &'a DeliveryOutcome,
     transport: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    control_outcome: Option<&'a ControlOutcome>,
 }
 
 /// Where a message came from, which decides whether it may reach a transport.
@@ -1205,6 +1327,8 @@ struct OutcomeEvent<'a> {
 enum Arrival {
     /// A client on this machine. Routed normally.
     Local,
+    /// Caller-authorized control, including a self-target.
+    Control,
     /// Forwarded by a peer daemon. New messages queue; live duplicates collapse,
     /// and delivered duplicates replay the destination's durable observation.
     Forwarded,
@@ -1457,7 +1581,12 @@ mod tests {
                         assert_eq!(claims.len(), 1);
                         fixture
                             .service
-                            .acknowledge_inbox(&reader.id, claims[0].job_id, &Default::default())
+                            .acknowledge_inbox(
+                                &reader.id,
+                                claims[0].job_id,
+                                &Default::default(),
+                                None,
+                            )
                             .await
                             .expect("unrelated ack");
                     })
@@ -1484,7 +1613,7 @@ mod tests {
                 if change == 6 {
                     fixture
                         .service
-                        .acknowledge_inbox(&recipient.id, job_id, &identity)
+                        .acknowledge_inbox(&recipient.id, job_id, &identity, None)
                         .await
                         .expect("current tuple may acknowledge");
                 }
@@ -1787,6 +1916,169 @@ mod tests {
         fixture.registry.put(seat).await.expect("register seat");
     }
 
+    #[tokio::test]
+    async fn command_claim_cannot_be_acked_without_execution_outcome() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let mut recipient = bound("pij-control-reader");
+        recipient.harness = Harness::Omp;
+        recipient.pane = Some("%control".into());
+        register(&fixture, recipient.clone()).await;
+        fixture
+            .service
+            .accept(Msg {
+                from: "pij-sender".into(),
+                to: recipient.id.clone(),
+                body: String::new(),
+                msg_id: "control-without-outcome".into(),
+                from_machine: None,
+                in_reply_to: None,
+                command: Some("compact".into()),
+            })
+            .await
+            .expect("queued control");
+        let claims = fixture
+            .service
+            .claim_inbox(&recipient.id, false)
+            .await
+            .expect("claim");
+        assert_eq!(claims[0].message.command.as_deref(), Some("compact"));
+        let result = fixture
+            .service
+            .acknowledge_inbox(&recipient.id, claims[0].job_id, &Default::default(), None)
+            .await;
+        assert!(result.is_err(), "decoding a command is not executing it");
+        assert!(fixture.queue.acked().is_empty());
+    }
+
+    #[tokio::test]
+    async fn command_execution_ack_records_extension_outcome_and_self_target() {
+        use pij_core::control::ControlOutcome;
+        for harness in [Harness::Omp, Harness::Pi] {
+            for outcome in [
+                ControlOutcome::Executed,
+                ControlOutcome::Refused {
+                    reason: "runtime unavailable".into(),
+                },
+            ] {
+                let fixture = fixture(FakeTransport::reachable());
+                let mut recipient = bound("pij-self-control");
+                recipient.harness = harness;
+                recipient.pane = Some("%control".into());
+                register(&fixture, recipient.clone()).await;
+                fixture
+                    .service
+                    .accept_control(Msg {
+                        from: recipient.id.clone(),
+                        to: recipient.id.clone(),
+                        body: String::new(),
+                        msg_id: "self-control".into(),
+                        from_machine: None,
+                        in_reply_to: None,
+                        command: Some("compact".into()),
+                    })
+                    .await
+                    .expect("self control accepted");
+                let claims = fixture
+                    .service
+                    .claim_inbox(&recipient.id, false)
+                    .await
+                    .expect("claim");
+                let id = claims[0].job_id;
+                fixture
+                    .service
+                    .acknowledge_inbox(&recipient.id, id, &Default::default(), Some(&outcome))
+                    .await
+                    .expect("ack");
+                assert_eq!(
+                    fixture.queue.acked(),
+                    [(id, pij_core::model::Outcome::Done)]
+                );
+                assert!(
+                    fixture.transport.calls().is_empty(),
+                    "extension does not use pane/socket transport"
+                );
+                let events = fixture
+                    .spine
+                    .tail(Some(&recipient.id), Seq(0))
+                    .await
+                    .expect("events");
+                let pushed: Value = serde_json::from_str(&events[0].payload).expect("pushed");
+                assert_eq!(pushed["command"], "compact");
+                let event = events.last().expect("outcome event");
+                assert_eq!(event.kind, "delivery.outcome");
+                let payload: Value = serde_json::from_str(&event.payload).expect("outcome");
+                assert_eq!(payload["transport"], "extension-stream");
+                assert_eq!(
+                    payload["control_outcome"],
+                    serde_json::to_value(&outcome).expect("outcome json")
+                );
+                assert_eq!(
+                    payload["outcome"]["outcome"],
+                    if matches!(outcome, ControlOutcome::Executed) {
+                        "delivered"
+                    } else {
+                        "refused"
+                    }
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn refused_control_id_replays_refusal_without_executing_again() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let mut recipient = bound("pij-refused-control");
+        recipient.harness = Harness::Omp;
+        recipient.pane = Some("%control".into());
+        register(&fixture, recipient.clone()).await;
+        let msg = Msg {
+            from: recipient.id.clone(),
+            to: recipient.id.clone(),
+            body: String::new(),
+            msg_id: "refused-once".into(),
+            from_machine: None,
+            in_reply_to: None,
+            command: Some("new".into()),
+        };
+        fixture
+            .service
+            .accept_control(msg.clone())
+            .await
+            .expect("admission");
+        let claims = fixture
+            .service
+            .claim_inbox(&recipient.id, false)
+            .await
+            .expect("claim");
+        fixture
+            .service
+            .acknowledge_inbox(
+                &recipient.id,
+                claims[0].job_id,
+                &Default::default(),
+                Some(&pij_core::control::ControlOutcome::Refused {
+                    reason: "not armed".into(),
+                }),
+            )
+            .await
+            .expect("refusal ack");
+        let replay = fixture.service.accept_control(msg).await.expect("replay");
+        assert_eq!(
+            replay.outcome,
+            DeliveryOutcome::Refused {
+                reason: "not armed".into()
+            }
+        );
+        assert!(
+            fixture
+                .service
+                .claim_inbox(&recipient.id, false)
+                .await
+                .expect("no replay claim")
+                .is_empty()
+        );
+    }
+
     async fn assert_audit(fixture: &Fixture, seat: &SeatId, outcome: &str) {
         let events = fixture
             .spine
@@ -2027,6 +2319,7 @@ mod tests {
                 &recipient.id,
                 claims[0].job_id,
                 &NativeInboxIdentity::default(),
+                None,
             )
             .await
             .expect("manual read acknowledgement");
@@ -2795,7 +3088,7 @@ mod tests {
         assert_eq!(claimed.len(), 1);
         fixture
             .service
-            .acknowledge_inbox(&msg.to, claimed[0].job_id, &Default::default())
+            .acknowledge_inbox(&msg.to, claimed[0].job_id, &Default::default(), None)
             .await
             .expect("recipient acknowledges decoded page");
 
@@ -2977,7 +3270,7 @@ mod tests {
 
         fixture
             .service
-            .acknowledge_inbox(&seat, first[0].job_id, &Default::default())
+            .acknowledge_inbox(&seat, first[0].job_id, &Default::default(), None)
             .await
             .expect("ack first");
         let second = fixture

@@ -1,0 +1,614 @@
+{
+  "owner": "pij-yammering-jackal",
+  "private_addr": "127.0.0.1:58379",
+  "private_tmux": "pij-bg-cicada-proof",
+  "native_transcript": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/sessions/2026-09-07T05-35-30-502Z_01a07a5d-4ec6-7000-8fc6-4ac39825e4e4.jsonl",
+  "terminal_capture": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/final-terminal.txt",
+  "injected_entry_count": 8,
+  "jobs": [
+    {
+      "job_id": "bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123",
+      "owner": "pij-yammering-jackal",
+      "title": "sleep",
+      "command": "sleep 8; echo BG-DONE",
+      "pid": 29904,
+      "proc_start": 20260907153613,
+      "pgid": 29904,
+      "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123.log",
+      "state": "done",
+      "exit_code": 0,
+      "started_at": 1788759373251,
+      "finished_at": 1788759381000,
+      "kill_requested": 0,
+      "notified": 1
+    },
+    {
+      "job_id": "bg-1788759432578-f0cc848457451cd2de28731804d03018",
+      "owner": "pij-yammering-jackal",
+      "title": "kill",
+      "command": "sleep 300",
+      "pid": 85069,
+      "proc_start": 20260907153712,
+      "pgid": 85069,
+      "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759432578-f0cc848457451cd2de28731804d03018.log",
+      "state": "killed",
+      "exit_code": 143,
+      "started_at": 1788759432578,
+      "finished_at": 1788759432000,
+      "kill_requested": 1,
+      "notified": 1
+    },
+    {
+      "job_id": "bg-1788759474683-6b424877313a3d6130577488a840aad2",
+      "owner": "pij-yammering-jackal",
+      "title": "restart",
+      "command": "sleep 12; echo RESTART-DONE",
+      "pid": 27134,
+      "proc_start": 20260907153754,
+      "pgid": 27134,
+      "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759474683-6b424877313a3d6130577488a840aad2.log",
+      "state": "done",
+      "exit_code": 143,
+      "started_at": 1788759474683,
+      "finished_at": 1788759474000,
+      "kill_requested": 0,
+      "notified": 1
+    },
+    {
+      "job_id": "bg-1788759544852-7cc07d152b8c391b47ec2d9a42eb964b",
+      "owner": "pij-yammering-jackal",
+      "title": "restart-survives",
+      "command": "sleep 30; echo RESTART-DONE",
+      "pid": 92462,
+      "proc_start": 20260907153904,
+      "pgid": 92462,
+      "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759544852-7cc07d152b8c391b47ec2d9a42eb964b.log",
+      "state": "done",
+      "exit_code": 0,
+      "started_at": 1788759544852,
+      "finished_at": 1788759574000,
+      "kill_requested": 0,
+      "notified": 1
+    },
+    {
+      "job_id": "bg-1788759594117-d9c66fd7e8aa68c916d3aa124f451338",
+      "owner": "pij-yammering-jackal",
+      "title": "parity-native",
+      "command": "sleep 300",
+      "pid": 42010,
+      "proc_start": 20260907153954,
+      "pgid": 42010,
+      "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759594117-d9c66fd7e8aa68c916d3aa124f451338.log",
+      "state": "killed",
+      "exit_code": 143,
+      "started_at": 1788759594117,
+      "finished_at": 1788759594000,
+      "kill_requested": 1,
+      "notified": 1
+    },
+    {
+      "job_id": "bg-1788759594653-e2e541d53fb77948ec71b3393eecdd20",
+      "owner": "pij-yammering-jackal",
+      "title": "parity-legacy",
+      "command": "sleep 300",
+      "pid": 42506,
+      "proc_start": 20260907153954,
+      "pgid": 42506,
+      "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759594653-e2e541d53fb77948ec71b3393eecdd20.log",
+      "state": "killed",
+      "exit_code": 143,
+      "started_at": 1788759594653,
+      "finished_at": 1788759596000,
+      "kill_requested": 1,
+      "notified": 1
+    },
+    {
+      "job_id": "bg-1788759638191-32b7275156955f9c53a8bab43afa2f08",
+      "owner": "pij-yammering-jackal",
+      "title": "typed-pij-parity",
+      "command": "sleep 300",
+      "pid": 80888,
+      "proc_start": 20260907154038,
+      "pgid": 80888,
+      "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759638191-32b7275156955f9c53a8bab43afa2f08.log",
+      "state": "killed",
+      "exit_code": 143,
+      "started_at": 1788759638191,
+      "finished_at": 1788759639000,
+      "kill_requested": 1,
+      "notified": 1
+    },
+    {
+      "job_id": "bg-1788759980339-9a24c2ba32da85b44597a78f3dbcd80e",
+      "owner": "pij-yammering-jackal",
+      "title": "final-binary",
+      "command": "echo FINAL-BG",
+      "pid": 1536,
+      "proc_start": 20260907154620,
+      "pgid": 1536,
+      "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759980339-9a24c2ba32da85b44597a78f3dbcd80e.log",
+      "state": "done",
+      "exit_code": 0,
+      "started_at": 1788759980339,
+      "finished_at": 1788759980000,
+      "kill_requested": 0,
+      "notified": 1
+    }
+  ],
+  "spine": [
+    {
+      "seq": 6,
+      "at": 1788759381000,
+      "kind": "bg.finished",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "exit_code": 0,
+        "finished_at": 1788759381000,
+        "job_id": "bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123",
+        "msg_id": "pij-bg:bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123:finished",
+        "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123.log",
+        "owner": "pij-yammering-jackal",
+        "started_at": 1788759373251,
+        "state": "done",
+        "title": "sleep"
+      }
+    },
+    {
+      "seq": 7,
+      "at": 1788759381542,
+      "kind": "message.pushed",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "msg_id": "pij-bg:bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123:finished",
+        "from": "pij-bg",
+        "body": "[pij bg] OK — sleep (8s) · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123.log · tail: BG-DONE"
+      }
+    },
+    {
+      "seq": 10,
+      "at": 1788759381549,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "job_id": 1,
+        "authenticated_machine": "local",
+        "evidence_grade": "machine",
+        "outcome": "reader-read"
+      }
+    },
+    {
+      "seq": 11,
+      "at": 1788759432000,
+      "kind": "bg.killed",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "exit_code": 143,
+        "finished_at": 1788759432000,
+        "job_id": "bg-1788759432578-f0cc848457451cd2de28731804d03018",
+        "msg_id": "pij-bg:bg-1788759432578-f0cc848457451cd2de28731804d03018:finished",
+        "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759432578-f0cc848457451cd2de28731804d03018.log",
+        "owner": "pij-yammering-jackal",
+        "started_at": 1788759432578,
+        "state": "killed",
+        "title": "kill"
+      }
+    },
+    {
+      "seq": 12,
+      "at": 1788759432860,
+      "kind": "message.pushed",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "msg_id": "pij-bg:bg-1788759432578-f0cc848457451cd2de28731804d03018:finished",
+        "from": "pij-bg",
+        "body": "[pij bg] KILLED — kill · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759432578-f0cc848457451cd2de28731804d03018.log"
+      }
+    },
+    {
+      "seq": 15,
+      "at": 1788759432865,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "job_id": 2,
+        "authenticated_machine": "local",
+        "evidence_grade": "machine",
+        "outcome": "reader-read"
+      }
+    },
+    {
+      "seq": 16,
+      "at": 1788759474000,
+      "kind": "bg.finished",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "exit_code": 143,
+        "finished_at": 1788759474000,
+        "job_id": "bg-1788759474683-6b424877313a3d6130577488a840aad2",
+        "msg_id": "pij-bg:bg-1788759474683-6b424877313a3d6130577488a840aad2:finished",
+        "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759474683-6b424877313a3d6130577488a840aad2.log",
+        "owner": "pij-yammering-jackal",
+        "started_at": 1788759474683,
+        "state": "done",
+        "title": "restart"
+      }
+    },
+    {
+      "seq": 17,
+      "at": 1788759492360,
+      "kind": "message.pushed",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "msg_id": "pij-bg:bg-1788759474683-6b424877313a3d6130577488a840aad2:finished",
+        "from": "pij-bg",
+        "body": "[pij bg] FAILED (exit 143) — restart (0s) · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759474683-6b424877313a3d6130577488a840aad2.log"
+      }
+    },
+    {
+      "seq": 20,
+      "at": 1788759496127,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "job_id": 3,
+        "authenticated_machine": "local",
+        "evidence_grade": "machine",
+        "outcome": "reader-read"
+      }
+    },
+    {
+      "seq": 21,
+      "at": 1788759574000,
+      "kind": "bg.finished",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "exit_code": 0,
+        "finished_at": 1788759574000,
+        "job_id": "bg-1788759544852-7cc07d152b8c391b47ec2d9a42eb964b",
+        "msg_id": "pij-bg:bg-1788759544852-7cc07d152b8c391b47ec2d9a42eb964b:finished",
+        "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759544852-7cc07d152b8c391b47ec2d9a42eb964b.log",
+        "owner": "pij-yammering-jackal",
+        "started_at": 1788759544852,
+        "state": "done",
+        "title": "restart-survives"
+      }
+    },
+    {
+      "seq": 22,
+      "at": 1788759574925,
+      "kind": "message.pushed",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "msg_id": "pij-bg:bg-1788759544852-7cc07d152b8c391b47ec2d9a42eb964b:finished",
+        "from": "pij-bg",
+        "body": "[pij bg] OK — restart-survives (29s) · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759544852-7cc07d152b8c391b47ec2d9a42eb964b.log · tail: RESTART-DONE"
+      }
+    },
+    {
+      "seq": 25,
+      "at": 1788759574930,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "job_id": 4,
+        "authenticated_machine": "local",
+        "evidence_grade": "machine",
+        "outcome": "reader-read"
+      }
+    },
+    {
+      "seq": 26,
+      "at": 1788759594000,
+      "kind": "bg.killed",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "exit_code": 143,
+        "finished_at": 1788759594000,
+        "job_id": "bg-1788759594117-d9c66fd7e8aa68c916d3aa124f451338",
+        "msg_id": "pij-bg:bg-1788759594117-d9c66fd7e8aa68c916d3aa124f451338:finished",
+        "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759594117-d9c66fd7e8aa68c916d3aa124f451338.log",
+        "owner": "pij-yammering-jackal",
+        "started_at": 1788759594117,
+        "state": "killed",
+        "title": "parity-native"
+      }
+    },
+    {
+      "seq": 27,
+      "at": 1788759594229,
+      "kind": "message.pushed",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "msg_id": "pij-bg:bg-1788759594117-d9c66fd7e8aa68c916d3aa124f451338:finished",
+        "from": "pij-bg",
+        "body": "[pij bg] KILLED — parity-native · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759594117-d9c66fd7e8aa68c916d3aa124f451338.log"
+      }
+    },
+    {
+      "seq": 30,
+      "at": 1788759594232,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "job_id": 5,
+        "authenticated_machine": "local",
+        "evidence_grade": "machine",
+        "outcome": "reader-read"
+      }
+    },
+    {
+      "seq": 31,
+      "at": 1788759596000,
+      "kind": "bg.killed",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "exit_code": 143,
+        "finished_at": 1788759596000,
+        "job_id": "bg-1788759594653-e2e541d53fb77948ec71b3393eecdd20",
+        "msg_id": "pij-bg:bg-1788759594653-e2e541d53fb77948ec71b3393eecdd20:finished",
+        "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759594653-e2e541d53fb77948ec71b3393eecdd20.log",
+        "owner": "pij-yammering-jackal",
+        "started_at": 1788759594653,
+        "state": "killed",
+        "title": "parity-legacy"
+      }
+    },
+    {
+      "seq": 32,
+      "at": 1788759596129,
+      "kind": "message.pushed",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "msg_id": "pij-bg:bg-1788759594653-e2e541d53fb77948ec71b3393eecdd20:finished",
+        "from": "pij-bg",
+        "body": "[pij bg] KILLED — parity-legacy · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759594653-e2e541d53fb77948ec71b3393eecdd20.log"
+      }
+    },
+    {
+      "seq": 35,
+      "at": 1788759596134,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "job_id": 6,
+        "authenticated_machine": "local",
+        "evidence_grade": "machine",
+        "outcome": "reader-read"
+      }
+    },
+    {
+      "seq": 36,
+      "at": 1788759639000,
+      "kind": "bg.killed",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "exit_code": 143,
+        "finished_at": 1788759639000,
+        "job_id": "bg-1788759638191-32b7275156955f9c53a8bab43afa2f08",
+        "msg_id": "pij-bg:bg-1788759638191-32b7275156955f9c53a8bab43afa2f08:finished",
+        "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759638191-32b7275156955f9c53a8bab43afa2f08.log",
+        "owner": "pij-yammering-jackal",
+        "started_at": 1788759638191,
+        "state": "killed",
+        "title": "typed-pij-parity"
+      }
+    },
+    {
+      "seq": 37,
+      "at": 1788759639900,
+      "kind": "message.pushed",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "msg_id": "pij-bg:bg-1788759638191-32b7275156955f9c53a8bab43afa2f08:finished",
+        "from": "pij-bg",
+        "body": "[pij bg] KILLED — typed-pij-parity · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759638191-32b7275156955f9c53a8bab43afa2f08.log"
+      }
+    },
+    {
+      "seq": 40,
+      "at": 1788759639905,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "job_id": 7,
+        "authenticated_machine": "local",
+        "evidence_grade": "machine",
+        "outcome": "reader-read"
+      }
+    },
+    {
+      "seq": 41,
+      "at": 1788759980000,
+      "kind": "bg.finished",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "exit_code": 0,
+        "finished_at": 1788759980000,
+        "job_id": "bg-1788759980339-9a24c2ba32da85b44597a78f3dbcd80e",
+        "msg_id": "pij-bg:bg-1788759980339-9a24c2ba32da85b44597a78f3dbcd80e:finished",
+        "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759980339-9a24c2ba32da85b44597a78f3dbcd80e.log",
+        "owner": "pij-yammering-jackal",
+        "started_at": 1788759980339,
+        "state": "done",
+        "title": "final-binary"
+      }
+    },
+    {
+      "seq": 42,
+      "at": 1788759980419,
+      "kind": "message.pushed",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "msg_id": "pij-bg:bg-1788759980339-9a24c2ba32da85b44597a78f3dbcd80e:finished",
+        "from": "pij-bg",
+        "body": "[pij bg] OK — final-binary (0s) · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759980339-9a24c2ba32da85b44597a78f3dbcd80e.log · tail: FINAL-BG"
+      }
+    },
+    {
+      "seq": 45,
+      "at": 1788759980424,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-yammering-jackal",
+      "payload": {
+        "job_id": 8,
+        "authenticated_machine": "local",
+        "evidence_grade": "machine",
+        "outcome": "reader-read"
+      }
+    }
+  ],
+  "parity": [
+    {
+      "frontend": "native",
+      "leaf": "create",
+      "matches_daemon_bytes": true,
+      "job": "bg-1788759594117-d9c66fd7e8aa68c916d3aa124f451338",
+      "capture": "parity/01.response.json"
+    },
+    {
+      "frontend": "native",
+      "leaf": "list",
+      "matches_daemon_bytes": true,
+      "job": "bg-1788759594117-d9c66fd7e8aa68c916d3aa124f451338",
+      "capture": "parity/02.response.json"
+    },
+    {
+      "frontend": "native",
+      "leaf": "tail",
+      "matches_daemon_bytes": true,
+      "job": "bg-1788759594117-d9c66fd7e8aa68c916d3aa124f451338",
+      "capture": "parity/03.response.json"
+    },
+    {
+      "frontend": "native",
+      "leaf": "kill",
+      "matches_daemon_bytes": true,
+      "job": "bg-1788759594117-d9c66fd7e8aa68c916d3aa124f451338",
+      "capture": "parity/04.response.json"
+    },
+    {
+      "frontend": "legacy",
+      "leaf": "create",
+      "matches_daemon_bytes": true,
+      "job": "bg-1788759594653-e2e541d53fb77948ec71b3393eecdd20",
+      "capture": "parity/05.response.json"
+    },
+    {
+      "frontend": "legacy",
+      "leaf": "list",
+      "matches_daemon_bytes": true,
+      "job": "bg-1788759594653-e2e541d53fb77948ec71b3393eecdd20",
+      "capture": "parity/06.response.json"
+    },
+    {
+      "frontend": "legacy",
+      "leaf": "tail",
+      "matches_daemon_bytes": true,
+      "job": "bg-1788759594653-e2e541d53fb77948ec71b3393eecdd20",
+      "capture": "parity/07.response.json"
+    },
+    {
+      "frontend": "legacy",
+      "leaf": "kill",
+      "matches_daemon_bytes": true,
+      "job": "bg-1788759594653-e2e541d53fb77948ec71b3393eecdd20",
+      "capture": "parity/08.response.json"
+    },
+    {
+      "frontend": "pij",
+      "leaf": "create",
+      "matches_daemon_bytes": true,
+      "job": "bg-1788759638191-32b7275156955f9c53a8bab43afa2f08",
+      "capture": "parity/09.response.json"
+    },
+    {
+      "frontend": "pij",
+      "leaf": "list",
+      "matches_daemon_bytes": true,
+      "job": "bg-1788759638191-32b7275156955f9c53a8bab43afa2f08",
+      "capture": "parity/10.response.json"
+    },
+    {
+      "frontend": "pij",
+      "leaf": "tail",
+      "matches_daemon_bytes": true,
+      "job": "bg-1788759638191-32b7275156955f9c53a8bab43afa2f08",
+      "capture": "parity/11.response.json"
+    },
+    {
+      "frontend": "pij",
+      "leaf": "kill",
+      "matches_daemon_bytes": true,
+      "job": "bg-1788759638191-32b7275156955f9c53a8bab43afa2f08",
+      "capture": "parity/12.response.json"
+    }
+  ],
+  "restart_running_receipt": {
+    "command": "sleep 30; echo RESTART-DONE",
+    "exit_code": null,
+    "finished_at": null,
+    "job_id": "bg-1788759544852-7cc07d152b8c391b47ec2d9a42eb964b",
+    "kill_requested": false,
+    "notified": false,
+    "out_path": "/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759544852-7cc07d152b8c391b47ec2d9a42eb964b.log",
+    "owner": "pij-yammering-jackal",
+    "pgid": 92462,
+    "pid": 92462,
+    "proc_start": 20260907153904,
+    "started_at": 1788759544852,
+    "state": "running",
+    "title": "restart-survives"
+  },
+  "restart_note": "First supervisor process-tree SIGTERM killed runner too (exit143); corrected process-only termination of verified owned daemon PID preserved job, observed running after reboot, then source exit0 and native ack.",
+  "commit_sha": "a634c4fda2ae9b0aaee75584fce90312908348d6",
+  "binary_sha256": "0a554ecbd7e16d6c2dedc3e6a3bb4de1a9ee85c79ad76db28544518d175c0f8a",
+  "native_injections": [
+    {
+      "id": "d3830c04",
+      "timestamp": "2026-09-07T05:36:21.547Z",
+      "content": "[pij-rs from pij-bg]\n[pij bg] OK — sleep (8s) · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123.log · tail: BG-DONE\n[/pij]"
+    },
+    {
+      "id": "c631683a",
+      "timestamp": "2026-09-07T05:37:12.863Z",
+      "content": "[pij-rs from pij-bg]\n[pij bg] KILLED — kill · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759432578-f0cc848457451cd2de28731804d03018.log\n[/pij]"
+    },
+    {
+      "id": "5ba3cd42",
+      "timestamp": "2026-09-07T05:38:16.122Z",
+      "content": "[pij-rs from pij-bg]\n[pij bg] FAILED (exit 143) — restart (0s) · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759474683-6b424877313a3d6130577488a840aad2.log\n[/pij]"
+    },
+    {
+      "id": "0670de27",
+      "timestamp": "2026-09-07T05:39:34.928Z",
+      "content": "[pij-rs from pij-bg]\n[pij bg] OK — restart-survives (29s) · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759544852-7cc07d152b8c391b47ec2d9a42eb964b.log · tail: RESTART-DONE\n[/pij]"
+    },
+    {
+      "id": "06c4c21c",
+      "timestamp": "2026-09-07T05:39:54.231Z",
+      "content": "[pij-rs from pij-bg]\n[pij bg] KILLED — parity-native · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759594117-d9c66fd7e8aa68c916d3aa124f451338.log\n[/pij]"
+    },
+    {
+      "id": "f5059b80",
+      "timestamp": "2026-09-07T05:39:56.133Z",
+      "content": "[pij-rs from pij-bg]\n[pij bg] KILLED — parity-legacy · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759594653-e2e541d53fb77948ec71b3393eecdd20.log\n[/pij]"
+    },
+    {
+      "id": "61e202c5",
+      "timestamp": "2026-09-07T05:40:39.903Z",
+      "content": "[pij-rs from pij-bg]\n[pij bg] KILLED — typed-pij-parity · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759638191-32b7275156955f9c53a8bab43afa2f08.log\n[/pij]"
+    },
+    {
+      "id": "926f536a",
+      "timestamp": "2026-09-07T05:46:20.422Z",
+      "content": "[pij-rs from pij-bg]\n[pij bg] OK — final-binary (0s) · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759980339-9a24c2ba32da85b44597a78f3dbcd80e.log · tail: FINAL-BG\n[/pij]"
+    }
+  ],
+  "final_terminal_kill_refusal": {
+    "ok": false,
+    "command": "pij bg kill",
+    "v": 2,
+    "meta": "bg job 'bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123' is not running (Done)",
+    "error": "refused"
+  }
+}

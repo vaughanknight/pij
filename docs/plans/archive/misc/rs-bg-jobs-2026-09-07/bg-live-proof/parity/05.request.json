@@ -1,0 +1,1 @@
+{"argv":["bg","create","--title","parity-legacy","--command","sleep 300","--json"],"caller":{"pijSessionId":"pij-yammering-jackal","tmuxPane":"%2","cwd":"/Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/workspace","pid":42139,"procStart":20260907153954}}

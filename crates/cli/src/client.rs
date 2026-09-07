@@ -93,6 +93,9 @@ pub struct SendRequest {
     pub msg_id: String,
     /// Message id being answered.
     pub in_reply_to: Option<String>,
+    /// A control command, mutually exclusive with a non-empty body.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
 }
 
 // StreamFrame is owned by the daemon wire module and re-exported here so the
@@ -173,6 +176,29 @@ impl DaemonClient {
         self.post("pij send", "/v1/send", request).await
     }
 
+    /// Submit a control with caller evidence the daemon must independently verify.
+    pub async fn send_control(
+        &self,
+        request: &SendRequest,
+        caller: &CallerContext,
+    ) -> Envelope<Receipt> {
+        #[derive(Serialize)]
+        struct ControlSend<'a> {
+            #[serde(flatten)]
+            message: &'a SendRequest,
+            caller: &'a CallerContext,
+        }
+        self.post(
+            "pij send",
+            "/v1/send",
+            &ControlSend {
+                message: request,
+                caller,
+            },
+        )
+        .await
+    }
+
     /// Enqueue one sidecar job (telegram / bg / chore).
     ///
     /// The sidecar consumers are queue-backed, so this is the SHIPPED producer:
@@ -180,6 +206,17 @@ impl DaemonClient {
     /// the product.
     pub async fn sidecar(&self, request: &Value) -> Envelope<Value> {
         self.post("pij sidecar", "/v1/sidecar", request).await
+    }
+
+    /// Forward the background-job grammar and caller evidence to the daemon.
+    /// The daemon derives ownership; this request never asserts an owner.
+    pub async fn bg(&self, argv: &[String], caller: &CallerContext) -> Envelope<Value> {
+        self.post(
+            "pij bg",
+            "/v1/bg",
+            &serde_json::json!({ "argv": argv, "caller": caller }),
+        )
+        .await
     }
 
     /// Report this seat's card or declared state.
@@ -204,6 +241,11 @@ impl DaemonClient {
     /// List the local authority plus typed remote availability.
     pub async fn list(&self) -> Envelope<FederatedRoster> {
         self.get("pij list", "/v1/seats").await
+    }
+
+    /// List only this daemon's authoritative registry, excluding retained remote seats.
+    pub async fn local_seats(&self) -> Envelope<FederatedRoster> {
+        self.get("pij list", "/v1/seats?scope=local").await
     }
 
     /// Read one seat's card back — `pij state <id>` (plan 114, u-readback).
@@ -262,6 +304,7 @@ impl DaemonClient {
             seat: seat.clone(),
             job_id: claim.job_id,
             native: Default::default(),
+            control_outcome: None,
         };
         let acked: Envelope<pij_core::model::JobId> = self
             .post("pij inbox", "/v1/inbox/ack", &acknowledgement)
@@ -628,6 +671,7 @@ mod tests {
             body: "hello".to_string(),
             msg_id: "m-1".to_string(),
             in_reply_to: Some("m-0".to_string()),
+            command: None,
         };
 
         assert_eq!(

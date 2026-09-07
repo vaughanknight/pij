@@ -143,11 +143,11 @@ The daemon runs `tsx` off source with **no hot-reload**: after ANY edit to daemo
 
 In pi/tmux push modes, done/stalled/dead notices arrive as injected turns that re-invoke you. After dispatch: do independent prep and let the push wake you; never poll `pij state`. In external pull mode there is deliberately no injector: use `pij inbox --wait` (first use auto-registers; optional milliseconds make it finite). This blocking inbox read is the delivery primitive, not a liveness poll. A known-broken push transport may use one slow `pij tail <id>` spot-check.
 
-**The same rule applies to SLOW LOCAL COMMANDS — use `pij bg`.** A command you sit and wait on holds your turn open for its whole duration; you are idle-but-not-done, which is the shape the watchdog derives as a stall, and the human cannot talk to you meanwhile. `pij bg` runs it detached and delivers the result as an injected turn from `pij-bg`, so your turn ends now and the completion is what wakes you.
+**The same rule applies to SLOW LOCAL COMMANDS — use `pij bg`.** A command you sit and wait on holds your turn open for its whole duration; you are idle-but-not-done, which is the shape the watchdog derives as a stall, and the human cannot talk to you meanwhile. For rs-hosted seats, `pij bg` and `pij-rs bg` both ask the Rust daemon to run it detached and deliver the result as an injected turn from `pij-bg`, so your turn ends now and the completion is what wakes you. Both spellings return the same complete v2 envelope with `--json` before or after the leaf.
 
 ```bash
 pij bg create --title "harness checks" --command "harness checks"
-pij bg list [--all]          # what is running (--all includes finished)
+pij bg list [--all]          # all your jobs; --all adds directly recorded children's jobs
 pij bg tail <job> [--lines N]  # bounded snapshot of a job's output
 pij bg kill <job>            # stop it — and still get a turn back
 ```
@@ -155,12 +155,12 @@ pij bg kill <job>            # stop it — and still get a turn back
 It returns immediately with a job id; later a turn arrives:
 
 ```
-[pij bg] OK — harness checks (5m12s) · full log: ~/.pij/<you>/bg-<job>.log · tail: …
+[pij bg] OK — harness checks (5m12s) · full log: <daemon-state-dir>/bg/<job>.log · tail: …
 ```
 
-Reach for it whenever a command runs longer than a few seconds — `harness checks`, builds, full test runs, `gh run watch`, long clones. **The `--command` string is passed to `sh` unexpanded** (it travels by environment, never interpolated into a wrapper), so pipe, redirect, and chain freely — shape the output to what you actually want back, because only a bounded tail rides inline. The full log is always written to a file and pointed at. Title it for the reader: it is how a human knows what just fired back.
+Reach for it whenever a command runs longer than a few seconds — `harness checks`, builds, full test runs, `gh run watch`, long clones. **The `--command` string is passed literally to `/bin/sh`** in the caller's recorded folder, so pipe, redirect, and chain freely — shape the output to what you actually want back, because only the last 20 lines ride inline. The daemon owns job state and the full stdout/stderr log at `<daemon-state-dir>/bg/<job>.log` (mode `0600`); `tail` reads it server-side. Title it for the reader: it is how a human knows what just fired back.
 
-`list`/`tail`/`kill` are RECOVERY, not routine — the completion turn stays the primary signal. `tail` is deliberately a bounded snapshot with no `--follow`: a follow loop would quietly reinstate the blocking wait `bg` exists to remove. `kill` still delivers a turn (`[pij bg] KILLED — <title>`), because a silent kill leaves you waiting forever for a result that can never arrive. A job whose process died without recording a completion (reboot, SIGKILL) lists as `lost` rather than running forever.
+`list`/`tail`/`kill` are RECOVERY, not routine — the completion turn stays the primary signal. `list` includes your finished jobs without `--all`; `--all` additionally includes only directly recorded children's jobs, never every seat's jobs. Only the owner or its recorded parent may tail or kill a job. `tail` is deliberately a bounded snapshot with no `--follow`: a follow loop would quietly reinstate the blocking wait `bg` exists to remove. `kill` still delivers a turn (`[pij bg] KILLED — <title>`), because a silent kill leaves you waiting forever for a result that can never arrive. On restart, the daemon re-adopts surviving jobs by pid **and process-start identity** and recovers durable completions; if neither can be recovered it marks the job `lost` and sends a LOST turn naming the log. Restart does not change the owner, and a recycled pid is never enough to re-adopt.
 
 Two things it is NOT: not a way to message yourself (`pij send <self>` is still E-SELF — bg delivers as the `pij-bg` actor because the result genuinely comes from the runner), and not a substitute for peer delegation. One command whose output you want → `pij bg`. A unit of work needing judgement → a peer.
 
@@ -205,3 +205,15 @@ owner for either observation.
 7. **Never reconcile a contradiction.** A receipt or instrument output that contradicts itself is a FINDING, not a formatting problem — relay it verbatim, contradictions intact, with your summary ABOVE the raw output, never instead of it — and the summary line itself must NAME the contradiction (a clean-sounding line 1 over buried evidence re-creates the failure this rule exists to stop). Terseness compresses YOUR words; it never smooths EVIDENCE (a tidied "no notable changes" once nearly destroyed the only trace of a live fleet defect — plan 083).
 
 Pre-send check, two questions: could the receiver act on line 1 alone? Did I restate anything they already know?
+
+### C11 — Commit attribution
+
+Every commit created by a pij seat carries its attribution **at commit time**. Run `pij-rs commit-trailers` (no arguments) in the committing worktree immediately before committing; append its emitted `Key: value` lines after a blank line alongside, never replacing, the harness's own trailers. Values are derived, never hand-typed:
+
+| Key | Derived value / omission |
+|---|---|
+| `Pij-Seat` | Committing seat from `pij-rs whoami`; omitted when the derived `Pij-Prime` is that same seat. |
+| `Pij-Prime` | From `pij-rs list --json` rows, in order: nearest `role == prime` seat (self or ancestor), repository's designated prime, then root of the recorded-parent chain. A prime committer or fallback root (`parent: null`) uses its own id. This root fallback is the interim ruling until plan 139. |
+| `Pij-Plan` | Current plan ordinal, optionally `-slug`, from the worktree path/branch (`NNN-slug`), harness flow state, or current assignment; omitted when there is no plan. |
+
+The helper prints only applicable trailers to stdout and unresolved-value diagnostics to stderr. If an expected value cannot be derived, omit that trailer and explain the omission in the commit body; never guess or emit a placeholder. Current context is not evidence of a historical commit's identity.

@@ -35,23 +35,17 @@ pij report clear [--assignment <id>]
 pij report verify <node> [--assignment <id>]       # done is a CLAIM until verified
 ```
 
-Semantic states: `blocked|question|hold|waiting|ready|failed|cancelled|done`. A
-reporting seat with no assignment falls back to its implicit general assignment
-(`asg-general-<node>`). The node badge derives worst-first across open assignments;
-the mechanical axis (`starting|working|idle|stalled|stopped|dead|unknown`) is
-pij-computed and never writable here.
+Semantic states: `blocked|question|hold|waiting|ready|failed|cancelled|done`. Without an assignment, a reporting seat uses `asg-general-<node>`.
+The node badge derives worst-first across open assignments. The mechanical axis
+(`starting|working|idle|stalled|stopped|dead|unknown`) is pij-computed, never writable here.
 
-Use `report question` when a human answer is needed and `report blocked` when
-progress is waiting on something external. In compound progress, `--note` is
-valid only with `--state question|blocked`. Actively working has no semantic state
-word: absence is the honest expression by design, so never invent `working`.
+Use `report question` for a human answer, `report blocked` for an external dependency; `--note` is valid only with `--state question|blocked`.
+Actively working has no semantic state word: absence is honest by design; never invent `working`.
 
-**Cadence (invariant 12): report at BOTH edges — once when you start a unit of
-work, once when you finish it.** Do not wait for a watchdog nudge; the nudge is a
-backstop, and being nudged means the card was already stale. Consumers render
-`now`/`next` as CURRENT, so an un-updated card actively misinforms — a seat that
-merged an hour ago still reads as waiting on review. `report clear` drops a
-semantic state that no longer applies (e.g. you declared `waiting`, then resumed).
+**Cadence (invariant 12): report at BOTH edges — when you start and finish each unit.**
+Never wait for a watchdog nudge: it is a backstop showing the card was already stale.
+Consumers render `now`/`next` as CURRENT; a seat that merged an hour ago must not still read as awaiting review.
+`report clear` drops a state that no longer applies (e.g. `waiting` after resuming).
 
 **pij tells you when you have drifted.** Once your card is >10min old, every pij
 command appends one line to **stderr**:
@@ -76,11 +70,9 @@ whitespace collapsing, and both rejected with `E-ARG` rather than truncated. Siz
 your text; do not discover the cap by hitting it. Renderers may *additionally*
 visually truncate, which is a display concern and not a second limit.
 
-**A declared question does not expire.** `report question` puts your text in the
-consumer's needs-attention strip and it stays until you `report clear` (or declare
-another state). It WILL be seen — do not re-ask, do not self-nudge, and do not
-escalate by repetition; that only fills the spine with duplicates of a question
-already on someone's screen.
+**A declared question does not expire.** `report question` stays in the consumer's
+needs-attention strip until `report clear` or another state. It WILL be seen:
+never re-ask, self-nudge, or escalate by repetition; that only duplicates a question already displayed.
 
 Inline markdown is supported in report text (`` `code` ``, `**bold**`,
 `[links]`). Block markdown is not: newlines are refused. Shell-quote markdown

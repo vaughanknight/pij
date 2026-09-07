@@ -1,9 +1,8 @@
 # o-prime protocol
 
-A governed way to run many agents in one repository. One **o-prime seat** owns
-coordination-as-substrate; stream orchestrators own one plan each and their
-fleets do the work. The government is files, so replacing the seat is a read
-from disk, not a handover conversation.
+A governed way to run many agents in one repository: one **o-prime seat** owns
+coordination, streams own plans, fleets do the work. Durable store records and
+single-writer documents make replacing a seat a read, not a handover conversation.
 
 ## Roles
 
@@ -15,7 +14,7 @@ from disk, not a handover conversation.
 | Fleet worker | many, bounded | One packet inside a stream's narrowed allowlist | Governs siblings or expands scope |
 | Optional overseer | zero or one | Audits the o-prime and receives numbered reports when explicitly installed | Becomes a required structural layer |
 
-The government is not a role — the disk substrate all read, one seat writes.
+Government is durable substrate, not a role; store authority and document ownership are distinct.
 
 ## Hierarchy and escalation
 
@@ -35,35 +34,27 @@ owner asks the human directly (§ Human rulings). A human may enter any pane.
 
 ## Government files
 
-The o-prime is the single writer of, under this repo's government root:
+The o-prime alone writes documents under `<government-root>`; resolve it via
+[Governance branch — the rules](./rituals/bootstrap.md#governance-branch--the-rules).
+Briefs, canaries, local orient, rulings and encode candidates live there.
+For unmigrated prose governments, so do `spine.md` (thesis/roster/fences/watch/
+allocations/rulings), `baton-book.md` (leases/queue/grant log), and `prime-flow.json`.
+[Store-native](./rituals/store-native.md) governs migrated facts; never duplicate
+store authority in prose. Document location does not change who owns those facts.
 
-- `spine.md` — thesis, roster, fences, watch, allocations, rulings;
-- `baton-book.md` — current leases, queue, append-only grant log;
-- `prime-flow.json` — portfolio state;
-- briefs, canary records, local orient, and encode candidates.
-
-**Government root for `AI-Substrate/pij`**: `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/`
-— the standing worktree of the `prime-governance` branch. It is **not** on main
-and not in your stream worktree; read and write it there by absolute path.
-
-Anyone may read. Row state changes before prose and every mutation uses a UTC
-stamp. History is struck or tombstoned, never erased. A hard restart once killed
-every pane and lost no government state; that is the design test. Shapes:
-[`templates/spine.md`](./templates/spine.md),
-[`templates/baton-book.md`](./templates/baton-book.md).
+Anyone may read. Update rows before prose, stamp mutations in UTC, strike or
+tombstone history rather than erase it. A hard restart lost no government state:
+that is the test. Shapes: [spine](./templates/spine.md), [baton book](./templates/baton-book.md).
 
 ## Portfolio and lifecycle
 
-Prime-flow items move through `proposed → deciding → preparing → in_flight →
-done | folded | dropped`, plus `blocked`. Node status is concurrent truth;
-`nav.now` is only the o-prime's attention pointer.
-
-Every orchestrator moves through `adopt → orient → preamble → work`: adoption
-takes governance and proves the channel; orientation enters through `/pij prime`
-and loads the orient stack plus `/thesis`; the human preamble confirms the
-provisional assignment; work starts after the preamble report, and validated
-plans stop at `WAITING_FOR_BUILD_CONFIG` until the human confirms the fleet.
-Kickoff and teardown: [`rituals/kickoff.md`](./rituals/kickoff.md).
+Portfolio items move `proposed → deciding → preparing → in_flight → done | folded |
+dropped`, plus `blocked`; node status is concurrent truth, `nav.now` attention.
+Orchestrators move `adopt → orient → preamble → work`: prove channel, enter via
+`/pij prime`, load orient stack + `/thesis`, persist the human preamble report
+before work. Validated plans stop at `WAITING_FOR_BUILD_CONFIG` until the human
+confirms the fleet. [Kickoff](./rituals/kickoff.md) owns construction/teardown;
+close every plan against named PRD rows under the governance rules above.
 
 ## Construction, fences, batons, and landing
 
@@ -90,7 +81,7 @@ lifecycle: [`rituals/batons.md`](./rituals/batons.md).
 Approved work lands through `/builder 8 ship`: confirm-gated branch push, PR open,
 watched CI, then optional typed-confirm merge. Remove the worktree only after PR
 merge or explicit abandonment. In shared-tree fallback, scratch/staging,
-pathspec commits, staged-set checks, and commit slots remain mandatory.
+pathspec commits, staged-set checks, and commit slots remain mandatory. Apply `00-routing.md` § C11 (Commit attribution) when creating commits.
 
 ## Reports and verification
 
@@ -105,12 +96,10 @@ Report files keep this shape:
 | `observations[]` | portable lessons and suggested encodings |
 | `open[]` | unresolved decisions, risks, skips |
 
-The receiver verifies one load-bearing artifact or cheap gate before acting or
-relaying — a claimed verification is itself a claim; freeze and hash any target
-that may mutate during review ([`rituals/reports.md`](./rituals/reports.md)).
-With no layer above the o-prime, government files are the evidence record, the
-human receives short main-event digests, and numbered reports exist only for a
-real optional audit layer.
+Receivers verify one load-bearing artifact or cheap gate before acting/relaying;
+verification is itself a claim. Freeze/hash mutable targets ([reports](./rituals/reports.md)).
+Without an upper layer, store records + government documents are the evidence;
+humans get main-event digests. Numbered reports require a real optional audit layer.
 
 Wire traffic around reports follows § C10 (`00-routing.md` § Shared
 conventions): a clean verification **of a received claim** sends nothing back
@@ -166,11 +155,9 @@ government and false completion claims that warm authors read past.
 
 ## Portability and orient levers
 
-Levers 0 [`orient-oprime.md`](./orient-oprime.md) and 1
-[`orient-global.md`](./orient-global.md) are portable and authoritative; lever 2
-is generated fresh in the consuming repo from
-[`templates/orient-local.md`](./templates/orient-local.md); item specifics live
-in one brief from [`templates/stream-brief.md`](./templates/stream-brief.md).
+Levers 0 [o-prime](./orient-oprime.md) and 1 [global](./orient-global.md) stay
+portable/authoritative; derive lever 2 from [local orient](./templates/orient-local.md)
+and put item specifics in one [stream brief](./templates/stream-brief.md).
 
 Repo-local configuration derives cheap/full gates, batons plus free probes,
 never-stage paths, flow-writer rules, fleet defaults, human digest channel, and

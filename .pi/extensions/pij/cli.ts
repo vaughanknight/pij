@@ -4680,27 +4680,32 @@ export async function copilotControlRefusalForInvocation(
  *                         reporting success, which is the split-brain this
  *                         whole plan exists to prevent. */
 async function bootThroughGenerationRouting(): Promise<void> {
-	const verb = process.argv[2] ?? "";
+	const typedArgv = process.argv.slice(2);
+	const verbAt = typedArgv.findIndex((arg) => arg !== "--json");
+	const argv = verbAt > 0 ? [...typedArgv.slice(verbAt), ...typedArgv.slice(0, verbAt)] : typedArgv;
+	const verb = argv[0] ?? "";
 	if (verb === "generation") {
-		await runGenerationDiagnostic(process.argv.slice(3));
+		await runGenerationDiagnostic(argv.slice(1));
 		return;
 	}
 	// F005 — the direct paneless `adopt` door. The decision and the wording are
 	// both in core (pure, behaviourally tested); this only performs them.
-	if (isDirectPanelessAdopt(verb, process.argv.slice(3))) {
+	if (isDirectPanelessAdopt(verb, argv.slice(1))) {
 		process.stderr.write(PANELESS_ADOPT_REFUSAL);
 		process.exitCode = 2;
 		return;
 	}
-	const controlRefusal = await copilotControlRefusalForInvocation(process.argv.slice(2));
+	const controlRefusal = await copilotControlRefusalForInvocation(argv);
 	if (controlRefusal !== undefined) {
-		process.stderr.write(`E-UNSUPPORTED: ${controlRefusal}\n`);
+		process.stderr.write(
+			`${controlRefusal.startsWith("E-") ? controlRefusal : `E-UNSUPPORTED: ${controlRefusal}`}\n`,
+		);
 		process.exitCode = 2;
 		return;
 	}
 	// A table lookup, not a branch on the verb: `findRoute` and the deny list
 	// own the answer, and both are data.
-	const leaf = process.argv[3]?.startsWith("-") ? undefined : process.argv[3];
+	const leaf = argv[1]?.startsWith("-") ? undefined : argv[1];
 	// LEAF-AWARE (F1, plan 119). This read `entry.verb === verb` alone, which was
 	// right while every deny was verb-wide and became a silent bug the moment one
 	// carried a leaf: `inbox register`'s denial sent EVERY `pij inbox …` to
@@ -4715,10 +4720,10 @@ async function bootThroughGenerationRouting(): Promise<void> {
 		main();
 		return;
 	}
-	const { outcome, payload, row, acknowledge } = await routeVerb(
+	const { outcome, payload, row, acknowledge, rawEnvelope } = await routeVerb(
 		verb,
 		leaf,
-		process.argv.slice(2),
+		argv,
 		routingDeps(),
 	);
 	// Opt-in per-call trace. Always on stderr, so it can never corrupt a
@@ -4731,7 +4736,7 @@ async function bootThroughGenerationRouting(): Promise<void> {
 		return;
 	}
 	if (outcome.kind === "rs") {
-		emitRsPayload(row, payload, process.argv.slice(2));
+		emitRsPayload(row, payload, argv, rawEnvelope);
 		// F4 — ORDER IS THE CONTRACT. A claim is acknowledged only after the
 		// caller actually HAS the message, which here means after it has been
 		// rendered: a process that dies before this line leaves the job claimable
@@ -4744,6 +4749,11 @@ async function bootThroughGenerationRouting(): Promise<void> {
 			// they have just been shown.
 			if (warning !== undefined) process.stderr.write(`${warning}\n`);
 		}
+		return;
+	}
+	if (row?.jsonOutput === "passthrough" && rawEnvelope !== undefined && argv.includes("--json")) {
+		emitRsPayload(row, payload, argv, rawEnvelope);
+		process.exitCode = 4;
 		return;
 	}
 	// rs-error / rs-auth-rejected. Loud, named, and NOT a fallback.
@@ -4810,8 +4820,9 @@ function emitRsPayload(
 	row: RsRouteRow | undefined,
 	payload: unknown,
 	argv: readonly string[],
+	rawEnvelope?: string,
 ): void {
-	const result = renderRsAnswer(row, payload, argv);
+	const result = renderRsAnswer(row, payload, argv, rawEnvelope);
 	if (result.kind === "no-renderer" || result.kind === "json-refused") {
 		process.stderr.write(`E-RS: ${result.message}\n`);
 		process.exitCode = 4;

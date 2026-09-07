@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { COPILOT_CONTROL_REFUSAL } from "./commands.js";
 import {
 	classifyRsResponse,
 	copilotControlRefusal,
@@ -30,9 +31,7 @@ const pre = (over: Partial<Parameters<typeof decidePreCall>[0]> = {}) =>
 
 describe("Copilot native control boundary", () => {
 	it.each(["compact", "new", "reload"])("refuses programmatic %s only for Copilot", (command) => {
-		expect(copilotControlRefusal("copilot", command)).toMatch(
-			/unsupported.*No legacy or tmux fallback/,
-		);
+		expect(copilotControlRefusal("copilot", command)).toBe(COPILOT_CONTROL_REFUSAL);
 		for (const harness of ["pi", "omp", "claude", "codex", undefined]) {
 			expect(copilotControlRefusal(harness, command)).toBeUndefined();
 		}
@@ -45,6 +44,21 @@ describe("Copilot native control boundary", () => {
 });
 
 describe("route table is data", () => {
+	it.each([
+		"create",
+		"list",
+		"tail",
+		"kill",
+	])("bg %s is daemon-owned and never legacy-unrouted", (leaf) => {
+		expect(findRoute("bg", leaf)).toMatchObject({
+			rsPath: "/v1/bg",
+			method: "POST",
+			humanOutput: "rs-line",
+			jsonOutput: "passthrough",
+		});
+		expect(pre({ verb: "bg", leaf })).toMatchObject({ kind: "try-rs" });
+	});
+
 	it("routes a verb only when the table lists it", () => {
 		expect(findRoute("adopt", undefined)).toBeDefined();
 		// A verb nobody has moved: no row, therefore legacy. This is the default

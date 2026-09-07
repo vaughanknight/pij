@@ -1,0 +1,69 @@
+   Compiling libc v0.2.189
+   Compiling serde_core v1.0.229
+   Compiling smallvec v1.15.2
+   Compiling futures-sink v0.3.34
+   Compiling futures-util v0.3.34
+   Compiling mio v1.2.2
+   Compiling socket2 v0.6.5
+   Compiling getrandom v0.2.17
+   Compiling icu_normalizer v2.3.0
+   Compiling ring v0.17.14
+   Compiling idna_adapter v1.2.2
+   Compiling serde v1.0.229
+   Compiling cpufeatures v0.2.17
+   Compiling parking_lot_core v0.9.12
+   Compiling parking_lot v0.12.5
+   Compiling rustls-webpki v0.103.15
+   Compiling idna v1.1.0
+   Compiling futures-intrusive v0.5.0
+   Compiling either v1.18.0
+   Compiling rustls v0.23.43
+   Compiling url v2.5.8
+   Compiling crypto-common v0.1.7
+   Compiling base64 v0.22.1
+   Compiling serde_json v1.0.151
+   Compiling digest v0.10.7
+   Compiling tokio v1.53.1
+   Compiling errno v0.3.14
+   Compiling serde_urlencoded v0.7.1
+   Compiling signal-hook-registry v1.4.8
+   Compiling flume v0.11.1
+   Compiling sha2 v0.10.9
+   Compiling futures-executor v0.3.34
+   Compiling futures-channel v0.3.34
+   Compiling pij-core v0.1.0 (/Users/jordanknight/pi-hacking/pij-rs-control-commands/crates/core)
+   Compiling tokio-stream v0.1.19
+   Compiling serde_spanned v1.1.1
+   Compiling sqlx-core v0.8.6
+   Compiling toml_datetime v0.7.5+spec-1.1.0
+   Compiling toml v0.9.12+spec-1.1.0
+   Compiling pij-testkit v0.1.0 (/Users/jordanknight/pi-hacking/pij-rs-control-commands/crates/testkit)
+   Compiling sqlx-sqlite v0.8.6
+   Compiling sqlx-macros-core v0.8.6
+   Compiling sqlx-macros v0.8.6
+   Compiling sqlx v0.8.6
+   Compiling pij-store v0.1.0 (/Users/jordanknight/pi-hacking/pij-rs-control-commands/crates/store)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.95s
+     Running tests/queue.rs (target/debug/deps/queue-cb38ce2957d60711)
+
+running 2 tests
+test control_claim_lease_expiry_never_replays_an_unacknowledged_command ... FAILED
+test control_claim_lease_brake_preserves_body_and_non_json_recovery ... ok
+
+failures:
+
+---- control_claim_lease_expiry_never_replays_an_unacknowledged_command stdout ----
+
+thread 'control_claim_lease_expiry_never_replays_an_unacknowledged_command' (1083370469) panicked at crates/store/tests/queue.rs:713:9:
+assertion `left == right` failed: compact may have executed before its ACK was lost and must never replay
+  left: "control-1"
+ right: "next-body"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    control_claim_lease_expiry_never_replays_an_unacknowledged_command
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 35 filtered out; finished in 0.05s
+
+error: test failed, to rerun pass `-p pij-store --test queue`

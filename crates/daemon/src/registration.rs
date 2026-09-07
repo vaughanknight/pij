@@ -723,8 +723,16 @@ fn check_native_roster(
     let session = session.ok_or_else(|| native_refusal("requires a runtime native session"))?;
     let identity = identity.ok_or_else(|| native_refusal("requires a process identity"))?;
     let predecessor = if let Some(previous) = &claim.supersedes {
-        if previous.as_str() == claim.id || existing.is_some() {
-            return Err(native_refusal("supersedes must create a new seat id"));
+        // A CLI can register its bootstrap conversation before loading --resume.
+        // Retire that same-host predecessor while retaining a proven-dead saved address.
+        let resuming_dead_native = existing.is_some_and(|target| {
+            target.harness_session.as_deref() == Some(session)
+                && dead_native.iter().any(|observed| observed.id == target.id)
+        });
+        if previous.as_str() == claim.id || (existing.is_some() && !resuming_dead_native) {
+            return Err(native_refusal(
+                "supersedes must create a new seat id or resume a proven-dead native address",
+            ));
         }
         let previous = seats
             .iter()
@@ -1741,6 +1749,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cold_resume_can_retire_same_host_bootstrap_without_changing_saved_address() {
+        for change in 0..7 {
+            let mut old = native_seat("pij-saved-conversation");
+            old.parent = Some("pij-parent".into());
+            old.semantic_state = Some(SemanticState::Ready);
+            let mut bootstrap = native_seat("pij-bootstrap-conversation");
+            bootstrap.proc = Some(OTHER_HOST);
+            bootstrap.pane = Some("%resumed".into());
+            bootstrap.harness_session = Some("temporary-startup-session".into());
+            let mut liveness = FakeLiveness::new().with_proc(SHELL).with_proc(OTHER_HOST);
+            match change {
+                0 => {}
+                1 => liveness = liveness.with_proc(HOST),
+                2 => old.native_extension_delivery = false,
+                3 => bootstrap.proc = Some(HOST),
+                4 => bootstrap.harness = Harness::Omp,
+                5 => bootstrap.pane = Some("%other".into()),
+                6 => bootstrap.tombstoned_at = Some(1),
+                _ => unreachable!(),
+            }
+            let (service, registry) =
+                native_service(vec![old.clone(), bootstrap.clone()], Arc::new(liveness)).await;
+            let mut claim = native_claim("");
+            claim.pid = Some(OTHER_HOST.pid);
+            claim.proc_start = Some(OTHER_HOST.proc_start);
+            claim.pane = Some("%resumed".into());
+            claim.supersedes = Some(bootstrap.id.clone());
+            let tmux = FakeTmux::new().with_pane_process(
+                "%resumed",
+                PaneProcess {
+                    pid: SHELL.pid,
+                    cwd: old.folder.clone(),
+                },
+            );
+            let result = attest(&service, claim, Some(SESSION), &tmux).await;
+            if change == 0 {
+                let resumed =
+                    result.expect("dead saved owner and same-host bootstrap permit resume");
+                assert_eq!(resumed.id, old.id);
+                assert_eq!(resumed.harness_session, old.harness_session);
+                assert_eq!(resumed.parent, old.parent);
+                assert_eq!(resumed.semantic_state, old.semantic_state);
+                assert_eq!(resumed.proc, Some(OTHER_HOST));
+                assert_eq!(resumed.pane.as_deref(), Some("%resumed"));
+                assert!(resumed.native_extension_delivery);
+                let retired = registry.get(&bootstrap.id).await.unwrap().unwrap();
+                assert!(retired.tombstoned_at.is_some());
+                assert!(!retired.native_extension_delivery);
+            } else {
+                refused(result);
+                assert_eq!(registry.get(&old.id).await.unwrap(), Some(old));
+                assert_eq!(registry.get(&bootstrap.id).await.unwrap(), Some(bootstrap));
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn cold_resume_requires_dead_attested_incarnation_and_preserves_hold() {
         for observed_start in [None, Some(HOST.proc_start), Some(HOST.proc_start + 1)] {
             for attested in [false, true] {
@@ -2213,7 +2278,7 @@ mod tests {
                     .expect("claim");
                 assert_eq!(claims.len(), 1);
                 delivery
-                    .acknowledge_inbox(&reader.id, claims[0].job_id, &Default::default())
+                    .acknowledge_inbox(&reader.id, claims[0].job_id, &Default::default(), None)
                     .await
                     .expect("ack");
                 assert!(

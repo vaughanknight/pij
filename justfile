@@ -70,6 +70,11 @@ install:
     @echo
     @echo "✓ install complete. pi is set up on this machine."
 
+# Link this worktree's packages from the canonical checkout without npm resolution.
+# --check is read-only; missing JS tooling never prevents Rust-only work.
+worktree-deps *ARGS:
+    @node harness/scripts/worktree-deps.mjs "$@"
+
 # --- atomic checks (thin wrappers over npm scripts) ---
 
 typecheck:
@@ -142,6 +147,10 @@ windows-compat:
 local-path-check:
     node_modules/.bin/tsx harness/scripts/local-path-check.ts
 
+# Report-only attribution scan, scoped after merge-base with main.
+pij-commit-trailers *ARGS:
+    node_modules/.bin/tsx harness/scripts/pij-commit-trailers.ts "$@"
+
 # Assert every `resolved` source in package-lock.json is allowlisted (npmjs
 # registry or the sanctioned minih git source). The compensating control for
 # npmjs-scoped host replacement — tamper-DETECTION at CI/review time. Any other
@@ -212,6 +221,7 @@ self-check:
     just smoke
     PIJ_VET_SKIP_AGENT=1 just pkg audit
     just snapshots-check
+    just pij-commit-trailers
 
 # Refresh package-vetter __snapshots__/ via live minih agent runs.
 # Opt-in: gated on PIJ_VET_SKIP_AGENT != "1". Not part of self-check.

@@ -202,6 +202,9 @@ pub struct InboxAckRequest {
     /// Copilot runtime incarnation; absent for existing non-Copilot readers.
     #[serde(flatten)]
     pub native: crate::delivery::NativeInboxIdentity,
+    /// Runtime result for a control claim; never inferred from claim receipt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_outcome: Option<pij_core::control::ControlOutcome>,
 }
 
 /// Typed roster payload. `unavailable` distinguishes a down peer from an empty

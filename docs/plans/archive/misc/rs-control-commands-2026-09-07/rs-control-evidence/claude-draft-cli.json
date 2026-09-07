@@ -1,0 +1,1 @@
+{"ok":true,"command":"pij send","v":2,"data":{"msg_id":"proof-claude-draft-compact","outcome":{"outcome":"queued","reason":"pty","next_retry_at":0},"at":1788746331239},"meta":"from pij-payable-dara; msg_id proof-claude-draft-compact"}

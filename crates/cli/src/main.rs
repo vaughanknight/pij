@@ -1,5 +1,6 @@
 //! `pij-rs` — one binary, two composition roots.
 
+mod commit_trailers;
 mod identity;
 
 use std::collections::BTreeMap;
@@ -162,6 +163,8 @@ enum Command {
         #[arg(long)]
         pane: Option<String>,
     },
+    /// Print derived git commit trailers; unavailable values are diagnosed on stderr.
+    CommitTrailers,
     /// Confirm the binding `adopt` already made.
     Phonehome {
         /// Asserted seat id. Defaults to `$PIJ_SESSION_ID`.
@@ -245,6 +248,9 @@ enum Command {
         /// Read the literal body from a path, or from stdin with `-`.
         #[arg(long, conflicts_with = "body")]
         body_file: Option<String>,
+        /// Execute a remote control instead of sending a message body.
+        #[arg(long)]
+        command: Option<String>,
         /// Correlation id. Omit to mint a UUIDv7.
         #[arg(long)]
         msg_id: Option<String>,
@@ -252,6 +258,8 @@ enum Command {
         #[arg(long)]
         in_reply_to: Option<String>,
     },
+    /// Compact the current, daemon-derived seat.
+    CompactSelf,
     /// Destructively read and acknowledge this acting seat's inbox.
     ///
     /// `--peek` is the only cross-seat form and never claims or acknowledges.
@@ -265,6 +273,11 @@ enum Command {
         /// Inspect without claiming or acknowledging; permits an explicit other seat.
         #[arg(long)]
         peek: bool,
+    },
+    /// Run detached commands and recover their daemon-owned output.
+    Bg {
+        #[command(subcommand)]
+        action: BgAction,
     },
     /// Enqueue one sidecar job: telegram send, background command, or chore.
     ///
@@ -393,6 +406,64 @@ enum Command {
         #[arg(long, value_parser = parse_machine_cursor)]
         since: Vec<MachineCursor>,
     },
+}
+
+#[derive(Clone, Debug, Subcommand)]
+enum BgAction {
+    /// Start a command; its completion arrives as a turn from pij-bg.
+    Create {
+        /// Human title included in the completion turn.
+        #[arg(long, allow_hyphen_values = true)]
+        title: String,
+        /// Literal command interpreted by /bin/sh in the caller's recorded folder.
+        #[arg(long, allow_hyphen_values = true)]
+        command: String,
+    },
+    /// List your jobs, including finished jobs.
+    List {
+        /// Also include jobs owned by your directly recorded children.
+        #[arg(long)]
+        all: bool,
+    },
+    /// Read a bounded snapshot from the daemon-owned log.
+    Tail {
+        job: String,
+        #[arg(long)]
+        lines: Option<usize>,
+    },
+    /// Stop a job owned by you or your directly recorded child.
+    Kill { job: String },
+}
+
+impl BgAction {
+    fn argv(self) -> Vec<String> {
+        let mut argv = vec!["bg".to_string()];
+        match self {
+            Self::Create { title, command } => {
+                argv.extend([
+                    "create".to_string(),
+                    "--title".to_string(),
+                    title,
+                    "--command".to_string(),
+                    command,
+                ]);
+            }
+            Self::List { all } => {
+                argv.push("list".to_string());
+                if all {
+                    argv.push("--all".to_string());
+                }
+            }
+            Self::Tail { job, lines } => {
+                argv.extend(["tail".to_string(), job]);
+                if let Some(lines) = lines {
+                    argv.extend(["--lines".to_string(), lines.to_string()]);
+                }
+            }
+            Self::Kill { job } => argv.extend(["kill".to_string(), job]),
+        }
+        argv
+    }
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -541,6 +612,25 @@ async fn run(cli: Cli) -> ExitCode {
     {
         return run_spawn_child(status_file, log_file, command);
     }
+    if let Command::Send {
+        command: Some(command),
+        body,
+        body_file,
+        ..
+    } = &cli.command
+    {
+        let result = if body_file.is_some() {
+            Err("E-RS-CONTROL-BODY: --command and --body-file are mutually exclusive".to_string())
+        } else {
+            pij_core::control::validate_command(command, body.as_deref().unwrap_or_default())
+        };
+        if let Err(reason) = result {
+            return emit(
+                &Envelope::<Value>::refused("pij send", ErrorKind::Refused, reason),
+                cli.json,
+            );
+        }
+    }
     let hook_dir = default_state_dir();
     let state_dir =
         match resolve_state_dir(cli.state_dir.clone(), std::env::var_os("PIJ_RS_STATE_DIR")) {
@@ -626,7 +716,12 @@ async fn run(cli: Cli) -> ExitCode {
     };
     let client = match DaemonClient::new(&state_dir, &addr) {
         Ok(client) => client,
-        Err(error) => return emit(&setup_refusal::<Value>(command_name, error), cli.json),
+        Err(error) => {
+            if matches!(cli.command, Command::CommitTrailers) {
+                return commit_trailers::fail(error);
+            }
+            return emit(&setup_refusal::<Value>(command_name, error), cli.json);
+        }
     };
 
     match cli.command {
@@ -711,6 +806,9 @@ async fn run(cli: Cli) -> ExitCode {
             &client.whoami(&identity_request(seat, pane)).await,
             cli.json,
         ),
+        Command::CommitTrailers => {
+            commit_trailers::run(&client, &identity_request(None, None)).await
+        }
         Command::Phonehome { seat, pane } => emit(
             &client.phonehome(&identity_request(seat, pane)).await,
             cli.json,
@@ -736,6 +834,7 @@ async fn run(cli: Cli) -> ExitCode {
             to,
             body,
             body_file,
+            command,
             msg_id,
             in_reply_to,
         } => {
@@ -743,9 +842,15 @@ async fn run(cli: Cli) -> ExitCode {
                 Ok(seat) => seat,
                 Err(error) => return emit(&setup_refusal::<Value>("pij send", error), cli.json),
             };
-            let body = match resolve_send_body(body, body_file) {
-                Ok(body) => body,
-                Err(error) => return emit(&setup_refusal::<Value>("pij send", error), cli.json),
+            let body = if command.is_some() {
+                String::new()
+            } else {
+                match resolve_send_body(body, body_file) {
+                    Ok(body) => body,
+                    Err(error) => {
+                        return emit(&setup_refusal::<Value>("pij send", error), cli.json);
+                    }
+                }
             };
             let request = SendRequest {
                 from: acting,
@@ -753,11 +858,35 @@ async fn run(cli: Cli) -> ExitCode {
                 body,
                 msg_id: msg_id.unwrap_or_else(|| uuid::Uuid::now_v7().to_string()),
                 in_reply_to,
+                command,
             };
-            let mut response = client.send(&request).await;
+            let mut response = if request.command.is_some() {
+                client.send_control(&request, &caller_context()).await
+            } else {
+                client.send(&request).await
+            };
             if response.ok {
                 response.meta = Some(format!("from {}; msg_id {}", request.from, request.msg_id));
             }
+            emit(&response, cli.json)
+        }
+        Command::CompactSelf => {
+            let acting = match resolve_command_seat(&client, "pij compact-self", None).await {
+                Ok(seat) => seat,
+                Err(error) => {
+                    return emit(&setup_refusal::<Value>("pij compact-self", error), cli.json);
+                }
+            };
+            let request = SendRequest {
+                from: acting.clone(),
+                to: pij_core::model::Destination::local(acting),
+                body: String::new(),
+                command: Some("compact".to_string()),
+                msg_id: uuid::Uuid::now_v7().to_string(),
+                in_reply_to: None,
+            };
+            let mut response = client.send_control(&request, &caller_context()).await;
+            response.command = "pij compact-self".to_string();
             emit(&response, cli.json)
         }
         Command::Inbox { seat, wait, peek } => {
@@ -799,6 +928,20 @@ async fn run(cli: Cli) -> ExitCode {
             emit(&client.inbox(&target, wait, peek).await, cli.json)
         }
 
+        Command::Bg { action } => {
+            let response = client.bg(&action.argv(), &caller_context()).await;
+            if !cli.json
+                && response.ok
+                && let Some(line) = response
+                    .data
+                    .as_ref()
+                    .and_then(|data| data["line"].as_str())
+            {
+                println!("{line}");
+                return ExitCode::from(exit_code(&response));
+            }
+            emit(&response, cli.json)
+        }
         Command::Report { seat, args } => {
             let as_json = cli.json || args.iter().any(|arg| arg == "--json");
             let acting = match resolve_command_seat(&client, "pij report", seat.as_deref()).await {
@@ -1016,6 +1159,9 @@ fn malformed_addr(source: &str, value: &str, expected: &str) -> String {
 }
 
 fn emit_config_error(cli: &Cli, message: String) -> ExitCode {
+    if matches!(cli.command, Command::CommitTrailers) {
+        return commit_trailers::fail(message);
+    }
     emit(
         &setup_refusal::<Value>(
             cli.command.name(),
@@ -1758,11 +1904,14 @@ impl Command {
             Command::Register { .. } => "pij register",
             Command::Adopt { .. } => "pij adopt",
             Command::Whoami { .. } => "pij whoami",
+            Command::CommitTrailers => "pij commit-trailers",
             Command::Phonehome { .. } => "pij phonehome",
             Command::Send { .. } => "pij send",
+            Command::CompactSelf => "pij compact-self",
             Command::Spawn { .. } => "pij spawn",
             Command::Revive { .. } => "pij revive",
             Command::Inbox { .. } => "pij inbox",
+            Command::Bg { .. } => "pij bg",
             Command::Report { .. } => "pij report",
             Command::Role { .. } => "pij role",
             Command::Close { .. } => "pij close",
@@ -1872,11 +2021,14 @@ mod tests {
                 "register",
                 "adopt",
                 "whoami",
+                "commit-trailers",
                 "phonehome",
                 "spawn",
                 "revive",
                 "send",
+                "compact-self",
                 "inbox",
+                "bg",
                 "sidecar",
                 "report",
                 "role",
@@ -1901,6 +2053,19 @@ mod tests {
                 "tail"
             ]
         );
+    }
+
+    #[test]
+    fn commit_trailers_accepts_no_identity_or_plan_overrides() {
+        assert!(matches!(
+            Cli::try_parse_from(["pij-rs", "commit-trailers"])
+                .expect("trailer command")
+                .command,
+            Command::CommitTrailers
+        ));
+        for flag in ["--seat", "--prime", "--plan"] {
+            assert!(Cli::try_parse_from(["pij-rs", "commit-trailers", flag, "invented"]).is_err());
+        }
     }
 
     #[test]

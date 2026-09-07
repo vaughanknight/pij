@@ -1,0 +1,218 @@
+COMMAND: just pij-skill-check
+EXIT: 0
+STDOUT:
+✓ registry: exactly one active 'prime' row → references/routes/prime.md
+✓ registry: 'ready' → skills/pij/references/routes/ready.md
+✓ registry: 'pair' → skills/pij/references/routes/pair.md
+✓ registry: 'delegate' → skills/pij/references/routes/delegate.md
+✓ registry: 'agent' → skills/pij/references/routes/agent.md
+✓ registry: 'skill' → skills/pij/references/routes/skill.md
+✓ registry: 'peer' → skills/pij/references/routes/peer.md
+✓ registry: 'ops' → skills/pij/references/routes/ops.md
+✓ registry: 'node' → skills/pij/references/routes/node.md
+✓ registry: 'prime' → skills/pij/references/routes/prime.md
+✓ registry: 'watch' pending (no module, as marked)
+✓ sibling-blindness scanned
+✓ budget: skills/pij/SKILL.md (86/150)
+✓ budget: skills/pij/references/00-routing.md (219/250)
+✓ budget: skills/pij/references/routes/pair.md (265/350)
+✓ budget: skills/pij/references/routes/ready.md (60/150)
+✓ budget: skills/pij/references/routes/peer.md (147/150)
+✓ budget: skills/pij/references/routes/agent.md (55/150)
+✓ budget: skills/pij/references/routes/skill.md (43/150)
+✓ budget: skills/pij/references/routes/ops.md (130/150)
+✓ budget: skills/pij/references/routes/delegate.md (79/150)
+✓ budget: skills/pij/references/routes/node.md (149/150)
+✓ budget: skills/pij/references/routes/prime.md (79/90, advisory)
+✓ budget: skills/pij/references/prime/rituals/bootstrap.md (79/90, advisory)
+✓ budget: skills/pij/references/prime/rituals/kickoff.md (90/90, advisory)
+⚠ budget: skills/pij/references/prime/rituals/batons.md is 200 lines (advisory max 90)
+✓ budget: skills/pij/references/prime/rituals/reports.md (57/90, advisory)
+✓ budget: skills/pij/references/prime/rituals/incidents.md (66/90, advisory)
+✓ budget: skills/pij/references/prime/protocol.md (170/170, advisory)
+✓ budget: skills/pij/references/prime/orchestrator.md (120/120)
+✓ CLI-verb coverage scanned
+✓ dup-prose: conventions single-owner
+✓ completion root: exactly one always-loaded interrupt
+✓ completion root: interrupt points to C3
+✓ completion root: delivery-owned waiting invariant preserved
+✓ completion root: external inbox waiting preserved
+✓ completion root: state wait loop forbidden
+✓ completion C3: exactly one convention owner
+✓ completion C3: reusable/live
+✓ completion C3: first tool action
+✓ completion C3: 30–90s compact latency overlaps
+✓ completion C3: fire-and-forget
+✓ completion C3: without `--wait`
+✓ completion C3: Continue immediately
+✓ completion C3: one-shot `--once`
+✓ completion C3: `E-DEAD`
+✓ completion C3: observe-only diagnostics, never progress gates
+✓ completion C3: compact, keep, reuse
+✓ completion C3: compact command is non-blocking
+✓ completion C3: no additive receipt/completion progress gate
+✓ completion pair: exactly one compact-early block
+✓ completion pair: coder compact precedes report handling
+✓ completion pair: reviewer compact precedes verdict handling
+✓ completion pair: reload-first safety precedes compact
+✓ completion pair: compact dispatch forbids --wait
+✓ completion pair: report/review/fix work continues immediately
+✓ completion pair: compact receipt/completion cannot gate progress
+✓ completion pair: compact command is non-blocking
+✓ completion pair: no additive receipt/completion progress gate
+✓ completion C7: pi/tmux push modes
+✓ completion C7: never poll `pij state`
+✓ completion C7: external pull mode
+✓ completion C7: `pij inbox --wait`
+✓ completion C7: This blocking inbox read is the delivery primitive
+✓ ready terminal: pij adopt "$TMUX_PANE" --harness <h>
+✓ ready terminal: pij inbox register --json
+✓ ready terminal: reply with exactly:
+✓ ready terminal: Ready.
+✓ ready terminal: **STOP.**
+✓ ready terminal: ending the turn is the wait
+✓ ready terminal: Do not read plans, briefs, government files, repository docs, git state, task
+✓ ready terminal: Do not run a harness boot, inspect peers, spawn, send,
+✓ real-tree peer: pij tree [<id> | --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all] [--json]
+✓ real-tree peer: pij link <child> --parent <parent> [--json]
+✓ real-tree peer: pij link <child> --root [--json]
+✓ real-tree peer: pij adopt "$TMUX_PANE" --harness <h> [--parent <id>]
+✓ real-tree peer: `parentId` is structural
+✓ real-tree peer: `spawnedBy` remains close authorization
+✓ real-tree peer: current Git repository across linked worktrees
+✓ real-tree prime triage: `pij list --prime --here --json` is current-prime-only
+✓ real-tree prime triage: `oldPrime` is history
+✓ real-tree prime triage: never an active-seat signal
+✓ real-tree prime triage: `pij tree --global --all --json`
+✓ commit attribution: exactly one convention owner
+✓ commit attribution C11: pij-rs commit-trailers
+✓ commit attribution C11: Pij-Seat
+✓ commit attribution C11: Pij-Prime
+✓ commit attribution C11: Pij-Plan
+✓ commit attribution C11: never guess
+✓ commit attribution: citation in skills/pij/references/routes/peer.md
+✓ commit attribution: citation in skills/pij/references/routes/pair.md
+✓ commit attribution: citation in skills/pij/references/routes/prime.md
+✓ commit attribution: citation in skills/pij/references/prime/protocol.md
+✓ commit attribution: citation in skills/pij/references/prime/orchestrator.md
+✓ commit attribution: citation in skills/pij/references/prime/rituals/kickoff.md
+✓ commit attribution: citation in .agents-skills-port/pij-team/templates/packet-coder.dd.json
+✓ commit attribution: citation in .agents-skills-port/pij-team/templates/packet-reviewer.dd.json
+✓ real-tree kickoff: spawned link verified before canary
+✓ real-tree kickoff: adopted identity before link before brief
+✓ real-tree handover: set before writers, retire after final relay
+✓ real-tree handover: retired seat remains old-prime history
+✓ prime payload: skills/pij/references/routes/prime.md
+✓ prime payload: skills/pij/references/prime/orchestrator.md
+✓ prime payload: skills/pij/references/prime/orient-oprime.md
+✓ prime payload: skills/pij/references/prime/orient-global.md
+✓ prime payload: skills/pij/references/prime/prime-flow.schema.json
+✓ prime payload: skills/pij/references/prime/biome.json
+✓ prime payload: skills/pij/references/prime/rituals/bootstrap.md
+✓ prime payload: skills/pij/references/prime/rituals/kickoff.md
+✓ prime payload: skills/pij/references/prime/rituals/batons.md
+✓ prime payload: skills/pij/references/prime/rituals/reports.md
+✓ prime payload: skills/pij/references/prime/rituals/incidents.md
+✓ prime payload: skills/pij/references/prime/templates/spine.md
+✓ prime payload: skills/pij/references/prime/templates/baton-book.md
+✓ prime payload: skills/pij/references/prime/templates/stream-brief.md
+✓ prime payload: skills/pij/references/prime/templates/orient-local.md
+✓ prime payload: skills/pij/references/prime/templates/seat-handover.md
+✓ prime payload: skills/pij/references/prime/protocol.md
+✓ prime payload: skills/pij/references/prime/exemplars/canary-record.md
+✓ prime payload: skills/pij/references/prime/exemplars/grant-log.md
+✓ prime pointer-integrity scanned
+✓ orchestrator route: one stream row → prime/orchestrator.md
+✓ orchestrator route: stream row does not bypass the landing module
+✓ orchestrator registry: no second top-level route row
+✓ orchestrator order: role
+✓ orchestrator order: global orient
+✓ orchestrator order: local orient
+✓ orchestrator order: brief
+✓ orchestrator order: thesis
+✓ orchestrator order: real invocation
+✓ orchestrator order: preamble
+✓ orchestrator order: planning
+✓ orchestrator order: validation
+✓ orchestrator order: wait gate
+✓ orchestrator order: construction
+✓ orchestrator order: delegation
+✓ orchestrator order: landing
+✓ orchestrator contract: thesis anti-fake wording
+✓ orchestrator contract: exact default coder profile
+✓ orchestrator contract: exact default reviewer profile
+✓ orchestrator contract: verbatim profile read-back
+✓ orchestrator contract: anti-prime-window topology
+✓ orchestrator contract: source-verified seams
+✓ orchestrator contract: immutable packets
+✓ orchestrator contract: reviewer-owned findings
+✓ orchestrator contract: frozen review lane
+✓ orchestrator contract: non-empty fix evidence
+✓ orchestrator contract: shared-tree is fallback
+✓ orchestrator recovery: silence is outage-first
+✓ orchestrator recovery: bounded silence cadence
+✓ orchestrator recovery: explicit status response
+✓ orchestrator recovery: poke before redispatch
+✓ orchestrator recovery: no polling regression
+✓ orchestrator scope alert: timestamp-only classification
+✓ orchestrator scope alert: package manifest named
+✓ orchestrator scope alert: vet-stamp noise named
+✓ orchestrator scope alert: exact restore proof
+✓ orchestrator scope alert: package hand-edit ban preserved
+✓ orchestrator pair config: provided-peer path named
+✓ orchestrator pair config: plan roster persistence
+✓ orchestrator pair config: engine persistence ceiling
+✓ orchestrator pair order: human confirmation
+✓ orchestrator pair order: coder override
+✓ orchestrator pair order: reviewer override
+✓ orchestrator pair order: phase delegation
+✓ orchestrator contract: no direct-build permission
+✓ orchestrator contract: no orchestrator-authored findings
+✓ peer spawn cwd: kickoff.md does not invent --cwd
+✓ peer spawn cwd: stream-brief.md does not invent --cwd
+✓ peer spawn cwd: spine.md does not invent --cwd
+✓ worktree lifecycle: bootstrap creates/restores governance only
+✓ worktree lifecycle: kickoff is sole construction owner
+✓ worktree lifecycle: kickoff has exactly one create command
+✓ worktree lifecycle: kickoff explains peer cwd derivation
+✓ worktree lifecycle: kickoff enters module-first
+✓ worktree lifecycle: kickoff waits for PR merge
+✓ worktree lifecycle: kickoff permits ruled abandonment
+✓ worktree lifecycle: brief records worktree
+✓ worktree lifecycle: brief records branch
+✓ worktree lifecycle: brief records base
+✓ worktree lifecycle: brief records ship seam
+✓ worktree lifecycle: spine roster records worktree
+✓ worktree lifecycle: spine roster records branch
+✓ worktree lifecycle: spine allocation records base
+✓ worktree lifecycle: local orient derives root
+✓ worktree lifecycle: local orient derives naming
+✓ worktree lifecycle: local orient derives base
+✓ worktree lifecycle: local orient derives landing
+✓ worktree lifecycle: o-prime defaults to isolated construction
+✓ worktree lifecycle: protocol names primary construction
+✓ worktree lifecycle: protocol names Builder ship
+✓ worktree lifecycle: protocol preserves fallback
+✓ worktree lifecycle: batons narrow shared-tree serialization
+✓ worktree lifecycle: batons preserve timing purity
+✓ worktree lifecycle: incidents preserve INC-004 as fallback evidence
+✓ prime guide: links orchestrator landing
+✓ prime guide: summarizes Builder ship
+✓ pij-skill domain: names orchestrator landing concept
+✓ question doctrine: ask_user_question appears only inside ban language
+✓ prime posture: 2IC mission line present
+✓ question doctrine: spine template carries the pending-decision queue
+✓ prime evidence: bootstrap.md
+✓ prime evidence: encode-candidates.md
+✓ prime evidence: kickoff-runbook.md
+✓ prime evidence: map.md
+✓ prime evidence: orient-local.secondcrack.md
+✓ prime evidence: pij-prime-answers-r1.md
+✓ prime evidence: pij-prime-concept-briefing.md
+✓ prime evidence: pij-prime-spine-validation.md
+✓ prime evidence: pij-prime-war-stories.md
+✓ prime portability: transitional source path severed
+✅ pij-skill-check: all green
+
+STDERR:
+bash harness/scripts/pij-skill-check.sh

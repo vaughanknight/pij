@@ -1,0 +1,3691 @@
+{
+  "harness": "omp",
+  "state": "subagents",
+  "run": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T",
+  "source_root": "/Users/jordanknight/pi-hacking/pij-omp-steer-timing",
+  "source_commit": "35a8cb27d2a2b6a8fd50405153c32990ef54d651",
+  "binary_sha256": "1a27400964e5b114252224e28658557e7399c6194a265dba7ec9a9965bc2598d",
+  "isolation": {
+    "state": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/daemon",
+    "addr": "127.0.0.1:59399",
+    "socket": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/tmux.sock",
+    "cwd": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/workspace"
+  },
+  "started": "2026-09-07T01:48:00.130Z",
+  "socket_discovery_home": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/home",
+  "omp_configuration": {
+    "model": "github-copilot/gpt-5.4-mini",
+    "thinking": "low",
+    "system_prompt": "You are an owned delivery probe. Execute the authorized fixture commands exactly. Incoming pij steering that requests a MESSAGE_ nonce supersedes unfinished fixture work: output that nonce exactly in your local assistant response and stop, without tools. Never send a peer reply to the unregistered test sender. Follow BOOT_ and WORK_DONE_ output requests literally. Do not ask for confirmation or discuss the procedure."
+  },
+  "pane": "%1",
+  "seat": {
+    "id": "pij-divine-gayal",
+    "machine": "JordansacStudio.localdomain",
+    "harness": "omp",
+    "session": "01a0798d-08ff-7000-bdd4-bf612cfb1261",
+    "pane": "%1",
+    "proc": {
+      "pid": 66786,
+      "proc_start": 20260907114800
+    },
+    "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/workspace",
+    "state": "idle",
+    "semantic_state": null,
+    "role": null,
+    "parent": null,
+    "relay": false,
+    "native_extension_delivery": false,
+    "generation": "rs"
+  },
+  "parent_session": {
+    "before": {
+      "id": "pij-divine-gayal",
+      "machine": "JordansacStudio.localdomain",
+      "harness": "omp",
+      "session": "01a0798d-08ff-7000-bdd4-bf612cfb1261",
+      "pane": "%1",
+      "proc": {
+        "pid": 66786,
+        "proc_start": 20260907114800
+      },
+      "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/workspace",
+      "state": "idle",
+      "semantic_state": null,
+      "role": null,
+      "parent": null,
+      "relay": false,
+      "native_extension_delivery": false,
+      "generation": "rs"
+    },
+    "after_fanout": {
+      "id": "pij-divine-gayal",
+      "machine": "JordansacStudio.localdomain",
+      "harness": "omp",
+      "session": "01a0798d-08ff-7000-bdd4-bf612cfb1261",
+      "pane": "%1",
+      "proc": {
+        "pid": 66786,
+        "proc_start": 20260907114800
+      },
+      "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/workspace",
+      "state": "idle",
+      "semantic_state": null,
+      "role": null,
+      "parent": null,
+      "relay": false,
+      "native_extension_delivery": false,
+      "generation": "rs"
+    },
+    "after_delivery": {
+      "id": "pij-divine-gayal",
+      "machine": "JordansacStudio.localdomain",
+      "harness": "omp",
+      "session": "01a0798d-08ff-7000-bdd4-bf612cfb1261",
+      "pane": "%1",
+      "proc": {
+        "pid": 66786,
+        "proc_start": 20260907114800
+      },
+      "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/workspace",
+      "state": "idle",
+      "semantic_state": null,
+      "role": null,
+      "parent": null,
+      "relay": false,
+      "native_extension_delivery": false,
+      "generation": "rs"
+    }
+  },
+  "busy_work": {
+    "first": {
+      "started": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-first.started",
+      "done": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-first.done",
+      "script": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-first.sh",
+      "scriptContent": "set -e\nprintf started > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-first.started'\n/bin/sleep 45\nprintf done > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-first.done'\n",
+      "command": "/bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-first.sh'"
+    },
+    "remaining": {
+      "started": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-remaining.started",
+      "done": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-remaining.done",
+      "script": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-remaining.sh",
+      "scriptContent": "set -e\nprintf started > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-remaining.started'\n/bin/sleep 10\nprintf done > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-remaining.done'\n",
+      "command": "/bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-remaining.sh'"
+    },
+    "children": [
+      {
+        "started": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-one.started",
+        "done": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-one.done",
+        "script": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-one.sh",
+        "scriptContent": "set -e\nprintf started > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-one.started'\n/bin/sleep 30\nprintf done > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-one.done'\n",
+        "command": "/bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-one.sh'"
+      },
+      {
+        "started": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-two.started",
+        "done": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-two.done",
+        "script": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-two.sh",
+        "scriptContent": "set -e\nprintf started > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-two.started'\n/bin/sleep 30\nprintf done > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-two.done'\n",
+        "command": "/bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-two.sh'"
+      }
+    ],
+    "doneMarker": "WORK_DONE_b7a51a80-aac3-45cc-adce-c9cde41b0a61",
+    "prompt": "This is an authorized isolated delivery probe. The harness created these sleep/marker fixtures in its own scratch directory. Invoke each as one external binary via bash; no inline shell scripts or manual file inspection are needed. First launch both children together with task using these arguments: {\"context\":\"# Goal\\nRun two owned sleep fixtures concurrently.\\n# Constraints\\nNo file edits, no validation, no further delegation.\\n# Contract\\nEach child runs its given external command and returns DONE.\",\"tasks\":[{\"name\":\"ProbeChild1\",\"task\":\"# Target\\nOwned sleep fixture /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-one.sh. No file edits.\\n# Change\\nUse bash to run exactly /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-one.sh' with timeout 90. Do not delegate or run validation.\\n# Acceptance\\nAfter the command completes, return DONE.\"},{\"name\":\"ProbeChild2\",\"task\":\"# Target\\nOwned sleep fixture /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-two.sh. No file edits.\\n# Change\\nUse bash to run exactly /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-two.sh' with timeout 90. Do not delegate or run validation.\\n# Acceptance\\nAfter the command completes, return DONE.\"}]}. Then run your own bash command immediately, without waiting for the children. Run bash with timeout 90 and this exact command: /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-first.sh' After that bash call finishes, make a SECOND separate bash call with timeout 90 and command: /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-remaining.sh'. Do not batch the two bash calls. After all requested commands, including the children, finish, reply exactly WORK_DONE_b7a51a80-aac3-45cc-adce-c9cde41b0a61. Do not cancel, restart, combine, or background the shell commands.",
+    "parent_transcript": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/sessions/2026-09-07T01-48-01-151Z_01a0798d-08ff-7000-bdd4-bf612cfb1261.jsonl"
+  },
+  "busy_started": {
+    "at": "2026-09-07T01:48:19.985Z",
+    "tool_calls": [
+      {
+        "type": "toolCall",
+        "id": "call_PRgx25cDBP9Z24RF2qShhck4|T+DMwgLQtv+20OkwzIWeU3yHi6PA6dq4spomdx3TUfSByMCrQFd5pE7vwQJGLGEsUsq2wBAUW9w73Jj19D7GdwCxxHw11xWyh1YDS2JDC14tuAOvnuyLINtGjLJbNjtAQAleAXTNMWpNXTZiPF+SaYdHf/hYziN83iqKW0wHaYdblDnLZpf33O348az6weYG6f/p86yv6xOZQ1UMgIVhEF6ER7QXV2lgXP2hUhzb7XF5+p3ohBoiKpl7R76PU7ynJjHw2HpQghbdh1FGkutw69aZ57p+1h9nLL5HrpVSpVMf/2P5m2SHO3o7jsGEmJUzU35SyHPr+m0Jvzg4D+C45g9R2pYwt14Xytdy08hBj6abAgDlRsEQ+ISCGemWSYeMmTBzfB+RHYJNxJDW8qpCQEaYlhedI4/NQxw=",
+        "name": "task",
+        "arguments": {
+          "i": "Launch two owned sleep fixtures concurrently per probe; no edits, no validation, no further delegation. Each child must run its exact external command and return DONE.",
+          "context": "# Goal\nRun two owned sleep fixtures concurrently.\n# Constraints\nNo file edits, no validation, no further delegation.\n# Contract\nEach child runs its given external command and returns DONE.",
+          "tasks": [
+            {
+              "name": "ProbeChild1",
+              "task": "# Target\nOwned sleep fixture /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-one.sh. No file edits.\n# Change\nUse bash to run exactly /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-one.sh' with timeout 90. Do not delegate or run validation.\n# Acceptance\nAfter the command completes, return DONE."
+            },
+            {
+              "name": "ProbeChild2",
+              "task": "# Target\nOwned sleep fixture /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-two.sh. No file edits.\n# Change\nUse bash to run exactly /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-two.sh' with timeout 90. Do not delegate or run validation.\n# Acceptance\nAfter the command completes, return DONE."
+            }
+          ]
+        },
+        "intent": "Launch two owned sleep fixtures concurrently per probe; no edits, no validation, no further delegation. Each child must run its exact external command and return DONE.",
+        "timestamp": "2026-09-07T01:48:13.619Z"
+      },
+      {
+        "type": "toolCall",
+        "id": "call_x2eippnoW5hkrmdbGL36Imjz|AFyxpj3uccVzFcWQyJaTtCKZiOO7Zb6/960Rn/2aYHlF4C7lY8q+05ToETXNCQES0RZu0H+UgiDDQ0UjfxhYqraXEr3eFeq3G7tCbPsa/C9ly5S89RSriNjZiQh64uVyQyhgdnqn0IxvgkXtij1206P8nR2XgafsCO6NhC6eUxrlkEwiGm571qEWa0akkKsVqBAbvaCtGgh5e3GZLa94emUs9o3hGzXiALODzljlITx5MfFGjOoABFREedprHiZtBw4f6y16hHxEQrlsGbrk9nsZmNAFWinqp03JiEa/v6avfN12MvgMySszkHrdhlr5IyUM2UP/k65FOCedCdMT+PzUgPnt6uyUyUj7tTd70lpbGIVFFdXeVJYpI7G63yVuL0aeRg4edkD4uITqW3sUreNhlKCXWK+Zmnk=",
+        "name": "bash",
+        "arguments": {
+          "i": "Run parent-first fixture exactly as instructed",
+          "command": "/bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-first.sh'",
+          "timeout": 90,
+          "cwd": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/workspace"
+        },
+        "intent": "Run parent-first fixture exactly as instructed",
+        "timestamp": "2026-09-07T01:48:16.675Z"
+      }
+    ]
+  },
+  "before": {
+    "draft": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+    "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+    "viewport": " concurrently.\\n# Constraints\\nNo file edits, no validation, no further delegation.\\n# Contract\\nEach child runs its given external command and returns                             \n DONE.\",\"tasks\":[{\"name\":\"ProbeChild1\",\"task\":\"# Target\\nOwned sleep fixture /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-one.sh. No file      \n edits.\\n# Change\\nUse bash to run exactly /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-one.sh' with timeout 90. Do not delegate or   \n run validation.\\n# Acceptance\\nAfter the command completes, return DONE.\"},{\"name\":\"ProbeChild2\",\"task\":\"# Target\\nOwned sleep fixture                                             \n /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-two.sh. No file edits.\\n# Change\\nUse bash to run exactly /bin/sh                                \n '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/child-two.sh' with timeout 90. Do not delegate or run validation.\\n# Acceptance\\nAfter the command    \n completes, return DONE.\"}]}. Then run your own bash command immediately, without waiting for the children. Run bash with timeout 90 and this exact command: /bin/sh                \n '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-first.sh' After that bash call finishes, make a SECOND separate bash call with timeout 90 and  \n command: /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-remaining.sh'. Do not batch the two bash calls. After all requested commands, \n including the children, finish, reply exactly WORK_DONE_b7a51a80-aac3-45cc-adce-c9cde41b0a61. Do not cancel, restart, combine, or background the shell commands.                   \n                                                                                                                                                                                    \n\n╭─── ⇶ Task 2 agents ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│ Goal                                                                                                                                                                             │\n│                                                                                                                                                                                  │\n│ Run two owned sleep fixtures concurrently.                                                                                                                                       │\n│                                                                                                                                                                                  │\n│ Constraints                                                                                                                                                                      │\n│                                                                                                                                                                                  │\n│ No file edits, no validation, no further delegation.                                                                                                                             │\n│                                                                                                                                                                                  │\n│ Contract                                                                                                                                                                         │\n│                                                                                                                                                                                  │\n│ Each child runs its given external command and returns DONE.                                                                                                                     │\n├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤\n│ • ProbeChild1 # Target Owned sleep fixture /private/v… · 1 🛠 · 1 req · 4.3%/400K · $0.00                                                                                         │\n│   └ bash: Run owned sleep fixture                                                                                                                                                │\n│ • ProbeChild2 # Target Owned sleep fixture /private/v… · 1 🛠 · 1 req · 4.3%/400K · $0.01                                                                                         │\n│   └ bash: Run owned sleep fixture exactly as requ…                                                                                                                               │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n 2026-09-07 11:48:10  ⤵ 1.2K  ⤴ 461  💾 11K  ⏱ 1.9s  ⚡ 137.1/s                           \n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│ $ /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-first.sh'                                                                          │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n 2026-09-07 11:48:13  ⤵ 406  ⤴ 112  💾 12K  ⏱ 1.4s  ⚡ 37.2/s                             \n                                                                                          \n Subagents                                                                                \n  ├─ • ProbeChild1: Run child-one script with timeout                                     \n  └─ • ProbeChild2: Run child-two shell script with timeout                               \n\n  ⎋ Run parent-first fixture exactly as instructed                                        \n\n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 👥 2 agents · ⚙ 1 ─\n❯  UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly                  \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ◫ 4.7%/272K ⟲ · rs·pij-divine-gayal · ⬢ GPT-5.4 mini · ◔ low · S0.02 ★ 0.66              \nrs pij-divine-gayal                          \n",
+    "cursor": {
+      "x": 73,
+      "y": 46
+    },
+    "text": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly "
+  },
+  "send": {
+    "msg_id": "bee50e10-f576-40e9-88a2-260e0b727533",
+    "outcome": {
+      "outcome": "queued",
+      "reason": "extension-stream",
+      "next_retry_at": 0
+    },
+    "at": 1788745700107
+  },
+  "model_replies": [
+    "\nUnderstood.",
+    "\nBOOT_f63b65d5-4f9a-4315-beca-158e30c96d90",
+    "\n",
+    "",
+    "\nMESSAGE_6462d4b1-6758-428e-8a5c-6c02e6180c7f"
+  ],
+  "spine": [
+    {
+      "seq": 4,
+      "at": 0,
+      "kind": "seat.put",
+      "seat": "pij-divine-gayal",
+      "payload": ""
+    },
+    {
+      "seq": 5,
+      "at": 1788745700107,
+      "kind": "message.pushed",
+      "seat": "pij-divine-gayal",
+      "payload": "{\"msg_id\":\"bee50e10-f576-40e9-88a2-260e0b727533\",\"from\":\"pij-step-on-probe\",\"body\":\"Steering replaces the remaining work: reply locally with exactly MESSAGE_6462d4b1-6758-428e-8a5c-6c02e6180c7f. Do not call any tools. The sender pij-step-on-probe is an unregistered test address; do not send it a peer reply.\"}"
+    },
+    {
+      "seq": 6,
+      "at": 1788745700107,
+      "kind": "delivery.outcome",
+      "seat": "pij-divine-gayal",
+      "payload": "{\"msg_id\":\"bee50e10-f576-40e9-88a2-260e0b727533\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 7,
+      "at": 1788745700112,
+      "kind": "delivery.outcome",
+      "seat": "pij-divine-gayal",
+      "payload": "{\"msg_id\":\"bee50e10-f576-40e9-88a2-260e0b727533\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    },
+    {
+      "seq": 8,
+      "at": 1788745700112,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-divine-gayal",
+      "payload": "{\"job_id\":1,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    }
+  ],
+  "jobs": [
+    {
+      "id": 1,
+      "state": "done",
+      "payload": "{\"from\":\"pij-step-on-probe\",\"to\":\"pij-divine-gayal\",\"body\":\"Steering replaces the remaining work: reply locally with exactly MESSAGE_6462d4b1-6758-428e-8a5c-6c02e6180c7f. Do not call any tools. The sender pij-step-on-probe is an unregistered test address; do not send it a peer reply.\",\"msg_id\":\"bee50e10-f576-40e9-88a2-260e0b727533\"}"
+    }
+  ],
+  "samples": [
+    {
+      "elapsed_ms": 11,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 219,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 428,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 637,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 845,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 1053,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 1261,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 1480,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 1690,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 1899,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 2109,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 2318,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 2530,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 2763,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 3109,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 3317,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 3525,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 3735,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 3944,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 4154,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 4364,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 4574,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 4783,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 4991,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 5199,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 5410,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 5620,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 5828,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 6037,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 6247,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 6467,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 6684,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 6894,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 7106,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 7314,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 7523,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 7732,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 7941,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 8150,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 8412,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 8766,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 8975,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 9187,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 9397,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 9607,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 9818,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 10027,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 10236,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 10449,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 10658,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 10897,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 11106,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 11317,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 11528,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 11740,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 11948,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 12161,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 12374,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 12585,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 12799,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 13008,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 13218,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 13428,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 13640,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 13849,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 14061,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 14283,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 14494,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 14712,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 14924,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 15136,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 15350,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 15580,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 15796,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 16006,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 16216,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 16426,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 16843,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 17127,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 17344,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 17570,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 17780,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 17990,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 18199,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 18411,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 18635,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 18847,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 19057,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 19274,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 19497,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 19730,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 19941,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 20156,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 20375,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 20590,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 20807,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 21016,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 21226,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 21459,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 21692,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 21906,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 22119,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 22334,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 22553,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 22763,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 22975,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 23188,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 23411,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 23624,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 23867,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 24079,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 24296,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 24544,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 24759,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 24972,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 25183,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 25395,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 25610,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 25820,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 26033,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 26245,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 26499,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 26773,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 26989,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 27216,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 27427,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 27636,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 27858,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 28070,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 28282,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 28501,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 28830,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 29054,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 29265,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 29528,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 29742,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 30002,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 30256,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 30473,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 30686,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 30900,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 31115,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 31325,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 31536,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 31748,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 31959,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 32168,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 32377,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 32589,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 32797,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 33010,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 33220,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 33432,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 33643,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 33854,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 34063,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 34277,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 34490,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 34703,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 34911,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 35121,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 35330,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 35541,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 35749,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 35962,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 36172,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 36381,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 36590,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 36799,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 37007,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 37218,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 37427,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 37636,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 37848,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 38059,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 38271,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 38483,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 38691,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 38901,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 39114,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 39324,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 39538,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 39753,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 39964,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 40174,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 40444,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 40686,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 40900,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 41117,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 41336,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 41548,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 41760,
+      "cursor": {
+        "x": 12,
+        "y": 49
+      },
+      "sha256": null,
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 41972,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 42241,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 42452,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 42680,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 42896,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 43106,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 43318,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 43528,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    },
+    {
+      "elapsed_ms": 43744,
+      "composer": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "5cde3829ff287a6da58fcef2f4a805da9061f8ba0d188b7df6896c7d3620175f",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798d-08ff-7000-bdd4-bf612cfb1261"
+      }
+    }
+  ],
+  "after": {
+    "viewport": "│                                                                                                                                                                                  │\n│ Constraints                                                                                                                                                                      │\n│                                                                                                                                                                                  │\n│ No file edits, no validation, no further delegation.                                                                                                                             │\n│                                                                                                                                                                                  │\n│ Contract                                                                                                                                                                         │\n│                                                                                                                                                                                  │\n│ Each child runs its given external command and returns DONE.                                                                                                                     │\n├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤\n│ • ProbeChild2 · 2 🛠 · 3 req · 4.4%/400K · $0.02                                                                                                                                  │\n│ • ProbeChild1 · 2 🛠 · 3 req · 4.4%/400K · $0.01                                                                                                                                  │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n 2026-09-07 11:48:10  ⤵ 1.2K  ⤴ 461  💾 11K  ⏱ 1.9s  ⚡ 137.1/s                           \n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│ $ /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-first.sh'                                                                          │\n├─── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤\n│ (no output)                                                                                                                                                                      │\n│ ⟦Wall: 45.14s | Timeout: 90s⟧                                                                                                                                                    │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n 2026-09-07 11:48:13  ⤵ 406  ⤴ 112  💾 12K  ⏱ 1.4s  ⚡ 37.2/s                             \n\n 📨 pij from pij-step-on-probe: Steering replaces the remaining work: reply locally with exactly MESSAGE_6462d4b…                                                                   \n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│                                                                                                                                                                                  │\n│ 📦 pij                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n│ [pij-rs from pij-step-on-probe]                                                                                                                                                  │\n│ Steering replaces the remaining work: reply locally with exactly MESSAGE_6462d4b1-6758-428e-8a5c-6c02e6180c7f. Do not call any tools. The sender pij-step-on-probe is an         │\n│ unregistered test address; do not send it a peer reply.                                                                                                                          │\n│ [/pij]                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n • Background job completed [task] ProbeChild2 (38.4s)                                    \n • Background job completed [task] ProbeChild1 (41.7s)                                    \n\n MESSAGE_6462d4b1-6758-428e-8a5c-6c02e6180c7f                                             \n\n 2026-09-07 11:49:01  ⤵ 830  ⤴ 94  💾 12K  ⏱ 1.6s  ⚡ 51.7/s                              \n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly                  \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ◫ 4.8%/272K ⟲ · rs·pij-divine-gayal · ⬢ GPT-5.4 mini · ◔ low · S0.02 ★ 0.66              \nrs pij-divine-gayal                          \n📨 1 pending                                 \n",
+    "cursor": {
+      "x": 73,
+      "y": 45
+    },
+    "text": " UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly "
+  },
+  "transcripts": [
+    "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/sessions/2026-09-07T01-48-01-151Z_01a0798d-08ff-7000-bdd4-bf612cfb1261.jsonl"
+  ],
+  "delivery_timing_basis": "parent native context acceptance at tool boundary; nonce reply before separate remaining work completes; inbox ACK and stable parent session required",
+  "verdict": {
+    "harness": "omp",
+    "state": "subagents",
+    "transport_rung": "extension-stream",
+    "draft_intact": false,
+    "message_reached_model": true,
+    "draft_submitted": false,
+    "delivered_within_ms": 41759,
+    "model_replied_within_ms": 43743,
+    "replied_before_remaining_work_done": true,
+    "parent_session_unchanged": true,
+    "inbox_acknowledged": true
+  },
+  "final_panes": "%0 sleep\n%1 bun.exe\n",
+  "final_viewport": "│                                                                                                                                                                                  │\n│ Constraints                                                                                                                                                                      │\n│                                                                                                                                                                                  │\n│ No file edits, no validation, no further delegation.                                                                                                                             │\n│                                                                                                                                                                                  │\n│ Contract                                                                                                                                                                         │\n│                                                                                                                                                                                  │\n│ Each child runs its given external command and returns DONE.                                                                                                                     │\n├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤\n│ • ProbeChild2 · 2 🛠 · 3 req · 4.4%/400K · $0.02                                                                                                                                  │\n│ • ProbeChild1 · 2 🛠 · 3 req · 4.4%/400K · $0.01                                                                                                                                  │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n 2026-09-07 11:48:10  ⤵ 1.2K  ⤴ 461  💾 11K  ⏱ 1.9s  ⚡ 137.1/s\n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│ $ /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/parent-first.sh'                                                                          │\n├─── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤\n│ (no output)                                                                                                                                                                      │\n│ ⟦Wall: 45.14s | Timeout: 90s⟧                                                                                                                                                    │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n 2026-09-07 11:48:13  ⤵ 406  ⤴ 112  💾 12K  ⏱ 1.4s  ⚡ 37.2/s\n\n 📨 pij from pij-step-on-probe: Steering replaces the remaining work: reply locally with exactly MESSAGE_6462d4b…\n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│                                                                                                                                                                                  │\n│ 📦 pij                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n│ [pij-rs from pij-step-on-probe]                                                                                                                                                  │\n│ Steering replaces the remaining work: reply locally with exactly MESSAGE_6462d4b1-6758-428e-8a5c-6c02e6180c7f. Do not call any tools. The sender pij-step-on-probe is an         │\n│ unregistered test address; do not send it a peer reply.                                                                                                                          │\n│ [/pij]                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n • Background job completed [task] ProbeChild2 (38.4s)\n • Background job completed [task] ProbeChild1 (41.7s)\n\n MESSAGE_6462d4b1-6758-428e-8a5c-6c02e6180c7f\n\n 2026-09-07 11:49:01  ⤵ 830  ⤴ 94  💾 12K  ⏱ 1.6s  ⚡ 51.7/s\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  UNSUBMITTED_33fb4761-6895-485b-84a9-55c377295509_keep spaces  exactly\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ◫ 4.8%/272K ⟲ · rs·pij-divine-gayal · ⬢ GPT-5.4 mini · ◔ low · S0.02 ★ 0.66\nrs pij-divine-gayal\n📨 1 pending\n",
+  "daemon_log": "pij-rs claude inbound: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/home/.claude=touched\npij-rs claude hook: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/home/.claude=touched\npij-rs claude statusline: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/home/.claude=touched\npij-rs daemon: listening on 127.0.0.1:59399 · key /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-FFJ14T/daemon/daemon.key (0600) · offline=false\n",
+  "exit_code": 1
+}

@@ -1,0 +1,88 @@
+{
+  "criterion": "c",
+  "passed": true,
+  "harness": "copilot",
+  "copilot_version": "1.0.84-1",
+  "seat": {
+    "id": "pij-scrawny-tapir",
+    "machine": "JordansacStudio.localdomain",
+    "harness": "copilot",
+    "session": "641ab1aa-fe40-4250-aabc-0ba3c448dbe8",
+    "pane": "%5",
+    "proc": {
+      "pid": 74306,
+      "proc_start": 20260907120223
+    },
+    "folder": "/private/tmp/pij-control-proof.oYCfgW/copilot-proof/cwd",
+    "state": "idle",
+    "semantic_state": null,
+    "role": null,
+    "parent": null,
+    "relay": false,
+    "native_extension_delivery": true,
+    "generation": "rs"
+  },
+  "pane_pid": 74173,
+  "native_pid": 74306,
+  "socket": "pij-control-proof-oYCfgW",
+  "command": [
+    "/Users/jordanknight/pi-hacking/pij-rs-control-commands/target/debug/pij-rs",
+    "send",
+    "--to",
+    "pij-scrawny-tapir",
+    "--command",
+    "compact",
+    "--json",
+    "--addr",
+    "127.0.0.1:17641",
+    "--state-dir",
+    "/tmp/pij-control-proof.oYCfgW/state"
+  ],
+  "caller_context": {
+    "TMUX_PANE": "%1",
+    "PIJ_SESSION_ID": "pij-payable-dara"
+  },
+  "exit": 2,
+  "refusal": {
+    "ok": false,
+    "command": "pij send",
+    "v": 2,
+    "meta": "E-RS-CONTROL-UNSUPPORTED: use Copilot's native user controls",
+    "error": "refused"
+  },
+  "stderr": "",
+  "queue_observation": {
+    "method": "GET",
+    "path": "/v1/inbox?seat=pij-scrawny-tapir&peek=true",
+    "before": {
+      "ok": true,
+      "command": "pij inbox",
+      "v": 2,
+      "data": []
+    },
+    "after": {
+      "ok": true,
+      "command": "pij inbox",
+      "v": 2,
+      "data": []
+    },
+    "transport_files_read": false
+  },
+  "source_order_evidence": "crates/daemon/src/http/mod.rs:1422-1436 validates target and refuses before constructing Msg or accept_control",
+  "native_extension": {
+    "source": "/Users/jordanknight/pi-hacking/pij-rs-control-commands/.copilot/extensions/pij",
+    "private_install": "/tmp/pij-control-proof.oYCfgW/copilot-proof/home/.copilot/extensions/pij",
+    "mode": "symlink",
+    "flag": "--experimental",
+    "log": "logs/process-1788746545485-74306.log:48 (Installed 1 native extension(s))"
+  },
+  "evidence_files": [
+    "native-seat.json",
+    "native-pane.txt",
+    "after-refusal-pane.txt",
+    "result.json"
+  ],
+  "kept_alive": true,
+  "writes": "Only own scratch files and own private tmux panes; no source/global configuration edits",
+  "launch_recovery": "Initial gh token lookup inherited isolated server HOME; launcher now acquires gh token privately with real HOME before exec into isolated native HOME. No inference requested."
+}

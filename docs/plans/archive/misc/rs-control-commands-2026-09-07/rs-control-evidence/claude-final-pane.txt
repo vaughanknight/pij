@@ -1,0 +1,65 @@
+  Fixture record 1193: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1193 for summarization only.
+  Fixture record 1194: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1194 for summarization only.
+  Fixture record 1195: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1195 for summarization only.
+  Fixture record 1196: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1196 for summarization only.
+  Fixture record 1197: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1197 for summarization only.
+  Fixture record 1198: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1198 for summarization only.
+  Fixture record 1199: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1199 for summarization only.
+
+⏺ CONTROL_CONTEXT_READY
+
+✻ Churned for 2s · done 11:56 am
+
+❯ /compact
+  ⎿  Not enough messages to compact.
+
+❯ /compact
+  ⎿  Not enough messages to compact.
+
+❯ Additional test fact 0: station 0 retained the violet sample. Reply exactly CLAUDE_TURN_0_READY.
+
+⏺ CLAUDE_TURN_0_READY
+
+✻ Brewed for 5s · done 12:02 pm
+
+❯ Additional test fact 1: station 1 retained the violet sample. Reply exactly CLAUDE_TURN_1_READY.
+
+⏺ CLAUDE_TURN_1_READY
+
+✻ Churned for 2s · done 12:02 pm
+
+❯ Additional test fact 2: station 2 retained the violet sample. Reply exactly CLAUDE_TURN_2_READY.
+
+⏺ CLAUDE_TURN_2_READY
+
+✻ Cooked for 2s · done 12:02 pm
+
+❯ /compact
+  ⎿  Error during compaction: API Error: Sonnet 5 can't help with this. Start a new session to continue.
+
+     Send feedback with /feedback or learn more: https://www.anthropic.com/legal/aup
+
+     Details: `[bio]`
+
+     Request ID: req_011CeoGAfS7eHbEsr6Tf4jPH
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── control-claude-proof ─
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts · ← for agents
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

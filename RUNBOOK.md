@@ -75,6 +75,30 @@ Recommended four-terminal layout:
 | C | `npm run typecheck -- --watch` (catches type errors before /reload) |
 | D | `npm run test:watch` (store unit tests) |
 
+## OMP peer delivery
+
+OMP task children do not own Pij inboxes or peer controls; independently hosted
+OMP roots (including headless roots) still register. See the
+[delivery contract](docs/how/pij.md#the-message--receipt-protocol) for the exact context guard and
+draft-safe steering semantics.
+
+Opt-in real-client proof (owned daemon, tmux server, and scratch workspace):
+
+```bash
+PIJ_STEP_ON_REAL=1 just step-on-probe --harness omp --state idle
+PIJ_STEP_ON_REAL=1 just step-on-probe --harness omp --state bash --model github-copilot/gpt-5-mini --thinking minimal
+PIJ_STEP_ON_REAL=1 just step-on-probe --harness omp --state subagents --model github-copilot/gpt-5.4-mini --thinking low
+```
+
+Busy proof requires the original parent session, its nonce reply before remaining
+work completes, an intact draft, and the matching inbox ACK. `--thinking` overrides
+ambient OMP effort so the probe measures delivery instead of prolonged reasoning.
+The OMP probe uses a fixed, recorded system prompt to isolate delivery from ambient
+coding instructions. Busy context must be a direct Pij entry at the original tool
+boundary, not a child-result notice or a follow-up after a terminal response.
+Unreadable redraw frames are reacquired within one second and counted in the
+receipt; empty or changed draft text still fails immediately.
+
 ## Smoke
 
 ```bash

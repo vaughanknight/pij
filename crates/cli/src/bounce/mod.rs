@@ -157,6 +157,7 @@ async fn announce(state_dir: &Path, runtime: &DaemonRuntime) -> Vec<String> {
             body: "pij daemon bounce: draining in-flight work, then restarting".to_string(),
             msg_id: format!("bounce-{}-{index}", runtime.process.proc_start),
             in_reply_to: None,
+            command: None,
         };
         let reply = client.send(&request).await;
         if reply.ok {

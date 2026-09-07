@@ -13,7 +13,12 @@ import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
 import type { CommandControl } from "./adapters/pi-runtime.js";
-import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
+import {
+	PiRuntimeAdapter,
+	publishReloadCompleted,
+	registerOmpReloadCompletion,
+	reloadWithCompletion,
+} from "./adapters/pi-runtime.js";
 import { NodeProcess } from "./adapters/process.js";
 import { RustRuntimeSession } from "./adapters/rust-runtime.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
@@ -53,6 +58,32 @@ export default function (pi: ExtensionAPI): void {
 	// collides with the child's `-p` task prompt ("Agent is already processing"),
 	// and a throwaway child should never register as a peer. Skip ALL wiring.
 	if (isSubagentChild(process.env)) return;
+	const runtimeBin = detectPiRuntime({
+		ompCode: process.env.OMPCODE,
+		bun: "bun" in process.versions,
+		executableNames: [process.execPath, process.argv[0], process.argv[1]]
+			.filter((value): value is string => value !== undefined)
+			.map((value) => basename(value)),
+	});
+
+	const isEmbeddedOmpChild = (ctx: ExtensionContext & { readonly mode?: string }): boolean =>
+		runtimeBin === "omp" &&
+		ctx.mode === "print" &&
+		isSubagentChild(
+			{},
+			{
+				runtimeBin,
+				mode: ctx.mode,
+				entries: ctx.sessionManager.getEntries(),
+			},
+		);
+	const requirePeerContext = (ctx: ExtensionContext): void => {
+		if (isEmbeddedOmpChild(ctx)) {
+			throw new Error(
+				"E-NOREG: Pij is disabled in an OMP in-process subagent; return results through the parent task instead of using its peer identity.",
+			);
+		}
+	};
 
 	const pijHome = resolvePijHome();
 	const repositories = new GitRepositoryAdapter();
@@ -106,16 +137,14 @@ export default function (pi: ExtensionAPI): void {
 			},
 		),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			requirePeerContext(ctx);
 			const message = typeof params.message === "string" ? params.message.trim() : "";
 			const command = typeof params.command === "string" ? params.command : undefined;
 			if (message.length > 0 === (command !== undefined)) {
 				throw new Error("pij_send needs exactly one of `message` or `command`.");
 			}
 			if (rustRuntime) {
-				if (command !== undefined) {
-					throw new Error("pij-rs does not expose remote-control commands in the v1 send request");
-				}
-				const messageId = await rustRuntime.send(params.to, message);
+				const messageId = await rustRuntime.send(params.to, message, command);
 				return {
 					content: [{ type: "text", text: `queued ${messageId} -> ${params.to}` }],
 					details: {},
@@ -257,6 +286,7 @@ export default function (pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			requirePeerContext(ctx);
 			if (!session) throw new Error("pij_spawn: session not booted yet");
 			const res = session.spawn({
 				task: typeof params.task === "string" ? params.task : undefined,
@@ -297,7 +327,8 @@ export default function (pi: ExtensionAPI): void {
 				description: "Session id of the worker to close (e.g. pij-1abc2de).",
 			}),
 		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			requirePeerContext(ctx);
 			if (!session) throw new Error("pij_close: session not booted yet");
 			const res = session.close(params.to);
 			if (!res.ok) {
@@ -318,6 +349,9 @@ export default function (pi: ExtensionAPI): void {
 	// (startup/reload/new/resume/fork). Boot is idempotent — reload reuses the
 	// descriptor (no duplicate, no replay) and refreshes the live ctx.
 	pi.on("session_start", async (event, ctx: ExtensionContext) => {
+		// Native OMP task sessions share process.env and TMUX_PANE with Main.
+		// Exclude them before discovery, registration, announcements or inbox ownership.
+		if (isEmbeddedOmpChild(ctx)) return;
 		// Derive a stable self-id from pi's OWN session identity (changes on /new
 		// and /fork, stable across /reload and /resume) so a /new session becomes a
 		// new peer instead of reusing this process's id (D-041). Falls back to the
@@ -332,13 +366,6 @@ export default function (pi: ExtensionAPI): void {
 		} catch {
 			piSessionId = undefined; // stale/unavailable session manager
 		}
-		const runtimeBin = detectPiRuntime({
-			ompCode: process.env.OMPCODE,
-			bun: "bun" in process.versions,
-			executableNames: [process.execPath, process.argv[0], process.argv[1]]
-				.filter((value): value is string => value !== undefined)
-				.map((value) => basename(value)),
-		});
 		const envRole = process.env.PIJ_ROLE;
 		role = envRole === "parent" || envRole === "worker" ? envRole : undefined;
 		const folder = process.cwd();
@@ -390,6 +417,7 @@ export default function (pi: ExtensionAPI): void {
 				`pij: detected rs daemon at ${generation.location.addr}; registered ${self}`,
 				"info",
 			);
+			if (event.reason === "reload") publishReloadCompleted(pi);
 			return;
 		}
 		rustRuntime = undefined;
@@ -526,7 +554,9 @@ export default function (pi: ExtensionAPI): void {
 			// delivery poll scan; PijSession persists it at the coarse ~2500ms cadence.
 			(atMs) => receiver.noteInboxScan(atMs),
 		);
+		if (event.reason === "reload") publishReloadCompleted(pi);
 	});
+	if (runtimeBin === "omp") registerOmpReloadCompletion(pi);
 
 	// Event capture (registered once, top-level — reload-safe). Each pi event maps
 	// to exactly one coordinator capture. There is no pi `usage` event.
@@ -569,6 +599,8 @@ export default function (pi: ExtensionAPI): void {
 	pi.on("turn_end", () => session?.onTurnEnd());
 
 	pi.on("session_shutdown", async (event, ctx: ExtensionContext) => {
+		if (isEmbeddedOmpChild(ctx)) return;
+		commandControl = undefined;
 		ompSessionNameGeneration += 1;
 		ompSessionNamePublication = undefined;
 		disposeWatch?.();
@@ -582,6 +614,13 @@ export default function (pi: ExtensionAPI): void {
 	pi.registerCommand("pij", {
 		description: "pij peer messaging — self id, role, live peers, captured events",
 		handler: async (_args: string, ctx: ExtensionCommandContext): Promise<void> => {
+			if (isEmbeddedOmpChild(ctx)) {
+				ctx.ui.notify(
+					"pij: disabled in OMP in-process subagents; use the parent task channel",
+					"info",
+				);
+				return;
+			}
 			if (!self || (!rustRuntime && (!registry || !eventLog))) {
 				ctx.ui.notify("pij: not booted yet", "info");
 				return;
@@ -591,12 +630,8 @@ export default function (pi: ExtensionAPI): void {
 			// watcher can fire remote new|reload, then drain anything queued while
 			// un-armed.
 			commandControl = {
-				newSession: () => {
-					void ctx.newSession();
-				},
-				reload: () => {
-					void ctx.reload();
-				},
+				newSession: () => ctx.newSession(),
+				reload: () => reloadWithCompletion(pi, () => ctx.reload()),
 			};
 			const applied = session?.applyPendingControl() ?? [];
 			const peers = rustRuntime

@@ -48,15 +48,30 @@ impl HostFixture {
         // A short relative path would hide Darwin ps comm truncation.
         assert!(executable.is_absolute());
         assert!(executable.as_os_str().len() > 16);
-        host.process = Some(
-            std::process::Command::new(&executable)
+        host.process = Some({
+            // Exec of a fixture this test just wrote can fail with ETXTBSY on
+            // Linux while a sibling test's forked child still holds the write
+            // fd between fork and exec (CI, PR #381). Retry briefly.
+            let mut command = std::process::Command::new(&executable);
+            command
                 .arg("60")
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-                .expect("start inert host fixture"),
-        );
+                .stderr(std::process::Stdio::null());
+            let mut spawned = None;
+            for _ in 0..100 {
+                match command.spawn() {
+                    Err(error) if error.raw_os_error() == Some(26) => {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    other => {
+                        spawned = Some(other.expect("start inert host fixture"));
+                        break;
+                    }
+                }
+            }
+            spawned.expect("start inert host fixture: ETXTBSY persisted")
+        });
         host
     }
 
@@ -510,6 +525,7 @@ async fn native_sqlite_http_exact_prebind_retires_only_dead_same_session_owner_w
                 seat: prebind.id.clone(),
                 job_id: new_job.0,
                 native: identity.clone(),
+                control_outcome: None,
             }),
         reqwest::StatusCode::OK,
     )
@@ -606,6 +622,7 @@ async fn native_sqlite_http_dead_host_rebinds_same_session_and_reclaims_original
                 seat: seat.id.clone(),
                 job_id,
                 native: old_identity.clone(),
+                control_outcome: None,
             }),
         reqwest::StatusCode::BAD_REQUEST,
     )
@@ -641,6 +658,7 @@ async fn native_sqlite_http_dead_host_rebinds_same_session_and_reclaims_original
                 seat: seat.id.clone(),
                 job_id,
                 native: new_identity.clone(),
+                control_outcome: None,
             }),
         reqwest::StatusCode::OK,
     )
@@ -882,6 +900,7 @@ async fn native_sqlite_http_fresh_session_retires_dead_pane_owner_without_retarg
                 seat: successor.id.clone(),
                 job_id: new_job_id,
                 native: new_identity.clone(),
+                control_outcome: None,
             }),
         reqwest::StatusCode::OK,
     )
@@ -1425,11 +1444,13 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
             seat: "pij-forged-nonnative".into(),
             job_id: job,
             native: Default::default(),
+            control_outcome: None,
         },
         InboxAckRequest {
             seat: "pij-forged-nonnative".into(),
             job_id: job,
             native: identity.clone(),
+            control_outcome: None,
         },
         InboxAckRequest {
             seat: seat.id.clone(),
@@ -1438,6 +1459,7 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
                 pid: Some(138),
                 ..identity.clone()
             },
+            control_outcome: None,
         },
     ] {
         let rejected: Value = client
@@ -1463,6 +1485,7 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
             seat: seat.id.clone(),
             job_id: job,
             native: identity.clone(),
+            control_outcome: None,
         })
         .send()
         .await
@@ -1531,7 +1554,7 @@ async fn native_sqlite_malformed_claim_is_held_without_ack() {
     );
     services
         .delivery
-        .acknowledge_inbox(&seat.id, job, &identity)
+        .acknowledge_inbox(&seat.id, job, &identity, None)
         .await
         .expect_err("malformed cannot ack");
     assert!(
@@ -1602,7 +1625,7 @@ async fn shim_and_direct_service_cannot_bypass_native_claim_or_ack() {
             .is_some()
     );
     service
-        .acknowledge_inbox(&seat.id, jobs[0].job_id, &identity)
+        .acknowledge_inbox(&seat.id, jobs[0].job_id, &identity, None)
         .await
         .unwrap();
     assert!(
@@ -1641,12 +1664,17 @@ async fn stale_native_ack_cannot_retire_replacement_incarnation_work() {
     services.registry.put(seat.clone()).await.unwrap();
     services
         .delivery
-        .acknowledge_inbox(&seat.id, claim.job_id, &old_identity)
+        .acknowledge_inbox(&seat.id, claim.job_id, &old_identity, None)
         .await
         .expect_err("stale tuple cannot terminalize");
     services
         .delivery
-        .acknowledge_inbox(&"pij-fake-omp".into(), claim.job_id, &Default::default())
+        .acknowledge_inbox(
+            &"pij-fake-omp".into(),
+            claim.job_id,
+            &Default::default(),
+            None,
+        )
         .await
         .expect_err("calling it another harness cannot bypass native policy");
     assert!(
@@ -1861,6 +1889,7 @@ async fn native_sqlite_http_new_session_supersedes_seat_without_stranding_new_wo
             seat: next_id.clone(),
             job_id: new_job_id,
             native: next_identity.clone(),
+            control_outcome: None,
         })
         .send()
         .await
@@ -2020,7 +2049,7 @@ async fn queued_native_target_holds_different_session_but_allows_same_session_re
     assert_eq!(claims[0].native_consumer.as_ref(), Some(&resumed));
     services
         .delivery
-        .acknowledge_inbox(&seat.id, job_id, &resumed)
+        .acknowledge_inbox(&seat.id, job_id, &resumed, None)
         .await
         .unwrap();
     assert!(
@@ -2064,7 +2093,7 @@ async fn unstamped_prebind_task_reaches_first_verified_native_session() {
     assert_eq!(claims[0].message.body, "initial task");
     services
         .delivery
-        .acknowledge_inbox(&seat.id, claims[0].job_id, &identity)
+        .acknowledge_inbox(&seat.id, claims[0].job_id, &identity, None)
         .await
         .unwrap();
 }
@@ -2163,7 +2192,7 @@ async fn body_only_http_endpoint_explicitly_refuses_copilot_controls_instead_of_
             .json(&json!({"from":"pij-peer", "to":{"seat":seat.id}, "body":"", "msg_id":command, "command":command}))
             .send().await.unwrap().json().await.unwrap();
         assert_eq!(response["ok"], false);
-        assert!(response["meta"].as_str().unwrap().contains("unsupported"));
+        assert_eq!(response["meta"], pij_core::control::COPILOT_CONTROL_REFUSAL);
     }
     assert!(
         queue

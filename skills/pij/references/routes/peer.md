@@ -5,25 +5,16 @@
 
 **Job**: talk to colleagues — stand up a NEW live session (claude / copilot / codex / pi) in a tmux pane, **or converse with peers that already exist**: identity/list/send/tail/state need no spawn. Nothing here delegates work products — this is the raw colleague seam.
 
-**Preconditions**: detect the delivery owner before giving any self-registration advice (§ C1). Spawning requires tmux. Tmux control-plane mode needs one-time self-adopt using only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h>`. To place it structurally during registration, use `pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--session-id <native-id>] [--export]`. A non-tmux external session can converse with existing peers after `pij inbox register` (or its first `pij inbox --wait`) auto-registers pull ownership.
-
-Empty or absent `TMUX_PANE` means external pull mode. In external pull mode, never run `tmux list-panes`, `tmux display-message`, or any other pane-discovery command. Never infer, guess, select, or adopt any pane id. Redirect `/pij adopt` intent to `pij inbox register` (or the first `pij inbox --wait`, which auto-registers).
+**Preconditions**: follow § C1 for delivery-owner detection, native-extension ownership, exact-pane-only adoption and external register-first/no-pane-discovery rules. Spawn requires tmux. Tmux registration may place/reattach/export with `pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--session-id <native-id>] [--export]`; carry an inherited parent (§ C1).
 
 ## Verbs
 
-**External pull identity — first action**
-
+**Identity — choose only the § C1 delivery owner's path**
 ```bash
-pij inbox register --json  # run before whoami/list/state/tail; repairs exact ambient identity to pull
-pij inbox --wait [ms]      # equivalent first-use auto-registration, then receive
-pij whoami [--json]        # valid confirmation only after external registration succeeds
-```
-
-**Tmux push identity**
-
-```bash
-pij whoami [--json]                     # your stable session id
-pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}   # E-NOID only; exact non-empty current-process pane
+pij inbox register --json  # external pull FIRST: repairs exact ambient identity before whoami/list/state/tail
+pij inbox --wait [ms]      # external: equivalent first-use registration, then receive
+pij whoami [--json]        # external: only after registration; tmux control-plane: stable self
+pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}  # tmux E-NOID only; exact non-empty current-process pane
 ```
 
 **Views**
@@ -35,26 +26,22 @@ pij inbox --wait [ms]    # non-tmux receive path; first use auto-registers
 pij tree [<id> | --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all] [--json]
 ```
 
-Bare `tree` selects the current Git repository across linked worktrees. `--global`
-selects the registry, while `<id>` selects that arbitrary subtree. Dead/dissolved
-history is hidden by default; `--all` or an explicit history filter exposes it.
+Bare `tree` selects the current Git repository across linked worktrees; `--global` selects the registry and `<id>` that subtree.
+Dead/dissolved history is hidden unless `--all` or an explicit history filter exposes it.
 Repeated values OR within one axis; activity, liveness, and lifecycle axes AND.
 
 **Structure**
 
 ```bash
-pij link <child> --parent <parent> [--role <pm|worker>] [--json]
+pij link <child> --parent <parent> [--json]
 pij link <child> --root [--json]
 ```
 
-`parentId` is structural: an id is an explicit parent, `--root` writes explicit
-root `null`, and an absent field keeps the legacy `spawnedBy` fallback.
-`spawnedBy` remains close authorization; `link` never changes it or other
-descriptor fields. Unknown ids, self-parenting, and cycles fail before any write.
-Use adopt `--parent <id>` to establish structure at registration; spawn records
-the caller as both structural parent and close owner automatically. When a
-governor gives the seat work, it also passes `--role pm|worker` on `link`; a seat
-never infers or self-declares its own role.
+`parentId` is structural: an id is an explicit parent, `--root` writes explicit root `null`, and absence keeps the legacy `spawnedBy` fallback.
+`spawnedBy` remains close authorization; `link` changes no other descriptor fields. Unknown ids, self-parenting, and cycles fail before any write.
+Use adopt `--parent <id>` at registration; spawn automatically records the caller as structural parent and close owner.
+When giving work, the governor also passes `--role pm|worker` on `link`;
+a seat never infers or self-declares its own role.
 
 **Spawn**
 
@@ -62,34 +49,26 @@ never infers or self-declares its own role.
 pij spawn --harness claude --model claude-sonnet-5 [--effort <level>] [--task "first task"] [--plan-id <id>] [--layout stack|right|below|window] [--branch]
 ```
 
-Flags, never positionals — `pij spawn claude` is an E-ARG; `--harness` is
-required. Effort levels are per-model (`off|minimal|low|medium|high|xhigh|max`,
-warn-don't-block): discover what a model accepts via `pij models`, never assume.
+Flags only: `pij spawn claude` is E-ARG; `--harness` is required. Effort is per-model
+(`off|minimal|low|medium|high|xhigh|max`, warn-don't-block): discover with `pij models`, never assume.
 `--plan-id` is opaque; it exports both plan env names, stamps the descriptor, and reports unresolved or non-segment ids without blocking spawn.
 
 **Focus** — immutable native-session checkpoints, spawn's sibling:
-`pij focus save <name>` (caller must be a bound pi/claude peer) ·
-`pij focus list [--global]` (repo-filtered by default) ·
-`pij focus launch <name>` — forks a fresh tmux seat in **pending-canary**
-state: not ready until golden recall is verified (§ C2). pi launches from the
-main checkout, not a worktree; no copilot/codex adapters in v1.
+`pij focus save <name>` requires a bound pi/claude caller; `pij focus list [--global]` is repo-filtered by default.
+`pij focus launch <name>` forks a fresh tmux seat in **pending-canary**: golden recall must be verified (§ C2) before readiness.
+pi launches from the main checkout, not a worktree; no copilot/codex adapters in v1.
 
-File-change notices (self-serve): `pij watch <path>` / `pij unwatch` — use when
-a peer must react to a file another seat writes; mechanics in
-`docs/how/pij-peer-watch.md`.
+File-change notices: `pij watch <path>` / `pij unwatch` — react to another seat's writes; mechanics in `docs/how/pij-peer-watch.md`.
 
-**Body safety (live incident: quoted text EXECUTED `pij close` at a peer's
-repo)**: a double-quoted send body substitutes backticks/`$(...)` in YOUR shell
-before pij ever runs. For any body carrying code, backticks, or untrusted text:
-single-quote it, or use the literal channel — `pij send <id> --body-file
-<path>` (`-` = stdin), which bypasses shell interpretation entirely.
+**Body safety** (quoted text once EXECUTED `pij close` in a peer's repo): double-quoted
+bodies expand backticks/`$(...)` in YOUR shell before pij runs. For code/backticks/untrusted
+text, single-quote or use literal `pij send <id> --body-file <path>` (`-` = stdin).
 
-- Model names are per-harness — discover with `pij models` (§ C4); an "unknown model" warning is non-blocking, the canary decides (§ C2).
-- Returns the pij id immediately (claude/copilot/codex are daemon-bound: boot → ready → bound happens behind you; pi self-registers).
-- `--task` delivers the first task on every harness: pi reads it at boot (env); daemon-bound peers get it **injected after bind** (it rides the inbox, FX001-2). `--layout` places the pane (§ C5). `--branch` forks YOUR session into the pane (claude→claude only, same harness, bound session).
-- Placement: default = the side stack (~1/3 right column, uncapped, evens itself) — keep it unless told otherwise (§ C5).
-- **Always canary-verify before trusting** (§ C2) — spawned *and* provided peers.
-- Seed wire discipline at birth: a `--task` packet (and every later send) follows § C10, and tells the new seat its A2A replies do too — seats must inherit the discipline from their first turn, not learn style from verbose peers.
+- Model discovery is § C4; canary every spawned/provided peer before trust (§ C2), even after a non-blocking unknown-model warning.
+- Returns id immediately: claude/copilot/codex bind asynchronously (boot → ready → bound); pi self-registers.
+- `--task`: pi reads at boot via env; daemon-bound peers receive it after bind via inbox (FX001-2). `--branch` forks YOUR bound session, claude→claude only.
+- Placement/default side stack: § C5. Seed § C10 in the first `--task` packet and require it for every subsequent send/reply.
+- At each commit boundary, this seat and briefed peers apply § C11 (Commit attribution).
 
 **Converse**
 
@@ -97,9 +76,22 @@ single-quote it, or use the literal channel — `pij send <id> --body-file
 pij send <id> "message text"                         # lands as an injected turn in one peer
 pij send --to <id> --to <id> "message text"          # same text once to each peer, in flag order
 pij send --to <id> --to <id> "message text" --wait   # wait for every successful recipient
-pij send <id> --command compact                      # control command (compact/reload/…) [--wait]
+pij send <id> --command compact                      # rs daemon control: compact | new | reload
+pij compact-self                                   # daemon-resolved self; no literal slash fallback
+pij-rs send --to <id> --command compact              # native rs spelling (same admission)
 pij tail <id> [--since N] [--follow]                 # peek its transcript without disturbing it
 ```
+
+**Remote controls on rs** ([full contract](../../../../docs/how/pij.md#remote-session-control)):
+commands carry no body; OMP/Pi handles claims in-process and acknowledges `executed` or
+`refused` + reason. Acceptance is NOT completion. Native extension delivery bypasses typing
+grace; Claude PTY keeps it (human drafts hold commands). Copilot refuses with
+`E-RS-CONTROL-UNSUPPORTED: use Copilot's native user controls`; paneless seats also refuse.
+Never replace refusal with literal `/compact` or send-keys. Any registered peer may compact,
+without arming. Destructive `new`/`reload` require self or target-recorded parent, resolved
+from daemon caller evidence — prime flags/roles confer no authority (no rs target-prime relation).
+OMP/Pi's human must run `/pij` in the target to arm `new`/`reload`; unarmed requests refuse, never defer: arm and resend. Pi reload needs re-arming; installed OMP reload reopens the native session, NOT extension/skill resources.
+Expired claims terminate with unknown-outcome/missing-ack, never replay; refused ids stay refused. Intentional retry after arming requires a new message id.
 
 Pi/tmux replies arrive as `[pij-rs from <id>] … [/pij]` injected turns. For a non-tmux external peer, establish the durable address with `pij inbox register` (or let the first wait auto-register), send normally, then receive with:
 

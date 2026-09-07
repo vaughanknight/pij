@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { describeOutcome, servedByLegacy } from "../core/generation-routing.js";
+import { COPILOT_CONTROL_REFUSAL } from "../core/commands.js";
+import { describeOutcome, renderRsAnswer, servedByLegacy } from "../core/generation-routing.js";
 import { type GenerationRouterDeps, probeRs, routeVerb } from "./generation-router.js";
 
 const KEY = "k".repeat(64);
@@ -91,6 +93,178 @@ describe("probing rs through the shipped detector", () => {
 });
 
 describe("routeVerb end to end", () => {
+	it.each([
+		["create", ["--title", "shell output", "--command", "printf '%s\\n' '--json'; echo done"]],
+		["list", ["--all"]],
+		["tail", ["bg-golden", "--lines", "2"]],
+		["kill", ["bg-golden"]],
+	] as const)("bg %s forwards caller and passes through the shared native envelope golden", async (leaf, args) => {
+		const rawEnvelope = readFileSync(
+			new URL(
+				`../../../../crates/testkit/fixtures/golden/cli/bg-${leaf}-envelope.json`,
+				import.meta.url,
+			),
+			"utf8",
+		);
+		const base = ["bg", leaf, ...args];
+		for (const jsonAt of [0, 1, 2, base.length, undefined]) {
+			const argv = [...base];
+			if (jsonAt !== undefined) argv.splice(jsonAt, 0, "--json");
+			let request: Record<string, unknown> | undefined;
+			const result = await routeVerb(
+				"bg",
+				leaf,
+				argv,
+				deps(
+					(url, init) => {
+						if (url.endsWith("/health")) return new Response(HEALTH);
+						expect(new URL(url).pathname).toBe("/v1/bg");
+						expect(init?.method).toBe("POST");
+						expect(init?.headers).toMatchObject({ Authorization: `Bearer ${KEY}` });
+						request = JSON.parse(String(init?.body));
+						return new Response(rawEnvelope);
+					},
+					{
+						env: {
+							PIJ_SESSION_ID: "pij-bg-owner",
+							TMUX_PANE: "%bg-cli",
+							PIJ_PARENT_ID: "pij-bg-parent",
+							HARNESS_SESSION_ID: "bg-native-session",
+						},
+						cwd: () => "/work/bg",
+						ambientSeatId: () => "pij-bg-owner",
+						seatInRs: () => true,
+					},
+				),
+			);
+			expect(result.outcome.kind).toBe("rs");
+			expect(request).toEqual({
+				argv,
+				caller: {
+					pijSessionId: "pij-bg-owner",
+					tmuxPane: "%bg-cli",
+					pijParentId: "pij-bg-parent",
+					cwd: "/work/bg",
+				},
+			});
+			const rendered = renderRsAnswer(result.row, result.payload, argv, result.rawEnvelope);
+			expect(rendered).toEqual(
+				jsonAt === undefined
+					? { kind: "rendered", text: JSON.parse(rawEnvelope).data.line }
+					: { kind: "json", text: rawEnvelope },
+			);
+		}
+	});
+
+	it("bg leaves title values alone instead of treating them as send body-file flags", async () => {
+		const argv = ["bg", "create", "--title", "--body-file", "--command", "echo done"];
+		let request: unknown;
+		const result = await routeVerb(
+			"bg",
+			"create",
+			argv,
+			deps((url, init) => {
+				if (url.endsWith("/health")) return new Response(HEALTH);
+				request = JSON.parse(String(init?.body));
+				return new Response(
+					JSON.stringify({ ok: true, command: "pij bg create", v: 2, data: { line: "started" } }),
+				);
+			}),
+		);
+		expect(result.outcome.kind).toBe("rs");
+		expect(request).toEqual({ argv, caller: {} });
+	});
+
+	it.each([
+		[400, "rs-error"],
+		[403, "rs-auth-rejected"],
+	] as const)("bg preserves a decodable refusal envelope without legacy fallback (%s)", async (status, kind) => {
+		const rawEnvelope =
+			'{"ok":false,"command":"pij bg kill","v":2,"meta":"not the owner or recorded parent","error":"refused"}';
+		const argv = ["bg", "kill", "bg-other", "--json"];
+		const result = await routeVerb(
+			"bg",
+			"kill",
+			argv,
+			deps(
+				(url) =>
+					url.endsWith("/health") ? new Response(HEALTH) : new Response(rawEnvelope, { status }),
+				{ ambientSeatId: () => "pij-bg-owner", seatInRs: () => true },
+			),
+		);
+		expect(result.outcome.kind).toBe(kind);
+		expect(servedByLegacy(result.outcome)).toBe(false);
+		expect(renderRsAnswer(result.row, result.payload, argv, result.rawEnvelope)).toEqual({
+			kind: "json",
+			text: rawEnvelope,
+		});
+	});
+
+	it.each([
+		["send", ["send", "pij-target", "--command", "compact"], "/v1/shim/send"],
+		["compact-self", ["compact-self"], "/v1/shim/compact-self"],
+	] as const)("routes %s controls to rs with caller proof and command argv intact", async (verb, argv, path) => {
+		let request: Record<string, unknown> | undefined;
+		const { outcome } = await routeVerb(
+			verb,
+			undefined,
+			argv,
+			deps(
+				(url, init) => {
+					if (url.endsWith("/health")) return new Response(HEALTH);
+					expect(new URL(url).pathname).toBe(path);
+					request = JSON.parse(String(init?.body));
+					return new Response(
+						JSON.stringify({
+							ok: true,
+							command: `pij ${verb}`,
+							v: 2,
+							data: { msg_id: "control-1", outcome: "accepted", at: 1 },
+						}),
+					);
+				},
+				{
+					env: {
+						PIJ_RS_ADDR: "127.0.0.1:17610",
+						PIJ_RS_STATE_DIR: "/tmp/state",
+						TMUX_PANE: "%42",
+						PIJ_SESSION_ID: "pij-self",
+					},
+					ambientSeatId: () => "pij-self",
+					seatInRs: () => true,
+					rsSeatByPane: async () => "pij-self",
+				},
+			),
+		);
+		expect(outcome.kind).toBe("rs");
+		expect(request).toMatchObject({ argv, caller: { tmuxPane: "%42", pijSessionId: "pij-self" } });
+	});
+
+	it("preserves decodable rs control refusal without legacy fallback", async () => {
+		const refusal = COPILOT_CONTROL_REFUSAL;
+		const { outcome } = await routeVerb(
+			"compact-self",
+			undefined,
+			["compact-self"],
+			deps(
+				(url) =>
+					url.endsWith("/health")
+						? new Response(HEALTH)
+						: new Response(
+								JSON.stringify({
+									ok: false,
+									command: "pij compact-self",
+									v: 2,
+									error: "refused",
+									meta: refusal,
+								}),
+								{ status: 400 },
+							),
+				{ ambientSeatId: () => "pij-self", seatInRs: () => true },
+			),
+		);
+		expect(outcome).toMatchObject({ kind: "rs-error", detail: refusal });
+	});
 	it("no rs daemon at all → legacy, with the addr named", async () => {
 		const { outcome } = await routeVerb(
 			"adopt",

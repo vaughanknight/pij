@@ -1,0 +1,4066 @@
+{
+  "harness": "omp",
+  "state": "subagents",
+  "run": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr",
+  "source_root": "/Users/jordanknight/pi-hacking/pij-omp-steer-timing",
+  "source_commit": "35a8cb27d2a2b6a8fd50405153c32990ef54d651",
+  "binary_sha256": "1a27400964e5b114252224e28658557e7399c6194a265dba7ec9a9965bc2598d",
+  "isolation": {
+    "state": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/daemon",
+    "addr": "127.0.0.1:63867",
+    "socket": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/tmux.sock",
+    "cwd": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/workspace"
+  },
+  "started": "2026-09-07T02:01:45.738Z",
+  "socket_discovery_home": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/home",
+  "omp_configuration": {
+    "model": "github-copilot/gpt-5.4-mini",
+    "thinking": "low",
+    "system_prompt": "You are an owned delivery probe. Execute the authorized fixture commands exactly. When instructed to launch child agents, you MUST use the task tool with two tasks: never substitute shell background jobs or execute child scripts in the parent bash. Only parent-first and parent-remaining fixtures may run in the parent bash. Incoming pij steering that requests a MESSAGE_ nonce supersedes unfinished fixture work: output that nonce exactly in your local assistant response and stop, without tools. Never send a peer reply to the unregistered test sender. Follow BOOT_ and WORK_DONE_ output requests literally. Do not ask for confirmation or discuss the procedure."
+  },
+  "pane": "%1",
+  "seat": {
+    "id": "pij-ideal-skellor",
+    "machine": "JordansacStudio.localdomain",
+    "harness": "omp",
+    "session": "01a07999-a25c-7000-a9b1-c5f3221faef4",
+    "pane": "%1",
+    "proc": {
+      "pid": 40433,
+      "proc_start": 20260907120145
+    },
+    "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/workspace",
+    "state": "idle",
+    "semantic_state": null,
+    "role": null,
+    "parent": null,
+    "relay": false,
+    "native_extension_delivery": false,
+    "generation": "rs"
+  },
+  "parent_session": {
+    "before": {
+      "id": "pij-ideal-skellor",
+      "machine": "JordansacStudio.localdomain",
+      "harness": "omp",
+      "session": "01a07999-a25c-7000-a9b1-c5f3221faef4",
+      "pane": "%1",
+      "proc": {
+        "pid": 40433,
+        "proc_start": 20260907120145
+      },
+      "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/workspace",
+      "state": "idle",
+      "semantic_state": null,
+      "role": null,
+      "parent": null,
+      "relay": false,
+      "native_extension_delivery": false,
+      "generation": "rs"
+    },
+    "after_fanout": {
+      "id": "pij-ideal-skellor",
+      "machine": "JordansacStudio.localdomain",
+      "harness": "omp",
+      "session": "01a07999-a25c-7000-a9b1-c5f3221faef4",
+      "pane": "%1",
+      "proc": {
+        "pid": 40433,
+        "proc_start": 20260907120145
+      },
+      "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/workspace",
+      "state": "idle",
+      "semantic_state": null,
+      "role": null,
+      "parent": null,
+      "relay": false,
+      "native_extension_delivery": false,
+      "generation": "rs"
+    },
+    "after_delivery": {
+      "id": "pij-ideal-skellor",
+      "machine": "JordansacStudio.localdomain",
+      "harness": "omp",
+      "session": "01a07999-a25c-7000-a9b1-c5f3221faef4",
+      "pane": "%1",
+      "proc": {
+        "pid": 40433,
+        "proc_start": 20260907120145
+      },
+      "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/workspace",
+      "state": "idle",
+      "semantic_state": null,
+      "role": null,
+      "parent": null,
+      "relay": false,
+      "native_extension_delivery": false,
+      "generation": "rs"
+    }
+  },
+  "busy_work": {
+    "first": {
+      "started": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-first.started",
+      "done": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-first.done",
+      "script": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-first.sh",
+      "scriptContent": "set -e\nprintf started > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-first.started'\n/bin/sleep 45\nprintf done > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-first.done'\n",
+      "command": "/bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-first.sh'"
+    },
+    "remaining": {
+      "started": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-remaining.started",
+      "done": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-remaining.done",
+      "script": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-remaining.sh",
+      "scriptContent": "set -e\nprintf started > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-remaining.started'\n/bin/sleep 10\nprintf done > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-remaining.done'\n",
+      "command": "/bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-remaining.sh'"
+    },
+    "children": [
+      {
+        "started": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-one.started",
+        "done": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-one.done",
+        "script": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-one.sh",
+        "scriptContent": "set -e\nprintf started > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-one.started'\n/bin/sleep 30\nprintf done > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-one.done'\n",
+        "command": "/bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-one.sh'"
+      },
+      {
+        "started": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-two.started",
+        "done": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-two.done",
+        "script": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-two.sh",
+        "scriptContent": "set -e\nprintf started > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-two.started'\n/bin/sleep 30\nprintf done > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-two.done'\n",
+        "command": "/bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-two.sh'"
+      }
+    ],
+    "doneMarker": "WORK_DONE_5dabd254-d82e-45a8-a84b-e5fd3a1401e7",
+    "prompt": "This is an authorized isolated delivery probe. The harness created these sleep/marker fixtures in its own scratch directory. Invoke each as one external binary via bash; no inline shell scripts or manual file inspection are needed. First launch both children together with task using these arguments: {\"context\":\"# Goal\\nRun two owned sleep fixtures concurrently.\\n# Constraints\\nNo file edits, no validation, no further delegation.\\n# Contract\\nEach child runs its given external command and returns DONE.\",\"tasks\":[{\"name\":\"ProbeChild1\",\"task\":\"# Target\\nOwned sleep fixture /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-one.sh. No file edits.\\n# Change\\nUse bash to run exactly /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-one.sh' with timeout 90. Do not delegate or run validation.\\n# Acceptance\\nAfter the command completes, return DONE.\"},{\"name\":\"ProbeChild2\",\"task\":\"# Target\\nOwned sleep fixture /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-two.sh. No file edits.\\n# Change\\nUse bash to run exactly /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-two.sh' with timeout 90. Do not delegate or run validation.\\n# Acceptance\\nAfter the command completes, return DONE.\"}]}. Then run your own bash command immediately, without waiting for the children. Run bash with timeout 90 and this exact command: /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-first.sh' After that bash call finishes, make a SECOND separate bash call with timeout 90 and command: /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-remaining.sh'. Do not batch the two bash calls. After all requested commands, including the children, finish, reply exactly WORK_DONE_5dabd254-d82e-45a8-a84b-e5fd3a1401e7. Do not cancel, restart, combine, or background the shell commands.",
+    "parent_transcript": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/sessions/2026-09-07T02-01-46-844Z_01a07999-a25c-7000-a9b1-c5f3221faef4.jsonl"
+  },
+  "busy_started": {
+    "at": "2026-09-07T02:02:09.690Z",
+    "tool_calls": [
+      {
+        "type": "toolCall",
+        "id": "call_yPBS289O8odny6KdchFqvbJL|4Mxeh3l9yV2yGhVK2zvMY1JJTLFdXiuZHpTAKYOfXApIkBl/WqPUrt1j5rZlVx7XxYzSS7myEgD5bW5yC9MXO02nETF/Fpy66JtAzs6MK054e/8f77FdefRgB4Q2W+XctLv0Qm8tU8HIxlFt45ZEkbNhyjECq+f+uC6riaRF8QFXeabuVKqXP/jleXCmYhUJg0yrDwkiojfCXx3axYhfWoYYDTFGfYn12e5x+tCInP0rmwHpZoDt8GzphyTsqM5xFnQIhK50LV0lxXLDoRY5CZLKbA7aXcF+Q1ZjkGNkI+AsjUnIcmHhluLdFWDJskk0cjPF4fptM3623rhbAN+9FlImxFqW9sB6CQbUHJsnR4BMyAOa79ABlNXtap9GHXwBeDRb4C7jS1cLhIm6QhxxbycVcpxJeiM7j2M=",
+        "name": "task",
+        "arguments": {
+          "i": "Launch the two owned sleep fixtures concurrently as requested, with no validation or extra delegation.",
+          "context": "# Goal\nRun two owned sleep fixtures concurrently.\n# Constraints\nNo file edits, no validation, no further delegation.\n# Contract\nEach child runs its given external command and returns DONE.",
+          "tasks": [
+            {
+              "name": "ProbeChild1",
+              "task": "# Target\nOwned sleep fixture /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-one.sh. No file edits.\n# Change\nUse bash to run exactly /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-one.sh' with timeout 90. Do not delegate or run validation.\n# Acceptance\nAfter the command completes, return DONE."
+            },
+            {
+              "name": "ProbeChild2",
+              "task": "# Target\nOwned sleep fixture /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-two.sh. No file edits.\n# Change\nUse bash to run exactly /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/child-two.sh' with timeout 90. Do not delegate or run validation.\n# Acceptance\nAfter the command completes, return DONE."
+            }
+          ]
+        },
+        "intent": "Launch the two owned sleep fixtures concurrently as requested, with no validation or extra delegation.",
+        "timestamp": "2026-09-07T02:02:01.791Z"
+      },
+      {
+        "type": "toolCall",
+        "id": "call_bKlL98nbMkkVSE5518j7Y2IC|d5DvVBycVXUWTXkmKVjYofN+vfqlRcyw0gZyIMJXIFK51FobQrTwAACQG0I5GGBBbAG4PtuctRKM64Fk1aCEKVUdP6r0NZvBpIRoCt2I/IrjcoVOh2qmYqK5gjacs+hGh4QjFrORynGlO9v5SpRgch/iFN39iQFGvGa3sE/dX/ORpdJ2tP1GVdaoNjHRMqBkbLMw/ejqSMyAPMka7MLh0hHaVt6SDvXGHpdX8AXO8KUKzcc0+yPr5HN7A1fXz76xowNhyb5ufPqAZNrJZg277+g100Q/RR2nD1SeT74eK70zsj0JIf0FS18OIpAh99+vltJt19jpHLBbdzsIkag48BsDiowv8rqXkhRIJ/H6mwFWxJ8PxS58WeCusWXxuw0VFXf64PWbc4HXpTPO5p4sFIziHoXHc/0+/3w=",
+        "name": "bash",
+        "arguments": {
+          "i": "Run parent-first fixture command exactly as requested.",
+          "command": "/bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-first.sh'",
+          "timeout": 90,
+          "cwd": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/workspace"
+        },
+        "intent": "Run parent-first fixture command exactly as requested.",
+        "timestamp": "2026-09-07T02:02:09.598Z"
+      }
+    ]
+  },
+  "before": {
+    "draft": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+    "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+    "viewport": " '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-first.sh' After that bash call finishes, make a SECOND separate bash call with timeout 90 and  \n command: /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-remaining.sh'. Do not batch the two bash calls. After all requested commands, \n including the children, finish, reply exactly WORK_DONE_5dabd254-d82e-45a8-a84b-e5fd3a1401e7. Do not cancel, restart, combine, or background the shell commands.                   \n                                                                                                                                                                                    \n\n Following developer instructions            \n\n I’m thinking about how to follow the developer's guidance regarding launching child agents. It looks like I need to use the task tool with two tasks and execute some parent bash  \n commands. I should spawn the tasks in a batch and then run the first command.            \n\n So, my focus now is on adhering closely to these instructions. It's all about making sure everything functions smoothly by following the right process!                            \n\n╭─── ⇶ Task 2 agents ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│ Goal                                                                                                                                                                             │\n│                                                                                                                                                                                  │\n│ Run two owned sleep fixtures concurrently.                                                                                                                                       │\n│                                                                                                                                                                                  │\n│ Constraints                                                                                                                                                                      │\n│                                                                                                                                                                                  │\n│ No file edits, no validation, no further delegation.                                                                                                                             │\n│                                                                                                                                                                                  │\n│ Contract                                                                                                                                                                         │\n│                                                                                                                                                                                  │\n│ Each child runs its given external command and returns DONE.                                                                                                                     │\n├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤\n│ • ProbeChild1 # Target Owned sleep fixture /private/v… · 1 🛠 · 1 req · 4.3%/400K · $0.01                                                                                         │\n│   └ bash: Run owned sleep fixture                                                                                                                                                │\n│ • ProbeChild2 # Target Owned sleep fixture /private/v… · 1 🛠 · 1 req · 4.3%/400K · $0.00                                                                                         │\n│   └ bash: Run owned sleep fixture exactly as inst…                                                                                                                               │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n 2026-09-07 12:01:55  ⤵ 1.2K  ⤴ 386  💾 11K  ⏱ 3.1s  ⚡ 65.7/s                            \n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│ $ /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-first.sh'                                                                          │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n 2026-09-07 12:02:01  ⤵ 375  ⤴ 111  💾 12K  ⏱ 3.7s  ⚡ 14.4/s                             \n                                                                                          \n Subagents                                                                                \n  ├─ • ProbeChild1: Run child-one script with timeout                                     \n  └─ • ProbeChild2: Run child-two sleep fixture script                                    \n\n  ⎋ Run parent-first fixture command exactly as requested.                                \n\n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 👥 2 agents · ⚙ 1 ─\n❯  UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly                  \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ◫ 4.7%/272K ⟲ · rs·pij-ideal-skellor · ⬢ GPT-5.4 mini · ◔ low · S0.01 ★ 0.66             \nrs pij-ideal-skellor                         \n",
+    "cursor": {
+      "x": 73,
+      "y": 46
+    },
+    "text": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly "
+  },
+  "send": {
+    "msg_id": "3b8682f6-bf52-41eb-a86a-743057dace29",
+    "outcome": {
+      "outcome": "queued",
+      "reason": "extension-stream",
+      "next_retry_at": 0
+    },
+    "at": 1788746529704
+  },
+  "model_replies": [
+    "\nUnderstood.",
+    "\nBOOT_2e704447-1f70-4ac8-bb95-dedc6e0a82f2",
+    "\n",
+    "",
+    "\nMESSAGE_fe99e015-a465-47af-b996-539395dff0c6"
+  ],
+  "spine": [
+    {
+      "seq": 4,
+      "at": 0,
+      "kind": "seat.put",
+      "seat": "pij-ideal-skellor",
+      "payload": ""
+    },
+    {
+      "seq": 5,
+      "at": 1788746529704,
+      "kind": "message.pushed",
+      "seat": "pij-ideal-skellor",
+      "payload": "{\"msg_id\":\"3b8682f6-bf52-41eb-a86a-743057dace29\",\"from\":\"pij-step-on-probe\",\"body\":\"Steering replaces the remaining work: reply locally with exactly MESSAGE_fe99e015-a465-47af-b996-539395dff0c6. Do not call any tools. The sender pij-step-on-probe is an unregistered test address; do not send it a peer reply.\"}"
+    },
+    {
+      "seq": 6,
+      "at": 1788746529704,
+      "kind": "delivery.outcome",
+      "seat": "pij-ideal-skellor",
+      "payload": "{\"msg_id\":\"3b8682f6-bf52-41eb-a86a-743057dace29\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 7,
+      "at": 1788746529709,
+      "kind": "delivery.outcome",
+      "seat": "pij-ideal-skellor",
+      "payload": "{\"msg_id\":\"3b8682f6-bf52-41eb-a86a-743057dace29\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    },
+    {
+      "seq": 8,
+      "at": 1788746529709,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-ideal-skellor",
+      "payload": "{\"job_id\":1,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    }
+  ],
+  "jobs": [
+    {
+      "id": 1,
+      "state": "done",
+      "payload": "{\"from\":\"pij-step-on-probe\",\"to\":\"pij-ideal-skellor\",\"body\":\"Steering replaces the remaining work: reply locally with exactly MESSAGE_fe99e015-a465-47af-b996-539395dff0c6. Do not call any tools. The sender pij-step-on-probe is an unregistered test address; do not send it a peer reply.\",\"msg_id\":\"3b8682f6-bf52-41eb-a86a-743057dace29\"}"
+    }
+  ],
+  "samples": [
+    {
+      "elapsed_ms": 11,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 222,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 429,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 639,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 848,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 1056,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 1265,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 1472,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 1694,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 1903,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 2111,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 2319,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 2529,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 2736,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 2945,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 3155,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 3365,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 3574,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 3781,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 3989,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 4200,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 4410,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 4619,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 4828,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 5038,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 5246,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 5457,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 5667,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 5875,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 6082,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 6291,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 6499,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 6710,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 6919,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 7127,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 7336,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 7544,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 7753,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 7964,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 8173,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 8381,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 8592,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 8802,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 9012,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 9249,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 9459,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 9667,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 9875,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 10085,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 10294,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 10516,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 10724,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 10931,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 11140,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 11350,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 11563,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 11772,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 11981,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 12189,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 12397,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 12606,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 12815,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 13024,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 13231,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 13442,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 13650,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 13858,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 14068,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 14300,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 14509,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 14722,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 14935,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 15145,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 15354,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 15565,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 15774,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 15984,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 16192,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 16401,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 16610,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 16817,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 17026,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 17234,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 17444,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 17652,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 17863,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 18071,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 18279,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 18487,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 18694,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 18905,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 19115,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 19377,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 19586,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 19796,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 20005,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 20214,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 20422,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 20631,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 20840,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 21048,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 21256,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 21463,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 21672,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 21880,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 22089,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 22298,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 22506,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 22715,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 22929,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 23139,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 23349,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 23557,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 23765,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 23974,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 24182,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 24389,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 24597,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 24806,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 25026,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 25237,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 25446,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 25656,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 25866,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 26079,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 26287,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 26497,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 26706,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 26918,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 27126,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 27334,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 27547,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 27755,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 27963,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 28172,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 28380,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 28588,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 28799,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 29007,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 29219,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 29426,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 29659,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 29867,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 30075,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 30286,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 30494,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 30703,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 30912,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 31121,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 31329,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 31540,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 31747,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 31954,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 32161,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 32369,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 32576,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 32785,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 32993,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 33202,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 33410,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 33618,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 33826,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 34034,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 34242,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 34449,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 34659,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 34868,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 43
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 35076,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 35284,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 35491,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 35698,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 35908,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 36117,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 36328,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 36540,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 36748,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 36966,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 37175,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 37385,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 37595,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 37803,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 38012,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 38221,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 38430,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 38638,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 38848,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 39057,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 39266,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 39475,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 39696,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 39903,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 40112,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 40321,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 40529,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 40736,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 40944,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 41153,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 41391,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 41601,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 41814,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 42024,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 42233,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 42441,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 42651,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 42860,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 43074,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 43282,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 43491,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 43700,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 43908,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 44115,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 44329,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 44536,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 44743,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 39
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 44951,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 42
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 45163,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 45371,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 45580,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 45787,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 45996,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 46205,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 46413,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    },
+    {
+      "elapsed_ms": 46621,
+      "composer": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "6cc785b1930f7d87a669112655889fd6ee9cdd3638407e93f1349c59d58a1aea",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a07999-a25c-7000-a9b1-c5f3221faef4"
+      }
+    }
+  ],
+  "after": {
+    "viewport": "│                                                                                                                                                                                  │\n│ Constraints                                                                                                                                                                      │\n│                                                                                                                                                                                  │\n│ No file edits, no validation, no further delegation.                                                                                                                             │\n│                                                                                                                                                                                  │\n│ Contract                                                                                                                                                                         │\n│                                                                                                                                                                                  │\n│ Each child runs its given external command and returns DONE.                                                                                                                     │\n├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤\n│ • ProbeChild1 · 2 🛠 · 3 req · 4.4%/400K · $0.02                                                                                                                                  │\n│ • ProbeChild2 · 2 🛠 · 4 req · 4.4%/400K · $0.01                                                                                                                                  │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n 2026-09-07 12:01:55  ⤵ 1.2K  ⤴ 386  💾 11K  ⏱ 3.1s  ⚡ 65.7/s                            \n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│ $ /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-first.sh'                                                                          │\n├─── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤\n│ (no output)                                                                                                                                                                      │\n│ ⟦Wall: 45.04s | Timeout: 90s⟧                                                                                                                                                    │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n 2026-09-07 12:02:01  ⤵ 375  ⤴ 111  💾 12K  ⏱ 3.7s  ⚡ 14.4/s                             \n\n 📨 pij from pij-step-on-probe: Steering replaces the remaining work: reply locally with exactly MESSAGE_fe99e01…                                                                   \n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│                                                                                                                                                                                  │\n│ 📦 pij                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n│ [pij-rs from pij-step-on-probe]                                                                                                                                                  │\n│ Steering replaces the remaining work: reply locally with exactly MESSAGE_fe99e015-a465-47af-b996-539395dff0c6. Do not call any tools. The sender pij-step-on-probe is an         │\n│ unregistered test address; do not send it a peer reply.                                                                                                                          │\n│ [/pij]                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n • Background job completed [task] ProbeChild1 (38.7s)                                    \n • Background job completed [task] ProbeChild2 (42.7s)                                    \n\n MESSAGE_fe99e015-a465-47af-b996-539395dff0c6                                             \n\n 2026-09-07 12:02:54  ⤵ 801  ⤴ 42  💾 12K  ⏱ 1.5s  ⚡ 28.1/s                              \n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly                  \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ◫ 4.8%/272K ⟲ · rs·pij-ideal-skellor · ⬢ GPT-5.4 mini · ◔ low · S0.01 ★ 0.66             \nrs pij-ideal-skellor                         \n📨 1 pending                                 \n",
+    "cursor": {
+      "x": 73,
+      "y": 45
+    },
+    "text": " UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly "
+  },
+  "transcripts": [
+    "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/sessions/2026-09-07T02-01-46-844Z_01a07999-a25c-7000-a9b1-c5f3221faef4.jsonl"
+  ],
+  "delivery_timing_basis": "parent native context acceptance at tool boundary; nonce reply before separate remaining work completes; inbox ACK and stable parent session required",
+  "verdict": {
+    "harness": "omp",
+    "state": "subagents",
+    "transport_rung": "extension-stream",
+    "draft_intact": true,
+    "message_reached_model": true,
+    "draft_submitted": false,
+    "delivered_within_ms": 45161,
+    "model_replied_within_ms": 46620,
+    "replied_before_remaining_work_done": true,
+    "parent_session_unchanged": true,
+    "inbox_acknowledged": true
+  },
+  "final_panes": "%0 sleep\n%1 bun.exe\n",
+  "final_viewport": "│                                                                                                                                                                                  │\n│ Constraints                                                                                                                                                                      │\n│                                                                                                                                                                                  │\n│ No file edits, no validation, no further delegation.                                                                                                                             │\n│                                                                                                                                                                                  │\n│ Contract                                                                                                                                                                         │\n│                                                                                                                                                                                  │\n│ Each child runs its given external command and returns DONE.                                                                                                                     │\n├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤\n│ • ProbeChild1 · 2 🛠 · 3 req · 4.4%/400K · $0.02                                                                                                                                  │\n│ • ProbeChild2 · 2 🛠 · 4 req · 4.4%/400K · $0.01                                                                                                                                  │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n 2026-09-07 12:01:55  ⤵ 1.2K  ⤴ 386  💾 11K  ⏱ 3.1s  ⚡ 65.7/s\n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│ $ /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/parent-first.sh'                                                                          │\n├─── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤\n│ (no output)                                                                                                                                                                      │\n│ ⟦Wall: 45.04s | Timeout: 90s⟧                                                                                                                                                    │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n 2026-09-07 12:02:01  ⤵ 375  ⤴ 111  💾 12K  ⏱ 3.7s  ⚡ 14.4/s\n\n 📨 pij from pij-step-on-probe: Steering replaces the remaining work: reply locally with exactly MESSAGE_fe99e01…\n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│                                                                                                                                                                                  │\n│ 📦 pij                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n│ [pij-rs from pij-step-on-probe]                                                                                                                                                  │\n│ Steering replaces the remaining work: reply locally with exactly MESSAGE_fe99e015-a465-47af-b996-539395dff0c6. Do not call any tools. The sender pij-step-on-probe is an         │\n│ unregistered test address; do not send it a peer reply.                                                                                                                          │\n│ [/pij]                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n • Background job completed [task] ProbeChild1 (38.7s)\n • Background job completed [task] ProbeChild2 (42.7s)\n\n MESSAGE_fe99e015-a465-47af-b996-539395dff0c6\n\n 2026-09-07 12:02:54  ⤵ 801  ⤴ 42  💾 12K  ⏱ 1.5s  ⚡ 28.1/s\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  UNSUBMITTED_f3aa90f0-0c3e-4e34-a910-16090ac7d2e5_keep spaces  exactly\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ◫ 4.8%/272K ⟲ · rs·pij-ideal-skellor · ⬢ GPT-5.4 mini · ◔ low · S0.01 ★ 0.66\nrs pij-ideal-skellor\n📨 1 pending\n",
+  "daemon_log": "pij-rs claude inbound: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/home/.claude=touched\npij-rs claude hook: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/home/.claude=touched\npij-rs claude statusline: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/home/.claude=touched\npij-rs daemon: listening on 127.0.0.1:63867 · key /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-K6QMPr/daemon/daemon.key (0600) · offline=false\n",
+  "exit_code": 0
+}

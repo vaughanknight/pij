@@ -5,14 +5,15 @@
 > `harness instructions <verb>` per verb.
 
 ## Boot command
-`harness boot` — wraps `just typecheck` then `just test` (sequenced, no shell), via
-`.harness/extensions/boot/`. Returns a ready/error verdict + orientation. Target <60s
-(excludes smoke/lint by design — a green boot is *not* a green `just self-check`).
+`harness boot` — checks `just worktree-deps --check` before `just typecheck` then
+`just smoke` (`--full` selects `just test`), via `.harness/extensions/boot/`.
+Missing linked-worktree dependencies return an advisory with `ready: false` and the
+repair command before TS tools run; Rust-only work can continue. A green boot is
+not a green `just self-check`.
 
 ## Health check
-`harness boot` stage exit codes (`data.stages[].ok`/`code`): typecheck=0 ∧ test=0 ⇒
-ready. There is no long-running service to poll — pij is a library/CLI of pi
-extensions, so "healthy" = compiles + suite green.
+`harness boot` stage exit codes (`data.stages[].ok`/`code`): dependency readiness,
+typecheck and smoke (or `--full` test) all pass ⇒ `data.ready: true`.
 
 ## Interact method
 Dev loop is `pi` + `/reload` from the repo root (extensions autoload); `just` recipes
@@ -26,6 +27,7 @@ receipts + `inbox/`; the descriptor's `eventsPath` names the ndjson stream when 
 exists) + minih retros (`docs/retros/*.md`).
 
 ## Deterministic signal inventory
+- `just worktree-deps --check` — advisory linked-worktree tooling readiness, before TS boot stages.
 - `just local-path-check` — no user-specific absolute home paths in operational files.
 - `just typecheck` (`tsc --noEmit`) — type surface.
 - `just test` (vitest) — store/core unit tests (P8).

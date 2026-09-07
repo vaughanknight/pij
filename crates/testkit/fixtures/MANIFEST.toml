@@ -366,3 +366,31 @@ sha256 = "5e5d62f18226a50c6c3dceb2e5ed320da3d9f5c11b02889e03ba159435be2d12"
 bytes = 520
 note = "DESIGNED native Copilot registration example, not a wire recording. Promoted from plan 137 into the durable testkit corpus so plan archival cannot break executable native contract tests."
 answer = "Names harness copilot, a native session, a complete nonzero process tuple, relay false and native_extension_delivery true. Tests substitute independently observed or explicitly fake process facts as appropriate; this fixture itself proves no real SDK or model behavior."
+
+[[fixture]]
+path = "golden/cli/bg-create-envelope.json"
+sha256 = "8d16dc97e96306cf6f7ce119d57fe7ff87ee3c5d2b2c24c230ad8a0373a47754"
+bytes = 295
+note = "DESIGNED deterministic bg create v2 response, shared by native executable and legacy shim tests; not a live process recording."
+answer = "Both CLI surfaces emit these exact complete envelope bytes with --json; human output is data.line. Caller evidence and argv travel unchanged in the request, never an asserted owner."
+
+[[fixture]]
+path = "golden/cli/bg-list-envelope.json"
+sha256 = "75fbde9c3cf9a0a92a17fa11f8b6389845a8efa12fdcb385c0261b4f042d887b"
+bytes = 405
+note = "DESIGNED deterministic bg list v2 response, shared by native executable and legacy shim tests; not a live process recording."
+answer = "Both CLI surfaces emit these exact complete envelope bytes with --json; human output is data.line. Caller evidence and argv travel unchanged in the request, never an asserted owner."
+
+[[fixture]]
+path = "golden/cli/bg-tail-envelope.json"
+sha256 = "6a822a656371ca6c138037589154ab4ca9619869daa852ebbec1efc8fd629f80"
+bytes = 131
+note = "DESIGNED deterministic bg tail v2 response, shared by native executable and legacy shim tests; not a live process recording."
+answer = "Both CLI surfaces emit these exact complete envelope bytes with --json; human output is data.line. Caller evidence and argv travel unchanged in the request, never an asserted owner."
+
+[[fixture]]
+path = "golden/cli/bg-kill-envelope.json"
+sha256 = "b95d9bfe619c950a372894328a1e2ab9dd6c73a4f31df6b9ecbe3989449eb3cb"
+bytes = 137
+note = "DESIGNED deterministic bg kill v2 response, shared by native executable and legacy shim tests; not a live process recording."
+answer = "Both CLI surfaces emit these exact complete envelope bytes with --json; human output is data.line. Caller evidence and argv travel unchanged in the request, never an asserted owner."

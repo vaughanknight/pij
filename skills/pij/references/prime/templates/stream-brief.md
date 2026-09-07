@@ -28,9 +28,8 @@ human
 
 ## Descriptive fence
 
-Canonical fence section: `<government-root>/spine.md#fences--stream-id` (in
-`AI-Substrate/pij`: `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/spine.md`,
-on the `prime-governance` branch — not main, not your worktree).
+Canonical prose fence: `<government-root>/spine.md#fences--stream-id`; migrated facts stay store-authoritative.
+Resolve `<government-root>` via [Governance branch — the rules](../rituals/bootstrap.md#governance-branch--the-rules); instantiate absolute paths.
 
 - Expected touch set: <exact paths derived from planned actions>
 - Scratch: `.harness/temp/<stream-id>/**`
@@ -43,7 +42,7 @@ on the `prime-governance` branch — not main, not your worktree).
 
 1. Invoke `/pij prime`; stream triage loads `<skill>/references/prime/orchestrator.md`.
 2. Portable global orient: `<skill>/references/prime/orient-global.md`
-3. Consuming repo local orient: `<government-root>/orient-local.md` (in `AI-Substrate/pij`: `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/orient-local.md`)
+3. Consuming repo local orient: `<government-root>/orient-local.md`
 4. This item brief
 5. Invoke `/thesis` through the host skill mechanism
 6. Human preamble + preamble checkpoint
@@ -56,6 +55,7 @@ on the `prime-governance` branch — not main, not your worktree).
   until the human confirms the recorded coder/reviewer profile.
 - Report at preamble, every phase checkpoint, and ship using
   `claim · artifacts[] · shas[] · gates[] · observations[] · open[]`.
+- Close-out: <named PRD requirement rows advanced + receipt per row + named reconciliation owner>; report to the prime, never edit its register.
 - All A2A messages this stream sends (reports, replies, worker packets) follow
   § C10 — Wire discipline (`<skill>/references/00-routing.md` § Shared conventions).
 - Work confined to this verified worktree/branch is notify-only; a pushed baton

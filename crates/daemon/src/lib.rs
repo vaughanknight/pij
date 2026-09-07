@@ -9,6 +9,7 @@
 
 pub mod admission;
 pub mod auth;
+pub mod background;
 mod claude_bind;
 pub mod delivery;
 pub mod events;
@@ -131,6 +132,8 @@ pub struct Services {
     pub decisions: Arc<http::decisions::DecisionService>,
     /// Existing anomaly detector supplied by the shared governance records.
     pub anomalies: Arc<http::anomalies::AnomalyService>,
+    /// Persistent detached commands and completion delivery.
+    pub background: Arc<background::BackgroundService>,
     /// Whether this daemon is running entirely on fakes.
     pub offline: bool,
 }
@@ -151,6 +154,7 @@ pub struct Daemon {
     federation_worker: federation::FederationWorker,
     drain_loop: lifecycle::TickLoop,
     claude_bind_loop: lifecycle::TickLoop,
+    background_loop: lifecycle::TickLoop,
     /// Owned so no tap outlives the daemon that attached it: `shutdown` joins an
     /// in-flight observation and DETACHES every pane. A tap left open is a
     /// `pipe-pane` writing into a sink nobody drains.
@@ -182,7 +186,7 @@ impl Daemon {
         // HTTP drain can leave queue workers claiming new rows in the meantime.
         let _ = self.shutdown.send(());
         let _ = self.governance_shutdown.send(());
-        let (served, drained, bound, observed, forwarded, (), governance) = tokio::join!(
+        let (served, drained, bound, observed, forwarded, background, (), governance) = tokio::join!(
             async {
                 self.joined.await.map_err(|error| PijError::Adapter {
                     adapter: "daemon".to_string(),
@@ -193,6 +197,7 @@ impl Daemon {
             self.claude_bind_loop.shutdown(),
             self.pane_observer.shutdown(),
             self.federation_worker.shutdown(),
+            self.background_loop.shutdown(),
             self.sidecars.shutdown(),
             async {
                 self.governance_observer
@@ -210,6 +215,7 @@ impl Daemon {
         bound?;
         observed?;
         governance?;
+        background?;
         forwarded
     }
 }
@@ -252,6 +258,10 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         Some(pij_store::open(&config.store_path).await?)
     } else {
         None
+    };
+    let background_pool = match &persistent_pool {
+        Some(pool) => pool.clone(),
+        None => pij_store::open("").await?,
     };
     let pool = |name: &str| -> Result<pij_store::StorePool> {
         persistent_pool.clone().ok_or_else(|| PijError::Adapter {
@@ -377,6 +387,18 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         Arc::clone(&event_bus),
         pane_signal_dir.join("governance-packets"),
     ));
+    let background = Arc::new(background::BackgroundService::new(
+        pij_store::background::SqliteBackground::new(background_pool),
+        Arc::clone(&registry),
+        Arc::clone(&liveness),
+        Arc::clone(&delivery),
+        Arc::clone(&event_bus),
+        pane_signal_dir
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("bg"),
+        config.bind_addr.clone(),
+    ));
 
     Ok(Services {
         registry,
@@ -394,6 +416,7 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         governance,
         decisions,
         anomalies,
+        background,
         offline: config.is_fully_offline(),
     })
 }
@@ -510,6 +533,10 @@ fn write_runtime_record(state_dir: &Path, runtime: &DaemonRuntime) -> Result<Pat
 /// # Errors
 /// [`PijError::Adapter`] when the key cannot be written or the port refuses.
 pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
+    let state_dir = std::path::absolute(state_dir).map_err(|error| PijError::Adapter {
+        adapter: "daemon".into(),
+        message: format!("could not resolve daemon state directory: {error}"),
+    })?;
     // 1. Stage the key 0600 under a unique name. NOT published, and NOT a
     //    mutation of any shared resource: a boot that fails below must not touch
     //    a running daemon's credential.
@@ -535,7 +562,11 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     // 3. This boot owns the port, so it may now touch the store. Migrations run
     //    here, exactly once, by the process that won.
     let pane_signal_dir = state_dir.join("pane-signals");
-    let services = build_services(config, &pane_signal_dir).await?;
+    let bound_config = Config {
+        bind_addr: addr.to_string(),
+        ..config.clone()
+    };
+    let services = build_services(&bound_config, &pane_signal_dir).await?;
 
     // 4. Resolve this machine's identity. FALLIBLE, and therefore BEFORE the
     //    publish: hostname lookup can fail and a configured alias can be empty.
@@ -604,6 +635,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     //    the point of no return is deliberately infallible.
     let delivery_interval =
         lifecycle::TickInterval::new(Duration::from_secs(config.delivery_interval_secs))?;
+    let background_interval = lifecycle::TickInterval::new(Duration::from_millis(100))?;
 
     // 8. This record can be true only after bind: it says this exact process won
     //    the port. It must also precede daemon.key, the point of no return. A
@@ -696,6 +728,16 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     let drain_loop = start_resilient_delivery_drain(drain, delivery_interval);
     // Infallible by construction: every refusal happened in step 8b.
     let sidecars = sidecars.start()?;
+    let background = Arc::clone(&services.background);
+    let background_loop = lifecycle::TickLoop::start_validated(background_interval, move || {
+        let background = Arc::clone(&background);
+        async move {
+            if let Err(error) = background.tick().await {
+                eprintln!("pij-rs: background reconciliation failed: {error}");
+            }
+            Ok(())
+        }
+    });
 
     let event_bus = Arc::clone(&services.event_bus);
     let router = http::router_with_federation(
@@ -725,6 +767,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         federation_worker,
         drain_loop,
         claude_bind_loop,
+        background_loop,
         pane_observer,
         sidecars,
         governance_shutdown,

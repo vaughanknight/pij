@@ -1,0 +1,16 @@
+npm run smoke
+
+> pij@0.1.0 smoke
+> tsx harness/scripts/smoke.ts
+
+smoke: pij-team-scaffold ... ✓
+smoke: pij-watchdog ... ✓
+smoke: file-watch-notify ... ✓
+smoke: image-see ... ✓
+smoke: minih-workbench ... ✓
+smoke: pi-peacock ... ✓
+smoke: pij ... ✓
+smoke: ralph-loop_compact-survival ... ✓
+smoke: session-sql ... ✓
+smoke: skill-runner ... ✓
+smoke: todo ... ✓

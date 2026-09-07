@@ -22,7 +22,7 @@
 			"value": [
 				{
 					"id": "i1",
-					"text": "Orient: read your unit's row in the impl-guide (impl-guide.dd.json), the plan phase/tasks you own, and the interface contract. Run `harness boot --json` in your worktree before changing anything. DOGFOOD FLOWSPACE: `flowspace3 search \"<question>\"` for every meaning-shaped question before grep (exact identifiers may still grep); report every miss or confusing envelope as friction."
+					"text": "Orient: read your unit's row in the impl-guide (impl-guide.dd.json), the plan phase/tasks you own, and the interface contract. In a linked pij worktree, run `just worktree-deps` first (see docs/how/pij.md#setup); then run `harness boot --json` before changing anything. DOGFOOD FLOWSPACE: `flowspace3 search \"<question>\"` for every meaning-shaped question before grep (exact identifiers may still grep); report every miss or confusing envelope as friction."
 				},
 				{
 					"id": "i2",
@@ -38,7 +38,7 @@
 				},
 				{
 					"id": "i5",
-					"text": "Commit with `harness commit` (conventional commits are binding), status card at start and end of each unit of work (`pij report now`)."
+					"text": "Commit with `harness commit` (conventional commits are binding); apply the `pij` skill's `references/00-routing.md` § C11 (Commit attribution). Status card at start and end of each unit of work (`pij report now`)."
 				},
 				{
 					"id": "i6",
@@ -87,7 +87,10 @@
 					"id": "d1",
 					"text": "Unit implements the interface contract in the impl-guide row, verbatim or with PM-ruled amendments."
 				},
-				{ "id": "d2", "text": "Unit test suite passes standalone and proves the contract." },
+				{
+					"id": "d2",
+					"text": "Unit test suite passes standalone and proves the contract."
+				},
 				{
 					"id": "d3",
 					"text": "harness checks green in your worktree — AND prove the change is IN THE TREE YOU BUILT, not just that the build exited 0: cite tree-resident evidence (the lockfile carries your dependency, mtime/git status shows your file, the artifact names your module). An exit code is honest about what it built and silent about what it did not."
@@ -115,7 +118,11 @@
 					"path": "docs/plans/<ord>-<slug>/impl-guide.dd.json",
 					"note": "your unit row + composition contract"
 				},
-				{ "id": "r2", "path": "CLAUDE.md", "note": "dogfooding + harness commit rules" }
+				{
+					"id": "r2",
+					"path": "CLAUDE.md",
+					"note": "dogfooding + harness commit rules"
+				}
 			]
 		}
 	]

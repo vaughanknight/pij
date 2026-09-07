@@ -49,6 +49,8 @@ jobs:
       # (.pi/extensions/pij/cli.integration.test.ts) — AC-1..11 + AC-13 end-to-end
       # against the real cli.ts over a sandboxed PIJ_HOME, deterministic + in-CI.
       - run: npm test
+      # Native extension contracts use node:test, outside Vitest's TS include.
+      - run: just copilot-native-test
       # npm audit runs REPORT-ONLY (`|| true`) — the repo's Plan-009 security
       # posture is report-and-continue. The remaining 26 findings are transitive
       # through pinned minih 0.2.4, with no green released upstream fix. Surface

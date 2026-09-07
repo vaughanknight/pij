@@ -1,0 +1,67 @@
+Worktree dependency tooling — pij-alive-vrell
+Branch: worktree-deps-tooling
+Commit: cf47fe3fde07555dfb252b5a8cbed60b62a700c9 (one local commit; no push/PR/merge)
+
+Contract delivered:
+- just worktree-deps [main-checkout] uses Node builtins and Git's NUL-delimited main worktree entry; no install, copying, or quarantine changes.
+- Real local node_modules, scope and .bin containers; package/bin leaf symlinks only. All real-package conflicts are checked before mutation; symlink containers refused to protect the shared installation. Root node_modules/node_modules is never linked.
+- Real-data refusal is a one-directional safety interlock (brake): removing it permits more replacement; it does not choose an alternative dependency policy. Source selection never changes npm's release quarantine.
+- Idempotent; reports total/created/unchanged links and resolves vitest, tsc, @types/node.
+- --check is read-only. harness boot runs worktree-deps first; missing deps yield ready:false/advisory:true and exit 0 before TS tools, with the exact repair command. Rust-only work remains unblocked.
+- docs/how/pij.md setup paragraph; coder template instruction i1 updated with ddocs set and rendered via ddocs build.
+
+Live proof in this worktree:
+$ just worktree-deps
+worktree-deps: 358 links (358 created, 0 unchanged) from /Users/jordanknight/pi-hacking/pij/node_modules
+worktree-deps: READY (.bin/vitest, .bin/tsc, @types/node resolve)
+$ just worktree-deps
+worktree-deps: 358 links (0 created, 358 unchanged) from /Users/jordanknight/pi-hacking/pij/node_modules
+worktree-deps: READY (.bin/vitest, .bin/tsc, @types/node resolve)
+$ npm run typecheck
+> pij@0.1.0 typecheck
+> tsc --noEmit
+Exit 0.
+$ node_modules/.bin/vitest run harness/scripts/worktree-deps.test.ts
+Initial 12-test version: 1 file / 12 tests passed.
+$ just test harness/scripts/worktree-deps.test.ts && just typecheck
+Final expanded real-package refusal coverage: Test Files 1 passed (1); Tests 14 passed (14). Typecheck exit 0.
+$ zsh -f -c 'just worktree-deps --check'
+worktree-deps: READY (.bin/vitest, .bin/tsc, @types/node resolve)
+Final post-review proof:
+$ just test harness/scripts/worktree-deps.test.ts && just typecheck && just lint
+Test Files 1 passed (1); Tests 18 passed (18); typecheck exit 0; Biome checked 531 files, no fixes, exit 0 (one pre-existing schema-version informational notice).
+Four new safety cases were RED before fixes and GREEN afterward: source .bin aliasing target/.bin; source package aliasing through target; source leaf resolving inside target; trailing-space checkout path with an existing trimmed sibling.
+Final linker freezes real source leaves before mutation. Existing 21 indirect bin/source links normalized once; repeat: 358 links (0 created, 358 unchanged), READY.
+$ bash --noprofile --norc -c 'just worktree-deps --check'
+worktree-deps: READY (.bin/vitest, .bin/tsc, @types/node resolve)
+
+Before/after missing-deps boot:
+Initial harness boot failed boot-typecheck-failed with TS2688 Cannot find type definition file for node.
+After guard, before linking: harness boot exit 0, status ok, data.ready false, advisory true; stages contained only worktree-deps, code 1, and NOT-READY plus Run `just worktree-deps`. No typecheck/smoke/vitest stage attempted.
+
+Schema/template proof:
+ddocs validate .agents-skills-port/pij-team/templates/packet-coder.dd.json: 0 errors, 0 warnings.
+ddocs build: generated packet-coder.dd.md, 6198 bytes, no findings.
+Repo-local ddocs not installed in shared package set; used existing ambient ddocs, no install or global mutation.
+
+Gate exception authorized by prime:
+just pij-skill-check exits 1: untouched skills/pij/references/routes/peer.md is 171 lines (max 150).
+Prime: "Exception accepted: peer.md went over budget on main when the control-commands merge (#380) added 58 lines after the trailers compression; it is main-side debt, not yours. Do not trim it. Report the gate as red-by-inheritance with that cause; deliver."
+Other template checks passed. No unrelated doctrine edited.
+
+Final full gate receipt: .harness/temp/worktree-deps-checks-final.json
+At 2026-09-07T05:27:02.899Z, harness checks reported status:ok, data.ok:true, all 10 sensors pass/code 0, skipped:[]: local-paths, typecheck, lint, test, copilot-native, windows-compat, smoke, pkg-audit, snapshots, pij-commit-trailers.
+Closing gate text: "All checks green — safe to ship / declare this task done."
+Run used legacy routing, unreachable rs address, and worktree-local PIJ_HOME/PIJ_RS_STATE_DIR to isolate the live fleet.
+Independent review: both material findings resolved by reviewer source inspection; no further material issues. Four safety regressions reproduced red and now pass within 18/18 fixtures. No reviewer validation commands were run; all executed proof was collected by this seat.
+Full gate before cleanup correction: all sensors except test passed, including smoke. Sole test failure was ENOTEMPTY at afterEach rmSync(tempRoot) in worktree-deps.test.ts; behavioral assertions were green. Reused existing harness/test-utils.ts removeTemporaryTree (bounded native retries, persistent failure still throws) rather than adding a new retry convention. Final full gate passed after this correction.
+
+Friction/harvest for prime-owned drain:
+.harness/temp/agent/session-buffer.md contains DL-001 (fresh-worktree boot misleading TS2688; encoded by this command/guard), DL-002 (inherited skill line-cap exception), and DL-003 (reuse canonical fixture teardown helper). Buffer not cleared; prime owns drain.
+Highest-value improvement is already encoded: next worktree gets a single setup command and a readiness repair before compiler noise. No additional unrelated harness expansion proposed.
+
+Commit trailers:
+Pij-Seat: pij-alive-vrell
+Pij-Prime: pij-minor-unicorn
+Post-commit just pij-commit-trailers --json: status pass, checked 0, findings [], unverified [] (no checked-history attribution claim).
+Changed source surface: justfile; harness/scripts/worktree-deps.mjs and worktree-deps.test.ts; .harness/extensions/boot/{extension.ts,instructions.md}; .harness/engineering-harness.md; docs/how/pij.md; .agents-skills-port/pij-team/templates/packet-coder.dd.{json,md}.
