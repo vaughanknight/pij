@@ -1,0 +1,2583 @@
+{
+  "harness": "omp",
+  "state": "bash",
+  "run": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj",
+  "source_root": "/Users/jordanknight/pi-hacking/pij-omp-steer-timing",
+  "source_commit": "35a8cb27d2a2b6a8fd50405153c32990ef54d651",
+  "binary_sha256": "1a27400964e5b114252224e28658557e7399c6194a265dba7ec9a9965bc2598d",
+  "isolation": {
+    "state": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/daemon",
+    "addr": "127.0.0.1:57728",
+    "socket": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/tmux.sock",
+    "cwd": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/workspace"
+  },
+  "started": "2026-09-07T01:46:25.070Z",
+  "socket_discovery_home": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/home",
+  "omp_configuration": {
+    "model": "github-copilot/gpt-5-mini",
+    "thinking": "minimal",
+    "system_prompt": "You are an owned delivery probe. Execute the authorized fixture commands exactly. Incoming pij steering that requests a MESSAGE_ nonce supersedes unfinished fixture work: output that nonce exactly in your local assistant response and stop, without tools. Never send a peer reply to the unregistered test sender. Follow BOOT_ and WORK_DONE_ output requests literally. Do not ask for confirmation or discuss the procedure."
+  },
+  "pane": "%1",
+  "seat": {
+    "id": "pij-healthy-geralt",
+    "machine": "JordansacStudio.localdomain",
+    "harness": "omp",
+    "session": "01a0798b-9866-7000-bd97-c520075edfef",
+    "pane": "%1",
+    "proc": {
+      "pid": 94427,
+      "proc_start": 20260907114625
+    },
+    "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/workspace",
+    "state": "idle",
+    "semantic_state": null,
+    "role": null,
+    "parent": null,
+    "relay": false,
+    "native_extension_delivery": false,
+    "generation": "rs"
+  },
+  "parent_session": {
+    "before": {
+      "id": "pij-healthy-geralt",
+      "machine": "JordansacStudio.localdomain",
+      "harness": "omp",
+      "session": "01a0798b-9866-7000-bd97-c520075edfef",
+      "pane": "%1",
+      "proc": {
+        "pid": 94427,
+        "proc_start": 20260907114625
+      },
+      "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/workspace",
+      "state": "idle",
+      "semantic_state": null,
+      "role": null,
+      "parent": null,
+      "relay": false,
+      "native_extension_delivery": false,
+      "generation": "rs"
+    },
+    "after_fanout": {
+      "id": "pij-healthy-geralt",
+      "machine": "JordansacStudio.localdomain",
+      "harness": "omp",
+      "session": "01a0798b-9866-7000-bd97-c520075edfef",
+      "pane": "%1",
+      "proc": {
+        "pid": 94427,
+        "proc_start": 20260907114625
+      },
+      "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/workspace",
+      "state": "idle",
+      "semantic_state": null,
+      "role": null,
+      "parent": null,
+      "relay": false,
+      "native_extension_delivery": false,
+      "generation": "rs"
+    },
+    "after_delivery": {
+      "id": "pij-healthy-geralt",
+      "machine": "JordansacStudio.localdomain",
+      "harness": "omp",
+      "session": "01a0798b-9866-7000-bd97-c520075edfef",
+      "pane": "%1",
+      "proc": {
+        "pid": 94427,
+        "proc_start": 20260907114625
+      },
+      "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/workspace",
+      "state": "idle",
+      "semantic_state": null,
+      "role": null,
+      "parent": null,
+      "relay": false,
+      "native_extension_delivery": false,
+      "generation": "rs"
+    }
+  },
+  "busy_work": {
+    "first": {
+      "started": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-first.started",
+      "done": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-first.done",
+      "script": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-first.sh",
+      "scriptContent": "set -e\nprintf started > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-first.started'\n/bin/sleep 30\nprintf done > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-first.done'\n",
+      "command": "/bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-first.sh'"
+    },
+    "remaining": {
+      "started": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-remaining.started",
+      "done": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-remaining.done",
+      "script": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-remaining.sh",
+      "scriptContent": "set -e\nprintf started > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-remaining.started'\n/bin/sleep 10\nprintf done > '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-remaining.done'\n",
+      "command": "/bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-remaining.sh'"
+    },
+    "children": [],
+    "doneMarker": "WORK_DONE_9ec75823-fb46-49b4-beed-6da3bd55771b",
+    "prompt": "This is an authorized isolated delivery probe. The harness created these sleep/marker fixtures in its own scratch directory. Invoke each as one external binary via bash; no inline shell scripts or manual file inspection are needed. Run bash with timeout 90 and this exact command: /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-first.sh' After that bash call finishes, make a SECOND separate bash call with timeout 90 and command: /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-remaining.sh'. Do not batch the two bash calls. After all requested commands, including the children, finish, reply exactly WORK_DONE_9ec75823-fb46-49b4-beed-6da3bd55771b. Do not cancel, restart, combine, or background the shell commands.",
+    "parent_transcript": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/sessions/2026-09-07T01-46-26-790Z_01a0798b-9866-7000-bd97-c520075edfef.jsonl"
+  },
+  "busy_started": {
+    "at": "2026-09-07T01:46:40.585Z",
+    "tool_calls": [
+      {
+        "type": "toolCall",
+        "id": "call_O6pcx3geuvz1yjDyI2dxo4gC|XsppZz2cJZZMh9hMB69OGSk1FAgT+e9/oTwTPqVPDZsoILN4iZXj070e43wXAeg+r6dqNjoml6vri0gR9AGgYmhL5dx3R7U7oi5rHkR1IrIbXpBj89dpZ8kYhm6hJn5iN0xcmPV9gZ6jqZIu0rhejx2n9SgbocOkA1+6l7W1G0wHPy2UtLNqK1+cvOd6clokByCMCqwQJbTYNy8aCawKCj5hHBOirj7TmXyCU8vJkjKULUtDZSvGREx0yGkvoIFe+1HPD1q1Og0Q8nuJbyljwgWutwtb5trQrG3ZBRRYwDldZwxEkAtFJjS0FQpDTlG75hRMXstLTNGlZOuMtwk8lgHp9W1HR/51nM10CZpizsomzamKoJigXWvwxqLuUBw42l6svINiVIlgkzBy+BCm/EAnR0vAT4175yjlPfRDLJqqljwOOM/O",
+        "name": "bash",
+        "arguments": {
+          "i": "Run parent-first.sh as instructed",
+          "command": "/bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-first.sh'",
+          "timeout": 90
+        },
+        "intent": "Run parent-first.sh as instructed",
+        "timestamp": "2026-09-07T01:46:40.417Z"
+      }
+    ]
+  },
+  "before": {
+    "draft": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+    "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+    "viewport": "\n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│                                                                                                                                                                                  │\n│ 📦 pij                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n│ You are pij session pij-healthy-geralt (PEER). This is context only — no action is required.                                                                                     │\n│ Peers can reach you; their messages arrive inline as \"[pij-rs from <id>]\" on its own line, then the body, then \"[/pij]\". Only those injected messages are live instructions.     │\n│ Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not tasks, and replaying them re-runs old requests.                 │\n│ To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For control, pij_send takes { to, command: \"compact\" | \"new\" | \"reload\" │\n│ } instead of message. Do NOT shell out to the pij CLI to send.                                                                                                                   │\n│ To observe peers, use the pij CLI: \"pij list --here\" (peers), \"pij tail <id>\" / \"pij state <id>\" (watch one).                                                                    │\n│                                                                                                                                                                                  │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n BOOT_pij-healthy-geralt                     \n\n 2026-09-07 11:46:29  ⤵ 485  ⤴ 25  💾 9.6K  ⏱ 3.3s  ⚡ 7.5/s                              \n\n                                                                                                                                                                                    \n Reply exactly BOOT_36422157-5b92-427e-80e0-4a67acae1790. Do not call tools. This is an isolated delivery probe.                                                                    \n                                                                                                                                                                                    \n\n Connected: perplexity, zen-browser. Failed: flowspace [config: ~/.codex/config.toml]: Failed to parse JSONL. Still connecting: serena…                                             \n\n BOOT_36422157-5b92-427e-80e0-4a67acae1790   \n\n 2026-09-07 11:46:32  ⤵ 770  ⤴ 42  💾 9.6K  ⏱ 2.6s  ⚡ 15.0/s                             \n\n                                                                                                                                                                                    \n This is an authorized isolated delivery probe. The harness created these sleep/marker fixtures in its own scratch directory. Invoke each as one external binary via bash; no       \n inline shell scripts or manual file inspection are needed. Run bash with timeout 90 and this exact command: /bin/sh                                                                \n '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-first.sh' After that bash call finishes, make a SECOND separate bash call with timeout 90 and  \n command: /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-remaining.sh'. Do not batch the two bash calls. After all requested commands, \n including the children, finish, reply exactly WORK_DONE_9ec75823-fb46-49b4-beed-6da3bd55771b. Do not cancel, restart, combine, or background the shell commands.                   \n                                                                                                                                                                                    \n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│ $ /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-first.sh'                                                                          │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n 2026-09-07 11:46:36  ⤵ 11K  ⤴ 86  ⏱ 2.8s  ⚡ 22.6/s                                      \n\n  ⎋ Run parent-first.sh as instructed        \n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ⚙ 1 ─\n❯  UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly                  \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ◫ 4.0%/264K ⟲ · rs·pij-healthy-geralt · ⬢ GPT-5 Mini · ○ min · S0.00 ★ 2                 \nrs pij-healthy-geralt                        \n",
+    "cursor": {
+      "x": 73,
+      "y": 46
+    },
+    "text": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly "
+  },
+  "send": {
+    "msg_id": "ff9a2815-99d6-4f8f-8327-1486a8483ae0",
+    "outcome": {
+      "outcome": "queued",
+      "reason": "extension-stream",
+      "next_retry_at": 0
+    },
+    "at": 1788745600649
+  },
+  "model_replies": [
+    "\nBOOT_pij-healthy-geralt",
+    "\nBOOT_36422157-5b92-427e-80e0-4a67acae1790",
+    "\n",
+    "\nMESSAGE_277c18bf-b09d-4a85-8f0d-332b7469f51c"
+  ],
+  "spine": [
+    {
+      "seq": 4,
+      "at": 0,
+      "kind": "seat.put",
+      "seat": "pij-healthy-geralt",
+      "payload": ""
+    },
+    {
+      "seq": 5,
+      "at": 1788745600649,
+      "kind": "message.pushed",
+      "seat": "pij-healthy-geralt",
+      "payload": "{\"msg_id\":\"ff9a2815-99d6-4f8f-8327-1486a8483ae0\",\"from\":\"pij-step-on-probe\",\"body\":\"Steering replaces the remaining work: reply locally with exactly MESSAGE_277c18bf-b09d-4a85-8f0d-332b7469f51c. Do not call any tools. The sender pij-step-on-probe is an unregistered test address; do not send it a peer reply.\"}"
+    },
+    {
+      "seq": 6,
+      "at": 1788745600649,
+      "kind": "delivery.outcome",
+      "seat": "pij-healthy-geralt",
+      "payload": "{\"msg_id\":\"ff9a2815-99d6-4f8f-8327-1486a8483ae0\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 7,
+      "at": 1788745600660,
+      "kind": "delivery.outcome",
+      "seat": "pij-healthy-geralt",
+      "payload": "{\"msg_id\":\"ff9a2815-99d6-4f8f-8327-1486a8483ae0\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    },
+    {
+      "seq": 8,
+      "at": 1788745600661,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-healthy-geralt",
+      "payload": "{\"job_id\":1,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    }
+  ],
+  "jobs": [
+    {
+      "id": 1,
+      "state": "done",
+      "payload": "{\"from\":\"pij-step-on-probe\",\"to\":\"pij-healthy-geralt\",\"body\":\"Steering replaces the remaining work: reply locally with exactly MESSAGE_277c18bf-b09d-4a85-8f0d-332b7469f51c. Do not call any tools. The sender pij-step-on-probe is an unregistered test address; do not send it a peer reply.\",\"msg_id\":\"ff9a2815-99d6-4f8f-8327-1486a8483ae0\"}"
+    }
+  ],
+  "samples": [
+    {
+      "elapsed_ms": 39,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 280,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 501,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 762,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 1008,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 1220,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 1429,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 1637,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 1847,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 2057,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 2298,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 2616,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 2826,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 3036,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 3246,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 3456,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 3666,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 3874,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 4099,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 4311,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 4520,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 4733,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 4947,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 5171,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 5450,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 5666,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 5973,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 6240,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 6538,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 6756,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 6966,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 7176,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 7383,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 7592,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 7835,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 8043,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 8317,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 8579,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 8822,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 9163,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 9422,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 9638,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 9848,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 10057,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 10266,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 10477,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 10930,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 11202,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 11449,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 11718,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 11985,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 12715,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 12925,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 13207,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 13419,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 13629,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 13838,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 14050,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 14282,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 14495,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 14704,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 14912,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 15120,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 15332,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 15541,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 15754,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 15963,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 16174,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 16383,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 16592,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 16801,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 17009,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 17216,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 17424,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 17676,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 17885,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 18095,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 18304,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 18512,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 18722,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 18932,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 19141,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 19457,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 19683,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 19899,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 20108,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 20318,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 20528,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 20739,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 20949,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 21159,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 21367,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 21576,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 21787,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 21995,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 22204,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 22415,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 22624,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 22833,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 23044,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 23253,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 23462,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 23691,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 23900,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 24109,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 24318,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 24526,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 24734,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 24943,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 25151,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 25362,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 25571,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 25780,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 25987,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 26687,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 27001,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 27363,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 27679,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 27899,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 28129,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 28352,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 28566,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 28780,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 28994,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 29203,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 29410,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 29618,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 29827,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": false,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 30038,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 30246,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 30456,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 30666,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 31015,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 31224,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 31434,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 31642,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 31852,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    },
+    {
+      "elapsed_ms": 32061,
+      "composer": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 45
+      },
+      "sha256": "d7e1ec900f05610f620582e2fa95adb3f35d686796963f3e7f9d9b3999164837",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false,
+      "busy": {
+        "first_work_finished": true,
+        "remaining_work_finished": false,
+        "native_session": "01a0798b-9866-7000-bd97-c520075edfef"
+      }
+    }
+  ],
+  "after": {
+    "viewport": "                                                                                                                                                                                    \n Reply exactly BOOT_36422157-5b92-427e-80e0-4a67acae1790. Do not call tools. This is an isolated delivery probe.                                                                    \n                                                                                                                                                                                    \n\n Connected: perplexity, zen-browser. Failed: flowspace [config: ~/.codex/config.toml]: Failed to parse JSONL. Still connecting: serena…                                             \n\n BOOT_36422157-5b92-427e-80e0-4a67acae1790   \n\n 2026-09-07 11:46:32  ⤵ 770  ⤴ 42  💾 9.6K  ⏱ 2.6s  ⚡ 15.0/s                             \n\n                                                                                                                                                                                    \n This is an authorized isolated delivery probe. The harness created these sleep/marker fixtures in its own scratch directory. Invoke each as one external binary via bash; no       \n inline shell scripts or manual file inspection are needed. Run bash with timeout 90 and this exact command: /bin/sh                                                                \n '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-first.sh' After that bash call finishes, make a SECOND separate bash call with timeout 90 and  \n command: /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-remaining.sh'. Do not batch the two bash calls. After all requested commands, \n including the children, finish, reply exactly WORK_DONE_9ec75823-fb46-49b4-beed-6da3bd55771b. Do not cancel, restart, combine, or background the shell commands.                   \n                                                                                                                                                                                    \n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│ $ /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-first.sh'                                                                          │\n├─── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤\n│ (no output)                                                                                                                                                                      │\n│ ⟦Wall: 30.14s | Timeout: 90s⟧                                                                                                                                                    │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n 2026-09-07 11:46:36  ⤵ 11K  ⤴ 86  ⏱ 2.8s  ⚡ 22.6/s                                      \n\n MCP finished with failures. Connected: perplexity, zen-browser, serena. Failed: flowspace [config: ~/.codex/config.toml]: Failed to parse JSONL                                    \n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│                                                                                                                                                                                  │\n│ 📦 pij                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n│ [pij-rs from pij-step-on-probe]                                                                                                                                                  │\n│ Steering replaces the remaining work: reply locally with exactly MESSAGE_277c18bf-b09d-4a85-8f0d-332b7469f51c. Do not call any tools. The sender pij-step-on-probe is an         │\n│ unregistered test address; do not send it a peer reply.                                                                                                                          │\n│ [/pij]                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n MESSAGE_277c18bf-b09d-4a85-8f0d-332b7469f51c\n\n 2026-09-07 11:47:10  ⤵ 974  ⤴ 44  💾 9.9K  ⏱ 1.8s  ⚡ 21.6/s                             \n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly                  \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ◫ 4.1%/264K ⟲ · rs·pij-healthy-geralt · ⬢ GPT-5 Mini · ○ min · S0.00 ★ 2                 \nrs pij-healthy-geralt                        \n📨 1 pending                                 \n",
+    "cursor": {
+      "x": 73,
+      "y": 45
+    },
+    "text": " UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly "
+  },
+  "transcripts": [
+    "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/sessions/2026-09-07T01-46-26-790Z_01a0798b-9866-7000-bd97-c520075edfef.jsonl"
+  ],
+  "delivery_timing_basis": "parent native context acceptance at tool boundary; nonce reply before separate remaining work completes; inbox ACK and stable parent session required",
+  "verdict": {
+    "harness": "omp",
+    "state": "bash",
+    "transport_rung": "extension-stream",
+    "draft_intact": true,
+    "message_reached_model": true,
+    "draft_submitted": false,
+    "delivered_within_ms": 30037,
+    "model_replied_within_ms": 32060,
+    "replied_before_remaining_work_done": true,
+    "parent_session_unchanged": true,
+    "inbox_acknowledged": true
+  },
+  "final_panes": "%0 sleep\n%1 bun.exe\n",
+  "final_viewport": "\n Reply exactly BOOT_36422157-5b92-427e-80e0-4a67acae1790. Do not call tools. This is an isolated delivery probe.\n\n\n Connected: perplexity, zen-browser. Failed: flowspace [config: ~/.codex/config.toml]: Failed to parse JSONL. Still connecting: serena…\n\n BOOT_36422157-5b92-427e-80e0-4a67acae1790\n\n 2026-09-07 11:46:32  ⤵ 770  ⤴ 42  💾 9.6K  ⏱ 2.6s  ⚡ 15.0/s\n\n\n This is an authorized isolated delivery probe. The harness created these sleep/marker fixtures in its own scratch directory. Invoke each as one external binary via bash; no\n inline shell scripts or manual file inspection are needed. Run bash with timeout 90 and this exact command: /bin/sh\n '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-first.sh' After that bash call finishes, make a SECOND separate bash call with timeout 90 and\n command: /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-remaining.sh'. Do not batch the two bash calls. After all requested commands,\n including the children, finish, reply exactly WORK_DONE_9ec75823-fb46-49b4-beed-6da3bd55771b. Do not cancel, restart, combine, or background the shell commands.\n\n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│ $ /bin/sh '/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/parent-first.sh'                                                                          │\n├─── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤\n│ (no output)                                                                                                                                                                      │\n│ ⟦Wall: 30.14s | Timeout: 90s⟧                                                                                                                                                    │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n 2026-09-07 11:46:36  ⤵ 11K  ⤴ 86  ⏱ 2.8s  ⚡ 22.6/s\n\n MCP finished with failures. Connected: perplexity, zen-browser, serena. Failed: flowspace [config: ~/.codex/config.toml]: Failed to parse JSONL\n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│                                                                                                                                                                                  │\n│ 📦 pij                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n│ [pij-rs from pij-step-on-probe]                                                                                                                                                  │\n│ Steering replaces the remaining work: reply locally with exactly MESSAGE_277c18bf-b09d-4a85-8f0d-332b7469f51c. Do not call any tools. The sender pij-step-on-probe is an         │\n│ unregistered test address; do not send it a peer reply.                                                                                                                          │\n│ [/pij]                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n MESSAGE_277c18bf-b09d-4a85-8f0d-332b7469f51c\n\n 2026-09-07 11:47:10  ⤵ 974  ⤴ 44  💾 9.9K  ⏱ 1.8s  ⚡ 21.6/s\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  UNSUBMITTED_5162eabb-27fb-44fe-bb09-9fd47e23107b_keep spaces  exactly\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ◫ 4.1%/264K ⟲ · rs·pij-healthy-geralt · ⬢ GPT-5 Mini · ○ min · S0.00 ★ 2\nrs pij-healthy-geralt\n📨 1 pending\n",
+  "daemon_log": "pij-rs claude inbound: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/home/.claude=touched\npij-rs claude hook: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/home/.claude=touched\npij-rs claude statusline: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/home/.claude=touched\npij-rs daemon: listening on 127.0.0.1:57728 · key /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-vTDvAj/daemon/daemon.key (0600) · offline=false\n",
+  "exit_code": 0
+}

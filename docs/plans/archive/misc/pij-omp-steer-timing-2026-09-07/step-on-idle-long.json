@@ -1,0 +1,3455 @@
+{
+  "harness": "omp",
+  "state": "idle",
+  "run": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-hUoGsO",
+  "source_root": "/Users/jordanknight/pi-hacking/pij-omp-steer-timing",
+  "source_commit": "35a8cb27d2a2b6a8fd50405153c32990ef54d651",
+  "binary_sha256": "ca8485402fc73b4caaab443ecba3b76ce9edef5789039afde0f72480cff5bfa7",
+  "isolation": {
+    "state": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-hUoGsO/daemon",
+    "addr": "127.0.0.1:50071",
+    "socket": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-hUoGsO/tmux.sock",
+    "cwd": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-hUoGsO/workspace"
+  },
+  "started": "2026-09-07T01:24:48.327Z",
+  "socket_discovery_home": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-hUoGsO/home",
+  "pane": "%1",
+  "seat": {
+    "id": "pij-evil-parrotfish",
+    "machine": "JordansacStudio.localdomain",
+    "harness": "omp",
+    "session": "01a07977-cd67-7000-a668-a02716e951b1",
+    "pane": "%1",
+    "proc": {
+      "pid": 9571,
+      "proc_start": 20260907112448
+    },
+    "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-hUoGsO/workspace",
+    "state": "idle",
+    "semantic_state": null,
+    "role": null,
+    "parent": null,
+    "relay": false,
+    "native_extension_delivery": false,
+    "generation": "rs"
+  },
+  "before": {
+    "draft": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+    "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+    "viewport": "│ You are pij session pij-evil-parrotfish (PEER). This is context only — no action is required.                                                                                    │\n│ Peers can reach you; their messages arrive inline as \"[pij-rs from <id>]\" on its own line, then the body, then \"[/pij]\". Only those injected messages are live instructions.     │\n│ Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not tasks, and replaying them re-runs old requests.                 │\n│ To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For control, pij_send takes { to, command: \"compact\" | \"new\" | \"reload\" │\n│ } instead of message. Do NOT shell out to the pij CLI to send.                                                                                                                   │\n│ To observe peers, use the pij CLI: \"pij list --here\" (peers), \"pij tail <id>\" / \"pij state <id>\" (watch one).                                                                    │\n│                                                                                                                                                                                  │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n Acknowledging user input                    \n\n I need to respond as an assistant since the user mentioned that the message is just context and requires no action. They might be looking for a confirmation that I've received    \n their message. Despite developer instructions to advance tasks, the user clearly states no action is needed. So, I’ll keep it simple and say something like: \"Acknowledged. No     \n action will be taken. I won’t read or act on files under pij data/inbox.\" If they want more, they can provide further instructions.                                                \n\n Simplifying the acknowledgment process      \n\n I need to keep my response straightforward and adhere to the style of being evidence-first and terse. I'll confirm by saying something like, \"Acknowledged. No action will be      \n taken. I will not access the pij data/inbox.\" If the user wants to message a peer, they can provide a target ID and message, or just ask me to use pij_send directly. It’s         \n important to clarify that I handle the tool usage, not the user. So the final message should simply acknowledge their context without unnecessary elaboration.                     \n\n Crafting a concise response                 \n\n I need to keep my answer minimal and straightforward. I'll start with \"Acknowledged.\" Then, I'll include two key points:                                                           \n\n - No action is required.                    \n - I will not read, list, or act on files under the pij data/inbox.                       \n\n Next, I should mention that if the user wants me to message a peer, they should provide the target ID and message, and I'll use pij_send. My final message would be:               \n \"Acknowledged. No action required. I will not read/list/act on files under pij data/inbox. If you want me to message a peer, provide the target pij ID and message for pij_send.\"  \n\n Acknowledged. No action taken. I will not read, list, or act on files under pij data/inbox (internal transport log).                                                               \n\n If you want me to message a peer, provide the target pij id and the message and I will call pij_send.                                                                              \n\n 2026-09-07 11:24:51  ⤵ 12K  ⤴ 614  ⏱ 9.6s  ⚡ 21.5/s                                     \n\n                                                                                                                                                                                    \n Reply exactly BOOT_324dcfd3-7300-4739-b239-c5bcd7f02dbc. Do not call tools. This is an isolated delivery probe.                                                                    \n                                                                                                                                                                                    \n\n BOOT_324dcfd3-7300-4739-b239-c5bcd7f02dbc   \n\n 2026-09-07 11:25:20  ⤵ 13K  ⤴ 225  ⏱ 9.9s  ⚡ 22.2/s                                     \n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly                  \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ◫ 4.8%/264K ⟲ · rs·pij-evil-parrotfish · ⬢ GPT-5 Mini · ◒ high · S0.01 ★ 2               \nrs pij-evil-parrotfish                       \n",
+    "cursor": {
+      "x": 73,
+      "y": 46
+    },
+    "text": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly "
+  },
+  "send": {
+    "msg_id": "19d756e4-d427-4c0e-990f-e182084c317a",
+    "outcome": {
+      "outcome": "queued",
+      "reason": "extension-stream",
+      "next_retry_at": 0
+    },
+    "at": 1788744331402
+  },
+  "model_replies": [
+    "\nAcknowledged. No action taken. I will not read, list, or act on files under pij data/inbox (internal transport log). \n\nIf you want me to message a peer, provide the target pij id and the message and I will call pij_send.",
+    "\nBOOT_324dcfd3-7300-4739-b239-c5bcd7f02dbc",
+    "\nMESSAGE_7e892729-699b-4a0a-a71f-11af835ab682"
+  ],
+  "spine": [
+    {
+      "seq": 4,
+      "at": 0,
+      "kind": "seat.put",
+      "seat": "pij-evil-parrotfish",
+      "payload": ""
+    },
+    {
+      "seq": 5,
+      "at": 1788744331402,
+      "kind": "message.pushed",
+      "seat": "pij-evil-parrotfish",
+      "payload": "{\"msg_id\":\"19d756e4-d427-4c0e-990f-e182084c317a\",\"from\":\"pij-step-on-probe\",\"body\":\"Reply exactly MESSAGE_7e892729-699b-4a0a-a71f-11af835ab682. Do not call tools.\"}"
+    },
+    {
+      "seq": 6,
+      "at": 1788744331402,
+      "kind": "delivery.outcome",
+      "seat": "pij-evil-parrotfish",
+      "payload": "{\"msg_id\":\"19d756e4-d427-4c0e-990f-e182084c317a\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 7,
+      "at": 1788744331408,
+      "kind": "delivery.outcome",
+      "seat": "pij-evil-parrotfish",
+      "payload": "{\"msg_id\":\"19d756e4-d427-4c0e-990f-e182084c317a\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    },
+    {
+      "seq": 8,
+      "at": 1788744331409,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-evil-parrotfish",
+      "payload": "{\"job_id\":1,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    }
+  ],
+  "jobs": [
+    {
+      "id": 1,
+      "state": "done",
+      "payload": "{\"from\":\"pij-step-on-probe\",\"to\":\"pij-evil-parrotfish\",\"body\":\"Reply exactly MESSAGE_7e892729-699b-4a0a-a71f-11af835ab682. Do not call tools.\",\"msg_id\":\"19d756e4-d427-4c0e-990f-e182084c317a\"}"
+    }
+  ],
+  "samples": [
+    {
+      "elapsed_ms": 12,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": false,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 221,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 484,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 693,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 901,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1110,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1319,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1528,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1735,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1944,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2152,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2361,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2569,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2776,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2984,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3193,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3402,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3609,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3818,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4024,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4231,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4439,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4646,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4870,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5085,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5373,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5591,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5799,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6007,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6215,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6426,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6634,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6842,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7049,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7257,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7465,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7673,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7888,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8096,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8306,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8525,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8739,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8954,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9162,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9373,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9579,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9785,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9994,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 10202,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 10410,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 10617,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 10824,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 11031,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 11237,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 11448,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 11657,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 11865,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 12073,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 12282,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 12495,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 12704,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 12912,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 13122,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 13331,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 13541,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 13748,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 13964,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 14197,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 14405,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 14613,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 14820,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 15028,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 15235,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 15444,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 15651,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 15858,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 16067,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 16279,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 16487,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 16695,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 16912,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 17122,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 17332,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 17539,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 17746,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 17954,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 18161,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 18370,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 18578,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 18787,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 18994,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 19202,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 19410,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 19644,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 19932,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 20140,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 20363,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 20593,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 20802,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 21014,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 21253,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 21462,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 21674,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 21883,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 22093,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 22301,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 22688,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 22956,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 23311,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 23556,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 23776,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 23985,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 24226,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 24482,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 24690,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 24899,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 25108,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 25392,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 25602,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 25815,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 26093,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 26315,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 26529,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 26741,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 26965,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 27176,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 27400,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 27612,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 27825,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 28057,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 28287,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 28494,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 28724,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 28935,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 29145,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 29362,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 29571,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 29781,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 29994,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 30208,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 30418,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 30628,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 30840,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 31048,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 31270,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 31683,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 31891,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 32099,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 32307,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 32516,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 32722,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 32930,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 33186,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 33397,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 33610,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 33820,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 34030,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 34239,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 34449,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 34663,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 34874,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 35083,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 35292,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 35501,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 35710,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 35920,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 36134,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 36343,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 36551,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 36758,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 36965,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 37173,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 37382,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 37591,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 37799,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 38009,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 38216,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 38426,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 38634,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 38842,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 39050,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 39258,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 39468,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 39677,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 39889,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 40251,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 40480,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 40710,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 40934,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 41148,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 41364,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 41572,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 41785,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 41996,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 42205,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 42416,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 42626,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 42835,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 43044,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 43251,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 43458,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 43670,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 43877,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 44084,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 44291,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 44524,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 44751,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 44966,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 45175,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 45384,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 45593,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 45803,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 46014,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 46223,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 46433,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 46644,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 46852,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 47063,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 47272,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 47483,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 47694,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 47902,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 48110,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 48318,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 48527,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 48735,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 48942,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 49152,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 49360,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 49567,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 49775,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 49983,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 50195,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 50404,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 50623,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 50832,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 51040,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 51254,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 51461,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 51668,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 51882,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 52090,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 52299,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 52510,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 52719,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 52927,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 53135,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 53343,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 53560,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 53769,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 53982,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 54188,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 54397,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 54603,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 54812,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 55023,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 55231,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 55625,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 55889,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 56098,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 56322,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 56571,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 56797,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 57036,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 57303,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 57517,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 57729,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 57939,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 58151,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 58364,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 58573,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 58782,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 58995,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 59260,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 59470,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 59690,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 59898,
+      "composer": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly ",
+      "cursor": {
+        "x": 73,
+        "y": 46
+      },
+      "sha256": "d19c1ed93fd512d94a140e8dcbaf7b8ba72bd90823f21b3a241a10043fb02b3c",
+      "context_accepted": true,
+      "model_replied": true,
+      "submitted": false
+    }
+  ],
+  "after": {
+    "viewport": "\n Simplifying the acknowledgment process      \n\n I need to keep my response straightforward and adhere to the style of being evidence-first and terse. I'll confirm by saying something like, \"Acknowledged. No action will be      \n taken. I will not access the pij data/inbox.\" If the user wants to message a peer, they can provide a target ID and message, or just ask me to use pij_send directly. It’s         \n important to clarify that I handle the tool usage, not the user. So the final message should simply acknowledge their context without unnecessary elaboration.                     \n\n Crafting a concise response                 \n\n I need to keep my answer minimal and straightforward. I'll start with \"Acknowledged.\" Then, I'll include two key points:                                                           \n\n - No action is required.                    \n - I will not read, list, or act on files under the pij data/inbox.                       \n\n Next, I should mention that if the user wants me to message a peer, they should provide the target ID and message, and I'll use pij_send. My final message would be:               \n \"Acknowledged. No action required. I will not read/list/act on files under pij data/inbox. If you want me to message a peer, provide the target pij ID and message for pij_send.\"  \n\n Acknowledged. No action taken. I will not read, list, or act on files under pij data/inbox (internal transport log).                                                               \n\n If you want me to message a peer, provide the target pij id and the message and I will call pij_send.                                                                              \n\n 2026-09-07 11:24:51  ⤵ 12K  ⤴ 614  ⏱ 9.6s  ⚡ 21.5/s                                     \n\n                                                                                                                                                                                    \n Reply exactly BOOT_324dcfd3-7300-4739-b239-c5bcd7f02dbc. Do not call tools. This is an isolated delivery probe.                                                                    \n                                                                                                                                                                                    \n\n BOOT_324dcfd3-7300-4739-b239-c5bcd7f02dbc   \n\n 2026-09-07 11:25:20  ⤵ 13K  ⤴ 225  ⏱ 9.9s  ⚡ 22.2/s                                     \n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│                                                                                                                                                                                  │\n│ 📦 pij                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n│ [pij-rs from pij-step-on-probe]                                                                                                                                                  │\n│ Reply exactly MESSAGE_7e892729-699b-4a0a-a71f-11af835ab682. Do not call tools.                                                                                                   │\n│ [/pij]                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n MESSAGE_7e892729-699b-4a0a-a71f-11af835ab682\n\n 2026-09-07 11:25:31  ⤵ 129  ⤴ 300  💾 13K  ⏱ 6.1s  ⚡ 47.8/s                             \n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly                  \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ◫ 4.8%/264K ⟲ · rs·pij-evil-parrotfish · ⬢ GPT-5 Mini · ◒ high · S0.01 ★ 3               \nrs pij-evil-parrotfish                       \n",
+    "cursor": {
+      "x": 73,
+      "y": 46
+    },
+    "text": " UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly "
+  },
+  "transcripts": [
+    "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-hUoGsO/sessions/2026-09-07T01-24-49-639Z_01a07977-cd67-7000-a668-a02716e951b1.jsonl"
+  ],
+  "delivery_timing_basis": "native transcript context acceptance; model reply independently required",
+  "verdict": {
+    "harness": "omp",
+    "state": "idle",
+    "transport_rung": "extension-stream",
+    "draft_intact": true,
+    "message_reached_model": true,
+    "draft_submitted": false,
+    "delivered_within_ms": 221
+  },
+  "final_panes": "%0 sleep\n%1 bun.exe\n",
+  "final_viewport": "\n Simplifying the acknowledgment process\n\n I need to keep my response straightforward and adhere to the style of being evidence-first and terse. I'll confirm by saying something like, \"Acknowledged. No action will be\n taken. I will not access the pij data/inbox.\" If the user wants to message a peer, they can provide a target ID and message, or just ask me to use pij_send directly. It’s\n important to clarify that I handle the tool usage, not the user. So the final message should simply acknowledge their context without unnecessary elaboration.\n\n Crafting a concise response\n\n I need to keep my answer minimal and straightforward. I'll start with \"Acknowledged.\" Then, I'll include two key points:\n\n - No action is required.\n - I will not read, list, or act on files under the pij data/inbox.\n\n Next, I should mention that if the user wants me to message a peer, they should provide the target ID and message, and I'll use pij_send. My final message would be:\n \"Acknowledged. No action required. I will not read/list/act on files under pij data/inbox. If you want me to message a peer, provide the target pij ID and message for pij_send.\"\n\n Acknowledged. No action taken. I will not read, list, or act on files under pij data/inbox (internal transport log).\n\n If you want me to message a peer, provide the target pij id and the message and I will call pij_send.\n\n 2026-09-07 11:24:51  ⤵ 12K  ⤴ 614  ⏱ 9.6s  ⚡ 21.5/s\n\n\n Reply exactly BOOT_324dcfd3-7300-4739-b239-c5bcd7f02dbc. Do not call tools. This is an isolated delivery probe.\n\n\n BOOT_324dcfd3-7300-4739-b239-c5bcd7f02dbc\n\n 2026-09-07 11:25:20  ⤵ 13K  ⤴ 225  ⏱ 9.9s  ⚡ 22.2/s\n\n╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│                                                                                                                                                                                  │\n│ 📦 pij                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n│ [pij-rs from pij-step-on-probe]                                                                                                                                                  │\n│ Reply exactly MESSAGE_7e892729-699b-4a0a-a71f-11af835ab682. Do not call tools.                                                                                                   │\n│ [/pij]                                                                                                                                                                           │\n│                                                                                                                                                                                  │\n╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n MESSAGE_7e892729-699b-4a0a-a71f-11af835ab682\n\n 2026-09-07 11:25:31  ⤵ 129  ⤴ 300  💾 13K  ⏱ 6.1s  ⚡ 47.8/s\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  UNSUBMITTED_6d70da3a-9666-4928-bef1-2ceaf0ad2099_keep spaces  exactly\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ◫ 4.8%/264K ⟲ · rs·pij-evil-parrotfish · ⬢ GPT-5 Mini · ◒ high · S0.01 ★ 3\nrs pij-evil-parrotfish\n",
+  "daemon_log": "pij-rs claude inbound: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-hUoGsO/home/.claude=touched\npij-rs claude hook: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-hUoGsO/home/.claude=touched\npij-rs claude statusline: /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-hUoGsO/home/.claude=touched\npij-rs daemon: listening on 127.0.0.1:50071 · key /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-hUoGsO/daemon/daemon.key (0600) · offline=false\n",
+  "exit_code": 0
+}

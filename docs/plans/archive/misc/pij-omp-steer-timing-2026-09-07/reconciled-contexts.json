@@ -1,0 +1,62 @@
+[
+  {
+    "at": 1788744791040,
+    "kind": "context-start",
+    "pid": 50991,
+    "session": "01a0797f-7170-7000-8f96-684fad2ec90b",
+    "mode": "tui",
+    "hasUI": true,
+    "entryTypes": [
+      "model_change",
+      "thinking_level_change"
+    ]
+  },
+  {
+    "at": 1788744803811,
+    "kind": "context-start",
+    "pid": 50991,
+    "session": "01a0797f-a5b4-7000-ba85-bda5ee8437c9",
+    "mode": "print",
+    "hasUI": false,
+    "entryTypes": [
+      "model_change",
+      "session_init"
+    ]
+  },
+  {
+    "at": 1788744803815,
+    "kind": "context-start",
+    "pid": 50991,
+    "session": "01a0797f-a5b0-7000-8ed1-0fffbcfc4d3f",
+    "mode": "print",
+    "hasUI": false,
+    "entryTypes": [
+      "model_change",
+      "session_init"
+    ]
+  },
+  {
+    "at": 1788744810048,
+    "kind": "context-start",
+    "pid": 50991,
+    "session": "01a0797f-be23-7000-b39e-d255c7fff2b4",
+    "mode": "print",
+    "hasUI": false,
+    "entryTypes": [
+      "model_change",
+      "session_init"
+    ]
+  },
+  {
+    "at": 1788744819247,
+    "kind": "context-start",
+    "pid": 50991,
+    "session": "01a0797f-e217-7000-aa45-6c5b2696a56b",
+    "mode": "print",
+    "hasUI": false,
+    "entryTypes": [
+      "model_change",
+      "session_init"
+    ]
+  }
+]
