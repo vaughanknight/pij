@@ -229,6 +229,26 @@ describe("memorableIdentitySeed", () => {
 });
 
 describe("isSubagentChild", () => {
+	it("recognises OMP in-process task sessions without process-global child flags", () => {
+		expect(
+			isSubagentChild(
+				{},
+				{
+					runtimeBin: "omp",
+					mode: "print",
+					entries: [{ type: "session_init" }],
+				},
+			),
+		).toBe(true);
+	});
+	it.each([
+		{ runtimeBin: "omp", mode: "tui", entries: [{ type: "session_init" }] },
+		{ runtimeBin: "omp", mode: "print", entries: [{ type: "session" }] },
+		{ runtimeBin: "omp", mode: "rpc", entries: [{ type: "session_init" }] },
+		{ runtimeBin: "pi", mode: "print", entries: [{ type: "session_init" }] },
+	] as const)("preserves independently hosted sessions: %j", (context) => {
+		expect(isSubagentChild({}, context)).toBe(false);
+	});
 	it("false for a top-level session (neither env set)", () => {
 		expect(isSubagentChild({})).toBe(false);
 	});

@@ -63,14 +63,28 @@ export function detectPiRuntime(input: {
  *  "Agent is already processing" in the pi SDK (agent-session.ts) — which is
  *  exactly what breaks the subagent tool. A throwaway child is also never a
  *  real peer, so it should not register in the ~/.pij registry either.
- *  Signal: pi-subagents sets PI_SUBAGENT_CHILD=1 and PI_SUBAGENT_DEPTH>=1. */
-export function isSubagentChild(env: {
-	readonly PI_SUBAGENT_CHILD?: string;
-	readonly PI_SUBAGENT_DEPTH?: string;
-}): boolean {
+ *  Subprocess signal: PI_SUBAGENT_CHILD=1 or PI_SUBAGENT_DEPTH>=1.
+ *  OMP's in-process children instead expose print mode and a session_init entry
+ *  before session_start; their PID, pane and environment are shared with Main. */
+export function isSubagentChild(
+	env: {
+		readonly PI_SUBAGENT_CHILD?: string;
+		readonly PI_SUBAGENT_DEPTH?: string;
+	},
+	context?: {
+		readonly runtimeBin: "pi" | "omp";
+		readonly mode?: string;
+		readonly entries: readonly { readonly type: string }[];
+	},
+): boolean {
 	if (env.PI_SUBAGENT_CHILD === "1") return true;
 	const depth = Number(env.PI_SUBAGENT_DEPTH ?? "0");
-	return Number.isFinite(depth) && depth > 0;
+	if (Number.isFinite(depth) && depth > 0) return true;
+	return (
+		context?.runtimeBin === "omp" &&
+		context.mode === "print" &&
+		context.entries.some((entry) => entry.type === "session_init")
+	);
 }
 
 /** Descriptors running in a given project folder (spec AC-1, `pij list --here`). */

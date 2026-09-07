@@ -40,6 +40,8 @@ describe("draft-safe extension submission", () => {
 				message: Parameters<ExtensionAPI["sendMessage"]>[0],
 				options?: Parameters<ExtensionAPI["sendMessage"]>[1],
 			) => {
+				// OMP also restores user-attributed custom messages into the editor on Escape.
+				expect(message).not.toHaveProperty("attribution", "user");
 				pending.push(() => {
 					if (mode === "steer" || options?.triggerTurn) modelMessages.push(String(message.content));
 					if (message.display) visibleMessages.push(String(message.content));

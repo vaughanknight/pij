@@ -36,12 +36,15 @@ function makeFakePi(
 	const handlers = new Map<string, (...args: unknown[]) => unknown>();
 	const sentMessages: string[] = [];
 	const sessionNames: string[] = [];
+	const tools = new Map<string, { execute: (...args: unknown[]) => unknown }>();
 	let currentSessionName: string | undefined;
 	const pi = {
 		on: (event: string, handler: (...args: unknown[]) => unknown) => {
 			handlers.set(event, handler);
 		},
-		registerTool: () => {},
+		registerTool: (tool: { name: string; execute: (...args: unknown[]) => unknown }) => {
+			tools.set(tool.name, tool);
+		},
 		registerCommand: () => {},
 		events: { on: () => {}, emit: () => {} },
 		sendUserMessage: (message: string) => {
@@ -58,16 +61,24 @@ function makeFakePi(
 		},
 		getSessionName: () => currentSessionName,
 	} as unknown as ExtensionAPI;
-	return { pi, handlers, sentMessages, sessionNames };
+	return { pi, handlers, sentMessages, sessionNames, tools };
 }
 
 /** Minimal fake ExtensionContext — captures setStatus calls. */
-function makeFakeCtx(initialSessionId: string | undefined = "test-session-statusbar-018") {
+function makeFakeCtx(
+	initialSessionId: string | undefined = "test-session-statusbar-018",
+	options: { mode?: string; entries?: readonly { type: string }[] } = {},
+) {
 	const statuses: Array<{ key: string; value: string | undefined }> = [];
 	const notices: string[] = [];
 	let sessionId = initialSessionId;
 	const ctx = {
-		sessionManager: { getSessionId: () => sessionId },
+		hasUI: true,
+		mode: options.mode,
+		sessionManager: {
+			getSessionId: () => sessionId,
+			getEntries: () => options.entries ?? [],
+		},
 		isIdle: () => true,
 		compact: () => {},
 		ui: {
@@ -185,6 +196,89 @@ describe("pij index — footer status bar", () => {
 		else process.env.PIJ_ANNOUNCE_TO = origAnnounceTo;
 		if (origDaemonGeneration === undefined) delete process.env.PIJ_DAEMON_GENERATION;
 		else process.env.PIJ_DAEMON_GENERATION = origDaemonGeneration;
+	});
+
+	it("keeps an OMP parent's registration when in-process children start and stop", async () => {
+		process.env.OMPCODE = "1";
+		const detect = vi
+			.spyOn(daemonHttp, "detectDaemonGeneration")
+			.mockResolvedValue(fakeRustGeneration());
+		const parent = makeFakePi();
+		const parentContext = makeFakeCtx("native-omp-parent", { mode: "tui" });
+		pijExtension(parent.pi);
+		await parent.handlers.get("session_start")?.({ reason: "startup" }, parentContext.ctx);
+		const parentId = process.env.PIJ_SESSION_ID;
+		try {
+			for (const childId of ["native-omp-child-one", "native-omp-child-two"]) {
+				const child = makeFakePi();
+				const childContext = makeFakeCtx(childId, {
+					mode: "print",
+					entries: [{ type: "session_init" }],
+				});
+				childContext.ctx.hasUI = false;
+				pijExtension(child.pi);
+				await child.handlers.get("session_start")?.({ reason: "startup" }, childContext.ctx);
+				await child.handlers.get("session_shutdown")?.({ reason: "quit" }, childContext.ctx);
+				expect(child.sentMessages).toEqual([]);
+				expect(child.sessionNames).toEqual([]);
+				expect(process.env.PIJ_SESSION_ID).toBe(parentId);
+				for (const [name, params] of [
+					["pij_send", { to: "peer", message: "hello" }],
+					["pij_spawn", { harness: "omp", task: "hello" }],
+					["pij_close", { to: "peer" }],
+				] as const) {
+					const tool = child.tools.get(name);
+					if (!tool) throw new Error(`Child tool probe did not capture ${name}`);
+					await expect(
+						tool.execute("probe", params, undefined, undefined, childContext.ctx),
+					).rejects.toThrow("OMP in-process subagent");
+				}
+			}
+			expect(detect).toHaveBeenCalledTimes(1);
+		} finally {
+			await parent.handlers.get("session_shutdown")?.({ reason: "quit" }, parentContext.ctx);
+		}
+	});
+
+	it.each([
+		"print",
+		"rpc",
+	])("preserves an independently hosted headless OMP %s root", async (mode) => {
+		process.env.OMPCODE = "1";
+		const detect = vi
+			.spyOn(daemonHttp, "detectDaemonGeneration")
+			.mockResolvedValue(fakeRustGeneration());
+		const { pi, handlers, sentMessages } = makeFakePi();
+		const { ctx } = makeFakeCtx("native-headless-omp", { mode });
+		ctx.hasUI = false;
+		pijExtension(pi);
+		try {
+			await handlers.get("session_start")?.({ reason: "startup" }, ctx);
+			expect(detect).toHaveBeenCalledOnce();
+			expect(sentMessages).toHaveLength(1);
+		} finally {
+			await handlers.get("session_shutdown")?.({ reason: "quit" }, ctx);
+		}
+	});
+
+	it("retains headless Pi registration with session metadata", async () => {
+		const detect = vi
+			.spyOn(daemonHttp, "detectDaemonGeneration")
+			.mockResolvedValue(fakeRustGeneration());
+		const { pi, handlers, sentMessages } = makeFakePi();
+		const { ctx } = makeFakeCtx("native-headless-pi", {
+			mode: "print",
+			entries: [{ type: "session_init" }],
+		});
+		ctx.hasUI = false;
+		pijExtension(pi);
+		try {
+			await handlers.get("session_start")?.({ reason: "startup" }, ctx);
+			expect(detect).toHaveBeenCalledOnce();
+			expect(sentMessages).toHaveLength(1);
+		} finally {
+			await handlers.get("session_shutdown")?.({ reason: "quit" }, ctx);
+		}
 	});
 
 	it("publishes the pij id to the status bar on session_start", async () => {

@@ -295,9 +295,17 @@ neither current nor old prime. See [pij prime](./pij-prime.md#registry-designati
   envelope is unchanged, but OMP supplies it to the model as **developer** context
   rather than a user message. Pi retains its existing **user**-message API and role.
   This is an explicit semantic choice, not an editor snapshot/restore workaround.
+  Custom messages keep default agent attribution: user attribution would make
+  Escape/dequeue prepend their envelope to the human's editor draft.
+- **OMP in-process subagents are not Pij seats.** Native task/reviewer sessions
+  share Main's process, environment and tmux pane. Pij excludes their print-mode
+  `session_init` contexts before registration or inbox subscription, and refuses
+  their Pij send/spawn/close tools instead of falling back to Main's inherited
+  identity. They return results through OMP's task channel. Independently hosted
+  OMP peers, including headless roots, retain their own Pij registration.
 - **Idle vs busy.** An idle peer receives the message immediately (triggers a turn);
-  a busy/streaming peer receives it via *steer* after its current turn (never a
-  mid-stream interrupt).
+  a busy/streaming peer receives it via *steer* at the next available tool boundary,
+  before remaining work. A running foreground tool need not be interrupted.
 - **Commands.** `--command <compact|new|reload>` are the allow-listed session-control
   commands; unknown names are rejected (`E-CMD`) before any pi call. See
   [Remote session control](#remote-session-control) for how each one fires.
