@@ -35,9 +35,9 @@ Role + governance records
 
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| tk-20a2 | u2 — --role on register/adopt; `pij-rs role`; seat_roles join; ownership self-or-parent | rust | p2 | [ ] unchecked | u2 pij-written-lansra implementing shared RoleService and fixture tests; u3 supplies role store helpers; PM owns wiring. | — | — | — | — | — |
-| tk-21a2 | u3 — project/stream/fence/baton/prime routes + verbs over existing tables | rust | p2 | [ ] unchecked | u3 pij-general-miriam implementing governance records/migration0014 and spine verbs under accepted full ack. | — | — | — | — | — |
-| tk-22a2 | u3 — dispatch (3-state receipt) / ack / canary / attest / task set / node show | rust | p2 | [ ] unchecked | u3 implements real DeliveryService-linked dispatch/ack/canary/attest/task/node; no validators until wave edit barrier. | — | — | — | — | — |
+| tk-20a2 | u2 — --role on register/adopt; `pij-rs role`; seat_roles join; ownership self-or-parent | rust | p2 | [x] checked | Verified native contract. Pressure remains authored not-applicable; actual alternate instrument is canonical Rust gate plus named RED/GREEN and engineering checks. | 0a7a26737d08701bddac6ccc0b6d7b040873e4f9; ../../execution-log.dd.json#entries/lg-0002 | — | — | — | — |
+| tk-21a2 | u3 — project/stream/fence/baton/prime routes + verbs over existing tables | rust | p2 | [x] checked | Verified native contract. Pressure remains authored not-applicable; actual alternate instrument is canonical Rust gate plus named RED/GREEN and engineering checks. | 0a7a26737d08701bddac6ccc0b6d7b040873e4f9; ../../execution-log.dd.json#entries/lg-0002 | — | — | — | — |
+| tk-22a2 | u3 — dispatch (3-state receipt) / ack / canary / attest / task set / node show | rust | p2 | [x] checked | Native u3 behavior verified by baseline absent-route RED and composed GREEN; positive canary protocol uses real SQL/HTTP/queue/publication with scripted host ports. No live-OMP canary is claimed. | 0a7a26737d08701bddac6ccc0b6d7b040873e4f9; ../../execution-log.dd.json#entries/lg-0003 | — | — | — | — |
 
 <a id="done-when"></a>
 
@@ -45,18 +45,18 @@ Role + governance records
 
 ### tk-20a2
 
-| id | assertion | state | pressure |
-| --- | --- | --- | --- |
-| dw-20a2 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | not-applicable |
+| id | assertion | state | pressure | proven_by |
+| --- | --- | --- | --- | --- |
+| dw-20a2 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | not-applicable | [lg-0002](../../execution-log.dd.md#entries) |
 
 ### tk-21a2
 
-| id | assertion | state | pressure |
-| --- | --- | --- | --- |
-| dw-21a2 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | not-applicable |
+| id | assertion | state | pressure | proven_by |
+| --- | --- | --- | --- | --- |
+| dw-21a2 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | not-applicable | [lg-0002](../../execution-log.dd.md#entries) |
 
 ### tk-22a2
 
-| id | assertion | state | pressure |
-| --- | --- | --- | --- |
-| dw-22a2 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | not-applicable |
+| id | assertion | state | pressure | proven_by |
+| --- | --- | --- | --- | --- |
+| dw-22a2 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | not-applicable | [lg-0003](../../execution-log.dd.md#entries) |

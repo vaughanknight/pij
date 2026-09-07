@@ -24,24 +24,27 @@
           "title": "u2 — --role on register/adopt; `pij-rs role`; seat_roles join; ownership self-or-parent",
           "domain": "rust",
           "phase": "p2",
-          "state": "unchecked",
-          "note": "u2 pij-written-lansra implementing shared RoleService and fixture tests; u3 supplies role store helpers; PM owns wiring."
+          "state": "checked",
+          "note": "Verified native contract. Pressure remains authored not-applicable; actual alternate instrument is canonical Rust gate plus named RED/GREEN and engineering checks.",
+          "receipt": "0a7a26737d08701bddac6ccc0b6d7b040873e4f9; ../../execution-log.dd.json#entries/lg-0002"
         },
         {
           "id": "tk-21a2",
           "title": "u3 — project/stream/fence/baton/prime routes + verbs over existing tables",
           "domain": "rust",
           "phase": "p2",
-          "state": "unchecked",
-          "note": "u3 pij-general-miriam implementing governance records/migration0014 and spine verbs under accepted full ack."
+          "state": "checked",
+          "note": "Verified native contract. Pressure remains authored not-applicable; actual alternate instrument is canonical Rust gate plus named RED/GREEN and engineering checks.",
+          "receipt": "0a7a26737d08701bddac6ccc0b6d7b040873e4f9; ../../execution-log.dd.json#entries/lg-0002"
         },
         {
           "id": "tk-22a2",
           "title": "u3 — dispatch (3-state receipt) / ack / canary / attest / task set / node show",
           "domain": "rust",
           "phase": "p2",
-          "state": "unchecked",
-          "note": "u3 implements real DeliveryService-linked dispatch/ack/canary/attest/task/node; no validators until wave edit barrier."
+          "state": "checked",
+          "note": "Native u3 behavior verified by baseline absent-route RED and composed GREEN; positive canary protocol uses real SQL/HTTP/queue/publication with scripted host ports. No live-OMP canary is claimed.",
+          "receipt": "0a7a26737d08701bddac6ccc0b6d7b040873e4f9; ../../execution-log.dd.json#entries/lg-0003"
         }
       ]
     },
@@ -52,24 +55,27 @@
           {
             "id": "dw-20a2",
             "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
-            "state": "unchecked",
-            "pressure": "not-applicable"
+            "state": "checked",
+            "pressure": "not-applicable",
+            "proven_by": "../../execution-log.dd.json#entries/lg-0002"
           }
         ],
         "tk-21a2": [
           {
             "id": "dw-21a2",
             "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
-            "state": "unchecked",
-            "pressure": "not-applicable"
+            "state": "checked",
+            "pressure": "not-applicable",
+            "proven_by": "../../execution-log.dd.json#entries/lg-0002"
           }
         ],
         "tk-22a2": [
           {
             "id": "dw-22a2",
             "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
-            "state": "unchecked",
-            "pressure": "not-applicable"
+            "state": "checked",
+            "pressure": "not-applicable",
+            "proven_by": "../../execution-log.dd.json#entries/lg-0003"
           }
         ]
       }

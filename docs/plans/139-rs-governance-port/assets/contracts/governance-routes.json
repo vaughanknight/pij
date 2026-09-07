@@ -1463,7 +1463,7 @@
                   "relay": "\u26a0\ufe0f anomaly open-question on pij-parent: decision 'decision-139-proof' asked by pij-worker is unanswered \u2014 evidence: spine 101"
                 },
                 {
-                  "kind": "unacked-dispatch",
+                  "kind": "delivered-unacked-stale",
                   "nodeId": "pij-worker",
                   "detail": "dispatch:dispatch-139-proof remains delivered-unacked \u2014 delivery landed but no durable brief ack followed",
                   "evidence": [
@@ -1471,7 +1471,7 @@
                   ],
                   "recordRef": "dispatch:dispatch-139-proof",
                   "ageMs": 900001,
-                  "relay": "\u26a0\ufe0f anomaly unacked-dispatch on pij-worker: dispatch:dispatch-139-proof remains delivered-unacked \u2014 delivery landed but no durable brief ack followed \u2014 evidence: spine 100"
+                  "relay": "\u26a0\ufe0f anomaly delivered-unacked-stale on pij-worker: dispatch:dispatch-139-proof remains delivered-unacked \u2014 delivery landed but no durable brief ack followed \u2014 evidence: spine 100"
                 },
                 {
                   "kind": "dead-seat",
@@ -1544,7 +1544,7 @@
                   "relay": "\u26a0\ufe0f anomaly open-question on pij-parent: decision 'decision-139-proof' asked by pij-worker is unanswered \u2014 evidence: spine 101"
                 },
                 {
-                  "kind": "unacked-dispatch",
+                  "kind": "delivered-unacked-stale",
                   "nodeId": "pij-worker",
                   "detail": "dispatch:dispatch-139-proof remains delivered-unacked \u2014 delivery landed but no durable brief ack followed",
                   "evidence": [
@@ -1552,7 +1552,7 @@
                   ],
                   "recordRef": "dispatch:dispatch-139-proof",
                   "ageMs": 900001,
-                  "relay": "\u26a0\ufe0f anomaly unacked-dispatch on pij-worker: dispatch:dispatch-139-proof remains delivered-unacked \u2014 delivery landed but no durable brief ack followed \u2014 evidence: spine 100"
+                  "relay": "\u26a0\ufe0f anomaly delivered-unacked-stale on pij-worker: dispatch:dispatch-139-proof remains delivered-unacked \u2014 delivery landed but no durable brief ack followed \u2014 evidence: spine 100"
                 },
                 {
                   "kind": "dead-seat",
@@ -1571,6 +1571,8 @@
       ],
       "invariants": [
         "POST argv/caller and GET query read variants invoke one shared parser/projection. All filters survive the shim; unknown filters refuse.",
+        "GET here=<absolute-path> scopes explicitly; bare here=true refuses without guessing daemon cwd. POST --here resolves caller scope. Scope errors explain that status-stale is node-keyed and should be queried unscoped; valid filters remain valid, with an optional advisory only.",
+        "Project membership comes from real assignment.project associations; do not invent a project for a node-only anomaly.",
         "Rows are computed only from rs records and spine. No stored anomaly table or legacy filesystem reads."
       ]
     },
@@ -1710,6 +1712,8 @@
       ],
       "invariants": [
         "Answer permission is asker or current recorded parent of asker; root question visibility may fall back to current prime without granting new answer authority.",
+        "Live decisions/anomalies and parent filters project the current recorded parent; decision.opened preserves parent-at-ask. Reads never rewrite the durable question or invent a second parent field.",
+        "Question creation commits decision row plus decision.opened first, atomically, with question_seq equal to the allocated event seq. Retain report.question semantic publication afterward outside the bus lock; second-step failure explicitly names the durable decision rather than losing it.",
         "For another seat answer, persist answer/outbound linkage before delivering through existing DeliveryService to asked_by; do not route to parent instead. Use stable answer_msg_id.",
         "Non-self answer closes only after durable delivery acceptance; rejection leaves an inspectable open decision/refusal. Self-answer closes with resolved answerer and decision.answered, answer_msg_id=null, and no redundant push. The existing /v1/send self-send refusal remains unchanged.",
         "Repeated identical answer must not duplicate push; conflicting answer on an answered row refuses. No custom retries or new transport."
@@ -1756,7 +1760,7 @@
       "invariants": [
         "Self or recorded parent may tombstone. This operation does not signal a process or kill a tmux pane.",
         "Emit stamped seat.tombstone through the sole event bus; active /v1/seats excludes it. Keep tombstone evidence for history/revive.",
-        "Unknown target refuses; repeated close returns the existing tombstone without inventing a new incarnation."
+        "Unknown target refuses. A parent repeat-close returns the existing tombstone/event without inventing an incarnation. A retired self retry retains universal identity refusal, with the tombstone seq named in its decodable evidence; no authentication exception."
       ]
     },
     {
@@ -2062,7 +2066,7 @@
         "relay": "\u26a0\ufe0f anomaly open-question on pij-parent: decision 'decision-139-proof' asked by pij-worker is unanswered \u2014 evidence: spine 101"
       },
       {
-        "kind": "unacked-dispatch",
+        "kind": "delivered-unacked-stale",
         "nodeId": "pij-worker",
         "detail": "dispatch:dispatch-139-proof remains delivered-unacked \u2014 delivery landed but no durable brief ack followed",
         "evidence": [
@@ -2070,7 +2074,7 @@
         ],
         "recordRef": "dispatch:dispatch-139-proof",
         "ageMs": 900001,
-        "relay": "\u26a0\ufe0f anomaly unacked-dispatch on pij-worker: dispatch:dispatch-139-proof remains delivered-unacked \u2014 delivery landed but no durable brief ack followed \u2014 evidence: spine 100"
+        "relay": "\u26a0\ufe0f anomaly delivered-unacked-stale on pij-worker: dispatch:dispatch-139-proof remains delivered-unacked \u2014 delivery landed but no durable brief ack followed \u2014 evidence: spine 100"
       },
       {
         "kind": "dead-seat",
@@ -2160,7 +2164,7 @@
     "unacked_dispatch_stale_ms": 900000,
     "relay_template": "\u26a0\ufe0f anomaly {kind} on {nodeId}{assignment_suffix}: {detail} \u2014 evidence: spine {evidence_csv_or_none}",
     "evidence": "real rs seqs only; never guessed counts or legacy timestamps",
-    "decision_parent_age": "An open decision older than status_stale_ms produces status-stale for its responsible parent even when that parent recently reported. Include decision ref; ordinary open-question remains visible.",
+    "decision_parent_age": "An open decision older than status_stale_ms produces status-stale for its CURRENT responsible parent even when that parent recently reported. Include decision ref; ordinary open-question remains visible. Historical parent-at-ask stays in decision.opened, not the live responsibility projection.",
     "verification": "A receipt only verifies its referenced done_seq; newer done remains unverified."
   },
   "isolation": {

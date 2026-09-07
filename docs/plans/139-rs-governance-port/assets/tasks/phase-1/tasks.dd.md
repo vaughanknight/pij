@@ -36,8 +36,8 @@ Contract + one spine writer
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | tk-10a1 | u0 — freeze governance-routes.json + event payload samples (PM) | contract | p1 | [x] checked | — | assets/contracts/contract-validation.json; baseline-fanout-red.json seq7/8 missing while9/10 delivered | — | — | — | — |
-| tk-11a1 | u1 — EventBus is the only spine writer; ReportService/Registry publish with at + payload | rust | p1 | [ ] unchecked | u1 pij-electoral-orlandine implementing under accepted canary/ack; atomic store transaction publication seam ruled; validation deferred until edit barrier. | — | — | — | — | — |
-| tk-12a1 | u1 — RED: chainglass positive control fails on main, GREEN after; no-direct-INSERT grep test | rust | p1 | [ ] unchecked | Baseline live RED captured at seq7/8 vs9/10; u1 authors fixture-backed named regressions and INSERT guard before source changes. | — | — | — | — | — |
+| tk-11a1 | u1 — EventBus is the only spine writer; ReportService/Registry publish with at + payload | rust | p1 | [x] checked | Verified native contract. Pressure remains authored not-applicable; actual alternate instrument is canonical Rust gate plus named RED/GREEN and engineering checks. | 0a7a26737d08701bddac6ccc0b6d7b040873e4f9; ../../execution-log.dd.json#entries/lg-0002 | — | — | — | — |
+| tk-12a1 | u1 — RED: chainglass positive control fails on main, GREEN after; no-direct-INSERT grep test | rust | p1 | [x] checked | Verified native contract. Pressure remains authored not-applicable; actual alternate instrument is canonical Rust gate plus named RED/GREEN and engineering checks. | 0a7a26737d08701bddac6ccc0b6d7b040873e4f9; ../../execution-log.dd.json#entries/lg-0002 | — | — | — | — |
 
 <a id="done-when"></a>
 
@@ -51,12 +51,12 @@ Contract + one spine writer
 
 ### tk-11a1
 
-| id | assertion | state | pressure |
-| --- | --- | --- | --- |
-| dw-11a1 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | not-applicable |
+| id | assertion | state | pressure | proven_by |
+| --- | --- | --- | --- | --- |
+| dw-11a1 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | not-applicable | [lg-0002](../../execution-log.dd.md#entries) |
 
 ### tk-12a1
 
-| id | assertion | state | pressure |
-| --- | --- | --- | --- |
-| dw-12a1 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | not-applicable |
+| id | assertion | state | pressure | proven_by |
+| --- | --- | --- | --- | --- |
+| dw-12a1 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | not-applicable | [lg-0002](../../execution-log.dd.md#entries) |
