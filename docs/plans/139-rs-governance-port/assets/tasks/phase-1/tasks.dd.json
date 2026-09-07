@@ -21,21 +21,22 @@
       "value": [
         {
           "id": "tk-10a1",
-          "title": "u0 \u2014 freeze governance-routes.json + event payload samples (PM)",
+          "title": "u0 — freeze governance-routes.json + event payload samples (PM)",
           "domain": "contract",
           "phase": "p1",
-          "state": "unchecked"
+          "state": "checked",
+          "receipt": "assets/contracts/contract-validation.json; baseline-fanout-red.json seq7/8 missing while9/10 delivered"
         },
         {
           "id": "tk-11a1",
-          "title": "u1 \u2014 EventBus is the only spine writer; ReportService/Registry publish with at + payload",
+          "title": "u1 — EventBus is the only spine writer; ReportService/Registry publish with at + payload",
           "domain": "rust",
           "phase": "p1",
           "state": "unchecked"
         },
         {
           "id": "tk-12a1",
-          "title": "u1 \u2014 RED: chainglass positive control fails on main, GREEN after; no-direct-INSERT grep test",
+          "title": "u1 — RED: chainglass positive control fails on main, GREEN after; no-direct-INSERT grep test",
           "domain": "rust",
           "phase": "p1",
           "state": "unchecked"
@@ -48,8 +49,8 @@
         "tk-10a1": [
           {
             "id": "dw-10a1",
-            "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
-            "state": "unchecked",
+            "assertion": "Canonical routes/events and isolation recipe frozen; fixture consistency receipt passes; baseline two-subscriber RED documented with actual seqs. u0 has no product unit test of its own per impl-guide.",
+            "state": "checked",
             "pressure": "not-applicable"
           }
         ],
@@ -71,6 +72,5 @@
         ]
       }
     }
-  ],
-  "references": []
+  ]
 }

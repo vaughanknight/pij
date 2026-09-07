@@ -67,7 +67,7 @@ You are the PM for plan 139-rs-governance-port. You orchestrate implementation o
 | d1 | Every plan task checked via ddocs with evidence; every AC closed. |
 | d2 | harness checks green on the composed branch (your own worktree — the verdict is yours). |
 | d3 | Reviewer verdict recorded as a ddoc; every finding fixed or refuted with evidence. |
-| d4 | Builder flow closed out: post-flight run, plan folder archived, PR open into main with conventional-commit history. |
+| d4 | Post-flight run, plan folder archived, composed sha and rescued buffers handed to prime; prime opens the PR and deploys. Production and chainglass acceptance receipts remain explicitly pending prime deploy. |
 | d5 | Coders stood down (buffers rescued from their worktrees FIRST), worktrees tidied, completion report to prime. |
 
 <a id="refs"></a>

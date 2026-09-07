@@ -35,7 +35,7 @@ Contract + one spine writer
 
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| tk-10a1 | u0 — freeze governance-routes.json + event payload samples (PM) | contract | p1 | [ ] unchecked | — | — | — | — | — | — |
+| tk-10a1 | u0 — freeze governance-routes.json + event payload samples (PM) | contract | p1 | [x] checked | — | assets/contracts/contract-validation.json; baseline-fanout-red.json seq7/8 missing while9/10 delivered | — | — | — | — |
 | tk-11a1 | u1 — EventBus is the only spine writer; ReportService/Registry publish with at + payload | rust | p1 | [ ] unchecked | — | — | — | — | — | — |
 | tk-12a1 | u1 — RED: chainglass positive control fails on main, GREEN after; no-direct-INSERT grep test | rust | p1 | [ ] unchecked | — | — | — | — | — | — |
 
@@ -47,7 +47,7 @@ Contract + one spine writer
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-10a1 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | not-applicable |
+| dw-10a1 | Canonical routes/events and isolation recipe frozen; fixture consistency receipt passes; baseline two-subscriber RED documented with actual seqs. u0 has no product unit test of its own per impl-guide. | [x] checked | not-applicable |
 
 ### tk-11a1
 

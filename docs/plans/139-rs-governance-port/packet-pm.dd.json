@@ -6,7 +6,7 @@
     {
       "name": "meta",
       "value": {
-        "title": "PM packet \u2014 rs-governance-port",
+        "title": "PM packet — rs-governance-port",
         "role": "pm",
         "plan": "docs/plans/139-rs-governance-port/plan.dd.json",
         "seat": "pij-lonely-ikrie",
@@ -15,14 +15,14 @@
     },
     {
       "name": "mission",
-      "value": "You are the PM for plan 139-rs-governance-port. You orchestrate implementation on this branch: fan the work out across coders per the impl-guide, compose, get it reviewed, close out. You do NOT set product direction \u2014 prime (pij-minor-unicorn) is the product owner and relays Jordan. STANDING RULES: never run `flowspace3 daemon` (client verbs only); never `npm install` or `npm ci` in main's checkout and never touch main's node_modules (worktrees have none by design \u2014 use main's binaries read-only via absolute paths); never restart the live daemon on port 7461 (prime does, after merge) \u2014 every pre-merge proof runs on an isolated daemon built from a worktree; never `omp update`."
+      "value": "You are the PM for plan 139-rs-governance-port. You orchestrate implementation on this branch: fan the work out across coders per the impl-guide, compose, get it reviewed, close out. You do NOT set product direction — prime (pij-minor-unicorn) is the product owner and relays Jordan. STANDING RULES: never run `flowspace3 daemon` (client verbs only); never `npm install` or `npm ci` in main's checkout and never touch main's node_modules (worktrees have none by design — use main's binaries read-only via absolute paths); never restart the live daemon on port 7461 (prime does, after merge) — every pre-merge proof runs on an isolated daemon built from a worktree; never `omp update`."
     },
     {
       "name": "instructions",
       "value": [
         {
           "id": "i0",
-          "text": "CURRENT STATE, falsifiable in one read: assets/inputs/rs-vs-legacy-inventory-2026-09-07.md. Verify two premises yourself before dispatch: (1) `pij anomalies` answers from the legacy spine (seq ~115k) while `pij-rs state` shows the rs spine (~15k); (2) chainglass's fan-out control (assets/inputs/prime-ledger-2026-09.md, first item) \u2014 reproduce it on an isolated daemon from this branch. Models (Jordan 2026-09-07): you = omp github-copilot/gpt-6-astra-1m xhigh; coders omp github-copilot/gpt-6-astra-1m high; reviewer omp github-copilot/claude-opus-5 high. Every spawned coder/reviewer MUST load BOTH the pij skill and the builder skill and act from contracts."
+          "text": "CURRENT STATE, falsifiable in one read: assets/inputs/rs-vs-legacy-inventory-2026-09-07.md. Verify two premises yourself before dispatch: (1) `pij anomalies` answers from the legacy spine (seq ~115k) while `pij-rs state` shows the rs spine (~15k); (2) chainglass's fan-out control (assets/inputs/prime-ledger-2026-09.md, first item) — reproduce it on an isolated daemon from this branch. Models (Jordan 2026-09-07): you = omp github-copilot/gpt-6-astra-1m xhigh; coders omp github-copilot/gpt-6-astra-1m high; reviewer omp github-copilot/claude-opus-5 high. Every spawned coder/reviewer MUST load BOTH the pij skill and the builder skill and act from contracts."
         },
         {
           "id": "i1",
@@ -30,11 +30,11 @@
         },
         {
           "id": "i2",
-          "text": "Wave 0 is yours: write assets/contracts/governance-routes.json and governance-events.json (every new route request/response, every event payload, decision + anomaly rows, refusal envelopes). Raise seam doubts to prime NOW \u2014 the window closes when wave 1 starts."
+          "text": "Wave 0 is yours: write assets/contracts/governance-routes.json and governance-events.json (every new route request/response, every event payload, decision + anomaly rows, refusal envelopes). Raise seam doubts to prime NOW — the window closes when wave 1 starts."
         },
         {
           "id": "i3",
-          "text": "Fan-out per impl-guide waves: 1 = u1 \u2225 u2 \u2225 u3; 2 = u4 \u2225 u5; 3 = u6. Each coder in its own worktree off this branch, packet on disk, pointer sent (never shell-interpolated bodies). Every coder packet carries the isolated-daemon recipe (`--state-dir`, `PIJ_RS_ADDR`, own port) and the forbidden list (main, node_modules, port 7461, global links, omp update)."
+          "text": "Fan-out per impl-guide waves: 1 = u1 ∥ u2 ∥ u3; 2 = u4 ∥ u5; 3 = u6. Each coder in its own worktree off this branch, packet on disk, pointer sent (never shell-interpolated bodies). Every coder packet carries the isolated-daemon recipe (`--state-dir`, `PIJ_RS_ADDR`, own port) and the forbidden list (main, node_modules, port 7461, global links, omp update)."
         },
         {
           "id": "i4",
@@ -80,7 +80,7 @@
       "value": {
         "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port",
         "branch": "139-rs-governance-port",
-        "fence": "none \u2014 unit fences are in impl-guide units[].paths",
+        "fence": "none — unit fences are in impl-guide units[].paths",
         "forbidden_note": "Never write .harness/government/**, the-flow state by hand, another seat's worktree, main's checkout or node_modules, or the live daemon. Never merge into main."
       }
     },
@@ -93,7 +93,7 @@
         },
         {
           "id": "d2",
-          "text": "harness checks green on the composed branch (your own worktree \u2014 the verdict is yours)."
+          "text": "harness checks green on the composed branch (your own worktree — the verdict is yours)."
         },
         {
           "id": "d3",
@@ -101,7 +101,7 @@
         },
         {
           "id": "d4",
-          "text": "Builder flow closed out: post-flight run, plan folder archived, PR open into main with conventional-commit history."
+          "text": "Post-flight run, plan folder archived, composed sha and rescued buffers handed to prime; prime opens the PR and deploys. Production and chainglass acceptance receipts remain explicitly pending prime deploy."
         },
         {
           "id": "d5",
@@ -115,12 +115,12 @@
         {
           "id": "r0",
           "path": ".agents-skills-port/pij-team/TENETS.md",
-          "note": "doctrine \u2014 read first, cite don't restate"
+          "note": "doctrine — read first, cite don't restate"
         },
         {
           "id": "r1",
           "path": "docs/plans/139-rs-governance-port/impl-guide.dd.json",
-          "note": "HOW to decompose and compose \u2014 prime-authored, binding"
+          "note": "HOW to decompose and compose — prime-authored, binding"
         },
         {
           "id": "r2",
@@ -140,7 +140,7 @@
         {
           "id": "r5",
           "path": ".harness/government/how-we-work.md",
-          "note": "\u00a79b orchestration lifecycle"
+          "note": "§9b orchestration lifecycle"
         },
         {
           "id": "r6",

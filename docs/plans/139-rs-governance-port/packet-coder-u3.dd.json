@@ -1,0 +1,143 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Coder u3 — governance records: project/stream/fence/dispatch/ack/canary/attest/task/node/baton/prime",
+        "role": "coder",
+        "plan": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3/docs/plans/139-rs-governance-port/plan.dd.json",
+        "seat": "unbound; actual registry identity required at canary",
+        "updated": "2026-09-07"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "Build exactly u3: governance records: project/stream/fence/dispatch/ack/canary/attest/task/node/baton/prime. Additive routes and verbs over the existing tables; dispatch carries a packet pointer with a three-state receipt (queued/delivered/acked) riding /v1/send; node show renders the tree from rs rows. PM owns final composition and validation; prime owns product scope and production deploy."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        {
+          "id": "i0",
+          "text": "FIRST use /Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3 as cwd and ABSOLUTE paths for every tool operation. Spawn directory is main; never edit main. Load BOTH skill://pij and skill://builder, then this packet and contracts. Your model must be omp github-copilot/gpt-6-astra-1m high, not inferred from requested argv."
+        },
+        {
+          "id": "i1",
+          "text": "ACK before editing: quote `pij whoami` identity and the actual OMP footer model line, your absolute worktree root, unit scope, numbered implementation plan, and concrete seam doubts. Reply via pij_send to pij-lonely-ikrie. No code until PM rules the ack."
+        },
+        {
+          "id": "i2",
+          "text": "Read only your unit/phase plus governance-routes.json and governance-events.json. Implement only contract rows owned by you. Contract changes require PM then prime ack; no silent alternate schemas or naming."
+        },
+        {
+          "id": "i3",
+          "text": "Write named observable regression tests first; tests must consume u0 JSON fixture cases/payloads, not restate values in independent constants. Include a baseline-compatible HTTP/CLI case that demonstrably fails against the pre-fix daemon. PM already reproduced u1 baseline control; receipt is baseline-fanout-red.json."
+        },
+        {
+          "id": "i4",
+          "text": "CONCURRENT EDIT WAVE: skip ALL builds, formatters, linters, test runs, harness boot/checks and commit hooks for now. Do not commit yet. Write code/tests and report READY_TO_VALIDATE with exact commands and baseline-compatible test names, then hold. PM runs verification after all wave edits pause, composes, commits, and reports acceptance. This is not permission to claim DONE without proof."
+        },
+        {
+          "id": "i5",
+          "text": "No shared wiring edits: PM owns daemon http/mod.rs route and AppState wiring, daemon lib.rs construction, CLI main.rs command wiring, and common lib.rs exports/migration registration. Ship an exact snap-in recipe in assets/receipt-u3.json (requested artifact) naming types, constructors, call order and match arms. If an exported type requires caller changes, use LSP references and enumerate those callers in recipe."
+        },
+        {
+          "id": "i6",
+          "text": "All future runtime proof MUST copy isolation recipe from governance-routes.json#isolation: private PORT + --state-dir + HOME + CLAUDE_CONFIG_DIR + XDG_CONFIG_HOME + TMUX socket for daemon AND clients. Never bind 7461, restart prod, run flowspace3 daemon, npm install/ci in main, alter main node_modules/global links/settings, or run omp update. No live fleet probes except ordinary pij peer messages/status cards."
+        },
+        {
+          "id": "i7",
+          "text": "Use flowspace3 search before meaning-shaped discovery (client only; healthy on 7373), exact grep for identifiers, and LSP for references/definitions/refactors. Report real misses/friction with harness observe; never drain/clear buffers. No reading pij inbox transport logs."
+        },
+        {
+          "id": "i8",
+          "text": "Status card at work start and end with pij-rs report now. Use pij_send for every PM message, concise pointer delivery. If you use internal scout agents, prime/PM messages can be misrouted into them: explicitly relay any parent instructions back to your main context."
+        },
+        {
+          "id": "i9",
+          "text": "READY_TO_VALIDATE receipt includes exact changed paths, tests authored, baseline RED strategy, snap-in recipe, toolchain versions, and ASSUMPTIONS about sibling call order/store state/event ownership. No stubs, placeholder implementations, fake fallback, or unimplemented subverbs. Do not merge/open PR/deploy."
+        }
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        {
+          "id": "w1",
+          "text": "The PM is your interface: acks, questions, done reports. You never message prime or Jordan directly unless the PM's seat is dead."
+        },
+        {
+          "id": "w2",
+          "text": "DEFER to the PM: interface changes (they affect sibling units), dependency additions, schema/migration changes, anything outside your paths."
+        },
+        {
+          "id": "w3",
+          "text": "Your evidence outranks the packet: if the brief is wrong, say so at ack or stop-and-ask with the measurement — do not silently code around it."
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3",
+        "branch": "139-rs-governance-port-u3",
+        "fence": "crates/store/src/{orchestration,dispatch,governance}.rs; crates/store/migrations/0014_*.sql; crates/daemon/src/http/governance.rs (new, incl spine append/events/render); crates/cli/src/governance.rs (new, incl spine verbs); PM owns Route/CLI/module wiring.; crates/core/src/orchestration/{governance,inventory}.rs and focused tests for extended existing row models; PM owns overlapping common exports.",
+        "forbidden_note": "Never write main, another unit worktree, node_modules, global links/settings, live daemon, port7461, .harness/government/**, .the-flow-state.json, the-flow.json, or the-flow.md. No migrations except owned number: u3=0014; u1/u2 none. ABSOLUTE FILE PATHS ONLY."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        {
+          "id": "d1",
+          "text": "Every owned contract behavior is implemented, including refusal/boundary cases; test fixtures reference u0 canonical JSON."
+        },
+        {
+          "id": "d2",
+          "text": "Named baseline-compatible regression tests and focused tests are provided; PM must run and record RED/GREEN before acceptance."
+        },
+        {
+          "id": "d3",
+          "text": "After concurrent editing is paused, PM validates composed tree and full harness checks. READY_TO_VALIDATE is a checkpoint, never a DONE claim."
+        },
+        {
+          "id": "d4",
+          "text": "Exact snap-in recipe, changed paths, composition assumptions, and original .harness/temp buffers supplied to PM. No cross-unit wiring changes."
+        }
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        {
+          "id": "r0",
+          "path": "skill://pij-team/TENETS.md",
+          "note": "frozen seams and snap-in recipe doctrine"
+        },
+        {
+          "id": "r1",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3/docs/plans/139-rs-governance-port/impl-guide.dd.json",
+          "note": "binding decomposition"
+        },
+        {
+          "id": "r2",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3/docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json",
+          "note": "canonical requests/responses/refusals/isolation"
+        },
+        {
+          "id": "r3",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3/docs/plans/139-rs-governance-port/assets/contracts/governance-events.json",
+          "note": "canonical event payloads/live ordering"
+        },
+        {
+          "id": "r4",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3/docs/plans/139-rs-governance-port/assets/contracts/baseline-fanout-red.json",
+          "note": "actual u0 RED receipt"
+        }
+      ]
+    }
+  ]
+}

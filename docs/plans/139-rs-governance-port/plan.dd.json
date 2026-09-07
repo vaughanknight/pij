@@ -6,7 +6,7 @@
     {
       "name": "meta",
       "value": {
-        "title": "rs governance port \u2014 routes and verbs over the rs store, anomalies as a spine view, lifecycle, skills re-pointed (folds in plan 138)",
+        "title": "rs governance port — routes and verbs over the rs store, anomalies as a spine view, lifecycle, skills re-pointed (folds in plan 138)",
         "slug": "rs-governance-port",
         "ordinal": 139,
         "status": "draft",
@@ -23,7 +23,7 @@
         "One governance world: a prime, PM, coder, or UI consumer following the pij skill writes and reads only rs; `pij <governance verb>` never silently touches the legacy store.",
         "One spine writer: every row reaches a live /v1/events subscriber with a real `at` and a decodable payload (seat.put carries the descriptor, seat.tombstone the reason).",
         "Role is asserted by the owner (self or parent), persisted in seat_roles, joined onto /v1/seats.role and StateCard.role.",
-        "Governance records round-trip through rs: project, stream, fence, dispatch with three-state receipt, ack, canary, attest, task set, node show, baton/prime designation \u2014 over the existing tables, additive routes, v2 envelopes.",
+        "Governance records round-trip through rs: project, stream, fence, dispatch with three-state receipt, ack, canary, attest, task set, node show, baton/prime designation — over the existing tables, additive routes, v2 envelopes.",
         "Anomalies are a derived view over the rs spine and seat rows (status-stale, unverified-done, open-question, unacked-dispatch, dead-seat), and `report verify` closes the done-is-a-claim loop.",
         "A question asked by a seat is a durable pending decision that surfaces to its parent/prime and routes the answer back to the asker; the skill's 'ask inline, persist the pending decision' invariant has a verb behind it.",
         "Lifecycle: `pij-rs close <id>` (owner-only tombstone) and a reaper that trusts proc{pid,proc_start}+pane, never pid alone.",
@@ -34,10 +34,10 @@
       "name": "non_goals",
       "value": [
         "No change to delivery semantics shipped in 134/136/137/#373/#374 (gate removal, native Copilot, omp custom-message path).",
-        "No port of watchdog, chore, focus, agent packs, bg, watch/unwatch, link/tree, compact-self, models, telegram verbs in this plan \u2014 they get an explicit refusal naming their status (ledger), not a silent legacy write.",
+        "No port of watchdog, chore, focus, agent packs, bg, watch/unwatch, link/tree, compact-self, models, telegram verbs in this plan — they get an explicit refusal naming their status (ledger), not a silent legacy write.",
         "No migration of historical legacy governance records or the 1456 unstamped seat.put rows; consumers replay from the cut.",
-        "No role inference from names, window titles, or packets \u2014 role is asserted.",
-        "No control-command (`compact`/`new`/`reload`) transport on /v1/send \u2014 sibling ledger item, separate plan."
+        "No role inference from names, window titles, or packets — role is asserted.",
+        "No control-command (`compact`/`new`/`reload`) transport on /v1/send — sibling ledger item, separate plan."
       ]
     },
     {
@@ -58,13 +58,13 @@
         {
           "id": "AC3",
           "claim": "role round-trip and ownership",
-          "text": "`pij-rs adopt %N --harness claude --role prime` \u21d2 /v1/seats role=prime; `pij-rs role <id> reviewer` by the seat or its parent updates it and a third seat is refused with a decodable reason; StateCard.role follows; `pij-rs list` shows it; chainglass confirms rendering with no banner (antelope, cited).",
+          "text": "`pij-rs adopt %N --harness claude --role prime` ⇒ /v1/seats role=prime; `pij-rs role <id> reviewer` by the seat or its parent updates it and a third seat is refused with a decodable reason; StateCard.role follows; `pij-rs list` shows it; chainglass confirms rendering with no banner (antelope, cited).",
           "state": "unchecked"
         },
         {
           "id": "AC4",
           "claim": "governance records round-trip on rs",
-          "text": "On the isolated daemon: `pij-rs project create` \u2192 `stream create` \u2192 `fence show` \u2192 `dispatch <seat> --packet <file>` (three-state receipt: queued/delivered/acked) \u2192 recipient `ack` \u2192 `canary` \u2192 `attest` \u2192 `task set` \u2192 `node show` renders the tree with every row from the rs spine (seqs cited); the same sequence typed as legacy `pij <verb>` serves from rs (shim) with identical JSON.",
+          "text": "On the isolated daemon: `pij-rs project create` → `stream create` → `fence show` → `dispatch <seat> --packet <file>` (three-state receipt: queued/delivered/acked) → recipient `ack` → `canary` → `attest` → `task set` → `node show` renders the tree with every row from the rs spine (seqs cited); the same sequence typed as legacy `pij <verb>` serves from rs (shim) with identical JSON. Also append one caller-attributed literal-kind event with spine append, observe it on both live subscribers, and show it in spine events/render without legacy writes. For every ported governance verb, native and legacy-shim --json output must be byte-identical on equivalent deterministic state, pinned as goldens.",
           "state": "unchecked"
         },
         {
@@ -76,19 +76,19 @@
         {
           "id": "AC6",
           "claim": "questions are durable pending decisions with answer routing",
-          "text": "Seat A `report question \"\u2026\"` \u21d2 a decision row (open) visible to A's parent via anomalies and `pij-rs decisions`; the parent `pij-rs answer <decision> \"\u2026\"` \u21d2 the answer is delivered to A as a pushed turn AND the row closes; unanswered rows age into status-stale for the parent.",
+          "text": "Seat A `report question \"…\"` ⇒ a decision row (open) visible to A's parent via anomalies and `pij-rs decisions`; the parent `pij-rs answer <decision> \"…\"` ⇒ the answer is delivered to A as a pushed turn AND the row closes; unanswered rows age into status-stale for the parent.",
           "state": "unchecked"
         },
         {
           "id": "AC7",
           "claim": "close + reap",
-          "text": "`pij-rs close <id>` on an owned seat writes seat.tombstone (at, reason) and the row leaves /v1/seats; on another seat it refuses decodably. `pij-rs reap --dry-run` then `reap` on the production store tombstones rows whose pid is dead or whose proc_start no longer matches, refuses a recycled-pid live process (plan 095 fixture), and prints before/after counts.",
+          "text": "Owner close writes seat.tombstone with at and reason and removes the row from /v1/seats; unrelated callers receive E-RS-OWNERSHIP. Auto-reap requires process confirmed dead or proc_start mismatched AND recorded pane confirmed absent; paneless seats decide on process identity alone. Unknown evidence never reaps and is reported unverifiable. Recycled-pid fixture proves no signal reaches the replacement process. Dry-run reports identical candidates without writes; run prints before/after counts. Isolated-daemon proof before handoff; production receipt pending prime deploy.",
           "state": "unchecked"
         },
         {
           "id": "AC8",
           "claim": "legacy shim: serve or refuse, never silent legacy",
-          "text": "For every verb in skills/pij's CLI-verb table, `pij <verb> \u2026` either serves from rs (routed) or exits non-zero with `E-RS-UNPORTED <verb>: \u2026` naming the ledger item; an enforcement test enumerates the table against RS_ROUTE_TABLE so a new verb cannot fall through; `pij anomalies` no longer answers from the legacy spine.",
+          "text": "For every verb in skills/pij's CLI-verb table, `pij <verb> …` either serves from rs (routed) or exits non-zero with `E-RS-UNPORTED <verb>: …` naming the ledger item; an enforcement test enumerates the table against RS_ROUTE_TABLE so a new verb cannot fall through; `pij anomalies` no longer answers from the legacy spine.",
           "state": "unchecked"
         },
         {
@@ -111,7 +111,7 @@
         },
         {
           "id": "ph-b2d4",
-          "title": "Role + governance records (u2 \u2225 u3)",
+          "title": "Role + governance records (u2 ∥ u3)",
           "brief": "u2: --role on register/adopt, `pij-rs role`, seat_roles joined onto /v1/seats and StateCard, ownership self-or-parent. u3: routes + verbs over projects/streams/fences/dispatches/batons/prime_designation + canary/attest/task/node; three-state dispatch receipts.",
           "state": "unchecked",
           "tasks": "assets/tasks/phase-2/tasks.dd.json#tasks",
@@ -121,8 +121,8 @@
         },
         {
           "id": "ph-e6f8",
-          "title": "Anomalies, verify, decisions + lifecycle (u4 \u2225 u5)",
-          "brief": "u4: anomalies derived from rs spine + rows; `report verify`; decisions (question\u2192answer routing to the asker). u5: `close` (owner-only tombstone) + `reap` over proc{pid,proc_start}+pane with dry-run.",
+          "title": "Anomalies, verify, decisions + lifecycle (u4 ∥ u5)",
+          "brief": "u4: anomalies derived from rs spine + rows; `report verify`; decisions (question→answer routing to the asker). u5: `close` (owner-only tombstone) + `reap` over proc{pid,proc_start}+pane with dry-run.",
           "state": "unchecked",
           "tasks": "assets/tasks/phase-3/tasks.dd.json#tasks",
           "depends_on": [
