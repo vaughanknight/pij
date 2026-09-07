@@ -1,5 +1,6 @@
 //! `pij-rs` — one binary, two composition roots.
 
+mod commit_trailers;
 mod identity;
 
 use std::collections::BTreeMap;
@@ -156,6 +157,8 @@ enum Command {
         #[arg(long)]
         pane: Option<String>,
     },
+    /// Print derived git commit trailers; unavailable values are diagnosed on stderr.
+    CommitTrailers,
     /// Confirm the binding `adopt` already made.
     Phonehome {
         /// Asserted seat id. Defaults to `$PIJ_SESSION_ID`.
@@ -534,7 +537,12 @@ async fn run(cli: Cli) -> ExitCode {
     };
     let client = match DaemonClient::new(&state_dir, &addr) {
         Ok(client) => client,
-        Err(error) => return emit(&setup_refusal::<Value>(command_name, error), cli.json),
+        Err(error) => {
+            if matches!(cli.command, Command::CommitTrailers) {
+                return commit_trailers::fail(error);
+            }
+            return emit(&setup_refusal::<Value>(command_name, error), cli.json);
+        }
     };
 
     match cli.command {
@@ -610,6 +618,9 @@ async fn run(cli: Cli) -> ExitCode {
             &client.whoami(&identity_request(seat, pane)).await,
             cli.json,
         ),
+        Command::CommitTrailers => {
+            commit_trailers::run(&client, &identity_request(None, None)).await
+        }
         Command::Phonehome { seat, pane } => emit(
             &client.phonehome(&identity_request(seat, pane)).await,
             cli.json,
@@ -861,6 +872,9 @@ fn malformed_addr(source: &str, value: &str, expected: &str) -> String {
 }
 
 fn emit_config_error(cli: &Cli, message: String) -> ExitCode {
+    if matches!(cli.command, Command::CommitTrailers) {
+        return commit_trailers::fail(message);
+    }
     emit(
         &setup_refusal::<Value>(
             cli.command.name(),
@@ -1603,6 +1617,7 @@ impl Command {
             Command::Register { .. } => "pij register",
             Command::Adopt { .. } => "pij adopt",
             Command::Whoami { .. } => "pij whoami",
+            Command::CommitTrailers => "pij commit-trailers",
             Command::Phonehome { .. } => "pij phonehome",
             Command::Send { .. } => "pij send",
             Command::Spawn { .. } => "pij spawn",
@@ -1700,6 +1715,7 @@ mod tests {
                 "register",
                 "adopt",
                 "whoami",
+                "commit-trailers",
                 "phonehome",
                 "spawn",
                 "revive",
@@ -1712,6 +1728,19 @@ mod tests {
                 "tail"
             ]
         );
+    }
+
+    #[test]
+    fn commit_trailers_accepts_no_identity_or_plan_overrides() {
+        assert!(matches!(
+            Cli::try_parse_from(["pij-rs", "commit-trailers"])
+                .expect("trailer command")
+                .command,
+            Command::CommitTrailers
+        ));
+        for flag in ["--seat", "--prime", "--plan"] {
+            assert!(Cli::try_parse_from(["pij-rs", "commit-trailers", flag, "invented"]).is_err());
+        }
     }
 
     #[test]

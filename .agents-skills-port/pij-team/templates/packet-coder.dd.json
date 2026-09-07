@@ -38,7 +38,7 @@
 				},
 				{
 					"id": "i5",
-					"text": "Commit with `harness commit` (conventional commits are binding), status card at start and end of each unit of work (`pij report now`)."
+					"text": "Commit with `harness commit` (conventional commits are binding); apply the `pij` skill's `references/00-routing.md` § C11 (Commit attribution). Status card at start and end of each unit of work (`pij report now`)."
 				},
 				{
 					"id": "i6",

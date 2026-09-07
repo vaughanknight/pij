@@ -1,0 +1,127 @@
+{
+  "branch": "remove-typing-gates",
+  "control_revision": "a04124a600a9126d932f264856085a203ad16c3d",
+  "control": {
+    "omp": {
+      "harness": "omp",
+      "transport_rung": "extension-stream",
+      "draft_intact": false,
+      "message_reached_model": true,
+      "draft_submitted": false,
+      "delivered_within_ms": 60445
+    },
+    "claude": {
+      "harness": "claude",
+      "transport_rung": "socket",
+      "draft_intact": true,
+      "message_reached_model": false,
+      "draft_submitted": false,
+      "delivered_within_ms": null
+    },
+    "copilot": {
+      "harness": "copilot",
+      "transport_rung": "native",
+      "draft_intact": true,
+      "message_reached_model": false,
+      "draft_submitted": false,
+      "delivered_within_ms": null
+    }
+  },
+  "after": {
+    "omp": {
+      "harness": "omp",
+      "transport_rung": "extension-stream",
+      "draft_intact": true,
+      "message_reached_model": true,
+      "draft_submitted": false,
+      "delivered_within_ms": 237
+    },
+    "claude": {
+      "harness": "claude",
+      "transport_rung": "socket",
+      "draft_intact": true,
+      "message_reached_model": true,
+      "draft_submitted": false,
+      "delivered_within_ms": 401
+    },
+    "copilot": {
+      "harness": "copilot",
+      "transport_rung": "native",
+      "draft_intact": true,
+      "message_reached_model": true,
+      "draft_submitted": false,
+      "delivered_within_ms": 840
+    },
+    "send-keys": {
+      "harness": "claude",
+      "transport_rung": "typed-body",
+      "draft_intact": true,
+      "message_reached_model": false,
+      "draft_submitted": false,
+      "delivered_within_ms": null
+    }
+  },
+  "proof_directory": "/Users/jordanknight/pi-hacking/pij-remove-typing-gates/.harness/temp/step-on-proof",
+  "proof_notes": [
+    "Main controls completed before source removals. OMP held for 60s, then cleared the composer when the incoming user message arrived.",
+    "After probes preserve a single-line ASCII draft including leading, internal double, and trailing spaces, using paired capture-pane -N and cursor coordinates plus SHA-256.",
+    "Model receipt requires the unique assistant reply nonce; delivered_within_ms measures native transcript context acceptance, not provider inference time.",
+    "All after transcripts were independently checked for the UNSUBMITTED nonce even after whitespace trimming; none submitted it.",
+    "Send-keys control uses the real Claude client and normal SessionStart registration, but an isolated daemon home with no socket registry. It holds human typing with draft_sha."
+  ],
+  "omp": {
+    "root_cause": "OMP 18.0.10 dist/cli.js:19099 message_start role=user clears editor when message has no local/optimistic submission signature.",
+    "fix": "OMP uses public sendMessage customType=pij, display=true, triggerTurn=true, deliverAs=steer. Pi retains sendUserMessage; neither path edits the composer.",
+    "api_citations": [
+      "OMP dist/cli.js:19108-19109 (public dispatch),17381 (custom prompt/steer),19099 (custom rendering),2989->1244 (model role conversion)",
+      "Pi dist/modes/interactive/interactive-mode.js:2309-2318 (user rendering does not clear editor)"
+    ],
+    "semantic_shift": "OMP custom content is model role=developer rather than user. Explicitly approved by pij-minor-unicorn, peer envelope retained, documented in docs/how/pij.md. The tested nonce replies remained correct; no broader behavioral-equivalence claim."
+  },
+  "retained_guards": [
+    "Send-keys fresh owned-input, tap ownership, Unrecognized veto and draft_sha",
+    "Native identity/target/consent and operator semantic Hold",
+    "Pending-only recovery after Hold clears, plus interrupted startup-deferred FIFO recovery",
+    "Arrival toast and mail visibility"
+  ],
+  "gates": {
+    "rust": {
+      "command": "cargo fmt --all && cargo test --locked --workspace && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo fmt --all -- --check",
+      "exit_code": 0,
+      "tests_passed": 753,
+      "ignored": 8,
+      "tail": "Finished `dev` profile [unoptimized + debuginfo] target(s) in 23.71s; fmt check exit 0"
+    },
+    "native": {
+      "command": "node --test .copilot/extensions/pij/{store,extension,identity}.test.mjs",
+      "exit_code": 0,
+      "tail": "tests 118; pass 118; fail 0"
+    },
+    "focused": {
+      "command": "vitest run --cache=false .pi/extensions/pij/adapters/rust-runtime.test.ts harness/scripts/step-on-probe.test.ts && tsc --noEmit",
+      "exit_code": 0,
+      "tail": "Test Files 2 passed; Tests 46 passed | 4 skipped; tsc --noEmit exit 0"
+    },
+    "harness": {
+      "command": "harness checks --quick",
+      "exit_code": 0,
+      "tail": "status=ok; ok=true; local-paths,typecheck,lint,test,copilot-native,windows-compat,pkg-audit,snapshots ran successfully; smoke skipped",
+      "elapsed_seconds": 220.77
+    }
+  },
+  "review": {
+    "verdict": "No remaining material findings",
+    "scope": "Read-only independent source review, plus parent-run actual probes and gates"
+  },
+  "not_run": [
+    "Standard just smoke omitted under --quick to respect the packet’s isolated-live-resource restriction; the actual-client step-on probes ran instead.",
+    "Default ignored Rust real-resource tests were not enabled.",
+    "No push, PR, merge, live-daemon bounce, global-link changes, or installed-client edits."
+  ],
+  "harness_lesson": {
+    "encoded": "PIJ_STEP_ON_REAL=1 just step-on-probe --harness omp (also claude or copilot); use --harness claude --send-keys-only true for the retained gate. Opt-in Vitest live-resource matrix is excluded by default.",
+    "observations": ".harness/temp/agent/session-buffer.md",
+    "next_encoding_offer": "A supported read-only worktree dependency-link command would avoid rebuilding dependency/cache isolation by hand."
+  },
+  "commit": "51e034a6f1e9e705964b1d78ac25e7a9ee63cf01"
+}

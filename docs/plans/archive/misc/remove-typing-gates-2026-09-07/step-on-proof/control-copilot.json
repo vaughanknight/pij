@@ -1,0 +1,456 @@
+{
+  "harness": "copilot",
+  "run": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-jC35n7",
+  "source_root": "/Users/jordanknight/pi-hacking/pij",
+  "source_commit": "a04124a600a9126d932f264856085a203ad16c3d",
+  "binary_sha256": "6ca39297ac74aeed58856957a6c95cad2f059190f3f77fe6b6c4833b9ce8ed78",
+  "isolation": {
+    "state": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-jC35n7/daemon",
+    "addr": "127.0.0.1:63499",
+    "socket": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-jC35n7/tmux.sock",
+    "cwd": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-jC35n7/workspace"
+  },
+  "started": "2026-09-06T22:21:15.427Z",
+  "install": [
+    "Copilot extension: linked; experimental enabled"
+  ],
+  "pane": "%1",
+  "seat": {
+    "id": "pij-strong-meerkat",
+    "machine": "JordansacStudio.localdomain",
+    "harness": "copilot",
+    "session": "fb7db0be-edc7-486e-b32a-9b5de9cab2e7",
+    "pane": "%1",
+    "proc": {
+      "pid": 73780,
+      "proc_start": 20260907082115
+    },
+    "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-jC35n7/workspace",
+    "state": "idle",
+    "semantic_state": null,
+    "role": null,
+    "parent": null,
+    "relay": false,
+    "native_extension_delivery": true,
+    "generation": "rs"
+  },
+  "before": {
+    "draft": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+    "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+    "viewport": "  Current   Sessions   Issues   Pull requests   Gists\n\n╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│                                                                                                                                                                                │\n│  ╭─╮╭─╮                              │  Getting started                                                                                                                        │\n│  ╰─╯╰─╯  Copilot v1.0.84-1 uses AI.  │  Use the tabs above to explore your sessions and pull requests                                                                          │\n│  █ ▘▝ █  /experimental               │  /init — Initialize Copilot instructions for this repository                                                                            │\n│   ▔▔▔▔                               │  /model — Switch models across providers, or use Auto                                                                                   │\n│                                                                                                                                                                                │\n╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n ● Tip: /app\n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app\n      https://github.com/features/ai/github-app \n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ Reply exactly BOOT_14673f23-d0ee-468a-a050-0c9951155132. Do not call tools. This is an isolated delivery probe.                                                        08:21\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● BOOT_14673f23-d0ee-468a-a050-0c9951155132\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-jC35n7/workspace                                                                       Session: 8.26 AIC used\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃ UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                                                 Claude Sonnet 5\n"
+  },
+  "send": {
+    "msg_id": "f7180ca2-64c4-489f-9a59-7c24371cd894",
+    "outcome": {
+      "outcome": "queued",
+      "reason": "extension-stream",
+      "next_retry_at": 0
+    },
+    "at": 1788733287304
+  },
+  "spine": [
+    {
+      "seq": 1,
+      "at": 0,
+      "kind": "seat.put",
+      "seat": "pij-strong-meerkat",
+      "payload": ""
+    },
+    {
+      "seq": 2,
+      "at": 0,
+      "kind": "seat.put",
+      "seat": "pij-strong-meerkat",
+      "payload": ""
+    },
+    {
+      "seq": 3,
+      "at": 1788733287304,
+      "kind": "message.pushed",
+      "seat": "pij-strong-meerkat",
+      "payload": "{\"msg_id\":\"f7180ca2-64c4-489f-9a59-7c24371cd894\",\"from\":\"pij-step-on-probe\",\"body\":\"Reply exactly MESSAGE_4f1f14ef-599e-4f5b-9f50-916403637335. Do not call tools.\"}"
+    },
+    {
+      "seq": 4,
+      "at": 1788733287304,
+      "kind": "delivery.outcome",
+      "seat": "pij-strong-meerkat",
+      "payload": "{\"msg_id\":\"f7180ca2-64c4-489f-9a59-7c24371cd894\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 5,
+      "at": 1788733287331,
+      "kind": "delivery.held",
+      "seat": "pij-strong-meerkat",
+      "payload": "{\"msg_id\":\"f7180ca2-64c4-489f-9a59-7c24371cd894\",\"reason\":\"human-typing\",\"seat\":\"pij-strong-meerkat\",\"since_ms\":1788733287328}"
+    }
+  ],
+  "jobs": [
+    {
+      "id": 1,
+      "state": "pending",
+      "payload": "{\"from\":\"pij-step-on-probe\",\"to\":\"pij-strong-meerkat\",\"body\":\"Reply exactly MESSAGE_4f1f14ef-599e-4f5b-9f50-916403637335. Do not call tools.\",\"msg_id\":\"f7180ca2-64c4-489f-9a59-7c24371cd894\",\"native_target_session\":\"fb7db0be-edc7-486e-b32a-9b5de9cab2e7\"}"
+    }
+  ],
+  "samples": [
+    {
+      "elapsed_ms": 11,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 216,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 428,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 633,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 840,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1046,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1252,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1457,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1663,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 1869,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2074,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2280,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2485,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2690,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 2895,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3101,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3306,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3512,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3718,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 3924,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4130,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4336,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4542,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4749,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 4955,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5161,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5367,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5575,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5781,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 5987,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6193,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6398,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6605,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 6811,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7018,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7224,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7434,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7641,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 7848,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8054,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8259,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8465,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8671,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 8877,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9083,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9290,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9496,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9702,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    },
+    {
+      "elapsed_ms": 9908,
+      "composer": "UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly",
+      "sha256": "4b866a66d7e91663c7750e8fc04b1e38d8d6d2288e2cfada60b125186f4e7ba1",
+      "reached": false,
+      "submitted": false
+    }
+  ],
+  "after": "  Current   Sessions   Issues   Pull requests   Gists\n\n╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│                                                                                                                                                                                │\n│  ╭─╮╭─╮                              │  Getting started                                                                                                                        │\n│  ╰─╯╰─╯  Copilot v1.0.84-1 uses AI.  │  Use the tabs above to explore your sessions and pull requests                                                                          │\n│  █ ▘▝ █  /experimental               │  /init — Initialize Copilot instructions for this repository                                                                            │\n│   ▔▔▔▔                               │  /model — Switch models across providers, or use Auto                                                                                   │\n│                                                                                                                                                                                │\n╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n ● Tip: /app\n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app\n      https://github.com/features/ai/github-app \n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ Reply exactly BOOT_14673f23-d0ee-468a-a050-0c9951155132. Do not call tools. This is an isolated delivery probe.                                                        08:21\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● BOOT_14673f23-d0ee-468a-a050-0c9951155132\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-jC35n7/workspace                                                                       Session: 8.26 AIC used\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃ UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                                                 Claude Sonnet 5\n",
+  "transcripts": [
+    "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-jC35n7/home/.copilot/session-state/fb7db0be-edc7-486e-b32a-9b5de9cab2e7/events.jsonl"
+  ],
+  "verdict": {
+    "harness": "copilot",
+    "transport_rung": "native",
+    "draft_intact": true,
+    "message_reached_model": false,
+    "draft_submitted": false,
+    "delivered_within_ms": null
+  },
+  "final_panes": "%0 sleep\n%1 node\n",
+  "final_viewport": "  Current   Sessions   Issues   Pull requests   Gists\n\n╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│                                                                                                                                                                                │\n│  ╭─╮╭─╮                              │  Getting started                                                                                                                        │\n│  ╰─╯╰─╯  Copilot v1.0.84-1 uses AI.  │  Use the tabs above to explore your sessions and pull requests                                                                          │\n│  █ ▘▝ █  /experimental               │  /init — Initialize Copilot instructions for this repository                                                                            │\n│   ▔▔▔▔                               │  /model — Switch models across providers, or use Auto                                                                                   │\n│                                                                                                                                                                                │\n╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n ● Tip: /app\n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app\n      https://github.com/features/ai/github-app \n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ Reply exactly BOOT_14673f23-d0ee-468a-a050-0c9951155132. Do not call tools. This is an isolated delivery probe.                                                        08:21\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● BOOT_14673f23-d0ee-468a-a050-0c9951155132\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-jC35n7/workspace                                                                       Session: 8.26 AIC used\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃ UNSUBMITTED_89f00f19-4c20-458c-aad0-8b784b90ff04_keep spaces  exactly\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                                                 Claude Sonnet 5\n",
+  "daemon_log": "pij-rs claude inbound: /Users/jordanknight/.claude=skipped, /Users/jordanknight/.claude-alt=skipped\npij-rs claude hook: /Users/jordanknight/.claude=skipped, /Users/jordanknight/.claude-alt=skipped\npij-rs claude statusline: /Users/jordanknight/.claude=skipped, /Users/jordanknight/.claude-alt=skipped\npij-rs daemon: listening on 127.0.0.1:63499 · key /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-step-on-jC35n7/daemon/daemon.key (0600) · offline=false\n",
+  "exit_code": 1
+}

@@ -35,26 +35,22 @@ pij inbox --wait [ms]    # non-tmux receive path; first use auto-registers
 pij tree [<id> | --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all] [--json]
 ```
 
-Bare `tree` selects the current Git repository across linked worktrees. `--global`
-selects the registry, while `<id>` selects that arbitrary subtree. Dead/dissolved
-history is hidden by default; `--all` or an explicit history filter exposes it.
+Bare `tree` selects the current Git repository across linked worktrees; `--global` selects the registry and `<id>` that subtree.
+Dead/dissolved history is hidden unless `--all` or an explicit history filter exposes it.
 Repeated values OR within one axis; activity, liveness, and lifecycle axes AND.
 
 **Structure**
 
 ```bash
-pij link <child> --parent <parent> [--role <pm|worker>] [--json]
+pij link <child> --parent <parent> [--json]
 pij link <child> --root [--json]
 ```
 
-`parentId` is structural: an id is an explicit parent, `--root` writes explicit
-root `null`, and an absent field keeps the legacy `spawnedBy` fallback.
-`spawnedBy` remains close authorization; `link` never changes it or other
-descriptor fields. Unknown ids, self-parenting, and cycles fail before any write.
-Use adopt `--parent <id>` to establish structure at registration; spawn records
-the caller as both structural parent and close owner automatically. When a
-governor gives the seat work, it also passes `--role pm|worker` on `link`; a seat
-never infers or self-declares its own role.
+`parentId` is structural: an id is an explicit parent, `--root` writes explicit root `null`, and absence keeps the legacy `spawnedBy` fallback.
+`spawnedBy` remains close authorization; `link` changes no other descriptor fields. Unknown ids, self-parenting, and cycles fail before any write.
+Use adopt `--parent <id>` at registration; spawn automatically records the caller as structural parent and close owner.
+When giving work, the governor also passes `--role pm|worker` on `link`;
+a seat never infers or self-declares its own role.
 
 **Spawn**
 
@@ -62,17 +58,14 @@ never infers or self-declares its own role.
 pij spawn --harness claude --model claude-sonnet-5 [--effort <level>] [--task "first task"] [--plan-id <id>] [--layout stack|right|below|window] [--branch]
 ```
 
-Flags, never positionals — `pij spawn claude` is an E-ARG; `--harness` is
-required. Effort levels are per-model (`off|minimal|low|medium|high|xhigh|max`,
-warn-don't-block): discover what a model accepts via `pij models`, never assume.
+Flags only: `pij spawn claude` is E-ARG; `--harness` is required. Effort is per-model
+(`off|minimal|low|medium|high|xhigh|max`, warn-don't-block): discover with `pij models`, never assume.
 `--plan-id` is opaque; it exports both plan env names, stamps the descriptor, and reports unresolved or non-segment ids without blocking spawn.
 
 **Focus** — immutable native-session checkpoints, spawn's sibling:
-`pij focus save <name>` (caller must be a bound pi/claude peer) ·
-`pij focus list [--global]` (repo-filtered by default) ·
-`pij focus launch <name>` — forks a fresh tmux seat in **pending-canary**
-state: not ready until golden recall is verified (§ C2). pi launches from the
-main checkout, not a worktree; no copilot/codex adapters in v1.
+`pij focus save <name>` requires a bound pi/claude caller; `pij focus list [--global]` is repo-filtered by default.
+`pij focus launch <name>` forks a fresh tmux seat in **pending-canary**: golden recall must be verified (§ C2) before readiness.
+pi launches from the main checkout, not a worktree; no copilot/codex adapters in v1.
 
 File-change notices (self-serve): `pij watch <path>` / `pij unwatch` — use when
 a peer must react to a file another seat writes; mechanics in
@@ -90,6 +83,7 @@ single-quote it, or use the literal channel — `pij send <id> --body-file
 - Placement: default = the side stack (~1/3 right column, uncapped, evens itself) — keep it unless told otherwise (§ C5).
 - **Always canary-verify before trusting** (§ C2) — spawned *and* provided peers.
 - Seed wire discipline at birth: a `--task` packet (and every later send) follows § C10, and tells the new seat its A2A replies do too — seats must inherit the discipline from their first turn, not learn style from verbose peers.
+- At a commit boundary, this seat and any briefed peer apply § C11 (Commit attribution).
 
 **Converse**
 

@@ -90,7 +90,7 @@ lifecycle: [`rituals/batons.md`](./rituals/batons.md).
 Approved work lands through `/builder 8 ship`: confirm-gated branch push, PR open,
 watched CI, then optional typed-confirm merge. Remove the worktree only after PR
 merge or explicit abandonment. In shared-tree fallback, scratch/staging,
-pathspec commits, staged-set checks, and commit slots remain mandatory.
+pathspec commits, staged-set checks, and commit slots remain mandatory. Apply `00-routing.md` § C11 (Commit attribution) when creating commits.
 
 ## Reports and verification
 

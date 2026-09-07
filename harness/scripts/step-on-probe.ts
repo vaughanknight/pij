@@ -23,6 +23,7 @@ import { nativeComposer } from "./copilot-native-smoke.js";
 import { manageCopilotExtension } from "./link-global.js";
 
 type Harness = "omp" | "claude" | "copilot";
+type ProbeState = "idle" | "bash" | "subagents";
 interface Seat {
 	id: string;
 	harness: string;
@@ -32,9 +33,11 @@ interface Seat {
 }
 interface Options {
 	harness: Harness;
+	state?: ProbeState;
 	sourceRoot: string;
 	pijBin: string;
 	model?: string;
+	thinking?: string;
 	observeMs: number;
 	timeoutMs: number;
 	output?: string;
@@ -58,6 +61,7 @@ const object = (value: unknown): Record<string, unknown> => {
 export function parseProbeArgs(args: string[]): Options {
 	const options: Options = {
 		harness: "omp",
+		state: "idle",
 		sourceRoot: ROOT,
 		pijBin: join(ROOT, "target/debug/pij-rs"),
 		observeMs: 10_000,
@@ -71,9 +75,13 @@ export function parseProbeArgs(args: string[]): Options {
 		if (arg === "--harness") {
 			assert(["omp", "claude", "copilot"].includes(value));
 			options.harness = value as Harness;
+		} else if (arg === "--state") {
+			assert(["idle", "bash", "subagents"].includes(value), `invalid probe state ${value}`);
+			options.state = value as ProbeState;
 		} else if (arg === "--source-root") options.sourceRoot = resolve(value);
 		else if (arg === "--pij-bin") options.pijBin = resolve(value);
 		else if (arg === "--model") options.model = value;
+		else if (arg === "--thinking") options.thinking = value;
 		else if (arg === "--output") options.output = resolve(value);
 		else if (arg === "--observe-ms") options.observeMs = Number(value);
 		else if (arg === "--timeout-ms") options.timeoutMs = Number(value);
@@ -87,6 +95,14 @@ export function parseProbeArgs(args: string[]): Options {
 	assert(
 		!options.sendKeysOnly || options.harness === "claude",
 		"send-keys control uses a real Claude pane with daemon socket discovery isolated",
+	);
+	assert(
+		options.state === "idle" || options.harness === "omp",
+		"busy probe states require --harness omp",
+	);
+	assert(
+		options.thinking === undefined || options.harness === "omp",
+		"--thinking requires --harness omp",
 	);
 	return options;
 }
@@ -163,44 +179,139 @@ function jsonlFiles(root: string): string[] {
 				: [],
 	);
 }
-export function transcriptTexts(paths: string[], roles: string[]): string[] {
+function transcriptEntries(paths: string[]): Record<string, unknown>[] {
 	return paths.flatMap((path) =>
 		readFileSync(path, "utf8")
 			.split("\n")
 			.filter(Boolean)
 			.flatMap((line) => {
-				let entry: Record<string, unknown>;
 				try {
-					entry = object(JSON.parse(line));
+					return [object(JSON.parse(line))];
 				} catch {
 					return [];
 				}
-				const nativeRole =
-					entry.type === "user.message"
-						? "user"
-						: entry.type === "assistant.message"
-							? "assistant"
-							: entry.type === "custom_message"
-								? "custom"
-								: undefined;
-				const message =
-					nativeRole === "custom"
-						? entry
-						: nativeRole
-							? object(entry.data)
-							: entry.message && typeof entry.message === "object"
-								? object(entry.message)
-								: undefined;
-				if (!message || !roles.includes(String(nativeRole ?? message.role))) return [];
-				if (typeof message.content === "string") return [message.content];
-				if (!Array.isArray(message.content)) return [];
-				return [
-					message.content
-						.map((part) => (typeof object(part).text === "string" ? object(part).text : ""))
-						.join("\n"),
-				];
 			}),
 	);
+}
+
+export function parentTranscript(paths: string[], session: string): string | undefined {
+	return paths.find((path) =>
+		transcriptEntries([path]).some((entry) => entry.type === "session" && entry.id === session),
+	);
+}
+
+export function transcriptToolCalls(path: string): Record<string, unknown>[] {
+	return transcriptEntries([path]).flatMap((entry) => {
+		const message = entry.message;
+		if (!message || typeof message !== "object") return [];
+		const record = object(message);
+		if (record.role !== "assistant" || !Array.isArray(record.content)) return [];
+		return record.content.flatMap((part) => {
+			if (!part || typeof part !== "object" || object(part).type !== "toolCall") return [];
+			return [{ ...object(part), timestamp: entry.timestamp }];
+		});
+	});
+}
+
+/** Native pij context must enter directly after the original blocking tool,
+ * not through a child-result notice or a follow-up drain after a terminal reply. */
+export function parentSteeringContext(path: string, nonce: string, command: string): boolean {
+	let previousAssistant: Record<string, unknown> | undefined;
+	for (const entry of transcriptEntries([path])) {
+		const message = entry.message;
+		if (message && typeof message === "object" && object(message).role === "assistant") {
+			previousAssistant = object(message);
+		}
+		if (
+			entry.type !== "custom_message" ||
+			entry.customType !== "pij" ||
+			typeof entry.content !== "string" ||
+			!entry.content.startsWith("[pij-rs from pij-step-on-probe]\n") ||
+			!entry.content.includes(nonce)
+		)
+			continue;
+		const content = previousAssistant?.content;
+		return (
+			Array.isArray(content) &&
+			content.some((part) => {
+				if (!part || typeof part !== "object") return false;
+				const call = object(part);
+				return (
+					call.type === "toolCall" &&
+					call.name === "bash" &&
+					call.arguments !== null &&
+					typeof call.arguments === "object" &&
+					object(call.arguments).command === command
+				);
+			})
+		);
+	}
+	return false;
+}
+
+export function busyProbePlan(state: "bash" | "subagents", run: string) {
+	const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+	const work = (name: string, seconds: number) => {
+		const started = join(run, `${name}.started`);
+		const done = join(run, `${name}.done`);
+		const script = join(run, `${name}.sh`);
+		return {
+			started,
+			done,
+			script,
+			scriptContent: `set -e\nprintf started > ${shellQuote(started)}\n/bin/sleep ${seconds}\nprintf done > ${shellQuote(done)}\n`,
+			command: `/bin/sh ${shellQuote(script)}`,
+		};
+	};
+	const first = work("parent-first", state === "bash" ? 30 : 45);
+	const remaining = work("parent-remaining", 10);
+	const children = state === "subagents" ? [work("child-one", 30), work("child-two", 30)] : [];
+	const doneMarker = `WORK_DONE_${randomUUID()}`;
+	const childTasks = children.map((child, index) => ({
+		name: `ProbeChild${index + 1}`,
+		task: `# Target\nOwned sleep fixture ${child.script}. No file edits.\n# Change\nUse bash to run exactly ${child.command} with timeout 90. Do not delegate or run validation.\n# Acceptance\nAfter the command completes, return DONE.`,
+	}));
+	const prompt = [
+		"This is an authorized isolated delivery probe. The harness created these sleep/marker fixtures in its own scratch directory. Invoke each as one external binary via bash; no inline shell scripts or manual file inspection are needed.",
+		...(children.length
+			? [
+					`First launch both children together with task using these arguments: ${JSON.stringify({ context: "# Goal\nRun two owned sleep fixtures concurrently.\n# Constraints\nNo file edits, no validation, no further delegation.\n# Contract\nEach child runs its given external command and returns DONE.", tasks: childTasks })}. Then run your own bash command immediately, without waiting for the children.`,
+				]
+			: []),
+		`Run bash with timeout 90 and this exact command: ${first.command}`,
+		`After that bash call finishes, make a SECOND separate bash call with timeout 90 and command: ${remaining.command}. Do not batch the two bash calls.`,
+		`After all requested commands, including the children, finish, reply exactly ${doneMarker}. Do not cancel, restart, combine, or background the shell commands.`,
+	].join(" ");
+	return { first, remaining, children, doneMarker, prompt };
+}
+
+export function transcriptTexts(paths: string[], roles: string[]): string[] {
+	return transcriptEntries(paths).flatMap((entry) => {
+		const nativeRole =
+			entry.type === "user.message"
+				? "user"
+				: entry.type === "assistant.message"
+					? "assistant"
+					: entry.type === "custom_message"
+						? "custom"
+						: undefined;
+		const message =
+			nativeRole === "custom"
+				? entry
+				: nativeRole
+					? object(entry.data)
+					: entry.message && typeof entry.message === "object"
+						? object(entry.message)
+						: undefined;
+		if (!message || !roles.includes(String(nativeRole ?? message.role))) return [];
+		if (typeof message.content === "string") return [message.content];
+		if (!Array.isArray(message.content)) return [];
+		return [
+			message.content
+				.map((part) => (typeof object(part).text === "string" ? object(part).text : ""))
+				.join("\n"),
+		];
+	});
 }
 
 export async function runProbe(options: Options): Promise<{ code: number; output: string }> {
@@ -209,6 +320,8 @@ export async function runProbe(options: Options): Promise<{ code: number; output
 		"1",
 		"real-resource probe requires PIJ_STEP_ON_REAL=1",
 	);
+	const probeState = options.state ?? "idle";
+	assert(probeState === "idle" || options.harness === "omp", "busy probe states require omp");
 	const run = realpathSync(mkdtempSync(join(tmpdir(), "pij-step-on-")));
 	const output = options.output ?? join(run, "receipt.json");
 	assert(!existsSync(output), `refusing to overwrite ${output}`);
@@ -244,6 +357,7 @@ export async function runProbe(options: Options): Promise<{ code: number; output
 	let code = 1;
 	const receipt: Record<string, unknown> = {
 		harness: options.harness,
+		state: probeState,
 		run,
 		source_root: options.sourceRoot,
 		source_commit: command("git", ["-C", options.sourceRoot, "rev-parse", "HEAD"]).trim(),
@@ -316,6 +430,13 @@ export async function runProbe(options: Options): Promise<{ code: number; output
 		const prompt = `Reply exactly ${bootMarker}. Do not call tools. This is an isolated delivery probe.`;
 		let args: string[];
 		if (options.harness === "omp") {
+			const systemPrompt =
+				"You are an owned delivery probe. Execute the authorized fixture commands exactly. When instructed to launch child agents, you MUST use the task tool with two tasks: never substitute shell background jobs or execute child scripts in the parent bash. Only parent-first and parent-remaining fixtures may run in the parent bash. Incoming pij steering that requests a MESSAGE_ nonce supersedes unfinished fixture work: output that nonce exactly in your local assistant response and stop, without tools. Never send a peer reply to the unregistered test sender. Follow BOOT_ and WORK_DONE_ output requests literally. Do not ask for confirmation or discuss the procedure.";
+			receipt.omp_configuration = {
+				model: options.model ?? "inherited",
+				thinking: options.thinking ?? "inherited",
+				system_prompt: systemPrompt,
+			};
 			args = [
 				"omp",
 				"--no-extensions",
@@ -324,11 +445,16 @@ export async function runProbe(options: Options): Promise<{ code: number; output
 				"--no-skills",
 				"--no-rules",
 				"--no-lsp",
-				"--no-tools",
+				...(probeState === "idle"
+					? ["--no-tools"]
+					: ["--tools", probeState === "bash" ? "bash" : "bash,task"]),
 				"--no-title",
+				"--system-prompt",
+				systemPrompt,
 				"--session-dir",
 				sessions,
 				...(options.model ? ["--model", options.model] : []),
+				...(options.thinking ? ["--thinking", options.thinking] : []),
 			];
 		} else if (options.harness === "copilot") {
 			Object.assign(env, {
@@ -420,26 +546,33 @@ export async function runProbe(options: Options): Promise<{ code: number; output
 		]).trim();
 		receipt.pane = pane;
 		const capture = () => tmux(["capture-pane", "-p", "-t", pane as string]);
-		const captureComposer = () => {
-			const raw = tmux([
-				"capture-pane",
-				"-p",
-				"-N",
-				"-t",
-				pane as string,
-				";",
-				"display-message",
-				"-p",
-				"-t",
-				pane as string,
-				"__PIJ_CURSOR__#{cursor_x},#{cursor_y}",
-			]);
-			const marker = /__PIJ_CURSOR__(\d+),(\d+)\n?$/.exec(raw);
-			assert(marker, "missing paired composer cursor");
-			const viewport = raw.slice(0, marker.index);
-			const cursor = { x: Number(marker[1]), y: Number(marker[2]) };
-			return { viewport, cursor, text: composerText(options.harness, viewport, cursor) };
-		};
+		let unreadableComposerFrames = 0;
+		const captureComposer = () =>
+			until("readable composer snapshot", 1000, () => {
+				const raw = tmux([
+					"capture-pane",
+					"-p",
+					"-N",
+					"-t",
+					pane as string,
+					";",
+					"display-message",
+					"-p",
+					"-t",
+					pane as string,
+					"__PIJ_CURSOR__#{cursor_x},#{cursor_y}",
+				]);
+				const marker = /__PIJ_CURSOR__(\d+),(\d+)\n?$/.exec(raw);
+				assert(marker, "missing paired composer cursor");
+				const viewport = raw.slice(0, marker.index);
+				const cursor = { x: Number(marker[1]), y: Number(marker[2]) };
+				const text = composerText(options.harness, viewport, cursor);
+				if (text === undefined) {
+					receipt.composer_snapshot_retries = ++unreadableComposerFrames;
+					return undefined;
+				}
+				return { viewport, cursor, text };
+			});
 		const seat = await until("client self-registration", options.timeoutMs, async () => {
 			const terminal = capture();
 			if (
@@ -480,26 +613,95 @@ export async function runProbe(options: Options): Promise<{ code: number; output
 				: undefined;
 		});
 		await delay(options.sendKeysOnly ? 5000 : 1000);
+		const busyWork = probeState === "idle" ? undefined : busyProbePlan(probeState, run);
+		let parentPath: string | undefined;
+		let sessionIntact = true;
+		const identity: Record<string, unknown> = { before: seat };
+		const currentSeat = async () => {
+			const data = await api("/v1/seats");
+			const list = Array.isArray(data) ? data : object(data).seats;
+			assert(Array.isArray(list));
+			return (list as Seat[]).find((row) => row.pane === pane);
+		};
+		if (busyWork) {
+			for (const work of [busyWork.first, busyWork.remaining, ...busyWork.children]) {
+				writeFileSync(work.script, work.scriptContent, { mode: 0o600, flag: "wx" });
+			}
+			assert(seat.session, "OMP root seat has no native session identity");
+			receipt.parent_session = identity;
+			parentPath = await until("original OMP parent transcript", options.timeoutMs, () =>
+				parentTranscript(jsonlFiles(sessions), seat.session),
+			);
+			receipt.busy_work = { ...busyWork, parent_transcript: parentPath };
+			tmux(["send-keys", "-t", pane, "-l", busyWork.prompt]);
+			tmux(["send-keys", "-t", pane, DEFAULT_PROBE_KEYBINDINGS.submit]);
+			const calls = await until(
+				"parent tool calls and running busy work",
+				options.timeoutMs,
+				() => {
+					const work = [busyWork.first, ...busyWork.children];
+					assert(
+						!work.some((item) => existsSync(item.done)),
+						"busy work finished before injection",
+					);
+					const calls = transcriptToolCalls(parentPath as string);
+					const parentStarted = calls.some(
+						(call) =>
+							call.name === "bash" && object(call.arguments).command === busyWork.first.command,
+					);
+					const fanoutStarted =
+						!busyWork.children.length ||
+						calls.some((call) => {
+							if (call.name !== "task") return false;
+							const tasks = object(call.arguments).tasks;
+							return (
+								Array.isArray(tasks) &&
+								tasks.length === 2 &&
+								busyWork.children.every((child) =>
+									tasks.some((task) => String(object(task).task).includes(child.command)),
+								)
+							);
+						});
+					return parentStarted && fanoutStarted && work.every((item) => existsSync(item.started))
+						? calls
+						: undefined;
+				},
+			);
+			receipt.busy_started = { at: new Date().toISOString(), tool_calls: calls };
+			const afterFanout = await currentSeat();
+			identity.after_fanout = afterFanout ?? null;
+			sessionIntact = afterFanout?.id === seat.id && afterFanout.session === seat.session;
+			assert(sessionIntact, "OMP root seat native session changed during busy fanout");
+		}
 		const draftNonce = `UNSUBMITTED_${randomUUID()}`;
 		const draft = ` ${draftNonce}_keep spaces  exactly `;
 		tmux(["send-keys", "-t", pane, "-l", draft]);
-		const before = await until("draft visible in composer", 5000, () => {
-			const snapshot = captureComposer();
+		const before = await until("draft visible in composer", 5000, async () => {
+			const snapshot = await captureComposer();
 			return snapshot.text === draft ? snapshot : undefined;
 		});
 		receipt.before = { draft, sha256: sha(draft), ...before };
 		const nonce = `MESSAGE_${randomUUID()}`;
 		const msgId = randomUUID();
+		if (busyWork)
+			assert(
+				![busyWork.first, ...busyWork.children].some((item) => existsSync(item.done)),
+				"busy work finished before message send",
+			);
 		const sentAt = Date.now();
 		receipt.send = await api("/v1/send", {
 			from: "pij-step-on-probe",
 			to: { seat: seat.id },
-			body: `Reply exactly ${nonce}. Do not call tools.`,
+			body: busyWork
+				? `Steering replaces the remaining work: reply locally with exactly ${nonce}. Do not call any tools. The sender pij-step-on-probe is an unregistered test address; do not send it a peer reply.`
+				: `Reply exactly ${nonce}. Do not call tools.`,
 			msg_id: msgId,
 		});
 		const transcriptPaths = () =>
 			options.harness === "omp"
-				? jsonlFiles(sessions)
+				? parentPath
+					? [parentPath]
+					: jsonlFiles(sessions)
 				: options.harness === "copilot"
 					? [join(home, ".copilot/session-state", seat.session, "events.jsonl")]
 					: jsonlFiles(join(homedir(), ".claude/projects", cwd.replace(/[^a-zA-Z0-9]/g, "-")));
@@ -508,18 +710,40 @@ export async function runProbe(options: Options): Promise<{ code: number; output
 		let submitted = false;
 		let reached = false;
 		let replied = false;
+		let repliedWithin: number | null = null;
+		let repliedBeforeRemainingWorkDone = false;
+		const observationMs = busyWork
+			? Math.max(options.observeMs, options.timeoutMs)
+			: options.observeMs;
 		const samples: Record<string, unknown>[] = [];
-		while (Date.now() - sentAt < options.observeMs) {
-			const snapshot = captureComposer();
+		while (Date.now() - sentAt < observationMs) {
+			const snapshot = await captureComposer();
 			const composer = snapshot.text;
 			const paths = transcriptPaths().filter(existsSync);
 			const texts = transcriptTexts(paths, ["user", "custom"]);
-			reached ||= texts.some((text) => text.includes(nonce));
+			reached ||= busyWork
+				? parentSteeringContext(parentPath as string, nonce, busyWork.first.command)
+				: texts.some((text) => text.includes(nonce));
 			submitted ||= transcriptTexts(paths, ["user"]).some((text) => text.includes(draftNonce));
 			const replies = transcriptTexts(paths, ["assistant"]);
 			replied ||= replies.some((text) => text.trim() === nonce);
 			receipt.model_replies = replies;
 			if (reached && deliveredWithin === null) deliveredWithin = Date.now() - sentAt;
+			if (replied && repliedWithin === null) repliedWithin = Date.now() - sentAt;
+			let busySample: Record<string, unknown> | undefined;
+			if (busyWork) {
+				const firstFinished = existsSync(busyWork.first.done);
+				const remainingFinished = existsSync(busyWork.remaining.done);
+				repliedBeforeRemainingWorkDone ||= replied && !remainingFinished;
+				const latestSeat = await currentSeat();
+				sessionIntact &&= latestSeat?.id === seat.id && latestSeat.session === seat.session;
+				identity.after_delivery = latestSeat ?? null;
+				busySample = {
+					first_work_finished: firstFinished,
+					remaining_work_finished: remainingFinished,
+					native_session: latestSeat?.session ?? null,
+				};
+			}
 			intact &&= composer === draft;
 			samples.push({
 				elapsed_ms: Date.now() - sentAt,
@@ -529,7 +753,9 @@ export async function runProbe(options: Options): Promise<{ code: number; output
 				context_accepted: reached,
 				model_replied: replied,
 				submitted,
+				...(busySample ? { busy: busySample } : {}),
 			});
+			if (busyWork && replied && reached && Date.now() - sentAt >= options.observeMs) break;
 			await delay(200);
 		}
 		const db = new DatabaseSync(join(state, "pij.sqlite"), { readOnly: true });
@@ -546,14 +772,23 @@ export async function runProbe(options: Options): Promise<{ code: number; output
 			db.close();
 		}
 		receipt.samples = samples;
-		const after = captureComposer();
+		const after = await captureComposer();
 		intact &&= after.text === draft;
 		receipt.after = after;
 		receipt.transcripts = transcriptPaths();
+		const acknowledged =
+			!!busyWork &&
+			(receipt.spine as Record<string, unknown>[]).some((row) => {
+				if (row.kind !== "delivery.inbox-ack") return false;
+				const payload = object(JSON.parse(String(row.payload)));
+				if (payload.outcome !== "reader-read") return false;
+				return (receipt.jobs as Record<string, unknown>[]).some((job) => job.id === payload.job_id);
+			});
 		// Transport latency ends at native context acceptance, not provider inference.
 		// The independent reply nonce is nevertheless REQUIRED for model-received proof.
-		receipt.delivery_timing_basis =
-			"native transcript context acceptance; model reply independently required";
+		receipt.delivery_timing_basis = busyWork
+			? "parent native context acceptance at tool boundary; nonce reply before separate remaining work completes; inbox ACK and stable parent session required"
+			: "native transcript context acceptance; model reply independently required";
 		const rung = options.sendKeysOnly
 			? "typed-body"
 			: options.harness === "omp"
@@ -563,11 +798,20 @@ export async function runProbe(options: Options): Promise<{ code: number; output
 					: "socket";
 		receipt.verdict = {
 			harness: options.harness,
+			state: probeState,
 			transport_rung: rung,
 			draft_intact: intact,
 			message_reached_model: replied,
 			draft_submitted: submitted,
 			delivered_within_ms: deliveredWithin,
+			...(busyWork
+				? {
+						model_replied_within_ms: repliedWithin,
+						replied_before_remaining_work_done: repliedBeforeRemainingWorkDone,
+						parent_session_unchanged: sessionIntact,
+						inbox_acknowledged: acknowledged,
+					}
+				: {}),
 		};
 		const held = (receipt.spine as Record<string, unknown>[]).some(
 			(row) =>
@@ -582,7 +826,9 @@ export async function runProbe(options: Options): Promise<{ code: number; output
 					replied &&
 					!submitted &&
 					deliveredWithin !== null &&
-					deliveredWithin <= 5000
+					(busyWork
+						? repliedBeforeRemainingWorkDone && sessionIntact && acknowledged
+						: deliveredWithin <= 5000)
 				? 0
 				: 1;
 	} catch (error) {

@@ -86,14 +86,14 @@ budget "$SKILL/references/prime/orchestrator.md" 120
 
 # 4. CLI-verb coverage: every required bin family is mapped in the coverage table.
 cli_rows=$(sed -n '/^## CLI-verb coverage/,/^## /p' "$SKILL/SKILL.md" | grep '^| `' || true)
-for v in spawn close adopt tree link daemon compact-self telegram agent whoami list send tail state phonehome path models orchestration baton prime project spine task node anomalies chore; do
+for v in spawn close adopt tree link daemon compact-self commit-trailers telegram agent whoami list send tail state phonehome path models orchestration baton prime project spine task node anomalies chore; do
   printf '%s\n' "$cli_rows" | grep -Fq "\`$v\`" \
     || err "verb coverage: '$v' unmapped in CLI-verb coverage table"
 done
 ok "CLI-verb coverage scanned"
 
 # 5. duplicated-prose: convention headings (### C<n> —) live only in 00-routing.md
-dups=$(grep -rl '^### C[0-9] — ' "$SKILL" --include='*.md' 2>/dev/null | grep -v '00-routing.md' || true)
+dups=$(grep -rlE '^### C[0-9]+ — ' "$SKILL" --include='*.md' 2>/dev/null | grep -v '00-routing.md' || true)
 [ -n "$dups" ] && err "dup-prose: convention headings outside 00-routing.md: $dups" || ok "dup-prose: conventions single-owner"
 
 # 6. completion-first compaction: root interrupt, C3 ownership, pair order, and C7 delivery.
@@ -282,13 +282,31 @@ for marker in \
   completion_marker "$prime_route" "$marker" "real-tree prime triage: $marker"
 done
 
+# Commit attribution has one rule owner; commit boundaries cite it.
+require_count "$routing" "### C11 — Commit attribution" 1 \
+  "commit attribution: exactly one convention owner"
+c11=$(section "$routing" '### C11 — Commit attribution')
+for marker in 'pij-rs commit-trailers' 'Pij-Seat' 'Pij-Prime' 'Pij-Plan' 'never guess'; do
+  printf '%s\n' "$c11" | grep -Fq "$marker" \
+    && ok "commit attribution C11: $marker" \
+    || err "commit attribution C11: missing '$marker'"
+done
+for file in \
+  "$peer_route" "$pair_route" "$prime_route" \
+  "$SKILL/references/prime/protocol.md" \
+  "$SKILL/references/prime/orchestrator.md" "$kickoff" \
+  .agents-skills-port/pij-team/templates/packet-coder.dd.json \
+  .agents-skills-port/pij-team/templates/packet-reviewer.dd.json; do
+  completion_marker "$file" '§ C11' "commit attribution: citation in $file"
+done
+
 require_order "$kickoff" "real-tree kickoff: spawned link verified before canary" \
   "**Verify placement.**" \
   'verify the automatically persisted structural link with `pij tree <id> --json`' \
   "**Canary legs (a) and (b).**"
 require_order "$kickoff" "real-tree kickoff: adopted identity before link before brief" \
   "Complete canary leg (a) round-trip and leg (b) identity proof" \
-  'run `pij link <id> --parent <o-prime-id> --json`' \
+  '`pij link <id> --parent <o-prime-id> --role pm --json`' \
   "**Deliver the brief by pointer as canary leg (c).**"
 
 require_order "$handover" "real-tree handover: set before writers, retire after final relay" \
@@ -336,7 +354,8 @@ check_links() {
       /*|http://*|https://*|mailto:*) continue ;;
     esac
     [ -e "$dir/$target" ] || err "prime pointer: $file → $target is missing"
-  done < <(grep -Eo '\]\([^)]*\)' "$file" 2>/dev/null | sed 's/^](//; s/)$//' || true)
+  done < <(sed '/^[[:space:]]*```/,/^[[:space:]]*```/d' "$file" \
+    | grep -Eo '\]\([^)]*\)' | sed 's/^](//; s/)$//' || true)
 }
 check_links "$SKILL/references/routes/prime.md"
 while IFS= read -r f; do check_links "$f"; done < <(find "$SKILL/references/prime" -type f -name '*.md' | sort)
@@ -376,10 +395,11 @@ require_marker() {
 }
 
 if [ -f "$orchestrator" ]; then
+  require_marker "$orchestrator" "You are a stream orchestrator" "orchestrator order: role"
   previous=0
   while IFS='|' read -r label marker; do
     [ -z "$marker" ] && continue
-    line=$(grep -nF "$marker" "$orchestrator" | head -1 | cut -d: -f1 || true)
+    line=$(section "$orchestrator" '## Ordered entry' | grep -nF "$marker" | head -1 | cut -d: -f1 || true)
     if [ -z "$line" ]; then
       err "orchestrator order: missing $label marker '$marker'"
     elif [ "$line" -lt "$previous" ]; then
@@ -389,7 +409,6 @@ if [ -f "$orchestrator" ]; then
       previous=$line
     fi
   done <<'EOF'
-role|You are a stream orchestrator
 global orient|orient-global.md
 local orient|.harness/government/orient-local.md
 brief|item brief
