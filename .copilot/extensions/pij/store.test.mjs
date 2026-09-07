@@ -1583,6 +1583,76 @@ test("post-ack barrier cannot release a later send from earlier generation event
 	await run;
 });
 
+test("post-ack barrier follows a foreground user chained after the owned turn end", async (t) => {
+	const f = fixture();
+	t.after(() => f.bridge.stop());
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	const user = nativeUser(f, "native-message-137", "owned-user", "owned-interaction");
+	// Aphid's 2026-09-06 native events: a queued foreground user intervened
+	// between the owned assistant.turn_end and the only session.idle callback.
+	f.event({ type: "assistant.message", id: "owned-answer", parentId: user, data: {} });
+	f.event({ type: "assistant.turn_end", id: "owned-end", parentId: "owned-answer", data: {} });
+	f.event({
+		type: "user.message",
+		id: "next-user",
+		parentId: "owned-end",
+		data: { messageId: "next-native", interactionId: "next-interaction" },
+	});
+	f.event({
+		type: "assistant.message",
+		id: "next-answer",
+		parentId: "omitted-permission-parent",
+		data: { interactionId: "next-interaction" },
+	});
+	f.event({ type: "assistant.turn_end", id: "next-end", parentId: "next-answer", data: {} });
+	await flush();
+	assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+	nativeTerminal(f, "next-end");
+	await flush();
+	assert.equal(f.trace.filter((x) => x === "claim").length, 2);
+	assert.equal(f.reports.filter((event) => event.kind === "native-completed").length, 1);
+	f.bridge.stop();
+	await run;
+});
+
+for (const changed of [
+	{ parentId: "unrelated-end" },
+	{ parentId: "owned-user" },
+	{ agentId: "subagent" },
+	{ data: { messageId: "next-native" } },
+]) {
+	test(`post-ack barrier rejects unproven foreground transition ${JSON.stringify(changed)}`, async (t) => {
+		const f = fixture();
+		t.after(() => f.bridge.stop());
+		const run = f.bridge.run();
+		await f.accepted.promise;
+		const user = nativeUser(f, "native-message-137", "owned-user", "owned-interaction");
+		f.event({ type: "assistant.turn_end", id: "owned-end", parentId: user, data: {} });
+		f.event({
+			type: "user.message",
+			id: "next-user",
+			parentId: "owned-end",
+			data: { messageId: "next-native", interactionId: "next-interaction" },
+			...changed,
+		});
+		f.event({
+			type: "assistant.message",
+			id: "next-answer",
+			parentId: "next-user",
+			data: { interactionId: "next-interaction" },
+		});
+		nativeTerminal(f, "next-answer");
+		await flush();
+		assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+		nativeTerminal(f, "owned-end");
+		await flush();
+		assert.equal(f.trace.filter((x) => x === "claim").length, 2);
+		f.bridge.stop();
+		await run;
+	});
+}
+
 test("post-ack barrier explicitly holds accepted duplicate without completion evidence", {
 	timeout: 1000,
 }, async (t) => {

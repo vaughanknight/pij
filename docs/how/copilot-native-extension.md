@@ -47,6 +47,13 @@ like spawned seats. The native session ID remains the internal resume key.
 Existing addresses, including earlier hash-style IDs, are preserved; this does
 not rename live seats or move their queued messages and acceptance journals.
 
+Copilot may register a temporary startup conversation before opening an exact
+saved session. The daemon can retire that same-host bootstrap registration and
+reuse the saved session's existing address only after independently proving its
+old attested process is dead. A live old owner, changed native session, or
+unrelated bootstrap process/pane still refuses the handoff. The saved address,
+parent, operator state, and queued messages are retained.
+
 ## Receipt grades and failures
 
 A daemon `reader-read` receipt means the native harness accepted a message. It is
@@ -54,6 +61,13 @@ A daemon `reader-read` receipt means the native harness accepted a message. It i
 `data.messageId`; assistant/idle evidence is recorded separately. Normal accepted
 duplicates are suppressed. A crash across native acceptance and durable recording
 can remain ambiguous; do not describe this as universal exactly-once delivery.
+
+The native receiver waits for a correlated `session.idle` or `session.error`
+before claiming its next message. Consecutive foreground interactions can share
+one eventual idle callback: a new user event linked directly to an observed
+foreground `assistant.turn_end` continues that completion chain. The user event
+does not itself release the wait; unrelated interactions and subagent events
+cannot supply completion. An idle-looking pane alone is not completion evidence.
 
 The extension claims with native-session/host-incarnation evidence and checks the
 daemon's echoed proof before injecting. Missing support cannot silently downgrade
