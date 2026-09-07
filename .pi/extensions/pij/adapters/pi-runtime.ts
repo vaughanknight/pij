@@ -50,7 +50,8 @@ export class PiRuntimeAdapter implements PiRuntimePort {
 	inject(text: string, mode: "immediate" | "steer"): void {
 		if (this.runtimeBin === "omp") {
 			// OMP's message_start clears the editor for external user messages.
-			// Its public custom-message path renders and prompts without doing so.
+			// Keep default agent attribution: user-attributed custom messages are
+			// restored into the human's draft by OMP's Escape/dequeue action.
 			// triggerTurn also covers a busy -> idle race before async submission.
 			this.pi.sendMessage(
 				{ customType: "pij", content: text, display: true },
