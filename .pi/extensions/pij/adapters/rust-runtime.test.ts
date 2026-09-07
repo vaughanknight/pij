@@ -56,6 +56,25 @@ class FailingPiRuntime extends FakePiRuntime {
 	}
 }
 
+/** Idle native submission emits message_start; busy submission is explicitly consumed by each test. */
+function bindRuntime(
+	runtime: RustRuntimeSession,
+	pi: Parameters<RustRuntimeSession["setPi"]>[0],
+): void {
+	const inject = pi.inject.bind(pi);
+	vi.spyOn(pi, "inject").mockImplementation((text, mode, messageId) => {
+		inject(text, mode, messageId);
+		if (messageId !== undefined && pi.isIdle()) {
+			void runtime.onMessageStart({
+				role: "custom",
+				customType: "pij",
+				details: { pijMessageId: messageId },
+			});
+		}
+	});
+	runtime.setPi(pi);
+}
+
 async function bootPushedEvent(
 	payload: string,
 	pi: FakePiRuntime,
@@ -125,7 +144,7 @@ async function bootPushedEvent(
 		new FakeTmux(),
 		[],
 	);
-	runtime.setPi(pi);
+	bindRuntime(runtime, pi);
 	await runtime.boot({
 		folder: "/abs/tree",
 		dataDir: "",
@@ -171,7 +190,7 @@ function announceRuntime(
 	});
 	const runtime = new RustRuntimeSession(client, new FakeTmux(), []);
 	const pi = new FakePiRuntime();
-	runtime.setPi(pi);
+	bindRuntime(runtime, pi);
 	const input = {
 		folder: "/abs/tree",
 		dataDir: "",
@@ -379,7 +398,7 @@ describe("RustRuntimeSession", () => {
 			},
 		);
 		const runtime = new RustRuntimeSession(client, new FakeTmux(), []);
-		runtime.setPi(new FakePiRuntime());
+		bindRuntime(runtime, new FakePiRuntime());
 		try {
 			const boot = await runtime.boot({
 				folder: "/abs/tree",
@@ -615,7 +634,7 @@ describe("RustRuntimeSession", () => {
 		);
 		const runtime = new RustRuntimeSession(client, new FakeTmux(), []);
 		const pi = new FakePiRuntime();
-		runtime.setPi(pi);
+		bindRuntime(runtime, pi);
 
 		const boot = await runtime.boot({
 			folder: "/abs/tree",
@@ -734,7 +753,7 @@ describe("RustRuntimeSession", () => {
 			},
 		);
 		const runtime = new RustRuntimeSession(client, new FakeTmux(), []);
-		runtime.setPi(new FakePiRuntime());
+		bindRuntime(runtime, new FakePiRuntime());
 
 		const boot = await runtime.boot({
 			folder: "/abs/tree",
@@ -938,7 +957,7 @@ describe("RustRuntimeSession", () => {
 		);
 		const runtime = new RustRuntimeSession(client, new FakeTmux(), []);
 		const pi = new FakePiRuntime();
-		runtime.setPi(pi);
+		bindRuntime(runtime, pi);
 		const boot = await runtime.boot({
 			folder: "/abs/tree",
 			dataDir: "",
@@ -1201,7 +1220,7 @@ describe("extension-stream delivery", () => {
 		const runtime = new RustRuntimeSession(client, new FakeTmux(), []);
 		runtimes.push(runtime);
 		const pi = new TypingPiRuntime();
-		runtime.setPi(bind?.(pi) ?? pi);
+		bindRuntime(runtime, bind?.(pi) ?? pi);
 		await runtime.boot({
 			folder: "/abs/tree",
 			dataDir: "",
@@ -1242,7 +1261,7 @@ describe("extension-stream delivery", () => {
 		]);
 		expect(pi.draft).toBe("Unsubmitted human draft\nwith Unicode 你好");
 		expect(client.holdRequests).toEqual([]);
-		expect(client.acks).toEqual([1]);
+		expect(client.acks).toEqual(busy ? [] : [1]);
 		expect(pi.notices.map((row) => row.text)).toEqual([
 			"📨 pij from pij-sender: incoming while typing",
 		]);
@@ -1295,16 +1314,172 @@ describe("extension-stream delivery", () => {
 		expect(client.acks).toEqual([1]);
 	});
 
-	it("announces busy arrivals and clears the pending count when idle", async () => {
-		const { pi, client } = await start();
+	it("does not acknowledge queued delivery before its own message starts", async () => {
+		const { runtime, pi, client } = await start();
+		pi.setBusy(true);
+		await client.push(message("await-consumption"));
+		expect(client.acks).toEqual([]);
+		expect(pi.statuses.at(-1)).toBe("📨 1 pending");
+		await runtime.onMessageStart({
+			role: "custom",
+			customType: "pij",
+			details: { pijMessageId: "unrelated" },
+		});
+		expect(client.acks).toEqual([]);
+		await runtime.onMessageStart({
+			role: "custom",
+			customType: "pij",
+			details: { pijMessageId: "await-consumption" },
+		});
+		expect(client.acks).toEqual([1]);
+		expect(pi.isIdle()).toBe(false);
+		expect(pi.statuses.at(-1)).toBeUndefined();
+	});
+
+	it("never treats idle or an unrelated turn as message consumption", async () => {
+		const { runtime, pi, client } = await start();
+		pi.setBusy(true);
+		await client.push(message("not-consumed"));
+		runtime.onTurnStart(new Date().toISOString());
+		pi.setBusy(false);
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(pi.statuses.at(-1)).toBe("📨 1 pending");
+		expect(client.acks).toEqual([]);
+	});
+
+	it("reinjects interrupted unconsumed mail once and never repeats consumed mail", async () => {
+		const { runtime, pi, client } = await start();
+		pi.setBusy(true);
+		await client.push(message("survive-interrupt"));
+		pi.injects.length = 0; // Escape dropped the native steering queue.
+		pi.setBusy(false);
+		runtime.onAgentEnd();
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "survive-interrupt")]);
+		expect(pi.notices.at(-1)?.text).toBe("📨 re-queued 1 pij messages after interrupt");
+		await runtime.onMessageStart({
+			role: "custom",
+			customType: "pij",
+			details: { pijMessageId: "survive-interrupt" },
+		});
+		expect(client.acks).toEqual([1]);
+		runtime.onAgentEnd();
+		await client.repeat("survive-interrupt");
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(pi.injects).toHaveLength(1);
+		expect(client.acks).toEqual([1]);
+	});
+
+	it("counts only the claimed unconsumed envelope while draining three messages in order", async () => {
+		const { runtime, pi, client } = await start();
+		pi.setBusy(true);
+		for (const id of ["first", "second", "third"]) await client.push(message(id));
+		expect(pi.injects).toHaveLength(1);
+		expect(pi.statuses.at(-1)).toBe("📨 1 pending");
+		for (const [index, id] of ["first", "second", "third"].entries()) {
+			await runtime.onMessageStart({
+				role: "custom",
+				customType: "pij",
+				details: { pijMessageId: id },
+			});
+			expect(client.acks).toEqual([1, 2, 3].slice(0, index + 1));
+			expect(pi.statuses.at(-1)).toBeUndefined();
+			await vi.advanceTimersByTimeAsync(1_000);
+		}
+		expect(pi.injects.map((row) => row.text)).toEqual(
+			["first", "second", "third"].map((id) => frame("pij-sender", id)),
+		);
+		expect(pi.isIdle()).toBe(false);
+	});
+
+	it("reclaims an expired lease without injecting the queued envelope twice", async () => {
+		const { runtime, pi, client } = await start();
+		pi.setBusy(true);
+		await client.push(message("long-tool"));
+		for (const job of client.jobs) job.claimed = false;
+		await client.repeat("long-tool");
+		expect(pi.injects).toHaveLength(1);
+		expect(pi.notices).toHaveLength(1);
+		expect(client.acks).toEqual([]);
+		await runtime.onMessageStart({
+			role: "custom",
+			customType: "pij",
+			details: { pijMessageId: "long-tool" },
+		});
+		expect(client.acks).toEqual([1]);
+	});
+
+	it("retries failed consumption acknowledgements without reinjection", async () => {
+		const { runtime, pi, client } = await start();
+		pi.setBusy(true);
+		await client.push(message("ack-retry"));
+		vi.spyOn(client, "ackInbox").mockRejectedValueOnce(new Error("connection reset"));
+		await runtime.onMessageStart({
+			role: "custom",
+			customType: "pij",
+			details: { pijMessageId: "ack-retry" },
+		});
+		expect(client.acks).toEqual([]);
+		expect(pi.statuses.at(-1)).toBeUndefined();
+		pi.setBusy(false);
+		runtime.onAgentEnd();
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(client.acks).toEqual([1]);
+		expect(pi.injects).toHaveLength(1);
+	});
+
+	it("does not requeue during a scheduled continuation or acknowledge after shutdown", async () => {
+		const { runtime, pi, client } = await start();
+		pi.setBusy(true);
+		await client.push(message("continuation"));
+		runtime.onAgentEnd(true);
+		pi.setBusy(false);
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(pi.injects).toHaveLength(1);
+		runtime.shutdown("quit");
+		await runtime.onMessageStart({
+			role: "custom",
+			customType: "pij",
+			details: { pijMessageId: "continuation" },
+		});
+		expect(client.acks).toEqual([]);
+		expect(pi.statuses.at(-1)).toBeUndefined();
+	});
+
+	it("reconciles a committed acknowledgement whose response was lost without endless retries", async () => {
+		const { runtime, pi, client } = await start();
+		pi.setBusy(true);
+		await client.push(message("committed-ack"));
+		const acknowledge = client.ackInbox.bind(client);
+		const requests = vi.spyOn(client, "ackInbox").mockImplementationOnce(async (seat, jobId) => {
+			await acknowledge(seat, jobId);
+			throw new Error("response lost after commit");
+		});
+		await runtime.onMessageStart({
+			role: "custom",
+			customType: "pij",
+			details: { pijMessageId: "committed-ack" },
+		});
+		await vi.advanceTimersByTimeAsync(3_000);
+		expect(requests).toHaveBeenCalledTimes(1);
+		expect(client.acks).toEqual([1]);
+		expect(pi.injects).toHaveLength(1);
+	});
+
+	it("announces busy arrivals and clears pending on consumption while still busy", async () => {
+		const { runtime, pi, client } = await start();
 		pi.setBusy(true);
 		await client.push(message("mid-generation arrival"));
 		expect(pi.notices).toEqual([
 			{ text: "📨 pij from pij-sender: mid-generation arrival", level: "info" },
 		]);
 		expect(pi.statuses.at(-1)).toBe("📨 1 pending");
-		pi.setBusy(false);
-		await vi.advanceTimersByTimeAsync(1_000);
+		await runtime.onMessageStart({
+			role: "custom",
+			customType: "pij",
+			details: { pijMessageId: "mid-generation arrival" },
+		});
+		expect(pi.isIdle()).toBe(false);
 		expect(pi.statuses.at(-1)).toBeUndefined();
 	});
 
@@ -1522,13 +1697,18 @@ describe("extension-stream delivery", () => {
 		expect(pi.injects).toEqual([]);
 	});
 
-	it("does not carry an unseen count across a new lifecycle", async () => {
+	it("recovers an unconsumed message after the previous runtime claim expires", async () => {
 		const { runtime, pi, client } = await start();
 		pi.setBusy(true);
 		await client.push(message("before restart"));
 		expect(pi.statuses.at(-1)).toBe("📨 1 pending");
 		runtime.shutdown("quit");
+		for (const job of client.jobs) job.claimed = false; // Daemon claim lease expiry after owner exit.
 		const restarted = await start(client);
+		expect(restarted.pi.injects.map((row) => row.text)).toEqual([
+			frame("pij-sender", "before restart"),
+		]);
+		expect(client.acks).toEqual([1]);
 		restarted.pi.setBusy(true);
 		await client.push(message("after restart"));
 		expect(restarted.pi.statuses.at(-1)).toBe("📨 1 pending");

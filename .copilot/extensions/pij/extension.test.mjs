@@ -20,6 +20,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
       if (process.env.PIJ_NATIVE_TEST_JOIN_FAIL === '1') throw new Error('Fixture join unsupported');
       const listeners = new Set();
       let sends = 0;
+      const history = [];
       const session = {
         sessionId: process.env.SESSION_ID,
         on(type, handler) {
@@ -27,14 +28,23 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
           listeners.add(listener);
           return () => listeners.delete(listener);
         },
-        async send(input) { emit({kind:'native-send',input}); return 'native-shell-' + (137 + sends++); },
+        async send(input) {
+          emit({kind:'native-send',input});
+          const nativeId = 'native-shell-' + (137 + sends++);
+          history.push({type:'user.message', id:'user-' + nativeId, data:{messageId:nativeId}});
+          return nativeId;
+        },
+        async getEvents() { return history; },
         async log(message, options) { emit({kind:'native-log',message,options}); },
         async disconnect() {}
       };
       process.stdin.on('data', async (data) => {
         const input = JSON.parse(String(data));
         if (input.nativeEvents) {
-          for (const event of input.nativeEvents) for (const listener of listeners) listener(event);
+          for (const event of input.nativeEvents) {
+            history.push(event);
+            for (const listener of listeners) listener(event);
+          }
           return;
         }
         const result = await config.tools[0].handler(input, {sessionId:session.sessionId});
