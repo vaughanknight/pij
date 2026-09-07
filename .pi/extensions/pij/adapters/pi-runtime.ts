@@ -14,8 +14,8 @@ import type { PiRuntimePort } from "../core/ports.js";
  *  ExtensionCommandContext the moment the `/pij` command runs (the single
  *  instant pi exposes them). index.ts owns the live holder; null until armed. */
 export interface CommandControl {
-	newSession(): void;
-	reload(): void;
+	newSession(): Promise<{ cancelled: boolean }>;
+	reload(): Promise<void>;
 }
 
 type RuntimeContext = Pick<ExtensionContext, "isIdle" | "compact"> & {
@@ -64,15 +64,64 @@ export class PiRuntimeAdapter implements PiRuntimePort {
 		}
 	}
 
-	compact(): void {
-		this.ctx.compact();
+	compact(): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			void Promise.resolve(
+				this.ctx.compact({ onComplete: () => resolve(), onError: reject }),
+			).catch(reject);
+		});
 	}
 
-	control(command: "new" | "reload"): boolean {
+	control(command: "new" | "reload"): boolean | Promise<boolean> {
 		const c = this.controlRef();
 		if (!c) return false;
-		if (command === "new") c.newSession();
-		else c.reload();
-		return true;
+		if (command === "reload" && !this.ctx.isIdle()) {
+			return Promise.reject(new Error("reload refused while the runtime is busy"));
+		}
+		if (command === "new") {
+			return c.newSession().then(({ cancelled }) => {
+				if (cancelled) throw new Error("new session was cancelled by the runtime");
+				return true;
+			});
+		}
+		return c.reload().then(() => true);
+	}
+}
+
+const RELOAD_COMPLETED = "pij:reload-completed";
+
+/** OMP's supported lifecycle differs from Pi's upstream extension typings. */
+interface OmpReloadLifecycle {
+	on(event: "session_switch", handler: (event: { readonly reason: string }) => void): void;
+}
+
+export function publishReloadCompleted(pi: Pick<ExtensionAPI, "events">): void {
+	pi.events.emit(RELOAD_COMPLETED, undefined);
+}
+
+export function registerOmpReloadCompletion(pi: Pick<ExtensionAPI, "on" | "events">): void {
+	(pi as unknown as OmpReloadLifecycle).on("session_switch", (event) => {
+		if (event.reason === "resume") publishReloadCompleted(pi);
+	});
+}
+
+/** Both runtimes await their lifecycle handlers before reload() settles. The
+ * shared extension bus survives Pi resource reload, unlike this module's state. */
+export async function reloadWithCompletion(
+	pi: Pick<ExtensionAPI, "events">,
+	reload: () => Promise<void>,
+): Promise<void> {
+	let completed = false;
+	const unsubscribe = pi.events.on(RELOAD_COMPLETED, () => {
+		completed = true;
+	});
+	try {
+		await reload();
+		if (!completed)
+			throw new Error(
+				"reload did not complete; the runtime was busy, compacting, or refused the operation",
+			);
+	} finally {
+		unsubscribe();
 	}
 }

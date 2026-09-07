@@ -28,6 +28,8 @@
  *  `generation-routing.test.ts` pins the absence of a name-generation path here.
  */
 
+import { COPILOT_CONTROL_REFUSAL, validateCommand } from "./commands.js";
+
 /** One row of the route table. Adding an rs verb is adding one of these —
  *  never a branch in the dispatcher. */
 export interface RsRouteRow {
@@ -438,6 +440,18 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 		why: "s119 — a seat that registers into rs must be able to speak; `send` running on legacy is what left pij-literary-bonobo registered and mute",
 	},
 	{
+		verb: "compact-self",
+		jsonOutput: "refuse",
+		jsonRefusal:
+			"compact-self has no legacy JSON contract; use pij-rs compact-self --json for the daemon receipt",
+		humanOutput: "render",
+		render: renderShimSend,
+		rsPath: "/v1/shim/compact-self",
+		method: "POST",
+		requiresSeatInRs: true,
+		why: "Remote controls are daemon-owned, including self compaction; never type a slash fallback",
+	},
+	{
 		verb: "inbox",
 		leaf: "check",
 		jsonOutput: "refuse",
@@ -561,9 +575,8 @@ export function copilotControlRefusal(
 	harness: string | undefined,
 	command: string,
 ): string | undefined {
-	if (harness !== "copilot" || (command !== "compact" && command !== "new" && command !== "reload"))
-		return undefined;
-	return `Copilot programmatic ${command} is unsupported; use Copilot's native user controls. No legacy or tmux fallback is permitted.`;
+	if (harness !== "copilot" || !validateCommand(command).ok) return undefined;
+	return COPILOT_CONTROL_REFUSAL;
 }
 
 /** Verbs whose leaves must be ENUMERATED: an unlisted leaf does not route.

@@ -219,21 +219,28 @@ pub fn route(
     if from == &recipient.id && from_machine.is_none() {
         return Err(PijError::SelfAddressed { seat: from.clone() });
     }
+    Ok(route_control(recipient, transport_reachable))
+}
+
+/// Route an already-authorized control, including controls addressed to self.
+/// Tombstones, holds, pre-bind and transport reachability remain authoritative.
+#[must_use]
+pub fn route_control(recipient: &SeatDescriptor, transport_reachable: bool) -> DeliveryRoute {
     if recipient.tombstoned_at.is_some() {
-        return Ok(DeliveryRoute::Tombstoned {
+        return DeliveryRoute::Tombstoned {
             reason: recipient.tombstone_reason.clone(),
-        });
+        };
     }
     if recipient.semantic_state == Some(SemanticState::Hold) {
-        return Ok(DeliveryRoute::Queue(QueueReason::OperatorHold));
+        return DeliveryRoute::Queue(QueueReason::OperatorHold);
     }
     if recipient.proc.is_none() {
-        return Ok(DeliveryRoute::Queue(QueueReason::PreBind));
+        return DeliveryRoute::Queue(QueueReason::PreBind);
     }
     if !transport_reachable {
-        return Ok(DeliveryRoute::Queue(QueueReason::Unreachable));
+        return DeliveryRoute::Queue(QueueReason::Unreachable);
     }
-    Ok(DeliveryRoute::Transport)
+    DeliveryRoute::Transport
 }
 
 #[cfg(test)]
@@ -251,6 +258,26 @@ mod tests {
             proc_start: 11,
         });
         seat
+    }
+
+    #[test]
+    fn controls_route_to_self_without_weakening_body_or_hold_policy() {
+        let mut seat = bound_recipient();
+        assert!(matches!(
+            route(&seat.id, None, &seat, true),
+            Err(PijError::SelfAddressed { .. })
+        ));
+        assert_eq!(super::route_control(&seat, true), DeliveryRoute::Transport);
+        seat.semantic_state = Some(SemanticState::Hold);
+        assert_eq!(
+            super::route_control(&seat, true),
+            DeliveryRoute::Queue(QueueReason::OperatorHold)
+        );
+        seat.tombstoned_at = Some(1);
+        assert!(matches!(
+            super::route_control(&seat, true),
+            DeliveryRoute::Tombstoned { .. }
+        ));
     }
 
     #[test]

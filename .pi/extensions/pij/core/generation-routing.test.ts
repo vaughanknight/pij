@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { COPILOT_CONTROL_REFUSAL } from "./commands.js";
 import {
 	classifyRsResponse,
 	copilotControlRefusal,
@@ -30,9 +31,7 @@ const pre = (over: Partial<Parameters<typeof decidePreCall>[0]> = {}) =>
 
 describe("Copilot native control boundary", () => {
 	it.each(["compact", "new", "reload"])("refuses programmatic %s only for Copilot", (command) => {
-		expect(copilotControlRefusal("copilot", command)).toMatch(
-			/unsupported.*No legacy or tmux fallback/,
-		);
+		expect(copilotControlRefusal("copilot", command)).toBe(COPILOT_CONTROL_REFUSAL);
 		for (const harness of ["pi", "omp", "claude", "codex", undefined]) {
 			expect(copilotControlRefusal(harness, command)).toBeUndefined();
 		}

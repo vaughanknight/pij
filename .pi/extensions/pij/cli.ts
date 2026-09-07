@@ -4694,7 +4694,9 @@ async function bootThroughGenerationRouting(): Promise<void> {
 	}
 	const controlRefusal = await copilotControlRefusalForInvocation(process.argv.slice(2));
 	if (controlRefusal !== undefined) {
-		process.stderr.write(`E-UNSUPPORTED: ${controlRefusal}\n`);
+		process.stderr.write(
+			`${controlRefusal.startsWith("E-") ? controlRefusal : `E-UNSUPPORTED: ${controlRefusal}`}\n`,
+		);
 		process.exitCode = 2;
 		return;
 	}

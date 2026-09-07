@@ -1,13 +1,25 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
 	ALLOWED_COMMANDS,
 	CONTROL_COMMANDS,
+	COPILOT_CONTROL_REFUSAL,
 	isControlCommand,
 	validateCommand,
 } from "./commands.js";
 
 describe("validateCommand", () => {
+	it("reads the Rust-owned command and refusal fixture", () => {
+		const contract = JSON.parse(
+			readFileSync(
+				new URL("../../../../crates/core/tests/fixtures/control-commands.json", import.meta.url),
+				"utf8",
+			),
+		);
+		expect(ALLOWED_COMMANDS).toEqual(contract.commands);
+		expect(COPILOT_CONTROL_REFUSAL).toBe(contract.copilot_refusal);
+	});
 	it("accepts compact", () => {
 		const r = validateCommand("compact");
 		expect(r.ok).toBe(true);

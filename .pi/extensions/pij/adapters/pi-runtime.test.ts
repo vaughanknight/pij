@@ -1,7 +1,13 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { describe, expect, it, vi } from "vitest";
 import { frame } from "../core/message.js";
-import { PiRuntimeAdapter } from "./pi-runtime.js";
+import {
+	PiRuntimeAdapter,
+	publishReloadCompleted,
+	registerOmpReloadCompletion,
+	reloadWithCompletion,
+} from "./pi-runtime.js";
 
 describe("draft-safe extension submission", () => {
 	it.each([
@@ -121,5 +127,131 @@ describe("draft-safe extension submission", () => {
 				? [["Incoming pij message", { deliverAs: "steer" }]]
 				: [["Incoming pij message"]],
 		);
+	});
+});
+
+describe("native control completion", () => {
+	it("propagates OMP compact promise rejection even without an error callback", async () => {
+		const adapter = new PiRuntimeAdapter(
+			{ sendUserMessage: () => {}, sendMessage: () => {} },
+			{
+				isIdle: () => true,
+				compact: async () => {
+					throw new Error("native compact rejected");
+				},
+				ui: { notify: () => {}, setStatus: () => {} },
+			},
+			"omp",
+		);
+		await expect(adapter.compact()).rejects.toThrow("native compact rejected");
+	});
+	it("refuses busy reload before calling a runtime that would silently ignore it", async () => {
+		const reload = vi.fn(async () => {});
+		const adapter = new PiRuntimeAdapter(
+			{ sendUserMessage: () => {}, sendMessage: () => {} },
+			{ isIdle: () => false, compact: () => {}, ui: { notify: () => {}, setStatus: () => {} } },
+			"omp",
+			() => ({ newSession: async () => ({ cancelled: false }), reload }),
+		);
+		await expect(adapter.control("reload")).rejects.toThrow(/busy/i);
+		expect(reload).not.toHaveBeenCalled();
+	});
+	it("resolves compact only after the runtime completion callback", async () => {
+		let options: Parameters<ExtensionContext["compact"]>[0];
+		const adapter = new PiRuntimeAdapter(
+			{ sendUserMessage: () => {}, sendMessage: () => {} },
+			{
+				isIdle: () => true,
+				compact: (value) => {
+					options = value;
+				},
+				ui: { notify: () => {}, setStatus: () => {} },
+			},
+			"omp",
+		);
+		let finished = false;
+		const completion = Promise.resolve(adapter.compact()).then(() => {
+			finished = true;
+		});
+		await Promise.resolve();
+		expect(finished).toBe(false);
+		options?.onComplete?.({} as never);
+		await completion;
+		expect(finished).toBe(true);
+	});
+
+	it("propagates compact failure instead of claiming execution", async () => {
+		const adapter = new PiRuntimeAdapter(
+			{ sendUserMessage: () => {}, sendMessage: () => {} },
+			{
+				isIdle: () => true,
+				compact: (options) => options?.onError?.(new Error("runtime failed")),
+				ui: { notify: () => {}, setStatus: () => {} },
+			},
+			"omp",
+		);
+		await expect(adapter.compact()).rejects.toThrow("runtime failed");
+	});
+
+	it("treats a cancelled new session as refused", async () => {
+		const adapter = new PiRuntimeAdapter(
+			{ sendUserMessage: () => {}, sendMessage: () => {} },
+			{ isIdle: () => true, compact: () => {}, ui: { notify: () => {}, setStatus: () => {} } },
+			"omp",
+			() => ({ newSession: async () => ({ cancelled: true }), reload: async () => {} }),
+		);
+		await expect(adapter.control("new")).rejects.toThrow(/cancel/i);
+	});
+});
+
+describe("reload lifecycle outcomes", () => {
+	function lifecycleApi() {
+		const bus = new EventEmitter();
+		const lifecycle = new EventEmitter();
+		const api = {
+			events: {
+				emit: (channel: string, data: unknown) => {
+					bus.emit(channel, data);
+				},
+				on: (channel: string, handler: (data: unknown) => void) => {
+					bus.on(channel, handler);
+					return () => {
+						bus.off(channel, handler);
+					};
+				},
+			},
+			on: (event: string, handler: (value: unknown) => void) => {
+				lifecycle.on(event, handler);
+			},
+		} as unknown as Pick<ExtensionAPI, "events" | "on">;
+		return { api, lifecycle };
+	}
+
+	it.each([
+		"pi",
+		"omp",
+	] as const)("refuses %s reload returning normally without a lifecycle event", async (runtime) => {
+		const { api } = lifecycleApi();
+		if (runtime === "omp") registerOmpReloadCompletion(api);
+		await expect(reloadWithCompletion(api, async () => {})).rejects.toThrow(/did not complete/i);
+	});
+
+	it.each([
+		["pi", "session_start", "reload"],
+		["omp", "session_switch", "resume"],
+	] as const)("accepts %s only after its awaited native lifecycle event", async (runtime, event, reason) => {
+		const { api, lifecycle } = lifecycleApi();
+		if (runtime === "omp") registerOmpReloadCompletion(api);
+		else
+			api.on("session_start", (started) => {
+				if (started.reason === "reload") publishReloadCompleted(api);
+			});
+		await expect(
+			reloadWithCompletion(api, async () => {
+				lifecycle.emit(event, { reason });
+			}),
+		).resolves.toBeUndefined();
+		// A prior event must not make the next silent no-op look successful.
+		await expect(reloadWithCompletion(api, async () => {})).rejects.toThrow(/did not complete/i);
 	});
 });

@@ -684,6 +684,111 @@ async fn an_expired_inbox_claim_retries_instead_of_losing_the_unacked_message() 
 }
 
 #[tokio::test]
+async fn control_claim_lease_expiry_never_replays_an_unacknowledged_command() {
+    for command in pij_core::control::ALLOWED_COMMANDS {
+        let fresh = FreshStore::new();
+        let pool = pij_store::open(&fresh.path()).await.expect("open");
+        let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("queue policy");
+        let kind = "delivery:pij-control";
+        let mut control = job(kind, "pij-control", "control-1");
+        control.payload = serde_json::to_string(&pij_core::model::Msg {
+            from: "parent".into(),
+            from_machine: None,
+            to: "pij-control".into(),
+            body: String::new(),
+            command: Some(command.to_string()),
+            msg_id: "control-1".to_string(),
+            in_reply_to: None,
+        })
+        .expect("control message");
+        let DeliveryEnqueue::Queued { job_id, .. } =
+            queue.enqueue_delivery(control).await.expect("enqueue")
+        else {
+            panic!("new control must queue");
+        };
+        let claimed = queue
+            .claim(&[kind.to_string()], "executing-client")
+            .await
+            .expect("claim")
+            .expect("control");
+        assert_eq!(claimed.0, job_id);
+        queue
+            .enqueue_delivery(job(kind, "pij-control", "next-body"))
+            .await
+            .expect("successor");
+        sqlx::query("UPDATE jobs SET claimed_at = unixepoch() - 301 WHERE id = ?1")
+            .bind(job_id.0 as i64)
+            .execute(&pool)
+            .await
+            .expect("age missing acknowledgement");
+
+        let successor = queue
+            .claim(&[kind.to_string()], "replacement-client")
+            .await
+            .expect("claim after expiry")
+            .expect("successor");
+        assert_eq!(
+            successor.1.dedupe_key, "next-body",
+            "{command} may have executed before its ACK was lost and must never replay"
+        );
+        let (state, outcome, acked_at, attempt): (String, Option<String>, Option<i64>, i64) =
+            sqlx::query_as("SELECT state, outcome, acked_at, attempt FROM jobs WHERE id = ?1")
+                .bind(job_id.0 as i64)
+                .fetch_one(&pool)
+                .await
+                .expect("expired control");
+        assert_eq!(state, "failed");
+        let reason = outcome.expect("honest terminal reason");
+        assert!(reason.contains("outcome unknown"), "{reason}");
+        assert!(reason.contains("acknowledgement missing"), "{reason}");
+        assert!(acked_at.is_some());
+        assert_eq!(attempt, 0, "expiry is terminal, not a retry");
+        assert!(
+            queue
+                .ack_delivery(job_id, DeliveryOrigin::ReaderRead)
+                .await
+                .is_err(),
+            "a stale ACK cannot certify an expired control"
+        );
+    }
+}
+
+#[tokio::test]
+async fn control_claim_lease_brake_preserves_body_and_non_json_recovery() {
+    for payload in ["{}", "{\"command\":null}", "not-json"] {
+        let fresh = FreshStore::new();
+        let pool = pij_store::open(&fresh.path()).await.expect("open");
+        let queue = SqliteQueue::new(pool.clone(), 300, 1_024).expect("queue policy");
+        let kind = "delivery:pij-reader";
+        let mut body = job(kind, "pij-reader", "body-1");
+        body.payload = payload.to_string();
+        let DeliveryEnqueue::Queued { job_id, .. } =
+            queue.enqueue_delivery(body).await.expect("enqueue")
+        else {
+            panic!("new body must queue");
+        };
+        queue
+            .claim(&[kind.to_string()], "interrupted-client")
+            .await
+            .expect("first claim")
+            .expect("body");
+        sqlx::query("UPDATE jobs SET claimed_at = unixepoch() - 301 WHERE id = ?1")
+            .bind(job_id.0 as i64)
+            .execute(&pool)
+            .await
+            .expect("age body claim");
+        let retried = queue
+            .claim(&[kind.to_string()], "replacement-client")
+            .await
+            .expect("safe JSON inspection")
+            .expect("body retries");
+        assert_eq!(retried.0, job_id);
+        assert_eq!(retried.1.payload, payload);
+        assert_eq!(retried.1.attempt, 1);
+    }
+}
+
+#[tokio::test]
 async fn delivery_enqueue_returns_the_persisted_not_before_after_backoff() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");

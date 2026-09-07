@@ -67,6 +67,7 @@ async function bootPushedEvent(
 	vi.stubEnv("PIJ_SPAWN_TASK", "");
 	let registeredId = "";
 	const acknowledgements: Array<Record<string, unknown>> = [];
+	const sends: Array<Record<string, unknown>> = [];
 	const claimRequests: string[] = [];
 	let eventStreams = 0;
 	const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
@@ -107,6 +108,11 @@ async function bootPushedEvent(
 			acknowledgements.push(acknowledgement);
 			return envelope("pij inbox", acknowledgement.job_id);
 		}
+		if (path === "/v1/send") {
+			const sent = JSON.parse(String(init?.body)) as Record<string, unknown>;
+			sends.push(sent);
+			return envelope("pij send", { msg_id: sent.msg_id, outcome: "accepted", at: 1 });
+		}
 		throw new Error(`unexpected path ${path}`);
 	});
 	const deps: DaemonHttpDeps = {
@@ -132,7 +138,7 @@ async function bootPushedEvent(
 		resetRuntimeState: true,
 		reason: "startup",
 	});
-	return { acknowledgements, claimRequests, runtime };
+	return { acknowledgements, claimRequests, runtime, sends };
 }
 
 function announceRuntime(
@@ -181,6 +187,154 @@ function announceRuntime(
 }
 
 describe("RustRuntimeSession", () => {
+	it.each([
+		"new",
+		"reload",
+	] as const)("settles the original %s claim after runtime teardown", async (command) => {
+		const claim = JSON.parse(INBOX_CLAIM_WIRE);
+		claim[0].message.command = command;
+		claim[0].message.body = "";
+		let complete!: () => void;
+		const pi = new FakePiRuntime();
+		const control = vi.spyOn(pi, "control").mockImplementation(
+			() =>
+				new Promise<boolean>((resolve) => {
+					complete = () => {
+						runtime.shutdown(command);
+						resolve(true);
+					};
+				}) as never,
+		);
+		const { runtime, acknowledgements } = await bootPushedEvent(PUSHED_EVENT_WIRE, pi, claim);
+		try {
+			await vi.waitFor(() => expect(control).toHaveBeenCalledOnce());
+			expect(acknowledgements).toEqual([]);
+			const originalSeat = runtime.readSelf()?.id;
+			complete();
+			await vi.waitFor(() =>
+				expect(acknowledgements).toEqual([
+					{
+						seat: originalSeat,
+						job_id: claim[0].job_id,
+						control_outcome: { outcome: "executed" },
+					},
+				]),
+			);
+		} finally {
+			runtime.shutdown("quit");
+		}
+	});
+	it.each([
+		"compact",
+		"new",
+		"reload",
+	])("executes a claimed %s command and acknowledges its outcome", async (command) => {
+		const claim = JSON.parse(INBOX_CLAIM_WIRE);
+		claim[0].message.command = command;
+		claim[0].message.body = "";
+		const pi = new FakePiRuntime();
+		const { runtime, acknowledgements } = await bootPushedEvent(PUSHED_EVENT_WIRE, pi, claim);
+		try {
+			await vi.waitFor(() => expect(acknowledgements).toHaveLength(1));
+			expect(acknowledgements[0]).toMatchObject({
+				job_id: claim[0].job_id,
+				control_outcome: { outcome: "executed" },
+			});
+			expect(pi.compactCount).toBe(command === "compact" ? 1 : 0);
+			expect(pi.controlCalls).toEqual(command === "compact" ? [] : [command]);
+			expect(pi.injects.some(({ text }) => text.includes(`/${command}`))).toBe(false);
+		} finally {
+			runtime.shutdown("quit");
+		}
+	});
+
+	it("waits for a claimed command runtime outcome before acknowledging", async () => {
+		const claim = JSON.parse(INBOX_CLAIM_WIRE);
+		claim[0].message.command = "compact";
+		claim[0].message.body = "";
+		let complete!: () => void;
+		const completion = new Promise<void>((resolve) => {
+			complete = resolve;
+		});
+		const pi = new FakePiRuntime();
+		const compact = vi.spyOn(pi, "compact").mockImplementation(() => completion);
+		const { runtime, acknowledgements } = await bootPushedEvent(PUSHED_EVENT_WIRE, pi, claim);
+		try {
+			await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce());
+			expect(acknowledgements).toEqual([]);
+			complete();
+			await vi.waitFor(() =>
+				expect(acknowledgements[0]?.control_outcome).toEqual({ outcome: "executed" }),
+			);
+		} finally {
+			complete();
+			runtime.shutdown("quit");
+		}
+	});
+
+	it.each([
+		"new",
+		"reload",
+	])("refuses an unarmed %s command without later execution", async (command) => {
+		const claim = JSON.parse(INBOX_CLAIM_WIRE);
+		claim[0].message.command = command;
+		claim[0].message.body = "";
+		const pi = new FakePiRuntime(true, false);
+		const { runtime, acknowledgements } = await bootPushedEvent(PUSHED_EVENT_WIRE, pi, claim);
+		try {
+			await vi.waitFor(() => expect(acknowledgements).toHaveLength(1));
+			expect(acknowledgements[0]?.control_outcome).toMatchObject({
+				outcome: "refused",
+				reason: expect.stringContaining("/pij"),
+			});
+			pi.setArmed(true);
+			expect(runtime.applyPendingControl()).toEqual([]);
+			expect(pi.controlCalls).toEqual([]);
+		} finally {
+			runtime.shutdown("quit");
+		}
+	});
+
+	it("acknowledges command runtime errors as refused instead of retrying execution", async () => {
+		const claim = JSON.parse(INBOX_CLAIM_WIRE);
+		claim[0].message.command = "compact";
+		claim[0].message.body = "";
+		const pi = new FakePiRuntime();
+		const compact = vi.spyOn(pi, "compact").mockImplementation(() => {
+			throw new Error("compaction failed");
+		});
+		const { runtime, acknowledgements } = await bootPushedEvent(PUSHED_EVENT_WIRE, pi, claim);
+		try {
+			await vi.waitFor(() => expect(acknowledgements).toHaveLength(1));
+			expect(acknowledgements[0]?.control_outcome).toEqual({
+				outcome: "refused",
+				reason: "compaction failed",
+			});
+			expect(compact).toHaveBeenCalledOnce();
+		} finally {
+			runtime.shutdown("quit");
+		}
+	});
+
+	it("native control sends carry command and pane caller proof with no scaffold body", async () => {
+		vi.stubEnv("TMUX_PANE", "%42");
+		const { runtime, sends } = await bootPushedEvent(PUSHED_EVENT_WIRE, new FakePiRuntime());
+		try {
+			await runtime.send("pij-target", frame("pij-from", ""), "compact");
+			expect(sends.at(-1)).toMatchObject({
+				to: { seat: "pij-target" },
+				body: "",
+				command: "compact",
+				caller: { tmuxPane: "%42", pid: process.pid, procStart: 20260829103052 },
+			});
+			await expect(runtime.send("pij-target", "real body", "compact")).rejects.toThrow(
+				/body|message/i,
+			);
+			expect(sends).toHaveLength(1);
+		} finally {
+			runtime.shutdown("quit");
+		}
+	});
 	it("does not overwrite a claude seat when omp boots in the same pane", async () => {
 		vi.stubEnv("PIJ_ANNOUNCE_TO", "");
 		vi.stubEnv("PIJ_SESSION_ID", undefined);
@@ -926,7 +1080,6 @@ class GraceClient extends PijDaemonClient {
 	}
 	override async register(input: Registration): Promise<RustSeatDescriptor> {
 		this.id = input.id;
-		for (const job of this.jobs) if (!job.acked) job.claimed = false;
 		return {
 			id: this.id,
 			folder: input.folder,
@@ -1194,7 +1347,7 @@ describe("extension-stream delivery", () => {
 		pi.edit();
 		await client.push(message("ordinary"));
 		for (const command of ["compact", "new", "reload"])
-			await client.push(message(command, { command }));
+			await client.push(message(command, { command, body: "" }));
 		await client.push(message("urgent", { urgent: true }));
 		expect(pi.injects.map((row) => row.text)).toEqual([
 			frame("pij-sender", "ordinary"),
@@ -1204,6 +1357,34 @@ describe("extension-stream delivery", () => {
 		expect(pi.controlCalls).toEqual(["new", "reload"]);
 		expect(client.acks).toEqual([1, 2, 3, 4, 5]);
 		expect(client.holdRequests).toEqual([]);
+	});
+
+	it("does not release or execute an active control peek during reload startup", async () => {
+		const client = new GraceClient();
+		await client.push(message("active-reload", { command: "reload", body: "" }), false);
+		const active = client.jobs[0];
+		if (active === undefined) throw new Error("expected the active control job");
+		active.claimed = true;
+		const { pi } = await start(client);
+		expect(pi.controlCalls).toEqual([]);
+		expect(client.releases).toEqual([]);
+		expect(client.acks).toEqual([]);
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(client.releases).toEqual([]);
+		expect(pi.controlCalls).toEqual([]);
+		// Only the original owner settles the old operation.
+		await client.ackInbox("pij-grace-test", 1);
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(client.acks).toEqual([1]);
+	});
+
+	it("claims startup controls without a pre-claim release", async () => {
+		const client = new GraceClient();
+		await client.push(message("startup-compact", { command: "compact", body: "" }), false);
+		const { pi } = await start(client);
+		expect(pi.compactCount).toBe(1);
+		expect(client.releases).toEqual([]);
+		expect(client.acks).toEqual([1]);
 	});
 
 	it("recovers an older deferred row before newer eligible rows without another send", async () => {

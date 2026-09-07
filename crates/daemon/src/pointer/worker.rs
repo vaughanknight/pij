@@ -18,7 +18,7 @@ use crate::events::EventBus;
 
 use super::{
     CONTROL_BODY_POINTER_EVENT_KIND, OVERSIZE_BODY_POINTER_EVENT_KIND, PointerPolicy,
-    render_control_body_pointer, render_oversize_body_pointer, retry_delay, submit_command,
+    render_control_body_pointer, render_oversize_body_pointer, retry_delay,
 };
 
 /// How many times a held delivery is re-offered before the job is parked.
@@ -237,16 +237,6 @@ impl DrainWorker {
             return self.release_or_backoff(job_id, job, &msg).await;
         }
         if msg.command.is_some() {
-            let verdict = match self.interaction.fresh_injection_verdict(pane).await {
-                Ok(verdict) => verdict,
-                Err(error) => {
-                    self.backoff_unobservable(job_id, job.attempt).await?;
-                    return Err(error);
-                }
-            };
-            if !verdict.permitted {
-                return self.release_or_backoff(job_id, job, &msg).await;
-            }
             return self
                 .submit_command_claim(job_id, job.attempt, pane, &msg)
                 .await;
@@ -330,7 +320,11 @@ impl DrainWorker {
                 outcome: DeliveryOutcome::Delivered { origin },
                 at,
             },
-            self.transport.name(),
+            if msg.command.is_some() {
+                "pty"
+            } else {
+                self.transport.name()
+            },
         )
         .await
     }
@@ -342,18 +336,45 @@ impl DrainWorker {
         pane: &str,
         msg: &Msg,
     ) -> Result<()> {
-        let command = msg
-            .command
-            .as_deref()
-            .expect("command branch requires an explicit command tag");
-        if let Err(error) = submit_command(self.tmux.as_ref(), pane, command).await {
-            self.backoff_command(job_id, attempt).await?;
-            return Err(error);
-        }
-        self.queue
-            .ack_delivery(job_id, DeliveryOrigin::InjectedToTransport)
+        let command = msg.command.as_deref().expect("explicit command tag");
+        let rendered = super::render_command(command);
+        match self
+            .interaction
+            .submit_with_owned_input(pane, &rendered)
             .await
-            .map(|_| ())
+        {
+            Ok(StagedSubmission::Submitted) => {
+                self.ack_delivered_claim(job_id, msg, DeliveryOrigin::InjectedToTransport)
+                    .await
+            }
+            Ok(StagedSubmission::Deferred { reason, draft_sha }) => {
+                if matches!(
+                    reason,
+                    DeliveryDeferralReason::TapUnowned | DeliveryDeferralReason::Unrecognized
+                ) {
+                    self.keep_body_pullable(
+                        job_id,
+                        publish_delivery_held(
+                            &self.event_bus,
+                            msg,
+                            reason,
+                            draft_sha.as_deref(),
+                            (self.clock)()?,
+                        )
+                        .await,
+                    )
+                    .await?;
+                    self.backoff_command(job_id, attempt).await
+                } else {
+                    self.release_held_body(job_id, msg, reason, draft_sha.as_deref())
+                        .await
+                }
+            }
+            Err(error) => {
+                self.backoff_command(job_id, attempt).await?;
+                Err(error)
+            }
+        }
     }
 
     async fn submit_body_claim(
@@ -539,12 +560,6 @@ impl DrainWorker {
                 }),
             },
         }
-    }
-
-    /// Back off a command whose pane could not be observed, rather than spinning
-    /// on the same capture failure every tick. Socket bodies never use this gate.
-    async fn backoff_unobservable(&self, job_id: JobId, attempt: u32) -> Result<()> {
-        self.queue.retry(job_id, retry_delay(attempt)).await
     }
 
     async fn backoff_command(&self, job_id: JobId, attempt: u32) -> Result<()> {
@@ -806,18 +821,14 @@ mod tests {
         .await;
 
         assert_eq!(fixture.worker.drain_once().await.expect("drain"), 1);
-        // A recognized blank composer is authoritative under u3, so the fresh
-        // verdict no longer asks tmux mode for a second, output-shaped veto.
         assert_eq!(
-            fixture.tmux.calls(),
-            [
-                "list_panes",
-                "pane_tap_sink:%7",
-                "drain_pane_tap:%7",
-                "list_panes",
-                "capture:%7:4294967295",
-                "submit:%7:/compact"
-            ]
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .filter(|call| call.starts_with("submit:"))
+                .collect::<Vec<_>>(),
+            [&"submit:%7:/compact".to_string()]
         );
         assert!(
             fixture.transport.calls().is_empty(),
@@ -827,6 +838,56 @@ mod tests {
             fixture.queue.acked().as_slice(),
             [(_, Outcome::Done)]
         ));
+    }
+
+    #[tokio::test]
+    async fn command_draft_hold_carries_hash_then_releases_with_pty_receipt() {
+        let pane = "%control-draft";
+        let tmux = FakeTmux::new()
+            .with_pane(Pane {
+                id: pane.into(),
+                session: "s".into(),
+                window: "w".into(),
+                title: "t".into(),
+                cursor_x: Some(11),
+                cursor_y: Some(0),
+            })
+            .with_attached_tap(pane)
+            .script_capture("╰──── hello ─╯")
+            .script_capture("╰────       ─╯");
+        let fixture = fixture_with_grace(FakeTransport::reachable(), tmux, 60_000);
+        register(&fixture, seat("pij-control-draft", Some(pane))).await;
+        let msg = message("pij-control-draft", "", Some("compact"));
+        let id = enqueue(&fixture, &msg).await;
+        assert_eq!(fixture.worker.drain_once().await.expect("held"), 1);
+        assert!(fixture.queue.acked().is_empty());
+        assert!(fixture.transport.calls().is_empty());
+        let held = fixture
+            .spine
+            .tail(Some(&msg.to), pij_core::model::Seq(0))
+            .await
+            .expect("events");
+        assert_eq!(held.len(), 1, "command veto must publish its evidence");
+        let payload: serde_json::Value = serde_json::from_str(&held[0].payload).expect("payload");
+        assert_eq!(held[0].kind, "delivery.held");
+        assert_eq!(payload["draft_sha"], "2cf24dba5fb0");
+        assert_eq!(fixture.worker.drain_once().await.expect("clear"), 1);
+        assert_eq!(fixture.queue.acked(), [(id, Outcome::Done)]);
+        let events = fixture
+            .spine
+            .tail(Some(&msg.to), pij_core::model::Seq(0))
+            .await
+            .expect("events");
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.kind.as_str())
+                .collect::<Vec<_>>(),
+            ["delivery.held", "delivery.released", "delivery.outcome"]
+        );
+        let payload: serde_json::Value = serde_json::from_str(&events[2].payload).expect("payload");
+        assert_eq!(payload["transport"], "pty");
+        assert_eq!(payload["outcome"]["origin"], "injected-to-transport");
     }
 
     #[tokio::test]

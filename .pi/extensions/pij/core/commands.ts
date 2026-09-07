@@ -1,23 +1,30 @@
-// pij-messaging — remote command allow-list (pure, Pattern P4).
-//
-// Security: only allow-listed command names may be sent as remote commands
-// (spec AC-6). The list lives next to the validator (Pattern P5).
+// Remote control contract: Rust owns the allowed set; both runtimes read its fixture.
 
+import controlContract from "../../../../crates/core/tests/fixtures/control-commands.json" with {
+	type: "json",
+};
 import { err, ok, type Result } from "./types.js";
 
 /** Remote commands a session will honour. `compact` runs on the long-lived
  *  ExtensionContext (autonomous from the receive watcher); `new`/`reload` are
  *  CONTROL_COMMANDS that only exist on pi's ExtensionCommandContext, so they
  *  execute via a captured command context (see PiRuntimePort.control). */
-export const ALLOWED_COMMANDS = ["compact", "new", "reload"] as const;
+export const ALLOWED_COMMANDS = controlContract.commands as readonly AllowedCommand[];
+export const COPILOT_CONTROL_REFUSAL = controlContract.copilot_refusal;
 
-export type AllowedCommand = (typeof ALLOWED_COMMANDS)[number];
+export type AllowedCommand = "compact" | ControlCommand;
 
 /** The subset that needs a command context (cannot run from the background
  *  watcher; routed onto the captured ExtensionCommandContext). */
-export const CONTROL_COMMANDS = ["new", "reload"] as const;
+export const CONTROL_COMMANDS = ALLOWED_COMMANDS.filter(
+	(command): command is ControlCommand => command !== "compact",
+);
 
-export type ControlCommand = (typeof CONTROL_COMMANDS)[number];
+export type ControlCommand = "new" | "reload";
+
+export type ControlOutcome =
+	| { readonly outcome: "executed" }
+	| { readonly outcome: "refused"; readonly reason: string };
 
 /** Narrow an allow-listed command to the command-context-only subset. */
 export function isControlCommand(name: AllowedCommand): name is ControlCommand {

@@ -83,6 +83,9 @@ pub struct SendRequest {
     pub msg_id: String,
     /// Message id being answered.
     pub in_reply_to: Option<String>,
+    /// A control command, mutually exclusive with a non-empty body.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
 }
 
 // StreamFrame is owned by the daemon wire module and re-exported here so the
@@ -161,6 +164,29 @@ impl DaemonClient {
     /// Durably enqueue one message.
     pub async fn send(&self, request: &SendRequest) -> Envelope<Receipt> {
         self.post("pij send", "/v1/send", request).await
+    }
+
+    /// Submit a control with caller evidence the daemon must independently verify.
+    pub async fn send_control(
+        &self,
+        request: &SendRequest,
+        caller: &CallerContext,
+    ) -> Envelope<Receipt> {
+        #[derive(Serialize)]
+        struct ControlSend<'a> {
+            #[serde(flatten)]
+            message: &'a SendRequest,
+            caller: &'a CallerContext,
+        }
+        self.post(
+            "pij send",
+            "/v1/send",
+            &ControlSend {
+                message: request,
+                caller,
+            },
+        )
+        .await
     }
 
     /// Enqueue one sidecar job (telegram / bg / chore).
@@ -257,6 +283,7 @@ impl DaemonClient {
             seat: seat.clone(),
             job_id: claim.job_id,
             native: Default::default(),
+            control_outcome: None,
         };
         let acked: Envelope<pij_core::model::JobId> = self
             .post("pij inbox", "/v1/inbox/ack", &acknowledgement)
@@ -622,6 +649,7 @@ mod tests {
             body: "hello".to_string(),
             msg_id: "m-1".to_string(),
             in_reply_to: Some("m-0".to_string()),
+            command: None,
         };
 
         assert_eq!(

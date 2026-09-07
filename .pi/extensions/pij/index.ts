@@ -13,7 +13,12 @@ import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
 import type { CommandControl } from "./adapters/pi-runtime.js";
-import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
+import {
+	PiRuntimeAdapter,
+	publishReloadCompleted,
+	registerOmpReloadCompletion,
+	reloadWithCompletion,
+} from "./adapters/pi-runtime.js";
 import { NodeProcess } from "./adapters/process.js";
 import { RustRuntimeSession } from "./adapters/rust-runtime.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
@@ -82,6 +87,13 @@ export default function (pi: ExtensionAPI): void {
 
 	const pijHome = resolvePijHome();
 	const repositories = new GitRepositoryAdapter();
+	const runtimeBin = detectPiRuntime({
+		ompCode: process.env.OMPCODE,
+		bun: "bun" in process.versions,
+		executableNames: [process.execPath, process.argv[0], process.argv[1]]
+			.filter((value): value is string => value !== undefined)
+			.map((value) => basename(value)),
+	});
 
 	// Native send tool (the model-facing comms seam). Agents call this instead of
 	// shelling out to the `pij` CLI — it reuses the proven core dispatch() send
@@ -139,10 +151,7 @@ export default function (pi: ExtensionAPI): void {
 				throw new Error("pij_send needs exactly one of `message` or `command`.");
 			}
 			if (rustRuntime) {
-				if (command !== undefined) {
-					throw new Error("pij-rs does not expose remote-control commands in the v1 send request");
-				}
-				const messageId = await rustRuntime.send(params.to, message);
+				const messageId = await rustRuntime.send(params.to, message, command);
 				return {
 					content: [{ type: "text", text: `queued ${messageId} -> ${params.to}` }],
 					details: {},
@@ -415,6 +424,7 @@ export default function (pi: ExtensionAPI): void {
 				`pij: detected rs daemon at ${generation.location.addr}; registered ${self}`,
 				"info",
 			);
+			if (event.reason === "reload") publishReloadCompleted(pi);
 			return;
 		}
 		rustRuntime = undefined;
@@ -551,7 +561,9 @@ export default function (pi: ExtensionAPI): void {
 			// delivery poll scan; PijSession persists it at the coarse ~2500ms cadence.
 			(atMs) => receiver.noteInboxScan(atMs),
 		);
+		if (event.reason === "reload") publishReloadCompleted(pi);
 	});
+	if (runtimeBin === "omp") registerOmpReloadCompletion(pi);
 
 	// Event capture (registered once, top-level — reload-safe). Each pi event maps
 	// to exactly one coordinator capture. There is no pi `usage` event.
@@ -595,6 +607,7 @@ export default function (pi: ExtensionAPI): void {
 
 	pi.on("session_shutdown", async (event, ctx: ExtensionContext) => {
 		if (isEmbeddedOmpChild(ctx)) return;
+		commandControl = undefined;
 		ompSessionNameGeneration += 1;
 		ompSessionNamePublication = undefined;
 		disposeWatch?.();
@@ -624,12 +637,8 @@ export default function (pi: ExtensionAPI): void {
 			// watcher can fire remote new|reload, then drain anything queued while
 			// un-armed.
 			commandControl = {
-				newSession: () => {
-					void ctx.newSession();
-				},
-				reload: () => {
-					void ctx.reload();
-				},
+				newSession: () => ctx.newSession(),
+				reload: () => reloadWithCompletion(pi, () => ctx.reload()),
 			};
 			const applied = session?.applyPendingControl() ?? [];
 			const peers = rustRuntime
