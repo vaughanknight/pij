@@ -72,8 +72,9 @@ why = "Pure domain: types, config, errors, the seven frozen ports, and the logic
 internal = ["pij-core", "pij-testkit@dev"]
 # `sqlx` is the store (R1) and `tokio` is the reactor its pool needs — shipped
 # here, and ONLY here among the leaf crates, so "core has no tokio" stays a line
-# the gate defends rather than a habit. `serde_json` types opaque payload columns.
-external = ["async-trait", "serde_json", "sqlx", "tokio"]
+# the gate defends rather than a habit. `serde` encodes governance rows and
+# `serde_json` types opaque payload columns.
+external = ["async-trait", "serde", "serde_json", "sqlx", "tokio"]
 why = "Persistence behind Registry/Spine/Queue: SQLite via sqlx with embedded migrations, boot self-migration and directional skew refusal. The only crate permitted to speak SQL."
 
 [crates.pij-tmux]
@@ -117,10 +118,10 @@ internal = [
 # PRNG state to seed or leak); `reqwest` is the one-request peer forwarding
 # primitive; `hostname` resolves the portable default machine alias; `tokio` is
 # the reactor; `tokio-stream` adapts the bounded broadcast receiver to the public
-# Stream contract (u-events). `async-trait@dev` exists only for deterministic
-# port fakes in daemon integration tests.
-external = ["async-trait@dev", "axum", "getrandom", "hostname", "reqwest", "serde", "serde_json", "sqlx@dev", "tokio", "tokio-stream"]
-why = "Composition root #1: wires Arc<dyn Port> from config, serves HTTP, runs the tick loop and job workers. Wiring, never business logic."
+# Stream contract (u-events). `async-trait` implements the published Spine port;
+# `sha2` hashes packet bytes; pinned `globset` preserves supported fence grammar.
+external = ["async-trait", "axum", "getrandom", "globset", "hostname", "reqwest", "serde", "serde_json", "sha2", "sqlx@dev", "tokio", "tokio-stream"]
+why = "Composition root #1: wires Arc<dyn Port> from config, serves HTTP, runs tick loops and job workers; cryptographic packet digests and standard fence matching support governance boundaries."
 
 [crates.pij-cli]
 # The second composition root. It depends on the daemon because it SHIPS the
