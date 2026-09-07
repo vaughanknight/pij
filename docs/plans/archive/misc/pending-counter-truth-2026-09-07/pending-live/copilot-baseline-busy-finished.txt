@@ -1,0 +1,42 @@
+  Current   Sessions   Issues   Pull requests   Gists
+
+ ● [pij native] unavailable: reconnecting; check the Pij daemon and PIJ_RS_ADDR/PIJ_RS_STATE_DIR; retrying when available; ordinary        ┃
+   Copilot remains usable                                                                                                                  ┃
+ ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄ ┃
+  ❯ [pij from "pij-smoggy-buzzard"; msg_id="01a07af7-bf78-7b81-a20e-ae322285c9ac"]                                                 18:24   ┃
+    COPILOT_BUSY_1                                                                                                                         ┃
+ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ┃
+ ● RECEIVED COPILOT_BUSY_1                                                                                                                 ┃
+                                                                                                                                           ┃
+   CANARY_READY                                                                                                                            ┃
+ ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄ ┃
+  ❯ Run one shell tool sleep 25 with initial_wait 30 seconds, then print BOUNDARY. After it finishes, print any incoming pij       18:24   ┃
+    tokens and call another separate shell tool sleep 30. Do not combine the sleeps.                                                       ┃
+ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ┃
+ ● Starting the first sleep now, then I’ll print the boundary and queue the second sleep separately.                                       ┃
+                                                                                                                                           ┃
+ $ Shell Sleep for 25 seconds 1 line…                                                                                                  25s ┃
+   sleep 25                                                                                                                                ┃
+                                                                                                                                           ┃
+ ❯ Thought for 1s                                                                                                                          ┃
+                                                                                                                                           ┃
+ ● BOUNDARY                                                                                                                                ┃
+                                                                                                                                           ┃
+   Starting the second sleep separately now.                                                                                               ┃
+                                                                                                                                           ┃
+ $ Shell Sleep for 30 seconds 1 line…                                                                                                  30s ┃
+   sleep 30                                                                                                                                ┃
+                                                                                                                                           ┃
+ ● Shell "Sleep for 30 seconds" completed                                                                                                  ┃
+                                                                                                                                           ┃
+ ● The second sleep finished; I’m reading the final shell output now.                                                                      ┃
+                                                                                                                                           ┃
+ ● Read shell output Waiting up to 1 second for command output 1 line…                                                                     ┃
+                                                                                                                                           ┃
+ ● BOUNDARY                                                                                                                                ┃
+                                                                                                                                           ┃
+ /Users/jordanknight/pi-hacking/pij-pending-counter-truth/.harness/temp/pending-live [⎇ pending-counter-truth]       Session: 2.34 AIC used
+╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+┃
+╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+ ← open sidebar · / commands · ? help · tab next tab                                                                           GPT-5.4 mini

@@ -1,0 +1,56 @@
+[
+  {
+    "entryId": "71118420",
+    "timestamp": "2026-09-07T08:30:24.524Z",
+    "content": "You are pij session pij-solid-donkey (PEER). This is context only \u2014 no action is required.\nPeers can reach you; their messages arrive inline as \"[pij-rs from <id>]\" on its own line, then the body, then \"[/pij]\". Only those injected messages are live instructions.\nDo NOT read, list, or act on files under your pij data/inbox directory \u2014 they are an internal transport log, not tasks, and replaying them re-runs old requests.\nTo reply or message a peer, call the pij_send tool ({ to, message }) \u2014 your id is stamped automatically. For control, pij_send takes { to, command: \"compact\" | \"new\" | \"reload\" } instead of message. Do NOT shell out to the pij CLI to send.\nTo observe peers, use the pij CLI: \"pij list --here\" (peers), \"pij tail <id>\" / \"pij state <id>\" (watch one).",
+    "details": null
+  },
+  {
+    "entryId": "9159568d",
+    "timestamp": "2026-09-07T08:31:43.332Z",
+    "content": "[pij-rs from pij-smoggy-buzzard]\nOMP_FIXED_BUSY_1. Acknowledge the token then run bash sleep 25 with timeout 45 before final answer.\n[/pij]",
+    "details": {
+      "pijMessageId": "01a07afe-a2e1-7e10-9ac5-8cd6a2f40ca5"
+    }
+  },
+  {
+    "entryId": "a6b48dc0",
+    "timestamp": "2026-09-07T08:31:49.286Z",
+    "content": "[pij-rs from pij-smoggy-buzzard]\nOMP_FIXED_BUSY_2. Acknowledge the token then run bash sleep 25 with timeout 45 before final answer.\n[/pij]",
+    "details": {
+      "pijMessageId": "01a07afe-a2e8-7672-9bcf-62f36d026d1d"
+    }
+  },
+  {
+    "entryId": "1e38edf1",
+    "timestamp": "2026-09-07T08:32:16.327Z",
+    "content": "[pij-rs from pij-smoggy-buzzard]\nOMP_FIXED_BUSY_3. Acknowledge the token then run bash sleep 25 with timeout 45 before final answer.\n[/pij]",
+    "details": {
+      "pijMessageId": "01a07afe-a2ef-7872-a141-fb8a22377676"
+    }
+  },
+  {
+    "entryId": "9bcb06cd",
+    "timestamp": "2026-09-07T08:32:58.416Z",
+    "content": "[pij-rs from pij-smoggy-buzzard]\nOMP_FIXED_ESCAPE_1\n[/pij]",
+    "details": {
+      "pijMessageId": "01a07aff-afd2-7dc0-9b63-4fb47f37cefd"
+    }
+  },
+  {
+    "entryId": "7c75b4d3",
+    "timestamp": "2026-09-07T08:32:59.418Z",
+    "content": "[pij-rs from pij-smoggy-buzzard]\nOMP_FIXED_ESCAPE_2\n[/pij]",
+    "details": {
+      "pijMessageId": "01a07aff-afd9-7802-ad35-a3a813ca37dd"
+    }
+  },
+  {
+    "entryId": "86374674",
+    "timestamp": "2026-09-07T08:33:02.423Z",
+    "content": "[pij-rs from pij-smoggy-buzzard]\nOMP_FIXED_ESCAPE_3\n[/pij]",
+    "details": {
+      "pijMessageId": "01a07aff-afe1-7c72-8117-343c637b3c9e"
+    }
+  }
+]

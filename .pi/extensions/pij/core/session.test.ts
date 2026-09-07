@@ -383,6 +383,18 @@ describe("PijSession.capture", () => {
 });
 
 describe("PijSession.onInbound — free text", () => {
+	it("keeps legacy delivery on its existing submission path unless native consumption tracking is enabled", () => {
+		const h = harness({ idle: false, now: T0 });
+		h.session.boot(bootInput());
+		const identities: Array<string | undefined> = [];
+		h.ports.pi.inject = (_text, _mode, nativeId) => {
+			identities.push(nativeId);
+		};
+		h.session.onInbound({ from: "bob", to: "alice", body: "legacy" }, "legacy-id");
+		expect(identities).toEqual([undefined]);
+		h.session.onInbound({ from: "bob", to: "alice", body: "native" }, "native-id", true);
+		expect(identities).toEqual([undefined, "native-id"]);
+	});
 	it("idle peer: immediate inject, framed sender id, single delivered receipt", () => {
 		const h = harness({ idle: true, now: T0 });
 		h.session.boot(bootInput());

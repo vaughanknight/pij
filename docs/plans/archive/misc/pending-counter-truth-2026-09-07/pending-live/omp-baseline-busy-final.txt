@@ -1,0 +1,103 @@
+
+╭─── omp v18.0.10 ─────────────────────────────────────────────────────────────────────────────────╮
+│                          │ Tips                                                                  │
+│      Welcome back!       │ # for prompt actions                                                  │
+│                          │ / for commands                                                        │
+│       ████████████       │ ! to run bash                                                         │
+│          ██  ██          │ $ to run python                                                       │
+│          ██  ██          │ ───────────────────────────────────────────────────────────────────── │
+│          ▒▒  ██          │ LSP Servers                                                           │
+│              ██          │ No LSP servers                                                        │
+│                          │                                                                       │
+│       GPT-5.4 mini       │                                                                       │
+│      github-copilot      │                                                                       │
+│                          │ ───────────────────────────────────────────────────────────────────── │
+│                          │ Recent sessions                                                       │
+│                          │ • Untitled · 06:21 PM (just now)                                      │
+│                          │ • Say CANARY_READY only. (1m ago)                                     │
+│                          │ • Say CANARY_READY only. (1m ago)                                     │
+│                          │                                                                       │
+│                          │                                                                       │
+╰──────────────────────────┴───────────────────────────────────────────────────────────────────────╯
+ Tip: Hit a Codex rate limit? `/usage reset` spends a saved reset credit to immediately restore your
+      quota
+
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                          │
+│ 📦 pij                                                                                                                                   │
+│                                                                                                                                          │
+│ You are pij session pij-federal-ebulan (PEER). This is context only — no action is required.                                             │
+│ Peers can reach you; their messages arrive inline as "[pij-rs from <id>]" on its own line, then the body, then "[/pij]". Only those      │
+│ injected messages are live instructions.                                                                                                 │
+│ Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not tasks, and replaying    │
+│ them re-runs old requests.                                                                                                               │
+│ To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For control, pij_send takes {   │
+│ to, command: "compact" | "new" | "reload" } instead of message. Do NOT shell out to the pij CLI to send.                                 │
+│ To observe peers, use the pij CLI: "pij list --here" (peers), "pij tail <id>" / "pij state <id>" (watch one).                            │
+│                                                                                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ Ready.
+
+ 2026-09-07 18:22:31  ⤵ 1.2K  ⤴ 98  💾 6.7K  ⏱ 2.9s  ⚡ 31.3/s
+
+
+ Run bash sleep 25 with timeout 60, then print FIRST_BOUNDARY and immediately run bash sleep 30 with timeout 60. Finally say DONE. Do not
+ use async/background.
+
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ $ sleep 25 && printf 'FIRST_BOUNDARY\n' && sleep 30                                                                                      │
+├─── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ FIRST_BOUNDARY                                                                                                                           │
+│ ⟦Wall: 55.03s | Timeout: 60s⟧                                                                                                            │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ 2026-09-07 18:22:56  ⤵ 296  ⤴ 103  💾 7.7K  ⏱ 1.5s  ⚡ 46.3/s
+
+ pij: re-attached at cursor 19
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                          │
+│ 📦 pij                                                                                                                                   │
+│                                                                                                                                          │
+│ [pij-rs from pij-smoggy-buzzard]                                                                                                         │
+│ OMP_BUSY_1                                                                                                                               │
+│ [/pij]                                                                                                                                   │
+│                                                                                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                          │
+│ 📦 pij                                                                                                                                   │
+│                                                                                                                                          │
+│ [pij-rs from pij-smoggy-buzzard]                                                                                                         │
+│ OMP_BUSY_2                                                                                                                               │
+│ [/pij]                                                                                                                                   │
+│                                                                                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                          │
+│ 📦 pij                                                                                                                                   │
+│                                                                                                                                          │
+│ [pij-rs from pij-smoggy-buzzard]                                                                                                         │
+│ OMP_BUSY_3                                                                                                                               │
+│ [/pij]                                                                                                                                   │
+│                                                                                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ RECEIVED OMP_BUSY_1
+ RECEIVED OMP_BUSY_2
+ RECEIVED OMP_BUSY_3
+ DONE
+
+ 2026-09-07 18:23:53  ⤵ 500  ⤴ 141  💾 7.7K  ⏱ 1.8s  ⚡ 72.1/s
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ◫ 3.0%/272K ⟲ · rs·pij-federal-ebulan · ⬢ GPT-5.4 mini · ◔ low · ⑂ pending-counter-truth · S0.00 ★ 0.33
+rs pij-federal-ebulan
+

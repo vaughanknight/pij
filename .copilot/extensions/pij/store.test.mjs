@@ -7,6 +7,7 @@ import test from "node:test";
 import { setImmediate as flush } from "node:timers/promises";
 import {
 	chooseRegistration,
+	createNativeReporter,
 	DaemonClient,
 	FileJournal,
 	NativeBridge,
@@ -97,6 +98,7 @@ function deferred() {
 function fixture(overrides = {}) {
 	const trace = [];
 	const records = new Map();
+	const history = [];
 	const accepted = deferred();
 	let observer;
 	let claims = 0;
@@ -114,6 +116,13 @@ function fixture(overrides = {}) {
 			trace.push("persist");
 			records.set(message.msg_id, { state: "accepted", message, nativeId });
 		},
+		async rearm(message, nativeId) {
+			const record = records.get(message.msg_id);
+			if (record?.state !== "accepted" || record.nativeId !== nativeId) return false;
+			trace.push("retry-intent");
+			records.set(message.msg_id, { state: "pending", message });
+			return true;
+		},
 	};
 	const native = {
 		on(fn) {
@@ -124,7 +133,15 @@ function fixture(overrides = {}) {
 		async send(input) {
 			trace.push("send");
 			assert.equal(input.mode, "enqueue");
+			history.push({
+				type: "user.message",
+				id: "user-native-message-137",
+				data: { messageId: "native-message-137" },
+			});
 			return "native-message-137";
+		},
+		async getEvents() {
+			return history;
 		},
 	};
 	const client = {
@@ -181,6 +198,7 @@ function fixture(overrides = {}) {
 		bridge,
 		trace,
 		records,
+		history,
 		accepted,
 		journal,
 		native,
@@ -188,6 +206,709 @@ function fixture(overrides = {}) {
 		reports,
 		event: (event) => observer(event),
 	};
+}
+
+function discardedQueueFixture() {
+	const f = fixture({ delay: () => flush() });
+	const state = { processing: true, items: [], sends: 0, queueReads: 0, processingReads: 0 };
+	state.steeringMessages = [];
+	f.native.rpc = {
+		queue: {
+			pendingItems: async () => {
+				state.queueReads++;
+				return {
+					items: state.items,
+					steeringMessages: state.steeringMessages,
+					inFlightSteeringCount: state.inFlightSteeringCount,
+				};
+			},
+		},
+		metadata: {
+			isProcessing: async () => {
+				state.processingReads++;
+				return { processing: state.processing };
+			},
+		},
+	};
+	f.native.send = async () => {
+		f.trace.push("send");
+		const nativeId = `queued-native-${++state.sends}`;
+		if (state.sends > 1)
+			f.history.push(
+				{ type: "user.message", id: "recovered-user", data: { messageId: nativeId } },
+				{
+					type: "assistant.message",
+					id: "recovered-final",
+					parentId: "recovered-user",
+					data: { toolRequests: [] },
+				},
+				{ type: "assistant.turn_end", id: "recovered-end", parentId: "recovered-final", data: {} },
+			);
+		return nativeId;
+	};
+	return { ...f, state };
+}
+
+test("native discard recovery: discarded enqueue resends once after the foreground idle boundary", async (t) => {
+	const f = discardedQueueFixture();
+	t.after(() => f.bridge.stop());
+	const run = f.bridge.run();
+	await flush();
+	assert.equal(f.state.sends, 1);
+	assert.equal(f.trace.includes("ack"), false);
+	f.state.processing = false;
+	f.history.push({
+		type: "assistant.turn_end",
+		id: "foreground-end",
+		parentId: "foreground-answer",
+		data: {},
+	});
+	await flush();
+	await flush();
+	assert.equal(f.state.sends, 2);
+	assert.equal(f.trace.filter((entry) => entry === "ack").length, 1);
+	assert.equal(f.records.get(claim.message.msg_id).nativeId, "queued-native-2");
+	assert.equal(f.reports.filter((event) => event.kind === "native-requeued").length, 1);
+	assert.ok(f.state.queueReads > 0);
+	assert.ok(f.state.processingReads > 0);
+	await flush();
+	assert.equal(f.state.sends, 2);
+	f.bridge.stop();
+	await run;
+});
+
+test("native discard recovery: no resend while a potentially consuming turn is still processing", async (t) => {
+	const f = discardedQueueFixture();
+	t.after(() => f.bridge.stop());
+	const run = f.bridge.run();
+	await flush();
+	f.history.push({
+		type: "assistant.turn_end",
+		id: "tool-turn-end",
+		parentId: "tool-result",
+		data: {},
+	});
+	await flush();
+	await flush();
+	assert.ok(f.state.processingReads > 0);
+	assert.equal(f.state.sends, 1);
+	assert.equal(f.trace.includes("ack"), false);
+	assert.equal(f.records.get(claim.message.msg_id).state, "accepted");
+	assert.equal(
+		f.reports.some((event) => event.kind === "native-requeued"),
+		false,
+	);
+	f.bridge.stop();
+	await run;
+});
+
+for (const identity of ["native ID", "exact display prefix"]) {
+	test(`native discard recovery: queued item matched by ${identity} waits for later consumption`, async (t) => {
+		const f = discardedQueueFixture();
+		t.after(() => f.bridge.stop());
+		f.state.processing = false;
+		f.state.items = [
+			{
+				id: identity === "native ID" ? "queued-native-1" : "different-queue-item-id",
+				kind: "message",
+				displayText:
+					identity === "native ID"
+						? "opaque preview"
+						: `[pij from ${JSON.stringify(claim.message.from)}; msg_id=${JSON.stringify(claim.message.msg_id)}]\n${claim.message.body}`,
+				agentMode: "interactive",
+			},
+		];
+		const run = f.bridge.run();
+		await flush();
+		f.history.push({ type: "assistant.turn_end", id: "foreground-end", data: {} });
+		await flush();
+		await flush();
+		assert.ok(f.state.queueReads > 0);
+		assert.equal(f.state.sends, 1);
+		assert.equal(f.trace.includes("ack"), false);
+		f.state.items = [];
+		f.state.processing = true;
+		f.history.push({
+			type: "user.message",
+			id: "later-user",
+			data: { messageId: "queued-native-1" },
+		});
+		await f.accepted.promise;
+		assert.equal(f.state.sends, 1);
+		assert.equal(f.trace.filter((entry) => entry === "ack").length, 1);
+		f.bridge.stop();
+		await run;
+	});
+}
+
+test("native discard recovery: fresh consumption proof wins over empty queue and ACKs once", async (t) => {
+	const f = discardedQueueFixture();
+	t.after(() => f.bridge.stop());
+	const run = f.bridge.run();
+	await flush();
+	f.state.processing = false;
+	f.history.push(
+		{ type: "assistant.turn_end", id: "foreground-end", data: {} },
+		{ type: "user.message", id: "consumed-user", data: { messageId: "queued-native-1" } },
+		{ type: "assistant.message", id: "consumed-answer", parentId: "consumed-user", data: {} },
+		{ type: "assistant.turn_end", id: "consumed-end", parentId: "consumed-answer", data: {} },
+	);
+	await f.accepted.promise;
+	await flush();
+	await flush();
+	assert.equal(f.state.sends, 1);
+	assert.equal(f.trace.filter((entry) => entry === "ack").length, 1);
+	assert.equal(f.trace.filter((entry) => entry === "claim").length, 2);
+	f.bridge.stop();
+	await run;
+});
+
+test("native discard recovery: replayed historical boundary cannot authorize resend", async (t) => {
+	const f = discardedQueueFixture();
+	t.after(() => f.bridge.stop());
+	f.state.processing = false;
+	f.history.push({ type: "assistant.turn_end", id: "before-enqueue-end", data: {} });
+	const run = f.bridge.run();
+	await flush();
+	await flush();
+	assert.equal(f.state.sends, 1);
+	assert.equal(f.trace.includes("ack"), false);
+	f.history.push({ type: "assistant.turn_end", id: "after-enqueue-end", data: {} });
+	await flush();
+	await flush();
+	assert.equal(f.state.sends, 2);
+	f.bridge.stop();
+	await run;
+});
+
+test("native discard recovery: missing rpc holds visibly at a fresh boundary without ACK or resend", async (t) => {
+	const f = discardedQueueFixture();
+	t.after(() => f.bridge.stop());
+	delete f.native.rpc;
+	const run = f.bridge.run();
+	await flush();
+	f.history.push({ type: "assistant.turn_end", id: "foreground-end", data: {} });
+	await flush();
+	assert.equal(f.state.sends, 1);
+	assert.equal(f.trace.includes("ack"), false);
+	assert.ok(
+		f.reports.some(
+			(event) =>
+				event.kind === "receive-held" && /recovery.*queue.*processing/i.test(event.diagnostic),
+		),
+	);
+	f.bridge.stop();
+	await run;
+});
+
+for (const veto of ["steering prefix", "inflight count"]) {
+	test(`native discard recovery: ${veto} vetoes duplicate injection`, async (t) => {
+		const f = discardedQueueFixture();
+		t.after(() => f.bridge.stop());
+		f.state.processing = false;
+		if (veto === "steering prefix")
+			f.state.steeringMessages = [
+				`[pij from ${JSON.stringify(claim.message.from)}; msg_id=${JSON.stringify(claim.message.msg_id)}]\n${claim.message.body}`,
+			];
+		else f.state.inFlightSteeringCount = 1;
+		const run = f.bridge.run();
+		await flush();
+		f.history.push({ type: "assistant.turn_end", id: "foreground-end", data: {} });
+		await flush();
+		await flush();
+		assert.equal(f.state.sends, 1);
+		assert.equal(f.trace.includes("ack"), false);
+		assert.equal(f.trace.includes("retry-intent"), false);
+		assert.equal(
+			f.reports.some((event) => event.kind === "native-requeued"),
+			false,
+		);
+		assert.ok(f.state.queueReads > 0);
+		f.bridge.stop();
+		await run;
+	});
+}
+
+test("native discard recovery: successful retry notice uses native timeline without message content", async () => {
+	const logs = [];
+	const captured = [];
+	const report = createNativeReporter({
+		log: async (message, options) => logs.push({ message, options }),
+		capture: (event) => captured.push(event),
+	});
+	await report({
+		kind: "native-requeued",
+		msgId: "opaque-message",
+		nativeMessageId: "opaque-native",
+	});
+	assert.deepEqual(logs, [
+		{ message: "📨 re-queued 1 pij messages after interrupt", options: { level: "info" } },
+	]);
+	assert.equal(captured.filter((event) => event.kind === "native-requeued").length, 1);
+});
+
+test("native discard recovery: a substring in another queued item does not claim ownership", async (t) => {
+	const f = discardedQueueFixture();
+	t.after(() => f.bridge.stop());
+	f.state.processing = false;
+	f.state.items = [
+		{
+			id: "foreign-id",
+			kind: "message",
+			displayText: `quoted [pij from ${JSON.stringify(claim.message.from)}; msg_id=${JSON.stringify(claim.message.msg_id)}]\n${claim.message.body}`,
+		},
+	];
+	const run = f.bridge.run();
+	await flush();
+	f.history.push({ type: "assistant.turn_end", id: "foreground-end", data: {} });
+	await flush();
+	await flush();
+	assert.equal(f.state.sends, 2);
+	assert.equal(f.trace.filter((entry) => entry === "ack").length, 1);
+	f.bridge.stop();
+	await run;
+});
+
+test("native discard recovery: fresh history catches consumption during queue inspection", async (t) => {
+	const f = discardedQueueFixture();
+	t.after(() => f.bridge.stop());
+	f.state.processing = false;
+	const pendingItems = f.native.rpc.queue.pendingItems;
+	f.native.rpc.queue.pendingItems = async () => {
+		f.history.push({
+			type: "user.message",
+			id: "racing-user",
+			data: { messageId: "queued-native-1" },
+		});
+		return pendingItems();
+	};
+	const run = f.bridge.run();
+	await flush();
+	f.history.push({ type: "assistant.turn_end", id: "foreground-end", data: {} });
+	await f.accepted.promise;
+	assert.equal(f.state.sends, 1);
+	assert.equal(f.trace.includes("retry-intent"), false);
+	assert.equal(f.trace.filter((entry) => entry === "ack").length, 1);
+	f.bridge.stop();
+	await run;
+});
+
+test("native discard recovery: stop during queue snapshot cannot rearm or send", async () => {
+	const f = discardedQueueFixture();
+	const inspecting = deferred();
+	const pending = deferred();
+	f.native.rpc.queue.pendingItems = () => {
+		inspecting.resolve();
+		return pending.promise;
+	};
+	const run = f.bridge.run();
+	await flush();
+	f.history.push({ type: "assistant.turn_end", id: "foreground-end", data: {} });
+	await inspecting.promise;
+	f.bridge.stop();
+	await run;
+	pending.resolve({ items: [], steeringMessages: [] });
+	await flush();
+	assert.equal(f.state.sends, 1);
+	assert.equal(f.trace.includes("retry-intent"), false);
+	assert.equal(f.trace.includes("ack"), false);
+	assert.equal(f.records.get(claim.message.msg_id).state, "accepted");
+});
+
+test("native discard recovery: consumption during journal rearm restores acceptance without resend", async (t) => {
+	const f = discardedQueueFixture();
+	t.after(() => f.bridge.stop());
+	f.state.processing = false;
+	const rearm = f.journal.rearm;
+	f.journal.rearm = async (message, nativeId) => {
+		const owned = await rearm(message, nativeId);
+		nativeUser(f, nativeId, "racing-consumption");
+		return owned;
+	};
+	const run = f.bridge.run();
+	await flush();
+	f.history.push({ type: "assistant.turn_end", id: "foreground-end", data: {} });
+	await f.accepted.promise;
+	assert.equal(f.state.sends, 1);
+	assert.equal(f.records.get(claim.message.msg_id).state, "accepted");
+	assert.equal(f.records.get(claim.message.msg_id).nativeId, "queued-native-1");
+	assert.equal(f.trace.filter((entry) => entry === "ack").length, 1);
+	f.bridge.stop();
+	await run;
+});
+
+for (const count of [-1, 0.5, "1", null]) {
+	test(`native discard recovery: malformed inflight count ${JSON.stringify(count)} holds`, async (t) => {
+		const f = discardedQueueFixture();
+		t.after(() => f.bridge.stop());
+		f.state.processing = false;
+		f.state.inFlightSteeringCount = count;
+		const run = f.bridge.run();
+		await flush();
+		f.history.push({ type: "assistant.turn_end", id: "foreground-end", data: {} });
+		await flush();
+		await flush();
+		assert.equal(f.state.sends, 1);
+		assert.equal(f.trace.includes("ack"), false);
+		assert.ok(
+			f.reports.some(
+				(event) => event.kind === "receive-held" && /malformed queue/i.test(event.diagnostic),
+			),
+		);
+		f.bridge.stop();
+		await run;
+	});
+}
+
+for (const unavailable of [
+	"missing queue API",
+	"missing processing API",
+	"malformed queue",
+	"malformed processing",
+	"queue error",
+	"processing error",
+]) {
+	test(`native discard recovery: ${unavailable} never authorizes resend`, async (t) => {
+		const f = discardedQueueFixture();
+		t.after(() => f.bridge.stop());
+		f.state.processing = false;
+		if (unavailable === "missing queue API") delete f.native.rpc.queue.pendingItems;
+		if (unavailable === "missing processing API") delete f.native.rpc.metadata.isProcessing;
+		if (unavailable === "malformed queue") f.native.rpc.queue.pendingItems = async () => ({});
+		if (unavailable === "malformed processing")
+			f.native.rpc.metadata.isProcessing = async () => ({ processing: null });
+		if (unavailable === "queue error")
+			f.native.rpc.queue.pendingItems = async () => {
+				throw new Error("queue unavailable");
+			};
+		if (unavailable === "processing error")
+			f.native.rpc.metadata.isProcessing = async () => {
+				throw new Error("processing unavailable");
+			};
+		const run = f.bridge.run();
+		await flush();
+		f.history.push({ type: "assistant.turn_end", id: "foreground-end", data: {} });
+		await flush();
+		await flush();
+		assert.equal(f.state.sends, 1);
+		assert.equal(f.trace.includes("ack"), false);
+		assert.equal(f.records.get(claim.message.msg_id).state, "accepted");
+		assert.ok(
+			f.reports.some(
+				(event) =>
+					event.kind === "receive-held" &&
+					/discard|recovery|queue|processing/i.test(event.diagnostic),
+			),
+		);
+		f.bridge.stop();
+		await run;
+	});
+}
+
+test("native discard recovery: concurrent journal rearm preserves one exclusive retry intent", async (t) => {
+	const home = await mkdtemp(join(tmpdir(), "pij-native-rearm-"));
+	t.after(() => rm(home, { recursive: true, force: true }));
+	const first = new FileJournal(home, registration);
+	const second = new FileJournal(home, registration);
+	await first.begin(claim.message);
+	await first.accept(claim.message, "discarded-native");
+	const winners = await Promise.all([
+		first.rearm(claim.message, "discarded-native"),
+		second.rearm(claim.message, "discarded-native"),
+	]);
+	assert.deepEqual(winners.sort(), [false, true]);
+	assert.equal((await first.load(claim.message.msg_id)).state, "pending");
+	assert.equal(await second.begin(claim.message), false);
+	await first.accept(claim.message, "recovered-native");
+	assert.equal(await second.rearm(claim.message, "discarded-native"), false);
+	assert.equal((await second.load(claim.message.msg_id)).nativeId, "recovered-native");
+});
+
+test("native consumption: accepted send stays unacknowledged until matching user message", async (t) => {
+	const f = fixture({ delay: () => flush() });
+	t.after(() => f.bridge.stop());
+	const history = [];
+	f.native.getEvents = async () => history;
+	const run = f.bridge.run();
+	await flush();
+	assert.equal(f.records.get(claim.message.msg_id).state, "accepted");
+	assert.equal(f.trace.includes("ack"), false);
+	history.push({
+		type: "user.message",
+		id: "consumed-user",
+		data: { messageId: "native-message-137" },
+	});
+	await f.accepted.promise;
+	assert.equal(f.trace.filter((entry) => entry === "send").length, 1);
+	f.bridge.stop();
+	await run;
+});
+
+test("native consumption: missed callbacks recover consumption and final turn from history", async (t) => {
+	const f = fixture({ delay: () => flush() });
+	t.after(() => f.bridge.stop());
+	const history = [
+		{
+			type: "user.message",
+			id: "history-user",
+			data: { messageId: "native-message-137", interactionId: "history-interaction" },
+		},
+		{
+			type: "assistant.message",
+			id: "history-answer",
+			parentId: "history-user",
+			data: { interactionId: "history-interaction", toolRequests: [] },
+		},
+		{ type: "assistant.turn_end", id: "history-end", parentId: "history-answer", data: {} },
+	];
+	f.native.getEvents = async () => history;
+	const run = f.bridge.run();
+	await flush();
+	assert.equal(f.trace.includes("ack"), true);
+	assert.equal(f.trace.filter((entry) => entry === "claim").length, 2);
+	assert.equal(
+		f.reports.filter(
+			(event) => event.kind === "native-completed" && event.type === "assistant.turn_end",
+		).length,
+		1,
+	);
+	f.bridge.stop();
+	await run;
+});
+
+test("native consumption: unrelated history and idle cannot acknowledge acceptance", async (t) => {
+	const f = fixture({ delay: () => flush() });
+	t.after(() => f.bridge.stop());
+	f.native.getEvents = async () => [
+		{ type: "user.message", id: "other-user", data: { messageId: "other-native" } },
+		{ type: "session.idle", id: "other-idle", parentId: "other-user", data: {} },
+	];
+	const run = f.bridge.run();
+	await flush();
+	f.event({
+		type: "session.idle",
+		id: "unrelated-idle",
+		data: { messageId: "native-message-137" },
+	});
+	await flush();
+	assert.equal(f.trace.includes("ack"), false);
+	assert.equal(f.trace.filter((entry) => entry === "claim").length, 1);
+	f.bridge.stop();
+	await run;
+});
+
+test("native consumption: accepted duplicate recovers history without native resend", async (t) => {
+	const f = fixture({ delay: () => flush() });
+	t.after(() => f.bridge.stop());
+	f.records.set(claim.message.msg_id, {
+		state: "accepted",
+		message: claim.message,
+		nativeId: "recovered-native",
+	});
+	let reads = 0;
+	f.native.getEvents = async () => {
+		reads++;
+		return [
+			{ type: "user.message", id: "recovered-user", data: { messageId: "recovered-native" } },
+			{
+				type: "assistant.message",
+				id: "recovered-answer",
+				parentId: "recovered-user",
+				data: { toolRequests: [] },
+			},
+			{ type: "assistant.turn_end", id: "recovered-end", parentId: "recovered-answer", data: {} },
+		];
+	};
+	const run = f.bridge.run();
+	await flush();
+	assert.ok(reads > 0);
+	assert.equal(f.trace.includes("send"), false);
+	assert.equal(f.trace.includes("ack"), true);
+	assert.equal(f.trace.filter((entry) => entry === "claim").length, 2);
+	f.bridge.stop();
+	await run;
+});
+
+test("native consumption: accepted duplicate without matching history stays unacknowledged", async (t) => {
+	const f = fixture({ delay: () => flush() });
+	t.after(() => f.bridge.stop());
+	f.records.set(claim.message.msg_id, {
+		state: "accepted",
+		message: claim.message,
+		nativeId: "missing-native",
+	});
+	const run = f.bridge.run();
+	await flush();
+	assert.equal(f.trace.includes("send"), false);
+	assert.equal(f.trace.includes("ack"), false);
+	assert.equal(f.trace.filter((entry) => entry === "claim").length, 1);
+	f.bridge.stop();
+	await run;
+});
+
+test("native consumption: history polling backs off and stops after correlated final completion", async (t) => {
+	const waits = [];
+	const f = fixture({
+		delay: async (ms) => {
+			waits.push(ms);
+			if (waits.length === 8)
+				f.history.push(
+					{ type: "user.message", id: "history-user", data: { messageId: "native-message-137" } },
+					{ type: "assistant.message", id: "history-answer", parentId: "history-user", data: {} },
+					{ type: "assistant.turn_end", id: "history-end", parentId: "history-answer", data: {} },
+				);
+			await flush();
+		},
+	});
+	t.after(() => f.bridge.stop());
+	let reads = 0;
+	f.native.getEvents = async () => {
+		reads++;
+		return waits.length < 8 ? [] : f.history;
+	};
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	await flush();
+	assert.deepEqual(waits, [250, 500, 1000, 2000, 4000, 5000, 5000, 5000]);
+	assert.equal(reads, 10);
+	assert.equal(f.trace.filter((entry) => entry === "claim").length, 2);
+	await flush();
+	assert.equal(reads, 10);
+	f.bridge.stop();
+	await run;
+});
+
+test("native consumption: replayed tool turns and unrelated final turns cannot complete owned work", async (t) => {
+	const f = fixture({ delay: () => flush() });
+	t.after(() => f.bridge.stop());
+	const history = [
+		{
+			type: "user.message",
+			id: "owned-user",
+			data: { messageId: "native-message-137", interactionId: "owned" },
+		},
+		{
+			type: "assistant.message",
+			id: "owned-tool",
+			parentId: "owned-user",
+			data: { interactionId: "owned", toolRequests: [{ toolCallId: "tool" }] },
+		},
+		{ type: "assistant.turn_end", id: "tool-end", parentId: "owned-tool", data: {} },
+		{
+			type: "assistant.message",
+			id: "foreign-final",
+			parentId: "foreign-root",
+			data: { interactionId: "foreign", toolRequests: [] },
+		},
+		{ type: "assistant.turn_end", id: "foreign-end", parentId: "foreign-final", data: {} },
+		{
+			type: "assistant.message",
+			id: "child-final",
+			parentId: "tool-end",
+			agentId: "child",
+			data: { toolRequests: [] },
+		},
+		{
+			type: "assistant.turn_end",
+			id: "child-end",
+			parentId: "child-final",
+			agentId: "child",
+			data: {},
+		},
+		{ type: "abort", id: "global-abort", parentId: "tool-end", data: { reason: "user" } },
+	];
+	f.native.getEvents = async () => history;
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	await flush();
+	await flush();
+	assert.equal(f.trace.filter((entry) => entry === "claim").length, 1);
+	assert.equal(
+		f.reports.some((event) => event.kind === "native-completed"),
+		false,
+	);
+	history.push(
+		{
+			type: "assistant.message",
+			id: "owned-final",
+			parentId: "omitted-permission",
+			data: { interactionId: "owned", toolRequests: [] },
+		},
+		{ type: "assistant.turn_end", id: "owned-end", parentId: "owned-final", data: {} },
+	);
+	await flush();
+	await flush();
+	assert.equal(f.trace.filter((entry) => entry === "claim").length, 2);
+	assert.equal(f.trace.filter((entry) => entry === "ack").length, 1);
+	assert.equal(
+		f.reports.filter((event) => event.kind === "native-completed" && event.eventId === "owned-end")
+			.length,
+		1,
+	);
+	f.bridge.stop();
+	await run;
+});
+
+test("native consumption: stop during history read ignores late proof without ACK or resend", async () => {
+	const f = fixture();
+	const reading = deferred();
+	const history = deferred();
+	let reads = 0;
+	f.native.getEvents = () => {
+		if (reads++ === 0) return Promise.resolve([]);
+		reading.resolve();
+		return history.promise;
+	};
+	const run = f.bridge.run();
+	await reading.promise;
+	f.bridge.stop();
+	await run;
+	history.resolve([
+		{ type: "user.message", id: "late-user", data: { messageId: "native-message-137" } },
+	]);
+	await flush();
+	assert.equal(f.trace.includes("ack"), false);
+	assert.equal(f.trace.filter((entry) => entry === "send").length, 1);
+	assert.equal(f.records.get(claim.message.msg_id).state, "accepted");
+	assert.equal(f.trace.filter((entry) => entry === "unsubscribe").length, 1);
+});
+
+test("native consumption: callbacks can prove consumption during an outstanding history read", async (t) => {
+	const f = fixture();
+	t.after(() => f.bridge.stop());
+	const reading = deferred();
+	let reads = 0;
+	f.native.getEvents = () => {
+		if (reads++ === 0) return Promise.resolve([]);
+		reading.resolve();
+		return new Promise(() => {});
+	};
+	const run = f.bridge.run();
+	await reading.promise;
+	nativeUser(f, "native-message-137");
+	await f.accepted.promise;
+	assert.equal(f.trace.filter((entry) => entry === "ack").length, 1);
+	f.bridge.stop();
+	await run;
+});
+
+for (const unsupported of ["missing", "rejected", "malformed"]) {
+	test(`native consumption: ${unsupported} history API holds without ACK`, async () => {
+		const f = fixture();
+		if (unsupported === "missing") delete f.native.getEvents;
+		else
+			f.native.getEvents = async () => {
+				if (unsupported === "rejected") throw new Error("SDK disconnected");
+				return undefined;
+			};
+		await f.bridge.run();
+		assert.equal(f.trace.includes("ack"), false);
+		assert.equal(f.trace.filter((entry) => entry === "send").length, 0);
+		assert.ok(
+			f.reports.some((event) => event.kind === "receive-held" && /history/.test(event.diagnostic)),
+		);
+		f.bridge.stop();
+	});
 }
 
 test("acceptance is persisted before tuple-bound acknowledgement, not model completion", async () => {
@@ -209,7 +930,7 @@ test("acceptance is persisted before tuple-bound acknowledgement, not model comp
 	assert.equal(f.records.get(claim.message.msg_id).nativeId, "native-message-137");
 	assert.ok(
 		f.reports.some(
-			(e) => e.kind === "inbox-acknowledged" && e.grade === "native-accepted-not-model-complete",
+			(e) => e.kind === "inbox-acknowledged" && e.grade === "native-consumed-not-model-complete",
 		),
 	);
 });
@@ -222,6 +943,11 @@ test("accepted duplicate after restart only acknowledges, never reinjects", asyn
 		state: "accepted",
 		message: claim.message,
 		nativeId: "already-native",
+	});
+	f.history.push({
+		type: "user.message",
+		id: "already-user",
+		data: { messageId: "already-native" },
 	});
 	const run = f.bridge.run();
 	await f.accepted.promise;
@@ -784,7 +1510,14 @@ test("real chooseRegistration and filesystem preserve accepted-before-ack across
 		sends++;
 		throw new Error("Duplicate native send after process restart");
 	};
-	await second.bridge.run();
+	second.history.push({
+		type: "user.message",
+		id: "resumed-user",
+		data: { messageId: "native-message-137" },
+	});
+	const secondRun = second.bridge.run();
+	await second.accepted.promise;
+	await flush();
 	assert.equal(claims, 1);
 	assert.equal(sends, 0);
 	assert.equal(second.trace.filter((step) => step === "release").length, 0);
@@ -792,19 +1525,16 @@ test("real chooseRegistration and filesystem preserve accepted-before-ack across
 	assert.ok(
 		second.reports.some(
 			(event) =>
-				event.kind === "inbox-acknowledged" && event.grade === "native-accepted-not-model-complete",
+				event.kind === "inbox-acknowledged" && event.grade === "native-consumed-not-model-complete",
 		),
 	);
-	assert.ok(
-		second.reports.some(
-			(event) =>
-				event.kind === "receive-held" && /lacks observed native completion/.test(event.diagnostic),
-		),
-	);
+	assert.ok(second.reports.some((event) => event.kind === "completion-wait"));
 	assert.equal(
 		(await second.bridge.send({ to: "pij-peer", message: "restart-held outgoing" })).ok,
 		true,
 	);
+	second.bridge.stop();
+	await secondRun;
 	const fresh = chooseRegistration({
 		...input,
 		sessionId: "brand-new-native",
@@ -1297,15 +2027,15 @@ for (const type of ["session.idle", "session.error"]) {
 			completionNativeId: "native-message-137",
 			completionLive: true,
 			parentKnown: true,
-			descendantCount: 2,
+			descendantCount: 3,
 			terminal: { type, eventId: "terminal-diagnostic-assistant" },
 			grade: "native-event-not-pij-ack",
 		});
 		assert.equal(events[0].parentKnown, false);
-		assert.equal(events[0].descendantCount, 0);
+		assert.equal(events[0].descendantCount, 1);
 		assert.equal(events[0].interactionId, "diagnostic-interaction");
 		assert.equal(events[1].parentKnown, true);
-		assert.equal(events[1].descendantCount, 1);
+		assert.equal(events[1].descendantCount, 2);
 		assert.equal(f.bridge.completion.descendants.size, 0);
 		await flush();
 		assert.equal(f.reports.filter((event) => event.kind === "native-completed").length, 1);
@@ -1339,7 +2069,7 @@ test("native-event diagnostics identify rejected idle without declaring a stall"
 		completionNativeId: "native-message-137",
 		completionLive: true,
 		parentKnown: false,
-		descendantCount: 1,
+		descendantCount: 2,
 		terminal: null,
 		grade: "native-event-not-pij-ack",
 	});
@@ -1545,7 +2275,15 @@ test("post-ack barrier cannot release a later send from earlier generation event
 			);
 		return request(p, b, s);
 	};
-	f.native.send = async () => `native-${++sends}`;
+	f.native.send = async () => {
+		const nativeId = `native-${++sends}`;
+		f.history.push({
+			type: "user.message",
+			id: `user-${nativeId}`,
+			data: { messageId: nativeId, interactionId: `interaction-${sends}` },
+		});
+		return nativeId;
+	};
 	const run = f.bridge.run();
 	await f.accepted.promise;
 	nativeTerminal(f, nativeUser(f, "native-1", "user-native-1", "interaction-1"));
@@ -1583,14 +2321,12 @@ test("post-ack barrier cannot release a later send from earlier generation event
 	await run;
 });
 
-test("post-ack barrier follows a foreground user chained after the owned turn end", async (t) => {
+test("post-ack barrier completes the owned final turn before a following foreground user", async (t) => {
 	const f = fixture();
 	t.after(() => f.bridge.stop());
 	const run = f.bridge.run();
 	await f.accepted.promise;
 	const user = nativeUser(f, "native-message-137", "owned-user", "owned-interaction");
-	// Aphid's 2026-09-06 native events: a queued foreground user intervened
-	// between the owned assistant.turn_end and the only session.idle callback.
 	f.event({ type: "assistant.message", id: "owned-answer", parentId: user, data: {} });
 	f.event({ type: "assistant.turn_end", id: "owned-end", parentId: "owned-answer", data: {} });
 	f.event({
@@ -1599,18 +2335,15 @@ test("post-ack barrier follows a foreground user chained after the owned turn en
 		parentId: "owned-end",
 		data: { messageId: "next-native", interactionId: "next-interaction" },
 	});
-	f.event({
-		type: "assistant.message",
-		id: "next-answer",
-		parentId: "omitted-permission-parent",
-		data: { interactionId: "next-interaction" },
-	});
-	f.event({ type: "assistant.turn_end", id: "next-end", parentId: "next-answer", data: {} });
-	await flush();
-	assert.equal(f.trace.filter((x) => x === "claim").length, 1);
-	nativeTerminal(f, "next-end");
 	await flush();
 	assert.equal(f.trace.filter((x) => x === "claim").length, 2);
+	assert.equal(
+		f.reports.filter((event) => event.kind === "native-completed" && event.eventId === "owned-end")
+			.length,
+		1,
+	);
+	nativeTerminal(f, "next-user");
+	await flush();
 	assert.equal(f.reports.filter((event) => event.kind === "native-completed").length, 1);
 	f.bridge.stop();
 	await run;
@@ -1653,41 +2386,38 @@ for (const changed of [
 	});
 }
 
-test("post-ack barrier explicitly holds accepted duplicate without completion evidence", {
-	timeout: 1000,
-}, async (t) => {
-	const f = fixture();
+test("post-ack barrier keeps accepted duplicate pending without completion evidence", async (t) => {
+	const f = fixture({ delay: () => flush() });
 	t.after(() => f.bridge.stop());
 	f.records.set(claim.message.msg_id, {
 		state: "accepted",
 		message: claim.message,
 		nativeId: "previous-native",
 	});
-	const request = f.client.request;
-	f.client.request = (path, body, signal) => {
-		if (path === "/v1/inbox/ack") {
-			nativeUser(f, "previous-native", "recovered-user", "recovered-interaction");
-			f.event({
-				type: "assistant.message",
-				id: "recovered-assistant",
-				parentId: "omitted-parent",
-				data: { interactionId: "recovered-interaction" },
-			});
-			nativeTerminal(f, "recovered-assistant");
-		}
-		return request(path, body, signal);
-	};
-	await f.bridge.run();
+	f.history.push({
+		type: "user.message",
+		id: "recovered-user",
+		data: { messageId: "previous-native" },
+	});
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	await flush();
 	assert.equal(f.trace.includes("ack"), true);
 	assert.equal(f.trace.includes("send"), false);
 	assert.equal(f.trace.filter((x) => x === "claim").length, 1);
-	assert.ok(f.reports.some((e) => e.kind === "receive-held" && /completion/i.test(e.diagnostic)));
+	assert.ok(f.reports.some((e) => e.kind === "completion-wait"));
+	assert.equal(
+		f.reports.some((e) => e.kind === "native-completed"),
+		false,
+	);
+	assert.equal((await f.bridge.send({ to: "pij-peer", message: "receive is waiting" })).ok, true);
+	f.bridge.stop();
+	await run;
 	assert.equal(f.trace.filter((x) => x === "unsubscribe").length, 1);
-	assert.equal((await f.bridge.send({ to: "pij-peer", message: "receive is held" })).ok, true);
 });
 
 test("post-ack barrier survives failed ack before reclaiming accepted duplicate", async (t) => {
-	const f = fixture({ delay: async () => undefined });
+	const f = fixture({ delay: () => flush() });
 	t.after(() => f.bridge.stop());
 	const request = f.client.request;
 	let claims = 0;
@@ -1753,14 +2483,16 @@ test("post-ack barrier follows real native PoC ancestry with sibling ephemeral i
 	];
 	f.native.send = async () => "native-poc-second";
 	const run = f.bridge.run();
-	await f.accepted.promise;
-	for (const event of events.slice(0, -1)) f.event(event);
 	await flush();
-	assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+	f.event(events[0]);
+	await f.accepted.promise;
+	for (const event of events.slice(1, -1)) f.event(event);
+	await flush();
+	assert.equal(f.trace.filter((x) => x === "claim").length, 2);
 	f.event(events.at(-1));
 	await flush();
 	assert.equal(f.trace.filter((x) => x === "claim").length, 2);
-	assert.ok(f.reports.some((e) => e.kind === "native-completed" && e.eventId === "poc-54"));
+	assert.ok(f.reports.some((e) => e.kind === "native-completed" && e.eventId === "poc-51"));
 	f.bridge.stop();
 	await run;
 });
@@ -1785,7 +2517,10 @@ test("post-ack interaction anchor repairs the direct product permission gap with
 			type: "assistant.message",
 			id: "product-18",
 			parentId: "product-9",
-			data: { interactionId: "product-interaction" },
+			data: {
+				interactionId: "product-interaction",
+				toolRequests: [{ toolCallId: "product-tool" }],
+			},
 		},
 		{ type: "tool.execution_start", id: "product-19", parentId: "product-18", data: {} },
 		{ type: "permission.completed", id: "product-20", parentId: "omitted-permission", data: {} },
@@ -1815,7 +2550,7 @@ test("post-ack interaction anchor repairs the direct product permission gap with
 	];
 	for (const event of events) f.event(event);
 	await flush();
-	assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+	assert.equal(f.trace.filter((x) => x === "claim").length, 2);
 	assert.equal(f.trace.filter((x) => x === "ack").length, 1);
 	assert.equal(
 		(await f.bridge.send({ to: "pij-peer", message: "explicit while waiting" })).ok,
@@ -1831,7 +2566,7 @@ test("post-ack interaction anchor repairs the direct product permission gap with
 	await flush();
 	assert.equal(f.trace.filter((x) => x === "claim").length, 2);
 	assert.equal(
-		f.reports.filter((e) => e.kind === "native-completed" && e.eventId === "product-44").length,
+		f.reports.filter((e) => e.kind === "native-completed" && e.eventId === "product-41").length,
 		1,
 	);
 	f.bridge.stop();
@@ -1886,7 +2621,7 @@ for (const type of ["assistant.turn_start", "assistant.message", "tool.execution
 			data: { turnId: "0" },
 		});
 		await flush();
-		assert.equal(f.trace.filter((x) => x === "claim").length, 1);
+		assert.equal(f.trace.filter((x) => x === "claim").length, type === "assistant.message" ? 2 : 1);
 		nativeTerminal(f, "owned-end");
 		await flush();
 		assert.equal(f.trace.filter((x) => x === "claim").length, 2);

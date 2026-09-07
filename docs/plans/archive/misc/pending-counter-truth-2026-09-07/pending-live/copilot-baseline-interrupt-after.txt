@@ -1,0 +1,42 @@
+  Current   Sessions   Issues   Pull requests   Gists
+
+ ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄ ┃
+  ❯ Run one shell tool sleep 25 with initial_wait 30 seconds, then print BOUNDARY. After it finishes, print any incoming pij       18:24   ┃
+    tokens and call another separate shell tool sleep 30. Do not combine the sleeps.                                                       ┃
+ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ┃
+ ● Starting the first sleep now, then I’ll print the boundary and queue the second sleep separately.                                       ┃
+                                                                                                                                           ┃
+ $ Shell Sleep for 25 seconds 1 line…                                                                                                  25s ┃
+   sleep 25                                                                                                                                ┃
+                                                                                                                                           ┃
+ ❯ Thought for 1s                                                                                                                          ┃
+                                                                                                                                           ┃
+ ● BOUNDARY                                                                                                                                ┃
+                                                                                                                                           ┃
+   Starting the second sleep separately now.                                                                                               ┃
+                                                                                                                                           ┃
+ $ Shell Sleep for 30 seconds 1 line…                                                                                                  30s ┃
+   sleep 30                                                                                                                                ┃
+                                                                                                                                           ┃
+ ● Shell "Sleep for 30 seconds" completed                                                                                                  ┃
+                                                                                                                                           ┃
+ ● The second sleep finished; I’m reading the final shell output now.                                                                      ┃
+                                                                                                                                           ┃
+ ● Read shell output Waiting up to 1 second for command output 1 line…                                                                     ┃
+                                                                                                                                           ┃
+ ● BOUNDARY                                                                                                                                ┃
+ ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄ ┃
+  ❯ Run shell sleep 90 and do not background it.                                                                                   18:27   ┃
+ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ┃
+ ❯ Thought for 1s                                                                                                                          ┃
+                                                                                                                                           ┃
+ ● Starting the 90-second sleep now and waiting for it to finish inline.                                                                   ┃
+                                                                                                                                           ┃
+ $ Shell Sleep for 90 seconds                                                                                                          58s ┃
+   sleep 90                                                                                                                                ┃
+                                                                                                                                           ┃
+ /Users/jordanknight/pi-hacking/pij-pending-counter-truth/.harness/temp/pending-live [⎇ pending-counter-truth*]      Session: 2.66 AIC used
+╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+┃
+╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+ ◉ Working · 604 B esc interrupt                                                                                               GPT-5.4 mini

@@ -155,8 +155,8 @@ export interface InboxPort {
 export interface PiRuntimePort {
 	/** Is the session currently idle (not streaming a turn)? */
 	isIdle(): boolean;
-	/** Inject text as user input; "steer" queues during a live turn. */
-	inject(text: string, mode: "immediate" | "steer"): void;
+	/** Inject peer input; messageId correlates native consumption with its durable claim. */
+	inject(text: string, mode: "immediate" | "steer", messageId?: string): void;
 	/** Trigger a context compaction (remote command: compact). Always available
 	 *  — compact() lives on the long-lived ExtensionContext. */
 	compact(): void | Promise<void>;

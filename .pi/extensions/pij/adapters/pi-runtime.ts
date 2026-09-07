@@ -47,14 +47,17 @@ export class PiRuntimeAdapter implements PiRuntimePort {
 		this.ctx.ui.setStatus("pij-mail", text);
 	}
 
-	inject(text: string, mode: "immediate" | "steer"): void {
-		if (this.runtimeBin === "omp") {
-			// OMP's message_start clears the editor for external user messages.
-			// Keep default agent attribution: user-attributed custom messages are
-			// restored into the human's draft by OMP's Escape/dequeue action.
-			// triggerTurn also covers a busy -> idle race before async submission.
+	inject(text: string, mode: "immediate" | "steer", messageId?: string): void {
+		if (this.runtimeBin === "omp" || messageId !== undefined) {
+			// Peer messages carry native consumption identity, never user attribution:
+			// OMP must not restore them into the human's draft on Escape.
 			this.pi.sendMessage(
-				{ customType: "pij", content: text, display: true },
+				{
+					customType: "pij",
+					content: text,
+					display: true,
+					...(messageId === undefined ? {} : { details: { pijMessageId: messageId } }),
+				},
 				{ triggerTurn: true, deliverAs: "steer" },
 			);
 		} else if (mode === "steer") {

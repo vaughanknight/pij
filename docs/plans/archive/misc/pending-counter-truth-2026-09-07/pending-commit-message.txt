@@ -1,0 +1,16 @@
+fix(pij): count consumption and recover interrupted messages
+
+Acknowledge peer envelopes only on correlated native consumption. Clear the
+Pi/OMP pending counter per message rather than at idle, and retain dropped
+custom envelopes across interrupts without touching the human draft.
+
+Recover Copilot callback gaps through native history. Retry a discarded
+native enqueue only after boundary, queue, history and processing proof,
+with an exclusive durable retry intent and the original daemon claim.
+Preserve legacy Pi submission and reconcile committed ACK response loss.
+
+Verified with RED-first regressions, isolated live OMP/Copilot probes and
+harness checks (all ten sensors passed).
+
+Pij-Seat: pij-hushed-morgott
+Pij-Prime: pij-minor-unicorn
