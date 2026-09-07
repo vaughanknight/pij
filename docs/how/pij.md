@@ -37,6 +37,17 @@ New identities use `pij-<adjective>-<animal>` (for example
 `pij-arbitrary-locust`). Existing opaque ids are never renamed and remain fully
 addressable.
 
+In a linked worktree, run `just worktree-deps` first (optionally pass the main
+checkout path). It discovers the canonical checkout via Git and creates a real
+local `node_modules` with per-package, scoped-package and `.bin` symlinks into
+main's installed dependencies — no copies, installs, global changes or relaxation
+of `.npmrc`'s seven-day release quarantine. Re-running is safe; real packages and
+symlink containers are refused, never overwritten. `just worktree-deps --check`
+reports READY/NOT-READY; `harness boot` runs it before TS tooling and names the repair
+command. Missing JS dependencies remain advisory for Rust-only work. Links share
+main's installed versions; do not install through them or treat them as an isolated
+dependency environment.
+
 The **`pij` CLI** is the act+observe surface:
 
 ```bash
