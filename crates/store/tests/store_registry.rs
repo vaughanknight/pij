@@ -1,5 +1,7 @@
 //! Registry integration properties that require a real SQLite file.
 
+mod support;
+
 use pij_core::model::{Harness, ProcIdentity, SeatDescriptor, SeatId, Seq};
 use pij_core::ports::{Registry, Spine};
 use pij_store::{SqliteRegistry, SqliteSpine};
@@ -22,7 +24,7 @@ async fn interrupted_put_rolls_back_both_registry_row_and_spine_event() {
     .await
     .expect("install interruption trigger");
 
-    let registry = SqliteRegistry::new(pool.clone());
+    let registry = SqliteRegistry::new(pool.clone(), support::publisher());
     let spine = SqliteSpine::new(pool.clone());
     let interrupted = SeatDescriptor::new("pij-interrupted", Harness::Pi, "/tmp/interrupted");
 
@@ -64,7 +66,7 @@ async fn interrupted_put_rolls_back_both_registry_row_and_spine_event() {
 async fn absent_null_and_empty_are_three_distinct_registry_reads() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let registry = SqliteRegistry::new(pool);
+    let registry = SqliteRegistry::new(pool, support::publisher());
 
     let absent = SeatId::from("pij-absent");
     assert_eq!(registry.get(&absent).await.expect("get absent"), None);
@@ -92,8 +94,8 @@ async fn concurrent_registry_writers_serialize_and_both_succeed() {
     let fresh = FreshStore::new();
     let pool_a = pij_store::open(&fresh.path()).await.expect("open writer a");
     let pool_b = pij_store::open(&fresh.path()).await.expect("open writer b");
-    let registry_a = SqliteRegistry::new(pool_a.clone());
-    let registry_b = SqliteRegistry::new(pool_b);
+    let registry_a = SqliteRegistry::new(pool_a.clone(), support::publisher());
+    let registry_b = SqliteRegistry::new(pool_b, support::publisher());
 
     let write_a = async {
         tokio::task::yield_now().await;
@@ -136,7 +138,7 @@ async fn concurrent_registry_writers_serialize_and_both_succeed() {
 
     tokio::join!(write_a, write_b);
 
-    let registry = SqliteRegistry::new(pool_a.clone());
+    let registry = SqliteRegistry::new(pool_a.clone(), support::publisher());
     assert_eq!(
         registry
             .list(Default::default())
@@ -165,7 +167,7 @@ async fn concurrent_registry_writers_serialize_and_both_succeed() {
 async fn put_reporting_distinguishes_created_placeholder_rebound_and_same() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let registry = SqliteRegistry::new(pool.clone());
+    let registry = SqliteRegistry::new(pool.clone(), support::publisher());
     let spine = SqliteSpine::new(pool);
     let mut descriptor = SeatDescriptor::new("pij-binding", Harness::Omp, "/tmp/binding");
     let (created_seq, created) = registry
@@ -223,8 +225,14 @@ async fn put_reporting_distinguishes_created_placeholder_rebound_and_same() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn concurrent_put_reporting_observes_the_previous_committed_writer() {
     let fresh = FreshStore::new();
-    let registry_a = SqliteRegistry::new(pij_store::open(&fresh.path()).await.expect("open a"));
-    let registry_b = SqliteRegistry::new(pij_store::open(&fresh.path()).await.expect("open b"));
+    let registry_a = SqliteRegistry::new(
+        pij_store::open(&fresh.path()).await.expect("open a"),
+        support::publisher(),
+    );
+    let registry_b = SqliteRegistry::new(
+        pij_store::open(&fresh.path()).await.expect("open b"),
+        support::publisher(),
+    );
     let mut a = SeatDescriptor::new("pij-racing-binding", Harness::Omp, "/tmp/binding");
     a.proc = Some(ProcIdentity {
         pid: 42,

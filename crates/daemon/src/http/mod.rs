@@ -6,8 +6,10 @@
 mod auth;
 mod client;
 mod exposure;
+pub mod governance;
 mod identity;
 mod report;
+pub mod role;
 mod shim;
 mod types;
 
@@ -143,10 +145,22 @@ enum Endpoint {
     /// would reach this daemon as a bare URL with the `<id>` — this verb's only
     /// argument — dropped at the seam. Ruled POST-canonical by the plan-114 PM.
     State,
+    Role,
+    Project,
+    Stream,
+    Fence,
+    Dispatch,
+    Ack,
+    Canary,
+    Attest,
+    Task,
+    Node,
+    Orchestration,
+    Spine,
 }
 
 impl Endpoint {
-    const ALL: [Self; 22] = [
+    const ALL: [Self; 34] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -169,6 +183,18 @@ impl Endpoint {
         Self::ShimInbox,
         Self::ShimInboxAck,
         Self::ShimSessions,
+        Self::Role,
+        Self::Project,
+        Self::Stream,
+        Self::Fence,
+        Self::Dispatch,
+        Self::Ack,
+        Self::Canary,
+        Self::Attest,
+        Self::Task,
+        Self::Node,
+        Self::Orchestration,
+        Self::Spine,
     ];
 
     const fn path(self) -> &'static str {
@@ -191,6 +217,18 @@ impl Endpoint {
             Self::Whoami => "/v1/whoami",
             Self::Phonehome => "/v1/phonehome",
             Self::State => "/v1/state",
+            Self::Role => "/v1/role",
+            Self::Project => "/v1/project",
+            Self::Stream => "/v1/stream",
+            Self::Fence => "/v1/fence",
+            Self::Dispatch => "/v1/dispatch",
+            Self::Ack => "/v1/ack",
+            Self::Canary => "/v1/canary",
+            Self::Attest => "/v1/attest",
+            Self::Task => "/v1/task",
+            Self::Node => "/v1/node",
+            Self::Orchestration => "/v1/orchestration",
+            Self::Spine => "/v1/spine",
             // PLAN 119 — a DISTINCT, VERSIONED path for shim-originated calls, never
             // an overload of `/v1/send` / `/v1/inbox`. Those structs tolerate
             // unknown fields, so the additive shape would have an older daemon
@@ -216,6 +254,18 @@ impl Endpoint {
             | Self::Report => Method::POST,
             Self::Adopt | Self::Whoami | Self::Phonehome => Method::POST,
             Self::State => Method::POST,
+            Self::Role
+            | Self::Project
+            | Self::Stream
+            | Self::Fence
+            | Self::Dispatch
+            | Self::Ack
+            | Self::Canary
+            | Self::Attest
+            | Self::Task
+            | Self::Node
+            | Self::Orchestration
+            | Self::Spine => Method::POST,
             Self::ShimSend | Self::ShimInbox | Self::ShimInboxAck => Method::POST,
             Self::Health
             | Self::Inbox
@@ -295,6 +345,7 @@ fn router_with_optional_federation(
         Arc::clone(&services.liveness),
         Arc::clone(&services.event_bus),
         pij_harnesses::claude_homes(),
+        Arc::clone(&services.roles),
     )
     .with_native_lock(services.delivery.native_lock());
     let state = AppState {
@@ -329,6 +380,18 @@ fn router_with_optional_federation(
                     | Endpoint::ShimSend
                     | Endpoint::ShimInbox
                     | Endpoint::ShimInboxAck
+                    | Endpoint::Role
+                    | Endpoint::Project
+                    | Endpoint::Stream
+                    | Endpoint::Fence
+                    | Endpoint::Dispatch
+                    | Endpoint::Ack
+                    | Endpoint::Canary
+                    | Endpoint::Attest
+                    | Endpoint::Task
+                    | Endpoint::Node
+                    | Endpoint::Orchestration
+                    | Endpoint::Spine
             ) {
                 Method::POST
             } else {
@@ -362,6 +425,18 @@ fn router_with_optional_federation(
             ),
             Endpoint::Phonehome => router.route(endpoint.path(), post(identity::phonehome)),
             Endpoint::State => router.route(endpoint.path(), post(seat_state)),
+            Endpoint::Role => router.route(endpoint.path(), post(role::role)),
+            Endpoint::Project => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Stream => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Fence => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Dispatch => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Ack => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Canary => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Attest => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Task => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Node => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Orchestration => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Spine => router.route(endpoint.path(), post(governance::handle)),
             Endpoint::ShimSend => router.route(endpoint.path(), post(shim::shim_send)),
             Endpoint::ShimInbox => router.route(endpoint.path(), post(shim::shim_inbox)),
             Endpoint::ShimInboxAck => router.route(endpoint.path(), post(shim::shim_inbox_ack)),
@@ -1732,7 +1807,7 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
             ),
         );
     };
-    let seat = match state.services.registry.get(&id).await {
+    let mut seat = match state.services.registry.get(&id).await {
         Ok(Some(seat)) => seat,
         Ok(None) => {
             return envelope(
@@ -1744,6 +1819,10 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
                 ),
             );
         }
+        Err(error) => return internal("pij state", error),
+    };
+    seat.role = match state.services.roles.read_role(&id).await {
+        Ok(role) => role,
         Err(error) => return internal("pij state", error),
     };
 
@@ -1964,6 +2043,9 @@ async fn seats(State(state): State<AppState>, Query(query): Query<SeatQuery>) ->
         Ok(seats) => seats,
         Err(error) => return internal("pij seats", error),
     };
+    if let Err(error) = state.services.roles.join_roles(&mut local).await {
+        return internal("pij seats", error);
+    }
     for seat in &mut local {
         seat.machine = Some(state.machine_alias.clone());
     }

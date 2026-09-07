@@ -60,6 +60,25 @@ impl AdapterCore {
         native_session_id: Option<String>,
         subagent_of: Option<String>,
     ) -> Result<BindObservation> {
+        self.observe_bind_with_model_lookup(
+            descriptor,
+            native_session_id,
+            subagent_of,
+            crate::models::resolve_omp_model,
+        )
+        .await
+    }
+
+    async fn observe_bind_with_model_lookup<F>(
+        &self,
+        descriptor: &SeatDescriptor,
+        native_session_id: Option<String>,
+        subagent_of: Option<String>,
+        resolve_model: F,
+    ) -> Result<BindObservation>
+    where
+        F: FnOnce(&str) -> Result<String> + Send,
+    {
         let Some(pane) = descriptor.pane.as_deref() else {
             return Ok(refused_observation(
                 descriptor,
@@ -79,10 +98,17 @@ impl AdapterCore {
 
         let text = self.capture(pane).await?;
         let readiness = classify_readiness(self.kind, &text);
+        let mut model = observed_model(self.kind, &text);
+        if self.kind == Harness::Omp
+            && native_session_id.is_some()
+            && let Some(observed) = model.as_deref()
+        {
+            model = Some(resolve_model(observed)?);
+        }
         let facts = ObservedBindFacts {
             native_session_id,
             pane: Some(pane.to_string()),
-            model: observed_model(self.kind, &text),
+            model,
             cwd: observed_cwd(self.kind, &text),
             readiness: readiness.clone(),
         };
@@ -181,12 +207,7 @@ fn classify_readiness(kind: Harness, text: &str) -> Readiness {
                     .lines()
                     .any(|line| line.contains("◫") && line.contains("⬢"))
         }
-        Harness::Omp => {
-            has_rule_prompt(text)
-                && text
-                    .lines()
-                    .any(|line| line.contains("◫") && !line.contains("⬢"))
-        }
+        Harness::Omp => has_rule_prompt(text) && text.lines().any(|line| line.contains("◫")),
     };
     if ready {
         Readiness::Ready
@@ -266,16 +287,14 @@ fn observed_model(kind: Harness, text: &str) -> Option<String> {
                 .and_then(|left| left.split_whitespace().next())
                 .map(str::to_string)
         }),
-        Harness::Pi => text.lines().rev().find_map(|line| {
-            let (_, value) = line.split_once('⬢')?;
+        Harness::Pi | Harness::Omp => {
+            // The last model field is authoritative, including explicit absence.
+            // Never fall back to a stale model quoted earlier in the pane.
+            let (_, value) = text.lines().rev().find_map(|line| line.split_once('⬢'))?;
             let model = value.split(['·', '>']).next()?.trim();
-            (!model.is_empty()).then(|| model.to_string())
-        }),
-        Harness::Omp => text.lines().rev().find_map(|line| {
-            let (_, value) = line.split_once('⬢')?;
-            let model = value.split('>').next()?.trim();
-            (!model.is_empty()).then(|| model.to_string())
-        }),
+            (!model.is_empty() && !(kind == Harness::Omp && model == "no-model"))
+                .then(|| model.to_string())
+        }
     }
 }
 
@@ -802,5 +821,119 @@ mod tests {
         ] {
             assert_eq!(registry.get(kind).kind(), kind);
         }
+    }
+
+    #[test]
+    fn omp_footer_model_field_excludes_status_columns() {
+        let footer = include_str!("../../testkit/fixtures/harnesses/omp-18-0-10-footer.txt");
+        assert_eq!(
+            super::observed_model(Harness::Omp, footer).as_deref(),
+            Some("GPT-6 Astra (1M)"),
+            "the model field ends before the effort/status columns"
+        );
+    }
+
+    #[test]
+    fn omp_model_bearing_footer_is_ready_without_weakening_busy_guard() {
+        let footer = include_str!("../../testkit/fixtures/harnesses/omp-18-0-10-footer.txt");
+        let pane = format!("────────\n❯\n────────\n◫ 13.3%/1M ⟲ · {}", footer.trim());
+        assert_eq!(
+            super::classify_readiness(Harness::Omp, &pane),
+            Readiness::Ready
+        );
+        assert_eq!(
+            super::classify_readiness(Harness::Omp, &format!("{pane}\n◎ working")),
+            Readiness::Busy
+        );
+    }
+
+    #[test]
+    fn omp_bind_uses_catalog_evidence_instead_of_the_descriptor_claim() {
+        let footer = include_str!("../../testkit/fixtures/harnesses/omp-18-0-10-footer.txt");
+        let pane = format!(
+            "{}\n────────\n❯\n────────\n◫ 13.3%/1M ⟲ · {}",
+            cwd(),
+            footer.trim()
+        );
+        for (requested, busy, admitted) in [
+            ("github-copilot/gpt-6-astra-1m", false, true),
+            ("local/not-the-observed-model", false, false),
+            ("github-copilot/gpt-6-astra-1m", true, false),
+        ] {
+            let capture = if busy {
+                format!("{pane}\n◎ working")
+            } else {
+                pane.clone()
+            };
+            let adapter = OmpHarness::new(Arc::new(FakeTmux::new().script_capture(capture)));
+            let looked_up = std::sync::atomic::AtomicBool::new(false);
+            let observation = block_on(adapter.core.observe_bind_with_model_lookup(
+                &descriptor(Harness::Omp, requested),
+                Some("omp-native-fixture".to_string()),
+                None,
+                |observed| {
+                    looked_up.store(true, std::sync::atomic::Ordering::Relaxed);
+                    assert_eq!(observed, "GPT-6 Astra (1M)");
+                    Ok("github-copilot/gpt-6-astra-1m".to_string())
+                },
+            ))
+            .expect("observed catalog identity");
+            assert!(looked_up.load(std::sync::atomic::Ordering::Relaxed));
+            assert_eq!(
+                observation.facts.model.as_deref(),
+                Some("github-copilot/gpt-6-astra-1m")
+            );
+            assert_eq!(observation.admission == Admission::Admit, admitted);
+        }
+    }
+
+    #[test]
+    fn omp_catalog_failure_never_becomes_a_successful_bind() {
+        let footer = include_str!("../../testkit/fixtures/harnesses/omp-18-0-10-footer.txt");
+        let pane = format!(
+            "{}\n────────\n❯\n────────\n◫ 13.3%/1M ⟲ · {}",
+            cwd(),
+            footer.trim()
+        );
+        let adapter = OmpHarness::new(Arc::new(FakeTmux::new().script_capture(pane)));
+        let result = block_on(adapter.core.observe_bind_with_model_lookup(
+            &descriptor(Harness::Omp, "github-copilot/gpt-6-astra-1m"),
+            Some("omp-native-fixture".to_string()),
+            None,
+            |_| {
+                Err(pij_core::error::PijError::Adapter {
+                    adapter: "fixture catalog".to_string(),
+                    message: "unavailable".to_string(),
+                })
+            },
+        ));
+        assert!(
+            result
+                .expect_err("missing catalog is not model evidence")
+                .to_string()
+                .contains("unavailable")
+        );
+    }
+
+    #[test]
+    fn omp_18_1_11_no_model_footer_is_absence_not_a_requested_model_alias() {
+        let absent =
+            include_str!("../../testkit/fixtures/harnesses/omp-18-1-11-no-model-footer.txt");
+        let earlier = include_str!("../../testkit/fixtures/harnesses/omp-18-0-10-footer.txt");
+        assert!(super::observed_model(Harness::Omp, &format!("{earlier}\n{absent}")).is_none());
+        let pane = format!("{}\n────────\n❯\n────────\n{}", cwd(), absent.trim());
+        let adapter = OmpHarness::new(Arc::new(FakeTmux::new().script_capture(pane)));
+        let observation = block_on(adapter.core.observe_bind_with_model_lookup(
+            &descriptor(Harness::Omp, "github-copilot/gpt-6-astra-1m"),
+            Some("omp-native-fixture".to_string()),
+            None,
+            |_| panic!("no-model is absence; never ask a catalog to turn it into a model"),
+        ))
+        .expect("observable model absence");
+        assert!(observation.facts.model.is_none());
+        assert_eq!(
+            observation.admission,
+            Admission::Refuse(RefusalReason::NoBindEvidence)
+        );
     }
 }

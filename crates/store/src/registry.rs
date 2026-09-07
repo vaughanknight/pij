@@ -4,20 +4,25 @@
 //! `pij_testkit::contract::registry_contract`, and this implementation runs it
 //! unchanged. Nothing below is allowed to have its own idea of what `get` means.
 
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use async_trait::async_trait;
 use sqlx::{Pool, Row, Sqlite};
 
 use pij_core::error::{PijError, Result};
 use pij_core::model::{
-    Harness, ProcIdentity, SeatDescriptor, SeatId, SemanticState, Seq, SystemState,
+    Event, Harness, ProcIdentity, SeatDescriptor, SeatId, SemanticState, Seq, SystemState,
 };
 use pij_core::ports::{PutBinding, Registry, SeatFilter};
 
 use crate::migrate::{begin_write, require_current_schema};
+use crate::spine::{RegistryPublisher, append_in_transaction};
 
 /// A [`Registry`] backed by the SQLite store.
 pub struct SqliteRegistry {
     pool: Pool<Sqlite>,
+    publisher: Arc<dyn RegistryPublisher>,
 }
 
 impl SqliteRegistry {
@@ -35,9 +40,9 @@ impl SqliteRegistry {
 }
 
 impl SqliteRegistry {
-    /// Wrap an open pool.
-    pub fn new(pool: Pool<Sqlite>) -> Self {
-        SqliteRegistry { pool }
+    /// Wrap an open pool and its daemon-owned ordered publication boundary.
+    pub fn new(pool: Pool<Sqlite>, publisher: Arc<dyn RegistryPublisher>) -> Self {
+        SqliteRegistry { pool, publisher }
     }
 }
 
@@ -193,6 +198,39 @@ fn state_str(state: SystemState) -> &'static str {
     }
 }
 
+/// Construct a stamped registry fact without assigning its durable sequence.
+/// Fake and SQLite registry publication use the same payload/clock encoding.
+pub fn registry_event(kind: &str, seat: &SeatId, payload: String) -> Result<Event> {
+    let at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| PijError::Adapter {
+            adapter: "store/registry".to_string(),
+            message: format!("cannot publish registry event before the Unix epoch: {error}"),
+        })?
+        .as_millis();
+    let at = u64::try_from(at).map_err(|error| PijError::Adapter {
+        adapter: "store/registry".to_string(),
+        message: format!("registry timestamp exceeds epoch-millisecond range: {error}"),
+    })?;
+    Ok(Event {
+        seq: None,
+        v: 1,
+        at,
+        kind: kind.to_string(),
+        seat: Some(seat.clone()),
+        payload,
+    })
+}
+
+/// Encode the exact descriptor in a stamped `seat.put` fact.
+pub fn descriptor_event(descriptor: &SeatDescriptor) -> Result<Event> {
+    let payload = serde_json::to_string(descriptor).map_err(|error| PijError::Adapter {
+        adapter: "store/registry".to_string(),
+        message: format!("could not encode registry descriptor: {error}"),
+    })?;
+    registry_event("seat.put", &descriptor.id, payload)
+}
+
 #[async_trait]
 impl Registry for SqliteRegistry {
     async fn get(&self, seat: &SeatId) -> Result<Option<SeatDescriptor>> {
@@ -210,13 +248,17 @@ impl Registry for SqliteRegistry {
     }
 
     async fn put_reporting(&self, descriptor: SeatDescriptor) -> Result<(Seq, PutBinding)> {
-        require_current_schema(&self.pool).await?;
+        let pool = self.pool.clone();
+        let (seq, binding) = self.publisher.publish_registry(Box::pin(async move {
+        require_current_schema(&pool).await?;
 
-        // ONE transaction. Persist-before-mutate orders the two writes; the
-        // transaction is what makes them one fact. Review found the split
-        // version: a failed second statement left the spine claiming something
-        // the registry never did.
-        let mut tx = begin_write(&self.pool).await?;
+        // The future is first polled under EventBus's publication lock. Acquire
+        // SQLite only afterwards, so ordinary and registry writers cannot invert
+        // their locks. Failure rolls back both the descriptor and its event.
+        let mut descriptor = descriptor;
+        descriptor.machine = None;
+        let mut event = descriptor_event(&descriptor)?;
+        let mut tx = begin_write(&pool).await?;
         let previous = sqlx::query("SELECT pid, proc_start FROM seats WHERE id = ?1")
             .bind(descriptor.id.as_str())
             .fetch_optional(&mut *tx)
@@ -227,14 +269,7 @@ impl Registry for SqliteRegistry {
             previous_proc: previous.as_ref().map(row_proc).transpose()?.flatten(),
         };
 
-        let seq: i64 = sqlx::query_scalar(
-            "INSERT INTO spine_events (v, at, kind, seat, payload) VALUES (1, 0, 'seat.put', ?1, '') \
-             RETURNING seq",
-        )
-        .bind(descriptor.id.as_str())
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(adapter_error)?;
+        let seq = append_in_transaction(&mut tx, &event).await?;
 
         sqlx::query(
             "INSERT INTO seats (id, harness, harness_session, pane, pid, proc_start, folder, state, \
@@ -269,7 +304,7 @@ impl Registry for SqliteRegistry {
         .bind(i64::from(descriptor.relay))
         .bind(descriptor.tombstoned_at.map(|value| value as i64))
         .bind(descriptor.tombstone_reason.as_deref())
-        .bind(seq)
+        .bind(seq.0 as i64)
         .bind(descriptor.spawn_id.as_deref())
         .bind(descriptor.model.as_deref())
         .bind(descriptor.provider.as_deref())
@@ -281,7 +316,14 @@ impl Registry for SqliteRegistry {
         .map_err(adapter_error)?;
 
         tx.commit().await.map_err(adapter_error)?;
-        Ok((Seq(seq as u64), binding))
+        event.seq = Some(seq);
+        Ok((event, Some(binding)))
+        })).await?;
+        let binding = binding.ok_or_else(|| PijError::Adapter {
+            adapter: "store/registry".to_string(),
+            message: "registry publisher lost the committed put binding".to_string(),
+        })?;
+        Ok((seq, binding))
     }
 
     async fn list(&self, filter: SeatFilter) -> Result<Vec<SeatDescriptor>> {
@@ -307,49 +349,56 @@ impl Registry for SqliteRegistry {
     }
 
     async fn tombstone(&self, seat: &SeatId, reason: &str) -> Result<Seq> {
-        require_current_schema(&self.pool).await?;
-        let mut tx = begin_write(&self.pool).await?;
+        let pool = self.pool.clone();
+        let seat = seat.clone();
+        let reason = reason.to_string();
+        let store = self.store_description();
+        self.publisher
+            .publish_registry(Box::pin(async move {
+                require_current_schema(&pool).await?;
+                let mut tx = begin_write(&pool).await?;
 
-        let seq: i64 = sqlx::query_scalar(
-            "INSERT INTO spine_events (v, at, kind, seat, payload) \
-             VALUES (1, 0, 'seat.tombstone', ?1, ?2) RETURNING seq",
-        )
-        .bind(seat.as_str())
-        .bind(reason)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(adapter_error)?;
+                let mut event = registry_event(
+                    "seat.tombstone",
+                    &seat,
+                    serde_json::json!({ "reason": reason }).to_string(),
+                )?;
+                let seq = append_in_transaction(&mut tx, &event).await?;
 
-        let affected = sqlx::query(
-            "UPDATE seats SET tombstoned_at = ?2, tombstone_reason = ?3, \
+                let affected = sqlx::query(
+                    "UPDATE seats SET tombstoned_at = ?2, tombstone_reason = ?3, \
              native_extension_delivery = 0, seq = ?4 WHERE id = ?1",
-        )
-        .bind(seat.as_str())
-        .bind(seq)
-        .bind(reason)
-        .bind(seq)
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?
-        .rows_affected();
+                )
+                .bind(seat.as_str())
+                .bind(event.at as i64)
+                .bind(&reason)
+                .bind(seq.0 as i64)
+                .execute(&mut *tx)
+                .await
+                .map_err(adapter_error)?
+                .rows_affected();
 
-        if affected == 0 {
-            // Tombstoning a seat nobody registered is a fact, not a no-op: a
-            // silent success teaches the caller nothing. ROLL BACK first — the
-            // split version committed the event anyway, so the spine recorded a
-            // tombstone for a seat that was never there (review finding 6).
-            tx.rollback().await.map_err(adapter_error)?;
-            return Err(PijError::NoRegistryEntry {
-                seat: seat.clone(),
-                // The ADAPTER knows the file it actually opened, so it names it.
-                // An absence is only evidence about the place that was searched,
-                // and a sibling generation shipped an E-NOREG blaming a missing
-                // extension when the real fact was HOME pointing at a fixture.
-                store: self.store_description(),
-            });
-        }
+                if affected == 0 {
+                    // Tombstoning a seat nobody registered is a fact, not a no-op: a
+                    // silent success teaches the caller nothing. ROLL BACK first — the
+                    // split version committed the event anyway, so the spine recorded a
+                    // tombstone for a seat that was never there (review finding 6).
+                    tx.rollback().await.map_err(adapter_error)?;
+                    return Err(PijError::NoRegistryEntry {
+                        seat: seat.clone(),
+                        // The ADAPTER knows the file it actually opened, so it names it.
+                        // An absence is only evidence about the place that was searched,
+                        // and a sibling generation shipped an E-NOREG blaming a missing
+                        // extension when the real fact was HOME pointing at a fixture.
+                        store,
+                    });
+                }
 
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(Seq(seq as u64))
+                tx.commit().await.map_err(adapter_error)?;
+                event.seq = Some(seq);
+                Ok((event, None))
+            }))
+            .await
+            .map(|(seq, _)| seq)
     }
 }

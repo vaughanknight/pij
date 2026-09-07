@@ -1,10 +1,12 @@
+mod support;
+
 use std::sync::Arc;
 
 use pij_core::model::{Harness, ProcIdentity, SeatDescriptor, SeatId};
 use pij_core::orchestration::{
     AttributionSource, BatonDefinition, Dispatch, DispatchState, ParentAttribution,
-    PrimeDesignation, ReconcileDecision, RepoInventory, RoleAssignment, SpawnRecord,
-    VerifiedDescriptor, plan_stream_creation,
+    PrimeDesignation, PrimeState, Project, ReconcileDecision, RepoInventory, RoleAssignment,
+    SpawnRecord, VerifiedDescriptor, plan_stream_creation,
 };
 use pij_core::ports::Registry;
 use pij_store::{
@@ -18,6 +20,7 @@ fn lease(holder: &str, id: &str, at: u64) -> BatonLease {
         baton: "git-index".to_string(),
         holder: SeatId::from(holder),
         lease_id: id.to_string(),
+        request_id: None,
         acquired_at: at,
     }
 }
@@ -79,7 +82,7 @@ async fn spawn_owner_is_immutable_and_parent_attribution_states_missing_evidence
 async fn descriptor_merge_is_atomic_and_retains_both_inputs_and_mismatches() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let registry = SqliteRegistry::new(pool.clone());
+    let registry = SqliteRegistry::new(pool.clone(), support::publisher());
     let store = SqliteOrchestration::new(pool.clone());
     let process = ProcIdentity {
         pid: 9191,
@@ -176,7 +179,7 @@ async fn reconciliation_never_transfers_native_capability_to_another_incarnation
     ] {
         let fresh = FreshStore::new();
         let pool = pij_store::open(&fresh.path()).await.expect("open");
-        let registry = SqliteRegistry::new(pool.clone());
+        let registry = SqliteRegistry::new(pool.clone(), support::publisher());
         let store = SqliteOrchestration::new(pool);
         let mut alias = SeatDescriptor::new("alias", Harness::Copilot, "/abs/tree");
         alias.proc = Some(ProcIdentity {
@@ -295,15 +298,22 @@ async fn project_and_stream_reservations_are_first_writer_wins() {
     let pool = pij_store::open(&fresh.path()).await.expect("open");
     let store = SqliteOrchestration::new(pool);
     let actor = SeatId::from("pij-pm");
-    assert!(
-        store
-            .create_project("rust-port", &actor, 1)
-            .await
-            .expect("project")
-    );
+    let project = Project {
+        slug: "rust-port".into(),
+        description: None,
+        repo: None,
+        plan_path: None,
+        prime_id: None,
+        created_by: actor.clone(),
+        created_at: 1,
+    };
+    assert!(store.create_project(&project).await.expect("project"));
     assert!(
         !store
-            .create_project("rust-port", &actor, 2)
+            .create_project(&Project {
+                created_at: 2,
+                ..project
+            })
             .await
             .expect("duplicate")
     );
@@ -342,6 +352,9 @@ async fn batons_roles_prime_and_dispatch_ack_are_durable_governance() {
     let baton = BatonDefinition {
         name: "git-index".to_string(),
         description: "serialises worktree mutations".to_string(),
+        resource: None,
+        probe: None,
+        repo: None,
         created_by: prime.clone(),
         created_at: 1,
     };
@@ -362,6 +375,7 @@ async fn batons_roles_prime_and_dispatch_ack_are_durable_governance() {
             seat: prime.clone(),
             designated_by: prime.clone(),
             designated_at: 3,
+            state: PrimeState::Current,
         })
         .await
         .expect("prime");
@@ -379,19 +393,31 @@ async fn batons_roles_prime_and_dispatch_ack_are_durable_governance() {
     assert_eq!(role_count, 1);
     assert_eq!(designated, "pij-prime");
 
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+    ))
+    .expect("canonical contract");
+    let sha = fixture["fixture_context"]["records"]["dispatch"]["packet_sha256"]
+        .as_str()
+        .unwrap();
     let dispatch = Dispatch {
         id: "dispatch-1".to_string(),
         from: prime.clone(),
         to: worker.clone(),
-        body: "/abs/packet.md".to_string(),
-        state: DispatchState::Pending,
+        packet_path: "/abs/packet.md".to_string(),
+        packet_sha256: Some(sha.to_string()),
+        msg_id: Some("dispatch-1".to_string()),
+        state: DispatchState::Queued,
         created_at: 4,
+        delivered_at: None,
         acknowledged_at: None,
+        ack: None,
+        canary: None,
     };
     assert!(store.create_dispatch(&dispatch).await.expect("dispatch"));
     assert_eq!(
         store
-            .acknowledge_dispatch("dispatch-1", &SeatId::from("pij-stranger"), 5)
+            .acknowledge_dispatch("dispatch-1", &SeatId::from("pij-stranger"), sha, 5)
             .await
             .expect("wrong actor"),
         DispatchAck::NotAssignee {
@@ -400,14 +426,14 @@ async fn batons_roles_prime_and_dispatch_ack_are_durable_governance() {
     );
     assert_eq!(
         store
-            .acknowledge_dispatch("dispatch-1", &worker, 6)
+            .acknowledge_dispatch("dispatch-1", &worker, sha, 6)
             .await
             .expect("ack"),
         DispatchAck::Acknowledged
     );
     assert_eq!(
         store
-            .acknowledge_dispatch("dispatch-1", &worker, 7)
+            .acknowledge_dispatch("dispatch-1", &worker, sha, 7)
             .await
             .expect("replay"),
         DispatchAck::AlreadyAcknowledged
@@ -417,8 +443,106 @@ async fn batons_roles_prime_and_dispatch_ack_are_durable_governance() {
         .await
         .expect("read")
         .expect("present");
-    assert_eq!(acknowledged.state, DispatchState::Acknowledged);
+    assert_eq!(acknowledged.state, DispatchState::Acked);
     assert_eq!(acknowledged.acknowledged_at, Some(6));
+}
+
+fn contract_role_assignment() -> RoleAssignment {
+    let fixtures: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
+    ))
+    .expect("governance event fixtures");
+    let record = &fixtures["events"]
+        .as_array()
+        .expect("event cases")
+        .iter()
+        .find(|case| case["id"] == "role-set")
+        .expect("role-set fixture")["decoded_payload"]["record"];
+    RoleAssignment {
+        seat: SeatId::from(record["seat"].as_str().expect("seat")),
+        role: record["role"].as_str().expect("role").to_string(),
+        assigned_by: SeatId::from(record["assigned_by"].as_str().expect("actor")),
+        assigned_at: record["assigned_at"].as_u64().expect("assignment time"),
+    }
+}
+
+#[tokio::test]
+async fn list_roles_preserves_assignments_in_seat_order_not_insertion_order() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let store = SqliteOrchestration::new(pool.clone());
+    assert!(store.list_roles().await.expect("empty list").is_empty());
+
+    let assignment = contract_role_assignment();
+    let mut other = assignment.clone();
+    other.seat = assignment.assigned_by.clone();
+    let mut expected = vec![assignment, other];
+    expected.sort_by(|left, right| left.seat.as_str().cmp(right.seat.as_str()));
+    for assignment in expected.iter().rev() {
+        store.assign_role(assignment).await.expect("assign role");
+    }
+
+    let reader = SqliteOrchestration::new(pool);
+    assert_eq!(reader.list_roles().await.expect("ordered list"), expected);
+}
+
+#[tokio::test]
+async fn clear_role_is_idempotent_and_preserves_other_seat_assignments() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let store = SqliteOrchestration::new(pool.clone());
+    let assignment = contract_role_assignment();
+    let mut other = assignment.clone();
+    other.seat = assignment.assigned_by.clone();
+    store.assign_role(&assignment).await.expect("assign target");
+    store.assign_role(&other).await.expect("assign other");
+
+    store
+        .clear_role(&assignment.seat)
+        .await
+        .expect("clear target");
+    store
+        .clear_role(&assignment.seat)
+        .await
+        .expect("repeated clear");
+
+    let reader = SqliteOrchestration::new(pool);
+    assert_eq!(
+        reader
+            .seat_role(&assignment.seat)
+            .await
+            .expect("cleared role"),
+        None
+    );
+    assert_eq!(
+        reader.list_roles().await.expect("remaining roles"),
+        vec![other]
+    );
+}
+
+#[tokio::test]
+async fn seat_role_returns_complete_assignment_and_latest_replacement() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let store = SqliteOrchestration::new(pool.clone());
+    let mut assignment = contract_role_assignment();
+    assert_eq!(
+        store.seat_role(&assignment.seat).await.expect("absent"),
+        None
+    );
+    store.assign_role(&assignment).await.expect("assign");
+    let reader = SqliteOrchestration::new(pool);
+    assert_eq!(
+        reader.seat_role(&assignment.seat).await.expect("persisted"),
+        Some(assignment.clone()),
+    );
+    assignment.assigned_by = assignment.seat.clone();
+    assignment.assigned_at += 1;
+    store.assign_role(&assignment).await.expect("replace");
+    assert_eq!(
+        reader.seat_role(&assignment.seat).await.expect("replaced"),
+        Some(assignment),
+    );
 }
 
 #[tokio::test]

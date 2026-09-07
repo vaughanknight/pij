@@ -21,24 +21,27 @@
       "value": [
         {
           "id": "tk-20a2",
-          "title": "u2 \u2014 --role on register/adopt; `pij-rs role`; seat_roles join; ownership self-or-parent",
+          "title": "u2 — --role on register/adopt; `pij-rs role`; seat_roles join; ownership self-or-parent",
           "domain": "rust",
           "phase": "p2",
-          "state": "unchecked"
+          "state": "unchecked",
+          "note": "u2 pij-written-lansra implementing shared RoleService and fixture tests; u3 supplies role store helpers; PM owns wiring."
         },
         {
           "id": "tk-21a2",
-          "title": "u3 \u2014 project/stream/fence/baton/prime routes + verbs over existing tables",
+          "title": "u3 — project/stream/fence/baton/prime routes + verbs over existing tables",
           "domain": "rust",
           "phase": "p2",
-          "state": "unchecked"
+          "state": "unchecked",
+          "note": "u3 pij-general-miriam implementing governance records/migration0014 and spine verbs under accepted full ack."
         },
         {
           "id": "tk-22a2",
-          "title": "u3 \u2014 dispatch (3-state receipt) / ack / canary / attest / task set / node show",
+          "title": "u3 — dispatch (3-state receipt) / ack / canary / attest / task set / node show",
           "domain": "rust",
           "phase": "p2",
-          "state": "unchecked"
+          "state": "unchecked",
+          "note": "u3 implements real DeliveryService-linked dispatch/ack/canary/attest/task/node; no validators until wave edit barrier."
         }
       ]
     },
@@ -71,6 +74,5 @@
         ]
       }
     }
-  ],
-  "references": []
+  ]
 }

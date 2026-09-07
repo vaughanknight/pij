@@ -6,6 +6,7 @@
 //! that describes the incident.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use pij_core::config::{AdapterChoice, Adapters, Config};
@@ -453,7 +454,11 @@ async fn selecting_the_real_liveness_adapter_reaches_the_process_table() {
 async fn a_schema_that_changes_under_a_live_pool_stops_the_next_operation() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let registry = SqliteRegistry::new(pool.clone());
+    let bus = Arc::new(
+        pij_daemon::events::EventBus::new(Arc::new(SqliteSpine::new(pool.clone())), 16)
+            .expect("shared event bus"),
+    );
+    let registry = SqliteRegistry::new(pool.clone(), bus);
 
     // Healthy first, so the refusal below cannot be blamed on a broken store.
     registry
@@ -511,7 +516,11 @@ async fn a_schema_that_changes_under_a_live_pool_stops_the_next_operation() {
 async fn a_refused_tombstone_leaves_no_trace_in_the_spine() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let registry = SqliteRegistry::new(pool.clone());
+    let bus = Arc::new(
+        pij_daemon::events::EventBus::new(Arc::new(SqliteSpine::new(pool.clone())), 16)
+            .expect("shared event bus"),
+    );
+    let registry = SqliteRegistry::new(pool.clone(), bus);
     let spine = SqliteSpine::new(pool.clone());
 
     let before = spine.tail(None, Seq(0)).await.expect("tail").len();
@@ -540,7 +549,11 @@ async fn a_refused_tombstone_leaves_no_trace_in_the_spine() {
 async fn a_successful_put_writes_its_event_and_its_row_together() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let registry = SqliteRegistry::new(pool.clone());
+    let bus = Arc::new(
+        pij_daemon::events::EventBus::new(Arc::new(SqliteSpine::new(pool.clone())), 16)
+            .expect("shared event bus"),
+    );
+    let registry = SqliteRegistry::new(pool.clone(), bus);
     let spine = SqliteSpine::new(pool);
 
     let seat = SeatDescriptor::new("pij-atomic", Harness::Pi, "/abs");
@@ -636,7 +649,11 @@ async fn every_public_store_operation_rejects_a_stale_schema() {
 
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let registry = SqliteRegistry::new(pool.clone());
+    let bus = Arc::new(
+        pij_daemon::events::EventBus::new(Arc::new(SqliteSpine::new(pool.clone())), 16)
+            .expect("shared event bus"),
+    );
+    let registry = SqliteRegistry::new(pool.clone(), bus);
     let spine = SqliteSpine::new(pool.clone());
     let queue = pij_store::SqliteQueue::new(
         pool.clone(),

@@ -11,6 +11,8 @@
 pub mod address;
 pub mod bounce;
 pub mod client;
+pub mod governance;
+pub mod role;
 
 pub use address::{AddressError, parse_destination, render_destination};
 pub use client::{

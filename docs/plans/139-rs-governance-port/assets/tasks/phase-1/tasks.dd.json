@@ -32,14 +32,16 @@
           "title": "u1 — EventBus is the only spine writer; ReportService/Registry publish with at + payload",
           "domain": "rust",
           "phase": "p1",
-          "state": "unchecked"
+          "state": "unchecked",
+          "note": "u1 pij-electoral-orlandine implementing under accepted canary/ack; atomic store transaction publication seam ruled; validation deferred until edit barrier."
         },
         {
           "id": "tk-12a1",
           "title": "u1 — RED: chainglass positive control fails on main, GREEN after; no-direct-INSERT grep test",
           "domain": "rust",
           "phase": "p1",
-          "state": "unchecked"
+          "state": "unchecked",
+          "note": "Baseline live RED captured at seq7/8 vs9/10; u1 authors fixture-backed named regressions and INSERT guard before source changes."
         }
       ]
     },

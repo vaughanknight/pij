@@ -39,6 +39,7 @@ Build exactly u5: `close <id>` owner-only tombstone; `reap [--dry-run]` over pro
 | i9 | Close is only a tombstone (self/current parent), not process or pane termination. Emit stamped reason through shared bus. Reap uses known proc dead OR proc_start mismatch AND known recorded-pane absence; paneless seats use process alone. Any unknown is a veto and reported unverifiable; no age retention policy. |
 | i10 | Use existing liveness ports and recycled-pid fixture. Never signal replacement process. Dry-run writes neither rows nor events; actual run reports before/after and same candidates under same observations. Re-check incarnation before destructive commit to avoid tombstoning a concurrent revive. |
 | i11 | Dedicated PIJ_TMUX_SOCKET/refuse-start guard is explicitly OUT OF SCOPE by prime ruling. Use the complete isolation recipe; do not broaden lifecycle into global daemon/toolchain changes. PM cross-unit composition proof is parent-owned. |
+| i12 | Prime amendment (inigo finding): ProcLiveness currently treats empty ps stdout as ABSENT regardless of exit status; signal-killed ps therefore looks dead. You own crates/harnesses/src/proc.rs and its focused tests as part of liveness scope. Carry actual process exit status through PsRunner; nonzero-exit plus empty stdout is UNKNOWN/error, never confirmed absence and never reap permission. Add signalled/failed-empty probe regression and ensure the reaper reports unverifiable. Do not silently treat a failed probe as dead; raise any conflict with confirmed-absence detection at ACK. |
 
 <a id="working-with"></a>
 
@@ -58,7 +59,7 @@ Build exactly u5: `close <id>` owner-only tombstone; `reap [--dry-run]` over pro
 | --- | --- |
 | worktree | /Users/jordanknight/pi-hacking/fs3-rs-governance-port-u5 |
 | branch | 139-rs-governance-port-u5 |
-| fence | crates/daemon/src/http/lifecycle.rs (new) + Route lines; crates/daemon/src/reaper.rs (new); crates/cli/src/lifecycle.rs (new) + wiring |
+| fence | crates/daemon/src/http/lifecycle.rs (new) + Route lines; crates/daemon/src/reaper.rs (new); crates/cli/src/lifecycle.rs (new) + wiring; crates/harnesses/src/proc.rs and focused liveness tests (prime-approved failed-ps UNKNOWN fix) |
 | forbidden_note | Main/other worktrees/node_modules/global links/settings/prod daemon/government writes forbidden. Never hand-write .the-flow-state.json, the-flow.json, the-flow.md. Parent owns composition and final proof; no PR/merge/deploy. |
 
 <a id="done-bar"></a>

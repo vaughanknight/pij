@@ -6,12 +6,16 @@
 
 #![deny(missing_docs)]
 
+pub mod dispatch;
+pub mod governance;
 pub mod migrate;
 pub mod orchestration;
 pub mod queue;
 pub mod registry;
+mod role_assertion;
 pub mod spine;
 
+pub use governance::GovernanceOutcome;
 pub use migrate::{SCHEMA_VERSION, StorePool, open, require_current_schema, schema_version};
 pub use orchestration::{
     BatonLease, DispatchAck, LeaseClaim, SpawnRecordOutcome, SqliteOrchestration, StreamReservation,

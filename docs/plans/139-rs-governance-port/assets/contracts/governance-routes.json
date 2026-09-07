@@ -2216,7 +2216,7 @@
       "Require listening banner and TCP health, then pij-rs ping reports healthy/offline=false.",
       "Confirm observer logs contain no foreign shared-server panes; private socket is mandatory, environment isolation alone is insufficient."
     ],
-    "backend_pairing": "Real Registry requires Real Spine; refuse incompatible Real Registry + Fake Spine before store open/migrate, with the one-writer constraint named. Never silently promote. Fake Registry + Real Spine remains valid through the shared bus.",
+    "backend_pairing": "Real Registry requires Real Spine; refuse Real Registry + Fake Spine before store open/migrate, naming the one-writer constraint. Real-spine mode shares the existing real pool. Fake event/governance persistence is explicitly ONE shared in-memory SqliteSpine, with host adapters still fake and no disk/production promotion; a configured real queue may use its separate real pool. Fake Registry + Real Spine remains valid.",
     "forbidden": [
       "flowspace3 daemon in any form",
       "main checkout writes",

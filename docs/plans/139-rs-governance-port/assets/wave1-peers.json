@@ -1,23 +1,23 @@
 {
   "base_sha": "d964233d4cbf45400a6b2fc5f873de48909e7e38",
-  "phase": "wave1-canary",
+  "phase": "wave1-implementation",
   "model": "github-copilot/gpt-6-astra-1m",
   "effort": "high",
   "peers": {
     "u1": {
       "id": "pij-electoral-orlandine",
       "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1",
-      "status": "canary-awaiting-ack"
+      "status": "canary-verified-ack-ruled-implementing"
     },
     "u2": {
       "id": "pij-written-lansra",
       "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u2",
-      "status": "canary-awaiting-ack"
+      "status": "canary-verified-ack-ruled-implementing"
     },
     "u3": {
       "id": "pij-general-miriam",
       "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3",
-      "status": "canary-awaiting-ack"
+      "status": "canary-verified-ack-ruled-implementing"
     }
   },
   "baseline_checks": {

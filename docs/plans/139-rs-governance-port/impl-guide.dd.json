@@ -80,7 +80,7 @@
         {
           "id": "u5",
           "name": "lifecycle: close + reap",
-          "paths": "crates/daemon/src/http/lifecycle.rs (new) + Route lines; crates/daemon/src/reaper.rs (new); crates/cli/src/lifecycle.rs (new) + wiring",
+          "paths": "crates/daemon/src/http/lifecycle.rs (new) + Route lines; crates/daemon/src/reaper.rs (new); crates/cli/src/lifecycle.rs (new) + wiring; crates/harnesses/src/proc.rs and focused liveness tests (prime-approved failed-ps UNKNOWN fix)",
           "responsibility": "`close <id>` owner-only tombstone; `reap [--dry-run]` over proc{pid,proc_start}+pane using existing liveness ports; refuses recycled pid; counts before/after.",
           "interface": "POST /v1/close; POST /v1/reap.",
           "test_strategy": "Fake liveness fixtures incl. plan 095 recycled-pid case; dry-run equals run minus writes; ownership refusal.",

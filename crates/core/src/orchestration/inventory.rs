@@ -51,6 +51,11 @@ pub enum StreamPlanError {
     },
     /// No higher ordinal can be represented.
     OrdinalExhausted,
+    /// The requested ordinal is already present in a Git namespace.
+    OrdinalReserved {
+        /// Conflicting ordinal.
+        ordinal: u32,
+    },
     /// Worktree root was relative; cross-tree writes require an absolute root.
     RelativeWorktreeRoot,
 }
@@ -78,6 +83,38 @@ pub fn plan_stream_creation(
     base_ref: &str,
     inventory: &RepoInventory,
 ) -> Result<StreamPlan, StreamPlanError> {
+    stream_plan(project, slug, worktree_root, base_ref, inventory, None)
+}
+
+/// Plan an explicitly numbered stream using the same validation and naming rules.
+/// Inventory collisions refuse without mutating the caller's observed inventory;
+/// the durable store reservation remains the final concurrent-allocation guard.
+pub fn plan_stream_creation_at_ordinal(
+    project: &str,
+    slug: &str,
+    worktree_root: &Path,
+    base_ref: &str,
+    inventory: &RepoInventory,
+    ordinal: u32,
+) -> Result<StreamPlan, StreamPlanError> {
+    stream_plan(
+        project,
+        slug,
+        worktree_root,
+        base_ref,
+        inventory,
+        Some(ordinal),
+    )
+}
+
+fn stream_plan(
+    project: &str,
+    slug: &str,
+    worktree_root: &Path,
+    base_ref: &str,
+    inventory: &RepoInventory,
+    ordinal: Option<u32>,
+) -> Result<StreamPlan, StreamPlanError> {
     for value in [project, slug] {
         if !valid_slug(value) {
             return Err(StreamPlanError::InvalidSlug {
@@ -88,7 +125,17 @@ pub fn plan_stream_creation(
     if !worktree_root.is_absolute() {
         return Err(StreamPlanError::RelativeWorktreeRoot);
     }
-    let ordinal = mint_ordinal(inventory)?;
+    let ordinal = match ordinal {
+        Some(ordinal)
+            if inventory.clone.contains(&ordinal)
+                || inventory.worktrees.contains(&ordinal)
+                || inventory.branch_heads.contains(&ordinal) =>
+        {
+            return Err(StreamPlanError::OrdinalReserved { ordinal });
+        }
+        Some(ordinal) => ordinal,
+        None => mint_ordinal(inventory)?,
+    };
     let padded = format!("{ordinal:03}");
     Ok(StreamPlan {
         project: project.to_string(),

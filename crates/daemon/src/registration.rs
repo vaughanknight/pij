@@ -13,6 +13,7 @@ use pij_harnesses::ensure_claude_inbound_accept;
 
 use crate::events::EventBus;
 use crate::http::Registration;
+use crate::http::role::RoleService;
 
 #[derive(Debug)]
 pub(crate) enum RegistrationError {
@@ -34,6 +35,7 @@ pub(crate) struct RegistrationService {
     registry: Arc<dyn Registry>,
     liveness: Arc<dyn LivenessPort>,
     event_bus: Arc<EventBus>,
+    roles: Arc<RoleService>,
     claude_homes: Vec<PathBuf>,
     registration_lock: Arc<tokio::sync::Mutex<()>>,
 }
@@ -49,12 +51,14 @@ impl RegistrationService {
         liveness: Arc<dyn LivenessPort>,
         event_bus: Arc<EventBus>,
         claude_homes: Vec<PathBuf>,
+        roles: Arc<RoleService>,
     ) -> Self {
         Self {
             registry,
             liveness,
             event_bus,
             claude_homes,
+            roles,
             registration_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
@@ -323,6 +327,15 @@ impl RegistrationService {
         harness_session: Option<String>,
         handoff: Option<&NativeHandoff>,
     ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError> {
+        if claim
+            .role
+            .as_deref()
+            .is_some_and(|role| role.trim().is_empty())
+        {
+            return Err(RegistrationError::Refused(
+                "role must be a nonempty string".to_string(),
+            ));
+        }
         let native = handoff.is_some();
         let dead_native = handoff.map_or(&[][..], |proof| proof.dead.as_slice());
         let harness_session = harness_session.filter(|session| !session.trim().is_empty());
@@ -626,6 +639,18 @@ impl RegistrationService {
         let (_, binding) = self
             .registry
             .put_reporting(descriptor.clone())
+            .await
+            .map_err(RegistrationError::Runtime)?;
+        if let Some(role) = claim.role {
+            self.roles.assert_role(&descriptor.id, &descriptor.id, Some(role)).await
+                .map_err(|error| RegistrationError::Runtime(PijError::Adapter {
+                    adapter: "daemon/registration".to_string(),
+                    message: format!("E-RS-PARTIAL registration for {} persisted but role assertion failed: {error}", descriptor.id),
+                }))?;
+        }
+        descriptor.role = self
+            .roles
+            .read_role(&descriptor.id)
             .await
             .map_err(RegistrationError::Runtime)?;
         if binds_spawned_incarnation && model_matches {
@@ -1056,6 +1081,7 @@ mod tests {
     };
     use crate::events::EventBus;
     use crate::http::Registration;
+    use crate::http::role::RoleService;
 
     const HOST: ProcIdentity = ProcIdentity {
         pid: 4242,
@@ -1087,6 +1113,7 @@ mod tests {
             provider: None,
             effort: None,
             parent: None,
+            role: None,
             relay: false,
         }
     }
@@ -1119,7 +1146,7 @@ mod tests {
         )
     }
 
-    fn native_service(
+    async fn native_service(
         seats: Vec<SeatDescriptor>,
         liveness: Arc<dyn LivenessPort>,
     ) -> (RegistrationService, Arc<FakeRegistry>) {
@@ -1131,8 +1158,14 @@ mod tests {
                 }),
         );
         let bus = Arc::new(EventBus::new(Arc::new(FakeSpine::new()), 8).expect("event bus"));
+        let pool = pij_store::open("").await.expect("isolated in-memory roles");
+        let roles = Arc::new(RoleService::new(
+            registry.clone(),
+            pij_store::SqliteOrchestration::new(pool),
+            bus.clone(),
+        ));
         (
-            RegistrationService::new(registry.clone(), liveness, bus, Vec::new()),
+            RegistrationService::new(registry.clone(), liveness, bus, Vec::new(), roles),
             registry,
         )
     }
@@ -1176,7 +1209,7 @@ mod tests {
 
     #[tokio::test]
     async fn native_requires_truthful_harness_session_and_complete_observed_tuple() {
-        let (service, registry) = native_service(Vec::new(), native_liveness());
+        let (service, registry) = native_service(Vec::new(), native_liveness()).await;
         let tmux = native_tmux();
         for session in [None, Some(""), Some("   ")] {
             refused(attest(&service, native_claim("pij-native"), session, &tmux).await);
@@ -1279,7 +1312,8 @@ mod tests {
                 pid: shell.id(),
                 proc_start: 1,
             })),
-        );
+        )
+        .await;
         let mut claim = native_claim("pij-real-shell");
         claim.pid = Some(shell.id());
         claim.proc_start = Some(1);
@@ -1306,7 +1340,7 @@ mod tests {
 
     #[tokio::test]
     async fn native_attests_actual_host_below_shell_but_refuses_shell_pane_pid() {
-        let (service, registry) = native_service(Vec::new(), native_liveness());
+        let (service, registry) = native_service(Vec::new(), native_liveness()).await;
         let tmux = native_tmux();
         let seat = attest(&service, native_claim("pij-native"), Some(SESSION), &tmux)
             .await
@@ -1331,7 +1365,7 @@ mod tests {
 
     #[tokio::test]
     async fn native_requires_exact_observed_pane_ancestry_but_supports_paneless_hosts() {
-        let (service, _) = native_service(Vec::new(), native_liveness());
+        let (service, _) = native_service(Vec::new(), native_liveness()).await;
         refused(
             attest(
                 &service,
@@ -1392,7 +1426,8 @@ mod tests {
                 }
                 _ => unreachable!(),
             }
-            let (service, registry) = native_service(vec![existing.clone()], native_liveness());
+            let (service, registry) =
+                native_service(vec![existing.clone()], native_liveness()).await;
             refused(attest(&service, claim, Some(session), &native_tmux()).await);
             assert_eq!(
                 registry.get(&existing.id).await.expect("roster"),
@@ -1424,14 +1459,15 @@ mod tests {
                 }
                 _ => unreachable!(),
             }
-            let (service, registry) = native_service(vec![existing.clone()], native_liveness());
+            let (service, registry) =
+                native_service(vec![existing.clone()], native_liveness()).await;
             refused(attest(&service, claim, Some(SESSION), &native_tmux()).await);
             assert_eq!(
                 registry.get(&existing.id).await.expect("roster"),
                 Some(existing)
             );
         }
-        let (service, registry) = native_service(vec![prebind.clone()], native_liveness());
+        let (service, registry) = native_service(vec![prebind.clone()], native_liveness()).await;
         // A runtime-derived request id must not discard the preallocated address.
         claim.id = "pij-runtime-session".to_string();
         let bound = attest(&service, claim, Some(SESSION), &native_tmux())
@@ -1452,7 +1488,7 @@ mod tests {
 
     #[tokio::test]
     async fn native_reconnect_retains_address_and_explicit_new_session_retires_old_capability() {
-        let (service, registry) = native_service(Vec::new(), native_liveness());
+        let (service, registry) = native_service(Vec::new(), native_liveness()).await;
         let tmux = native_tmux();
         let first = attest(&service, native_claim(""), Some(SESSION), &tmux)
             .await
@@ -1540,7 +1576,7 @@ mod tests {
                 _ => unreachable!(),
             }
             seats.push(old.clone());
-            let (service, registry) = native_service(seats, native_liveness());
+            let (service, registry) = native_service(seats, native_liveness()).await;
             refused(attest(&service, claim, Some(session), &native_tmux()).await);
             assert_eq!(registry.get(&old.id).await.expect("roster"), Some(old));
         }
@@ -1548,7 +1584,7 @@ mod tests {
 
     #[tokio::test]
     async fn ordinary_registration_preserves_unchanged_attested_native_owner_and_binding() {
-        let (service, registry) = native_service(Vec::new(), native_liveness());
+        let (service, registry) = native_service(Vec::new(), native_liveness()).await;
         let owner = attest(
             &service,
             native_claim("pij-native"),
@@ -1585,7 +1621,7 @@ mod tests {
                 ..HOST
             },
         ] {
-            let (mut service, registry) = native_service(Vec::new(), native_liveness());
+            let (mut service, registry) = native_service(Vec::new(), native_liveness()).await;
             let owner = attest(
                 &service,
                 native_claim("pij-native"),
@@ -1651,7 +1687,7 @@ mod tests {
             } else {
                 vec![old.clone()]
             };
-            let (service, registry) = native_service(prior, native_liveness());
+            let (service, registry) = native_service(prior, native_liveness()).await;
             let ordinary = service.register_with_harness_session(claim, session).await;
             if matches!(change, 1..=3) {
                 refused(ordinary);
@@ -1691,7 +1727,7 @@ mod tests {
                 }
                 _ => unreachable!(),
             }
-            let (service, registry) = native_service(vec![old.clone()], native_liveness());
+            let (service, registry) = native_service(vec![old.clone()], native_liveness()).await;
             refused(
                 service
                     .register_with_harness_session(claim, Some(SESSION.to_string()))
@@ -1718,7 +1754,8 @@ mod tests {
                         proc_start,
                     });
                 }
-                let (service, registry) = native_service(vec![old.clone()], Arc::new(liveness));
+                let (service, registry) =
+                    native_service(vec![old.clone()], Arc::new(liveness)).await;
                 let mut claim = native_claim("");
                 claim.pid = Some(OTHER_HOST.pid);
                 claim.proc_start = Some(OTHER_HOST.proc_start);
@@ -1777,7 +1814,7 @@ mod tests {
         }
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn cold_resume_revalidates_owner_after_unlocked_death_observation() {
         for change in 0..9 {
             let mut old = native_seat("pij-cold-resume");
@@ -1786,7 +1823,7 @@ mod tests {
                 release: Notify::new(),
                 fail: false,
             });
-            let (service, registry) = native_service(vec![old.clone()], liveness.clone());
+            let (service, registry) = native_service(vec![old.clone()], liveness.clone()).await;
             let mut claim = native_claim(old.id.as_str());
             claim.pid = Some(OTHER_HOST.pid);
             claim.proc_start = Some(OTHER_HOST.proc_start);
@@ -1841,7 +1878,7 @@ mod tests {
         }
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn explicit_prebind_revalidates_both_rows_before_retiring_dead_same_native_owner() {
         for change in 0..5 {
             let old = native_seat("pij-old-native");
@@ -1855,7 +1892,7 @@ mod tests {
                 fail: false,
             });
             let (service, registry) =
-                native_service(vec![old.clone(), prebind.clone()], liveness.clone());
+                native_service(vec![old.clone(), prebind.clone()], liveness.clone()).await;
             let mut claim = native_claim(prebind.id.as_str());
             claim.pid = Some(OTHER_HOST.pid);
             claim.proc_start = Some(OTHER_HOST.proc_start);
@@ -1926,7 +1963,7 @@ mod tests {
             fail: true,
         });
         liveness.release.notify_one();
-        let (service, registry) = native_service(vec![old.clone()], liveness);
+        let (service, registry) = native_service(vec![old.clone()], liveness).await;
         let mut claim = native_claim(old.id.as_str());
         claim.pid = Some(OTHER_HOST.pid);
         claim.proc_start = Some(OTHER_HOST.proc_start);
@@ -1942,7 +1979,7 @@ mod tests {
         for bypass in 0..5 {
             let mut old = native_seat("pij-native");
             old.native_extension_delivery = false;
-            let (service, registry) = native_service(vec![old], native_liveness());
+            let (service, registry) = native_service(vec![old], native_liveness()).await;
             let withdrawn = service
                 .register(native_claim("pij-native"))
                 .await
@@ -1984,7 +2021,7 @@ mod tests {
             claim.harness = harness.as_str().to_string();
             claim.pid = Some(OTHER_HOST.pid);
             claim.proc_start = Some(OTHER_HOST.proc_start);
-            let (service, _) = native_service(vec![old], native_liveness());
+            let (service, _) = native_service(vec![old], native_liveness()).await;
             let (rebound, _) = service
                 .register_with_harness_session(claim, Some("legacy-session".to_string()))
                 .await
@@ -2007,7 +2044,7 @@ mod tests {
     #[tokio::test]
     async fn native_rechecks_process_start_after_actual_host_observation() {
         let liveness = Arc::new(MovingStart(AtomicU64::new(HOST.proc_start)));
-        let (service, registry) = native_service(Vec::new(), liveness.clone());
+        let (service, registry) = native_service(Vec::new(), liveness.clone()).await;
         let mut claim = native_claim("pij-native");
         claim.pane = None;
         let result = service
@@ -2036,9 +2073,11 @@ mod tests {
         );
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn native_host_observation_has_a_wall_clock_bound() {
-        let (service, registry) = native_service(Vec::new(), native_liveness());
+        let (service, registry) = native_service(Vec::new(), native_liveness()).await;
+        // SQL fixture initialization runs in real time; only the pending host probe is virtual.
+        tokio::time::pause();
         let result = service
             .register_native_with_observer(
                 native_claim("pij-native"),
@@ -2078,7 +2117,7 @@ mod tests {
                 proc_start: u64::from(pid - 4116),
             });
         }
-        let (service, registry) = native_service(Vec::new(), Arc::new(liveness));
+        let (service, registry) = native_service(Vec::new(), Arc::new(liveness)).await;
         let tmux = FakeTmux::new().with_pane_process(
             "%137",
             PaneProcess {
@@ -2118,9 +2157,9 @@ mod tests {
         );
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn blocked_native_host_observation_does_not_block_unrelated_inbox_ack() {
-        let (service, registry) = native_service(Vec::new(), native_liveness());
+        let (service, registry) = native_service(Vec::new(), native_liveness()).await;
         let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
         let delivery = DeliveryService::new(
             registry.clone(),
@@ -2200,7 +2239,7 @@ mod tests {
 
     #[tokio::test]
     async fn native_observation_revalidates_cross_seat_process_takeover_before_commit() {
-        let (service, registry) = native_service(Vec::new(), native_liveness());
+        let (service, registry) = native_service(Vec::new(), native_liveness()).await;
         let entered = Notify::new();
         let release = Notify::new();
         let tmux = FakeTmux::new();
@@ -2245,7 +2284,7 @@ mod tests {
 
     #[tokio::test]
     async fn shared_native_lock_prevents_concurrent_process_takeover() {
-        let (service, registry) = native_service(Vec::new(), native_liveness());
+        let (service, registry) = native_service(Vec::new(), native_liveness()).await;
         let other = service.clone();
         let tmux = native_tmux();
         let (first, second) = tokio::join!(
@@ -2293,7 +2332,14 @@ mod tests {
         let spine = Arc::new(FakeSpine::new());
         let event_bus =
             Arc::new(EventBus::new(Arc::clone(&spine) as Arc<dyn Spine>, 8).expect("event bus"));
-        let service = RegistrationService::new(registry, liveness, event_bus, vec![home.clone()]);
+        let pool = pij_store::open("").await.expect("isolated in-memory roles");
+        let roles = Arc::new(RoleService::new(
+            registry.clone(),
+            pij_store::SqliteOrchestration::new(pool),
+            event_bus.clone(),
+        ));
+        let service =
+            RegistrationService::new(registry, liveness, event_bus, vec![home.clone()], roles);
         let claim = Registration {
             supersedes: None,
             id: "pij-claude-config".to_string(),
@@ -2309,6 +2355,7 @@ mod tests {
             provider: None,
             effort: None,
             parent: None,
+            role: None,
             relay: false,
         };
 

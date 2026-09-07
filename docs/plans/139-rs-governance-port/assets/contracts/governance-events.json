@@ -11,10 +11,10 @@
     "GET /v1/events is NDJSON, not SSE. First line is Hello {build,hello:true,v:1}, not a type=hello frame.",
     "StreamFrame::Event shape is unchanged: type,event,machine,cursor. Event v=1, at=epoch milliseconds, kind literal, seat optional, payload a JSON STRING. Event.seq is not serialized inside frame.",
     "No since means live-only. since is a JSON object mapping machine alias to exclusive cursor; integer since is refused. Cursors are machine-scoped.",
-    "Every successful publication first appends through the only store spine writer, then broadcasts the returned seq. All producers share one EventBus, including Registry and ReportService.",
+    "Every successful publication appends through the sole store spine writer then broadcasts the returned seq. After admission an owned task retains the common ordering lock through commit and broadcast despite caller cancellation; shutdown joins producers then flushes admitted writes. All producers share one EventBus.",
     "Concurrent publishers must not emit a later seq before an earlier committed event, and replay/live handoff cannot duplicate or skip its boundary row. Never move a subscriber cursor past an unemitted row.",
     "seat.put payload decodes directly to the exact persisted SeatDescriptor; at is real. seat.tombstone payload decodes to an object with reason; at is real. No rewrite of historical at=0 rows.",
-    "Table mutation and publication failures must be honest and diagnosable: do not return success after durable state loses its event. Preserve existing persist-before-mutate consistency and explicit partial-failure refusal where storage cannot be atomic.",
+    "Destructive governance mutations, including role assert/unset, baton return/reclaim, prime unset and tombstones, atomically commit state plus spine event or neither through the shared publication seam. Partial-failure refusal is permitted only for non-destructive idempotent operations whose surviving row reconstructs the event; never report success after lost publication.",
     "Payload objects for new governance event kinds contain actor,action,record. Existing report.now/state payloads stay unchanged. All request attribution is daemon-derived."
   ],
   "name_sources": {

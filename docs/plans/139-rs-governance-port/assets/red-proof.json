@@ -1,0 +1,41 @@
+{
+  "baseline_commit": "d964233d4cbf45400a6b2fc5f873de48909e7e38",
+  "baseline_worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-red",
+  "toolchain": "rustup cargo/rustc 1.98.0",
+  "scope": "Only baseline-compatible regression source and canonical fixtures were copied; no new product implementation was copied.",
+  "witnesses": [
+    {
+      "unit": "u1",
+      "test": "events::governance_http_tests::two_hello_confirmed_http_subscribers_see_adopt_and_report_before_message_control",
+      "command": "cargo test --locked -p pij-daemon --lib events::governance_http_tests::two_hello_confirmed_http_subscribers_see_adopt_and_report_before_message_control -- --exact --nocapture",
+      "exit": 101,
+      "result": "1 failed; two live frames versus four durable rows, with messaging positive control delivered",
+      "raw_output": "artifact://155"
+    },
+    {
+      "unit": "u2",
+      "test": "role_http (eight named boundary witnesses)",
+      "command": "cargo test --locked -p pij-daemon --test role_http -- --nocapture",
+      "exit": 101,
+      "result": "8 failed; /v1/role returned404, adopt --role returned400 unsupported, registration role remained null, typed null adoption was not refused",
+      "raw_output": "artifact://159"
+    },
+    {
+      "unit": "u3",
+      "test": "u3_baseline_project_create_is_readable_without_invented_metadata; u3_baseline_spine_append_is_visible_to_exclusive_history_and_render",
+      "command": "cargo test --locked -p pij-daemon --test governance_u3_baseline -- --nocapture",
+      "exit": 101,
+      "result": "2 failed on absent project-create and spine-append routes",
+      "raw_output": "artifact://154"
+    },
+    {
+      "unit": "PM observer repair",
+      "test": "omp_footer_model_field_excludes_status_columns; omp_model_bearing_footer_is_ready_without_weakening_busy_guard",
+      "command": "cargo test --locked -p pij-harnesses --lib omp_ -- --nocapture",
+      "exit": 101,
+      "result": "2 new regressions failed;4 existing tests passed. Model retained trailing effort text and modern footer was NotYet instead of Ready.",
+      "raw_output": "artifact://153"
+    }
+  ],
+  "verdict": "BEHAVIORAL RED; not compilation failures and not implementation acceptance"
+}

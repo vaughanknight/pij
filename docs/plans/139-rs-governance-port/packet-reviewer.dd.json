@@ -1,103 +1,144 @@
 {
-	"dd": {
-		"schema": "pij-team/packet"
-	},
-	"sections": [
-		{
-			"name": "meta",
-			"value": {
-				"title": "Reviewer packet — <plan slug>",
-				"role": "reviewer",
-				"plan": "docs/plans/<ord>-<slug>/plan.dd.json",
-				"seat": "<pij seat name once spawned>",
-				"updated": "<date>"
-			}
-		},
-		{
-			"name": "mission",
-			"value": "You are the cross-model reviewer for plan <ord>-<slug>. The composed implementation is complete on the branch below. Judge whether the code makes the plan's promises TRUE — plan fidelity, correctness, and composition seams (where units meet is where it breaks) — and return findings the PM can act on. You are read-only on the code."
-		},
-		{
-			"name": "instructions",
-			"value": [
-				{
-					"id": "i1",
-					"text": "Orient: read the plan (rendered .dd.md), the impl-guide (the intended decomposition + interfaces), and then the full diff of the branch against its base. DOGFOOD FLOWSPACE: use `flowspace3 search` to locate consumers/related code by meaning while reviewing; report misses as friction."
-				},
-				{
-					"id": "i2",
-					"text": "Review with the /builder review discipline: verify claims against fresh evidence — run targeted tests yourself, read exit status, never trust a green claim you did not see."
-				},
-				{
-					"id": "i2b",
-					"text": "Your dispatcher OWES you three lists in this packet, and you should refuse to start without them: (1) WHERE THE AUTHOR IS LEAST CONFIDENT (hunt there first), (2) an instruction to DISBELIEVE THE AUTHOR'S OWN RECEIPTS (re-derive, don't audit prose), (3) WHAT IS ALREADY KNOWN-OPEN (spend zero findings re-reporting it). Proven 2026-08-28: this brief shape bought a 4-for-4 all-confirmed zero-noise review, including a defect the author hunted for in writing and could not see from inside."
-				},
-				{
-					"id": "i3",
-					"text": "Priority order: (1) plan promises that are not actually true, (2) composition-seam defects between units, (3) interface drift from the impl-guide, (4) correctness/safety in the changed code, (5) test gaps on the contract. Style noise is unwanted."
-				},
-				{
-					"id": "i4",
-					"text": "Findings: at most the material ones, each with severity (CRITICAL/HIGH/MEDIUM), exact location, the claim, the proof, and the smallest fix. `no_material_findings` is a valid verdict."
-				},
-				{
-					"id": "i5",
-					"text": "Deliver as a ddoc review record in the plan folder (assets/reviews/), build it, and send the PM the path + a one-line verdict."
-				}
-			]
-		},
-		{
-			"name": "working_with",
-			"value": [
-				{
-					"id": "w1",
-					"text": "The PM is your counterpart: verdict and findings go to the PM; the PM may refute findings with evidence — re-judge refutations on the evidence, not on rank."
-				},
-				{
-					"id": "w2",
-					"text": "You do not fix code, commit, or open PRs. If you find something outside the plan's scope, name it as a note for prime rather than expanding the review."
-				}
-			]
-		},
-		{
-			"name": "scope",
-			"value": {
-				"worktree": "<read-only checkout or the pm's worktree path>",
-				"branch": "<branch under review>",
-				"fence": "read-only on code; write only assets/reviews/ in the plan folder",
-				"forbidden_note": "No code edits, no merges, no government files."
-			}
-		},
-		{
-			"name": "done_bar",
-			"value": [
-				{ "id": "d1", "text": "Every plan AC judged true/false with evidence cited." },
-				{ "id": "d2", "text": "Composition seams between units explicitly examined and reported." },
-				{
-					"id": "d3",
-					"text": "Review record ddoc written, built, and path delivered to the PM with a verdict line."
-				}
-			]
-		},
-		{
-			"name": "refs",
-			"value": [
-				{
-					"id": "r0",
-					"path": ".agents-skills-port/pij-team/TENETS.md",
-					"note": "the doctrine — tenet 5: you judge diffs against contracts, not philosophy"
-				},
-				{
-					"id": "r1",
-					"path": "docs/plans/<ord>-<slug>/impl-guide.dd.json",
-					"note": "intended units + interfaces — drift from this is a finding"
-				},
-				{
-					"id": "r2",
-					"path": "docs/plans/<ord>-<slug>/plan.dd.md",
-					"note": "the promises under judgment"
-				}
-			]
-		}
-	]
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Reviewer — composed plan139 governance port",
+        "role": "reviewer",
+        "plan": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/plan.dd.json",
+        "seat": "unbound; canary identity required before review",
+        "updated": "2026-09-07"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "Cross-model review of the final composed plan139 implementation. Verify one governance world, one event sequence domain, ownership, destructive atomicity, and legacy serve-or-refuse cutover. PM supplies final revision at dispatch; do not review an intermediate source-ready patch as finished code."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        {
+          "id": "i0",
+          "text": "FIRST use absolute PM worktree paths. Load BOTH pij and builder skills, plus validate-v2 review discipline. Canary first: quote pij whoami and actual OMP footer model/effort. Required model is github-copilot/claude-opus-5 high, not inferred from spawn argv."
+        },
+        {
+          "id": "i1",
+          "text": "Read plan/impl-guide/contracts and full final composed diff against baseline d964233d4cbf45400a6b2fc5f873de48909e7e38. PM will pin the exact final SHA. Code is read-only; findings record only under assets/reviews/."
+        },
+        {
+          "id": "i2",
+          "text": "DISBELIEVE AUTHOR RECEIPTS. Derive what code does from actual sources and inspect raw deterministic output behind every green claim. Do not treat authored/unrun tests, source-ready patches or formatter success as behavioral proof. Request a specific missing execution from PM rather than inventing results."
+        },
+        {
+          "id": "i3",
+          "text": "LEAST CONFIDENT: (1) cancellation-shielded publication and shutdown/follower ordering; (2) SQL pool/sequence coherence through real/fake fixture replacements and role service captures; (3) dispatch/decision side-effect and receipt ordering across cancellation/retry; (4) complete CLI native/shim JSON parity and no legacy fallback for any table entry. Hunt these first."
+        },
+        {
+          "id": "i4",
+          "text": "Mandatory priorities: sole spine SQL insertion + all producers bus-owned; atomic destructive row/event commits and rollback witnesses; current ownership and stale-lease HTTP replay refusal; computed anomaly semantics/relay parity; self-answer no-push versus other-answer real push; failed/unknown process probes never reap; no delivery semantics drift from373/374."
+        },
+        {
+          "id": "i5",
+          "text": "Check the shim guard reads the actual skill CLI-verb table, and that synthetic-table-verb mutation is demonstrated failing. Check archive cannot invalidate compiled fixture paths or refusal ledger references. Roles are asserted metadata, never inferred privilege."
+        },
+        {
+          "id": "i6",
+          "text": "KNOWN OPEN/INTENTIONAL: production/chainglass AC2/AC3/AC7/AC9 receipts belong to prime after deploy; PM is locally proved only. compact/new/reload transport, watchdog/chore/focus/etc unported jobs intentionally refuse. PIJ_TMUX_SOCKET guarded-start feature is deferred; strict private-resource recipe is mandatory for proofs.18.1.11 literally printed no-model and must remain unbound, not guessed as requested Astra. Do not re-report these as implementation findings."
+        },
+        {
+          "id": "i7",
+          "text": "No code edits, commits, builds, formatters, linters or project-wide test suites. PM owns final validation and can execute any targeted experiment you justify. Never flowspace3 daemon, live daemon restart/port7461 fixture, main/global/node_modules/toolchain writes, or pij inbox transport-log reads."
+        },
+        {
+          "id": "i8",
+          "text": "For meaning-shaped questions use flowspace3 search first (client only); verify LSP root before believing empty refs. Report source/proof gaps via harness observe without draining buffers. If parent messages land in internal scouts, relay to Main context."
+        },
+        {
+          "id": "i9",
+          "text": "Return material CRITICAL/HIGH/MEDIUM findings only: location, exact evidence, affected contract/AC, impact, smallest fix; try to disprove each against explicit prime rulings first. No style noise or findings quota. no_material_findings is valid."
+        },
+        {
+          "id": "i10",
+          "text": "Write a ddocs review record under assets/reviews using a supported local schema; validate/build it, then send the path and one-line verdict via pij_send to pij-lonely-ikrie. Judge every AC with honest proof grade; production-dependent rows remain pending rather than fabricated accepted."
+        }
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        {
+          "id": "w1",
+          "text": "The PM is your counterpart: verdict and findings go to the PM; the PM may refute findings with evidence — re-judge refutations on the evidence, not on rank."
+        },
+        {
+          "id": "w2",
+          "text": "You do not fix code, commit, or open PRs. If you find something outside the plan's scope, name it as a note for prime rather than expanding the review."
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port",
+        "branch": "139-rs-governance-port",
+        "fence": "Code read-only; write only docs/plans/139-rs-governance-port/assets/reviews/** and own observation buffer",
+        "forbidden_note": "No source edits, main checkout/global state/government mutations, merges, PRs, production actions or hand-written flow state. Absolute paths only."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        {
+          "id": "d1",
+          "text": "Every plan AC judged true/false with evidence cited."
+        },
+        {
+          "id": "d2",
+          "text": "Composition seams between units explicitly examined and reported."
+        },
+        {
+          "id": "d3",
+          "text": "Review record ddoc written, built, and path delivered to the PM with a verdict line."
+        }
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        {
+          "id": "r0",
+          "path": "skill://pij-team/TENETS.md",
+          "note": "frozen seams and mechanical evidence doctrine"
+        },
+        {
+          "id": "r1",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/plan.dd.json",
+          "note": "ACs and prime-ruled amendments"
+        },
+        {
+          "id": "r2",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/impl-guide.dd.json",
+          "note": "composition and review priorities"
+        },
+        {
+          "id": "r3",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json",
+          "note": "request/response/refusal/isolation contracts"
+        },
+        {
+          "id": "r4",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/contracts/governance-events.json",
+          "note": "event and cursor contracts"
+        },
+        {
+          "id": "r5",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/red-proof.json",
+          "note": "executed pre-fix witnesses, not green acceptance"
+        }
+      ]
+    }
+  ]
 }

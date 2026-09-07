@@ -1,0 +1,52 @@
+{
+  "plan": 139,
+  "recorded_at": "2026-09-07T03:09:38Z",
+  "revision_scope": "PM composed wave1 source after atomic role amendment; busy-model targeted extension reverified separately",
+  "rust_gate": {
+    "command": "~/.cargo/bin/cargo run --locked -p pij-testkit --bin pij-gate",
+    "verdict": "PASS",
+    "stages": [
+      "toolchain 1.98.0",
+      "committed locked dependency tree",
+      "fmt",
+      "clippy -D warnings",
+      "workspace tests and doctests",
+      "architecture 9 crates,0 violations"
+    ],
+    "raw_output": "artifact://199"
+  },
+  "engineering_gate": {
+    "command": "harness checks --json",
+    "at": "2026-09-07T03:03:12.259Z",
+    "verdict": "PASS",
+    "ran": [
+      "local-paths",
+      "typecheck",
+      "lint",
+      "test",
+      "copilot-native",
+      "windows-compat",
+      "smoke",
+      "pkg-audit",
+      "snapshots"
+    ],
+    "skipped": []
+  },
+  "proofs": [
+    "two hello-confirmed HTTP subscribers observe adopt/report and messaging in durable seq order",
+    "caller cancellation after SQL commit cannot skip publication; flush drains admitted writes",
+    "atomic role set/unset rollback and ordered authority lookup",
+    "native role,local roster,state card and orchestration role use one authoritative writer",
+    "required lease token prevents same-holder stale HTTP replay",
+    "destructive baton return/reclaim and prime unset rollback on publication failure",
+    "coherent all-fake SQL event/governance replay; invalid real-registry/fake-spine refused before opening store",
+    "actual shipped all-real daemon on private port/state/home/tmux boots,pings,adopts,reports live,lists one private seat and tears down owned resources",
+    "OMP current/old no-model footer and generic catalog identity boundaries; busy facts targeted RED then GREEN"
+  ],
+  "not_yet_accepted": [
+    "positive HTTP canary lifecycle witness pending",
+    "legacy shim/skills/API cutover u6 pending",
+    "u4 anomalies/decisions and u5 lifecycle pending",
+    "production and chainglass receipts are prime-owned"
+  ]
+}

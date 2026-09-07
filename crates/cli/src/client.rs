@@ -54,6 +54,9 @@ pub struct Registration {
     /// Governing seat.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<SeatId>,
+    /// Explicit role assertion; omission preserves the daemon's assignment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
     /// Whether delivery uses a relay.
     pub relay: bool,
 }
@@ -62,6 +65,13 @@ impl Registration {
     /// Reject a half process identity before sending a claim the daemon cannot
     /// corroborate.
     pub fn validate(&self) -> std::result::Result<(), &'static str> {
+        if self
+            .role
+            .as_deref()
+            .is_some_and(|role| role.trim().is_empty())
+        {
+            return Err("--role must be a nonempty string");
+        }
         if self.pid.is_some() == self.proc_start.is_some() {
             Ok(())
         } else {
@@ -330,7 +340,7 @@ impl DaemonClient {
             .await
     }
 
-    async fn post<T: DeserializeOwned, B: Serialize + ?Sized>(
+    pub(crate) async fn post<T: DeserializeOwned, B: Serialize + ?Sized>(
         &self,
         command: &str,
         path: &str,
@@ -594,6 +604,7 @@ mod tests {
             provider: None,
             effort: None,
             parent: None,
+            role: None,
             relay: false,
         };
 

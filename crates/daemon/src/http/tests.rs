@@ -131,10 +131,27 @@ pub(super) async fn test_services(
     )
     .await
     .expect("fake services");
-    services.registry = registry;
+    let store = services.governance.fixture_store();
+    let bus = Arc::new(crate::events::EventBus::new(spine, 16).expect("event bus"));
+    services.registry = Arc::new(crate::events::PublishedFakeRegistry::new(
+        registry,
+        bus.clone(),
+    ));
     services.queue = queue;
-    services.spine = spine.clone();
-    services.event_bus = Arc::new(crate::events::EventBus::new(spine, 16).expect("event bus"));
+    services.spine = bus.clone();
+    services.event_bus = bus;
+    services.roles = Arc::new(super::role::RoleService::new(
+        services.registry.clone(),
+        store.clone(),
+        services.event_bus.clone(),
+    ));
+    // This helper scripts core port failures. Atomic-governance tests instead
+    // use the complete shared-SQL graph in support/governance_http.rs.
+    services.governance = Arc::new(super::governance::GovernanceService::new(
+        store,
+        services.event_bus.clone(),
+        pij_testkit::fresh_dir("pij-http-governance"),
+    ));
     // REBUILD the delivery service from the swapped parts. It was constructed by
     // `build_services` from the ORIGINAL fakes, so overwriting the fields above
     // left it holding a registry, queue and bus that no assertion could see — a
@@ -229,6 +246,7 @@ async fn typing_release_wakes_an_already_waiting_inbox_reader() {
             Arc::clone(&services.liveness),
             Arc::clone(&services.event_bus),
             Vec::new(),
+            Arc::clone(&services.roles),
         )
         .with_native_lock(services.delivery.native_lock()),
         services,
@@ -746,6 +764,7 @@ async fn typing_hold_projections_follow_terminal_outcomes_and_sequence() {
                 Arc::clone(&services.liveness),
                 Arc::clone(&services.event_bus),
                 Vec::new(),
+                Arc::clone(&services.roles),
             )
             .with_native_lock(services.delivery.native_lock()),
             services,
@@ -1250,6 +1269,7 @@ async fn registration_corroborates_process_and_refuses_shared_process_aliases() 
         provider: Some("provider".to_string()),
         effort: Some("high".to_string()),
         parent: None,
+        role: None,
         relay: false,
     };
 
@@ -1359,6 +1379,7 @@ async fn paneless_registration_returns_the_identity_export_it_requires() {
             provider: None,
             effort: None,
             parent: None,
+            role: None,
             relay: false,
         })
         .send()
@@ -1605,6 +1626,7 @@ async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
             provider: None,
             effort: None,
             parent: None,
+            role: None,
             relay: false,
         })
         .send()
@@ -1807,6 +1829,7 @@ async fn spawn_wait_returns_bound_process_and_publishes_event() {
                 provider: None,
                 effort: None,
                 parent: None,
+                role: None,
                 relay: false,
             })
             .send()
@@ -1913,6 +1936,7 @@ async fn spawn_reports_model_mismatch_without_killing_registered_seat() {
                 provider: None,
                 effort: None,
                 parent: None,
+                role: None,
                 relay: false,
             })
             .send()
@@ -2005,6 +2029,7 @@ async fn reregistration_prefers_exact_id_over_spawn_match_without_fresh_allocati
             provider: None,
             effort: None,
             parent: None,
+            role: None,
             relay: false,
         })
         .send()
@@ -2079,6 +2104,7 @@ async fn registration_does_not_inherit_native_capability_from_another_incarnatio
             provider: None,
             effort: None,
             parent: None,
+            role: None,
             relay: false,
         })
         .send()
@@ -2145,6 +2171,7 @@ async fn registration_cannot_adopt_a_spawn_match_that_is_already_bound() {
             provider: None,
             effort: None,
             parent: None,
+            role: None,
             relay: false,
         })
         .send()
@@ -2216,6 +2243,7 @@ async fn registration_cannot_adopt_a_spawn_match_from_another_pane() {
             provider: None,
             effort: None,
             parent: None,
+            role: None,
             relay: false,
         })
         .send()
@@ -2310,6 +2338,7 @@ async fn ordinary_registration_preserves_native_attestation_and_claude_consent()
                 provider: None,
                 effort: None,
                 parent: None,
+                role: None,
                 relay: false,
             })
             .send()
@@ -2365,6 +2394,7 @@ async fn registration_refuses_uncorroborated_or_half_process_identity() {
         provider: None,
         effort: None,
         parent: None,
+        role: None,
         relay: false,
     };
     for (label, claim, expected) in [

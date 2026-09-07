@@ -54,9 +54,26 @@ pub struct Registration {
     /// Governing seat, when assigned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<SeatId>,
+    /// Explicit role assertion; omission preserves the assignment, null is refused.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_asserted_role"
+    )]
+    pub role: Option<String>,
     /// Whether this seat relays to an external sink.
     #[serde(default)]
     pub relay: bool,
+}
+
+pub(crate) fn deserialize_asserted_role<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    let role = String::deserialize(deserializer)?;
+    if role.trim().is_empty() {
+        return Err(serde::de::Error::custom("role must be a nonempty string"));
+    }
+    Ok(Some(role))
 }
 
 /// Request accepted by `POST /v1/spawn`.

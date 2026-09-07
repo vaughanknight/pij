@@ -9,6 +9,8 @@
 //! shared. A suite that shares a database is a suite that can pass in the wrong
 //! order and fail alone.
 
+mod support;
+
 use pij_core::error::PijError;
 use pij_core::model::{
     Event, Harness, ProcIdentity, SeatDescriptor, SeatId, SemanticState, Seq, SystemState,
@@ -116,7 +118,7 @@ async fn native_delivery_migration_preserves_schema_12_rows_and_history_without_
     for _ in 0..2 {
         let pool = pij_store::open(&fresh.path())
             .await
-            .expect("upgrade or reopen schema 13");
+            .expect("upgrade or reopen current schema");
         // Exercise every pooled connection's first seat projection after boot.
         // A version read alone cannot detect sqlx column metadata cached from
         // the pre-migration schema on a sibling connection.
@@ -142,8 +144,11 @@ async fn native_delivery_migration_preserves_schema_12_rows_and_history_without_
             );
         }
         drop(connections);
-        assert_eq!(pij_store::schema_version(&pool).await.expect("version"), 13);
-        let registry = SqliteRegistry::new(pool.clone());
+        assert_eq!(
+            pij_store::schema_version(&pool).await.expect("version"),
+            pij_store::SCHEMA_VERSION
+        );
+        let registry = SqliteRegistry::new(pool.clone(), support::publisher());
         for seat in &expected {
             assert_eq!(
                 registry.get(&seat.id).await.expect("read migrated seat"),
@@ -280,14 +285,14 @@ async fn re_opening_an_existing_store_is_idempotent_and_keeps_the_data() {
 
     {
         let pool = pij_store::open(&fresh.path()).await.expect("open");
-        SqliteRegistry::new(pool)
+        SqliteRegistry::new(pool, support::publisher())
             .put(seat.clone())
             .await
             .expect("put");
     }
 
     let pool = pij_store::open(&fresh.path()).await.expect("re-open");
-    let registry = SqliteRegistry::new(pool);
+    let registry = SqliteRegistry::new(pool, support::publisher());
     assert_eq!(
         registry.get(&seat.id).await.expect("get"),
         Some(seat),
@@ -523,7 +528,7 @@ async fn the_sqlite_registry_honours_the_same_contract_the_fake_does() {
     // one assertion fires and names the promise that broke.
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    registry_contract(&SqliteRegistry::new(pool)).await;
+    registry_contract(&SqliteRegistry::new(pool, support::publisher())).await;
 }
 
 #[tokio::test]
@@ -537,7 +542,7 @@ async fn the_sqlite_spine_honours_the_same_contract_the_fake_does() {
 async fn a_seat_round_trips_with_every_optional_fact_intact() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let registry = SqliteRegistry::new(pool);
+    let registry = SqliteRegistry::new(pool, support::publisher());
 
     let mut seat = native_copilot("pij-full");
     seat.pane = Some("%255".to_string());
@@ -555,7 +560,7 @@ async fn a_seat_round_trips_with_every_optional_fact_intact() {
 async fn native_capability_defaults_closed_upserts_and_tombstone_clears_it() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let registry = SqliteRegistry::new(pool);
+    let registry = SqliteRegistry::new(pool, support::publisher());
     let default = SeatDescriptor::new("pij-native-upsert", Harness::Copilot, "/abs/tree");
     assert!(
         !default.native_extension_delivery,
@@ -617,7 +622,7 @@ async fn native_capability_defaults_closed_upserts_and_tombstone_clears_it() {
 async fn incarnation_replacement_never_inherits_native_capability() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let registry = SqliteRegistry::new(pool);
+    let registry = SqliteRegistry::new(pool, support::publisher());
     for change in ["pid", "proc_start", "native_session", "revive"] {
         let mut seat = native_copilot(change);
         registry
@@ -683,7 +688,7 @@ async fn incarnation_replacement_never_inherits_native_capability() {
 async fn native_capability_requires_a_live_copilot_process_and_native_session() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let registry = SqliteRegistry::new(pool.clone());
+    let registry = SqliteRegistry::new(pool.clone(), support::publisher());
     for invalid in [
         "harness",
         "process",
@@ -729,7 +734,7 @@ async fn native_capability_requires_a_live_copilot_process_and_native_session() 
 async fn native_capability_schema_refuses_non_boolean_values() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let registry = SqliteRegistry::new(pool.clone());
+    let registry = SqliteRegistry::new(pool.clone(), support::publisher());
     registry
         .put(native_copilot("pij-native-range"))
         .await
@@ -752,7 +757,7 @@ async fn native_capability_schema_refuses_non_boolean_values() {
 async fn corrupt_native_capability_is_a_named_read_error_never_attestation() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let registry = SqliteRegistry::new(pool.clone());
+    let registry = SqliteRegistry::new(pool.clone(), support::publisher());
     registry
         .put(native_copilot("pij-native-corrupt"))
         .await
@@ -814,7 +819,7 @@ async fn corrupt_native_capability_is_a_named_read_error_never_attestation() {
 async fn filters_narrow_and_absent_filter_fields_do_not() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let registry = SqliteRegistry::new(pool);
+    let registry = SqliteRegistry::new(pool, support::publisher());
 
     registry
         .put(SeatDescriptor::new("pij-a", Harness::Pi, "/tree/one"))
@@ -881,7 +886,7 @@ async fn a_half_written_process_identity_is_refused_rather_than_half_believed() 
     .await
     .expect("plant a half-written row");
 
-    let error = SqliteRegistry::new(pool)
+    let error = SqliteRegistry::new(pool, support::publisher())
         .get(&SeatId::from("pij-halfbound"))
         .await
         .expect_err("half an identity must be refused");
@@ -948,14 +953,14 @@ async fn each_test_gets_its_own_database() {
     assert_ne!(one.path(), two.path());
 
     let pool_one = pij_store::open(&one.path()).await.expect("open");
-    SqliteRegistry::new(pool_one)
+    SqliteRegistry::new(pool_one, support::publisher())
         .put(SeatDescriptor::new("pij-only-in-one", Harness::Pi, "/tmp"))
         .await
         .expect("put");
 
     let pool_two = pij_store::open(&two.path()).await.expect("open");
     assert_eq!(
-        SqliteRegistry::new(pool_two)
+        SqliteRegistry::new(pool_two, support::publisher())
             .get(&SeatId::from("pij-only-in-one"))
             .await
             .expect("get"),
@@ -973,7 +978,7 @@ fn a_dropped_fresh_store_takes_its_wal_sidecars_with_it() {
         let runtime = tokio::runtime::Runtime::new().expect("runtime");
         runtime.block_on(async {
             let pool = pij_store::open(&path).await.expect("open");
-            SqliteRegistry::new(pool)
+            SqliteRegistry::new(pool, support::publisher())
                 .put(SeatDescriptor::new("pij-tmp", Harness::Pi, "/tmp"))
                 .await
                 .expect("put");
@@ -997,7 +1002,7 @@ async fn bind_evidence_round_trips_and_absent_stays_absent() {
     // that invents them for an adopted seat would be the same defect mirrored.
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
-    let registry = SqliteRegistry::new(pool);
+    let registry = SqliteRegistry::new(pool, support::publisher());
 
     let mut spawned = SeatDescriptor::new("pij-spawned", Harness::Omp, "/abs/tree");
     spawned.spawn_id = Some("s1787958708582-43870".to_string());
@@ -1033,7 +1038,7 @@ async fn an_older_store_gains_the_bind_evidence_columns_by_migrating_forward() {
     let fresh = FreshStore::new();
     {
         let pool = pij_store::open(&fresh.path()).await.expect("open");
-        SqliteRegistry::new(pool)
+        SqliteRegistry::new(pool, support::publisher())
             .put(SeatDescriptor::new("pij-legacy", Harness::Pi, "/abs/old"))
             .await
             .expect("put");
@@ -1046,7 +1051,7 @@ async fn an_older_store_gains_the_bind_evidence_columns_by_migrating_forward() {
         pij_store::schema_version(&pool).await.expect("version"),
         pij_store::SCHEMA_VERSION
     );
-    let legacy = SqliteRegistry::new(pool)
+    let legacy = SqliteRegistry::new(pool, support::publisher())
         .get(&SeatId::from("pij-legacy"))
         .await
         .expect("get")

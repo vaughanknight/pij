@@ -35,9 +35,9 @@ Role + governance records
 
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| tk-20a2 | u2 — --role on register/adopt; `pij-rs role`; seat_roles join; ownership self-or-parent | rust | p2 | [ ] unchecked | — | — | — | — | — | — |
-| tk-21a2 | u3 — project/stream/fence/baton/prime routes + verbs over existing tables | rust | p2 | [ ] unchecked | — | — | — | — | — | — |
-| tk-22a2 | u3 — dispatch (3-state receipt) / ack / canary / attest / task set / node show | rust | p2 | [ ] unchecked | — | — | — | — | — | — |
+| tk-20a2 | u2 — --role on register/adopt; `pij-rs role`; seat_roles join; ownership self-or-parent | rust | p2 | [ ] unchecked | u2 pij-written-lansra implementing shared RoleService and fixture tests; u3 supplies role store helpers; PM owns wiring. | — | — | — | — | — |
+| tk-21a2 | u3 — project/stream/fence/baton/prime routes + verbs over existing tables | rust | p2 | [ ] unchecked | u3 pij-general-miriam implementing governance records/migration0014 and spine verbs under accepted full ack. | — | — | — | — | — |
+| tk-22a2 | u3 — dispatch (3-state receipt) / ack / canary / attest / task set / node show | rust | p2 | [ ] unchecked | u3 implements real DeliveryService-linked dispatch/ack/canary/attest/task/node; no validators until wave edit barrier. | — | — | — | — | — |
 
 <a id="done-when"></a>
 

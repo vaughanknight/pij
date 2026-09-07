@@ -5,9 +5,8 @@ use sqlx::{Pool, Row, Sqlite};
 use pij_core::error::{PijError, Result};
 use pij_core::model::{SeatDescriptor, SeatId};
 use pij_core::orchestration::{
-    BatonDefinition, DescriptorField, Dispatch, DispatchState, ParentAttribution, PrimeDesignation,
-    ReconcileDecision, RoleAssignment, SpawnRecord, StreamPlan, VerifiedDescriptor, derive_parent,
-    plan_descriptor_reconciliation,
+    DescriptorField, ParentAttribution, ReconcileDecision, RoleAssignment, SpawnRecord, StreamPlan,
+    VerifiedDescriptor, derive_parent, plan_descriptor_reconciliation,
 };
 
 use crate::migrate::{begin_write, require_current_schema};
@@ -37,7 +36,7 @@ pub enum StreamReservation {
 /// Result of acknowledging a durable dispatch.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DispatchAck {
-    /// Pending dispatch transitioned to acknowledged.
+    /// Dispatch transitioned to acknowledged with matching packet evidence.
     Acknowledged,
     /// It was already acknowledged; replay is harmless.
     AlreadyAcknowledged,
@@ -48,6 +47,8 @@ pub enum DispatchAck {
         /// Actual assignee.
         assignee: SeatId,
     },
+    /// Supplied digest differs from the persisted digest, including legacy unknown digests.
+    ShaMismatch,
 }
 
 /// Result of claiming a single-holder baton.
@@ -65,7 +66,7 @@ pub enum LeaseClaim {
 }
 
 /// Current baton holder.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BatonLease {
     /// Baton name.
     pub baton: String,
@@ -73,6 +74,8 @@ pub struct BatonLease {
     pub holder: SeatId,
     /// Stable claim id.
     pub lease_id: String,
+    /// Granted request, absent for legacy direct claims.
+    pub request_id: Option<String>,
     /// Caller-supplied acquisition time.
     pub acquired_at: u64,
 }
@@ -83,7 +86,7 @@ pub struct BatonLease {
 /// uniqueness is decided under `BEGIN IMMEDIATE`, never a deferred read-upgrade.
 #[derive(Clone)]
 pub struct SqliteOrchestration {
-    pool: Pool<Sqlite>,
+    pub(crate) pool: Pool<Sqlite>,
 }
 
 impl SqliteOrchestration {
@@ -251,46 +254,6 @@ impl SqliteOrchestration {
         Ok(decision)
     }
 
-    /// Create a project once. Returns `false` when the slug already exists.
-    pub async fn create_project(&self, slug: &str, actor: &SeatId, at: u64) -> Result<bool> {
-        require_current_schema(&self.pool).await?;
-        let at = sql_i64(at, "project created_at")?;
-        let mut tx = begin_write(&self.pool).await?;
-        let inserted = sqlx::query(
-            "INSERT INTO projects (slug, created_by, created_at) VALUES (?1, ?2, ?3) \
-             ON CONFLICT(slug) DO NOTHING",
-        )
-        .bind(slug)
-        .bind(actor.as_str())
-        .bind(at)
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?
-        .rows_affected();
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(inserted == 1)
-    }
-
-    /// Define a baton once. Returns `false` when the name already exists.
-    pub async fn define_baton(&self, baton: &BatonDefinition) -> Result<bool> {
-        require_current_schema(&self.pool).await?;
-        let at = sql_i64(baton.created_at, "baton created_at")?;
-        let mut tx = begin_write(&self.pool).await?;
-        let inserted = sqlx::query(
-            "INSERT INTO batons (name, description, created_by, created_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(name) DO NOTHING",
-        )
-        .bind(&baton.name)
-        .bind(&baton.description)
-        .bind(baton.created_by.as_str())
-        .bind(at)
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?
-        .rows_affected();
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(inserted == 1)
-    }
-
     /// Assign or replace one seat's role atomically.
     pub async fn assign_role(&self, assignment: &RoleAssignment) -> Result<()> {
         require_current_schema(&self.pool).await?;
@@ -310,124 +273,41 @@ impl SqliteOrchestration {
         Ok(())
     }
 
-    /// Designate exactly one current prime; replacement is one transaction.
-    pub async fn designate_prime(&self, designation: &PrimeDesignation) -> Result<()> {
+    /// Remove one seat's role; an already-unassigned seat is unchanged.
+    pub async fn clear_role(&self, seat: &SeatId) -> Result<()> {
         require_current_schema(&self.pool).await?;
-        let at = sql_i64(designation.designated_at, "prime designated_at")?;
         let mut tx = begin_write(&self.pool).await?;
-        sqlx::query(
-            "INSERT INTO prime_designation (singleton, seat, designated_by, designated_at) VALUES (1, ?1, ?2, ?3) ON CONFLICT(singleton) DO UPDATE SET seat=excluded.seat, designated_by=excluded.designated_by, designated_at=excluded.designated_at",
-        )
-        .bind(designation.seat.as_str())
-        .bind(designation.designated_by.as_str())
-        .bind(at)
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?;
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(())
-    }
-
-    /// Persist a pending dispatch before any delivery attempts it.
-    pub async fn create_dispatch(&self, dispatch: &Dispatch) -> Result<bool> {
-        require_current_schema(&self.pool).await?;
-        let created_at = sql_i64(dispatch.created_at, "dispatch created_at")?;
-        let mut tx = begin_write(&self.pool).await?;
-        let inserted = sqlx::query(
-            "INSERT INTO dispatches (id, from_seat, to_seat, body, state, created_at, acknowledged_at) VALUES (?1, ?2, ?3, ?4, 'pending', ?5, NULL) ON CONFLICT(id) DO NOTHING",
-        )
-        .bind(&dispatch.id)
-        .bind(dispatch.from.as_str())
-        .bind(dispatch.to.as_str())
-        .bind(&dispatch.body)
-        .bind(created_at)
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?
-        .rows_affected();
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(inserted == 1)
-    }
-
-    /// Acknowledge only as the dispatch's assignee.
-    pub async fn acknowledge_dispatch(
-        &self,
-        id: &str,
-        actor: &SeatId,
-        at: u64,
-    ) -> Result<DispatchAck> {
-        require_current_schema(&self.pool).await?;
-        let at = sql_i64(at, "dispatch acknowledged_at")?;
-        let mut tx = begin_write(&self.pool).await?;
-        let row = sqlx::query("SELECT to_seat, state FROM dispatches WHERE id=?1")
-            .bind(id)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(adapter_error)?;
-        let Some(row) = row else {
-            tx.commit().await.map_err(adapter_error)?;
-            return Ok(DispatchAck::Missing);
-        };
-        let assignee = SeatId(row.try_get("to_seat").map_err(adapter_error)?);
-        if assignee != *actor {
-            tx.commit().await.map_err(adapter_error)?;
-            return Ok(DispatchAck::NotAssignee { assignee });
-        }
-        let state: String = row.try_get("state").map_err(adapter_error)?;
-        if state == "acknowledged" {
-            tx.commit().await.map_err(adapter_error)?;
-            return Ok(DispatchAck::AlreadyAcknowledged);
-        }
-        sqlx::query("UPDATE dispatches SET state='acknowledged', acknowledged_at=?2 WHERE id=?1")
-            .bind(id)
-            .bind(at)
+        sqlx::query("DELETE FROM seat_roles WHERE seat=?1")
+            .bind(seat.as_str())
             .execute(&mut *tx)
             .await
             .map_err(adapter_error)?;
         tx.commit().await.map_err(adapter_error)?;
-        Ok(DispatchAck::Acknowledged)
+        Ok(())
     }
 
-    /// Read one dispatch with its current lifecycle.
-    pub async fn dispatch(&self, id: &str) -> Result<Option<Dispatch>> {
+    /// Read one complete role assignment, or `None` for an unassigned seat.
+    pub async fn seat_role(&self, seat: &SeatId) -> Result<Option<RoleAssignment>> {
         require_current_schema(&self.pool).await?;
-        let row = sqlx::query(
-            "SELECT id, from_seat, to_seat, body, state, created_at, acknowledged_at FROM dispatches WHERE id=?1",
+        sqlx::query("SELECT seat, role, assigned_by, assigned_at FROM seat_roles WHERE seat=?1")
+            .bind(seat.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(adapter_error)?
+            .map(role_assignment)
+            .transpose()
+    }
+
+    /// Read every persisted role in deterministic seat order for roster joins.
+    pub async fn list_roles(&self) -> Result<Vec<RoleAssignment>> {
+        require_current_schema(&self.pool).await?;
+        let rows = sqlx::query(
+            "SELECT seat, role, assigned_by, assigned_at FROM seat_roles ORDER BY seat",
         )
-        .bind(id)
-        .fetch_optional(&self.pool)
+        .fetch_all(&self.pool)
         .await
         .map_err(adapter_error)?;
-        row.map(|row| {
-            let state: String = row.try_get("state").map_err(adapter_error)?;
-            let state = match state.as_str() {
-                "pending" => DispatchState::Pending,
-                "acknowledged" => DispatchState::Acknowledged,
-                other => {
-                    return Err(PijError::Adapter {
-                        adapter: "store/orchestration".to_string(),
-                        message: format!("unknown dispatch state `{other}`"),
-                    });
-                }
-            };
-            let acknowledged_at: Option<i64> =
-                row.try_get("acknowledged_at").map_err(adapter_error)?;
-            Ok(Dispatch {
-                id: row.try_get("id").map_err(adapter_error)?,
-                from: SeatId(row.try_get("from_seat").map_err(adapter_error)?),
-                to: SeatId(row.try_get("to_seat").map_err(adapter_error)?),
-                body: row.try_get("body").map_err(adapter_error)?,
-                state,
-                created_at: sql_u64(
-                    row.try_get("created_at").map_err(adapter_error)?,
-                    "dispatch created_at",
-                )?,
-                acknowledged_at: acknowledged_at
-                    .map(|value| sql_u64(value, "dispatch acknowledged_at"))
-                    .transpose()?,
-            })
-        })
-        .transpose()
+        rows.into_iter().map(role_assignment).collect()
     }
 
     /// Reserve the complete stream recipe before Git mutates a worktree.
@@ -446,7 +326,7 @@ impl SqliteOrchestration {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
              ON CONFLICT DO NOTHING",
         )
-        .bind(format!("alloc-s{:03}-{}", plan.ordinal, plan.slug))
+        .bind(format!("{}:{}", plan.project, plan.slug))
         .bind(&plan.project)
         .bind(i64::from(plan.ordinal))
         .bind(&plan.slug)
@@ -479,32 +359,39 @@ impl SqliteOrchestration {
         })
     }
 
-    /// Atomically claim a baton. A primary key permits one holder only.
+    /// Atomically claim a request-less baton. Request-backed claims use `grant_baton`.
     pub async fn claim_lease(&self, lease: &BatonLease) -> Result<LeaseClaim> {
         require_current_schema(&self.pool).await?;
+        if lease.request_id.is_some() {
+            return Err(crate::governance::invalid_record(
+                "request-backed leases require grant_baton so request and lease advance atomically",
+            ));
+        }
         let acquired_at = sql_i64(lease.acquired_at, "lease acquired_at")?;
         let mut tx = begin_write(&self.pool).await?;
         let inserted = sqlx::query(
-            "INSERT INTO baton_leases (baton, holder, lease_id, acquired_at) \
-             VALUES (?1, ?2, ?3, ?4) ON CONFLICT(baton) DO NOTHING",
+            "INSERT INTO baton_leases (baton, holder, lease_id, acquired_at, request_id) \
+             VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(baton) DO NOTHING",
         )
         .bind(&lease.baton)
         .bind(lease.holder.as_str())
         .bind(&lease.lease_id)
         .bind(acquired_at)
+        .bind(&lease.request_id)
         .execute(&mut *tx)
         .await
         .map_err(adapter_error)?
         .rows_affected();
         if inserted == 1 {
             sqlx::query(
-                "INSERT INTO baton_lease_history (baton, holder, lease_id, action, at) \
-                 VALUES (?1, ?2, ?3, 'claimed', ?4)",
+                "INSERT INTO baton_lease_history (baton, holder, lease_id, action, at, request_id) \
+                 VALUES (?1, ?2, ?3, 'claimed', ?4, ?5)",
             )
             .bind(&lease.baton)
             .bind(lease.holder.as_str())
             .bind(&lease.lease_id)
             .bind(acquired_at)
+            .bind(&lease.request_id)
             .execute(&mut *tx)
             .await
             .map_err(adapter_error)?;
@@ -524,7 +411,7 @@ impl SqliteOrchestration {
         Ok(held)
     }
 
-    /// Release exactly the caller's claim; a non-holder changes nothing.
+    /// Release exactly the caller's request-less claim; request-backed leases require evidence.
     pub async fn release_lease(
         &self,
         baton: &str,
@@ -536,7 +423,7 @@ impl SqliteOrchestration {
         let at = sql_i64(at, "lease released_at")?;
         let mut tx = begin_write(&self.pool).await?;
         let removed =
-            sqlx::query("DELETE FROM baton_leases WHERE baton=?1 AND holder=?2 AND lease_id=?3")
+            sqlx::query("DELETE FROM baton_leases WHERE baton=?1 AND holder=?2 AND lease_id=?3 AND request_id IS NULL")
                 .bind(baton)
                 .bind(holder.as_str())
                 .bind(lease_id)
@@ -565,7 +452,7 @@ impl SqliteOrchestration {
     pub async fn lease(&self, baton: &str) -> Result<Option<BatonLease>> {
         require_current_schema(&self.pool).await?;
         let row = sqlx::query(
-            "SELECT baton, holder, lease_id, acquired_at FROM baton_leases WHERE baton=?1",
+            "SELECT baton, holder, lease_id, request_id, acquired_at FROM baton_leases WHERE baton=?1",
         )
         .bind(baton)
         .fetch_optional(&self.pool)
@@ -576,6 +463,7 @@ impl SqliteOrchestration {
                 baton: row.try_get("baton").map_err(adapter_error)?,
                 holder: SeatId(row.try_get("holder").map_err(adapter_error)?),
                 lease_id: row.try_get("lease_id").map_err(adapter_error)?,
+                request_id: row.try_get("request_id").map_err(adapter_error)?,
                 acquired_at: sql_u64(
                     row.try_get("acquired_at").map_err(adapter_error)?,
                     "lease acquired_at",
@@ -597,21 +485,21 @@ fn field_name(field: &DescriptorField) -> &'static str {
     }
 }
 
-fn sql_i64(value: u64, field: &str) -> Result<i64> {
+pub(crate) fn sql_i64(value: u64, field: &str) -> Result<i64> {
     i64::try_from(value).map_err(|_| PijError::Adapter {
         adapter: "store/orchestration".to_string(),
         message: format!("{field}={value} exceeds SQLite's signed integer range"),
     })
 }
 
-fn sql_u64(value: i64, field: &str) -> Result<u64> {
+pub(crate) fn sql_u64(value: i64, field: &str) -> Result<u64> {
     u64::try_from(value).map_err(|_| PijError::Adapter {
         adapter: "store/orchestration".to_string(),
         message: format!("{field}={value} is negative in SQLite"),
     })
 }
 
-fn adapter_error(error: sqlx::Error) -> PijError {
+pub(crate) fn adapter_error(error: sqlx::Error) -> PijError {
     PijError::Adapter {
         adapter: "store/orchestration".to_string(),
         message: error.to_string(),
@@ -623,4 +511,16 @@ fn json_error(error: serde_json::Error) -> PijError {
         adapter: "store/orchestration".to_string(),
         message: format!("could not encode descriptor merge evidence: {error}"),
     }
+}
+
+fn role_assignment(row: sqlx::sqlite::SqliteRow) -> Result<RoleAssignment> {
+    Ok(RoleAssignment {
+        seat: SeatId(row.try_get("seat").map_err(adapter_error)?),
+        role: row.try_get("role").map_err(adapter_error)?,
+        assigned_by: SeatId(row.try_get("assigned_by").map_err(adapter_error)?),
+        assigned_at: sql_u64(
+            row.try_get("assigned_at").map_err(adapter_error)?,
+            "role assigned_at",
+        )?,
+    })
 }

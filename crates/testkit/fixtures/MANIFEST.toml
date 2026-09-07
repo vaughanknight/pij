@@ -248,6 +248,21 @@ note = "A REAL OMP pane AT REST, captured 2026-08-29 from one of the PM's own wa
 answer = "Must classify as READY. Pair it with the repo's live_omp_blank_padded.txt, which shows the same chrome carrying '\u280b Working\u2026 \u27e6esc\u27e7' and must classify as BUSY. The discriminator is the spinner row, not the footer and not the prompt \u2014 both fixtures have those."
 
 [[fixture]]
+path = "harnesses/omp-18-0-10-footer.txt"
+sha256 = "ba541cc9a2198c72c785596d35c2f2d6c42e901589ac86c53fa86e0a42bfbade"
+bytes = 59
+note = "Real OMP18.0.10 footer quoted from owned coder pij-written-lansra pane3865 during plan139 canary. Only footer bytes are captured, not a fabricated full pane."
+answer = "The model field ends before the dot-separated effort/status fields. Resolve the display label through the real model catalog; a footer alone is not a readiness or binding proof."
+
+[[fixture]]
+path = "harnesses/omp-18-1-11-no-model-footer.txt"
+sha256 = "bedcdfd1d61799dd61d39134fe78987324b14bcdbceb8f4a23b220c5cef6f22d"
+bytes = 74
+note = "Real historical OMP18.1.11 footer from rs spawn.failed spine14828 payload.last_output on2026-09-06; corroborated by14832/14838 and prime ledger. Runtime literally printed no-model."
+answer = "Treat no-model as explicit absence; never infer the requested model or fall back to an earlier quoted model. Readiness chrome does not establish valid model binding."
+
+
+[[fixture]]
 path = "uds/claude-2.1.251-session.json"
 sha256 = "8b45b273b1ccab52b4f7ecffbfc5de535c59190df73278ec5b934d7d059d78e9"
 bytes = 445

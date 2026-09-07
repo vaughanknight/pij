@@ -161,6 +161,13 @@ pub struct IdentityRequest {
     /// A caller trying to NAME the seat. Refused — see `ac-1147`.
     #[serde(default)]
     pub id: Option<String>,
+    /// Explicit adoption role; omission preserves and explicit null refuses.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "super::types::deserialize_asserted_role"
+    )]
+    pub role: Option<String>,
 }
 
 /// `?seat=&pane=` for the read verbs.
@@ -241,6 +248,8 @@ pub(crate) struct AdoptArgs {
     pub harness: Option<String>,
     /// The declared governing seat.
     pub parent: Option<String>,
+    /// Role assertion; absence leaves the existing seat_roles row untouched.
+    pub role: Option<String>,
     /// True for the paneless `inbox register` form the ready route uses when a
     /// seat has no `$TMUX_PANE`.
     pub paneless: bool,
@@ -287,6 +296,15 @@ pub(crate) fn parse_adopt_argv(argv: &[String]) -> Result<AdoptArgs, String> {
                         .ok_or_else(|| "--parent needs a value".to_string())?
                         .to_string(),
                 );
+            }
+            "--role" => {
+                let role = tokens
+                    .next()
+                    .filter(|role| !role.trim().is_empty() && !role.starts_with("--"))
+                    .ok_or_else(|| "--role needs a nonempty value".to_string())?;
+                if args.role.replace(role.to_string()).is_some() {
+                    return Err("--role may be supplied only once".to_string());
+                }
             }
             // Output-shape flags. They change how a CLI prints, and this route
             // does not print — accepting them is honest, storing them is not.
@@ -377,6 +395,15 @@ pub(crate) async fn adopt(
     let args = match parse_adopt_argv(&request.argv) {
         Ok(args) => args,
         Err(reason) => return refused(ADOPT, reason),
+    };
+    let role = match (request.role, args.role) {
+        (Some(_), Some(_)) => {
+            return refused(
+                ADOPT,
+                "role must be supplied as a typed field or --role, not both",
+            );
+        }
+        (typed, argv) => typed.or(argv),
     };
     let pane = request
         .pane
@@ -528,6 +555,7 @@ pub(crate) async fn adopt(
         provider: None,
         effort: None,
         parent,
+        role,
         relay: incumbent.is_some_and(|seat| seat.relay),
     };
     let registration = &state.registration;
@@ -545,7 +573,11 @@ pub(crate) async fn adopt(
     // store actually holds. A success line that persists nothing cannot be
     // expressed from here.
     match state.services.registry.get(&seat_id).await {
-        Ok(Some(persisted)) => {
+        Ok(Some(mut persisted)) => {
+            persisted.role = match state.services.roles.read_role(&seat_id).await {
+                Ok(role) => role,
+                Err(error) => return internal(ADOPT, error),
+            };
             let mut answer = Envelope::ok(
                 ADOPT,
                 RegistrationResponse {

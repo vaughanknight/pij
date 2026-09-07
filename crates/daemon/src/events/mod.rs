@@ -1,15 +1,21 @@
 //! Durable replay joined to non-blocking live event delivery.
 
+mod fake_registry;
+pub use fake_registry::PublishedFakeRegistry;
+
 use std::collections::VecDeque;
+use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
 
+use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::model::{Event, SeatId, Seq};
 use pij_core::ports::Spine;
+use pij_store::spine::{RegistryCommit, RegistryPublication, RegistryPublisher};
 use tokio::sync::{Mutex, broadcast};
 use tokio_stream::Stream;
 use tokio_stream::wrappers::BroadcastStream;
@@ -23,15 +29,14 @@ use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 ///
 /// # Composition recipe
 ///
-/// No `AdapterChoice::Real` refusal exists for this service. In
-/// `crates/daemon/src/lib.rs`, add `use crate::events::EventBus`, add
-/// `pub event_bus: Arc<EventBus>` to `Services`, then construct it after `spine`:
-/// `let event_bus = Arc::new(EventBus::new(Arc::clone(&spine),
-/// config.event_buffer_capacity)?);` and include the field in `Services`.
+/// Construct the raw Spine first, then one `Arc<EventBus>`. Inject that bus as
+/// `RegistryPublisher` into `SqliteRegistry::new(pool, bus.clone())`, and expose
+/// the same bus as `Services.spine`. All producers, including ReportService,
+/// then share this ordering lock and one durable sequence domain.
 pub struct EventBus {
     spine: Arc<dyn Spine>,
     live: broadcast::Sender<Event>,
-    publish_lock: Mutex<()>,
+    publish_lock: Arc<Mutex<()>>,
     // A held row must publish its admission facts before a worker can ack it.
     // Never held across transport IO; only queue and receipt publication.
     pub(crate) socket_delivery_order: Mutex<()>,
@@ -53,7 +58,7 @@ impl EventBus {
         Ok(Self {
             spine,
             live,
-            publish_lock: Mutex::new(()),
+            publish_lock: Arc::new(Mutex::new(())),
             socket_delivery_order: Mutex::new(()),
         })
     }
@@ -72,11 +77,58 @@ impl EventBus {
             });
         }
 
+        let spine = self.spine.clone();
+        self.publish_committed(async move {
+            let seq = spine.append(event.clone()).await?;
+            event.seq = Some(seq);
+            Ok((event, ()))
+        })
+        .await
+        .map(|(seq, ())| seq)
+    }
+
+    /// Commit one owned atomic mutation and publish its event in sequence order.
+    ///
+    /// `commit` must remain lazy: acquire SQLite only when this future is polled,
+    /// commit the state and event together, then return an event with its assigned
+    /// sequence. Never call the bus recursively from the callback.
+    ///
+    /// Cancellation before admission starts no work. After admission, an owned
+    /// task retains the ordering guard through commit and broadcast even if the
+    /// requesting future is dropped. Stop and join producers, then [`Self::flush`]
+    /// before shutting down the runtime; runtime termination cannot be shielded.
+    pub async fn publish_committed<T, F>(&self, commit: F) -> Result<(Seq, T)>
+    where
+        T: Send + 'static,
+        F: Future<Output = Result<(Event, T)>> + Send + 'static,
+    {
+        let guard = self.publish_lock.clone().lock_owned().await;
+        let live = self.live.clone();
+        tokio::spawn(async move {
+            let _guard = guard;
+            let (event, result) = commit.await?;
+            let seq = event.seq.ok_or_else(|| PijError::Adapter {
+                adapter: "daemon/events".to_string(),
+                message: "publication callback committed without its event sequence".to_string(),
+            })?;
+            let _ = live.send(event);
+            Ok((seq, result))
+        })
+        .await
+        .map_err(|error| PijError::Adapter {
+            adapter: "daemon/events".to_string(),
+            message: format!("admitted publication task failed: {error}"),
+        })?
+    }
+
+    /// Wait for previously admitted writes to finish committing and publishing.
+    ///
+    /// First stop/cancel and join every request/background producer so no future
+    /// publication can arrive behind this barrier. Await this while the Tokio
+    /// runtime and store are still alive, then close them. This is a drain, not
+    /// a retry or a success receipt for an individual cancelled request.
+    pub async fn flush(&self) {
         let _guard = self.publish_lock.lock().await;
-        let seq = self.spine.append(event.clone()).await?;
-        event.seq = Some(seq);
-        let _ = self.live.send(event);
-        Ok(seq)
     }
 
     /// Replay events after `since`, then continue with the live stream.
@@ -174,6 +226,36 @@ impl EventBus {
     }
 }
 
+impl RegistryPublisher for EventBus {
+    fn publish_registry<'a>(&'a self, commit: RegistryCommit) -> RegistryPublication<'a> {
+        Box::pin(self.publish_committed(commit))
+    }
+}
+
+#[async_trait]
+impl Spine for EventBus {
+    async fn append(&self, event: Event) -> Result<Seq> {
+        self.publish(event).await
+    }
+
+    async fn tail(&self, seat: Option<&SeatId>, since: Seq) -> Result<Vec<Event>> {
+        self.spine.tail(seat, since).await
+    }
+
+    async fn latest_matching(&self, seat: &SeatId, kinds: &[&str]) -> Result<Option<Event>> {
+        self.spine.latest_matching(seat, kinds).await
+    }
+
+    async fn latest_matching_message(
+        &self,
+        seat: &SeatId,
+        kind: &str,
+        msg_id: &str,
+    ) -> Result<Option<Event>> {
+        self.spine.latest_matching_message(seat, kind, msg_id).await
+    }
+}
+
 /// One replay-then-live event stream with an observable lag counter.
 pub struct Subscription {
     replay: VecDeque<Event>,
@@ -267,3 +349,12 @@ mod cursor_refusal_tests {
             .expect("a satisfiable cursor subscribes");
     }
 }
+
+#[cfg(test)]
+mod governance_tests;
+
+#[cfg(test)]
+mod governance_http_tests;
+
+#[cfg(test)]
+mod governance_cancellation_tests;

@@ -7,10 +7,7 @@ use pij_core::model::{
     DeliveryOrigin, DeliveryOutcome, Envelope, Harness, Msg, ProcIdentity, Receipt, SeatDescriptor,
     SeatId, SemanticState, Seq,
 };
-use pij_core::ports::{Registry, Spine};
-use pij_daemon::events::EventBus;
 use pij_daemon::http::{HttpConfig, router_with_config};
-use pij_store::{SqliteRegistry, SqliteSpine};
 use pij_testkit::fakes::{FakeLiveness, FakeTmux, FakeTransport};
 use pij_testkit::fresh_dir;
 
@@ -86,16 +83,25 @@ fn launch_env(call: &str, key: &str) -> Option<String> {
 async fn shipped_spawn_revive_and_registration_do_not_attest_native_delivery() {
     let dir = fresh_dir("pij-spawn-e2e");
     std::fs::write(dir.join("daemon.key"), "spawn-test-key").expect("write client key");
-    let pool = pij_store::open(
-        dir.join("pij.sqlite")
+    let config = Config {
+        store_path: dir
+            .join("pij.sqlite")
             .to_str()
-            .expect("UTF-8 database path"),
-    )
-    .await
-    .expect("open real store");
-    let registry = Arc::new(SqliteRegistry::new(pool.clone()));
+            .expect("UTF-8 database path")
+            .to_string(),
+        adapters: Adapters {
+            registry: AdapterChoice::Real,
+            spine: AdapterChoice::Real,
+            ..Adapters::default()
+        },
+        ..Config::default()
+    };
+    let mut services = pij_daemon::build_services(&config, &dir.join("pane-signals"))
+        .await
+        .expect("coherent real registry and spine");
+    let registry = services.registry.clone();
     let tmux = Arc::new(FakeTmux::new());
-    let spine = Arc::new(SqliteSpine::new(pool));
+    let spine = services.spine.clone();
     let first_identity = ProcIdentity {
         pid: 4242,
         proc_start: 20260830112233,
@@ -104,20 +110,26 @@ async fn shipped_spawn_revive_and_registration_do_not_attest_native_delivery() {
         pid: 4343,
         proc_start: 20260830112234,
     };
-    let mut services = pij_daemon::build_services(
-        &Config::default(),
-        std::path::Path::new("/tmp/pij-test-pane-signals"),
-    )
-    .await
-    .expect("build services");
-    services.registry = registry.clone();
     services.tmux = tmux.clone();
-    services.spine = spine.clone();
-    services.event_bus = Arc::new(EventBus::new(spine.clone(), 16).expect("event bus"));
     services.liveness = Arc::new(
         FakeLiveness::new()
             .with_proc(first_identity)
             .with_proc(successor_identity),
+    );
+    services.interaction = Arc::new(pij_harnesses::InteractionGate::with_typing_grace(
+        services.tmux.clone(),
+        std::time::Duration::from_millis(Config::default().interaction_idle_ms),
+        pij_daemon::http::resolve_typing_grace_ms(),
+    ));
+    services.delivery = Arc::new(
+        pij_daemon::delivery::DeliveryService::new(
+            services.registry.clone(),
+            services.queue.clone(),
+            services.transport.clone(),
+            services.interaction.clone(),
+            services.event_bus.clone(),
+        )
+        .expect("retargeted delivery"),
     );
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")

@@ -1,0 +1,111 @@
+{
+  "unit": "u2",
+  "seat": "pij-written-lansra",
+  "status": "READY_TO_VALIDATE_ATOMIC_DELTA",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u2",
+  "supersedes": "Original receipt-u2.json separate role persistence/publication and RoleError::Publication assumptions are withdrawn by prime ruling. HTTP requests/responses and RoleService constructor/method/RoleReceipt signatures remain unchanged.",
+  "delta": {
+    "path": "docs/plans/139-rs-governance-port/assets/u2-atomic-delta.patch",
+    "sha256": "96e878bf68de8a332d14e40bbfdd450d471a412cef1783b7406eb189c913d683",
+    "bytes": 26768,
+    "base": "Previously handed u2-source.patch, SHA256 de5e1fc10af27eacec3113c77a1b9c9ff36809a37a02e81b34d1a851969b7e45; NOT the repository baseline",
+    "baseline_snapshots": ".harness/temp/u2-atomic-base/crates/daemon/src/http/{role,role_tests}.rs",
+    "files": [
+      "crates/daemon/src/http/role.rs",
+      "crates/daemon/src/http/role_tests.rs",
+      "crates/store/src/role_assertion.rs"
+    ],
+    "excluded": ["all shared composition files", "canonical fixtures", "earlier u2 changes outside the bounded atomic slice"]
+  },
+  "verification": {
+    "run": false,
+    "reason": "Source-only amendment: PM owns validation at barrier. No build, test, formatter, linter, commit or teardown run.",
+    "not_done": true,
+    "toolchain_observed": {
+      "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21) (Homebrew)",
+      "rustc": "rustc 1.95.0 (59807616e 2026-04-14) (Homebrew)",
+      "omp": "omp/18.0.10",
+      "harness": "0.14.0"
+    }
+  },
+  "implementation": [
+    "RoleService clones registry/store/clock and actor/target into an owned static async callback passed to EventBus::publish_committed. Authority and clock are read only after shared publication admission, not before waiting for the lock.",
+    "The local role-only mutex is removed. Registry and role writes share bus ordering. Caller/target liveness and current parent are re-read inside that boundary.",
+    "SqliteOrchestration::assert_role_committed performs one BEGIN IMMEDIATE, role upsert or targeted delete, append_in_transaction, and transaction commit. It sets Event.seq to the real returned sequence only after commit. Failed mutation/append explicitly rolls back.",
+    "The callback derives the existing RoleReceipt from the committed Event.seq and returns (Event, RoleReceipt). It never invokes EventBus recursively. The bus owns ordering/cancellation retention/broadcast.",
+    "GovernanceRefused {code,record} maps by typed code: E-RS-OWNERSHIP uses parent id or literal absent to construct existing RoleError::Ownership. Other governance refusals map to invalid. No message/prose parsing.",
+    "RoleError::Publication and its E-RS-PARTIAL response branch are removed. Store failures refuse without retaining a partial role row/event pair.",
+    "Role service tests now use SqliteRegistry, SqliteSpine, SqliteOrchestration and EventBus sharing one actual SQLite pool; no independent FakeSpine. Existing HTTP and CLI contract tests remain unchanged."
+  ],
+  "store_api": {
+    "module": "crates/store/src/role_assertion.rs",
+    "type": "impl SqliteOrchestration; no alternate facade",
+    "signature": "pub async fn assert_role_committed(&self, actor: &SeatId, target: &SeatId, role: Option<&str>, assigned_at: u64) -> pij_core::error::Result<Event>",
+    "invariants": [
+      "Caller holds shared publication boundary from authority read through commit.",
+      "Store pool is the same SQLite pool behind bus raw spine.",
+      "append_in_transaction remains the sole SQL spine INSERT location.",
+      "Role row and role-set event commit atomically; every explicit successful set/unset emits an event, including same-value set and absent-row unset.",
+      "This helper commits but never broadcasts; EventBus broadcasts its returned committed event."
+    ]
+  },
+  "pm_wiring": [
+    {
+      "file": "crates/store/src/lib.rs",
+      "change": "Add `mod role_assertion;` (private module suffices: it adds public inherent methods to existing exported SqliteOrchestration)."
+    },
+    {
+      "file": "crates/store/src/orchestration.rs",
+      "change": "Keep PM/u3 pub(crate) pool: Pool<Sqlite> and Clone derivation. Existing seat_role/list_roles/clear_role remain; service no longer calls assign_role/clear_role for mutation. No source hunk for this shared file in delta."
+    },
+    {
+      "file": "crates/store/src/spine.rs",
+      "change": "Keep u1 pub(crate) append_in_transaction(&mut SqliteConnection,&Event)->Result<Seq>; no new INSERT site."
+    },
+    {
+      "file": "crates/core/src/error.rs",
+      "change": "Keep shared PijError::GovernanceRefused {code:String,record:String}; ownership record is parent id or literal absent."
+    },
+    {
+      "file": "crates/daemon/src/events/mod.rs",
+      "change": "Keep cancellation-safe owned/static publish_committed<T,F>(&self,F)->Result<(Seq,T)> where F:Future<Output=Result<(Event,T)>>+Send+'static, T:Send+'static; lock before polling."
+    },
+    {
+      "file": "crates/daemon/src/lib.rs and existing u2 composition",
+      "change": "No constructor changes: supply same registry Arc, same bus Arc, and same real/in-memory StorePool. RoleService still exposes assert_role/read_role/join_roles. u3 routes continue calling assert_role and error.into_response."
+    }
+  ],
+  "focused_service_tests": [
+    "explicit_role_and_unset_publish_u0_payloads_to_live_subscribers",
+    "joining_roles_clears_stale_descriptor_values_and_preserves_real_assignments",
+    "sql_append_failure_rolls_back_role_set_over_existing_assignment",
+    "sql_append_failure_rolls_back_role_set_over_absent_assignment",
+    "sql_append_failure_rolls_back_role_unset_over_existing_assignment",
+    "sql_append_failure_rolls_back_role_unset_over_absent_assignment",
+    "authority_is_reloaded_and_tombstoned_or_unknown_targets_emit_nothing",
+    "fallible_clock_refuses_before_persistence",
+    "cancelled_role_request_still_commits_and_publishes_its_admitted_transaction",
+    "role_authority_is_read_after_earlier_ordered_registry_change"
+  ],
+  "failure_injection": "An isolated SQL BEFORE INSERT ON spine_events trigger raises ABORT after the role upsert/delete. Four witnesses assert the complete previous RoleAssignment/absence, durable event list and live subscriber remain unchanged. Cancellation witness holds an independent SQL writer until request cancellation, releases it, then flushes the bus and checks committed role/event. Authority witness queues a role request behind an earlier controlled registry publication, changes parent, then requires current-parent refusal.",
+  "commands_after_composition": [
+    "CARGO_TARGET_DIR=$WORKTREE/target cargo test --locked -p pij-daemon --lib http::role::tests",
+    "CARGO_TARGET_DIR=$WORKTREE/target cargo test --locked -p pij-daemon --test role_http",
+    "CARGO_TARGET_DIR=$WORKTREE/target cargo test --locked -p pij-daemon --lib registration::tests",
+    "CARGO_TARGET_DIR=$WORKTREE/target cargo test --locked -p pij-cli --lib role::tests",
+    "harness checks --json (PM barrier only)"
+  ],
+  "assumptions": [
+    "Every competing registry/governance mutation uses the same publication boundary; direct SQL external writers are outside the daemon ordering protocol.",
+    "No callback recursively calls EventBus. The authority test's controlled gate uses the raw SqliteSpine adapter only to publish the fixture's preceding registry snapshot through the admitted outer boundary.",
+    "u1 cancellation safety persists through a dropped request after admission, not abrupt process/runtime termination. Drain producers and bus per u1 shutdown recipe.",
+    "Registration descriptor admission and subsequent role assertion remain distinct operations. Existing registration error wording may describe already-admitted descriptor plus failed atomic role assertion; there is no partial role row/event exception.",
+    "Delta applies against exact prior u2 source, while PM composition may have formatted or lightly changed shared captures. PM resolves only necessary context at convergence; no full-baseline patch replay.",
+    "No validation performed; compile/runtime correctness awaits PM's actual proof."
+  ],
+  "harness": {
+    "buffer": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u2/.harness/temp/agent/session-buffer.md",
+    "drained": false,
+    "new_observations": ["DL-003 atomic role ruling supersedes partial publication", "WIN-002 shared authority/publication boundary encoded"]
+  }
+}
