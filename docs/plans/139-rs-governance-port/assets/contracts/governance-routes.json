@@ -36,8 +36,8 @@
         "project": "governance-port",
         "ordinal": 139,
         "slug": "contracts",
-        "branch": "139-contracts",
-        "worktree": "/work/project-contracts",
+        "branch": "s139/contracts",
+        "worktree": "/work/project/s139-contracts",
         "base_ref": "main",
         "created_by": "pij-parent",
         "created_at": 1788739200000,
@@ -182,7 +182,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -212,7 +212,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -244,7 +244,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -278,7 +278,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -327,7 +327,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -340,8 +340,8 @@
                 "project": "governance-port",
                 "ordinal": 139,
                 "slug": "contracts",
-                "branch": "139-contracts",
-                "worktree": "/work/project-contracts",
+                "branch": "s139/contracts",
+                "worktree": "/work/project/s139-contracts",
                 "base_ref": "main",
                 "created_by": "pij-parent",
                 "created_at": 1788739200000,
@@ -362,7 +362,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -376,8 +376,8 @@
                   "project": "governance-port",
                   "ordinal": 139,
                   "slug": "contracts",
-                  "branch": "139-contracts",
-                  "worktree": "/work/project-contracts",
+                  "branch": "s139/contracts",
+                  "worktree": "/work/project/s139-contracts",
                   "base_ref": "main",
                   "created_by": "pij-parent",
                   "created_at": 1788739200000,
@@ -397,7 +397,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -410,8 +410,8 @@
                 "project": "governance-port",
                 "ordinal": 139,
                 "slug": "contracts",
-                "branch": "139-contracts",
-                "worktree": "/work/project-contracts",
+                "branch": "s139/contracts",
+                "worktree": "/work/project/s139-contracts",
                 "base_ref": "main",
                 "created_by": "pij-parent",
                 "created_at": 1788739200000,
@@ -430,7 +430,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -443,8 +443,8 @@
                 "project": "governance-port",
                 "ordinal": 139,
                 "slug": "contracts",
-                "branch": "139-contracts",
-                "worktree": "/work/project-contracts",
+                "branch": "s139/contracts",
+                "worktree": "/work/project/s139-contracts",
                 "base_ref": "main",
                 "created_by": "pij-parent",
                 "created_at": 1788739200000,
@@ -479,7 +479,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -514,7 +514,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -561,7 +561,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -609,7 +609,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%11",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -662,7 +662,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -720,7 +720,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -762,7 +762,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -796,7 +796,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -839,7 +839,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -910,7 +910,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -941,7 +941,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -974,7 +974,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1030,7 +1030,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%11",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1065,7 +1065,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1092,12 +1092,14 @@
               "baton",
               "return",
               "merge",
+              "--lease-id",
+              "lease-139-proof",
               "--evidence",
               "integration complete"
             ],
             "caller": {
               "TMUX_PANE": "%11",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1119,12 +1121,14 @@
               "baton",
               "reclaim",
               "merge",
+              "--lease-id",
+              "lease-139-proof",
               "--evidence",
               "holder confirmed gone"
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1149,7 +1153,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1178,7 +1182,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1207,7 +1211,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1232,7 +1236,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1261,7 +1265,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1297,7 +1301,7 @@
             "role": "reviewer",
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "shim_request": {
@@ -1308,7 +1312,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1347,7 +1351,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%11",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1384,7 +1388,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1499,7 +1503,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1623,7 +1627,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1667,7 +1671,7 @@
             "answer": "u3 owns migration 0014",
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "shim_request": {
@@ -1678,7 +1682,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1705,9 +1709,9 @@
         }
       ],
       "invariants": [
-        "Answer permission is asker or current recorded parent of asker; root fallback routing uses current prime only where the asker has no parent.",
-        "Persist answer/outbound linkage before delivering through existing DeliveryService to asked_by; do not route to parent instead. Use stable answer_msg_id.",
-        "Only report closed after answer has been accepted durably for delivery. Delivery rejection leaves an inspectable open decision/refusal, never silent closed-without-message.",
+        "Answer permission is asker or current recorded parent of asker; root question visibility may fall back to current prime without granting new answer authority.",
+        "For another seat answer, persist answer/outbound linkage before delivering through existing DeliveryService to asked_by; do not route to parent instead. Use stable answer_msg_id.",
+        "Non-self answer closes only after durable delivery acceptance; rejection leaves an inspectable open decision/refusal. Self-answer closes with resolved answerer and decision.answered, answer_msg_id=null, and no redundant push. The existing /v1/send self-send refusal remains unchanged.",
         "Repeated identical answer must not duplicate push; conflicting answer on an answered row refuses. No custom retries or new transport."
       ]
     },
@@ -1723,7 +1727,7 @@
             "reason": "owner-close",
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "shim_request": {
@@ -1733,7 +1737,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1766,7 +1770,7 @@
             "dry_run": true,
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "shim_request": {
@@ -1776,7 +1780,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1833,7 +1837,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1863,7 +1867,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1894,7 +1898,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%10",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -1934,7 +1938,7 @@
             ],
             "caller": {
               "TMUX_PANE": "%11",
-              "cwd": "/work/rs-governance-port"
+              "cwd": "/work/project"
             }
           },
           "response": {
@@ -2114,6 +2118,23 @@
         }
       }
     },
+    "lease_stale": {
+      "http_status": 409,
+      "cli_exit_nonzero": true,
+      "response": {
+        "ok": false,
+        "command": "pij orchestration",
+        "v": 2,
+        "error": "refused",
+        "meta": "E-RS-LEASE-STALE: current lease is lease-139-current; read baton show and retry with --lease-id <observed lease>",
+        "details": {
+          "code": "E-RS-LEASE-STALE",
+          "baton": "merge",
+          "current_lease": "lease-139-current",
+          "supplied_lease": "lease-139-proof"
+        }
+      }
+    },
     "packet_sha": {
       "http_status": 400,
       "cli_exit_nonzero": true,
@@ -2195,6 +2216,7 @@
       "Require listening banner and TCP health, then pij-rs ping reports healthy/offline=false.",
       "Confirm observer logs contain no foreign shared-server panes; private socket is mandatory, environment isolation alone is insufficient."
     ],
+    "backend_pairing": "Real Registry requires Real Spine; refuse incompatible Real Registry + Fake Spine before store open/migrate, with the one-writer constraint named. Never silently promote. Fake Registry + Real Spine remains valid through the shared bus.",
     "forbidden": [
       "flowspace3 daemon in any form",
       "main checkout writes",
@@ -2215,8 +2237,10 @@
     "followup": "Explicit daemon PIJ_TMUX_SOCKET/refuse guard is outside plan 139 per prime ruling."
   },
   "toolchain": {
-    "cargo": "1.95.0",
-    "rustc": "1.95.0",
+    "cargo": "1.98.0",
+    "rustc": "1.98.0",
+    "invocation": "~/.cargo/bin/cargo; use the installed rustup shim, never PATH Homebrew cargo",
+    "u0_path_observation": "Homebrew cargo/rustc 1.95.0 were observed at baseline; rust-toolchain.toml is authoritative and installed rustup1.98.0 is the validation toolchain",
     "omp": "18.0.10",
     "harness": "0.14.0"
   },

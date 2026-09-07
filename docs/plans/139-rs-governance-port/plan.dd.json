@@ -76,7 +76,7 @@
         {
           "id": "AC6",
           "claim": "questions are durable pending decisions with answer routing",
-          "text": "Seat A `report question \"…\"` ⇒ a decision row (open) visible to A's parent via anomalies and `pij-rs decisions`; the parent `pij-rs answer <decision> \"…\"` ⇒ the answer is delivered to A as a pushed turn AND the row closes; unanswered rows age into status-stale for the parent.",
+          "text": "Seat A `report question \"…\"` ⇒ a decision row (open) visible to A's parent via anomalies and `pij-rs decisions`; the parent `pij-rs answer <decision> \"…\"` ⇒ the answer is delivered to A as a pushed turn AND the row closes; unanswered rows age into status-stale for the parent. Self-answer by the asker records the resolved answerer and closes via decision.answered without a redundant push (answer_msg_id null); answers by a different authorized seat still push from that answerer. Existing /v1/send from==to refusal is unchanged.",
           "state": "unchecked"
         },
         {

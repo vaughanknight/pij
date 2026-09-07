@@ -1,0 +1,163 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Coder u6 — re-point: shim serve-or-refuse, skills, API doc",
+        "role": "coder",
+        "plan": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6/docs/plans/139-rs-governance-port/plan.dd.json",
+        "seat": "unbound; registry identity required at canary",
+        "updated": "2026-09-07"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "Build exactly u6: RS_ROUTE_TABLE covers every verb in the skill table (serve or E-RS-UNPORTED); enforcement test; skills cite rs verbs; API doc with pinned samples; chainglass confirmation. No product scope decisions; ask PM."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        {
+          "id": "i0",
+          "text": "FIRST set cwd /Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6; ABSOLUTE paths for all file tools because spawn root is main. Load BOTH pij and builder skills. Read this packet, your impl-guide row, and canonical governance routes/events JSON before proposing changes."
+        },
+        {
+          "id": "i1",
+          "text": "Canary + ACK before code: run pij whoami and quote exact output, quote actual OMP footer model/effort, then numbered implementation plan and evidence-backed seam questions via pij_send to pij-lonely-ikrie. Model is github-copilot/gpt-6-astra-1m high on OMP. Wait for PM to rule ack."
+        },
+        {
+          "id": "i2",
+          "text": "Author named baseline-compatible HTTP/CLI regressions and unit tests FIRST. Consume canonical contract fixtures rather than restating schemas. No compile-error-only RED; regression must run against old route behavior. PM owns RED/GREEN execution receipts."
+        },
+        {
+          "id": "i3",
+          "text": "CONCURRENT EDIT WAVE: skip every build/test/formatter/linter/harness boot/check and do not commit. Implement source/tests, then report READY_TO_VALIDATE with exact commands and a snap-in recipe and HOLD. PM validates after every editing seat pauses, composes, and commits. READY is not DONE."
+        },
+        {
+          "id": "i4",
+          "text": "Stay in your owned fence. Migration owner for this unit: none; use existing SqliteOrchestration/shared pool, never duplicate SQL in daemon/core. PM owns all common lib.rs/module/Route/Services/CLI wiring and dependency metadata."
+        },
+        {
+          "id": "i5",
+          "text": "Follow governance-routes.json#isolation for any later runtime proof: private port/state-dir/HOME/Claude+XDG homes/TMUX socket for daemon AND clients. Never main writes, main node_modules writes, npm install/ci in main, port7461 fixtures, global links/settings writes, production restart/bounce, flowspace3 daemon, or omp update. Never inspect pij inbox logs."
+        },
+        {
+          "id": "i6",
+          "text": "Use flowspace3 search before meaning-shaped discovery (client only), exact grep for identifiers, LSP for symbols but scope-check: worktree LSP can index main and falsely return zero refs. Record friction with harness observe; never drain or clear buffers."
+        },
+        {
+          "id": "i7",
+          "text": "Report start/end via pij-rs report now; messages via pij_send to PM. OMP may misroute live parent messages into internal scouts: explicitly relay to main context. Do not infer silence means approval."
+        },
+        {
+          "id": "i8",
+          "text": "READY receipt assets/receipt-u6.json includes changed paths, constructor signatures/call order/CLI Route match arms, named tests and pre-fix RED strategy, toolchain versions, and ASSUMPTIONS about sibling state/order/ownership. No stubs, fake fallbacks, unimplemented subverbs, or undocumented scope cuts."
+        },
+        {
+          "id": "i9",
+          "text": "Clean cutover: every verb in skills/pij README CLI table either serves rs or returns E-RS-UNPORTED with named ledger status, never legacy fallthrough (including absent daemon, missing credentials, unlisted leaf). Preserve delivery behavior; do not add compact/new/reload transport."
+        },
+        {
+          "id": "i10",
+          "text": "Prime-expanded fence includes adapters/generation-router.ts and its tests. rs-native --json forwards the ORIGINAL decoded v2 envelope intact; no data-only unwrap, rename projection, or rewrapper. GET filters and POST argv/caller share daemon parser. Pin native/shim byte parity goldens for all ported governance verbs."
+        },
+        {
+          "id": "i11",
+          "text": "The enforcement test READS the actual skill CLI-verb table against route/refusal inventory; adding a synthetic table verb must fail. Do not duplicate the table in the test. Enumerate every formerly silent-legacy verb that becomes refused for prime rollout notice."
+        },
+        {
+          "id": "i12",
+          "text": "Repoint peer/node/prime/ops/routing docs and API docs/how/pij-rs-api.md. Document auth trust boundary, seat role joins, NDJSON Hello/Event shape, JSON-string payload, machine cursor map/exclusive replay/live-only, and every governance route with pinned fixture sample. Production/chainglass evidence is prime-owned pending deploy; do not fabricate it."
+        },
+        {
+          "id": "i13",
+          "text": "Before plan archive, promote pinned runtime/API fixture samples into stable crates/testkit/fixtures/golden/api/ paths and migrate every permanent Rust include_str!/test reference away from docs/plans/139-rs-governance-port. Keep archived u0 contracts as historical receipts, not a second live schema. Named fixture parity/copy proof must protect the transition so archiving cannot break compilation."
+        },
+        {
+          "id": "i14",
+          "text": "Prime-approved interface cutover: destructive baton return/reclaim REQUIRE --lease-id <observed lease> from grant/show. Missing/mismatch E-RS-LEASE-STALE names current lease and fix; old shim caller must refuse, never silently resolve current-holder-only. Update every skill route example. Rebase permanent refusal ledger pointers/fixture include paths through archive; prefer stable API unsupported-status documentation over a removed active-plan path."
+        }
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        {
+          "id": "w1",
+          "text": "The PM is your interface: acks, questions, done reports. You never message prime or Jordan directly unless the PM's seat is dead."
+        },
+        {
+          "id": "w2",
+          "text": "DEFER to the PM: interface changes (they affect sibling units), dependency additions, schema/migration changes, anything outside your paths."
+        },
+        {
+          "id": "w3",
+          "text": "Your evidence outranks the packet: if the brief is wrong, say so at ack or stop-and-ask with the measurement — do not silently code around it."
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6",
+        "branch": "139-rs-governance-port-u6",
+        "fence": ".pi/extensions/pij/core/generation-routing.ts (+tests); .pi/extensions/pij/adapters/generation-router.ts (+tests); .pi/extensions/pij/cli.ts; skills/pij/**; docs/how/pij-rs-api.md; crates/testkit/fixtures/golden/api/**",
+        "forbidden_note": "Main/other worktrees/node_modules/global links/settings/prod daemon/government writes forbidden. Never hand-write .the-flow-state.json, the-flow.json, the-flow.md. Parent owns composition and final proof; no PR/merge/deploy."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        {
+          "id": "d1",
+          "text": "Every owned contract behavior implemented; fixtures/tests defend real boundary and refusal cases."
+        },
+        {
+          "id": "d2",
+          "text": "Named baseline-compatible regression plus exact PM validation commands; READY_TO_VALIDATE never implies green."
+        },
+        {
+          "id": "d3",
+          "text": "After edit barrier PM executes proof, composes, and runs full harness checks; production and chainglass are prime-owned."
+        },
+        {
+          "id": "d4",
+          "text": "Complete snap-in recipe + assumptions + changed paths + unharvested buffer supplied; no own merge/deploy."
+        }
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        {
+          "id": "r0",
+          "path": "skill://pij-team/TENETS.md",
+          "note": "doctrine"
+        },
+        {
+          "id": "r1",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6/docs/plans/139-rs-governance-port/impl-guide.dd.json",
+          "note": "binding unit/wave"
+        },
+        {
+          "id": "r2",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6/docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json",
+          "note": "requests/responses/refusals/isolation"
+        },
+        {
+          "id": "r3",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6/docs/plans/139-rs-governance-port/assets/contracts/governance-events.json",
+          "note": "event payloads/live ordering"
+        },
+        {
+          "id": "r4",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6/docs/plans/139-rs-governance-port/assets/tasks/phase-1/execution.log.md",
+          "note": "ruled seams and real environment receipts"
+        }
+      ]
+    }
+  ]
+}

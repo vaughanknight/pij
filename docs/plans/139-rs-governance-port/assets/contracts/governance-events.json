@@ -186,8 +186,8 @@
           "project": "governance-port",
           "ordinal": 139,
           "slug": "contracts",
-          "branch": "139-contracts",
-          "worktree": "/work/project-contracts",
+          "branch": "s139/contracts",
+          "worktree": "/work/project/s139-contracts",
           "base_ref": "main",
           "created_by": "pij-parent",
           "created_at": 1788739200000,
@@ -203,7 +203,7 @@
           "at": 1788739200000,
           "kind": "allocation",
           "seat": "pij-parent",
-          "payload": "{\"actor\":\"pij-parent\",\"action\":\"created\",\"record\":{\"id\":\"governance-port:contracts\",\"project\":\"governance-port\",\"ordinal\":139,\"slug\":\"contracts\",\"branch\":\"139-contracts\",\"worktree\":\"/work/project-contracts\",\"base_ref\":\"main\",\"created_by\":\"pij-parent\",\"created_at\":1788739200000,\"state\":\"created\"}}"
+          "payload": "{\"actor\":\"pij-parent\",\"action\":\"created\",\"record\":{\"id\":\"governance-port:contracts\",\"project\":\"governance-port\",\"ordinal\":139,\"slug\":\"contracts\",\"branch\":\"s139/contracts\",\"worktree\":\"/work/project/s139-contracts\",\"base_ref\":\"main\",\"created_by\":\"pij-parent\",\"created_at\":1788739200000,\"state\":\"created\"}}"
         }
       }
     },
@@ -218,8 +218,8 @@
           "project": "governance-port",
           "ordinal": 139,
           "slug": "contracts",
-          "branch": "139-contracts",
-          "worktree": "/work/project-contracts",
+          "branch": "s139/contracts",
+          "worktree": "/work/project/s139-contracts",
           "base_ref": "main",
           "created_by": "pij-parent",
           "created_at": 1788739200000,
@@ -235,7 +235,7 @@
           "at": 1788739200000,
           "kind": "allocation",
           "seat": "pij-parent",
-          "payload": "{\"actor\":\"pij-parent\",\"action\":\"closed\",\"record\":{\"id\":\"governance-port:contracts\",\"project\":\"governance-port\",\"ordinal\":139,\"slug\":\"contracts\",\"branch\":\"139-contracts\",\"worktree\":\"/work/project-contracts\",\"base_ref\":\"main\",\"created_by\":\"pij-parent\",\"created_at\":1788739200000,\"state\":\"closed\"}}"
+          "payload": "{\"actor\":\"pij-parent\",\"action\":\"closed\",\"record\":{\"id\":\"governance-port:contracts\",\"project\":\"governance-port\",\"ordinal\":139,\"slug\":\"contracts\",\"branch\":\"s139/contracts\",\"worktree\":\"/work/project/s139-contracts\",\"base_ref\":\"main\",\"created_by\":\"pij-parent\",\"created_at\":1788739200000,\"state\":\"closed\"}}"
         }
       }
     },

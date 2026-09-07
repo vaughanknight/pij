@@ -1,10 +1,10 @@
 {
-  "at": "2026-09-07T00:42:08Z",
+  "at": "2026-09-07T01:24:02Z",
   "verdict": "contract-consistency-pass",
   "routes": 22,
   "request_response_cases": 44,
   "event_cases": 30,
-  "refusal_envelopes": 3,
+  "refusal_envelopes": 4,
   "checks": [
     "unique method/path",
     "unique route case ids",
@@ -13,8 +13,8 @@
     "all sample events timestamped; internal seq absent"
   ],
   "sha256": {
-    "governance-routes.json": "0d032fd89464a2ad801735a4ee9a74d5ca73ee8f5d43388512eda4393cbf38d1",
-    "governance-events.json": "b4aa3e093087aea9f6cab0538d722e3c9105e253e2cde321efe1c8fdb3b08163"
+    "governance-routes.json": "8f8544e0a361d8f6eede1bd6e19e9e80902e4bdb831e5d62470db69f2eb7b5c3",
+    "governance-events.json": "6964899785448d6ec50a9756cb4f7f188001935d06c6ab64d684fd6f9fb4f762"
   },
   "implementation_status": "Not implementation acceptance; all production code is unchanged. Unit tests must consume these fixtures."
 }
