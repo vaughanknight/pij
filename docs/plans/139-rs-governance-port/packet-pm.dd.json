@@ -9,7 +9,7 @@
         "title": "PM packet \u2014 rs-governance-port",
         "role": "pm",
         "plan": "docs/plans/139-rs-governance-port/plan.dd.json",
-        "seat": "<filled at spawn>",
+        "seat": "pij-lonely-ikrie",
         "updated": "2026-09-07"
       }
     },
