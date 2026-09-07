@@ -1,0 +1,21 @@
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/index.test.ts .pi/extensions/pij/adapters/pi-runtime.test.ts .pi/extensions/pij/adapters/rust-runtime.test.ts .pi/extensions/pij/adapters/generation-router.test.ts
+
+(node:6690) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-rs-control-commands
+
+ ✓ .pi/extensions/pij/adapters/pi-runtime.test.ts (14 tests) 5ms
+ ✓ .pi/extensions/pij/adapters/generation-router.test.ts (27 tests) 16ms
+ ✓ .pi/extensions/pij/adapters/rust-runtime.test.ts (51 tests) 1415ms
+ ✓ .pi/extensions/pij/index.test.ts (17 tests) 1196ms
+     ✓ reasserts immediately on the first turn when startup publication missed  327ms
+     ✓ cancels a stale retry window on session shutdown  343ms
+
+ Test Files  4 passed (4)
+      Tests  109 passed (109)
+   Start at  12:13:23
+   Duration  1.77s (transform 734ms, setup 0ms, import 1.14s, tests 2.63s, environment 0ms)

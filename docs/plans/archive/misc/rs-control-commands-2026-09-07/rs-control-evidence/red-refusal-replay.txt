@@ -1,0 +1,24 @@
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/pij-rs-control-commands/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.87s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-bbc8c65d2367e9fa)
+
+running 1 test
+test delivery::tests::refused_control_id_replays_refusal_without_executing_again ... FAILED
+
+failures:
+
+---- delivery::tests::refused_control_id_replays_refusal_without_executing_again stdout ----
+
+thread 'delivery::tests::refused_control_id_replays_refusal_without_executing_again' (1082738355) panicked at crates/daemon/src/delivery/mod.rs:1986:9:
+assertion `left == right` failed
+  left: Queued { reason: Some("extension-stream"), next_retry_at: Some(0), draft_sha: None }
+ right: Refused { reason: "not armed" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    delivery::tests::refused_control_id_replays_refusal_without_executing_again
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 251 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

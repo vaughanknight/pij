@@ -1,0 +1,34 @@
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/pij-rs-control-commands/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.72s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-bbc8c65d2367e9fa)
+
+running 10 tests
+test pointer::tests::command_rendering_adds_the_pty_slash_to_the_bare_tag ... ok
+test pointer::tests::pointer_bytes_name_sender_and_pull_command_without_body ... ok
+test http::identity_tests::argv::parses_the_ready_gestures_own_command_line ... ok
+test pointer::tests::command_submission_is_distinct_from_typing_without_sending ... ok
+test registration::tests::actual_host_matches_executable_and_entrypoint_not_shell_command_text ... ok
+test pointer::worker::tests::failed_command_uses_durable_attempt_backoff ... ok
+test pointer::worker::tests::unbound_recipient_defers_command_even_when_pane_is_ready ... ok
+
+thread 'delivery::tests::command_claim_cannot_be_acked_without_execution_outcome' (1081888503) panicked at crates/daemon/src/delivery/mod.rs:1805:9:
+decoding a command is not executing it
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'pointer::worker::tests::command_draft_hold_carries_hash_then_releases_with_pty_receipt' (1081888509) panicked at crates/daemon/src/pointer/worker.rs:851:9:
+assertion `left == right` failed: command veto must publish its evidence
+  left: 0
+ right: 1
+test pointer::worker::tests::command_claim_submits_the_bare_tag_as_a_slash_command_and_never_uses_socket ... ok
+test pointer::worker::tests::command_draft_hold_carries_hash_then_releases_with_pty_receipt ... FAILED
+test delivery::tests::command_claim_cannot_be_acked_without_execution_outcome ... FAILED
+
+failures:
+
+failures:
+    delivery::tests::command_claim_cannot_be_acked_without_execution_outcome
+    pointer::worker::tests::command_draft_hold_carries_hash_then_releases_with_pty_receipt
+
+test result: FAILED. 8 passed; 2 failed; 0 ignored; 0 measured; 241 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`
