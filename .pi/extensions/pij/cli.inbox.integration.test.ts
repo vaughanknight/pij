@@ -115,7 +115,16 @@ function refusal(run: CliRun, reason: RegExp): void {
 	expect(envelope.meta).toMatch(reason);
 }
 
-describe("public pij inbox lifecycle against a private Rust daemon", () => {
+// A missing daemon binary is a build-environment fact, not a product defect.
+// CI builds it and sets PIJ_RS_BIN_REQUIRED=1 so absence fails loud there;
+// elsewhere (Windows compat job, a worktree without a cargo build) the suite
+// skips with the reason on the record instead of throwing.
+const RS_BINARY_PRESENT = existsSync(RS_BINARY);
+if (!RS_BINARY_PRESENT && process.env.PIJ_RS_BIN_REQUIRED === "1") {
+	throw new Error(`PIJ_RS_BIN_REQUIRED=1 but ${RS_BINARY} is missing; build with cargo build -p pij-cli --bin pij-rs`);
+}
+const describeWithDaemon = RS_BINARY_PRESENT ? describe : describe.skip;
+describeWithDaemon("public pij inbox lifecycle against a private Rust daemon", () => {
 	let root: string;
 	let pijHome: string;
 	let folder: string;
