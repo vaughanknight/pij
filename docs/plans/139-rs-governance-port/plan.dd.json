@@ -10,7 +10,8 @@
         "slug": "rs-governance-port",
         "ordinal": 139,
         "status": "draft",
-        "summary": "Every governance verb (project, stream, fence, dispatch/ack, canary, attest, task, node, baton/prime, anomalies, report verify, questions/decisions, close/reap, role) still executes against the frozen legacy TypeScript store while every seat lives in pij-rs; the rs store already holds the tables but exposes no route or verb. Port the governance surface to rs on one spine with stamped, broadcast descriptor events; put role on the seat row; derive anomalies from the rs spine; add close + reaper; make the legacy shim serve-or-refuse every verb with the rs name; re-point the skills and document the rs API. Plan 138's three phases are units u1/u2/u5 here."
+        "summary": "Every governance verb (project, stream, fence, dispatch/ack, canary, attest, task, node, baton/prime, anomalies, report verify, questions/decisions, close/reap, role) still executes against the frozen legacy TypeScript store while every seat lives in pij-rs; the rs store already holds the tables but exposes no route or verb. Port the governance surface to rs on one spine with stamped, broadcast descriptor events; put role on the seat row; derive anomalies from the rs spine; add close + reaper; make the legacy shim serve-or-refuse every verb with the rs name; re-point the skills and document the rs API. Plan 138's three phases are units u1/u2/u5 here.",
+        "backpressure": "assets/backpressure.dd.json#rows"
       }
     },
     {
@@ -47,55 +48,64 @@
           "id": "AC1",
           "claim": "one spine writer, live fan-out",
           "text": "chainglass's 4-command control (two /v1/events subscribers, one live-only, one with a since map) both receive a `report now` frame AND an `adopt` seat.put frame written while open; `grep -rn 'INSERT INTO spine_events' crates/store/src` returns only the Spine impl. Cursor never advances past an unemitted row (assert on the control).",
-          "state": "unchecked"
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0001"
         },
         {
           "id": "AC2",
           "claim": "stamped, decodable descriptor events",
           "text": "A fresh adopt's seat.put has `at` within 1 s of wall clock and a payload decoding to the SeatDescriptor; seat.tombstone has `at` and reason. Live sqlite proof on the isolated daemon and again on production after deploy.",
-          "state": "unchecked"
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0002"
         },
         {
           "id": "AC3",
           "claim": "role round-trip and ownership",
           "text": "`pij-rs adopt %N --harness claude --role prime` ⇒ /v1/seats role=prime; `pij-rs role <id> reviewer` by the seat or its parent updates it and a third seat is refused with a decodable reason; StateCard.role follows; `pij-rs list` shows it; chainglass confirms rendering with no banner (antelope, cited).",
-          "state": "unchecked"
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0003"
         },
         {
           "id": "AC4",
           "claim": "governance records round-trip on rs",
           "text": "On the isolated daemon: `pij-rs project create` → `stream create` → `fence show` → `dispatch <seat> --packet <file>` (three-state receipt: queued/delivered/acked) → recipient `ack` → `canary` → `attest` → `task set` → `node show` renders the tree with every row from the rs spine (seqs cited); the same sequence typed as legacy `pij <verb>` serves from rs (shim) with identical JSON. Also append one caller-attributed literal-kind event with spine append, observe it on both live subscribers, and show it in spine events/render without legacy writes. For every ported governance verb, native and legacy-shim --json output must be byte-identical on equivalent deterministic state, pinned as goldens.",
-          "state": "unchecked"
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0004"
         },
         {
           "id": "AC5",
           "claim": "anomalies are a spine view; verify closes done",
           "text": "`pij-rs anomalies` (unscoped) lists status-stale (legacy threshold 30 min; parked seats suppressed), unverified-done, open-question, unacked-dispatch, dead-seat rows computed from rs data only; a seat that reports done and a parent that runs `report verify` clears the unverified-done row; each row carries the exact relay line as today. One named crates/core constant owns the anomaly threshold; the separate 10 min per-command stderr nudge remains unchanged. Relay detail text matches legacy byte-for-byte under deterministic inputs.",
-          "state": "unchecked"
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0005"
         },
         {
           "id": "AC6",
           "claim": "questions are durable pending decisions with answer routing",
-          "text": "Seat A `report question \"…\"` ⇒ a decision row (open) visible to A's parent via anomalies and `pij-rs decisions`; the parent `pij-rs answer <decision> \"…\"` ⇒ the answer is delivered to A as a pushed turn AND the row closes; unanswered rows age into status-stale for the parent. Self-answer by the asker records the resolved answerer and closes via decision.answered without a redundant push (answer_msg_id null); answers by a different authorized seat still push from that answerer. Existing /v1/send from==to refusal is unchanged.",
-          "state": "unchecked"
+          "text": "Seat A `report question \"…\"` ⇒ a decision row (open) visible to A's parent via anomalies and `pij-rs decisions`; the parent `pij-rs answer <decision> \"…\"` ⇒ the answer is delivered to A as a pushed turn AND the row closes; unanswered rows age into status-stale for the parent. Self-answer by the asker records the resolved answerer and closes via decision.answered without a redundant push (answer_msg_id null); answers by a different authorized seat still push from that answerer. Existing /v1/send from==to refusal is unchanged. Prepared answer intent is immutable under ordinary retries. Only the current parent may explicitly supersede a terminal non-delivered intent, minting a new answer id and retaining old id/answerer/text in decision.answer-superseded. In-transit and delivered evidence refuse by name; no withdrawal/cancellation is introduced. Supersede additionally requires queue and spine to share the verified real SQL authority; mixed/fake configurations refuse E-RS-ANSWER-AUTHORITY-SPLIT naming both backends while ordinary answers remain supported.",
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0006"
         },
         {
           "id": "AC7",
           "claim": "close + reap",
-          "text": "Owner close writes seat.tombstone with at and reason and removes the row from /v1/seats; unrelated callers receive E-RS-OWNERSHIP. Auto-reap requires process confirmed dead or proc_start mismatched AND recorded pane confirmed absent; paneless seats decide on process identity alone. Unknown evidence never reaps and is reported unverifiable. Recycled-pid fixture proves no signal reaches the replacement process. Dry-run reports identical candidates without writes; run prints before/after counts. Isolated-daemon proof before handoff; production receipt pending prime deploy.",
-          "state": "unchecked"
+          "text": "Owner close writes seat.tombstone with at and reason and removes the row from /v1/seats; unrelated callers receive E-RS-OWNERSHIP. Auto-reap requires process confirmed dead or proc_start mismatched AND recorded pane confirmed absent; paneless seats decide on process identity alone. Unknown evidence never reaps and is reported unverifiable. Recycled-pid fixture proves no signal reaches the replacement process. Dry-run reports identical candidates without writes; run prints before/after counts. Isolated-daemon proof before handoff; production receipt pending prime deploy. Process absence requires exit1 with exactly the explicit ps header and empty stderr; exit0 with a process row is live evidence. Failed empty output, diagnostics, malformed output and signals remain UNKNOWN. Real Child kill/wait recovery stays operational. Parent repeat-close returns the existing receipt; retired self retries remain refused but name the original tombstone seq.",
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0007"
         },
         {
           "id": "AC8",
           "claim": "legacy shim: serve or refuse, never silent legacy",
           "text": "For every verb in skills/pij's CLI-verb table, `pij <verb> …` either serves from rs (routed) or exits non-zero with `E-RS-UNPORTED <verb>: …` naming the ledger item; an enforcement test enumerates the table against RS_ROUTE_TABLE so a new verb cannot fall through; `pij anomalies` no longer answers from the legacy spine.",
-          "state": "unchecked"
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0008"
         },
         {
           "id": "AC9",
           "claim": "skills and API doc re-pointed",
-          "text": "skills/pij routes (peer, node, prime, ops, 00-routing) cite rs verbs for every ported job and the refusal for every unported one (grep for legacy-only verbs = 0 in ported rows); docs/how/pij-rs-api.md documents /v1/seats row fields, the StreamFrame, cursor semantics, auth, and every governance route with a request/response sample pinned as a fixture.",
-          "state": "unchecked"
+          "text": "skills/pij routes (peer, node, prime, ops, 00-routing) cite rs verbs for every ported job and the refusal for every unported one (grep for legacy-only verbs = 0 in ported rows); docs/how/pij-rs-api.md documents /v1/seats row fields, the StreamFrame, cursor semantics, auth, and every governance route with a request/response sample pinned as a fixture. Document terminal-only answer supersession, the in-transit withdrawal limitation, and the shared-SQL authority requirement with named mixed/fake refusal samples.",
+          "state": "unchecked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0009"
         }
       ]
     },
@@ -106,14 +116,14 @@
           "id": "ph-c0a1",
           "title": "Contract + spine: one writer, stamped descriptor events (u0, u1)",
           "brief": "PM freezes wire contracts (assets/contracts/governance-routes.json + events). u1 makes EventBus the only spine writer; ReportService and Registry emit through it with real `at` and descriptor payloads. RED = chainglass's positive control.",
-          "state": "unchecked",
+          "state": "checked",
           "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks"
         },
         {
           "id": "ph-b2d4",
           "title": "Role + governance records (u2 ∥ u3)",
           "brief": "u2: --role on register/adopt, `pij-rs role`, seat_roles joined onto /v1/seats and StateCard, ownership self-or-parent. u3: routes + verbs over projects/streams/fences/dispatches/batons/prime_designation + canary/attest/task/node; three-state dispatch receipts.",
-          "state": "unchecked",
+          "state": "checked",
           "tasks": "assets/tasks/phase-2/tasks.dd.json#tasks",
           "depends_on": [
             "ph-c0a1"

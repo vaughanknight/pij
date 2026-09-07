@@ -16,6 +16,7 @@ pub mod federation;
 pub mod lifecycle;
 pub mod pane_observer;
 pub mod pointer;
+pub mod reaper;
 mod registration;
 
 // u-orchestration's git-facts gatherer: IO belongs at the runtime root, and a
@@ -126,6 +127,10 @@ pub struct Services {
     pub roles: Arc<http::role::RoleService>,
     /// Governance records and delivery-receipt projection on the event spine pool.
     pub governance: Arc<http::governance::GovernanceService>,
+    /// Durable questions and answers on the shared publication and delivery paths.
+    pub decisions: Arc<http::decisions::DecisionService>,
+    /// Existing anomaly detector supplied by the shared governance records.
+    pub anomalies: Arc<http::anomalies::AnomalyService>,
     /// Whether this daemon is running entirely on fakes.
     pub offline: bool,
 }
@@ -353,6 +358,20 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         pij_store::SqliteOrchestration::new(spine_pool.clone()),
         Arc::clone(&event_bus),
     ));
+    let decisions = Arc::new(http::decisions::DecisionService::new(
+        pij_store::SqliteOrchestration::new(spine_pool.clone()),
+        Arc::clone(&registry),
+        Arc::clone(&event_bus),
+        Arc::clone(&delivery),
+        config.adapters.queue,
+        config.adapters.spine,
+    ));
+    let anomalies = Arc::new(http::anomalies::AnomalyService::new(
+        pij_store::SqliteOrchestration::new(spine_pool.clone()),
+        Arc::clone(&registry),
+        Arc::clone(&event_bus),
+        Arc::clone(&liveness),
+    ));
     let governance = Arc::new(http::governance::GovernanceService::new(
         pij_store::SqliteOrchestration::new(spine_pool),
         Arc::clone(&event_bus),
@@ -373,6 +392,8 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         delivery,
         roles,
         governance,
+        decisions,
+        anomalies,
         offline: config.is_fully_offline(),
     })
 }

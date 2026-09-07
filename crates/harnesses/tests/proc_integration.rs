@@ -16,10 +16,9 @@ fn own_process_has_a_stable_start_identity() {
 }
 
 #[test]
-fn a_pid_the_platform_cannot_represent_is_absent() {
+fn an_unrepresentable_pid_is_an_observation_error() {
     let adapter = ProcLiveness::new();
-    assert_eq!(
-        block_on(adapter.proc_start(u32::MAX)).expect("an out-of-range pid is observable absence"),
-        None
-    );
+    let error = block_on(adapter.proc_start(u32::MAX))
+        .expect_err("an invalid pid is a failed probe, not evidence of absence");
+    assert!(error.to_string().contains(&u32::MAX.to_string()));
 }

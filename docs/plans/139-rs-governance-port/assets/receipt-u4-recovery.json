@@ -1,0 +1,131 @@
+{
+  "unit": "u4",
+  "amendment": "terminal-only-answer-supersede",
+  "status": "READY_TO_VALIDATE",
+  "validation_status": "NOT_RUN_BY_WORKER",
+  "committed": false,
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4",
+  "initial_handoff": {
+    "receipt": "docs/plans/139-rs-governance-port/assets/receipt-u4.json",
+    "receipt_sha256": "b7f926f637a7677399bcdadd9244f767b9291ee5206ca98a05e9cde895de882a",
+    "parent_captured_patch_sha256": "4b970166ad7a879074820724481299e727d1ec9645608c163e8597968c4d0a77",
+    "unchanged": true
+  },
+  "ruling": {
+    "owner": "pij-minor-unicorn",
+    "resolved": true,
+    "supersedes": "Initial receipt ASSUMPTIONS[4] is no longer pending: explicit terminal-only recovery is now implemented.",
+    "authority": "Only current recorded parent may supersede; ordinary asker/self answer authority is unchanged.",
+    "eligibility": "Terminal non-delivered intent only: no-queue failed/prepared intent, terminal failed queue job, or completed terminal Refused outcome. Existing pending/running jobs, pending Held outcomes and uncompleted direct reservations refuse. Delivered/acked evidence refuses.",
+    "limitation": "An answer in transit cannot be withdrawn; wait for its terminal outcome."
+  },
+  "artifacts": {
+    "patch": {
+      "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4/docs/plans/139-rs-governance-port/assets/u4-source-recovery.patch",
+      "sha256": "4ec3a57bfb245439876311e268874e37a932c07eddfaaf11940bbe705d12c89d"
+    },
+    "canonical_delta": {
+      "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4/docs/plans/139-rs-governance-port/assets/contracts-delta-u4-supersede.json",
+      "sha256": "8e020caa74cb880aa0bbf3ce8b3dd1883d9b5ebd06bcdb8995c4c4f192e5b9ba"
+    }
+  },
+  "changed_paths": {
+    "crates/daemon/src/http/decisions.rs": {
+      "initial_sha256": "40d460bdadd527d5ed61490a80cf40300aaf8e0968b7a5699ab32a408474346b",
+      "recovery_sha256": "76183e8bbe04babdd9291ba5f1727e48f7d648d8b210aabe601f0e49010f041e"
+    },
+    "crates/store/src/decisions.rs": {
+      "initial_sha256": "384e1ddef7f6b32b59fd281ba2c092191b99529a9fafd77a3eeaeb2a52014de3",
+      "recovery_sha256": "b8e035d303bdebcc39160f0cdc8adc63405931d8897766776020371707d10aea"
+    },
+    "crates/store/src/spine.rs": {
+      "initial_sha256": "81b5664d0101d783962e13e38821110654e3c2754288bd18b0af5f64ba3bb27d",
+      "recovery_sha256": "a23d827cc726c5ce2ef2507b969756b6afd6d91bd6a4952c88a52acffb092ad5"
+    }
+  },
+  "composition": [
+    "Apply the bounded recovery patch atop the exact initial three file hashes, not atop the pre-u4 checkpoint. Initial 13-path patch and receipt remain immutable.",
+    "Parent has already fixed three initial fake namespace lines. This final source includes the same pij_testkit::fakes paths. If those hunks are already applied, retain them rather than reverting; the three final owned files can be taken directly at their recovery hashes after checking for other parent edits.",
+    "Merge contracts-delta-u4-supersede.json into PM-owned canonical fixtures before running new golden/parser tests: route.append_cases/invariants, merge_refusals, events.append. Do not replace canonical fixture files wholesale.",
+    "PM/u6 owns documentation: include the exact in-transit limitation and clarify that explicit supersede does not cancel or withdraw a message. The delta includes wording and queue-expiry caveat.",
+    "No new Endpoint, Services field, constructor argument, CLI command, core port, dependency or migration. Existing CLI argv forwarding carries --supersede unchanged.",
+    "DecisionService::answer now takes (actor, id, answer, supersede: bool); route and existing worker-owned callers migrated.",
+    "SqliteOrchestration::answer_decision_committed now takes (id, actor, expected_msg_id: Option<&str>, at); every worker-owned caller migrated. Exact-message comparison prevents old completion closing a replacement.",
+    "New SqliteOrchestration::supersede_decision_answer_committed(id, actor, answer, at) returns (Event, StoredDecision). New spine_head() returns Result<Seq> from MAX(seq) observation on the existing pool."
+  ],
+  "atomicity_and_identity": [
+    "Current parent is resolved inside the shared EventBus publication boundary. Delivery vetoes are read inside the same SQLite write transaction as replacement, so queue claims/acks cannot overtake the check before commit.",
+    "decision.answer-superseded atomically records superseded.answer_msg_id, answered_by, answer and the fresh open prepared record. The new id is <decision>-answer-<actual allocated supersession seq>; no MAX/COUNT sequence allocation.",
+    "No queue mutation or transport cancellation is introduced. The new message is admitted only through existing DeliveryService; a new refusal leaves the replacement prepared/open with durable supersession evidence.",
+    "Ordinary identical retry reads the replacement id from durable state. A fresh explicit supersede is a separate governed operation, not an automatic retry.",
+    "Current-parent authorization is policy. Transit/delivered vetoes are one-directional safety interlocks: removing them permits more replacements, never grants different actor authority."
+  ],
+  "capability_evidence": [
+    {
+      "path": "crates/core/src/ports.rs:188-268",
+      "fact": "Queue has no cancel/withdraw method. ack requires an active claim; serial-key ordering is not cancellation."
+    },
+    {
+      "path": "crates/store/src/queue.rs:222-247",
+      "fact": "Expired delivery:* claims return to pending. Only non-delivery kinds are failed on lease expiry. This amendment invents no terminal expired-unknown state or timer; a pre-existing Outcome::Failed reason can describe one."
+    },
+    {
+      "path": "crates/store/src/queue.rs:533-610,632-681",
+      "fact": "jobs state done is durable ack evidence; delivered_messages is a bounded pre-injection/dedupe ledger, not an eternal completion archive."
+    },
+    {
+      "path": "crates/daemon/src/delivery/mod.rs:366-405",
+      "fact": "Direct delivery reserves before injection. Queued/Err compensate; Ok(Refused) retains the marker. A completed Refused audit is terminal; an uncompleted reservation is not."
+    },
+    {
+      "path": "crates/core/src/model.rs:727-745",
+      "fact": "Held is explicitly pending; Refused is explicitly terminal. Neither is mislabeled delivered."
+    },
+    {
+      "path": "crates/daemon/src/delivery/mod.rs:1196-1201",
+      "fact": "Immutable delivery.outcome payload stores msg_id and tagged outcome. Recovery consults delivered history and latest Held/Refused after cache eviction."
+    }
+  ],
+  "cursor_fix": "DecisionService::list uses shared-store spine_head(), a bounded SELECT COALESCE(MAX(seq),0), rather than bus.tail(None,Seq(0)) and copying all event history. MAX is observation only, never identity allocation.",
+  "proof": {
+    "executed_by_worker": false,
+    "reason": "PM explicitly prohibited worker builds, tests, formatters, linters, harness checks and commits during the concurrent wave.",
+    "cwd_after_composition": "/Users/jordanknight/pi-hacking/pij",
+    "commands": [
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-store decisions::tests",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon http::decisions::tests",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --test governance_u4_baseline",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-cli decisions::tests",
+      "harness checks"
+    ],
+    "new_named_tests": [
+      "superseded_intent_and_audit_survive_reopen",
+      "supersede_row_failure_rolls_back_new_event_and_linkage",
+      "obsolete_answer_completion_cannot_close_replacement_intent",
+      "spine_head_observes_empty_and_latest_committed_sequence",
+      "supersede_failed_delivery_mints_new_id_and_retries_stably",
+      "supersede_delivered_answer_refuses_after_cache_eviction",
+      "supersede_old_parent_and_asker_refuse",
+      "supersede_pending_and_claimed_jobs_refuse",
+      "supersede_terminal_failed_queue_job_reopens_before_readmission",
+      "supersede_parser_consumes_canonical_typed_and_argv_requests",
+      "supersede_direct_delivery_reservation_refuses_without_a_terminal_receipt",
+      "supersede_terminal_refusal_keeps_replacement_subject_to_delivery_policy",
+      "supersede_transport_hold_remains_in_transit_after_cache_eviction"
+    ],
+    "proof_ceiling": "Authored source/witnesses only. No worker RED, GREEN, smoke, formatting, lint, or compile-success claim. Parent reported three initial fake namespace compile errors; these are corrected here and are not behavioral RED.",
+    "runtime_smoke": "PM owns private composed daemon/CLI smoke under canonical isolation (private state-dir/HOME/CLAUDE_CONFIG_DIR/XDG_CONFIG_HOME/TMUX socket, never production port7461). Exercise answer --supersede with failed intent, pending refusal, delivered refusal and current-parent authority; no worker production control."
+  },
+  "harness": {
+    "buffer": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4/.harness/temp/agent/session-buffer.md",
+    "captured": [
+      "DL-001 LSP worktree false-empty references; code_actions also failed with stale-offset error.",
+      "DL-002 semantic hold blocks PM amendments; workflow edit pause must remain waiting, not operator hold."
+    ],
+    "encoded_in_witnesses": "Terminal versus pending outcomes, durable audit after cache eviction, transactional rollback, exact-message closure fencing, and bounded cursor observation.",
+    "offer": "Encode READY_TO_VALIDATE worker handoffs to publish waiting, never semantic hold.",
+    "drained": false
+  },
+  "seat_state": "waiting; source edits paused, PM messages remain deliverable",
+  "open_policy_questions": []
+}

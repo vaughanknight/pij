@@ -24,12 +24,15 @@
 //!    persists nothing. Answering from a re-read makes that class of defect
 //!    unrepresentable rather than merely tested-against.
 
+use std::fmt::Write as _;
+
 use axum::extract::{Json, Query, State};
 use axum::http::StatusCode;
 use axum::response::Response;
-use pij_core::model::{Envelope, SeatDescriptor, SeatId};
+use pij_core::model::{Envelope, ErrorKind, SeatDescriptor, SeatId};
 use pij_core::ports::SeatFilter;
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
 use super::{
     AppState, Registration, RegistrationResponse, allocate_memorable_id, envelope, internal,
@@ -354,20 +357,47 @@ pub(crate) fn is_live(seat: &SeatDescriptor) -> bool {
 /// `bound: true` for a seat nothing can address — identity and reporting claiming
 /// success while delivery refuses the same recipient. The liveness of the process
 /// makes the wrong answer more convincing, not more true.
-pub(crate) fn refuse_tombstoned(command: &str, seat: &SeatDescriptor) -> Option<Response> {
+pub(crate) async fn refuse_tombstoned(
+    state: &AppState,
+    command: &str,
+    seat: &SeatDescriptor,
+) -> Option<Response> {
     if is_live(seat) {
         return None;
     }
-    Some(refused(
-        command,
-        format!(
-            "seat `{}` is tombstoned and is not an identity: {}. A dead row can still name a live              pid — supersession keeps the process identity — so confirming it would report a              binding for a seat nothing can address.",
-            seat.id,
-            seat.tombstone_reason
-                .as_deref()
-                .unwrap_or("no reason recorded"),
-        ),
-    ))
+    let mut meta = format!(
+        "seat `{}` is tombstoned and is not an identity: {}. A dead row can still name a live pid — supersession keeps the process identity — so confirming it would report a binding for a seat nothing can address.",
+        seat.id,
+        seat.tombstone_reason
+            .as_deref()
+            .unwrap_or("no reason recorded"),
+    );
+    let mut details = json!({ "seat": seat.id });
+    // This is evidence attached to an existing refusal, never a new identity
+    // ladder. Read one seat's latest tombstone; unrelated later rows cannot win.
+    match state
+        .services
+        .spine
+        .latest_matching(&seat.id, &["seat.tombstone"])
+        .await
+    {
+        Ok(Some(event)) => match event.seq {
+            Some(seq) => {
+                details["tombstone_seq"] = json!(seq);
+                write!(&mut meta, " Original tombstone event: spine {}.", seq.0)
+                    .expect("writing to String cannot fail");
+            }
+            None => meta.push_str(" Historical tombstone event has no recorded sequence."),
+        },
+        Ok(None) => meta.push_str(" No historical tombstone event sequence is available."),
+        Err(error) => {
+            write!(&mut meta, " Tombstone history lookup failed: {error}.")
+                .expect("writing to String cannot fail");
+        }
+    }
+    let mut answer: Envelope<Value> = Envelope::refused(command, ErrorKind::Refused, meta);
+    answer.details = Some(details);
+    Some(envelope(StatusCode::BAD_REQUEST, &answer))
 }
 
 const ADOPT: &str = "pij adopt";
@@ -749,21 +779,44 @@ pub(crate) async fn resolve_seat(
         ));
     }
     if let Some(pane) = pane.as_deref() {
-        let seats = match state.services.registry.list(SeatFilter::default()).await {
+        let mut seats = match state.services.registry.list(SeatFilter::default()).await {
             Ok(seats) => seats,
             Err(error) => return Resolved::Refusal(internal(command, error)),
         };
-        let Some(seat) = seats
-            .into_iter()
-            .find(|seat| is_live(seat) && seat.pane.as_deref() == Some(pane))
-        else {
-            return Resolved::Refusal(refused(
-                command,
-                format!(
-                    "no live seat in the rs store owns pane `{pane}` — this seat is not registered \
-                     here. Run `pij adopt \"$TMUX_PANE\" --harness <h>` first."
-                ),
-            ));
+        let seat = match seats
+            .iter()
+            .position(|seat| is_live(seat) && seat.pane.as_deref() == Some(pane))
+        {
+            Some(index) => seats.swap_remove(index),
+            None => {
+                // A pane's unambiguous retired history can explain a refusal,
+                // but cannot authenticate its caller or choose a replacement.
+                let mut history = seats
+                    .iter()
+                    .filter(|seat| !is_live(seat) && seat.pane.as_deref() == Some(pane));
+                let retired = match (history.next(), history.next()) {
+                    (Some(retired), None)
+                        if asserted
+                            .as_deref()
+                            .is_none_or(|id| id == retired.id.as_str()) =>
+                    {
+                        Some(retired)
+                    }
+                    _ => None,
+                };
+                if let Some(retired) = retired
+                    && let Some(refusal) = refuse_tombstoned(state, command, retired).await
+                {
+                    return Resolved::Refusal(refusal);
+                }
+                return Resolved::Refusal(refused(
+                    command,
+                    format!(
+                        "no live seat in the rs store owns pane `{pane}` — this seat is not registered \
+                         here. Run `pij adopt \"$TMUX_PANE\" --harness <h>` first."
+                    ),
+                ));
+            }
         };
         if let Some(asserted) = asserted.as_deref()
             && asserted != seat.id.0
@@ -782,7 +835,7 @@ pub(crate) async fn resolve_seat(
     }
     let asserted = SeatId::from(asserted.expect("one of the two is present"));
     match state.services.registry.get(&asserted).await {
-        Ok(Some(seat)) => match refuse_tombstoned(command, &seat) {
+        Ok(Some(seat)) => match refuse_tombstoned(state, command, &seat).await {
             Some(refusal) => Resolved::Refusal(refusal),
             None => Resolved::Seat(seat, ResolvedBy::AssertedId),
         },

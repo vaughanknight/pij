@@ -44,6 +44,65 @@ impl SqliteRegistry {
     pub fn new(pool: Pool<Sqlite>, publisher: Arc<dyn RegistryPublisher>) -> Self {
         SqliteRegistry { pool, publisher }
     }
+
+    async fn publish_tombstone(
+        &self,
+        seat: SeatId,
+        reason: String,
+        expected: Option<SeatDescriptor>,
+    ) -> Result<Seq> {
+        let pool = self.pool.clone();
+        let store = self.store_description();
+        self.publisher
+            .publish_registry(Box::pin(async move {
+                require_current_schema(&pool).await?;
+                let mut tx = begin_write(&pool).await?;
+                if let Some(expected) = expected {
+                    let row = sqlx::query("SELECT * FROM seats WHERE id = ?1")
+                        .bind(seat.as_str())
+                        .fetch_optional(&mut *tx)
+                        .await
+                        .map_err(adapter_error)?;
+                    let current = row.as_ref().map(row_to_descriptor).transpose()?;
+                    if current.as_ref() != Some(&expected) {
+                        tx.rollback().await.map_err(adapter_error)?;
+                        return Err(PijError::GovernanceRefused {
+                            code: "E-RS-INCARNATION-CHANGED".to_string(),
+                            record: seat.to_string(),
+                        });
+                    }
+                }
+                let mut event = registry_event(
+                    "seat.tombstone",
+                    &seat,
+                    serde_json::json!({ "reason": reason }).to_string(),
+                )?;
+                let seq = append_in_transaction(&mut tx, &event).await?;
+                let affected = sqlx::query(
+                    "UPDATE seats SET tombstoned_at = ?2, tombstone_reason = ?3, \
+                 native_extension_delivery = 0, seq = ?4 WHERE id = ?1",
+                )
+                .bind(seat.as_str())
+                .bind(event.at as i64)
+                .bind(&reason)
+                .bind(seq.0 as i64)
+                .execute(&mut *tx)
+                .await
+                .map_err(adapter_error)?
+                .rows_affected();
+                if affected == 0 {
+                    // Unconditional intent keeps its original absence refusal. The
+                    // guarded path already checked presence under this transaction.
+                    tx.rollback().await.map_err(adapter_error)?;
+                    return Err(PijError::NoRegistryEntry { seat, store });
+                }
+                tx.commit().await.map_err(adapter_error)?;
+                event.seq = Some(seq);
+                Ok((event, None))
+            }))
+            .await
+            .map(|(seq, _)| seq)
+    }
 }
 
 fn adapter_error(error: sqlx::Error) -> PijError {
@@ -349,56 +408,16 @@ impl Registry for SqliteRegistry {
     }
 
     async fn tombstone(&self, seat: &SeatId, reason: &str) -> Result<Seq> {
-        let pool = self.pool.clone();
-        let seat = seat.clone();
-        let reason = reason.to_string();
-        let store = self.store_description();
-        self.publisher
-            .publish_registry(Box::pin(async move {
-                require_current_schema(&pool).await?;
-                let mut tx = begin_write(&pool).await?;
-
-                let mut event = registry_event(
-                    "seat.tombstone",
-                    &seat,
-                    serde_json::json!({ "reason": reason }).to_string(),
-                )?;
-                let seq = append_in_transaction(&mut tx, &event).await?;
-
-                let affected = sqlx::query(
-                    "UPDATE seats SET tombstoned_at = ?2, tombstone_reason = ?3, \
-             native_extension_delivery = 0, seq = ?4 WHERE id = ?1",
-                )
-                .bind(seat.as_str())
-                .bind(event.at as i64)
-                .bind(&reason)
-                .bind(seq.0 as i64)
-                .execute(&mut *tx)
-                .await
-                .map_err(adapter_error)?
-                .rows_affected();
-
-                if affected == 0 {
-                    // Tombstoning a seat nobody registered is a fact, not a no-op: a
-                    // silent success teaches the caller nothing. ROLL BACK first — the
-                    // split version committed the event anyway, so the spine recorded a
-                    // tombstone for a seat that was never there (review finding 6).
-                    tx.rollback().await.map_err(adapter_error)?;
-                    return Err(PijError::NoRegistryEntry {
-                        seat: seat.clone(),
-                        // The ADAPTER knows the file it actually opened, so it names it.
-                        // An absence is only evidence about the place that was searched,
-                        // and a sibling generation shipped an E-NOREG blaming a missing
-                        // extension when the real fact was HOME pointing at a fixture.
-                        store,
-                    });
-                }
-
-                tx.commit().await.map_err(adapter_error)?;
-                event.seq = Some(seq);
-                Ok((event, None))
-            }))
+        self.publish_tombstone(seat.clone(), reason.to_string(), None)
             .await
-            .map(|(seq, _)| seq)
+    }
+
+    async fn tombstone_if_unchanged(
+        &self,
+        expected: SeatDescriptor,
+        reason: String,
+    ) -> Result<Seq> {
+        self.publish_tombstone(expected.id.clone(), reason, Some(expected))
+            .await
     }
 }

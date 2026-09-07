@@ -874,6 +874,44 @@
           "payload": "{\"actor\":\"pij-parent\",\"refs\":[\"plan:139\"]}"
         }
       }
+    },
+    {
+      "id": "decision-answer-superseded",
+      "owner": "u4",
+      "decoded_payload": {
+        "actor": "pij-parent",
+        "action": "answer-superseded",
+        "record": {
+          "id": "decision-139-proof",
+          "asked_by": "pij-worker",
+          "parent": "pij-previous-parent",
+          "question": "Which branch owns the shared migration?",
+          "state": "open",
+          "asked_at": 1788739200000,
+          "question_seq": 101,
+          "answer": "u4 owns recovery; u3 retains migration 0014",
+          "answered_by": "pij-parent",
+          "answered_at": null,
+          "answer_msg_id": "decision-139-proof-answer-102"
+        },
+        "superseded": {
+          "answer_msg_id": "decision-139-proof-answer",
+          "answered_by": "pij-previous-parent",
+          "answer": "u3 owns migration 0014"
+        }
+      },
+      "frame": {
+        "type": "event",
+        "machine": "fixture-machine",
+        "cursor": 102,
+        "event": {
+          "v": 1,
+          "at": 1788739200005,
+          "kind": "decision.answer-superseded",
+          "seat": "pij-worker",
+          "payload": "{\"actor\":\"pij-parent\",\"action\":\"answer-superseded\",\"record\":{\"id\":\"decision-139-proof\",\"asked_by\":\"pij-worker\",\"parent\":\"pij-previous-parent\",\"question\":\"Which branch owns the shared migration?\",\"state\":\"open\",\"asked_at\":1788739200000,\"question_seq\":101,\"answer\":\"u4 owns recovery; u3 retains migration 0014\",\"answered_by\":\"pij-parent\",\"answered_at\":null,\"answer_msg_id\":\"decision-139-proof-answer-102\"},\"superseded\":{\"answer_msg_id\":\"decision-139-proof-answer\",\"answered_by\":\"pij-previous-parent\",\"answer\":\"u3 owns migration 0014\"}}"
+        }
+      }
     }
   ],
   "positive_control": {

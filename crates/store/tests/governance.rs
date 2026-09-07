@@ -984,15 +984,26 @@ async fn concurrent_baton_grants_commit_exactly_one_lease_and_request_transition
 
 #[tokio::test]
 async fn governance_migration_preserves_legacy_dispatches_without_inventing_metadata() {
+    let fresh = pij_testkit::FreshStore::new();
+    let options = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(fresh.path())
+        .create_if_missing(true);
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
-        .connect("sqlite::memory:")
+        .connect_with(options)
         .await
         .unwrap();
-    sqlx::raw_sql(include_str!("../migrations/0004_orchestration.sql"))
-        .execute(&pool)
-        .await
-        .unwrap();
+    let schema_13 = sqlx::migrate::Migrator {
+        migrations: std::borrow::Cow::Owned(
+            pij_store::migrate::MIGRATIONS
+                .iter()
+                .filter(|migration| migration.version <= 13)
+                .cloned()
+                .collect(),
+        ),
+        ..sqlx::migrate::Migrator::DEFAULT
+    };
+    schema_13.run(&pool).await.expect("apply historical schema");
     let mut project: Project = record("project");
     let mut stream: Stream = record("stream");
     let mut baton: BatonDefinition = record("baton");
@@ -1050,11 +1061,11 @@ async fn governance_migration_preserves_legacy_dispatches_without_inventing_meta
             .await
             .unwrap();
     }
-    sqlx::raw_sql(include_str!("../migrations/0014_governance.sql"))
-        .execute(&pool)
+    pool.close().await;
+    let upgraded = pij_store::open(&fresh.path())
         .await
-        .unwrap();
-    let store = SqliteOrchestration::new(pool);
+        .expect("upgrade historical store");
+    let store = SqliteOrchestration::new(upgraded);
     let pending = store.dispatch("old-pending").await.unwrap().unwrap();
     let acked = store.dispatch("old-ack").await.unwrap().unwrap();
     assert_eq!(pending.state, DispatchState::Queued);

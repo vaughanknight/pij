@@ -9,9 +9,12 @@
 
 #![deny(missing_docs)]
 pub mod address;
+pub mod anomalies;
 pub mod bounce;
 pub mod client;
+pub mod decisions;
 pub mod governance;
+pub mod lifecycle;
 pub mod role;
 
 pub use address::{AddressError, parse_destination, render_destination};

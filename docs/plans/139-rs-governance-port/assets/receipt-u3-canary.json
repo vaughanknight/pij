@@ -1,0 +1,54 @@
+{
+  "status": "READY_TO_VALIDATE",
+  "proof_grade": "positive fake-host HTTP proof, authored but not run",
+  "source": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3/crates/daemon/tests/governance_canary.rs",
+  "test": "fake_host_http_canary_requires_real_pointer_sha_ack_and_streams_fresh_observer_pass",
+  "patch": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3/docs/plans/139-rs-governance-port/assets/u3-canary.patch",
+    "sha256": "f6633b64ded5531607521ac5502a65154596e885e8a5af57d46305352881e636",
+    "bytes_utf8": 15600,
+    "source_files": [
+      "crates/daemon/tests/governance_canary.rs"
+    ]
+  },
+  "recipe": [
+    "Apply this standalone patch AFTER existing u1/u2/u3 and PM composition; no shared source modifications are included.",
+    "Run /Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --test governance_canary -- --nocapture from composed worktree.",
+    "No new dependency/module/export/fixture changes; Cargo discovers the integration target. It uses already-approved sha2 and existing harness/testkit/HTTP dependencies."
+  ],
+  "real_surfaces": [
+    "one private SQLite file via Real registry/spine/queue in build_services",
+    "authenticated ephemeral HTTP router and live NDJSON subscriber attached before request",
+    "actual canary-generated nonce packet and queued pointer, consumed through /v1/inbox",
+    "real queue claim job acknowledged through /v1/inbox/ack; follower emits delivered dispatch",
+    "SHA-256 computed from actual packet bytes; recipient /v1/ack runs concurrently before canary deadline",
+    "fresh Pi bind observer capture AFTER acknowledgement",
+    "streamed acked and canary-passed events with ordered cursors; pass cursor matches HTTP receipt",
+    "independently reopened SQLite reader equals returned/streamed canary record"
+  ],
+  "scripted_hosts": [
+    "FakeTmux explicitly lists pane, reports same pid as canonical seeded process, and serves private cwd header + existing pi-pane-ready.txt",
+    "FakeLiveness returns that paired pid/start stamp; same pane pid bypasses real OS subtree lookup",
+    "HarnessRegistry::real(FakeTmux) exercises Pi observer, not OMP model-catalog IO",
+    "FakeTransport::unreachable; test rejects using its deliver call as a fake success"
+  ],
+  "not_seeded": [
+    "dispatch row",
+    "transport delivery receipt",
+    "packet nonce/digest",
+    "recipient ack row",
+    "canary pass row/event"
+  ],
+  "arc_contract": "Registry/queue/bus are never replaced after build_services. Rebuild DeliveryService using final registry/queue/transport/InteractionGate/bus Arcs after swapping scripted host ports. Roles/governance retain original matching registry/bus/pool.",
+  "isolation_and_shutdown": "Existing fresh_dir creates unique owned state directory containing DB/signals/packets; private ephemeral TCP port, no daemon.key write or global mutation. Drop HTTP subscriber, gracefully stop/join HTTP, cancel/join owned follower, flush admitted bus publications; owned directory Drop cleans local fixtures.",
+  "deadline": "Consumes canonical --wait value; SHA ack must occur while canary request is unfinished; success must precede its real handler timeout. Entire flow additionally bounded for a useful failure instead of hanging.",
+  "fixture_inputs": [
+    "governance-routes.json canary-verified, dispatch-ack, register-with-role",
+    "governance-events.json dispatch-delivered, dispatch-acked, dispatch-canary-passed",
+    "crates/testkit/fixtures/harnesses/pi-pane-ready.txt"
+  ],
+  "validation": "No worker test/build/format/lint/commit commands or diagnostic requests executed. Patch packaging is not validation. PM owns compilation and runtime verdict.",
+  "source_defect": "No runtime observation yet; test does not weaken or bypass canary semantics. A failing composed run must be diagnosed as a source/fixture finding, not changed into synthetic success.",
+  "scope_limit": "This proves fake-host HTTP/SQL protocol behavior only when PM runs it. Real isolated CLI/harness canary remains separate PM acceptance evidence.",
+  "previous_u3_source_patch_unchanged": true
+}

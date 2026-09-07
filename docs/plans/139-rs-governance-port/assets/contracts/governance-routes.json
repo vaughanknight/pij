@@ -1708,6 +1708,51 @@
               "seq": 102
             }
           }
+        },
+        {
+          "id": "decision-answer-supersede",
+          "request": {
+            "decision": "decision-139-proof",
+            "answer": "u4 owns recovery; u3 retains migration 0014",
+            "caller": {
+              "TMUX_PANE": "%10",
+              "cwd": "/work/project"
+            },
+            "supersede": true
+          },
+          "shim_request": {
+            "argv": [
+              "answer",
+              "--supersede",
+              "decision-139-proof",
+              "u4 owns recovery; u3 retains migration 0014"
+            ],
+            "caller": {
+              "TMUX_PANE": "%10",
+              "cwd": "/work/project"
+            }
+          },
+          "response": {
+            "ok": true,
+            "command": "pij answer",
+            "v": 2,
+            "data": {
+              "decision": {
+                "id": "decision-139-proof",
+                "asked_by": "pij-worker",
+                "parent": "pij-previous-parent",
+                "question": "Which branch owns the shared migration?",
+                "state": "answered",
+                "asked_at": 1788739200000,
+                "question_seq": 101,
+                "answer": "u4 owns recovery; u3 retains migration 0014",
+                "answered_by": "pij-parent",
+                "answered_at": 1788739200006,
+                "answer_msg_id": "decision-139-proof-answer-102"
+              },
+              "seq": 103
+            }
+          }
         }
       ],
       "invariants": [
@@ -1716,7 +1761,18 @@
         "Question creation commits decision row plus decision.opened first, atomically, with question_seq equal to the allocated event seq. Retain report.question semantic publication afterward outside the bus lock; second-step failure explicitly names the durable decision rather than losing it.",
         "For another seat answer, persist answer/outbound linkage before delivering through existing DeliveryService to asked_by; do not route to parent instead. Use stable answer_msg_id.",
         "Non-self answer closes only after durable delivery acceptance; rejection leaves an inspectable open decision/refusal. Self-answer closes with resolved answerer and decision.answered, answer_msg_id=null, and no redundant push. The existing /v1/send self-send refusal remains unchanged.",
-        "Repeated identical answer must not duplicate push; conflicting answer on an answered row refuses. No custom retries or new transport."
+        "Repeated identical answer must not duplicate push; conflicting answer on an answered row refuses. No custom retries or new transport.",
+        "Only the current recorded parent may use answer --supersede <decision> <answer> (typed supersede=true); the asker, former parent and unrelated seats cannot supersede.",
+        "Supersede is restricted to a terminal non-delivered answer: failed/no-queue prepared intent or an already-recorded terminal expired-unknown outcome. Never use elapsed time to infer expiry.",
+        "An answer in transit cannot be withdrawn; wait for its terminal outcome. Pending/running jobs and direct-delivery reservations refuse E-RS-ANSWER-IN-TRANSIT with old answer_msg_id and job_state; delivered/acked answers refuse E-RS-ANSWER-DELIVERED.",
+        "Existing delivery claim expiry returns to pending, not terminal expired-unknown, and therefore remains refused. No queue cancellation, withdrawal, new transport, or custom retry is introduced.",
+        "The decision.answer-superseded event and fresh open prepared row commit atomically. The event retains the old answer_msg_id, answered_by and answer under superseded. A new answer_msg_id derives from the actual allocated supersession event seq, never MAX/COUNT guesses.",
+        "Ordinary identical retry uses the newly persisted answer_msg_id. Final closure verifies that exact msg id; an obsolete completion cannot close the replacement answer.",
+        "Delivery proof includes durable delivery.outcome history and done queue rows after bounded delivered-id eviction. A surviving pre-injection reservation with no completed audit is conservatively in transit.",
+        "DeliveryOutcome::Refused is terminal (core/model.rs); its completed audit permits explicit replacement even if the old pre-injection marker remains. DeliveryOutcome::Held is pending and vetoes supersede even after marker eviction. Every replacement still passes ordinary DeliveryService acceptance and may itself be refused.",
+        "Explicit supersede requires queue=real and spine=real with the composition root guaranteeing that queue, decision store and event bus use the same SQLite pool (persistent in production). Adapter labels alone are not proof of shared authority.",
+        "After current-parent authorization and before any replacement, mixed/fake backends refuse HTTP409 E-RS-ANSWER-AUTHORITY-SPLIT, naming both queue_backend and spine_backend. They do not append a supersession event, mutate the old decision, cancel old work, or admit a replacement.",
+        "Ordinary question, answer, identical retry and self-answer behavior remains available for all supported queue/spine configurations."
       ]
     },
     {
@@ -2151,6 +2207,108 @@
         "details": {
           "code": "E-RS-PACKET-SHA",
           "dispatch": "dispatch-139-proof"
+        }
+      }
+    },
+    "answer_in_transit_pending": {
+      "http_status": 409,
+      "cli_exit_nonzero": true,
+      "response": {
+        "ok": false,
+        "command": "pij answer",
+        "v": 2,
+        "error": "refused",
+        "meta": "E-RS-ANSWER-IN-TRANSIT an answer in transit cannot be withdrawn; wait for its terminal outcome",
+        "details": {
+          "decision": "decision-139-proof",
+          "answer_msg_id": "decision-139-proof-answer",
+          "job_state": "pending",
+          "code": "E-RS-ANSWER-IN-TRANSIT"
+        }
+      }
+    },
+    "answer_in_transit_claimed": {
+      "http_status": 409,
+      "cli_exit_nonzero": true,
+      "response": {
+        "ok": false,
+        "command": "pij answer",
+        "v": 2,
+        "error": "refused",
+        "meta": "E-RS-ANSWER-IN-TRANSIT an answer in transit cannot be withdrawn; wait for its terminal outcome",
+        "details": {
+          "decision": "decision-139-proof",
+          "answer_msg_id": "decision-139-proof-answer",
+          "job_state": "running",
+          "code": "E-RS-ANSWER-IN-TRANSIT"
+        }
+      }
+    },
+    "answer_delivered": {
+      "http_status": 409,
+      "cli_exit_nonzero": true,
+      "response": {
+        "ok": false,
+        "command": "pij answer",
+        "v": 2,
+        "error": "refused",
+        "meta": "E-RS-ANSWER-DELIVERED a delivered or acknowledged answer cannot be superseded",
+        "details": {
+          "decision": "decision-139-proof",
+          "answer_msg_id": "decision-139-proof-answer",
+          "job_state": "delivered",
+          "code": "E-RS-ANSWER-DELIVERED"
+        }
+      }
+    },
+    "answer_authority_split_real_fake": {
+      "http_status": 409,
+      "cli_exit_nonzero": true,
+      "response": {
+        "ok": false,
+        "command": "pij answer",
+        "v": 2,
+        "error": "refused",
+        "meta": "E-RS-ANSWER-AUTHORITY-SPLIT answer supersession requires shared SQLite queue and spine authority: {\"decision\":\"decision-139-proof\",\"queue_backend\":\"real\",\"spine_backend\":\"fake\"}",
+        "details": {
+          "decision": "decision-139-proof",
+          "queue_backend": "real",
+          "spine_backend": "fake",
+          "code": "E-RS-ANSWER-AUTHORITY-SPLIT"
+        }
+      }
+    },
+    "answer_authority_split_fake_real": {
+      "http_status": 409,
+      "cli_exit_nonzero": true,
+      "response": {
+        "ok": false,
+        "command": "pij answer",
+        "v": 2,
+        "error": "refused",
+        "meta": "E-RS-ANSWER-AUTHORITY-SPLIT answer supersession requires shared SQLite queue and spine authority: {\"decision\":\"decision-139-proof\",\"queue_backend\":\"fake\",\"spine_backend\":\"real\"}",
+        "details": {
+          "decision": "decision-139-proof",
+          "queue_backend": "fake",
+          "spine_backend": "real",
+          "code": "E-RS-ANSWER-AUTHORITY-SPLIT"
+        }
+      }
+    },
+    "answer_authority_split_fake_fake": {
+      "http_status": 409,
+      "cli_exit_nonzero": true,
+      "response": {
+        "ok": false,
+        "command": "pij answer",
+        "v": 2,
+        "error": "refused",
+        "meta": "E-RS-ANSWER-AUTHORITY-SPLIT answer supersession requires shared SQLite queue and spine authority: {\"decision\":\"decision-139-proof\",\"queue_backend\":\"fake\",\"spine_backend\":\"fake\"}",
+        "details": {
+          "decision": "decision-139-proof",
+          "queue_backend": "fake",
+          "spine_backend": "fake",
+          "code": "E-RS-ANSWER-AUTHORITY-SPLIT"
         }
       }
     }

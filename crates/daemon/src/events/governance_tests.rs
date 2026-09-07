@@ -379,3 +379,313 @@ async fn registry_callback_is_not_polled_until_the_common_publication_lock_is_he
     assert!(polled.load(Ordering::SeqCst));
     assert_eq!(next(&mut live).await.seq, Some(seq));
 }
+
+fn assert_incarnation_changed(error: pij_core::error::PijError, seat: &pij_core::model::SeatId) {
+    match error {
+        pij_core::error::PijError::GovernanceRefused { code, record } => {
+            assert_eq!(code, "E-RS-INCARNATION-CHANGED");
+            assert_eq!(record, seat.as_str());
+        }
+        other => panic!("expected named snapshot refusal, got {other:?}"),
+    }
+}
+
+async fn check_guarded_tombstone_contract(registry: &dyn Registry, bus: &EventBus) {
+    let fixture = contract();
+    let original = descriptor(&fixture);
+    let reason = case(&fixture, "seat-tombstone")["decoded_payload"]["reason"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let mut live = bus.subscribe_live(EventFilter::all());
+    registry.put(original.clone()).await.unwrap();
+    next(&mut live).await;
+
+    let mut changed = original.clone();
+    changed.proc.as_mut().unwrap().proc_start += 1; // Same PID, different incarnation.
+    registry.put(changed.clone()).await.unwrap();
+    next(&mut live).await;
+    let before = bus.tail(None, Seq(0)).await.unwrap();
+    assert_incarnation_changed(
+        registry
+            .tombstone_if_unchanged(original, reason.clone())
+            .await
+            .unwrap_err(),
+        &changed.id,
+    );
+    assert_eq!(
+        registry.get(&changed.id).await.unwrap(),
+        Some(changed.clone())
+    );
+    assert_eq!(bus.tail(None, Seq(0)).await.unwrap(), before);
+
+    // Matching proc/pane is insufficient: ownership/role and API-only machine
+    // stamping are part of whole raw descriptor equality too.
+    for field in ["role", "parent", "machine"] {
+        let mut stale = changed.clone();
+        match field {
+            "role" => stale.role = None,
+            "parent" => stale.parent = None,
+            "machine" => stale.machine = Some("joined-api-only".to_string()),
+            _ => unreachable!(),
+        }
+        assert_incarnation_changed(
+            registry
+                .tombstone_if_unchanged(stale, reason.clone())
+                .await
+                .unwrap_err(),
+            &changed.id,
+        );
+        assert_eq!(
+            registry.get(&changed.id).await.unwrap(),
+            Some(changed.clone())
+        );
+        assert_eq!(bus.tail(None, Seq(0)).await.unwrap(), before);
+    }
+    let mut missing = changed.clone();
+    missing.id = format!("{}-absent", changed.id).into();
+    assert_incarnation_changed(
+        registry
+            .tombstone_if_unchanged(missing.clone(), reason.clone())
+            .await
+            .unwrap_err(),
+        &missing.id,
+    );
+    assert_eq!(bus.tail(None, Seq(0)).await.unwrap(), before);
+
+    let seq = registry
+        .tombstone_if_unchanged(changed.clone(), reason.clone())
+        .await
+        .unwrap();
+    let event = next(&mut live).await;
+    assert_eq!(event.seq, Some(seq), "refused attempts emitted no event");
+    assert_eq!(
+        event.kind,
+        case(&fixture, "seat-tombstone")["frame"]["event"]["kind"]
+    );
+    assert_eq!(
+        serde_json::from_str::<Value>(&event.payload).unwrap(),
+        case(&fixture, "seat-tombstone")["decoded_payload"]
+    );
+    let dead = registry.get(&changed.id).await.unwrap().unwrap();
+    assert_eq!(dead.tombstoned_at, Some(event.at));
+    assert_eq!(dead.tombstone_reason.as_deref(), Some(reason.as_str()));
+    assert_eq!(
+        bus.tail(None, Seq(0)).await.unwrap().len(),
+        before.len() + 1
+    );
+
+    // Unconditional intent remains available; it must not become a stale alias
+    // of the guarded operation or acquire a synthetic expected snapshot.
+    let unconditional = registry.tombstone(&changed.id, &reason).await.unwrap();
+    assert_eq!(next(&mut live).await.seq, Some(unconditional));
+}
+
+#[tokio::test]
+async fn sqlite_guarded_tombstone_requires_whole_raw_snapshot_and_publishes_only_success() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.unwrap();
+    let bus = Arc::new(EventBus::new(Arc::new(SqliteSpine::new(pool.clone())), 32).unwrap());
+    let registry = SqliteRegistry::new(pool, bus.clone());
+    check_guarded_tombstone_contract(&registry, &bus).await;
+}
+
+#[tokio::test]
+async fn published_fake_guarded_tombstone_matches_sqlite_snapshot_and_event_contract() {
+    let bus = Arc::new(EventBus::new(Arc::new(pij_testkit::fakes::FakeSpine::new()), 32).unwrap());
+    let registry = super::PublishedFakeRegistry::new(
+        Arc::new(pij_testkit::fakes::FakeRegistry::new()),
+        bus.clone(),
+    );
+    check_guarded_tombstone_contract(&registry, &bus).await;
+}
+
+#[tokio::test]
+async fn raw_fake_guarded_tombstone_refusal_does_not_mutate_or_consume_sequence() {
+    let fixture = contract();
+    let registry = pij_testkit::fakes::FakeRegistry::new();
+    let original = descriptor(&fixture);
+    let mut current = original.clone();
+    current.proc.as_mut().unwrap().proc_start += 1;
+    let seq = registry.put(current.clone()).await.unwrap();
+    let reason = case(&fixture, "seat-tombstone")["decoded_payload"]["reason"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_incarnation_changed(
+        registry
+            .tombstone_if_unchanged(original, reason.clone())
+            .await
+            .unwrap_err(),
+        &current.id,
+    );
+    assert_eq!(
+        registry.get(&current.id).await.unwrap(),
+        Some(current.clone())
+    );
+    let mut missing = current.clone();
+    missing.id = format!("{}-absent", current.id).into();
+    assert_incarnation_changed(
+        registry
+            .tombstone_if_unchanged(missing.clone(), reason.clone())
+            .await
+            .unwrap_err(),
+        &missing.id,
+    );
+    let accepted = registry
+        .tombstone_if_unchanged(current.clone(), reason.clone())
+        .await
+        .unwrap();
+    assert_eq!(accepted.0, seq.0 + 1);
+    assert_eq!(
+        registry
+            .get(&current.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .tombstone_reason,
+        Some(reason)
+    );
+}
+
+#[tokio::test]
+async fn guarded_sqlite_tombstone_publication_failure_rolls_back_matching_snapshot() {
+    let fixture = contract();
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.unwrap();
+    let bus = Arc::new(EventBus::new(Arc::new(SqliteSpine::new(pool.clone())), 16).unwrap());
+    let registry = SqliteRegistry::new(pool.clone(), bus.clone());
+    let expected = descriptor(&fixture);
+    registry.put(expected.clone()).await.unwrap();
+    let before = bus.tail(None, Seq(0)).await.unwrap();
+    sqlx::query("CREATE TRIGGER reject_guarded_event BEFORE INSERT ON spine_events BEGIN SELECT RAISE(ABORT, 'guarded event refused'); END").execute(&pool).await.unwrap();
+    let error = registry
+        .tombstone_if_unchanged(expected.clone(), "fixture".to_string())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("guarded event refused"));
+    assert_eq!(registry.get(&expected.id).await.unwrap(), Some(expected));
+    assert_eq!(bus.tail(None, Seq(0)).await.unwrap(), before);
+}
+
+#[tokio::test]
+async fn guarded_published_fake_append_failure_preserves_matching_snapshot() {
+    let fixture = contract();
+    let spine = Arc::new(pij_testkit::fakes::FakeSpine::new());
+    let bus = Arc::new(EventBus::new(spine.clone(), 16).unwrap());
+    let registry = super::PublishedFakeRegistry::new(
+        Arc::new(pij_testkit::fakes::FakeRegistry::new()),
+        bus.clone(),
+    );
+    let expected = descriptor(&fixture);
+    registry.put(expected.clone()).await.unwrap();
+    let before = bus.tail(None, Seq(0)).await.unwrap();
+    spine.script_append_error("guarded event refused");
+    let error = registry
+        .tombstone_if_unchanged(expected.clone(), "fixture".to_string())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("guarded event refused"));
+    assert_eq!(registry.get(&expected.id).await.unwrap(), Some(expected));
+    assert_eq!(bus.tail(None, Seq(0)).await.unwrap(), before);
+}
+
+struct NotifyRegistryAdmission {
+    bus: Arc<EventBus>,
+    entered: Arc<tokio::sync::Notify>,
+}
+
+impl pij_store::spine::RegistryPublisher for NotifyRegistryAdmission {
+    fn publish_registry<'a>(
+        &'a self,
+        commit: pij_store::spine::RegistryCommit,
+    ) -> pij_store::spine::RegistryPublication<'a> {
+        self.entered.notify_one();
+        pij_store::spine::RegistryPublisher::publish_registry(self.bus.as_ref(), commit)
+    }
+}
+
+#[tokio::test]
+async fn guarded_sqlite_tombstone_reads_snapshot_after_publication_admission() {
+    let fixture = contract();
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.unwrap();
+    let bus = Arc::new(EventBus::new(Arc::new(SqliteSpine::new(pool.clone())), 16).unwrap());
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let registry = Arc::new(SqliteRegistry::new(
+        pool.clone(),
+        Arc::new(NotifyRegistryAdmission {
+            bus: bus.clone(),
+            entered: entered.clone(),
+        }),
+    ));
+    let expected = descriptor(&fixture);
+    registry.put(expected.clone()).await.unwrap();
+    entered.notified().await; // Consume the seed's publisher notification.
+    let before = bus.tail(None, Seq(0)).await.unwrap();
+    let guard = bus.publish_lock.lock().await;
+    let writer = registry.clone();
+    let snapshot = expected.clone();
+    let pending = tokio::spawn(async move {
+        writer
+            .tombstone_if_unchanged(snapshot, "fixture".to_string())
+            .await
+    });
+    timeout(Duration::from_secs(3), entered.notified())
+        .await
+        .unwrap();
+    // Simulate another authoritative store writer after the request reaches its
+    // publisher but before the bus admits it. A pre-lock get would be stale.
+    timeout(
+        Duration::from_secs(3),
+        sqlx::query("UPDATE seats SET role = NULL WHERE id = ?1")
+            .bind(expected.id.as_str())
+            .execute(&pool),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    drop(guard);
+    assert_incarnation_changed(
+        timeout(Duration::from_secs(3), pending)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err(),
+        &expected.id,
+    );
+    let current = registry.get(&expected.id).await.unwrap().unwrap();
+    assert_eq!(current.role, None);
+    assert_eq!(current.tombstoned_at, None);
+    assert_eq!(bus.tail(None, Seq(0)).await.unwrap(), before);
+}
+
+#[tokio::test]
+async fn concurrent_guarded_tombstones_accept_exactly_one_snapshot() {
+    let fixture = contract();
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.unwrap();
+    let bus = Arc::new(EventBus::new(Arc::new(SqliteSpine::new(pool.clone())), 16).unwrap());
+    let registry = SqliteRegistry::new(pool, bus.clone());
+    let expected = descriptor(&fixture);
+    registry.put(expected.clone()).await.unwrap();
+    let (first, second) = tokio::join!(
+        registry.tombstone_if_unchanged(expected.clone(), "first".to_string()),
+        registry.tombstone_if_unchanged(expected.clone(), "second".to_string()),
+    );
+    match (first, second) {
+        (Ok(_), Err(error)) | (Err(error), Ok(_)) => {
+            assert_incarnation_changed(error, &expected.id)
+        }
+        other => panic!("exactly one matching snapshot must win: {other:?}"),
+    }
+    assert_eq!(
+        bus.tail(None, Seq(0))
+            .await
+            .unwrap()
+            .iter()
+            .filter(|event| event.kind == "seat.tombstone")
+            .count(),
+        1
+    );
+}

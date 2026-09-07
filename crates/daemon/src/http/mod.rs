@@ -3,11 +3,14 @@
 //! Each route does one cheap statement or one durable enqueue (R4). Auth wraps
 //! the completed router, so adding an endpoint cannot accidentally bypass it.
 
+pub mod anomalies;
 mod auth;
 mod client;
+pub mod decisions;
 mod exposure;
 pub mod governance;
 mod identity;
+mod lifecycle;
 mod report;
 pub mod role;
 mod shim;
@@ -146,6 +149,11 @@ enum Endpoint {
     /// argument — dropped at the seam. Ruled POST-canonical by the plan-114 PM.
     State,
     Role,
+    Close,
+    Reap,
+    Anomalies,
+    Decisions,
+    Answer,
     Project,
     Stream,
     Fence,
@@ -160,7 +168,7 @@ enum Endpoint {
 }
 
 impl Endpoint {
-    const ALL: [Self; 34] = [
+    const ALL: [Self; 39] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -184,6 +192,11 @@ impl Endpoint {
         Self::ShimInboxAck,
         Self::ShimSessions,
         Self::Role,
+        Self::Close,
+        Self::Reap,
+        Self::Anomalies,
+        Self::Decisions,
+        Self::Answer,
         Self::Project,
         Self::Stream,
         Self::Fence,
@@ -218,6 +231,11 @@ impl Endpoint {
             Self::Phonehome => "/v1/phonehome",
             Self::State => "/v1/state",
             Self::Role => "/v1/role",
+            Self::Close => "/v1/close",
+            Self::Reap => "/v1/reap",
+            Self::Anomalies => "/v1/anomalies",
+            Self::Decisions => "/v1/decisions",
+            Self::Answer => "/v1/answer",
             Self::Project => "/v1/project",
             Self::Stream => "/v1/stream",
             Self::Fence => "/v1/fence",
@@ -255,6 +273,11 @@ impl Endpoint {
             Self::Adopt | Self::Whoami | Self::Phonehome => Method::POST,
             Self::State => Method::POST,
             Self::Role
+            | Self::Close
+            | Self::Reap
+            | Self::Anomalies
+            | Self::Decisions
+            | Self::Answer
             | Self::Project
             | Self::Stream
             | Self::Fence
@@ -381,6 +404,11 @@ fn router_with_optional_federation(
                     | Endpoint::ShimInbox
                     | Endpoint::ShimInboxAck
                     | Endpoint::Role
+                    | Endpoint::Close
+                    | Endpoint::Reap
+                    | Endpoint::Anomalies
+                    | Endpoint::Decisions
+                    | Endpoint::Answer
                     | Endpoint::Project
                     | Endpoint::Stream
                     | Endpoint::Fence
@@ -426,6 +454,17 @@ fn router_with_optional_federation(
             Endpoint::Phonehome => router.route(endpoint.path(), post(identity::phonehome)),
             Endpoint::State => router.route(endpoint.path(), post(seat_state)),
             Endpoint::Role => router.route(endpoint.path(), post(role::role)),
+            Endpoint::Close => router.route(endpoint.path(), post(lifecycle::close)),
+            Endpoint::Reap => router.route(endpoint.path(), post(lifecycle::reap)),
+            Endpoint::Anomalies => router.route(
+                endpoint.path(),
+                get(anomalies::list_get).post(anomalies::list_post),
+            ),
+            Endpoint::Decisions => router.route(
+                endpoint.path(),
+                get(decisions::list_get).post(decisions::list_post),
+            ),
+            Endpoint::Answer => router.route(endpoint.path(), post(decisions::answer_post)),
             Endpoint::Project => router.route(endpoint.path(), post(governance::handle)),
             Endpoint::Stream => router.route(endpoint.path(), post(governance::handle)),
             Endpoint::Fence => router.route(endpoint.path(), post(governance::handle)),
@@ -2063,7 +2102,8 @@ async fn seats(State(state): State<AppState>, Query(query): Query<SeatQuery>) ->
         }
     };
     roster.seats.retain(|seat| {
-        query.harness.is_none_or(|harness| seat.harness == harness)
+        seat.tombstoned_at.is_none()
+            && query.harness.is_none_or(|harness| seat.harness == harness)
             && query
                 .folder
                 .as_ref()
@@ -2446,15 +2486,9 @@ async fn report(State(state): State<AppState>, Json(request): Json<ReportRequest
             )
             .await
         }
-        report::ReportCall::Question(note) => {
-            declaration_response(
-                command,
-                &reports,
-                &seat,
-                Some(SemanticState::Question),
-                Some(note),
-            )
-            .await
+        report::ReportCall::Question(note) => decisions::question(&state, &seat, &note).await,
+        report::ReportCall::Verify { target, assignment } => {
+            decisions::verify(&state, &seat, &target, assignment).await
         }
         report::ReportCall::Clear => {
             declaration_response(command, &reports, &seat, None, None).await

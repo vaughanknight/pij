@@ -284,6 +284,7 @@ enum Command {
     ///   pij-rs report state <ready|waiting|hold|blocked|question|done>
     ///   pij-rs report blocked|question "<text>"
     ///   pij-rs report clear
+    ///   pij-rs report verify <seat> [--assignment <id>]
     Report {
         /// Assert the derived reporting seat. Omit to use the observable pane,
         /// or PIJ_SESSION_ID when no pane exists; contradictions are refused.
@@ -296,6 +297,31 @@ enum Command {
     },
     /// Assert or unset a seat role through daemon ownership checks.
     Role {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Tombstone a seat owned by this caller without killing its process or pane.
+    Close {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Reconcile only positively stale process and pane bindings.
+    Reap {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Read current governance anomalies without changing their evidence.
+    Anomalies {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Read durable decisions under current-parent responsibility.
+    Decisions {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Answer a durable question as its asker or current parent.
+    Answer {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -788,6 +814,35 @@ async fn run(cli: Cli) -> ExitCode {
         Command::Role { args } => {
             let as_json = cli.json || args.iter().any(|arg| arg == "--json");
             emit(&client.role(&args, &caller_context()).await, as_json)
+        }
+        Command::Close { args } => {
+            let as_json = cli.json || args.iter().any(|arg| arg == "--json");
+            emit(&client.close(&args, &caller_context()).await, as_json)
+        }
+        Command::Reap { args } => {
+            let as_json = cli.json || args.iter().any(|arg| arg == "--json");
+            emit(&client.reap(&args, &caller_context()).await, as_json)
+        }
+        Command::Anomalies { args } => {
+            let as_json = cli.json || args.iter().any(|arg| arg == "--json");
+            emit(
+                &pij_cli::anomalies::anomalies(&client, &args, &caller_context()).await,
+                as_json,
+            )
+        }
+        Command::Decisions { args } => {
+            let as_json = cli.json || args.iter().any(|arg| arg == "--json");
+            emit(
+                &pij_cli::decisions::decisions(&client, &args, &caller_context()).await,
+                as_json,
+            )
+        }
+        Command::Answer { args } => {
+            let as_json = cli.json || args.iter().any(|arg| arg == "--json");
+            emit(
+                &pij_cli::decisions::answer(&client, &args, &caller_context()).await,
+                as_json,
+            )
         }
         Command::Project { args }
         | Command::Stream { args }
@@ -1710,6 +1765,11 @@ impl Command {
             Command::Inbox { .. } => "pij inbox",
             Command::Report { .. } => "pij report",
             Command::Role { .. } => "pij role",
+            Command::Close { .. } => "pij close",
+            Command::Reap { .. } => "pij reap",
+            Command::Anomalies { .. } => "pij anomalies",
+            Command::Decisions { .. } => "pij decisions",
+            Command::Answer { .. } => "pij answer",
             Command::Project { .. } => "pij project",
             Command::Stream { .. } => "pij stream",
             Command::Fence { .. } => "pij fence",
@@ -1820,6 +1880,11 @@ mod tests {
                 "sidecar",
                 "report",
                 "role",
+                "close",
+                "reap",
+                "anomalies",
+                "decisions",
+                "answer",
                 "project",
                 "stream",
                 "fence",

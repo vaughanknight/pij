@@ -1,0 +1,158 @@
+diff --git a/crates/harnesses/src/proc.rs b/crates/harnesses/src/proc.rs
+--- a/crates/harnesses/src/proc.rs
++++ b/crates/harnesses/src/proc.rs
+@@ -91,7 +91,7 @@
+ impl CommandRunner for PsRunner {
+     fn run(&self, pid: u32) -> io::Result<CommandOutput> {
+         let output = Command::new("ps")
+-            .args(["-o", "lstart=", "-p", &pid.to_string()])
++            .args(["-o", "lstart=PIJ_LSTART", "-p", &pid.to_string()])
+             .env("LC_ALL", "C")
+             .output()?;
+         Ok(CommandOutput {
+@@ -103,7 +103,7 @@
+ }
+ 
+ fn classify(pid: u32, output: CommandOutput) -> Result<Option<u64>> {
+-    if !output.status.success() {
++    if !matches!(output.status.code(), Some(0) | Some(1)) || !output.stderr.is_empty() {
+         return Err(PijError::Adapter {
+             adapter: ADAPTER.to_string(),
+             message: format!(
+@@ -117,22 +117,26 @@
+         adapter: ADAPTER.to_string(),
+         message: format!("pid {pid} produced non-UTF-8 stdout: {error}"),
+     })?;
+-    let row = stdout.trim();
+-    if !row.is_empty() {
+-        return parse_process_start(row).map(Some);
+-    }
+-
+-    // Nonzero ps (including the usual absent-pid exit 1) is not absence proof.
+-    // This brake deliberately reduces reap eligibility rather than guessing.
+-    let stderr = String::from_utf8_lossy(&output.stderr);
+-    let reason = stderr.trim();
+-    if reason.is_empty() {
+-        return Ok(None);
+-    }
+-    Err(PijError::Adapter {
+-        adapter: ADAPTER.to_string(),
+-        message: format!("could not inspect pid {pid}: {reason}"),
+-    })
++    let mut lines = stdout.lines();
++    if lines.next().map(str::trim) != Some("PIJ_LSTART") {
++        return Err(PijError::Adapter {
++            adapter: ADAPTER.to_string(),
++            message: format!("pid {pid} produced no recognizable ps header: {stdout:?}"),
++        });
++    }
++    match (output.status.code(), lines.next(), lines.next()) {
++        // The explicit header proves ps ran its selection; an empty failed
++        // command, diagnostic, or additional row is not this absence protocol.
++        (Some(1), None, None) => Ok(None),
++        (Some(0), Some(row), None) => parse_process_start(row.trim()).map(Some),
++        _ => Err(PijError::Adapter {
++            adapter: ADAPTER.to_string(),
++            message: format!(
++                "pid {pid} produced unexpected ps {} output: {stdout:?}; expected exit 0 with header and process row, or exit 1 with header only",
++                output.status
++            ),
++        }),
++    }
+ }
+ 
+ 
+@@ -334,12 +338,70 @@
+     }
+ 
+     #[test]
+-    fn successful_empty_exact_pid_probe_is_none() {
+-        let adapter = ProcLiveness::with_runner(ScriptedRunner::one(7272, output(true, b"", b"")));
++    fn exit_one_with_header_only_and_empty_stderr_is_absent() {
++        let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
++            7272,
++            output(false, b"PIJ_LSTART\n", b""),
++        ));
+         assert_eq!(
+             block_on(adapter.proc_start(7272)).expect("absence is observable"),
+             None
+         );
++    }
++
++    #[test]
++    fn successful_probe_without_process_row_is_unknown() {
++        for stdout in [b"".as_slice(), b"PIJ_LSTART\n"] {
++            let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
++                7272,
++                output(true, stdout, b""),
++            ));
++            assert!(block_on(adapter.proc_start(7272)).is_err());
++        }
++    }
++
++    #[test]
++    fn failed_probe_requires_exact_header_only_output() {
++        for stdout in [
++            b"STARTED\n".as_slice(),
++            b"PIJ_LSTART\n\n",
++            b"PIJ_LSTART\nnot a start time\n",
++            b"\xff",
++        ] {
++            let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
++                7272,
++                output(false, stdout, b""),
++            ));
++            assert!(block_on(adapter.proc_start(7272)).is_err());
++        }
++    }
++
++    #[test]
++    fn any_stderr_vetoes_both_absent_and_live_protocols() {
++        let live = include_bytes!("../tests/fixtures/ps-macos-lstart.txt");
++        for (success, stdout) in [(false, b"PIJ_LSTART\n".as_slice()), (true, live.as_slice())] {
++            for stderr in [b"\n".as_slice(), b"Operation not permitted"] {
++                let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
++                    7272,
++                    output(success, stdout, stderr),
++                ));
++                assert!(block_on(adapter.proc_start(7272)).is_err());
++            }
++        }
++    }
++
++    #[test]
++    fn other_exits_and_signals_with_header_only_are_unknown() {
++        for raw_status in [2 << 8, 127 << 8, 9] {
++            let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
++                7272,
++                CommandOutput {
++                    status: ExitStatus::from_raw(raw_status),
++                    ..output(false, b"PIJ_LSTART\n", b"")
++                },
++            ));
++            assert!(block_on(adapter.proc_start(7272)).is_err());
++        }
+     }
+ 
+     #[test]
+@@ -406,7 +468,7 @@
+     fn malformed_process_output_is_an_adapter_error() {
+         let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
+             8282,
+-            output(true, b"not a start time\n", b""),
++            output(true, b"PIJ_LSTART\nnot a start time\n", b""),
+         ));
+         let error =
+             block_on(adapter.proc_start(8282)).expect_err("malformed output must not mean dead");
+diff --git a/crates/harnesses/tests/fixtures/ps-macos-lstart.txt b/crates/harnesses/tests/fixtures/ps-macos-lstart.txt
+--- a/crates/harnesses/tests/fixtures/ps-macos-lstart.txt
++++ b/crates/harnesses/tests/fixtures/ps-macos-lstart.txt
+@@ -1 +1,2 @@
++PIJ_LSTART
+ Sat Aug 29 09:11:48 2026    
+diff --git a/crates/harnesses/tests/fixtures/ps-linux-lstart.txt b/crates/harnesses/tests/fixtures/ps-linux-lstart.txt
+--- a/crates/harnesses/tests/fixtures/ps-linux-lstart.txt
++++ b/crates/harnesses/tests/fixtures/ps-linux-lstart.txt
+@@ -1 +1,2 @@
++PIJ_LSTART
+ Thu Jan  8 00:20:51 2026

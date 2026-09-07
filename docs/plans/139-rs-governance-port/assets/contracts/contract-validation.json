@@ -1,10 +1,10 @@
 {
-  "at": "2026-09-07T03:56:20Z",
+  "at": "2026-09-07T05:33:20Z",
   "verdict": "contract-consistency-pass",
   "routes": 22,
-  "request_response_cases": 44,
-  "event_cases": 30,
-  "refusal_envelopes": 4,
+  "request_response_cases": 45,
+  "event_cases": 31,
+  "refusal_envelopes": 10,
   "checks": [
     "unique method/path",
     "unique route case ids",
@@ -13,8 +13,8 @@
     "all sample events timestamped; internal seq absent"
   ],
   "sha256": {
-    "governance-routes.json": "4cef33ea99a0c50f1513d492328c50ee32844de14eaefd24d6d55f7dff03172a",
-    "governance-events.json": "501a8cb712a87cc067822efd8b19f795165cf2c9eaa97b833d34903670829f79"
+    "governance-routes.json": "5839f7303eab7207365ac61c0d12345599ff43599ae195ed797fbc8859228c14",
+    "governance-events.json": "15b95759b8297a84a9667bd8c3e4bb6e8a3ac163911139188376449319bacb8f"
   },
-  "implementation_status": "Contract consistency only. Wave-one source checkpoint 0a7a26737d08701bddac6ccc0b6d7b040873e4f9 and positive canary witness have separate implementation receipts; remaining units are not accepted by this validation."
+  "implementation_status": "Contract consistency only. Immutable wave-one source 5a8a25013e0bffdabfbcd05438ed19febc26b891 has full gate receipts; current wave-two source has separate behavioral receipts. Final authority matrix, merged-main parity and production acceptance remain independent obligations."
 }

@@ -1,0 +1,44 @@
+{
+  "at": "2026-09-07T04:20:19.383Z",
+  "source_sha": "5a8a25013e0bffdabfbcd05438ed19febc26b891",
+  "rust": {
+    "command": "/Users/jordanknight/.cargo/bin/cargo run --locked -p pij-testkit --bin pij-gate",
+    "status": "green",
+    "raw": "artifact://259",
+    "stages": [
+      "toolchain",
+      "lock",
+      "fmt",
+      "clippy",
+      "test",
+      "arch"
+    ],
+    "architecture": {
+      "crates": 9,
+      "violations": 0
+    }
+  },
+  "engineering": {
+    "command": "harness checks --json",
+    "status": "ok",
+    "sensors": [
+      "local-paths",
+      "typecheck",
+      "lint",
+      "test",
+      "copilot-native",
+      "windows-compat",
+      "smoke",
+      "pkg-audit",
+      "snapshots"
+    ],
+    "skipped": []
+  },
+  "prior_failure": {
+    "source_sha": "34a19dae5cc6d81088d4e2b2652d90a3b75749ea",
+    "raw": "artifact://243",
+    "failed_test": "pane_observer::tests::second_observer_pass_repairs_a_vanished_os_pipe_and_keeps_growing",
+    "repair_exact_green": "artifact://253"
+  },
+  "scope": "Wave-one code, positive fake-host canary witness and physical pipe fixture repair. Does not accept subsequent wave-two source, final merged-main cutover, or production deployment."
+}

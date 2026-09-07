@@ -1,0 +1,148 @@
+{
+  "unit": "u5",
+  "kind": "independent-proc-protocol-amendment",
+  "status": "READY_TO_VALIDATE_NOT_DONE",
+  "created_at": "2026-09-07T04:40:55.354747+00:00",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u5",
+  "branch": "139-rs-governance-port-u5",
+  "authority": "PM relayed prime refined ps ruling: absent only exit1 plus explicit stable header-only stdout and empty stderr; previous status-only interpretation superseded.",
+  "apply_order": [
+    {
+      "patch": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u5/docs/plans/139-rs-governance-port/assets/u5-source.patch",
+      "sha256": "ca62b2c59724fee45e9a715deaf28154a8e60bb9823761dcaca6f0c2e7bd177a",
+      "state": "PREVIOUS HANDED ARTIFACT PRESERVED; apply first"
+    },
+    {
+      "patch": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u5/docs/plans/139-rs-governance-port/assets/u5-proc-refined.patch",
+      "sha256": "4fcf703236d1ac77da5369bf34cf485a63910d2da297cdafe8dafdee42b7d3ff",
+      "bytes": 6103,
+      "state": "APPLY SECOND atop previous u5 source, not directly atop HEAD"
+    }
+  ],
+  "previous_receipt": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u5/docs/plans/139-rs-governance-port/assets/receipt-u5.json",
+    "sha256": "6d720197485269551b6485a4ddf1bc646ee66a29e75b604c22d3f3956e577310",
+    "state": "PRESERVED unchanged; this receipt supersedes only its ps-policy assertions"
+  },
+  "changed_paths": [
+    {
+      "path": "crates/harnesses/src/proc.rs",
+      "before_sha256": "0ba2f2031454117144407ad83d5c0f64ebee2248e3446eeb997b14237511bbf1",
+      "after_sha256": "82425923755af8d0109612415f959ea861c5d083a575f65cfb78a263628d1392"
+    },
+    {
+      "path": "crates/harnesses/tests/fixtures/ps-macos-lstart.txt",
+      "before_sha256": "8761b7dc9914df8a966747e11e2eaec0a95ff1fb52246fc38c48f1ebc48e2f86",
+      "after_sha256": "3c946d695ae765c2f6adfc5890f978b24da93b813f59d0686c12302ad6648281"
+    },
+    {
+      "path": "crates/harnesses/tests/fixtures/ps-linux-lstart.txt",
+      "before_sha256": "6939bf5c649ad871beb832f36886d0b9d3e952da4768ffefe8861652c4909cfd",
+      "after_sha256": "b6c559b103144bbb31306a49720287d6df272ff32f3a4162b517465eca95a5d9"
+    }
+  ],
+  "producer": {
+    "argv": [
+      "ps",
+      "-o",
+      "lstart=PIJ_LSTART",
+      "-p",
+      "<requested pid>"
+    ],
+    "environment": {
+      "LC_ALL": "C"
+    },
+    "scope": "exact requested PID only; no OS fallback, dependencies or process signalling"
+  },
+  "protocol": {
+    "ABSENT": "exit1; stdout is sole PIJ_LSTART header line (ps alignment whitespace accepted); zero stderr bytes",
+    "ALIVE": "exit0; stdout PIJ_LSTART header plus exactly one parseable C-locale lstart row; zero stderr bytes; existing packed-start comparison unchanged",
+    "UNKNOWN": [
+      "signalled process",
+      "exit code other than 0 or 1",
+      "any stderr bytes including whitespace",
+      "exit1 empty stdout",
+      "exit0 empty stdout or header without process row",
+      "exit1 header plus a process row or any additional line",
+      "missing/wrong header, non-UTF8 stdout, malformed start row or multiple process rows"
+    ]
+  },
+  "tests_authored_or_updated": [
+    "proc::tests::exit_one_with_header_only_and_empty_stderr_is_absent",
+    "proc::tests::successful_probe_without_process_row_is_unknown",
+    "proc::tests::failed_probe_requires_exact_header_only_output",
+    "proc::tests::any_stderr_vetoes_both_absent_and_live_protocols",
+    "proc::tests::other_exits_and_signals_with_header_only_are_unknown",
+    "proc::tests::exact_pid_command_and_macos_parser_are_fixture_backed",
+    "proc::tests::linux_spacing_is_fixture_backed",
+    "proc::tests::malformed_process_output_is_an_adapter_error"
+  ],
+  "existing_sensors_retained": [
+    "proc::tests::failed_empty_probe_is_unknown_not_dead",
+    "proc::tests::failed_no_such_process_probe_is_unknown_not_dead",
+    "proc::tests::signalled_empty_probe_is_unknown_not_dead",
+    "proc::tests::failed_probe_with_a_process_row_is_unknown",
+    "All six PM-owned real Child kill/wait native/adopt tests: untouched; no source path outside adapter and its two text fixtures is included"
+  ],
+  "research_observations": [
+    {
+      "case": "live-kernel-process",
+      "argv": [
+        "ps",
+        "-p",
+        "35185",
+        "-o",
+        "lstart=PIJ_LSTART"
+      ],
+      "LC_ALL": "C",
+      "returncode": 0,
+      "stdout": "PIJ_LSTART\nMon Sep  7 13:49:15 2026    \n",
+      "stderr": ""
+    },
+    {
+      "case": "out-of-range-pid-diagnostic",
+      "argv": [
+        "ps",
+        "-p",
+        "999999",
+        "-o",
+        "lstart=PIJ_LSTART"
+      ],
+      "LC_ALL": "C",
+      "returncode": 1,
+      "stdout": "",
+      "stderr": "ps: process id too large: 999999\n"
+    },
+    {
+      "case": "valid-range-pid-lookup",
+      "argv": [
+        "ps",
+        "-o",
+        "lstart=PIJ_LSTART",
+        "-p",
+        "99998"
+      ],
+      "LC_ALL": "C",
+      "returncode": 1,
+      "stdout": "PIJ_LSTART\n",
+      "stderr": ""
+    }
+  ],
+  "observation_scope": "Read-only Darwin system ps calls, not Rust adapter execution. Linux header fixture updated coherently but no Linux host observed.",
+  "validation": {
+    "worker_commands_run": [],
+    "reason": "PM concurrent-edit barrier: no validators, builds, formatters, linters or commits authorized",
+    "PM_next": [
+      "cargo test --locked -p pij-harnesses --lib proc::tests",
+      "Run the existing six real Child kill/wait native/adopt tests unchanged; assert unattended recovery",
+      "Run composed lifecycle/reaper tests and canonical harness gate after wave release"
+    ],
+    "proof_ceiling": "Source and fixture amendment plus observed Darwin ps producer protocol only; no Rust compile/test or six-test recovery claim"
+  },
+  "receipt_notes": [
+    "Patch generated as unified diff from captured handed-source bytes, without touching git index or object database.",
+    "Invalid out-of-range PID produces diagnostic stderr, not absence; retained observation distinguishes valid-range absent selection from failed lookup.",
+    "No amendment to HTTP lifecycle, reaper, shared identity, packet/contracts, original receipt/patch, or session buffer."
+  ],
+  "next": "HOLD: editing paused; PM composes delta and owns validation"
+}

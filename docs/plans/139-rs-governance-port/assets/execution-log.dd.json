@@ -59,6 +59,25 @@
           "links": [
             "tasks/phase-1/tasks.dd.json#tasks/tk-12a1"
           ]
+        },
+        {
+          "id": "lg-0006",
+          "at": "2026-09-07T04:55:05Z",
+          "text": "Wave2 prime refinements: ps producer must retain an explicit header. ABSENT only exit1+sole header+empty stderr; ALIVE exit0+header/process row; unknown on empty failed output, malformed/extra rows, any stderr, other exits or signals. u5 measured Darwin PIJ_LSTART protocol and delivered separate three-path refinement; six real Child kill/wait tests must remain. Initial all-nonzero rule caused six real native/adopt regressions (artifact264) and is superseded, not hidden. Answer recovery: current parent may explicitly --supersede only terminal non-delivered or no-queue failed intent; mint a new id and decision.answer-superseded retains old msg id/answerer/text. Queued/claimed old jobs refuse E-RS-ANSWER-IN-TRANSIT with old msg id/job state; no queue cancellation seam. Contract limitation: an answer in transit cannot be withdrawn; wait for its terminal outcome. Merge origin/main06281141+ after wave2 source checkpoint, before u6 parity goldens/review, retaining merge SHA.",
+          "links": [
+            "tasks/phase-3/tasks.dd.json#tasks/tk-31a3",
+            "tasks/phase-3/tasks.dd.json#tasks/tk-32a3"
+          ]
+        },
+        {
+          "id": "lg-0007",
+          "at": "2026-09-07T06:10:11Z",
+          "text": "Composed wave2 product source GREEN under full canonical Rust gate (artifact337, toolchain/lock/fmt/clippy/test/arch;9 crates0 violations). Exact changed source+fixture hashes recorded in wave2-tested-source.json relative to5a8a250 baseline. Authority/decision matrix19 tests passed (artifact319); earlier five-package774 pass receipt307 retained. Source includes u1 conditional tombstone, u2 retired-identity receipt, u4 anomalies/decisions+terminal supersede+mixed/fake refusal, u5 header-evidenced liveness/reaper/close. Initial gate failures323/329 were fixed via real language-server/compiler suggestions, no lint suppression. Extended actual CLI workflow witness remains separately in progress; no real-model canary or production acceptance claimed.",
+          "links": [
+            "tasks/phase-3/tasks.dd.json#tasks/tk-30a3",
+            "tasks/phase-3/tasks.dd.json#tasks/tk-31a3",
+            "tasks/phase-3/tasks.dd.json#tasks/tk-32a3"
+          ]
         }
       ]
     }

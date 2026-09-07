@@ -537,24 +537,17 @@ async fn flags_backed_by_objects_rs_lacks_refuse_by_name() {
     server.abort();
 }
 
-/// `report verify <node>` stamps `verifiedBy` on an assignment record
-/// (`core/cli.ts:1733`). rs has no assignment record, so the verb has nothing to
-/// stamp. It refuses by name — and, critically, NOT with the bare 404 that would
-/// make the shim fall back to legacy and write a supervisory act into the other
-/// store.
+/// Verification exists, but an unknown target must still return a named,
+/// decodable refusal rather than being mistaken for route absence.
 #[tokio::test]
-async fn verify_refuses_by_name_because_rs_has_no_assignment_to_verify() {
+async fn verify_refuses_unknown_target_with_decodable_evidence() {
     let (addr, server, _store, _config) = daemon().await;
 
     let refusal = post_report(addr, Some(SEAT), &["report", "verify", "nd-1"]).await;
     assert_eq!(refusal.status(), reqwest::StatusCode::BAD_REQUEST);
-    let meta = refusal
-        .json::<Envelope<serde_json::Value>>()
-        .await
-        .expect("envelope")
-        .meta
-        .unwrap_or_default();
-    assert!(meta.contains("verify"), "{meta}");
+    let body = refusal.json::<serde_json::Value>().await.expect("envelope");
+    assert_eq!(body["details"]["code"], "E-RS-NO-SEAT");
+    assert_eq!(body["details"]["seat"], "nd-1");
 
     server.abort();
 }

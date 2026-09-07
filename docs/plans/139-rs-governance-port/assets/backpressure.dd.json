@@ -1,0 +1,115 @@
+{
+  "dd": {
+    "schema": "builder/backpressure"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Backpressure survey",
+        "plan": "../plan.dd.json#meta",
+        "certainty": "Partial",
+        "basis_sha": "0a1d1e2951f885d120362353f2fa6b13bf6c58c9dfbd0c350238db2a1ba4beff"
+      }
+    },
+    {
+      "name": "rows",
+      "value": [
+        {
+          "id": "bp-0001",
+          "criterion": "AC1 — one spine writer, live fan-out",
+          "phase": "ph-c0a1",
+          "mode": "EXISTS",
+          "tier": "computational",
+          "proof": "RUN: /Users/jordanknight/.cargo/bin/cargo run --locked -p pij-testkit --bin pij-gate",
+          "state": "unchecked",
+          "probe": "events/governance_http_tests, governance_composition, governance_boot; two subscribers and one SQL insert authority"
+        },
+        {
+          "id": "bp-0002",
+          "criterion": "AC2 — stamped, decodable descriptor events",
+          "phase": "ph-c0a1",
+          "mode": "EXISTS",
+          "tier": "computational",
+          "proof": "RUN: isolated fresh adopt/tombstone CLI smoke plus pij-gate; production repetition remains prime-owned",
+          "state": "unchecked",
+          "probe": "CLI governance_boot and stamped registry/event witnesses; production receipt intentionally absent"
+        },
+        {
+          "id": "bp-0003",
+          "criterion": "AC3 — role round-trip and ownership",
+          "phase": "ph-b2d4",
+          "mode": "EXISTS",
+          "tier": "computational",
+          "proof": "RUN: role_http, governance_composition and isolated CLI role round-trip; chainglass confirmation remains prime-owned",
+          "state": "unchecked",
+          "probe": "Native role/ownership/StateCard tests exist; rendered production consumer requires prime confirmation"
+        },
+        {
+          "id": "bp-0004",
+          "criterion": "AC4 — governance records round-trip on rs",
+          "phase": "ph-b2d4",
+          "mode": "EXTEND",
+          "tier": "computational",
+          "proof": "EXTEND→RUN: merged-main native/shim byte-parity and isolated full CLI sequence; then final pij-gate and harness checks",
+          "state": "unchecked",
+          "probe": "u3 round-trips, actual pointer/SHA canary witness, shipped CLI forwarding; u6 parity and full runtime sequence still pending"
+        },
+        {
+          "id": "bp-0005",
+          "criterion": "AC5 — anomalies are a spine view; verify closes done",
+          "phase": "ph-e6f8",
+          "mode": "EXISTS",
+          "tier": "computational",
+          "proof": "RUN: core anomalies, anomaly_dispositions and governance_u4_baseline through pij-gate",
+          "state": "unchecked",
+          "probe": "One existing detector, legacy names/relay text,30min boundary, exact done seq and reopened done claim"
+        },
+        {
+          "id": "bp-0006",
+          "criterion": "AC6 — questions are durable pending decisions with answer routing",
+          "phase": "ph-e6f8",
+          "mode": "EXISTS",
+          "tier": "computational",
+          "proof": "RUN: http::decisions::tests, store decisions and governance_composition through pij-gate",
+          "state": "unchecked",
+          "probe": "Durable question, current parent, no self push, terminal supersede, queued/delivered veto, backend authority matrix"
+        },
+        {
+          "id": "bp-0007",
+          "criterion": "AC7 — close + reap",
+          "phase": "ph-e6f8",
+          "mode": "EXISTS",
+          "tier": "computational",
+          "proof": "RUN: proc/reaper/lifecycle contracts plus isolated CLI smoke; production repetition remains prime-owned",
+          "state": "unchecked",
+          "probe": "Header-evidenced absence, real killed-child recovery, no recycled-pid signal, CAS tombstones and active roster exclusion"
+        },
+        {
+          "id": "bp-0008",
+          "criterion": "AC8 — legacy shim: serve or refuse, never silent legacy",
+          "phase": "ph-a9c3",
+          "mode": "EXTEND",
+          "tier": "computational",
+          "proof": "EXTEND→RUN: enumerate actual skill verb inventory versus served/refused routes after main merge; run harness checks",
+          "state": "unchecked",
+          "probe": "Existing generation router tests and new canonical refusal envelopes; u6 exhaustive enforcement is pending"
+        },
+        {
+          "id": "bp-0009",
+          "criterion": "AC9 — skills and API doc re-pointed",
+          "phase": "ph-a9c3",
+          "mode": "EXTEND",
+          "tier": "human-judgement",
+          "proof": "EXTEND→RUN: u6 stable fixture/API/skill cutover, link checks and final pinned cross-model review",
+          "state": "unchecked",
+          "probe": "Current active-plan fixtures must move before archive; exact samples and operator guidance reviewed against actual routes"
+        }
+      ]
+    },
+    {
+      "name": "sensors",
+      "value": []
+    }
+  ]
+}

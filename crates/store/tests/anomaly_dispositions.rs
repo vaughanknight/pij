@@ -8,7 +8,7 @@ use pij_core::anomalies::{
     AnomalyStatus, AnomalyThresholds, AnomalyView, Detector, StatusStaleDetector,
     acknowledge_event, clear_event,
 };
-use pij_core::model::{Card, Harness, SeatDescriptor, SeatId, SemanticState, Seq};
+use pij_core::model::{Card, Harness, SeatDescriptor, SeatId, Seq};
 use pij_core::ports::Spine;
 use pij_store::SqliteSpine;
 use pij_testkit::FreshStore;
@@ -29,20 +29,21 @@ fn scan(
         dispatches: &[],
         done: &[],
         dispositions,
+        decisions: &[],
+        dead: &[],
     })
 }
 
 #[tokio::test]
 async fn dispositions_survive_reopen_and_clear_holds_until_source_evidence_changes() {
     let fresh = FreshStore::new();
-    let mut descriptor = SeatDescriptor::new("pij-coder", Harness::Omp, "/abs/worktree");
-    descriptor.semantic_state = Some(SemanticState::Waiting);
+    let descriptor = SeatDescriptor::new("pij-coder", Harness::Omp, "/abs/worktree");
     let seats = [descriptor];
     let cards = [Card {
         seat: SeatId::from("pij-coder"),
         did: "implemented anomaly detector".to_string(),
         next: "awaiting review".to_string(),
-        at: NOW - 700_000,
+        at: NOW - 1_900_000,
         seq: Some(Seq(80)),
     }];
     let row = scan(&seats, &cards, &[]).remove(0);

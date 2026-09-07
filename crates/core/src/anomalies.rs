@@ -10,12 +10,16 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Card, Event, SeatDescriptor, SeatId, Seq};
+use crate::decisions::{Decision, DecisionState};
+use crate::model::{Card, Event, SeatDescriptor, SeatId, SemanticState, Seq};
 
 /// Durable Spine kind written when an anomaly occurrence is acknowledged.
 pub const ANOMALY_ACK_KIND: &str = "anomaly.ack";
 /// Durable Spine kind written when an anomaly occurrence is cleared.
 pub const ANOMALY_CLEAR_KIND: &str = "anomaly.clear";
+
+/// Status anomaly policy; the separate command stderr nudge stays ten minutes.
+pub const STATUS_STALE_MS: u64 = 30 * 60 * 1_000;
 
 /// The three anomaly kinds with existing or explicitly named consumers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -27,6 +31,10 @@ pub enum AnomalyKind {
     DeliveredUnackedStale,
     /// A done declaration has no later verification.
     UnverifiedDone,
+    /// An unanswered durable question belongs to its current responsible seat.
+    OpenQuestion,
+    /// The recorded process incarnation is no longer alive.
+    DeadSeat,
 }
 
 impl AnomalyKind {
@@ -36,6 +44,8 @@ impl AnomalyKind {
             Self::StatusStale => "status-stale",
             Self::DeliveredUnackedStale => "delivered-unacked-stale",
             Self::UnverifiedDone => "unverified-done",
+            Self::OpenQuestion => "open-question",
+            Self::DeadSeat => "dead-seat",
         }
     }
 }
@@ -74,6 +84,82 @@ pub struct Anomaly {
     pub occurrence: String,
     /// Current acknowledgement state. Cleared rows are omitted entirely.
     pub status: AnomalyStatus,
+    /// Human detail, preserving the established relay vocabulary.
+    pub detail: String,
+    /// Real committed sequences that prove the condition.
+    pub evidence: Vec<Seq>,
+    /// Present only when the done event actually names an assignment.
+    pub assignment_id: Option<String>,
+    /// Stable referenced governance record.
+    pub record_ref: Option<String>,
+    /// Measured elapsed milliseconds, when the condition is age-based.
+    pub age_ms: Option<u64>,
+}
+
+/// Frozen governance wire shape, borrowing detector evidence rather than copying it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnomalyWire<'a> {
+    /// Existing kind literal.
+    pub kind: AnomalyKind,
+    /// Seat responsible for this row.
+    pub node_id: &'a SeatId,
+    /// Optional actual assignment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assignment_id: Option<&'a str>,
+    /// Human detail.
+    pub detail: &'a str,
+    /// Source evidence.
+    pub evidence: &'a [Seq],
+    /// Referenced governance record.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub record_ref: Option<&'a str>,
+    /// Measured age.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub age_ms: Option<u64>,
+    /// Exact established relay wrapper.
+    pub relay: String,
+}
+
+impl Anomaly {
+    /// Render only the public governance fields from this detector occurrence.
+    pub fn wire(&self) -> AnomalyWire<'_> {
+        let assignment_suffix = self
+            .assignment_id
+            .as_ref()
+            .map_or_else(String::new, |id| format!(" (assignment {id})"));
+        let evidence = if self.evidence.is_empty() {
+            "none".to_string()
+        } else {
+            self.evidence
+                .iter()
+                .map(|seq| seq.0.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        AnomalyWire {
+            kind: self.kind,
+            node_id: &self.seat,
+            assignment_id: self.assignment_id.as_deref(),
+            detail: &self.detail,
+            evidence: &self.evidence,
+            record_ref: self.record_ref.as_deref(),
+            age_ms: self.age_ms,
+            relay: format!(
+                "\u{26a0}\u{fe0f} anomaly {} on {}{}: {} — evidence: spine {}",
+                self.kind, self.seat, assignment_suffix, self.detail, evidence
+            ),
+        }
+    }
+}
+
+/// A confirmed dead/recycled process together with its registry source event.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeadSeatFact {
+    /// The affected seat.
+    pub seat: SeatId,
+    /// Real seat.put sequence for this incarnation.
+    pub seq: Seq,
 }
 
 /// A Spine-derived activity observation for one seat.
@@ -110,11 +196,13 @@ pub struct DoneFact {
     /// Seat that declared the assignment done.
     pub seat: SeatId,
     /// Assignment whose done claim needs verification.
-    pub assignment_id: String,
+    pub assignment_id: Option<String>,
     /// Spine sequence of the done declaration.
     pub done_seq: Seq,
     /// Latest verification sequence, when one exists.
     pub verified_seq: Option<Seq>,
+    /// Exact done event referenced by the verification, never inferred by time.
+    pub verified_done_seq: Option<Seq>,
 }
 
 /// Configured detector thresholds.
@@ -132,7 +220,7 @@ pub struct AnomalyThresholds {
 impl Default for AnomalyThresholds {
     fn default() -> Self {
         Self {
-            status_stale_ms: 10 * 60 * 1_000,
+            status_stale_ms: STATUS_STALE_MS,
             delivered_unacked_stale_ms: 15 * 60 * 1_000,
         }
     }
@@ -161,6 +249,10 @@ pub struct AnomalyView<'a> {
     pub done: &'a [DoneFact],
     /// Durable acknowledgement and clear events.
     pub dispositions: &'a [Event],
+    /// Open decisions with current responsibility projected by the composition edge.
+    pub decisions: &'a [Decision],
+    /// Positive liveness evidence; probe errors are never dead facts.
+    pub dead: &'a [DeadSeatFact],
 }
 
 /// A pure synchronous detector over an immutable store snapshot.
@@ -179,6 +271,17 @@ impl Detector for StatusStaleDetector {
             .seats
             .iter()
             .filter(|seat| seat.tombstoned_at.is_none())
+            .filter(|seat| {
+                !matches!(
+                    seat.semantic_state,
+                    Some(
+                        SemanticState::Waiting
+                            | SemanticState::Hold
+                            | SemanticState::Blocked
+                            | SemanticState::Question
+                    )
+                )
+            })
         {
             let Some(card) = view
                 .cards
@@ -198,9 +301,8 @@ impl Detector for StatusStaleDetector {
                 continue;
             }
 
-            // Activity is a Spine fact or it is absent; observed SystemState is
-            // never promoted into activity evidence. Parking affects watchdog
-            // nudging, not whether an old card can mislead its readers.
+            // Activity remains explicit spine evidence. Parked declarations
+            // suppress card drift by ruling, independently of the stderr nudge.
             let latest_activity = view
                 .activity
                 .iter()
@@ -233,6 +335,8 @@ impl Detector for StatusStaleDetector {
                 ),
                 occurrence: occurrence(AnomalyKind::StatusStale, &seat.id, source_seq),
                 status: AnomalyStatus::Open,
+                detail: format!("'{}' has been working for {}min since its card was last updated (threshold {}min) — consumers render now/next as CURRENT, so a stale card actively misinforms. If '{}' is waiting on something with no known end, it should declare a parked state: pij report state waiting|hold|blocked|question (parked seats never flag). Otherwise it should update its card: pij report now \"<what I just did>\" \"<what's next>\" — note that refreshing a card resets this timer WITHOUT changing the wait, so a parked seat that reports instead of declaring will be asked again every threshold.", seat.id, age_ms / 60_000, view.thresholds.status_stale_ms / 60_000, seat.id),
+                evidence: vec![source_seq], assignment_id: None, record_ref: None, age_ms: Some(age_ms),
             });
         }
         apply_dispositions(rows, view.dispositions)
@@ -272,6 +376,9 @@ impl Detector for DeliveredUnackedDetector {
                         fact.delivered_seq,
                     ),
                     status: AnomalyStatus::Open,
+                    detail: format!("dispatch:{} remains delivered-unacked — delivery landed but no durable brief ack followed", fact.dispatch_id),
+                    evidence: vec![fact.delivered_seq], assignment_id: None,
+                    record_ref: Some(format!("dispatch:{}", fact.dispatch_id)), age_ms: Some(age_ms),
                 })
             })
             .collect();
@@ -287,35 +394,129 @@ impl Detector for UnverifiedDoneDetector {
         let rows = view
             .done
             .iter()
-            .filter(|fact| fact.verified_seq.is_none_or(|seq| seq <= fact.done_seq))
+            .filter(|fact| fact.verified_done_seq != Some(fact.done_seq) || fact.verified_seq.is_none_or(|seq| seq <= fact.done_seq))
             .map(|fact| Anomaly {
                 kind: AnomalyKind::UnverifiedDone,
                 seat: fact.seat.clone(),
                 observable: format!(
                     "assignment={} done_seq={} verified_seq={}",
-                    fact.assignment_id,
+                    fact.assignment_id.as_deref().unwrap_or("absent"),
                     fact.done_seq.0,
                     fact.verified_seq
                         .map_or_else(|| "absent".to_string(), |seq| seq.0.to_string())
                 ),
-                remediation_line: format!(
-                    "pij report verify {} --assignment {}",
-                    fact.seat, fact.assignment_id
+                remediation_line: fact.assignment_id.as_ref().map_or_else(
+                    || format!("pij report verify {}", fact.seat),
+                    |id| format!("pij report verify {} --assignment {}", fact.seat, id),
                 ),
                 occurrence: occurrence(AnomalyKind::UnverifiedDone, &fact.seat, fact.done_seq),
                 status: AnomalyStatus::Open,
+                detail: fact.assignment_id.as_ref().map_or_else(
+                    || format!("{} declared done with no verify — done is a claim until verified", fact.seat),
+                    |id| format!("assignment '{id}' declared done by {} with no verify — done is a claim until verified", fact.seat),
+                ),
+                evidence: vec![fact.done_seq], assignment_id: fact.assignment_id.clone(), record_ref: None, age_ms: None,
             })
             .collect();
         apply_dispositions(rows, view.dispositions)
     }
 }
 
-/// Run the three detectors whose outputs already have named consumers.
+/// Run the existing detectors and the two governance detectors on one snapshot.
 pub fn scan_all(view: &AnomalyView<'_>) -> Vec<Anomaly> {
     let mut rows = StatusStaleDetector.scan(view);
     rows.extend(DeliveredUnackedDetector.scan(view));
     rows.extend(UnverifiedDoneDetector.scan(view));
+    rows.extend(OpenQuestionDetector.scan(view));
+    rows.extend(DeadSeatDetector.scan(view));
     rows
+}
+
+/// Questions stay visible independently of card or semantic state changes.
+pub struct OpenQuestionDetector;
+
+impl Detector for OpenQuestionDetector {
+    fn scan(&self, view: &AnomalyView<'_>) -> Vec<Anomaly> {
+        let mut rows = Vec::new();
+        for decision in view
+            .decisions
+            .iter()
+            .filter(|row| row.state == DecisionState::Open)
+        {
+            let seat = decision.parent.as_ref().unwrap_or(&decision.asked_by);
+            let age_ms = view.now_ms.saturating_sub(decision.asked_at);
+            for kind in [AnomalyKind::OpenQuestion, AnomalyKind::StatusStale] {
+                if kind == AnomalyKind::StatusStale && age_ms <= view.thresholds.status_stale_ms {
+                    continue;
+                }
+                let detail = if kind == AnomalyKind::OpenQuestion {
+                    format!(
+                        "decision '{}' asked by {} is unanswered",
+                        decision.id, decision.asked_by
+                    )
+                } else {
+                    format!(
+                        "decision '{}' asked by {} has awaited {} for {}min (threshold {}min) — answer with pij answer {} \"<ruling>\"",
+                        decision.id,
+                        decision.asked_by,
+                        seat,
+                        age_ms / 60_000,
+                        view.thresholds.status_stale_ms / 60_000,
+                        decision.id
+                    )
+                };
+                rows.push(Anomaly {
+                    kind,
+                    seat: seat.clone(),
+                    observable: format!(
+                        "decision={} question_seq={} age_ms={age_ms}",
+                        decision.id, decision.question_seq.0
+                    ),
+                    remediation_line: format!("pij answer {} \"<ruling>\"", decision.id),
+                    occurrence: occurrence(kind, seat, decision.question_seq),
+                    status: AnomalyStatus::Open,
+                    detail,
+                    evidence: vec![decision.question_seq],
+                    assignment_id: None,
+                    record_ref: Some(format!("decision:{}", decision.id)),
+                    age_ms: Some(age_ms),
+                });
+            }
+        }
+        apply_dispositions(rows, view.dispositions)
+    }
+}
+
+/// Only positively observed dead/recycled incarnations become anomaly rows.
+pub struct DeadSeatDetector;
+
+impl Detector for DeadSeatDetector {
+    fn scan(&self, view: &AnomalyView<'_>) -> Vec<Anomaly> {
+        apply_dispositions(
+            view.dead
+                .iter()
+                .map(|fact| Anomaly {
+                    kind: AnomalyKind::DeadSeat,
+                    seat: fact.seat.clone(),
+                    observable: format!(
+                        "seat={} registry_seq={} process_incarnation=dead",
+                        fact.seat, fact.seq.0
+                    ),
+                    remediation_line: "pij-rs reap --dry-run".to_string(),
+                    occurrence: occurrence(AnomalyKind::DeadSeat, &fact.seat, fact.seq),
+                    status: AnomalyStatus::Open,
+                    detail:
+                        "recorded process incarnation is dead; inspect with pij-rs reap --dry-run"
+                            .to_string(),
+                    evidence: vec![fact.seq],
+                    assignment_id: None,
+                    record_ref: None,
+                    age_ms: None,
+                })
+                .collect(),
+            view.dispositions,
+        )
+    }
 }
 
 /// Build the durable acknowledgement event for one exact occurrence.
@@ -427,33 +628,41 @@ mod tests {
             dispatches,
             done,
             dispositions,
+            decisions: &[],
+            dead: &[],
         }
     }
 
     #[test]
-    fn status_staleness_is_clock_only_and_parking_suspends_nudging_not_detection() {
-        let seats = [seat("pij-parked", Some(SemanticState::Waiting))];
-        let cards = [card("pij-parked", NOW - 10 * 60 * 1_000 - 1, 41)];
-        let activity = [ActivityFact {
-            seat: SeatId::from("pij-parked"),
-            at: NOW - 1,
-            seq: Seq(42),
-        }];
-        let view = empty_view(&seats, &cards, &activity, &[], &[], &[]);
-
+    fn status_staleness_uses_thirty_minutes_and_suppresses_parked_states() {
+        let seats = [seat("pij-worker", None)];
+        let cards = [card("pij-worker", NOW - 1_800_001, 100)];
+        let mut view = empty_view(&seats, &cards, &[], &[], &[], &[]);
+        view.thresholds = AnomalyThresholds::default();
         let rows = StatusStaleDetector.scan(&view);
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].kind, AnomalyKind::StatusStale);
-        assert!(rows[0].observable.contains("card_seq=41"));
-        assert!(rows[0].observable.contains("latest_activity_seq=42"));
-        assert!(rows[0].remediation_line.contains("pij-parked"));
-
-        let boundary_cards = [card("pij-parked", NOW - 10 * 60 * 1_000, 43)];
-        let boundary = empty_view(&seats, &boundary_cards, &activity, &[], &[], &[]);
-        assert!(
-            StatusStaleDetector.scan(&boundary).is_empty(),
-            "the contract is older than ten minutes, not ten minutes old"
+        let fixtures: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+        ))
+        .expect("canonical contract");
+        assert_eq!(
+            serde_json::to_value(rows[0].wire()).expect("wire row"),
+            fixtures["rows"]["anomalies"][0]
         );
+        let boundary_cards = [card("pij-worker", NOW - 1_800_000, 101)];
+        view.cards = &boundary_cards;
+        assert!(StatusStaleDetector.scan(&view).is_empty());
+        for state in [
+            SemanticState::Waiting,
+            SemanticState::Hold,
+            SemanticState::Blocked,
+            SemanticState::Question,
+        ] {
+            let parked = [seat("pij-worker", Some(state))];
+            let mut view = empty_view(&parked, &cards, &[], &[], &[], &[]);
+            view.thresholds = AnomalyThresholds::default();
+            assert!(StatusStaleDetector.scan(&view).is_empty(), "{state:?}");
+        }
     }
 
     #[test]
@@ -487,9 +696,10 @@ mod tests {
     fn unverified_done_requires_a_verification_later_than_the_done_claim() {
         let before = DoneFact {
             seat: SeatId::from("pij-coder"),
-            assignment_id: "asg-9".to_string(),
+            assignment_id: Some("asg-9".to_string()),
             done_seq: Seq(70),
             verified_seq: Some(Seq(69)),
+            verified_done_seq: Some(Seq(70)),
         };
         let facts = [before];
         let view = empty_view(&[], &[], &[], &[], &facts, &[]);
@@ -511,8 +721,8 @@ mod tests {
 
     #[test]
     fn cleared_occurrence_stays_cleared_until_source_evidence_changes() {
+        let seats = [seat("pij-coder", None)];
         let actor = SeatId::from("pij-pm");
-        let seats = [seat("pij-coder", Some(SemanticState::Hold))];
         let cards = [card("pij-coder", NOW - 700_000, 80)];
         let initial = empty_view(&seats, &cards, &[], &[], &[], &[]);
         let row = StatusStaleDetector.scan(&initial).remove(0);
@@ -546,9 +756,10 @@ mod tests {
     fn disposition_events_are_appendable_spine_facts_for_the_exact_occurrence() {
         let fact = DoneFact {
             seat: SeatId::from("pij-coder"),
-            assignment_id: "asg-10".to_string(),
+            assignment_id: Some("asg-10".to_string()),
             done_seq: Seq(90),
             verified_seq: None,
+            verified_done_seq: None,
         };
         let facts = [fact];
         let view = empty_view(&[], &[], &[], &[], &facts, &[]);
@@ -576,9 +787,10 @@ mod tests {
         }];
         let done = [DoneFact {
             seat: SeatId::from("pij-done"),
-            assignment_id: "asg-22".to_string(),
+            assignment_id: Some("asg-22".to_string()),
             done_seq: Seq(103),
             verified_seq: None,
+            verified_done_seq: None,
         }];
         let view = empty_view(&seats, &cards, &[], &dispatches, &done, &[]);
 
@@ -599,6 +811,102 @@ mod tests {
                     row.kind
                 );
             }
+        }
+    }
+
+    #[test]
+    fn verification_of_another_done_does_not_close_latest_claim() {
+        let done = [DoneFact {
+            seat: SeatId::from("pij-worker"),
+            assignment_id: None,
+            done_seq: Seq(102),
+            verified_seq: Some(Seq(103)),
+            verified_done_seq: Some(Seq(100)),
+        }];
+        let view = empty_view(&[], &[], &[], &[], &done, &[]);
+        let rows = UnverifiedDoneDetector.scan(&view);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].remediation_line, "pij report verify pij-worker");
+        assert!(rows[0].wire().assignment_id.is_none());
+    }
+
+    #[test]
+    fn open_decision_stales_responsible_parent_despite_fresh_card() {
+        let parent = seat("pij-parent", None);
+        let mut worker = seat("pij-worker", None);
+        worker.parent = Some(parent.id.clone());
+        let seats = [parent, worker];
+        let cards = [card("pij-parent", NOW, 105)];
+        let decisions = [crate::decisions::Decision {
+            id: "d1".to_string(),
+            asked_by: SeatId::from("pij-worker"),
+            parent: Some(SeatId::from("pij-parent")),
+            question: "which branch?".to_string(),
+            state: crate::decisions::DecisionState::Open,
+            asked_at: NOW - 1_800_001,
+            question_seq: Seq(100),
+            answer: None,
+            answered_by: None,
+            answered_at: None,
+            answer_msg_id: None,
+        }];
+        let mut view = empty_view(&seats, &cards, &[], &[], &[], &[]);
+        view.decisions = &decisions;
+        let rows = scan_all(&view);
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().any(|row| row.kind == AnomalyKind::OpenQuestion));
+        let stale = rows
+            .iter()
+            .find(|row| row.kind == AnomalyKind::StatusStale)
+            .expect("overdue parent");
+        assert_eq!(stale.seat.as_str(), "pij-parent");
+        assert_eq!(stale.wire().record_ref, Some("decision:d1"));
+        assert_eq!(stale.wire().evidence, vec![Seq(100)]);
+    }
+
+    #[test]
+    fn five_governance_kinds_match_canonical_rows_and_real_sequences() {
+        let fixtures: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+        ))
+        .expect("contract");
+        let seats = [seat("pij-worker", None)];
+        let cards = [card("pij-worker", NOW - 1_800_001, 100)];
+        let dispatches = [DispatchFact {
+            seat: SeatId::from("pij-worker"),
+            dispatch_id: "dispatch-139-proof".into(),
+            packet_sha256: "a".repeat(64),
+            delivered_at: NOW - 900_001,
+            delivered_seq: Seq(100),
+            acknowledged: false,
+        }];
+        let done = [DoneFact {
+            seat: SeatId::from("pij-worker"),
+            assignment_id: Some("assignment-139-proof".into()),
+            done_seq: Seq(100),
+            verified_seq: None,
+            verified_done_seq: None,
+        }];
+        let mut decision: Decision =
+            serde_json::from_value(fixtures["rows"]["decision"].clone()).expect("decision");
+        decision.asked_at = NOW - 1;
+        let decisions = [decision];
+        let dead = [DeadSeatFact {
+            seat: SeatId::from("pij-worker"),
+            seq: Seq(100),
+        }];
+        let mut view = empty_view(&seats, &cards, &[], &dispatches, &done, &[]);
+        view.thresholds = AnomalyThresholds::default();
+        view.decisions = &decisions;
+        view.dead = &dead;
+        let rows = scan_all(&view);
+        assert_eq!(rows.len(), 5);
+        for expected in fixtures["rows"]["anomalies"].as_array().expect("rows") {
+            let row = rows
+                .iter()
+                .find(|row| row.kind.as_str() == expected["kind"].as_str().expect("kind"))
+                .expect("existing kind spelling");
+            assert_eq!(serde_json::to_value(row.wire()).expect("wire"), *expected);
         }
     }
 }

@@ -6,6 +6,7 @@
 
 #![deny(missing_docs)]
 
+pub mod decisions;
 pub mod dispatch;
 pub mod governance;
 pub mod migrate;

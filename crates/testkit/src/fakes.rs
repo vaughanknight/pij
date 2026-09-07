@@ -161,6 +161,33 @@ impl Registry for FakeRegistry {
         descriptor.tombstone_reason = Some(reason.to_string());
         Ok(Seq(seq))
     }
+
+    async fn tombstone_if_unchanged(
+        &self,
+        expected: SeatDescriptor,
+        reason: String,
+    ) -> Result<Seq> {
+        let mut state = self.state.lock().expect("fake registry mutex");
+        state
+            .recorder
+            .record(format!("tombstone_if_unchanged:{}:{reason}", expected.id));
+        if state.seats.get(expected.id.as_str()) != Some(&expected) {
+            return Err(PijError::GovernanceRefused {
+                code: "E-RS-INCARNATION-CHANGED".to_string(),
+                record: expected.id.to_string(),
+            });
+        }
+        state.seq += 1;
+        let seq = state.seq;
+        let descriptor = state
+            .seats
+            .get_mut(expected.id.as_str())
+            .expect("snapshot matched under lock");
+        descriptor.tombstoned_at = Some(seq);
+        descriptor.tombstone_reason = Some(reason);
+        descriptor.native_extension_delivery = false;
+        Ok(Seq(seq))
+    }
 }
 
 /// The append-only history, in memory.

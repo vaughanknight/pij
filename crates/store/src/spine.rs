@@ -1,6 +1,6 @@
 //! The append-only history, on SQLite.
 //!
-//! Rows are inserted and never updated. `seq` is an AUTOINCREMENT primary key,
+//! Committed rows are never updated. `seq` is an AUTOINCREMENT primary key,
 //! so it is monotonic for the life of the database and is never reused even
 //! after deletion — which is what lets `tail(since)` mean "everything I have not
 //! seen" rather than "everything currently present".
@@ -17,6 +17,7 @@ use pij_core::model::{Event, SeatId, Seq};
 use pij_core::ports::{PutBinding, Spine};
 
 use crate::migrate::{begin_write, require_current_schema};
+use crate::orchestration::{SqliteOrchestration, sql_u64};
 
 /// An owned, lazy registry transaction returning its committed event and binding.
 /// The publisher acquires its ordering lock before polling, then owns this future
@@ -58,6 +59,26 @@ pub(crate) async fn append_in_transaction(
     Ok(Seq(seq as u64))
 }
 
+/// Allocate through the sole insertion authority, then finalize a self-referential
+/// payload before the caller commits its transaction. The draft is never visible
+/// outside that transaction; any failure must roll back the enclosing operation.
+pub(crate) async fn append_generated_in_transaction(
+    connection: &mut SqliteConnection,
+    mut draft: Event,
+    finalize_payload: impl FnOnce(Seq) -> String,
+) -> Result<Event> {
+    let seq = append_in_transaction(connection, &draft).await?;
+    draft.payload = finalize_payload(seq);
+    sqlx::query("UPDATE spine_events SET payload = ?1 WHERE seq = ?2")
+        .bind(&draft.payload)
+        .bind(seq.0 as i64)
+        .execute(connection)
+        .await
+        .map_err(adapter_error)?;
+    draft.seq = Some(seq);
+    Ok(draft)
+}
+
 /// A [`Spine`] backed by the SQLite store.
 pub struct SqliteSpine {
     pool: Pool<Sqlite>,
@@ -67,6 +88,19 @@ impl SqliteSpine {
     /// Wrap an open pool.
     pub fn new(pool: Pool<Sqlite>) -> Self {
         SqliteSpine { pool }
+    }
+}
+
+impl SqliteOrchestration {
+    /// Observe the committed head without decoding or copying event history.
+    /// This cursor is never used to allocate a future event sequence.
+    pub async fn spine_head(&self) -> Result<Seq> {
+        require_current_schema(&self.pool).await?;
+        let seq: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(seq), 0) FROM spine_events")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(adapter_error)?;
+        Ok(Seq(sql_u64(seq, "spine head")?))
     }
 }
 

@@ -484,6 +484,14 @@ mod tests {
         async fn tombstone(&self, seat: &SeatId, reason: &str) -> Result<pij_core::model::Seq> {
             self.inner.tombstone(seat, reason).await
         }
+
+        async fn tombstone_if_unchanged(
+            &self,
+            expected: SeatDescriptor,
+            reason: String,
+        ) -> Result<pij_core::model::Seq> {
+            self.inner.tombstone_if_unchanged(expected, reason).await
+        }
     }
 
     #[tokio::test]

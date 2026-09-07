@@ -28,6 +28,43 @@ impl PublishedFakeRegistry {
     pub fn new(registry: Arc<FakeRegistry>, bus: Arc<EventBus>) -> Self {
         Self { registry, bus }
     }
+    async fn publish_tombstone(
+        &self,
+        seat: SeatId,
+        reason: String,
+        expected: Option<SeatDescriptor>,
+    ) -> Result<Seq> {
+        let registry = self.registry.clone();
+        let spine = self.bus.spine.clone();
+        self.bus.publish_registry(Box::pin(async move {
+            // All composed fake writers share this bus ordering boundary. The
+            // raw fake is not an alternate production write entry point.
+            let current = registry.get(&seat).await?;
+            if let Some(expected) = expected
+                && current.as_ref() != Some(&expected)
+            {
+                return Err(PijError::GovernanceRefused {
+                    code: "E-RS-INCARNATION-CHANGED".to_string(),
+                    record: seat.to_string(),
+                });
+            }
+            let mut descriptor = current.ok_or_else(|| PijError::NoRegistryEntry {
+                seat: seat.clone(),
+                store: "the daemon's in-memory fake registry".to_string(),
+            })?;
+            let mut event = registry_event("seat.tombstone", &seat, serde_json::json!({ "reason": reason }).to_string())?;
+            descriptor.tombstoned_at = Some(event.at);
+            descriptor.tombstone_reason = Some(reason);
+            descriptor.native_extension_delivery = false;
+            let seq = spine.append(event.clone()).await?;
+            registry.put(descriptor).await.map_err(|error| PijError::Adapter {
+                adapter: "daemon/events".to_string(),
+                message: format!("fake registry event {} committed but tombstone mutation failed: {error}", seq.0),
+            })?;
+            event.seq = Some(seq);
+            Ok((event, None))
+        })).await.map(|(seq, _)| seq)
+    }
 }
 
 #[async_trait]
@@ -67,26 +104,16 @@ impl Registry for PublishedFakeRegistry {
     }
 
     async fn tombstone(&self, seat: &SeatId, reason: &str) -> Result<Seq> {
-        let registry = self.registry.clone();
-        let spine = self.bus.spine.clone();
-        let seat = seat.clone();
-        let reason = reason.to_string();
-        self.bus.publish_registry(Box::pin(async move {
-            let mut descriptor = registry.get(&seat).await?.ok_or_else(|| PijError::NoRegistryEntry {
-                seat: seat.clone(),
-                store: "the daemon's in-memory fake registry".to_string(),
-            })?;
-            let mut event = registry_event("seat.tombstone", &seat, serde_json::json!({ "reason": reason }).to_string())?;
-            descriptor.tombstoned_at = Some(event.at);
-            descriptor.tombstone_reason = Some(reason.to_string());
-            descriptor.native_extension_delivery = false;
-            let seq = spine.append(event.clone()).await?;
-            registry.put(descriptor).await.map_err(|error| PijError::Adapter {
-                adapter: "daemon/events".to_string(),
-                message: format!("fake registry event {} committed but tombstone mutation failed: {error}", seq.0),
-            })?;
-            event.seq = Some(seq);
-            Ok((event, None))
-        })).await.map(|(seq, _)| seq)
+        self.publish_tombstone(seat.clone(), reason.to_string(), None)
+            .await
+    }
+
+    async fn tombstone_if_unchanged(
+        &self,
+        expected: SeatDescriptor,
+        reason: String,
+    ) -> Result<Seq> {
+        self.publish_tombstone(expected.id.clone(), reason, Some(expected))
+            .await
     }
 }

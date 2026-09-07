@@ -148,7 +148,7 @@ pub(super) async fn test_services(
     // This helper scripts core port failures. Atomic-governance tests instead
     // use the complete shared-SQL graph in support/governance_http.rs.
     services.governance = Arc::new(super::governance::GovernanceService::new(
-        store,
+        store.clone(),
         services.event_bus.clone(),
         pij_testkit::fresh_dir("pij-http-governance"),
     ));
@@ -166,6 +166,20 @@ pub(super) async fn test_services(
         )
         .expect("delivery service"),
     );
+    services.decisions = Arc::new(super::decisions::DecisionService::new(
+        store.clone(),
+        services.registry.clone(),
+        services.event_bus.clone(),
+        services.delivery.clone(),
+        pij_core::config::AdapterChoice::Fake,
+        pij_core::config::AdapterChoice::Fake,
+    ));
+    services.anomalies = Arc::new(super::anomalies::AnomalyService::new(
+        store,
+        services.registry.clone(),
+        services.event_bus.clone(),
+        services.liveness.clone(),
+    ));
     services
 }
 

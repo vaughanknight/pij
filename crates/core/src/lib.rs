@@ -13,6 +13,7 @@
 pub mod admission;
 pub mod anomalies;
 pub mod config;
+pub mod decisions;
 pub mod delivery;
 pub mod error;
 pub mod events;
