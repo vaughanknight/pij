@@ -1,0 +1,32 @@
+{
+  "scope": "Production control-command receipts for owned peers; read from public spine_events, not inbox transport logs",
+  "source_context": "Prime reports controls shipped in PR380, daemon16367. The PM in-process tool predates that merge and refused control; rebuilt CLI was explicitly authorized as the control-only workaround. No session restart.",
+  "commands": [
+    {
+      "command": "pij-rs send --to pij-peaceful-genar --command compact",
+      "msg_id": "01a07a06-4084-7530-bd49-f6b168d2f8cd",
+      "pushed_seq": 17388,
+      "queued_seq": 17389,
+      "delivered_seq": 17422
+    },
+    {
+      "command": "pij-rs send --to pij-electoral-orlandine --command compact",
+      "msg_id": "01a07a06-409a-7573-a889-d111c8fb3ee7",
+      "pushed_seq": 17390,
+      "queued_seq": 17391,
+      "completion_observed": false
+    },
+    {
+      "command": "pij-rs send --to pij-general-miriam --command compact",
+      "msg_id": "01a07a06-40b2-72c1-a46f-98bcf4c64e2c",
+      "pushed_seq": 17392,
+      "queued_seq": 17393,
+      "completion_observed": false
+    }
+  ],
+  "later_request_receipts": [
+    {"seat": "pij-written-lansra", "msg_id": "01a07a09-e257-72c2-b1fe-a817f0140e32", "outcome": "queued", "reason": "extension-stream"},
+    {"seat": "pij-adjacent-falcon", "msg_id": "01a07a0d-68c6-70a2-81bd-de1e22c739e4", "outcome": "queued", "reason": "operator-hold"}
+  ],
+  "proof_ceiling": "Queued is not executed. A delivered receipt is recorded only where observed; compaction completion is not a progress gate."
+}

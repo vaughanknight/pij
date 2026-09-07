@@ -634,6 +634,8 @@ mod tests {
                 tap_root,
             };
             session.run([
+                "-f",
+                "/dev/null",
                 "new-session",
                 "-d",
                 "-s",
@@ -716,6 +718,26 @@ mod tests {
 
     #[tokio::test]
     async fn second_observer_pass_repairs_a_vanished_os_pipe_and_keeps_growing() {
+        async fn wait_for_tap_bytes(sink: &std::path::Path, marker: &str) -> Vec<u8> {
+            tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let bytes = std::fs::read(sink).expect("read isolated tap bytes");
+                    if String::from_utf8_lossy(&bytes).contains(marker) {
+                        return bytes;
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "tap {} never contained {marker:?}; observed {:?}",
+                    sink.display(),
+                    std::fs::read(sink)
+                )
+            })
+        }
+
         let Some(session) = LiveTmuxSession::start() else {
             eprintln!("SKIP real pane observer test: tmux unavailable");
             return;
@@ -743,23 +765,35 @@ mod tests {
         tmux.send_keys(&pane.id, "first-pass")
             .await
             .expect("first output");
-        tokio::time::sleep(Duration::from_millis(100)).await;
         let sink = observer.sink_path(&pane.id);
-        let first = std::fs::read(&sink).expect("first tap bytes");
-        assert!(String::from_utf8_lossy(&first).contains("first-pass"));
+        let first = wait_for_tap_bytes(&sink, "first-pass").await;
 
         // Reproduce the dogfood state: our offset record survives while tmux's
         // output pipe has vanished. The next daemon pass must repair, not trust,
         // that stale in-memory ownership claim.
         session.run(["pipe-pane", "-t", &pane.id]);
+        // Command completion is not proof that the OS pipe is already gone.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let pipe = session.run(["display-message", "-p", "-t", &pane.id, "#{pane_pipe}"]);
+                if String::from_utf8_lossy(&pipe.stdout).trim() == "0" {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("isolated pipe must be physically absent before the repair pass");
         observer.observe_once().await.expect("second observer pass");
         tmux.send_keys(&pane.id, "second-pass")
             .await
             .expect("second output");
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        let second = std::fs::read(&sink).expect("second tap bytes");
+        let second = wait_for_tap_bytes(&sink, "second-pass").await;
         assert!(second.len() > first.len(), "tap must grow after pass two");
-        assert!(String::from_utf8_lossy(&second).contains("second-pass"));
+        assert!(
+            second.starts_with(&first),
+            "repair must preserve prior tap bytes"
+        );
 
         observer.detach_all().await.expect("detach real tap");
     }

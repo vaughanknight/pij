@@ -51,6 +51,14 @@
           "links": [
             "../plan.dd.json#acceptance_criteria/AC5"
           ]
+        },
+        {
+          "id": "lg-0005",
+          "at": "2026-09-07T04:15:51Z",
+          "text": "Pinned Rust gate at34a19dae5cc6d81088d4e2b2652d90a3b75749ea FAILED test stage: pane_observer::tests::second_observer_pass_repairs_a_vanished_os_pipe_and_keeps_growing asserted tap growth after fixed100ms (artifact://244, full raw243). Toolchain/lock/fmt/clippy/arch passed. No wave2 source was composed. Inspected TmuxAdapter::for_server: every command selects private -L server and legacy_tap_root=None. Fixture now disables user tmux config, waits for physical pipe absence before repair and actual marker bytes instead of fixed sleeps, asserts prior bytes preserved. Exact changed witness GREEN,1 passed0.22s (artifact://253). This is fixture proof repair, not a production liveness change or a rerun assumed to cure flakiness. New full gate still required.",
+          "links": [
+            "tasks/phase-1/tasks.dd.json#tasks/tk-12a1"
+          ]
         }
       ]
     }
