@@ -1,0 +1,138 @@
+{
+  "recorded_at": "2026-09-07T16:40:17Z",
+  "authorization": "Prime pij-minor-unicorn requested coder/reviewer closeout after PR384 merged to origin/main2ca240fa; worktree retirement remains prime-owned.",
+  "caller": "pij-lonely-ikrie",
+  "method": "pij-rs close <seat> --reason ... --json; no reaping or manual database mutation",
+  "targets": [
+    {
+      "units": "u1",
+      "seat": "pij-electoral-orlandine",
+      "tombstone_seq": 21069
+    },
+    {
+      "units": "u2",
+      "seat": "pij-written-lansra",
+      "tombstone_seq": 21071
+    },
+    {
+      "units": "u3/u6",
+      "seat": "pij-general-miriam",
+      "tombstone_seq": 21068
+    },
+    {
+      "units": "u4",
+      "seat": "pij-adjacent-falcon",
+      "tombstone_seq": 21070
+    },
+    {
+      "units": "u5",
+      "seat": "pij-peaceful-genar",
+      "tombstone_seq": 21066
+    },
+    {
+      "units": "reviewer",
+      "seat": "pij-zany-reptile",
+      "tombstone_seq": 21067
+    }
+  ],
+  "active_roster_verification": {
+    "all_targets_absent": true,
+    "parent_still_present": true,
+    "unavailable_machines": []
+  },
+  "buffers": {
+    "directory": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/buffers",
+    "copies_verified": 8,
+    "current_source_buffers_matched": 7,
+    "historical_pm_snapshot_retained": true,
+    "gate_worktree_buffers_still_absent": 4,
+    "entries": [
+      {
+        "owner": "pm-final",
+        "copy": "pm-final-session-buffer.txt",
+        "bytes": 11067,
+        "sha256": "552d733b454806bd100a3ce3728eae33de82c2ed51abb380e076dcc76b7dc05b",
+        "manifest_matches": true,
+        "matches_current_source": true
+      },
+      {
+        "owner": "pm",
+        "copy": "pm-session-buffer.txt",
+        "bytes": 8711,
+        "sha256": "01cb4b7ba11e65aba88f1e3b23a0aef546bc38bf201b183d787f2de8fd8dac8f",
+        "manifest_matches": true
+      },
+      {
+        "owner": "u1",
+        "copy": "u1-session-buffer.txt",
+        "bytes": 5501,
+        "sha256": "02f154a06e93f59a5b8b5a4813659c841a236d56121cc1107a0124a7530c2fcc",
+        "manifest_matches": true,
+        "matches_current_source": true
+      },
+      {
+        "owner": "u2",
+        "copy": "u2-session-buffer.txt",
+        "bytes": 3612,
+        "sha256": "15fbbfc8edd5ca409313244d13f8fd4e972a2f8c32ec026aecaa65456f24024a",
+        "manifest_matches": true,
+        "matches_current_source": true
+      },
+      {
+        "owner": "u3",
+        "copy": "u3-session-buffer.txt",
+        "bytes": 1174,
+        "sha256": "286fa69758f6a5400680b4f4ccdda0a7e9dabc1fda396238ab3289cd09a0c4b8",
+        "manifest_matches": true,
+        "matches_current_source": true
+      },
+      {
+        "owner": "u4",
+        "copy": "u4-session-buffer.txt",
+        "bytes": 840,
+        "sha256": "e841eec898ef1a12660a7ce3924021c7db32cf8999011737f70166c660358df6",
+        "manifest_matches": true,
+        "matches_current_source": true
+      },
+      {
+        "owner": "u5",
+        "copy": "u5-session-buffer.txt",
+        "bytes": 1457,
+        "sha256": "53ac1dd7c061fa94471bf3c37f533979c1fb04b4ba35f9f9b93e10f7cc97f877",
+        "manifest_matches": true,
+        "matches_current_source": true
+      },
+      {
+        "owner": "u6",
+        "copy": "u6-session-buffer.txt",
+        "bytes": 1538,
+        "sha256": "893457d92a3206bd3ad758387c6e1104c87270a17baeeccdcecb55558759c86b",
+        "manifest_matches": true,
+        "matches_current_source": true
+      },
+      {
+        "owner": "u1-gate",
+        "state": "absent-at-snapshot",
+        "still_absent": true
+      },
+      {
+        "owner": "u2-gate",
+        "state": "absent-at-snapshot",
+        "still_absent": true
+      },
+      {
+        "owner": "u4-gate",
+        "state": "absent-at-snapshot",
+        "still_absent": true
+      },
+      {
+        "owner": "u6-gate",
+        "state": "absent-at-snapshot",
+        "still_absent": true
+      }
+    ]
+  },
+  "processes_or_panes_killed": false,
+  "worktrees_removed": false,
+  "source_buffers_drained_or_deleted": false
+}
