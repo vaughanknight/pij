@@ -1,0 +1,186 @@
+{
+  "branch": "pending-counter-truth",
+  "worktree": "/Users/jordanknight/pi-hacking/pij-pending-counter-truth",
+  "scope": {
+    "files": 13,
+    "counter": "Pi/OMP delivered-but-unconsumed only; daemon backlog excluded",
+    "ack": "correlated native consumption, not enqueue acceptance",
+    "ompRecovery": "retained custom envelope after terminal interrupt, idle-gated reinjection, no draft mutation",
+    "nativeRecovery": "same daemon claim; fresh boundary, history absence, native queue/steering absence, processing false; exclusive old-native-id retry intent before resend",
+    "legacyPi": "existing submission path preserved unless Rust caller opts into consumption metadata"
+  },
+  "red": [
+    {
+      "command": "just test .pi/extensions/pij/adapters/rust-runtime.test.ts -t 'does not acknowledge queued|never treats idle|reinjects interrupted'",
+      "failed": 3,
+      "names": [
+        "does not acknowledge queued delivery before its own message starts",
+        "never treats idle or an unrelated turn as message consumption",
+        "reinjects interrupted unconsumed mail once and never repeats consumed mail"
+      ],
+      "observed": "premature ACK [1] instead of []; idle cleared pending; recovery method absent",
+      "receipt": "artifact://48"
+    },
+    {
+      "command": "node --test --test-name-pattern='native consumption:' .copilot/extensions/pij/store.test.mjs",
+      "failed": 4,
+      "names": [
+        "native consumption: accepted send stays unacknowledged until matching user message",
+        "native consumption: missed callbacks recover consumption and final turn from history",
+        "native consumption: unrelated history and idle cannot acknowledge acceptance",
+        "native consumption: accepted duplicate recovers history without native resend"
+      ]
+    },
+    {
+      "command": "just test .pi/extensions/pij/core/session.test.ts -t 'keeps legacy delivery'",
+      "failed": 1,
+      "names": [
+        "keeps legacy delivery on its existing submission path unless native consumption tracking is enabled"
+      ],
+      "receipt": "artifact://86"
+    },
+    {
+      "command": "just test .pi/extensions/pij/adapters/rust-runtime.test.ts -t 'reconciles a committed acknowledgement'",
+      "failed": 1,
+      "names": [
+        "reconciles a committed acknowledgement whose response was lost without endless retries"
+      ],
+      "receipt": "artifact://96"
+    },
+    {
+      "command": "node --test --test-name-pattern='native discard recovery:' .copilot/extensions/pij/store.test.mjs",
+      "failed": 12,
+      "passed": 1,
+      "names": [
+        "native discard recovery: discarded enqueue resends once after the foreground idle boundary",
+        "native discard recovery: no resend while a potentially consuming turn is still processing",
+        "native discard recovery: queued item matched by native ID waits for later consumption",
+        "native discard recovery: queued item matched by exact display prefix waits for later consumption",
+        "native discard recovery: replayed historical boundary cannot authorize resend",
+        "native discard recovery: missing queue API never authorizes resend",
+        "native discard recovery: missing processing API never authorizes resend",
+        "native discard recovery: malformed queue never authorizes resend",
+        "native discard recovery: malformed processing never authorizes resend",
+        "native discard recovery: queue error never authorizes resend",
+        "native discard recovery: processing error never authorizes resend",
+        "native discard recovery: concurrent journal rearm preserves one exclusive retry intent"
+      ]
+    }
+  ],
+  "verification": {
+    "gate": {
+      "command": "harness checks",
+      "exit": 0,
+      "timestamp": "2026-09-07T09:14:11.403Z",
+      "file": "/Users/jordanknight/pi-hacking/pij-pending-counter-truth/.harness/temp/pending-gate-final.json",
+      "sensors": [
+        "local-paths",
+        "typecheck",
+        "lint",
+        "test",
+        "copilot-native",
+        "windows-compat",
+        "smoke",
+        "pkg-audit",
+        "snapshots",
+        "pij-commit-trailers"
+      ],
+      "skippedSensors": []
+    },
+    "nativeSuite": {
+      "command": "just copilot-native-test",
+      "passed": 160,
+      "failed": 0,
+      "skipped": 2,
+      "skipReason": "Linux host identity cases on Darwin",
+      "receipt": "artifact://122"
+    },
+    "ompSuite": {
+      "command": "just test .pi/extensions/pij/core/session.test.ts .pi/extensions/pij/adapters/rust-runtime.test.ts .pi/extensions/pij/adapters/pi-runtime.test.ts",
+      "passedBeforeFinalAckRegression": 127,
+      "finalAckRegressionIncludedInFullGate": true
+    },
+    "formatter": "just format; Biome schema version mismatch INFO only, no warning/error; final lint sensor PASS"
+  },
+  "proof": {
+    "json": "/Users/jordanknight/pi-hacking/pij-pending-counter-truth/.harness/temp/pending-probe.json",
+    "captures": "/Users/jordanknight/pi-hacking/pij-pending-counter-truth/.harness/temp/pending-live",
+    "baselineOmpLostAckSeqs": [
+      32,
+      36,
+      40
+    ],
+    "finalOmpAckSeqs": [
+      130,
+      132,
+      134
+    ],
+    "nativeRecoveredAckSeqs": [
+      156,
+      158,
+      160
+    ],
+    "nativeBoundaryAt": "2026-09-07T09:08:46.936Z",
+    "nativeRetryAt": "2026-09-07T09:08:47.232Z",
+    "oldNativeId": "c35e5b9b-5b74-435b-9523-68eea6cea360",
+    "newNativeId": "941ba294-dd21-4d7f-9766-ab64b4f1f461",
+    "oldNativeIdConsumed": false,
+    "uniqueNativeConsumptions": {
+      "01a07b1f-fdcd-7cc2-8586-afb938cd6273": 1,
+      "01a07b1f-fdd4-77d3-9a0e-1cc1e63d7b87": 1,
+      "01a07b1f-fdda-7372-967e-449dfd02cfcd": 1
+    },
+    "nativeInterruptGesture": "Ctrl-C cleared queued message while foreground tool continued; raw Escape did not interrupt in private CLI and did not drop queue"
+  },
+  "review": {
+    "reviewer": "OmpSafetyReview",
+    "fixedFindings": [
+      "legacy Pi metadata opt-in",
+      "committed ACK response loss reconciled with authoritative oldest pending/running peek"
+    ],
+    "final": "no further material safety finding established",
+    "limits": [
+      "Native boundary baseline is captured before enqueue; queue/history/processing snapshots provide the approved conservative recheck, not a universal linearizability proof.",
+      "Native ambiguous crash between send and durable acceptance remains held; no universal exactly-once crash guarantee.",
+      "getEvents fallback replays full history with 250ms-to-5s backoff rather than a cursor stream."
+    ]
+  },
+  "friction": {
+    "buffer": "/Users/jordanknight/pi-hacking/pij-pending-counter-truth/.harness/temp/agent/session-buffer.md",
+    "neutralReclaimGap": "/v1/release cannot unclaim running jobs (queue.rs:514 NotDeferred); /v1/hold is reason-locked to human-typing. Native retry retains the same unacked claim; no fabricated typing evidence.",
+    "baseline": "harness boot file-watch-notify smoke failed before edits; both subsequent full checks passed all10 sensors.",
+    "encoded": "consumption correlation, ACK-response reconciliation, interrupt recovery and queue-presence no-duplicate regressions",
+    "recommendedHarnessImprovement": "Neutral daemon reclaim primitive distinct from typing Hold, as requested for prime ledger."
+  },
+  "notRun": [
+    "No public push, PR, merge, production daemon bounce, global link change, or OMP update.",
+    "No separate full Rust workspace suite; no Rust source changed.",
+    "No separate Pi live message probe; Pi adapter/store tests plus repository smoke ran.",
+    "2 Linux-only native tests skipped on Darwin."
+  ],
+  "productionException": "Prime explicitly authorized read-only default-daemon pij-rs commit-trailers; actual output Pij-Seat pij-hushed-morgott / Pij-Prime pij-minor-unicorn, no plan trailer.",
+  "commit": "d1ea99a9b27325e564a33e764a040acdd7dcfaa6",
+  "trailers": {
+    "Pij-Seat": "pij-hushed-morgott",
+    "Pij-Prime": "pij-minor-unicorn"
+  },
+  "cleanup": {
+    "status": "complete",
+    "privateTmux": "stopped exit0",
+    "privateDaemon": "stopped; port58507 closed",
+    "privateHomeRemoved": true,
+    "privateDaemonKeyRemoved": true,
+    "preserved": [
+      "pending-probe.json",
+      "pending-gate-final.json",
+      "pending-gate-final.stderr.txt",
+      "pending-report.json",
+      "pending-live/* pane captures",
+      "pending-live/final-spine.json",
+      "pending-live/native-recovery-events.json",
+      "pending-live/copilot-*-events.json",
+      "pending-live/sessions/*.jsonl",
+      "pending-live/state/pij.sqlite and retry journals"
+    ]
+  }
+}

@@ -1,0 +1,64 @@
+
+╭─── omp v18.0.10 ─────────────────────────────────────────────────────────────────────────────────╮
+│                          │ Tips                                                                  │
+│      Welcome back!       │ # for prompt actions                                                  │
+│                          │ / for commands                                                        │
+│       ████████████       │ ! to run bash                                                         │
+│          ██  ██          │ $ to run python                                                       │
+│          ██  ██          │ ───────────────────────────────────────────────────────────────────── │
+│          ▒▒  ██          │ LSP Servers                                                           │
+│              ██          │ No LSP servers                                                        │
+│                          │                                                                       │
+│       GPT-5.4 mini       │                                                                       │
+│      github-copilot      │                                                                       │
+│                          │ ───────────────────────────────────────────────────────────────────── │
+│                          │ Recent sessions                                                       │
+│                          │ • rs·pij-solid-donkey (23m ago)                                       │
+│                          │ • rs·pij-federal-ebulan (28m ago)                                     │
+│                          │ • Untitled · 06:21 PM (34m ago)                                       │
+│                          │ • Say CANARY_READY only. (35m ago)                                    │
+│                          │                                                                       │
+╰──────────────────────────┴───────────────────────────────────────────────────────────────────────╯
+ Tip: Need a cheap nested model call? Use `completion(x...)`. Have a big batch of tasks? Ask clanker
+      to use it!
+
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                          │
+│ 📦 pij                                                                                                                                   │
+│                                                                                                                                          │
+│ You are pij session pij-running-salmon (PEER). This is context only — no action is required.                                             │
+│ Peers can reach you; their messages arrive inline as "[pij-rs from <id>]" on its own line, then the body, then "[/pij]". Only those      │
+│ injected messages are live instructions.                                                                                                 │
+│ Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not tasks, and replaying    │
+│ them re-runs old requests.                                                                                                               │
+│ To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For control, pij_send takes {   │
+│ to, command: "compact" | "new" | "reload" } instead of message. Do NOT shell out to the pij CLI to send.                                 │
+│ To observe peers, use the pij CLI: "pij list --here" (peers), "pij tail <id>" / "pij state <id>" (watch one).                            │
+│                                                                                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ Standing by.
+
+ 2026-09-07 18:56:21  ⤵ 1.2K  ⤴ 152  💾 6.7K  ⏱ 2.9s  ⚡ 48.9/s
+
+
+ Run bash sleep 60 with timeout 90, no background.
+
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ $ sleep 60                                                                                                                               │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ 2026-09-07 18:56:39  ⤵ 273  ⤴ 84  💾 7.7K  ⏱ 1.9s  ⚡ 30.9/s
+
+ 📨 pij from pij-smoggy-buzzard: OMP_FINAL_ESCAPE_1
+
+  ⎋ sleep 60
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ⚙ 1 ─
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ◫ 2.9%/272K ⟲ · rs·pij-running-salmon · ⬢ GPT-5.4 mini · ◔ low · ⑂ pending-counter-truth *13 · S0.00 ★ 0.33
+rs pij-running-salmon
+📨 1 pending

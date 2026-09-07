@@ -1,0 +1,505 @@
+[
+  {
+    "id": "7dd9d888-3bec-4a79-b1c3-813538a0620a",
+    "parentId": "4e8a4cee-3bcf-479a-92f9-f3dedc5de7bb",
+    "type": "user.message",
+    "timestamp": "2026-09-07T09:02:37.959Z",
+    "data": {
+      "content": "You are a delivery probe. Do not read files or change code. Execute only requested sleep commands. For each incoming pij message print RECEIVED plus its token exactly once. Say CANARY_READY only.",
+      "messageId": "b7c2f28a-4058-4bd8-b125-b3abb4cfbcc1",
+      "interactionId": "fdce273c-6ff6-4a87-a69b-c131c304cb67",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "163abb6a-4a3d-4cc3-b486-f6df8a834b1e",
+    "parentId": "e3eb22a8-07f3-4106-a90c-883d97c5e9be",
+    "type": "assistant.turn_start",
+    "timestamp": "2026-09-07T09:02:37.960Z",
+    "data": {
+      "turnId": "0",
+      "interactionId": "fdce273c-6ff6-4a87-a69b-c131c304cb67"
+    }
+  },
+  {
+    "id": "81b6f63d-b3dc-43be-8530-b7590f02adff",
+    "parentId": "163abb6a-4a3d-4cc3-b486-f6df8a834b1e",
+    "type": "assistant.message",
+    "timestamp": "2026-09-07T09:02:40.936Z",
+    "data": {
+      "messageId": "c975c74d-76e2-4017-9e2a-298f2cd88829",
+      "content": "CANARY_READY",
+      "interactionId": "fdce273c-6ff6-4a87-a69b-c131c304cb67",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "6b5b8f7a-8821-4d47-9ebd-b42d3193e0ca",
+    "parentId": "81b6f63d-b3dc-43be-8530-b7590f02adff",
+    "type": "assistant.turn_end",
+    "timestamp": "2026-09-07T09:02:40.938Z",
+    "data": {
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "9b38dd6a-fa91-4dd3-8d62-f712cc9efa2b",
+    "parentId": "d9a3984b-5107-4972-9983-93d1f7a8a035",
+    "type": "user.message",
+    "timestamp": "2026-09-07T09:03:58.210Z",
+    "data": {
+      "content": "Run shell sleep 45 and wait in foreground.",
+      "messageId": "d7291364-a4b1-4503-9023-c4028b42a66b",
+      "interactionId": "0218cf96-4976-4a3e-b025-cb127af267b8",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "44634059-e7d4-4f11-bffe-a671edb5b3c3",
+    "parentId": "9b38dd6a-fa91-4dd3-8d62-f712cc9efa2b",
+    "type": "assistant.turn_start",
+    "timestamp": "2026-09-07T09:03:58.211Z",
+    "data": {
+      "turnId": "0",
+      "interactionId": "0218cf96-4976-4a3e-b025-cb127af267b8"
+    }
+  },
+  {
+    "id": "b2df2e01-a368-4e51-b253-a236d35a7c8d",
+    "parentId": "44634059-e7d4-4f11-bffe-a671edb5b3c3",
+    "type": "assistant.message",
+    "timestamp": "2026-09-07T09:04:01.662Z",
+    "data": {
+      "messageId": "cef37ec6-702d-4ecd-b3bd-b517f53b92b0",
+      "content": "",
+      "interactionId": "0218cf96-4976-4a3e-b025-cb127af267b8",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "0357a0a6-a2cb-486d-9709-0897da38fff6",
+    "parentId": "b2df2e01-a368-4e51-b253-a236d35a7c8d",
+    "type": "tool.execution_start",
+    "timestamp": "2026-09-07T09:04:01.666Z",
+    "data": {
+      "toolCallId": "call_RjfXMSMbnu8I5TbU4nKeJaxM",
+      "toolName": "bash",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "b89187b7-3338-49cb-a434-46e2d1745e17",
+    "parentId": "0357a0a6-a2cb-486d-9709-0897da38fff6",
+    "type": "tool.execution_complete",
+    "timestamp": "2026-09-07T09:04:46.729Z",
+    "data": {
+      "toolCallId": "call_RjfXMSMbnu8I5TbU4nKeJaxM",
+      "interactionId": "0218cf96-4976-4a3e-b025-cb127af267b8",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "7d247b79-74f1-409c-a6ba-09475f527669",
+    "parentId": "b89187b7-3338-49cb-a434-46e2d1745e17",
+    "type": "assistant.turn_end",
+    "timestamp": "2026-09-07T09:04:46.734Z",
+    "data": {
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "bf7baccc-0ad5-4aff-b01f-94a4482cc315",
+    "parentId": "7d247b79-74f1-409c-a6ba-09475f527669",
+    "type": "assistant.turn_start",
+    "timestamp": "2026-09-07T09:04:46.734Z",
+    "data": {
+      "turnId": "1",
+      "interactionId": "0218cf96-4976-4a3e-b025-cb127af267b8"
+    }
+  },
+  {
+    "id": "73305972-ea98-407c-8398-10fa2ced04e6",
+    "parentId": "bf7baccc-0ad5-4aff-b01f-94a4482cc315",
+    "type": "assistant.message",
+    "timestamp": "2026-09-07T09:04:47.796Z",
+    "data": {
+      "messageId": "384014d9-4b1d-4491-90c3-49c2e7c8059d",
+      "content": "Done.",
+      "interactionId": "0218cf96-4976-4a3e-b025-cb127af267b8",
+      "turnId": "1"
+    }
+  },
+  {
+    "id": "7aecf176-3677-4090-bcdf-4cad9c834c58",
+    "parentId": "73305972-ea98-407c-8398-10fa2ced04e6",
+    "type": "assistant.turn_end",
+    "timestamp": "2026-09-07T09:04:47.798Z",
+    "data": {
+      "turnId": "1"
+    }
+  },
+  {
+    "id": "0639d3ae-c0f2-480b-9b67-1a081494e0bd",
+    "parentId": "002f391e-681a-4ace-a200-eb84293e3921",
+    "type": "user.message",
+    "timestamp": "2026-09-07T09:06:18.596Z",
+    "data": {
+      "content": "[pij from \"pij-smoggy-buzzard\"; msg_id=\"01a07b1e-4d1e-7b22-94a2-f285bae93e04\"]\nCOPILOT_RECOVER_1",
+      "messageId": "24912ca1-76b6-4b96-bfc2-eac2325ac2ef",
+      "interactionId": "68609e1d-3a2f-45d0-adde-37abccf27b65",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "77a83d85-a5fc-4ea5-ab01-695e44169fc7",
+    "parentId": "0639d3ae-c0f2-480b-9b67-1a081494e0bd",
+    "type": "assistant.turn_start",
+    "timestamp": "2026-09-07T09:06:18.598Z",
+    "data": {
+      "turnId": "0",
+      "interactionId": "68609e1d-3a2f-45d0-adde-37abccf27b65"
+    }
+  },
+  {
+    "id": "28fa1c1b-362c-4940-81eb-b26756ebf32d",
+    "parentId": "77a83d85-a5fc-4ea5-ab01-695e44169fc7",
+    "type": "assistant.message",
+    "timestamp": "2026-09-07T09:06:20.255Z",
+    "data": {
+      "messageId": "0b05d0f8-fd24-4798-9598-d82541133763",
+      "content": "RECEIVED COPILOT_RECOVER_1",
+      "interactionId": "68609e1d-3a2f-45d0-adde-37abccf27b65",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "446c8d71-2cdc-46db-9203-f2fb7d8350ae",
+    "parentId": "28fa1c1b-362c-4940-81eb-b26756ebf32d",
+    "type": "assistant.turn_end",
+    "timestamp": "2026-09-07T09:06:20.256Z",
+    "data": {
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "602fd60f-f778-430e-bc5f-30aed468adb0",
+    "parentId": "13d499fa-a0bd-446c-9a10-b412e7be4197",
+    "type": "user.message",
+    "timestamp": "2026-09-07T09:06:20.322Z",
+    "data": {
+      "content": "[pij from \"pij-smoggy-buzzard\"; msg_id=\"01a07b1e-4d25-71e3-9ceb-a9c81c7c85dc\"]\nCOPILOT_RECOVER_2",
+      "messageId": "2755dc6a-b2ca-4260-acac-6f0b1673fab3",
+      "interactionId": "f7b29172-685d-4d78-aee1-ff5d7802bc50",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "52618d35-61df-4b56-a265-dd047e0994e7",
+    "parentId": "602fd60f-f778-430e-bc5f-30aed468adb0",
+    "type": "assistant.turn_start",
+    "timestamp": "2026-09-07T09:06:20.324Z",
+    "data": {
+      "turnId": "0",
+      "interactionId": "f7b29172-685d-4d78-aee1-ff5d7802bc50"
+    }
+  },
+  {
+    "id": "c6a75196-9a2f-47c2-ac2e-f03fa9240021",
+    "parentId": "52618d35-61df-4b56-a265-dd047e0994e7",
+    "type": "assistant.message",
+    "timestamp": "2026-09-07T09:06:23.172Z",
+    "data": {
+      "messageId": "da3529f0-1371-4d9b-9aae-f73d9fbeb612",
+      "content": "RECEIVED COPILOT_RECOVER_2",
+      "interactionId": "f7b29172-685d-4d78-aee1-ff5d7802bc50",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "c71d566f-e63e-4ff4-9380-da348da0c173",
+    "parentId": "c6a75196-9a2f-47c2-ac2e-f03fa9240021",
+    "type": "assistant.turn_end",
+    "timestamp": "2026-09-07T09:06:23.174Z",
+    "data": {
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "41fffe95-2b8f-4dbe-a101-fc6e11bf103a",
+    "parentId": "66fcfe68-fefd-4782-bae0-0be164cfe88a",
+    "type": "user.message",
+    "timestamp": "2026-09-07T09:06:23.258Z",
+    "data": {
+      "content": "[pij from \"pij-smoggy-buzzard\"; msg_id=\"01a07b1e-4d2b-7890-b031-b04eda622407\"]\nCOPILOT_RECOVER_3",
+      "messageId": "de000c23-6b4c-46b8-b83f-d4fd1955e1d4",
+      "interactionId": "4a71527a-21bd-4df4-bf60-800ad7301eb1",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "2149f218-4527-4240-95ad-86e393d230f9",
+    "parentId": "41fffe95-2b8f-4dbe-a101-fc6e11bf103a",
+    "type": "assistant.turn_start",
+    "timestamp": "2026-09-07T09:06:23.260Z",
+    "data": {
+      "turnId": "0",
+      "interactionId": "4a71527a-21bd-4df4-bf60-800ad7301eb1"
+    }
+  },
+  {
+    "id": "b2ab2703-997a-485c-b217-8dc86bbef51b",
+    "parentId": "2149f218-4527-4240-95ad-86e393d230f9",
+    "type": "assistant.message",
+    "timestamp": "2026-09-07T09:06:25.691Z",
+    "data": {
+      "messageId": "6bcd385e-c3ad-4fbf-b2e5-f9ba5b498169",
+      "content": "RECEIVED COPILOT_RECOVER_3",
+      "interactionId": "4a71527a-21bd-4df4-bf60-800ad7301eb1",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "307affdc-7357-4638-a361-15754acf5a0f",
+    "parentId": "b2ab2703-997a-485c-b217-8dc86bbef51b",
+    "type": "assistant.turn_end",
+    "timestamp": "2026-09-07T09:06:25.693Z",
+    "data": {
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "10722c8c-bb9e-4b18-9453-576095d23002",
+    "parentId": "7012da06-c47f-4d77-876c-52fe91b18af9",
+    "type": "user.message",
+    "timestamp": "2026-09-07T09:08:07.700Z",
+    "data": {
+      "content": "Run exactly one shell tool sleep 37, waiting in foreground. When it completes say FOREGROUND_COPILOT_BOUNDARY_RETRY_DONE.",
+      "messageId": "4c86cc23-11bd-4438-9af0-26f4c504f6a2",
+      "interactionId": "0899d7b0-8464-4f2d-adee-5990622423f6",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "a23b47ef-c83a-43c4-8900-99cc7f773736",
+    "parentId": "10722c8c-bb9e-4b18-9453-576095d23002",
+    "type": "assistant.turn_start",
+    "timestamp": "2026-09-07T09:08:07.702Z",
+    "data": {
+      "turnId": "0",
+      "interactionId": "0899d7b0-8464-4f2d-adee-5990622423f6"
+    }
+  },
+  {
+    "id": "33eb901e-189d-47ac-96e7-16eea3a06bc3",
+    "parentId": "a23b47ef-c83a-43c4-8900-99cc7f773736",
+    "type": "assistant.message",
+    "timestamp": "2026-09-07T09:08:08.971Z",
+    "data": {
+      "messageId": "5cc5ec6d-ca83-45d0-b491-7d3cb7f0cd6d",
+      "content": "",
+      "interactionId": "0899d7b0-8464-4f2d-adee-5990622423f6",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "f3833032-0e28-4f0b-be94-f235a8e138dc",
+    "parentId": "33eb901e-189d-47ac-96e7-16eea3a06bc3",
+    "type": "tool.execution_start",
+    "timestamp": "2026-09-07T09:08:08.973Z",
+    "data": {
+      "toolCallId": "call_dowBebAxYHovpDvDAe0RYgCl",
+      "toolName": "bash",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "efcb42bd-31bc-43c5-ab81-470ee18d9e58",
+    "parentId": "f3833032-0e28-4f0b-be94-f235a8e138dc",
+    "type": "tool.execution_complete",
+    "timestamp": "2026-09-07T09:08:46.003Z",
+    "data": {
+      "toolCallId": "call_dowBebAxYHovpDvDAe0RYgCl",
+      "interactionId": "0899d7b0-8464-4f2d-adee-5990622423f6",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "3b2af128-9891-4a29-a6b1-a8767ddb4a13",
+    "parentId": "efcb42bd-31bc-43c5-ab81-470ee18d9e58",
+    "type": "assistant.turn_end",
+    "timestamp": "2026-09-07T09:08:46.009Z",
+    "data": {
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "50393069-2fd2-4988-9214-dad5d59e396a",
+    "parentId": "3b2af128-9891-4a29-a6b1-a8767ddb4a13",
+    "type": "assistant.turn_start",
+    "timestamp": "2026-09-07T09:08:46.009Z",
+    "data": {
+      "turnId": "1",
+      "interactionId": "0899d7b0-8464-4f2d-adee-5990622423f6"
+    }
+  },
+  {
+    "id": "ce8529b9-a945-4be5-9207-41eb84d6750c",
+    "parentId": "50393069-2fd2-4988-9214-dad5d59e396a",
+    "type": "assistant.message",
+    "timestamp": "2026-09-07T09:08:46.924Z",
+    "data": {
+      "messageId": "95601481-7f48-47fd-adfc-cac0a55a3349",
+      "content": "FOREGROUND_COPILOT_BOUNDARY_RETRY_DONE",
+      "interactionId": "0899d7b0-8464-4f2d-adee-5990622423f6",
+      "turnId": "1"
+    }
+  },
+  {
+    "id": "01f051fd-f55c-4f2f-a7c7-9640800a2a14",
+    "parentId": "ce8529b9-a945-4be5-9207-41eb84d6750c",
+    "type": "assistant.turn_end",
+    "timestamp": "2026-09-07T09:08:46.930Z",
+    "data": {
+      "turnId": "1"
+    }
+  },
+  {
+    "id": "1f25091e-ad93-4f2e-8d40-4cb8442e2812",
+    "parentId": "b737d3a0-a6f1-475d-a112-1a7ae499be98",
+    "type": "session.info",
+    "timestamp": "2026-09-07T09:08:47.232Z",
+    "data": {
+      "infoType": "notification",
+      "message": "\ud83d\udce8 re-queued 1 pij messages after interrupt"
+    }
+  },
+  {
+    "id": "6bdbc695-9009-4acd-a6fb-1adbf9c8e3df",
+    "parentId": "1f25091e-ad93-4f2e-8d40-4cb8442e2812",
+    "type": "user.message",
+    "timestamp": "2026-09-07T09:08:47.241Z",
+    "data": {
+      "content": "[pij from \"pij-smoggy-buzzard\"; msg_id=\"01a07b1f-fdcd-7cc2-8586-afb938cd6273\"]\nCOPILOT_BOUNDARY_RETRY_1",
+      "messageId": "941ba294-dd21-4d7f-9766-ab64b4f1f461",
+      "interactionId": "2ed092cc-5a83-4e75-a9cf-c9a71b0599bb",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "0299740d-7e67-47c0-b2b1-23542251c5fc",
+    "parentId": "6bdbc695-9009-4acd-a6fb-1adbf9c8e3df",
+    "type": "assistant.turn_start",
+    "timestamp": "2026-09-07T09:08:47.243Z",
+    "data": {
+      "turnId": "0",
+      "interactionId": "2ed092cc-5a83-4e75-a9cf-c9a71b0599bb"
+    }
+  },
+  {
+    "id": "1855e754-c0a2-4ab4-9454-1d098cf3a37f",
+    "parentId": "0299740d-7e67-47c0-b2b1-23542251c5fc",
+    "type": "assistant.message",
+    "timestamp": "2026-09-07T09:08:48.363Z",
+    "data": {
+      "messageId": "c16f0387-2f17-4dae-9230-5672233fac51",
+      "content": "RECEIVED COPILOT_BOUNDARY_RETRY_1",
+      "interactionId": "2ed092cc-5a83-4e75-a9cf-c9a71b0599bb",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "d99b8b02-07f6-4b2c-8406-18209bd21887",
+    "parentId": "1855e754-c0a2-4ab4-9454-1d098cf3a37f",
+    "type": "assistant.turn_end",
+    "timestamp": "2026-09-07T09:08:48.365Z",
+    "data": {
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "6669b836-c55f-4f03-abbd-728ee27b5ffc",
+    "parentId": "bc725513-6a6d-4337-83bb-bff7917e1ce7",
+    "type": "user.message",
+    "timestamp": "2026-09-07T09:08:48.429Z",
+    "data": {
+      "content": "[pij from \"pij-smoggy-buzzard\"; msg_id=\"01a07b1f-fdd4-77d3-9a0e-1cc1e63d7b87\"]\nCOPILOT_BOUNDARY_RETRY_2",
+      "messageId": "9c1f8984-d421-47a9-befc-98e8b6f6b054",
+      "interactionId": "f2ccd7cc-2ce9-4f15-a66c-0b9471b172a7",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "87d92a9d-9d07-491b-9753-80edcb92d1e8",
+    "parentId": "6669b836-c55f-4f03-abbd-728ee27b5ffc",
+    "type": "assistant.turn_start",
+    "timestamp": "2026-09-07T09:08:48.431Z",
+    "data": {
+      "turnId": "0",
+      "interactionId": "f2ccd7cc-2ce9-4f15-a66c-0b9471b172a7"
+    }
+  },
+  {
+    "id": "7fe7d4b3-6e75-46d9-b364-d01512938e91",
+    "parentId": "87d92a9d-9d07-491b-9753-80edcb92d1e8",
+    "type": "assistant.message",
+    "timestamp": "2026-09-07T09:08:49.808Z",
+    "data": {
+      "messageId": "793b18f7-8f64-4438-a809-85c4d7d242f9",
+      "content": "RECEIVED COPILOT_BOUNDARY_RETRY_2",
+      "interactionId": "f2ccd7cc-2ce9-4f15-a66c-0b9471b172a7",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "115c110f-dd8e-434f-8c6d-50c53aee6bc9",
+    "parentId": "7fe7d4b3-6e75-46d9-b364-d01512938e91",
+    "type": "assistant.turn_end",
+    "timestamp": "2026-09-07T09:08:49.810Z",
+    "data": {
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "476e462f-391c-4126-9d89-963b7652d3e8",
+    "parentId": "81d729d8-950b-422d-9df0-4eb9d5d42f8d",
+    "type": "user.message",
+    "timestamp": "2026-09-07T09:08:49.879Z",
+    "data": {
+      "content": "[pij from \"pij-smoggy-buzzard\"; msg_id=\"01a07b1f-fdda-7372-967e-449dfd02cfcd\"]\nCOPILOT_BOUNDARY_RETRY_3",
+      "messageId": "c80483b5-31df-440b-990a-45f25f60ed50",
+      "interactionId": "18426c1c-6753-4ac2-a9e5-7a6b32adb65f",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "fecdb527-476e-4045-850d-8190e84d01cd",
+    "parentId": "476e462f-391c-4126-9d89-963b7652d3e8",
+    "type": "assistant.turn_start",
+    "timestamp": "2026-09-07T09:08:49.880Z",
+    "data": {
+      "turnId": "0",
+      "interactionId": "18426c1c-6753-4ac2-a9e5-7a6b32adb65f"
+    }
+  },
+  {
+    "id": "d0944efc-3884-4739-9835-017db084e754",
+    "parentId": "fecdb527-476e-4045-850d-8190e84d01cd",
+    "type": "assistant.message",
+    "timestamp": "2026-09-07T09:08:50.957Z",
+    "data": {
+      "messageId": "3e3721ee-73f8-4b39-9737-c19a6dedca9f",
+      "content": "RECEIVED COPILOT_BOUNDARY_RETRY_3",
+      "interactionId": "18426c1c-6753-4ac2-a9e5-7a6b32adb65f",
+      "turnId": "0"
+    }
+  },
+  {
+    "id": "e157c248-c621-468e-9a26-36c14d758582",
+    "parentId": "d0944efc-3884-4739-9835-017db084e754",
+    "type": "assistant.turn_end",
+    "timestamp": "2026-09-07T09:08:50.958Z",
+    "data": {
+      "turnId": "0"
+    }
+  }
+]

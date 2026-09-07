@@ -1,0 +1,53 @@
+
+╭─── omp v18.0.10 ─────────────────────────────────────────────────────────────────────────────────╮
+│                          │ Tips                                                                  │
+│      Welcome back!       │ # for prompt actions                                                  │
+│                          │ / for commands                                                        │
+│       ████████████       │ ! to run bash                                                         │
+│          ██  ██          │ $ to run python                                                       │
+│          ██  ██          │ ───────────────────────────────────────────────────────────────────── │
+│          ▒▒  ██          │ LSP Servers                                                           │
+│              ██          │ No LSP servers                                                        │
+│                          │                                                                       │
+│       GPT-5.4 mini       │                                                                       │
+│      github-copilot      │                                                                       │
+│                          │ ───────────────────────────────────────────────────────────────────── │
+│                          │ Recent sessions                                                       │
+│                          │ • rs·pij-federal-ebulan (2m ago)                                      │
+│                          │ • Untitled · 06:21 PM (8m ago)                                        │
+│                          │ • Say CANARY_READY only. (9m ago)                                     │
+│                          │ • Say CANARY_READY only. (9m ago)                                     │
+│                          │                                                                       │
+╰──────────────────────────┴───────────────────────────────────────────────────────────────────────╯
+ Tip: Log in to several accounts of the same provider — `/login` again — and omp load-balances
+      across them automatically
+
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                          │
+│ 📦 pij                                                                                                                                   │
+│                                                                                                                                          │
+│ You are pij session pij-solid-donkey (PEER). This is context only — no action is required.                                               │
+│ Peers can reach you; their messages arrive inline as "[pij-rs from <id>]" on its own line, then the body, then "[/pij]". Only those      │
+│ injected messages are live instructions.                                                                                                 │
+│ Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not tasks, and replaying    │
+│ them re-runs old requests.                                                                                                               │
+│ To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For control, pij_send takes {   │
+│ to, command: "compact" | "new" | "reload" } instead of message. Do NOT shell out to the pij CLI to send.                                 │
+│ To observe peers, use the pij CLI: "pij list --here" (peers), "pij tail <id>" / "pij state <id>" (watch one).                            │
+│                                                                                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ RECEIVED pij-solid-donkey
+
+ 2026-09-07 18:30:24  ⤵ 1.2K  ⤴ 115  💾 6.7K  ⏱ 2.7s  ⚡ 39.3/s
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ◫ 2.9%/272K ⟲ · rs·pij-solid-donkey · ⬢ GPT-5.4 mini · ◔ low · ⑂ pending-counter-truth *6 · S0.00
+rs pij-solid-donkey
+
+
+
+

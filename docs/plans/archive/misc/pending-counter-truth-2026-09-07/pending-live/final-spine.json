@@ -1,0 +1,853 @@
+{
+  "jobs": [
+    {
+      "id": 1,
+      "serial_key": "pij-federal-ebulan",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-federal-ebulan\",\"body\":\"OMP_BUSY_1\",\"msg_id\":\"01a07af6-dafa-7e92-a31b-754149616d2b\"}",
+      "state": "done",
+      "claimed_at": 1788769393,
+      "acked_at": 1788769393
+    },
+    {
+      "id": 2,
+      "serial_key": "pij-federal-ebulan",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-federal-ebulan\",\"body\":\"OMP_BUSY_2\",\"msg_id\":\"01a07af6-db02-7e33-94a8-de2b1377d8e5\"}",
+      "state": "done",
+      "claimed_at": 1788769393,
+      "acked_at": 1788769393
+    },
+    {
+      "id": 3,
+      "serial_key": "pij-federal-ebulan",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-federal-ebulan\",\"body\":\"OMP_BUSY_3\",\"msg_id\":\"01a07af6-db09-77f2-9e50-b49e029b54c4\"}",
+      "state": "done",
+      "claimed_at": 1788769393,
+      "acked_at": 1788769393
+    },
+    {
+      "id": 4,
+      "serial_key": "pij-olympic-crane",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-olympic-crane\",\"body\":\"COPILOT_BUSY_1\",\"msg_id\":\"01a07af7-bf78-7b81-a20e-ae322285c9ac\",\"native_target_session\":\"297a38b2-b4c1-4672-9635-990625b97d53\"}",
+      "state": "done",
+      "claimed_at": 1788769451,
+      "acked_at": 1788769452
+    },
+    {
+      "id": 5,
+      "serial_key": "pij-olympic-crane",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-olympic-crane\",\"body\":\"COPILOT_BUSY_2\",\"msg_id\":\"01a07af7-bf80-79e2-aaf4-ec915385e5d4\",\"native_target_session\":\"297a38b2-b4c1-4672-9635-990625b97d53\"}",
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null
+    },
+    {
+      "id": 6,
+      "serial_key": "pij-olympic-crane",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-olympic-crane\",\"body\":\"COPILOT_BUSY_3\",\"msg_id\":\"01a07af7-bf8a-7292-ae6b-cca48fcbf71b\",\"native_target_session\":\"297a38b2-b4c1-4672-9635-990625b97d53\"}",
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null
+    },
+    {
+      "id": 7,
+      "serial_key": "pij-federal-ebulan",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-federal-ebulan\",\"body\":\"OMP_ESCAPE_1\",\"msg_id\":\"01a07af7-ec25-7fa3-83af-c50015a57e8c\"}",
+      "state": "done",
+      "claimed_at": 1788769463,
+      "acked_at": 1788769463
+    },
+    {
+      "id": 8,
+      "serial_key": "pij-federal-ebulan",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-federal-ebulan\",\"body\":\"OMP_ESCAPE_2\",\"msg_id\":\"01a07af7-ec2b-7b50-b586-8e3f673fd42c\"}",
+      "state": "done",
+      "claimed_at": 1788769463,
+      "acked_at": 1788769463
+    },
+    {
+      "id": 9,
+      "serial_key": "pij-federal-ebulan",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-federal-ebulan\",\"body\":\"OMP_ESCAPE_3\",\"msg_id\":\"01a07af7-ec34-7af3-8727-d55130cc759f\"}",
+      "state": "done",
+      "claimed_at": 1788769463,
+      "acked_at": 1788769463
+    },
+    {
+      "id": 10,
+      "serial_key": "pij-olympic-crane",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-olympic-crane\",\"body\":\"COPILOT_ACTUAL_BUSY_1\",\"msg_id\":\"01a07af8-175b-7543-a115-d4fb6e14f5bd\",\"native_target_session\":\"297a38b2-b4c1-4672-9635-990625b97d53\"}",
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null
+    },
+    {
+      "id": 11,
+      "serial_key": "pij-olympic-crane",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-olympic-crane\",\"body\":\"COPILOT_ACTUAL_BUSY_2\",\"msg_id\":\"01a07af8-1768-7113-b273-0d5475e561f6\",\"native_target_session\":\"297a38b2-b4c1-4672-9635-990625b97d53\"}",
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null
+    },
+    {
+      "id": 12,
+      "serial_key": "pij-olympic-crane",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-olympic-crane\",\"body\":\"COPILOT_ACTUAL_BUSY_3\",\"msg_id\":\"01a07af8-1770-77a2-9041-15ebb6483fc3\",\"native_target_session\":\"297a38b2-b4c1-4672-9635-990625b97d53\"}",
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null
+    },
+    {
+      "id": 13,
+      "serial_key": "pij-federal-ebulan",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-federal-ebulan\",\"body\":\"OMP_BOUNDARY_1. After acknowledging all OMP_BOUNDARY messages run a separate bash sleep 45 with timeout 60 before final answer.\",\"msg_id\":\"01a07af9-e6e1-7571-ab2f-03eab0aa8e79\"}",
+      "state": "done",
+      "claimed_at": 1788769593,
+      "acked_at": 1788769593
+    },
+    {
+      "id": 14,
+      "serial_key": "pij-federal-ebulan",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-federal-ebulan\",\"body\":\"OMP_BOUNDARY_2. After acknowledging all OMP_BOUNDARY messages run a separate bash sleep 45 with timeout 60 before final answer.\",\"msg_id\":\"01a07af9-e6ed-7352-8c2f-b34ea73a161b\"}",
+      "state": "done",
+      "claimed_at": 1788769593,
+      "acked_at": 1788769593
+    },
+    {
+      "id": 15,
+      "serial_key": "pij-federal-ebulan",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-federal-ebulan\",\"body\":\"OMP_BOUNDARY_3. After acknowledging all OMP_BOUNDARY messages run a separate bash sleep 45 with timeout 60 before final answer.\",\"msg_id\":\"01a07af9-e6f9-7c02-a073-b49e336dfd71\"}",
+      "state": "done",
+      "claimed_at": 1788769593,
+      "acked_at": 1788769593
+    },
+    {
+      "id": 16,
+      "serial_key": "pij-olympic-crane",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-olympic-crane\",\"body\":\"COPILOT_ESCAPE_1\",\"msg_id\":\"01a07afa-e068-7930-8a33-47a2b9e4f319\",\"native_target_session\":\"297a38b2-b4c1-4672-9635-990625b97d53\"}",
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null
+    },
+    {
+      "id": 17,
+      "serial_key": "pij-olympic-crane",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-olympic-crane\",\"body\":\"COPILOT_ESCAPE_2\",\"msg_id\":\"01a07afa-e06f-7532-a974-3031e7f03550\",\"native_target_session\":\"297a38b2-b4c1-4672-9635-990625b97d53\"}",
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null
+    },
+    {
+      "id": 18,
+      "serial_key": "pij-olympic-crane",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-olympic-crane\",\"body\":\"COPILOT_ESCAPE_3\",\"msg_id\":\"01a07afa-e076-76d3-8902-f91af70572d7\",\"native_target_session\":\"297a38b2-b4c1-4672-9635-990625b97d53\"}",
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null
+    },
+    {
+      "id": 19,
+      "serial_key": "pij-solid-donkey",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-solid-donkey\",\"body\":\"OMP_FIXED_BUSY_1. Acknowledge the token then run bash sleep 25 with timeout 45 before final answer.\",\"msg_id\":\"01a07afe-a2e1-7e10-9ac5-8cd6a2f40ca5\"}",
+      "state": "done",
+      "claimed_at": 1788769903,
+      "acked_at": 1788769909
+    },
+    {
+      "id": 20,
+      "serial_key": "pij-solid-donkey",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-solid-donkey\",\"body\":\"OMP_FIXED_BUSY_2. Acknowledge the token then run bash sleep 25 with timeout 45 before final answer.\",\"msg_id\":\"01a07afe-a2e8-7672-9bcf-62f36d026d1d\"}",
+      "state": "done",
+      "claimed_at": 1788769909,
+      "acked_at": 1788769935
+    },
+    {
+      "id": 21,
+      "serial_key": "pij-solid-donkey",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-solid-donkey\",\"body\":\"OMP_FIXED_BUSY_3. Acknowledge the token then run bash sleep 25 with timeout 45 before final answer.\",\"msg_id\":\"01a07afe-a2ef-7872-a141-fb8a22377676\"}",
+      "state": "done",
+      "claimed_at": 1788769936,
+      "acked_at": 1788769962
+    },
+    {
+      "id": 22,
+      "serial_key": "pij-solid-donkey",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-solid-donkey\",\"body\":\"OMP_FIXED_ESCAPE_1\",\"msg_id\":\"01a07aff-afd2-7dc0-9b63-4fb47f37cefd\"}",
+      "state": "done",
+      "claimed_at": 1788769972,
+      "acked_at": 1788769978
+    },
+    {
+      "id": 23,
+      "serial_key": "pij-solid-donkey",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-solid-donkey\",\"body\":\"OMP_FIXED_ESCAPE_2\",\"msg_id\":\"01a07aff-afd9-7802-ad35-a3a813ca37dd\"}",
+      "state": "done",
+      "claimed_at": 1788769979,
+      "acked_at": 1788769982
+    },
+    {
+      "id": 24,
+      "serial_key": "pij-solid-donkey",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-solid-donkey\",\"body\":\"OMP_FIXED_ESCAPE_3\",\"msg_id\":\"01a07aff-afe1-7c72-8117-343c637b3c9e\"}",
+      "state": "done",
+      "claimed_at": 1788769982,
+      "acked_at": 1788769985
+    },
+    {
+      "id": 25,
+      "serial_key": "pij-zealot",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-zealot\",\"body\":\"COPILOT_FIXED_BUSY_1\",\"msg_id\":\"01a07b0b-3f99-7063-a92b-7c6cbfa30e08\",\"native_target_session\":\"bc26bab3-cd78-4608-9c16-68c0733bfaa0\"}",
+      "state": "done",
+      "claimed_at": 1788770729,
+      "acked_at": 1788770743
+    },
+    {
+      "id": 26,
+      "serial_key": "pij-zealot",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-zealot\",\"body\":\"COPILOT_FIXED_BUSY_2\",\"msg_id\":\"01a07b0b-3f9f-7381-9d45-b3200c01dece\",\"native_target_session\":\"bc26bab3-cd78-4608-9c16-68c0733bfaa0\"}",
+      "state": "done",
+      "claimed_at": 1788770746,
+      "acked_at": 1788770746
+    },
+    {
+      "id": 27,
+      "serial_key": "pij-zealot",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-zealot\",\"body\":\"COPILOT_FIXED_BUSY_3\",\"msg_id\":\"01a07b0b-3fa5-7250-99ba-4890ec007262\",\"native_target_session\":\"bc26bab3-cd78-4608-9c16-68c0733bfaa0\"}",
+      "state": "done",
+      "claimed_at": 1788770748,
+      "acked_at": 1788770748
+    },
+    {
+      "id": 28,
+      "serial_key": "pij-zealot",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-zealot\",\"body\":\"COPILOT_FIXED_ESCAPE_1\",\"msg_id\":\"01a07b0c-13c8-7681-8d6a-338ef1672b16\",\"native_target_session\":\"bc26bab3-cd78-4608-9c16-68c0733bfaa0\"}",
+      "state": "done",
+      "claimed_at": 1788770784,
+      "acked_at": 1788770865
+    },
+    {
+      "id": 29,
+      "serial_key": "pij-zealot",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-zealot\",\"body\":\"COPILOT_FIXED_ESCAPE_2\",\"msg_id\":\"01a07b0c-13d5-7903-8257-8196dadd29a9\",\"native_target_session\":\"bc26bab3-cd78-4608-9c16-68c0733bfaa0\"}",
+      "state": "done",
+      "claimed_at": 1788770866,
+      "acked_at": 1788770867
+    },
+    {
+      "id": 30,
+      "serial_key": "pij-zealot",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-zealot\",\"body\":\"COPILOT_FIXED_ESCAPE_3\",\"msg_id\":\"01a07b0c-13dd-7ab1-8a77-40c0acbc775e\",\"native_target_session\":\"bc26bab3-cd78-4608-9c16-68c0733bfaa0\"}",
+      "state": "done",
+      "claimed_at": 1788770869,
+      "acked_at": 1788770869
+    },
+    {
+      "id": 31,
+      "serial_key": "pij-zealot",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-zealot\",\"body\":\"COPILOT_FIXED_INTERRUPT_1\",\"msg_id\":\"01a07b0f-b831-7bd0-8f11-61a8226c40d8\",\"native_target_session\":\"bc26bab3-cd78-4608-9c16-68c0733bfaa0\"}",
+      "state": "running",
+      "claimed_at": 1788771022,
+      "acked_at": null
+    },
+    {
+      "id": 32,
+      "serial_key": "pij-zealot",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-zealot\",\"body\":\"COPILOT_FIXED_INTERRUPT_2\",\"msg_id\":\"01a07b0f-b854-7f03-91e2-e04d99e664a9\",\"native_target_session\":\"bc26bab3-cd78-4608-9c16-68c0733bfaa0\"}",
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null
+    },
+    {
+      "id": 33,
+      "serial_key": "pij-zealot",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-zealot\",\"body\":\"COPILOT_FIXED_INTERRUPT_3\",\"msg_id\":\"01a07b0f-b880-7802-80e1-5c09106205dd\",\"native_target_session\":\"bc26bab3-cd78-4608-9c16-68c0733bfaa0\"}",
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null
+    },
+    {
+      "id": 34,
+      "serial_key": "pij-running-salmon",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-running-salmon\",\"body\":\"OMP_FINAL_ESCAPE_1\",\"msg_id\":\"01a07b16-2a04-71f1-893c-94116879b786\"}",
+      "state": "done",
+      "claimed_at": 1788771445,
+      "acked_at": 1788771459
+    },
+    {
+      "id": 35,
+      "serial_key": "pij-running-salmon",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-running-salmon\",\"body\":\"OMP_FINAL_ESCAPE_2\",\"msg_id\":\"01a07b16-2a0b-7ed1-ad9b-72a988f04c28\"}",
+      "state": "done",
+      "claimed_at": 1788771460,
+      "acked_at": 1788771460
+    },
+    {
+      "id": 36,
+      "serial_key": "pij-running-salmon",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-running-salmon\",\"body\":\"OMP_FINAL_ESCAPE_3\",\"msg_id\":\"01a07b16-2a11-7353-8dcc-dbdbfb8bc985\"}",
+      "state": "done",
+      "claimed_at": 1788771461,
+      "acked_at": 1788771461
+    },
+    {
+      "id": 37,
+      "serial_key": "pij-stellar-vulture",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-stellar-vulture\",\"body\":\"COPILOT_RECOVER_1\",\"msg_id\":\"01a07b1e-4d1e-7b22-94a2-f285bae93e04\",\"native_target_session\":\"b1298ba9-272b-4aaf-bc52-e3d63412383e\"}",
+      "state": "done",
+      "claimed_at": 1788771978,
+      "acked_at": 1788771978
+    },
+    {
+      "id": 38,
+      "serial_key": "pij-stellar-vulture",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-stellar-vulture\",\"body\":\"COPILOT_RECOVER_2\",\"msg_id\":\"01a07b1e-4d25-71e3-9ceb-a9c81c7c85dc\",\"native_target_session\":\"b1298ba9-272b-4aaf-bc52-e3d63412383e\"}",
+      "state": "done",
+      "claimed_at": 1788771980,
+      "acked_at": 1788771980
+    },
+    {
+      "id": 39,
+      "serial_key": "pij-stellar-vulture",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-stellar-vulture\",\"body\":\"COPILOT_RECOVER_3\",\"msg_id\":\"01a07b1e-4d2b-7890-b031-b04eda622407\",\"native_target_session\":\"b1298ba9-272b-4aaf-bc52-e3d63412383e\"}",
+      "state": "done",
+      "claimed_at": 1788771983,
+      "acked_at": 1788771983
+    },
+    {
+      "id": 40,
+      "serial_key": "pij-stellar-vulture",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-stellar-vulture\",\"body\":\"COPILOT_BOUNDARY_RETRY_1\",\"msg_id\":\"01a07b1f-fdcd-7cc2-8586-afb938cd6273\",\"native_target_session\":\"b1298ba9-272b-4aaf-bc52-e3d63412383e\"}",
+      "state": "done",
+      "claimed_at": 1788772089,
+      "acked_at": 1788772127
+    },
+    {
+      "id": 41,
+      "serial_key": "pij-stellar-vulture",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-stellar-vulture\",\"body\":\"COPILOT_BOUNDARY_RETRY_2\",\"msg_id\":\"01a07b1f-fdd4-77d3-9a0e-1cc1e63d7b87\",\"native_target_session\":\"b1298ba9-272b-4aaf-bc52-e3d63412383e\"}",
+      "state": "done",
+      "claimed_at": 1788772128,
+      "acked_at": 1788772128
+    },
+    {
+      "id": 42,
+      "serial_key": "pij-stellar-vulture",
+      "payload": "{\"from\":\"pij-smoggy-buzzard\",\"to\":\"pij-stellar-vulture\",\"body\":\"COPILOT_BOUNDARY_RETRY_3\",\"msg_id\":\"01a07b1f-fdda-7372-967e-449dfd02cfcd\",\"native_target_session\":\"b1298ba9-272b-4aaf-bc52-e3d63412383e\"}",
+      "state": "done",
+      "claimed_at": 1788772129,
+      "acked_at": 1788772129
+    }
+  ],
+  "spine": [
+    {
+      "seq": 8,
+      "at": 1788769393403,
+      "kind": "message.pushed",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"msg_id\":\"01a07af6-dafa-7e92-a31b-754149616d2b\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_BUSY_1\"}"
+    },
+    {
+      "seq": 11,
+      "at": 1788769393406,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"job_id\":1,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 12,
+      "at": 1788769393410,
+      "kind": "message.pushed",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"msg_id\":\"01a07af6-db02-7e33-94a8-de2b1377d8e5\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_BUSY_2\"}"
+    },
+    {
+      "seq": 15,
+      "at": 1788769393412,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"job_id\":2,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 16,
+      "at": 1788769393417,
+      "kind": "message.pushed",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"msg_id\":\"01a07af6-db09-77f2-9e50-b49e029b54c4\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_BUSY_3\"}"
+    },
+    {
+      "seq": 19,
+      "at": 1788769393419,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"job_id\":3,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 21,
+      "at": 1788769451896,
+      "kind": "message.pushed",
+      "seat": "pij-olympic-crane",
+      "payload": "{\"msg_id\":\"01a07af7-bf78-7b81-a20e-ae322285c9ac\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_BUSY_1\"}"
+    },
+    {
+      "seq": 23,
+      "at": 1788769451904,
+      "kind": "message.pushed",
+      "seat": "pij-olympic-crane",
+      "payload": "{\"msg_id\":\"01a07af7-bf80-79e2-aaf4-ec915385e5d4\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_BUSY_2\"}"
+    },
+    {
+      "seq": 25,
+      "at": 1788769451914,
+      "kind": "message.pushed",
+      "seat": "pij-olympic-crane",
+      "payload": "{\"msg_id\":\"01a07af7-bf8a-7292-ae6b-cca48fcbf71b\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_BUSY_3\"}"
+    },
+    {
+      "seq": 28,
+      "at": 1788769452011,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-olympic-crane",
+      "payload": "{\"job_id\":4,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 29,
+      "at": 1788769463333,
+      "kind": "message.pushed",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"msg_id\":\"01a07af7-ec25-7fa3-83af-c50015a57e8c\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_ESCAPE_1\"}"
+    },
+    {
+      "seq": 32,
+      "at": 1788769463336,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"job_id\":7,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 33,
+      "at": 1788769463339,
+      "kind": "message.pushed",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"msg_id\":\"01a07af7-ec2b-7b50-b586-8e3f673fd42c\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_ESCAPE_2\"}"
+    },
+    {
+      "seq": 36,
+      "at": 1788769463342,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"job_id\":8,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 37,
+      "at": 1788769463348,
+      "kind": "message.pushed",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"msg_id\":\"01a07af7-ec34-7af3-8727-d55130cc759f\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_ESCAPE_3\"}"
+    },
+    {
+      "seq": 40,
+      "at": 1788769463351,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"job_id\":9,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 41,
+      "at": 1788769474396,
+      "kind": "message.pushed",
+      "seat": "pij-olympic-crane",
+      "payload": "{\"msg_id\":\"01a07af8-175b-7543-a115-d4fb6e14f5bd\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_ACTUAL_BUSY_1\"}"
+    },
+    {
+      "seq": 43,
+      "at": 1788769474408,
+      "kind": "message.pushed",
+      "seat": "pij-olympic-crane",
+      "payload": "{\"msg_id\":\"01a07af8-1768-7113-b273-0d5475e561f6\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_ACTUAL_BUSY_2\"}"
+    },
+    {
+      "seq": 45,
+      "at": 1788769474417,
+      "kind": "message.pushed",
+      "seat": "pij-olympic-crane",
+      "payload": "{\"msg_id\":\"01a07af8-1770-77a2-9041-15ebb6483fc3\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_ACTUAL_BUSY_3\"}"
+    },
+    {
+      "seq": 47,
+      "at": 1788769593057,
+      "kind": "message.pushed",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"msg_id\":\"01a07af9-e6e1-7571-ab2f-03eab0aa8e79\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_BOUNDARY_1. After acknowledging all OMP_BOUNDARY messages run a separate bash sleep 45 with timeout 60 before final answer.\"}"
+    },
+    {
+      "seq": 50,
+      "at": 1788769593060,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"job_id\":13,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 51,
+      "at": 1788769593069,
+      "kind": "message.pushed",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"msg_id\":\"01a07af9-e6ed-7352-8c2f-b34ea73a161b\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_BOUNDARY_2. After acknowledging all OMP_BOUNDARY messages run a separate bash sleep 45 with timeout 60 before final answer.\"}"
+    },
+    {
+      "seq": 54,
+      "at": 1788769593073,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"job_id\":14,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 55,
+      "at": 1788769593081,
+      "kind": "message.pushed",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"msg_id\":\"01a07af9-e6f9-7c02-a073-b49e336dfd71\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_BOUNDARY_3. After acknowledging all OMP_BOUNDARY messages run a separate bash sleep 45 with timeout 60 before final answer.\"}"
+    },
+    {
+      "seq": 58,
+      "at": 1788769593083,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-federal-ebulan",
+      "payload": "{\"job_id\":15,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 59,
+      "at": 1788769656936,
+      "kind": "message.pushed",
+      "seat": "pij-olympic-crane",
+      "payload": "{\"msg_id\":\"01a07afa-e068-7930-8a33-47a2b9e4f319\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_ESCAPE_1\"}"
+    },
+    {
+      "seq": 61,
+      "at": 1788769656943,
+      "kind": "message.pushed",
+      "seat": "pij-olympic-crane",
+      "payload": "{\"msg_id\":\"01a07afa-e06f-7532-a974-3031e7f03550\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_ESCAPE_2\"}"
+    },
+    {
+      "seq": 63,
+      "at": 1788769656950,
+      "kind": "message.pushed",
+      "seat": "pij-olympic-crane",
+      "payload": "{\"msg_id\":\"01a07afa-e076-76d3-8902-f91af70572d7\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_ESCAPE_3\"}"
+    },
+    {
+      "seq": 66,
+      "at": 1788769903329,
+      "kind": "message.pushed",
+      "seat": "pij-solid-donkey",
+      "payload": "{\"msg_id\":\"01a07afe-a2e1-7e10-9ac5-8cd6a2f40ca5\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_FIXED_BUSY_1. Acknowledge the token then run bash sleep 25 with timeout 45 before final answer.\"}"
+    },
+    {
+      "seq": 68,
+      "at": 1788769903336,
+      "kind": "message.pushed",
+      "seat": "pij-solid-donkey",
+      "payload": "{\"msg_id\":\"01a07afe-a2e8-7672-9bcf-62f36d026d1d\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_FIXED_BUSY_2. Acknowledge the token then run bash sleep 25 with timeout 45 before final answer.\"}"
+    },
+    {
+      "seq": 70,
+      "at": 1788769903343,
+      "kind": "message.pushed",
+      "seat": "pij-solid-donkey",
+      "payload": "{\"msg_id\":\"01a07afe-a2ef-7872-a141-fb8a22377676\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_FIXED_BUSY_3. Acknowledge the token then run bash sleep 25 with timeout 45 before final answer.\"}"
+    },
+    {
+      "seq": 73,
+      "at": 1788769909281,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-solid-donkey",
+      "payload": "{\"job_id\":19,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 75,
+      "at": 1788769935629,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-solid-donkey",
+      "payload": "{\"job_id\":20,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 77,
+      "at": 1788769962451,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-solid-donkey",
+      "payload": "{\"job_id\":21,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 78,
+      "at": 1788769972178,
+      "kind": "message.pushed",
+      "seat": "pij-solid-donkey",
+      "payload": "{\"msg_id\":\"01a07aff-afd2-7dc0-9b63-4fb47f37cefd\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_FIXED_ESCAPE_1\"}"
+    },
+    {
+      "seq": 80,
+      "at": 1788769972185,
+      "kind": "message.pushed",
+      "seat": "pij-solid-donkey",
+      "payload": "{\"msg_id\":\"01a07aff-afd9-7802-ad35-a3a813ca37dd\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_FIXED_ESCAPE_2\"}"
+    },
+    {
+      "seq": 82,
+      "at": 1788769972193,
+      "kind": "message.pushed",
+      "seat": "pij-solid-donkey",
+      "payload": "{\"msg_id\":\"01a07aff-afe1-7c72-8117-343c637b3c9e\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_FIXED_ESCAPE_3\"}"
+    },
+    {
+      "seq": 85,
+      "at": 1788769978442,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-solid-donkey",
+      "payload": "{\"job_id\":22,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 87,
+      "at": 1788769982417,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-solid-donkey",
+      "payload": "{\"job_id\":23,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 89,
+      "at": 1788769985110,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-solid-donkey",
+      "payload": "{\"job_id\":24,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 92,
+      "at": 1788770729881,
+      "kind": "message.pushed",
+      "seat": "pij-zealot",
+      "payload": "{\"msg_id\":\"01a07b0b-3f99-7063-a92b-7c6cbfa30e08\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_FIXED_BUSY_1\"}"
+    },
+    {
+      "seq": 94,
+      "at": 1788770729887,
+      "kind": "message.pushed",
+      "seat": "pij-zealot",
+      "payload": "{\"msg_id\":\"01a07b0b-3f9f-7381-9d45-b3200c01dece\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_FIXED_BUSY_2\"}"
+    },
+    {
+      "seq": 96,
+      "at": 1788770729894,
+      "kind": "message.pushed",
+      "seat": "pij-zealot",
+      "payload": "{\"msg_id\":\"01a07b0b-3fa5-7250-99ba-4890ec007262\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_FIXED_BUSY_3\"}"
+    },
+    {
+      "seq": 99,
+      "at": 1788770743986,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-zealot",
+      "payload": "{\"job_id\":25,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 101,
+      "at": 1788770746656,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-zealot",
+      "payload": "{\"job_id\":26,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 103,
+      "at": 1788770748910,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-zealot",
+      "payload": "{\"job_id\":27,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 104,
+      "at": 1788770784200,
+      "kind": "message.pushed",
+      "seat": "pij-zealot",
+      "payload": "{\"msg_id\":\"01a07b0c-13c8-7681-8d6a-338ef1672b16\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_FIXED_ESCAPE_1\"}"
+    },
+    {
+      "seq": 106,
+      "at": 1788770784213,
+      "kind": "message.pushed",
+      "seat": "pij-zealot",
+      "payload": "{\"msg_id\":\"01a07b0c-13d5-7903-8257-8196dadd29a9\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_FIXED_ESCAPE_2\"}"
+    },
+    {
+      "seq": 108,
+      "at": 1788770784221,
+      "kind": "message.pushed",
+      "seat": "pij-zealot",
+      "payload": "{\"msg_id\":\"01a07b0c-13dd-7ab1-8a77-40c0acbc775e\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_FIXED_ESCAPE_3\"}"
+    },
+    {
+      "seq": 111,
+      "at": 1788770865610,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-zealot",
+      "payload": "{\"job_id\":28,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 113,
+      "at": 1788770867066,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-zealot",
+      "payload": "{\"job_id\":29,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 115,
+      "at": 1788770869411,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-zealot",
+      "payload": "{\"job_id\":30,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 116,
+      "at": 1788771022897,
+      "kind": "message.pushed",
+      "seat": "pij-zealot",
+      "payload": "{\"msg_id\":\"01a07b0f-b831-7bd0-8f11-61a8226c40d8\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_FIXED_INTERRUPT_1\"}"
+    },
+    {
+      "seq": 118,
+      "at": 1788771022932,
+      "kind": "message.pushed",
+      "seat": "pij-zealot",
+      "payload": "{\"msg_id\":\"01a07b0f-b854-7f03-91e2-e04d99e664a9\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_FIXED_INTERRUPT_2\"}"
+    },
+    {
+      "seq": 120,
+      "at": 1788771022976,
+      "kind": "message.pushed",
+      "seat": "pij-zealot",
+      "payload": "{\"msg_id\":\"01a07b0f-b880-7802-80e1-5c09106205dd\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_FIXED_INTERRUPT_3\"}"
+    },
+    {
+      "seq": 123,
+      "at": 1788771445252,
+      "kind": "message.pushed",
+      "seat": "pij-running-salmon",
+      "payload": "{\"msg_id\":\"01a07b16-2a04-71f1-893c-94116879b786\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_FINAL_ESCAPE_1\"}"
+    },
+    {
+      "seq": 125,
+      "at": 1788771445259,
+      "kind": "message.pushed",
+      "seat": "pij-running-salmon",
+      "payload": "{\"msg_id\":\"01a07b16-2a0b-7ed1-ad9b-72a988f04c28\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_FINAL_ESCAPE_2\"}"
+    },
+    {
+      "seq": 127,
+      "at": 1788771445265,
+      "kind": "message.pushed",
+      "seat": "pij-running-salmon",
+      "payload": "{\"msg_id\":\"01a07b16-2a11-7353-8dcc-dbdbfb8bc985\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"OMP_FINAL_ESCAPE_3\"}"
+    },
+    {
+      "seq": 130,
+      "at": 1788771459167,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-running-salmon",
+      "payload": "{\"job_id\":34,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 132,
+      "at": 1788771460611,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-running-salmon",
+      "payload": "{\"job_id\":35,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 134,
+      "at": 1788771461758,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-running-salmon",
+      "payload": "{\"job_id\":36,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 137,
+      "at": 1788771978526,
+      "kind": "message.pushed",
+      "seat": "pij-stellar-vulture",
+      "payload": "{\"msg_id\":\"01a07b1e-4d1e-7b22-94a2-f285bae93e04\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_RECOVER_1\"}"
+    },
+    {
+      "seq": 139,
+      "at": 1788771978533,
+      "kind": "message.pushed",
+      "seat": "pij-stellar-vulture",
+      "payload": "{\"msg_id\":\"01a07b1e-4d25-71e3-9ceb-a9c81c7c85dc\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_RECOVER_2\"}"
+    },
+    {
+      "seq": 141,
+      "at": 1788771978539,
+      "kind": "message.pushed",
+      "seat": "pij-stellar-vulture",
+      "payload": "{\"msg_id\":\"01a07b1e-4d2b-7890-b031-b04eda622407\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_RECOVER_3\"}"
+    },
+    {
+      "seq": 144,
+      "at": 1788771978600,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-stellar-vulture",
+      "payload": "{\"job_id\":37,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 146,
+      "at": 1788771980325,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-stellar-vulture",
+      "payload": "{\"job_id\":38,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 148,
+      "at": 1788771983261,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-stellar-vulture",
+      "payload": "{\"job_id\":39,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 149,
+      "at": 1788772089293,
+      "kind": "message.pushed",
+      "seat": "pij-stellar-vulture",
+      "payload": "{\"msg_id\":\"01a07b1f-fdcd-7cc2-8586-afb938cd6273\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_BOUNDARY_RETRY_1\"}"
+    },
+    {
+      "seq": 151,
+      "at": 1788772089300,
+      "kind": "message.pushed",
+      "seat": "pij-stellar-vulture",
+      "payload": "{\"msg_id\":\"01a07b1f-fdd4-77d3-9a0e-1cc1e63d7b87\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_BOUNDARY_RETRY_2\"}"
+    },
+    {
+      "seq": 153,
+      "at": 1788772089306,
+      "kind": "message.pushed",
+      "seat": "pij-stellar-vulture",
+      "payload": "{\"msg_id\":\"01a07b1f-fdda-7372-967e-449dfd02cfcd\",\"from\":\"pij-smoggy-buzzard\",\"body\":\"COPILOT_BOUNDARY_RETRY_3\"}"
+    },
+    {
+      "seq": 156,
+      "at": 1788772127244,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-stellar-vulture",
+      "payload": "{\"job_id\":40,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 158,
+      "at": 1788772128432,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-stellar-vulture",
+      "payload": "{\"job_id\":41,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 160,
+      "at": 1788772129881,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-stellar-vulture",
+      "payload": "{\"job_id\":42,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    }
+  ]
+}
