@@ -12,7 +12,7 @@
 | title | rs governance port — routes and verbs over the rs store, anomalies as a spine view, lifecycle, skills re-pointed (folds in plan 138) |
 | slug | rs-governance-port |
 | ordinal | 139 |
-| status | draft |
+| status | shipped |
 | complexity | — |
 | summary | Every governance verb (project, stream, fence, dispatch/ack, canary, attest, task, node, baton/prime, anomalies, report verify, questions/decisions, close/reap, role) still executes against the frozen legacy TypeScript store while every seat lives in pij-rs; the rs store already holds the tables but exposes no route or verb. Port the governance surface to rs on one spine with stamped, broadcast descriptor events; put role on the seat row; derive anomalies from the rs spine; add close + reaper; make the legacy shim serve-or-refuse every verb with the rs name; re-point the skills and document the rs API. Plan 138's three phases are units u1/u2/u5 here. |
 | backpressure | [rows](assets/backpressure.dd.md#rows) |

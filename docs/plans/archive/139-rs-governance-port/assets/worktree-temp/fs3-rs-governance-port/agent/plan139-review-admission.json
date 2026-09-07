@@ -1,0 +1,18 @@
+{
+  "role": "independent final reviewer",
+  "subject_sha": "e6a2d5d52ec70e7e50aa4badad6ba0ba7939990c",
+  "requested": {
+    "harness": "omp",
+    "model": "github-copilot/claude-opus-5",
+    "effort": "high"
+  },
+  "canonical_packet": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/packet-reviewer.dd.json",
+  "canary_path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/.harness/temp/agent/plan139-review-canary.txt",
+  "admission_only": true,
+  "instructions": [
+    "Load pij and builder; no review or code work until PM accepts actual identity/model canary and sends release.",
+    "Read the nonce file and reply to pij-lonely-ikrie with its exact content, your native whoami identity/session/pane and observed model/effort. Do not infer observation from spawn argv.",
+    "No tests/builds/formatters/linters/global changes. Remain semantic waiting, never HOLD. Do not start internal subagents before this admission; parent messages must stay in main context.",
+    "Final code is read-only; later review outputs may be written only under the PM plan assets/reviews and own observation buffer."
+  ]
+}

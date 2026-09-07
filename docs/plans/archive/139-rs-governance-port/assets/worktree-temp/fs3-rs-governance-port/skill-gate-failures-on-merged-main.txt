@@ -1,0 +1,33 @@
+✗ registry: 'watch' has no module at skills/pij/references/routes/watch.md
+⚠ budget: skills/pij/references/prime/rituals/batons.md is 177 lines (advisory max 90)
+✗ completion root: external inbox waiting preserved — missing 'non-tmux external peers block on `pij inbox --wait`' in skills/pij/SKILL.md
+✗ completion root: state wait loop forbidden — missing 'Never sit in a `pij state` wait loop.' in skills/pij/SKILL.md
+✗ completion C3: missing 'without `--wait`'
+✗ completion C3: missing 'one-shot `--once`'
+✗ completion C3: missing '`E-DEAD`'
+✗ completion C3: missing 'observe-only diagnostics, never progress gates'
+✗ completion C7: missing 'pi/tmux push modes'
+✗ completion C7: missing 'never poll `pij state`'
+✗ completion C7: missing 'external pull mode'
+✗ completion C7: missing '`pij inbox --wait`'
+✗ completion C7: missing 'This blocking inbox read is the delivery primitive'
+✗ ready terminal: **STOP.** — missing '**STOP.**' in skills/pij/references/routes/ready.md
+✗ ready terminal: ending the turn is the wait — missing 'ending the turn is the wait' in skills/pij/references/routes/ready.md
+✗ real-tree peer: pij tree [<id> | --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all] [--json] — missing 'pij tree [<id> | --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all] [--json]' in skills/pij/references/routes/peer.md
+✗ real-tree peer: pij link <child> --parent <parent> [--json] — missing 'pij link <child> --parent <parent> [--json]' in skills/pij/references/routes/peer.md
+✗ real-tree peer: pij link <child> --root [--json] — missing 'pij link <child> --root [--json]' in skills/pij/references/routes/peer.md
+✗ real-tree peer: pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] — missing 'pij adopt "$TMUX_PANE" --harness <h> [--parent <id>]' in skills/pij/references/routes/peer.md
+✗ real-tree peer: `parentId` is structural — missing '`parentId` is structural' in skills/pij/references/routes/peer.md
+✗ real-tree peer: `spawnedBy` remains close authorization — missing '`spawnedBy` remains close authorization' in skills/pij/references/routes/peer.md
+✗ real-tree peer: current Git repository across linked worktrees — missing 'current Git repository across linked worktrees' in skills/pij/references/routes/peer.md
+✗ real-tree prime triage: `pij list --prime --here --json` is current-prime-only — missing '`pij list --prime --here --json` is current-prime-only' in skills/pij/references/routes/prime.md
+✗ real-tree prime triage: `oldPrime` is history — missing '`oldPrime` is history' in skills/pij/references/routes/prime.md
+✗ real-tree prime triage: never an active-seat signal — missing 'never an active-seat signal' in skills/pij/references/routes/prime.md
+✗ real-tree prime triage: `pij tree --global --all --json` — missing '`pij tree --global --all --json`' in skills/pij/references/routes/prime.md
+✗ real-tree kickoff: spawned link verified before canary — missing 'verify the automatically persisted structural link with `pij tree <id> --json`'
+✗ real-tree kickoff: adopted identity before link before brief — missing '`pij link <id> --parent <o-prime-id> --role pm --json`'
+✗ real-tree handover: set before writers, retire after final relay — missing '`pij orchestration prime set --json`'
+✗ real-tree handover: retired seat remains old-prime history — missing '`oldPrime: true`' in skills/pij/references/prime/templates/seat-handover.md
+✗ worktree lifecycle: kickoff explains peer cwd derivation — missing 'process.cwd()' in skills/pij/references/prime/rituals/kickoff.md
+✗ worktree lifecycle: kickoff waits for PR merge — missing 'PR merge' in skills/pij/references/prime/rituals/kickoff.md
+✗ worktree lifecycle: kickoff permits ruled abandonment — missing 'explicit abandonment' in skills/pij/references/prime/rituals/kickoff.md
