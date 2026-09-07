@@ -9,13 +9,13 @@
         "title": "rs seat observability \u2014 one spine writer, stamped descriptor events, role on the row, reap/close",
         "slug": "rs-seat-observability",
         "ordinal": 138,
-        "status": "draft",
-        "summary": "Four rs gaps that all bite UI consumers (chainglass, plan 093 reader), measured live 2026-09-06: (1) the spine has three writers so seat.put/tombstone/report.* never fan out on /v1/events and a live cursor burns past them; (2) registry rows carry at=0 and seat.put an empty payload; (3) nothing can set a seat's role, so every card reads ROLE UNKNOWN; (4) no close verb and no reaper, ~716 idle corpses. Make the bus the only spine writer with stamped descriptor payloads; add a role writer/setter/join; add close + reap."
+        "status": "superseded",
+        "summary": "SUPERSEDED 2026-09-07 by plan 139 rs-governance-port (its units u1/u2/u5). Four rs gaps that all bite UI consumers (chainglass, plan 093 reader), measured live 2026-09-06: (1) the spine has three writers so seat.put/tombstone/report.* never fan out on /v1/events and a live cursor burns past them; (2) registry rows carry at=0 and seat.put an empty payload; (3) nothing can set a seat's role, so every card reads ROLE UNKNOWN; (4) no close verb and no reaper, ~716 idle corpses. Make the bus the only spine writer with stamped descriptor payloads; add a role writer/setter/join; add close + reap."
       }
     },
     {
       "name": "summary",
-      "value": "Four rs gaps that all bite UI consumers (chainglass, plan 093 reader), measured live 2026-09-06: (1) the spine has three writers so seat.put/tombstone/report.* never fan out on /v1/events and a live cursor burns past them; (2) registry rows carry at=0 and seat.put an empty payload; (3) nothing can set a seat's role, so every card reads ROLE UNKNOWN; (4) no close verb and no reaper, ~716 idle corpses. Make the bus the only spine writer with stamped descriptor payloads; add a role writer/setter/join; add close + reap."
+      "value": "SUPERSEDED 2026-09-07 by plan 139 rs-governance-port (its units u1/u2/u5). Four rs gaps that all bite UI consumers (chainglass, plan 093 reader), measured live 2026-09-06: (1) the spine has three writers so seat.put/tombstone/report.* never fan out on /v1/events and a live cursor burns past them; (2) registry rows carry at=0 and seat.put an empty payload; (3) nothing can set a seat's role, so every card reads ROLE UNKNOWN; (4) no close verb and no reaper, ~716 idle corpses. Make the bus the only spine writer with stamped descriptor payloads; add a role writer/setter/join; add close + reap."
     },
     {
       "name": "goals",
