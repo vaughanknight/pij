@@ -187,3 +187,12 @@
       status: open
       source: agent-self
       first_seen_at: "2026-09-07T15:53:33.577Z"
+- id: DL-015
+  kind: difficulty
+  description: "Skill-gate repair proved32 requested failures fixed, but a wider smoke failure lost its actual/scrollback because checks stores only the final25 stderr lines. Source identifies the next todo /reload15s assertion; unchanged direct just smoke passed, so original cause remains unknown. Persist full sensor output before rendering a short tail. The separate pij-skill-check gate is not part of the current canonical checks inventory."
+  fp: 6371e802b9dd
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T16:20:13.541Z"

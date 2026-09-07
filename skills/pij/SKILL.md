@@ -29,7 +29,7 @@ description: Route pij platform jobs — adopt a seat and wait (/pij ready), spa
 | `ops` | daemon health, registry & tmux hygiene — and **recovering a prime after a reboot** ("revive our prime") | `references/routes/ops.md` |
 | `node` | work durable project/stream/dispatch truth, node states, adoption repair, and anomaly queries | `references/routes/node.md` |
 | `prime` | govern many agents in one repo: one o-prime seat, streams below, platform-store facts and single-writer documents | `references/routes/prime.md` |
-| `watch` | file-change subscription intent | *rs CLI unported: named refusal; see Unsupported status below* |
+| `watch` | file-change subscription intent | *no route module — rs CLI unported: named refusal; see Unsupported status below* |
 
 Module missing at its path → say so and stop. Never improvise a route from memory.
 
@@ -38,7 +38,7 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 | CLI verb | lives in |
 |---|---|
 | `spawn` `revive` | peer route — shim refuses `E-RS-UNPORTED`; use explicit native rs grammar, never legacy flags |
-| `send` `compact-self` `adopt` `whoami` `state` `inbox` | peer route — rs; inbox bare/check only, not register or legacy wait semantics |
+| `send` `compact-self` `adopt` `whoami` `state` `inbox` | peer route — rs; verified external inbox register/wait supported, extension-owned receivers unchanged |
 | `list` `sessions` | peer route — rs-only; list forwards exact harness/folder/parent/scope=local filters; sessions has no filters or legacy union; native CLI List remains bare |
 | `tail` `tree` `link` | peer route — `E-RS-UNPORTED`; native tail is daemon events, not a transcript |
 | `agent` (`list/run/spawn/show/new/check/eject/report`) | agent route — `E-RS-UNPORTED` |
@@ -64,7 +64,7 @@ primitive. `baton` is the other orchestration subcommand.
 2. **Pointer delivery**: persist packets/large bodies to disk first; `pij send` carries a short path pointer, never a full body.
 3. **Forbidden paths in every packet**: enumerate at minimum the three files above, plus any ledger dirs the route names.
 4. **Persist before mutate**: roster/ledger records are written before the state they describe changes.
-5. **Delivery-owned waiting**: native extensions receive pushed turns; a verified pull-owned seat may use native `pij-rs inbox --wait`. Shim inbox does not auto-register or support the old wait channel; never start a competing receiver or sit in a `pij state` wait loop.
+5. **Delivery-owned waiting**: native extensions receive pushed turns; verified non-tmux external peers block on `pij inbox --wait` after native admission (C1). Never start a competing extension receiver. Never sit in a `pij state` wait loop.
 6. **Completion interrupt**: when a reusable/live coder completes or a reviewer returns a verdict, compact that peer as the first tool action, then continue immediately. § C3 owns the lifecycle boundary and command contract.
 7. **Ownership-aware retirement**: `pij close <id>` requires self or current recorded parent and tombstones only; it never kills a process/pane and has no `--force` bypass. Separate teardown remains owner-authorized.
 8. **Token-lean output & wire discipline**: cite conventions instead of restating them; say only what's needed. Every agent-to-agent message follows **C10 — Wire discipline** (`references/00-routing.md` § Shared conventions) — cite it, never restate it.

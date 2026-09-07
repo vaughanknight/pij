@@ -1,177 +1,89 @@
 # Batons — serialize exclusive resources
 
-The rs primitive is `pij orchestration baton <verb>`: one holder in the shared SQLite lease store, with purpose-bearing requests, pin re-verification and attributed spine events. It is not a legacy atomic lease file under `PIJ_HOME`. The **book remains annotation/evidence**, not a second lease authority: one o-prime writes human judgment there; no primitive writes the book. Mutation receipts/events do not by themselves prove a pushed keeper notice. See the [stable API](../../../../../docs/how/pij-rs-api.md#baton-leases).
+The rs primitive is `pij orchestration baton <verb>`: one holder in the shared SQLite lease store,
+with purpose-bearing requests, pin re-verification and attributed spine events, not legacy lease files.
+The **book is annotation/evidence, not lease authority**: one o-prime writes judgment; no primitive writes it.
+See the [stable API](../../../../../docs/how/pij-rs-api.md#baton-leases) and start from the
+[`baton-book` template](../templates/baton-book.md).
 
-Start from [`../templates/baton-book.md`](../templates/baton-book.md). A baton is
-anything that breaks under two concurrent users or when histories converge: shared
-build locks, ports/services/daemons, global package/config/cache/runtime state,
-rate-limited external APIs/accounts, shared fixtures or generated artifacts,
-same-branch/shared-checkout work, moving-branch handoffs, rebase, landing, merge,
-or git/index use during a ruled shared-tree fallback.
-
-Isolation removes edit-time serialization, not convergence-time serialization.
-Routine reads, edits, hermetic tests/builds, commits, and sole-owner branch pushes
-inside a verified stream-owned worktree/branch are notification-only: **do not
-request a baton**. Two isolated branches editing the same path record overlap now
-and synchronize when reconciling. A downstream pinned to an immutable producer SHA
-needs no baton until repinning; consuming a moving branch needs a handoff baton. A
-unique-branch push is notify-only unless CI/external quota is shared; merge to a
-shared target is always serialized.
+Serialize real hazards: shared build locks, ports/services/daemons, global package/config/cache/runtime
+state, rate-limited APIs/accounts, shared fixtures/generated artifacts, same-branch/shared-checkout work,
+moving-branch handoffs, rebase/landing/merge, and git/index use during a ruled shared-tree fallback.
+**Isolation removes edit-time serialization, not convergence-time serialization.** Routine reads, edits,
+hermetic tests/builds, commits and sole-owner pushes in verified stream-owned worktrees/branches are
+notify-only: **do not request a baton**. Isolated branches touching the same path record overlap now and
+synchronize at reconciliation. Immutable producer-SHA consumption needs no baton until repinning;
+moving-branch consumption needs a handoff baton. Unique-branch pushes are notify-only unless CI/external
+quota is shared; merging to a shared target is always serialized.
 
 ## Lifecycle (ritual step → primitive verb)
 
-1. **Define** the resource once: `pij orchestration baton define <name> --resource
-   <text> [--probe <cmd>] [--repo <path>]`.
-2. **Request** with purpose and optionally `--pin <sha>` / `--evidence <declared return evidence>`: `pij orchestration baton request <name> --purpose <text>`. Persist the request receipt and notify the keeper by the normal supported send. A queue position is not a promise.
-3. **Verify free** with the resource probe and holder liveness. After restart,
-   never trust any table alone — probe.
-4. **Grant** by request id: `pij orchestration baton grant <name> --to <request-id> --json`. Preserve the returned lease id. A stale or unverifiable pin requires explicit `--repin`; inspect real evidence before doing so. The keeper annotates the book and communicates the receipt; acceptance is not proof the recipient received it.
-5. **Use** only for the recorded purpose. Long holds may contain negotiated,
-   explicitly recorded sibling windows (windows stay a book-layer convention — the
-   primitive has no sub-leases in v1).
-6. **Return** the exact observed grant/show lease: `pij orchestration baton return <name> --lease-id <observed-lease-id> --evidence <text>`. State and event commit atomically. Evidence verification remains human; the keeper checks the declared terms before closing the book row.
-7. **Reclaim explicitly**, never because of silence alone: `pij orchestration baton reclaim <name> --lease-id <observed-lease-id> --evidence <text>`. Re-read `pij orchestration baton show <name> --json` before judgment. No daemon auto-reclaim is implied.
+1. **Define** once: `pij orchestration baton define <name> --resource <text> [--probe <cmd>] [--repo <path>]`.
+2. **Request**: `pij orchestration baton request <name> --purpose <text>`; optionally add `--pin <sha>`
+   and `--evidence <declared return evidence>`. Preserve the receipt; a queue position is not a promise.
+   The service persists the request and publishes `baton.requested`, then calls existing DeliveryService
+   from requester to the definition's `created_by` keeper. Inspect `{request, seq, notice}`; do not send
+   an unconditional duplicate notice. `queued` is admission (Pi/OMP awaits ReaderRead), not observation;
+   `delivered` requires transport confirmation, not proof of keeper observation. `unverified` uses
+   Dead/Recycled process-incarnation evidence, not heartbeat age; missing/dissolved keeper gives null/no send.
+   Publication failure prevents send. Send/probe errors or Held/Refused outcomes cannot erase commitment
+   or masquerade as success: `E-RS-PARTIAL` retains `committed`, `event_published`, `request` and `seq` evidence.
+   Later reader acknowledgement needs no second notice; self-send retains the existing refusal path.
+3. **Verify free** using the resource probe and holder liveness; after restart, never trust tables alone.
+4. **Grant**: `pij orchestration baton grant <name> --to <request-id> --json`; preserve its lease id.
+   Grant checks pin against current HEAD: stale/unverifiable requires explicit `--repin` after inspecting
+   real evidence. Keeper annotates the book and communicates the receipt; acceptance is not recipient receipt.
+5. **Use** only for the recorded purpose. Negotiated sibling windows must be recorded in the book;
+   the primitive has no sub-leases.
+6. **Return**: `pij orchestration baton return <name> --lease-id <observed-lease-id> --evidence <text>`.
+   Use the exact grant/show lease. State/event commit atomically; keeper verifies declared evidence
+   before closing the book row. Evidence verification remains human.
+7. **Reclaim explicitly**: `pij orchestration baton reclaim <name> --lease-id <observed-lease-id> --evidence <text>`.
+   Re-read `pij orchestration baton show <name> --json` before judgment. **Never reclaim from silence
+   alone**; no daemon auto-reclaim is implied.
 
-`pij orchestration baton list --json` and `pij orchestration baton show <name> --json` expose definitions, the current lease and requests. Missing or mismatched `--lease-id` refuses `E-RS-LEASE-STALE`, naming the current lease and remediation; a shim must never resolve a newer lease for an old caller. Request/grant timestamps are evidence; do not invent a blocked-time projection absent from the response.
+`pij orchestration baton list --json` / `show <name> --json` expose definitions, current lease and requests.
+Missing/mismatched `--lease-id` refuses `E-RS-LEASE-STALE`, naming current lease and remediation;
+a shim must never resolve a newer lease for an old caller.
 
-## Hard paths (unchanged doctrine — the primitive records them, never decides them)
+## Hard paths — the primitive records, never decides
 
-Worked examples of the reclaim and breach records: [`../exemplars/grant-log.md`](../exemplars/grant-log.md).
+Reclaim/breach examples: [`grant-log`](../exemplars/grant-log.md).
+- **Self-grant**: keeper requests, verifies, logs, uses and returns through exactly the same path; no shortcut.
+- **Silent holder**: inspect current process/pane and durable lease evidence, then ask the keeper;
+  silence is neither completion nor permission. On restart audit book + list; explicitly reclaim dead holders.
+- **Queued posture**: pre-stage shared-tree fallback batches in scratch; land inside the granted window.
+  For timing/external batons, prepare all non-contending inputs while waiting.
+- **Fallback git-index**: docs edits during another holder's window stay unstaged and disclosed;
+  `git add -A` can sweep sibling files into the wrong commit (INC-004).
+- **Breach**: stop competing use, tell the holder, record it, then fix the inviting path; record is enforcement.
+- **Timing/contention**: preserve actual request/grant times and current lease receipts; no invented blocked-time
+  projection. Persistent contention informs a sensor, resource split or human sequencing ruling.
 
-- **Self-grant**: the keeper requests, verifies, logs, uses, and returns like
-  anyone else — the primitive gives self-grants the exact same path, no keeper
-  shortcut. The first real self-grant made the book law instead of decor.
-- **Silent holder**: inspect current process/pane and durable lease evidence, then ask the keeper; silence is neither completion nor permission to reclaim.
-- **Stale pins**: mechanized — grant compares pin vs current HEAD and demands
-  `--repin`; an unverifiable HEAD demands it too.
-- **Queued posture**: for a shared-tree fallback, pre-stage the whole batch in
-  scratch and land it inside the granted window. For timing/external batons,
-  prepare every non-contending input while waiting.
-- **Writing docs while another seat holds fallback git-index**: unstaged-only edits,
-  disclosed to the holder — a bare `git add -A` during a sibling's window once
-  swept 24 of its staged files into a stranger's commit (INC-004's class; it keeps
-  recurring, which is why the index is a named baton surface).
-- **Restart**: audit book + `… list` before new grants; reconcile dead holders into
-  explicit reclaims.
-- **Breach**: stop competing use, tell the holder, record it, then fix the paved
-  path that invited it. Honor system means the record is the enforcement.
-- **Contention**: preserve actual request/grant times and current lease receipts. Persistent shared-resource contention informs a sensor, resource split or human sequencing ruling; do not claim a derived field the API does not expose.
+### Fences: sensors, not permission
 
-Fences are sensors — they inform and record merge risk, never block. Batons
-are interlocks — one holder, justified only by a real hazard: shared mutable
-state or convergence. Neither is an edit-time permission gate for isolated
-branch work.
+Fences record merge risk, never block; batons interlock real shared-state/convergence hazards.
+Neither gates isolated branch edits. Answering in-worktree “may I?” with `GRANTED`/`REFUSED` teaches
+permission regardless of doctrine; unowned defects and ask-and-wait loops are tells. A lifecycle hook
+escaping the worktree warrants serialization because of shared state, not because of a fence.
+**A path fence bounds writes, not blast radius**: an outside snapshot can assert in-fence bytes and fail CI
+while every write stays in-fence. **If enforcing a fence, check the status layer first**: fences predict
+intent; cards report actuality. Rotten cards make enforced predictions substitute for evidence.
+The stale-badge failure split write/clear operations so holders could not see their own stale state.
+Restore legibility: “tell me what you're touching and I'll record merge risk.” A touch-set is a NOTICE.
 
-**HOW YOU WILL KNOW YOU HAVE GOT THIS WRONG** (added 2026-08-04 at
-`pij-massive-meadowlark`'s request, from its own audit — the rule above was
-correct and *did not reach it*, because a rule tells you what a fence IS and not
-what your own behaviour looks like when you have broken it):
+### Cause and expiry — controls, not memory
 
-> **A prime who answers in-worktree "may I?" questions with grants has converted a
-> sensor into an interlock — and the seats will learn from the ANSWER, not the
-> doc.** You were their primary source, whatever this file says.
-
-The tells, all observed in one government in 24h:
-
-- You adjudicate. Rulings read `GRANTED` / `REFUSED` on paths inside a seat's own
-  worktree and branch. One instruction opened *"FENCE EXTENDED, exactly one path"*
-  — an extension offered as permission, which the seat then *declined to spend*.
-- Seats stand off. A diagnosed real defect sat **unowned and unfixed** because a
-  fence stopped a worktree-isolated seat touching a file on its own branch, plus
-  four ask-and-wait round trips.
-- Your one defensible refusal did not need a fence. Refusing a `prepare` lifecycle
-  hook is correct **because it escapes the worktree** — shared mutable state, which
-  batons already serialize. *If the good refusal is justified by escape, the fence
-  was never what made it right.*
-
-**And the fence's own reading can be green and useless**: a fence verified to hold
-exactly (25 paths, zero outside) while CI went red anyway, because an in-fence file
-was byte-frozen by a snapshot *outside* it. **A path fence bounds writes and says
-nothing about what asserts those bytes elsewhere** — so it cannot tell you the blast
-radius it appears to be telling you.
-
-**The root cause, and it is not doctrine confusion**: *"I over-invest in fences
-because my status layer was unreliable. A fence PREDICTS what a seat will touch; a
-card REPORTS what it did. When cards rot, the prediction becomes the only artifact —
-and a prediction I enforce is an interlock by construction."* The cards were rotting
-via the badge defect (`report now` never clears a `stateNote`; only `report clear`
-does), which is the same generator as the companion bug: **a field whose write path
-and clear path are governed by different operations, where the holder cannot tell its
-own state went stale.**
-
-> **If you find yourself enforcing a fence, check your status layer first.** Reach
-> for legibility — *"tell me what you're touching and I'll record the merge risk"* —
-> not permission. A touch-set is a NOTICE, not a fence.
-
-### …AND THE SHARPER CUT — nothing expired it when its cause died
-
-**`pij-related-koala`'s amendment, relayed by its prime against that prime's own
-coarser version.** The stand-off cited above **was correct when issued**: another seat
-was live and about to take that exact file, and two writers in one path is the worse
-failure. So the interlock was right at issue time.
-
-> **The defect is not that a fence existed, it is that nothing expired it when its
-> cause died.** (`pij-related-koala`)
-
-The other seat was closed, the item went unowned, and the fence stayed up **by
-inertia**, because lifting it required an action nobody was prompted to take. That is
-smaller and far more fixable than the doctrine question — *a doctrine argument invites
-a POSITION; "nothing expired it" invites a MECHANISM.*
-
-**It unifies four independent defects found across two governments in one day**
-(unification `pij-massive-meadowlark`'s, sentence koala's):
-
-| instance | state that outlived its cause |
-|---|---|
-| **badge** | the blocker cleared; nothing cleared the badge — 3 of 4 seats in one government, worst at 24h, and the pij o-prime at 22h |
-| **chore companion baseline** | advanced by a run nobody read, because a companion cannot see ack state |
-| **fence** | its cause died with a closed seat; nothing retired it |
-| **PA exemption clause** | kept seats stood down after the reason to stand them down had passed |
-
-*"A field whose write path and clear path are governed by different operations"*
-describes the **mechanism**. Koala's names the **accountability gap** — which is the
-half you can assign to someone, and the reason four unrelated subsystems produced the
-same shape on the same day.
-
-> **EVERY DURABLE CONSTRAINT MUST STATE ITS CAUSE AND ITS EXPIRY CONDITION IN THE SAME
-> BREATH AS THE CONSTRAINT.** A constraint whose cause is unstated cannot be noticed to
-> have expired — by anyone, including the party it binds.
-
-This is the general form of *companions must be stateless*: statelessness removes one
-class, and **the class that survives it is state whose JUSTIFICATION has died while the
-state is still perfectly valid.**
-
-**In practice**: `"stood off X BECAUSE araminta holds FU-4; EXPIRES when araminta
-releases it or is closed"` — which turns a seat closing into a **visible trigger**
-rather than a silent one.
-
-**The positive control already exists in this fleet**: the interim `report state`
-guidance issued fleet-wide on 2026-08-03 carried `pij#72` as its named holding defect,
-*because* mastodon's *debt-not-practice* rule demanded an expiry. That constraint is
-the one that did not rot — the practice existed in one place and had not reached the
-other four.
-
-And the distinction that makes it a control at all: **it held because a RULE made
-carelessness impossible in that slot, not because its author was careful.** A control
-that works because someone was attentive is not a control.
-
-### THE NEGATIVE CONTROL — knowing the rule is not a control
-
-**`pij-related-koala`, same fleet, same day, and it is the strongest evidence in this
-file.** After clearing its own stale badge it disclosed that it **already held a
-durable personal note on that exact defect** — *"`report now` does NOT clear a blocked
-badge; run `report clear` in the same action as resuming"* — written after being caught
-by it **once before**.
-
-**It did not fire.** A seat that knew the rule, had authored the rule *for itself*, and
-had already paid for the lesson once, still shipped **300 minutes of contradictory
-state**.
-
-> **Knowing the rule is not a control. The badge must expire itself, or be cleared by
-> the same operation that resolves its cause.** (koala)
-
-Put beside the positive control, the pair is decisive: **a rule-enforced expiry held; a
-remembered one failed, in the same fleet, on the same day, in a seat that had already
-been burned by it.** Four failures, one mechanism that worked, and one documented
-failure *of diligence itself* — which is why the fix belongs in the write path and not
-in anybody's memory.
+A stand-off can be justified initially by real competing writers yet rot after the other seat closes.
+The defect is that nothing expires the constraint when its cause dies, not necessarily its initial issue.
+**Every durable constraint must state its cause and expiry condition together.** Example: “stood off X
+BECAUSE araminta holds FU-4; EXPIRES when araminta releases it or is closed.” Closing becomes a visible trigger.
+The same accountability gap affected stale badges, unread companion baselines (companions cannot see ack),
+fences after seat closure and PA exemptions after their reason passed. Split write/clear operations are
+its mechanism; stateless companions remove one class, not otherwise-valid state whose justification died.
+**Positive control**: interim guidance named holding defect `pij#72` because the debt-not-practice rule
+required expiry. It held because a rule required it, not because its author remembered to be careful.
+**Negative control**: koala already had a personal stale-badge correction note from a previous failure,
+yet produced 300 minutes of contradictory state. Knowing the rule was not a control, even after prior harm.
+Rule-enforced expiry held; remembered expiry failed in the same fleet on the same day. The badge must
+expire itself or be cleared by the operation resolving its cause: fix the write path, not anyone's memory.
